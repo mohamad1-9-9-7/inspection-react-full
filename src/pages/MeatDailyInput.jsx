@@ -1,6 +1,10 @@
 // src/pages/MeatDailyInput.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  ItemCodeInput,
+  ItemNameInput,
+} from "./monitor/branches/_shared/CodedProductField";
 
 /* ========== API ========== */
 const API_BASE =
@@ -68,6 +72,12 @@ const STATUS = ["Near Expiry", "Expired", "Color change", "Found smell", "OK"];
 const QTY_TYPES = ["KG", "PCS", "PLT"];
 
 const baseRow = () => ({
+  // كود المنتج من الكتالوج — بدونه لا يستطيع تتبّع المنتج ربط هذا السجل
+  // بالشحنة الواردة ولا بسجل استلام الفرع.
+  // The catalog item code: without it Product Traceability cannot tie this
+  // line to the incoming shipment or to the branch receiving log — a name
+  // typed by hand only matches when it happens to be spelled identically.
+  itemCode: "",
   productName: "",
   quantity: "",
   qtyType: "KG",
@@ -174,6 +184,13 @@ export default function MeatDailyInput() {
   const delRow = (idx) => setRows((p) => p.filter((_, i) => i !== idx));
   const setVal = (i, k, v) => setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
 
+  /** Code and name are one pair: picking either side fills the other, so the
+   *  two can never drift apart on the same row. */
+  const setProduct = (i, { code, name }) =>
+    setRows((p) =>
+      p.map((r, idx) => (idx === i ? { ...r, itemCode: code ?? "", productName: name ?? "" } : r))
+    );
+
   // فتح/إغلاق مدير الصور
   const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
   const closeImages = () => setImageModalOpen(false);
@@ -218,6 +235,7 @@ export default function MeatDailyInput() {
     const cleaned = rows
       .map((r) => ({
         ...r,
+        itemCode: (r.itemCode || "").trim(),
         productName: (r.productName || "").trim(),
         qtyType: (r.qtyType || "").trim(),
         status: (r.status || "").trim(),
@@ -280,6 +298,7 @@ export default function MeatDailyInput() {
           <thead>
             <tr>
               <th style={s.th}>#</th>
+              <th style={s.th}>ITEM CODE</th>
               <th style={s.th}>PRODUCT NAME</th>
               <th style={s.th}>QUANTITY</th>
               <th style={s.th}>QTY TYPE</th>
@@ -295,11 +314,22 @@ export default function MeatDailyInput() {
               <tr key={i}>
                 <td style={s.td}>{i + 1}</td>
                 <td style={s.td}>
-                  <input
-                    value={r.productName}
-                    onChange={(e) => setVal(i, "productName", e.target.value)}
+                  <ItemCodeInput
+                    code={r.itemCode || ""}
+                    name={r.productName || ""}
+                    onChange={(pair) => setProduct(i, pair)}
                     style={s.in}
-                    aria-label="Product Name"
+                    placeholder="Code"
+                    title="كود المنتج من الكتالوج / Item code from the product catalog"
+                  />
+                </td>
+                <td style={s.td}>
+                  <ItemNameInput
+                    code={r.itemCode || ""}
+                    name={r.productName || ""}
+                    onChange={(pair) => setProduct(i, pair)}
+                    style={s.in}
+                    placeholder="Search code or product…"
                   />
                 </td>
                 <td style={s.td}>

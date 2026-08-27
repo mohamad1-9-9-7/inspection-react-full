@@ -44,10 +44,28 @@ export const TRACE_SOURCES = [
 
 export const DISPATCH_TYPE = "finished_products_report";
 
+/* The daily meat-condition register — تقرير حالة اللحم اليومية.
+   It records no movement: it is the log of somebody LOOKING at stock that is
+   already sitting in a branch and writing down what state it is in (near
+   expiry, expired, colour change, smell). In the flow it belongs between the
+   branch receiving log and the returns — the branch took it in, flagged its
+   condition, and only then sent some of it back. */
+export const CONDITION_TYPE = "meat_daily";
+
+/* Two channels come back, not one. A branch return names one of OUR sites; a
+   customer return names an outside buyer and therefore resolves to NO branch
+   at all. Tagging the channel at the source is what stops the screen's
+   "show me one branch" filter from silently deleting every customer return —
+   which it did, because a blank branch matches no branch. */
 export const RETURN_SOURCES = [
-  { type: "returns", label: "Branch returns", labelAr: "مرتجعات الفروع" },
-  { type: "returns_customers", label: "Customer returns", labelAr: "مرتجعات الزبائن" },
-  { type: "enoc_returns", label: "ENOC returns", labelAr: "مرتجعات إينوك" },
+  { type: "returns", channel: "branch", label: "Branch returns", labelAr: "مرتجعات الفروع" },
+  {
+    type: "returns_customers",
+    channel: "customer",
+    label: "Customer returns",
+    labelAr: "مرتجعات الزبائن",
+  },
+  { type: "enoc_returns", channel: "branch", label: "ENOC returns", labelAr: "مرتجعات إينوك" },
 ];
 
 /* ===== Our own branches =====
@@ -58,6 +76,10 @@ export const RETURN_SOURCES = [
 export const OUR_BRANCHES = [
   { id: "POS 10", label: "POS 10", labelAr: "POS 10", test: /pos[\s._-]*0*10(?![0-9])/i },
   { id: "POS 11", label: "POS 11", labelAr: "POS 11", test: /pos[\s._-]*0*11(?![0-9])/i },
+  // POS 14 is the Al Ain Market shop (see inspectionBranches.js). The finished
+  // product sheet names it either way, so both spellings resolve to us instead
+  // of being counted as an outside customer.
+  { id: "POS 14", label: "POS 14", labelAr: "POS 14", test: /pos[\s._-]*0*14(?![0-9])|al[\s._-]*ain[\s._-]*market|سوق العين/i },
   { id: "POS 15", label: "POS 15", labelAr: "POS 15", test: /pos[\s._-]*0*15(?![0-9])/i },
   { id: "POS 47", label: "POS 47", labelAr: "POS 47", test: /pos[\s._-]*0*47(?![0-9])/i },
   { id: "POS 48", label: "POS 48", labelAr: "POS 48", test: /pos[\s._-]*0*48(?![0-9])/i },
@@ -186,6 +208,26 @@ export function readProduct(codeValue, nameValue) {
   };
 }
 
+/** First non-empty value among several spellings of the same cell.
+ *  These families grew over years and carry the same number under `qty`,
+ *  `quantity`, `pcs`… — reading only one spelling silently reports zero. */
+function pick(obj, ...keys) {
+  for (const k of keys) {
+    const v = s(obj?.[k]);
+    if (v) return v;
+  }
+  return "";
+}
+
+/** The first of a list of hits that actually carries one of these date cells. */
+function firstDate(hits, ...keys) {
+  for (const h of hits || []) {
+    const v = pick(h?.x, ...keys);
+    if (v) return v;
+  }
+  return "";
+}
+
 /** Numeric value out of "12.5 KG" / "١٢" / 12.5 — 0 when there is no number. */
 export function toNum(v) {
   const n = Number(
@@ -262,7 +304,10 @@ function fromShipments(rows, match) {
       .filter((h) => h.via);
     const hitLines = lines
       .map((x, i) => {
-        const prod = readProduct(x?.code || x?.itemCode, x?.name || x?.productName);
+        const prod = readProduct(
+          pick(x, "code", "itemCode", "item_code"),
+          pick(x, "name", "productName")
+        );
         return { x, i, prod, via: match(prod.code, prod.name) };
       })
       .filter((h) => h.via);
@@ -270,6 +315,31 @@ function fromShipments(rows, match) {
     if (!hitSamples.length && !hitLines.length) return;
 
     const via = hitSamples[0]?.via || hitLines[0]?.via;
+
+    /* The shipment form splits one product across two tables: the SAMPLE rows
+       carry the slaughter / expiry dates, the PRODUCT LINE rows carry the
+       pieces and the kilos, and the two are bound only by the item code.
+       Reading each half in isolation is why a shipment could show "0 kg" (it
+       matched a sample but no line) or vanish from a lot (it matched a line,
+       which carries no date). Each side now falls back to the other. */
+    const qty =
+      hitLines.reduce((a, h) => a + toNum(pick(h.x, "qty", "quantity", "pcs", "pieces")), 0) ||
+      hitSamples.reduce((a, h) => a + toNum(pick(h.x, "qty", "quantity", "pcs", "pieces")), 0);
+    const weight =
+      hitLines.reduce(
+        (a, h) => a + toNum(pick(h.x, "weight", "wt", "kg", "kgs", "weightKg", "netWeight")),
+        0
+      ) ||
+      hitSamples.reduce(
+        (a, h) => a + toNum(pick(h.x, "weight", "wt", "kg", "kgs", "weightKg", "netWeight")),
+        0
+      );
+    const rawProd =
+      firstDate(hitSamples, "slaughterDate", "productionDate", "prodDate") ||
+      firstDate(hitLines, "slaughterDate", "productionDate", "prodDate");
+    const rawExp =
+      firstDate(hitSamples, "expiryDate", "expiry", "bestBefore") ||
+      firstDate(hitLines, "expiryDate", "expiry", "bestBefore");
     out.push({
       kind: "shipment",
       id: row?.id || row?._id || `${date}-${out.length}`,
@@ -285,14 +355,14 @@ function fromShipments(rows, match) {
       brand: s(gi.brand),
       // "وين استلمها" — the receiving address on the shipment.
       location: s(gi.receivingAddress) || "QCS",
-      qty: hitLines.reduce((a, h) => a + toNum(h.x?.qty), 0),
-      weight: hitLines.reduce((a, h) => a + toNum(h.x?.weight), 0),
-      prodDate: normDate(hitSamples[0]?.x?.slaughterDate),
-      expiryDate: normDate(hitSamples[0]?.x?.expiryDate),
+      qty,
+      weight,
+      prodDate: normDate(rawProd),
+      expiryDate: normDate(rawExp),
       // The shipment's date cells are free text, so a value that will not
       // parse must still be shown rather than silently becoming a dash.
-      prodDateRaw: dateOrRaw(hitSamples[0]?.x?.slaughterDate),
-      expiryDateRaw: dateOrRaw(hitSamples[0]?.x?.expiryDate),
+      prodDateRaw: dateOrRaw(rawProd),
+      expiryDateRaw: dateOrRaw(rawExp),
       temperature: s(hitSamples[0]?.x?.temperature),
       inspectedBy: s(p.inspectedBy),
       refNo: s(p.refNo),
@@ -418,6 +488,47 @@ function fromDispatch(rows, match) {
   return out;
 }
 
+function fromCondition(rows, match) {
+  const out = [];
+  rows.forEach((row) => {
+    const p = row?.payload || row || {};
+    const date = rowDate(row);
+    const items = Array.isArray(p.items) ? p.items : [];
+    items.forEach((x, i) => {
+      const prod = readProduct(x?.itemCode, x?.productName);
+      const via = match(prod.code, prod.name);
+      if (!via) return;
+      // The register has no branch column of its own: the site is written into
+      // the remarks as "POS 15", which is what the Browse screen reads too.
+      const remarks = s(x?.remarks);
+      out.push({
+        kind: "condition",
+        id: `${row?.id || date}-${i}`,
+        date,
+        via,
+        matchedName: prod.name,
+        matchedCode: prod.code,
+        status: s(x?.status),
+        qty: toNum(x?.quantity),
+        qtyType: s(x?.qtyType) || "KG",
+        expiryDate: normDate(x?.expiry),
+        expiryRaw: dateOrRaw(x?.expiry),
+        branch: resolveOurBranch(remarks)?.id || "",
+        remarks,
+        images: Array.isArray(x?.images) ? x.images.length : 0,
+      });
+    });
+  });
+  return out;
+}
+
+/** Is this condition line a problem, or just a routine "OK"? */
+export function isConditionIssue(status) {
+  const v = s(status).toLowerCase();
+  if (!v) return false;
+  return v !== "ok" && !v.includes("سليم");
+}
+
 function fromReturns(rows, match, source) {
   const out = [];
   rows.forEach((row) => {
@@ -439,6 +550,7 @@ function fromReturns(rows, match, source) {
         source: source.type,
         sourceLabel: source.label,
         sourceLabelAr: source.labelAr,
+        channel: source.channel || "branch",
         matchedName: prod.name,
         matchedCode: prod.code,
         place,
@@ -449,6 +561,12 @@ function fromReturns(rows, match, source) {
         origin: s(x?.origin),
         action: s(x?.customAction) || s(x?.action),
         remarks: s(x?.remarks),
+        // Who physically brought it back. Only the customer-returns sheet has
+        // these, and they are the whole audit trail for a customer return.
+        customerName: s(x?.customerName),
+        carNumber: s(x?.carNumber),
+        driverName: s(x?.driverName),
+        images: Array.isArray(x?.images) ? x.images.length : 0,
         refNo: s(p.refNo),
       });
     });
@@ -470,6 +588,7 @@ const EMPTY_TRACE = {
   receiving: [],
   batches: [],
   dispatch: [],
+  conditions: [],
   returns: [],
   scanned: 0,
 };
@@ -494,6 +613,7 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
   const receiving = [];
   const batches = [];
   const dispatch = [];
+  const conditions = [];
   const returns = [];
   let scanned = 0;
 
@@ -503,6 +623,7 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
     else if (job.key === "receiving") receiving.push(...fromReceiving(rows, match, job.branch));
     else if (job.key === "batch") batches.push(...fromTraceability(rows, match, job.branch));
     else if (job.key === "dispatch") dispatch.push(...fromDispatch(rows, match));
+    else if (job.key === "condition") conditions.push(...fromCondition(rows, match));
     else if (job.key === "return") returns.push(...fromReturns(rows, match, job.source));
   });
 
@@ -510,9 +631,10 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
   receiving.sort(byDateDesc);
   batches.sort(byDateDesc);
   dispatch.sort(byDateDesc);
+  conditions.sort(byDateDesc);
   returns.sort(byDateDesc);
 
-  return { shipments, receiving, batches, dispatch, returns, scanned };
+  return { shipments, receiving, batches, dispatch, conditions, returns, scanned };
 }
 
 const ARRIVAL_JOBS = [
@@ -523,6 +645,7 @@ const ARRIVAL_JOBS = [
 const DOWNSTREAM_JOBS = [
   ...TRACE_SOURCES.map((x) => ({ key: "batch", ...x })),
   { key: "dispatch", type: DISPATCH_TYPE, branch: "" },
+  { key: "condition", type: CONDITION_TYPE, branch: "" },
   ...RETURN_SOURCES.map((x) => ({ key: "return", type: x.type, source: x })),
 ];
 
@@ -554,6 +677,7 @@ export function mergeTrace(a, b) {
     receiving: [...(a?.receiving || []), ...(b?.receiving || [])],
     batches: [...(a?.batches || []), ...(b?.batches || [])],
     dispatch: [...(a?.dispatch || []), ...(b?.dispatch || [])],
+    conditions: [...(a?.conditions || []), ...(b?.conditions || [])],
     returns: [...(a?.returns || []), ...(b?.returns || [])],
     scanned: (a?.scanned || 0) + (b?.scanned || 0),
   };
@@ -622,6 +746,7 @@ const FAMILY_OF = {
   receiving: "receiving",
   batch: "batches",
   dispatch: "dispatch",
+  condition: "conditions",
   return: "returns",
 };
 
@@ -649,9 +774,10 @@ export function collectLots(result) {
         key,
         prodDate,
         expiryDate,
-        counts: { shipments: 0, receiving: 0, batches: 0, dispatch: 0, returns: 0 },
+        counts: { shipments: 0, receiving: 0, batches: 0, dispatch: 0, conditions: 0, returns: 0 },
         total: 0,
         branches: new Set(),
+        issues: 0,
         firstSeen: "",
         lastSeen: "",
       });
@@ -678,10 +804,19 @@ export function collectLots(result) {
   // Fold returns into whichever lot shares their expiry date. A return that
   // matches no known lot is still worth counting, so it gets a lot of its own
   // keyed on the expiry alone.
-  (result?.returns || []).forEach((hit) => {
+  // One index over the lots built above, so folding N returns into M lots is
+  // a lookup each instead of a scan each (a busy code has 250+ lots).
+  const byExpiry = new Map();
+  map.forEach((l) => {
+    if (l.expiryDate && !byExpiry.has(l.expiryDate)) byExpiry.set(l.expiryDate, l);
+  });
+  // Returns and daily condition checks both carry an expiry and never a
+  // production date, so neither may define a lot of its own while a matching
+  // one exists — that would split one real lot into two half-empty ones.
+  const foldByExpiry = (hit, bucket) => {
     const exp = s(hit.expiryDate);
     if (!exp) return;
-    let lot = Array.from(map.values()).find((l) => l.expiryDate === exp);
+    let lot = byExpiry.get(exp);
     if (!lot) {
       const key = lotKey("", exp);
       if (!map.has(key)) {
@@ -689,23 +824,35 @@ export function collectLots(result) {
           key,
           prodDate: "",
           expiryDate: exp,
-          counts: { shipments: 0, receiving: 0, batches: 0, dispatch: 0, returns: 0 },
+          counts: { shipments: 0, receiving: 0, batches: 0, dispatch: 0, conditions: 0, returns: 0 },
           total: 0,
           branches: new Set(),
+          issues: 0,
           firstSeen: "",
           lastSeen: "",
         });
       }
       lot = map.get(key);
+      byExpiry.set(exp, lot);
     }
-    lot.counts.returns += 1;
+    lot.counts[bucket] += 1;
     lot.total += 1;
-    if (hit.place) lot.branches.add(hit.place);
+    const where = s(hit.place) || s(hit.branch);
+    if (where) lot.branches.add(where);
     const d = s(hit.date);
     if (isYMD(d)) {
       if (!lot.firstSeen || d < lot.firstSeen) lot.firstSeen = d;
       if (!lot.lastSeen || d > lot.lastSeen) lot.lastSeen = d;
     }
+    return lot;
+  };
+
+  (result?.returns || []).forEach((hit) => foldByExpiry(hit, "returns"));
+  (result?.conditions || []).forEach((hit) => {
+    const lot = foldByExpiry(hit, "conditions");
+    // A lot with a flagged condition line is the one worth looking at first,
+    // so the picker can surface it instead of burying it in date order.
+    if (lot && isConditionIssue(hit.status)) lot.issues += 1;
   });
 
   return Array.from(map.values())
@@ -734,17 +881,79 @@ export function lotDateOptions(lots) {
   };
 }
 
+/* ===== Coded-only =====
+   Every hit records HOW it matched: "code" when the row carried the item code
+   itself, "name" when the row predates codes and was resolved through the
+   catalog on its product name. A name match is a good guess, not a fact — two
+   products can share a description, and a stale name outlives a re-coded item.
+   When someone is building a recall list they need the rows the DATA proves,
+   not the rows we inferred, and these two let the screen say which is which. */
+
+const FAMILIES = ["shipments", "receiving", "batches", "dispatch", "conditions", "returns"];
+
+/** Keep only the hits that matched on a real item code. */
+export function filterCodedOnly(result) {
+  if (!result) return result;
+  const out = { ...result };
+  FAMILIES.forEach((f) => {
+    out[f] = (result[f] || []).filter((h) => h.via === "code");
+  });
+  return out;
+}
+
+/** How many hits across the whole trace were resolved by name, not by code. */
+export function countByName(result) {
+  if (!result) return 0;
+  return FAMILIES.reduce(
+    (a, f) => a + (result[f] || []).filter((h) => h.via === "name").length,
+    0
+  );
+}
+
 /** Match modes for the date filter. */
-export const DATE_MODES = ["any", "prod", "expiry", "both"];
+export const DATE_MODES = ["any", "prod", "expiry", "both", "loose"];
 
 /**
- * Narrow a whole trace to one production date, one expiry date, or both.
- * A row that carries no date on a side being matched is excluded — an unknown
- * date is not a match, and quietly keeping it would overstate the lot.
+ * Narrow a whole trace to one lot.
+ *
+ * "both" is the strict reading: a row must carry BOTH dates and both must be
+ * equal. That is what the screen used to do, and it is why steps came out
+ * empty on lots that plainly exist — no two report families fill the same two
+ * date cells. A branch receiving log has a production date but often no
+ * expiry, a return slip has an expiry and never a production date, the
+ * shipment's dates live on the sample row. Under "both" every one of those is
+ * a non-match, so the lot looked empty while the records sat right there.
+ *
+ * "loose" is the honest reading and the one the screen now uses: a row is in
+ * the lot when it AGREES on every date it actually carries and agrees on at
+ * least one. A blank cell is unknown, not a contradiction — but a row with no
+ * date at all still cannot claim membership, so nothing is over-counted.
  */
 export function filterByDates(result, { mode = "any", prodDate = "", expiryDate = "" } = {}) {
   const wantProd = s(prodDate);
   const wantExp = s(expiryDate);
+
+  if (mode === "loose") {
+    if (!wantProd && !wantExp) return result;
+    const keep = (hit) => {
+      const d = datesOf(hit);
+      if (wantProd && d.prodDate && d.prodDate !== wantProd) return false; // contradicts
+      if (wantExp && d.expiryDate && d.expiryDate !== wantExp) return false; // contradicts
+      const agreesProd = !!wantProd && d.prodDate === wantProd;
+      const agreesExp = !!wantExp && d.expiryDate === wantExp;
+      return agreesProd || agreesExp;
+    };
+    return {
+      ...result,
+      shipments: (result.shipments || []).filter(keep),
+      receiving: (result.receiving || []).filter(keep),
+      batches: (result.batches || []).filter(keep),
+      dispatch: (result.dispatch || []).filter(keep),
+      conditions: (result.conditions || []).filter(keep),
+      returns: (result.returns || []).filter(keep),
+    };
+  }
+
   const useProd = (mode === "prod" || mode === "both") && !!wantProd;
   const useExp = (mode === "expiry" || mode === "both") && !!wantExp;
   if (!useProd && !useExp) return result;
@@ -765,12 +974,16 @@ export function filterByDates(result, { mode = "any", prodDate = "", expiryDate 
     receiving: (result.receiving || []).filter(keep),
     batches: (result.batches || []).filter(keep),
     dispatch: (result.dispatch || []).filter(keep),
+    conditions: (result.conditions || []).filter(keepReturn),
     returns: (result.returns || []).filter(keepReturn),
   };
 }
 
 /** Headline numbers for the summary strip. */
-export function summarize({ shipments, receiving, batches, dispatch, returns = [] }) {
+/** Did this return come back from an outside customer rather than our own site? */
+export const isCustomerReturn = (r) => (r?.channel || "branch") === "customer";
+
+export function summarize({ shipments, receiving, batches, dispatch, conditions = [], returns = [] }) {
   const branches = new Set();
   receiving.forEach((r) => r.branch && branches.add(r.branch));
   batches.forEach((b) => b.branch && branches.add(b.branch));
@@ -778,7 +991,9 @@ export function summarize({ shipments, receiving, batches, dispatch, returns = [
   const customers = new Set();
   dispatch.forEach((d) => d.customer && customers.add(d.customer));
 
-  const dates = [...shipments, ...receiving, ...batches, ...dispatch, ...returns]
+  conditions.forEach((c) => c.branch && branches.add(c.branch));
+
+  const dates = [...shipments, ...receiving, ...batches, ...dispatch, ...conditions, ...returns]
     .map((x) => x.date)
     .filter(isYMD)
     .sort();
@@ -800,12 +1015,22 @@ export function summarize({ shipments, receiving, batches, dispatch, returns = [
     dispatchCount: dispatch.length,
     dispatchQty: dispatch.reduce((a, x) => a + x.qty, 0),
     customers: Array.from(customers).sort(),
+    conditionCount: conditions.length,
+    conditionIssues: conditions.filter((c) => isConditionIssue(c.status)).length,
+    conditionQty: conditions.reduce((a, x) => a + x.qty, 0),
     returnCount: returns.length,
     returnQty: returns.reduce((a, x) => a + x.qty, 0),
+    customerReturnCount: returns.filter(isCustomerReturn).length,
+    customerReturnQty: returns.filter(isCustomerReturn).reduce((a, x) => a + x.qty, 0),
     firstSeen: dates[0] || "",
     lastSeen: dates[dates.length - 1] || "",
     totalHits:
-      shipments.length + receiving.length + batches.length + dispatch.length + returns.length,
+      shipments.length +
+      receiving.length +
+      batches.length +
+      dispatch.length +
+      conditions.length +
+      returns.length,
   };
 }
 

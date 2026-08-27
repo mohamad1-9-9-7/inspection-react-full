@@ -1,5 +1,9 @@
 // src/pages/MeatDailyView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ItemCodeInput,
+  ItemNameInput,
+} from "./monitor/branches/_shared/CodedProductField";
 
 /* ========== API ========== */
 const API_BASE =
@@ -273,9 +277,17 @@ export default function MeatDailyView() {
     );
   };
 
+  /** Code and name move together, so an edit can never leave a row whose code
+   *  says one product and whose name says another. */
+  const editProduct = (i, { code, name }) => {
+    editVal(i, "itemCode", code ?? "");
+    editVal(i, "productName", name ?? "");
+  };
+
   const handleAddRow = () => {
     if (!day) return;
     const blank = {
+      itemCode: "",
       productName: "",
       quantity: "",
       qtyType: "KG",
@@ -565,6 +577,7 @@ export default function MeatDailyView() {
                   <thead>
                     <tr>
                       <th style={s.th}>SL</th>
+                      <th style={s.th}>ITEM CODE</th>
                       <th style={s.th}>PRODUCT NAME</th>
                       <th style={s.th}>QUANTITY</th>
                       <th style={s.th}>QTY TYPE</th>
@@ -580,11 +593,22 @@ export default function MeatDailyView() {
                       <tr key={i}>
                         <td style={s.td}>{i + 1}</td>
                         <td style={s.td}>
-                          <input
-                            value={r.productName || ""}
-                            onChange={(e) => editVal(i, "productName", e.target.value)}
+                          <ItemCodeInput
+                            code={r.itemCode || ""}
+                            name={r.productName || ""}
+                            onChange={(pair) => editProduct(i, pair)}
                             style={s.in}
-                            aria-label="Product Name"
+                            placeholder="Code"
+                            title="كود المنتج من الكتالوج / Item code from the product catalog"
+                          />
+                        </td>
+                        <td style={s.td}>
+                          <ItemNameInput
+                            code={r.itemCode || ""}
+                            name={r.productName || ""}
+                            onChange={(pair) => editProduct(i, pair)}
+                            style={s.in}
+                            placeholder="Search code or product…"
                           />
                         </td>
                         <td style={s.td}>

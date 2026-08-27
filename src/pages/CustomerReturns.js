@@ -2,7 +2,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../config/api";
-import { normalizeCode, useProductCatalog } from "./monitor/branches/_shared/ProductPicker";
+import {
+  ItemCodeInput,
+  ItemNameInput,
+} from "./monitor/branches/_shared/CodedProductField";
 import { mergeCustomerOptions } from "./shared/customerReturnsCustomers";
 
 // Actions (English only, for storage/consistency)
@@ -208,7 +211,6 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
 
 export default function CustomerReturns() {
   const navigate = useNavigate();
-  const { allItems: productCatalog } = useProductCatalog();
 
   // Password gate
   const [modalOpen, setModalOpen] = useState(false); // password gate removed
@@ -369,37 +371,20 @@ export default function CustomerReturns() {
     setRows(updated);
   };
 
-  const handleProductNameChange = (idx, value) => {
-    const text = String(value || "");
-    const hit = productCatalog.find((item) => normalizeCode(item.description) === normalizeCode(text));
+  /** Code and name are one value in two cells: whichever side is recognised
+   *  fills the other, so a row can never claim one code and a different name.
+   *
+   *  This replaces two hand-rolled handlers that only fired on an EXACT
+   *  string match — and whose name side compared product NAMES with the CODE
+   *  normaliser, so anything but a character-perfect name left the code blank
+   *  and the row invisible to Product Traceability. The shared picker searches
+   *  on partials and is the same control the other coded screens use. */
+  const setProduct = (idx, { code, name }) =>
     setRows((prev) =>
       prev.map((row, rowIdx) =>
-        rowIdx === idx
-          ? {
-              ...row,
-              productName: text,
-              itemCode: hit ? hit.item_code : row.itemCode,
-            }
-          : row
+        rowIdx === idx ? { ...row, itemCode: code ?? "", productName: name ?? "" } : row
       )
     );
-  };
-
-  const handleItemCodeChange = (idx, value) => {
-    const code = String(value || "");
-    const hit = productCatalog.find((item) => normalizeCode(item.item_code) === normalizeCode(code));
-    setRows((prev) =>
-      prev.map((row, rowIdx) =>
-        rowIdx === idx
-          ? {
-              ...row,
-              itemCode: code,
-              productName: hit ? hit.description : row.productName,
-            }
-          : row
-      )
-    );
-  };
 
   // Images handlers
   const openImagesFor = (idx) => { setImageRowIndex(idx); setImageModalOpen(true); };
@@ -501,15 +486,6 @@ export default function CustomerReturns() {
       <datalist id="customer-names-list">
         {existingCustomers.map((name) => (
           <option key={name} value={name} />
-        ))}
-      </datalist>
-      <datalist id="customer-product-list">
-        {productCatalog.map((item) => (
-          <option
-            key={`${item.item_code || ""}-${item.description}`}
-            value={item.description}
-            label={item.item_code || ""}
-          />
         ))}
       </datalist>
 
@@ -720,17 +696,23 @@ export default function CustomerReturns() {
               <tr key={idx} style={{ background: idx % 2 ? "#faf5ff" : "#fff", transition: "background .15s" }}>
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
-                  <input style={input}
+                  <ItemCodeInput
+                    code={row.itemCode || ""}
+                    name={row.productName || ""}
+                    onChange={(pair) => setProduct(idx, pair)}
+                    style={input}
                     placeholder="Item code"
-                    value={row.itemCode || ""}
-                    onChange={e => handleItemCodeChange(idx, e.target.value)} />
+                    title="كود المنتج من الكتالوج / Item code from the product catalog"
+                  />
                 </td>
                 <td style={td}>
-                  <input style={input}
-                    placeholder="Product name"
-                    list="customer-product-list"
-                    value={row.productName}
-                    onChange={e => handleProductNameChange(idx, e.target.value)} />
+                  <ItemNameInput
+                    code={row.itemCode || ""}
+                    name={row.productName || ""}
+                    onChange={(pair) => setProduct(idx, pair)}
+                    style={input}
+                    placeholder="Search code or product…"
+                  />
                 </td>
                 <td style={td}>
                   <input style={input}

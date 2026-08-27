@@ -5,8 +5,10 @@
 //   ① where the product STARTS — an incoming QCS shipment for a raw item, or
 //      the Final Product report for one we manufacture ourselves
 //   ② how much of it went to each of OUR branches
-//   ③ what does that branch's own receiving log say
-//   ④ did any of it come back
+//   ③ what we actually sent them
+//   ④ what does that branch's own receiving log say
+//   ⑤ what state was it in once it sat there (the daily condition register)
+//   ⑥ did any of it come back
 // Outside customers are counted, never listed: a traceability question is
 // about our own sites.
 
@@ -24,7 +26,12 @@ import {
   mergeTrace,
   summarize,
   collectLots,
+  countByName,
   filterByDates,
+  filterCodedOnly,
+  isConditionIssue,
+  isCustomerReturn,
+  lotKey,
   distributionByBranch,
   datesOf,
   fmtDMY,
@@ -46,6 +53,7 @@ const C = {
   distribution: "#0891b2",
   receiving: "#0d9488",
   batch: "#d97706",
+  condition: "#9333ea",
   returns: "#e11d48",
 };
 
@@ -59,10 +67,12 @@ const S = {
   hero: {
     background: "linear-gradient(135deg,#1d4ed8 0%,#4f46e5 45%,#0891b2 100%)",
     color: "#fff",
-    padding: "24px 24px 62px",
+    padding: "24px 0 62px",
   },
-  // Full-bleed: the flow needs the whole screen, not a narrow column.
-  wrap: { width: "min(1920px, 98vw)", margin: "0 auto" },
+  // Full-bleed: a thirteen-column batch table and a six-stage flow need the
+  // whole screen. No max-width cap — just a slim margin so nothing touches
+  // the glass.
+  wrap: { width: "100%", margin: 0, padding: "0 18px", boxSizing: "border-box" },
   card: {
     background: C.card,
     border: `1px solid ${C.line}`,
@@ -70,7 +80,7 @@ const S = {
     boxShadow: "0 10px 26px rgba(15,23,42,.07)",
     padding: 18,
   },
-  label: { fontWeight: 800, color: C.body, fontSize: ".82rem", display: "block", marginBottom: 5 },
+  label: { fontWeight: 800, color: C.body, display: "block", marginBottom: 5 },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -79,7 +89,6 @@ const S = {
     borderRadius: 10,
     background: "#fff",
     color: C.ink,
-    fontSize: ".95rem",
     fontFamily: "inherit",
   },
   btn: (bg, fg = "#fff") => ({
@@ -89,7 +98,6 @@ const S = {
     borderRadius: 10,
     padding: "11px 20px",
     fontWeight: 800,
-    fontSize: ".95rem",
     cursor: "pointer",
     boxShadow: "0 4px 12px rgba(15,23,42,.12)",
   }),
@@ -99,27 +107,141 @@ const S = {
     borderRadius: 999,
     padding: "3px 11px",
     fontWeight: 800,
-    fontSize: ".72rem",
     display: "inline-block",
   }),
   th: {
     background: "#f8fafc",
     border: `1px solid ${C.line}`,
     padding: "9px 10px",
-    fontSize: ".76rem",
     fontWeight: 800,
     color: C.body,
-    textAlign: "left",
+    textAlign: "start",
     whiteSpace: "nowrap",
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
   },
   td: {
     border: `1px solid ${C.line}`,
     padding: "9px 10px",
-    fontSize: ".85rem",
     color: C.ink,
     verticalAlign: "middle",
   },
 };
+
+/* ===== Type scale =====
+   globals.css forces `#root * { font-size:14px !important }` and
+   `#root table * { font-size:12px !important }`. Those beat every inline
+   fontSize on this page, so the hierarchy it was written with — a 1.7rem
+   title, 1.35rem branch totals, .72rem chips — collapsed to one flat 14px and
+   the screen read as an undifferentiated wall of same-size text. The classes
+   below restore it with a doubled selector (`.pt.pt`) so they out-rank the
+   global rule without starting an !important war anywhere else.
+
+   The same file puts `overflow-x:hidden` on html/body/#root, which makes them
+   scroll containers and silently disables every position:sticky inside — the
+   flow rail and the lot tree never actually stuck. `clip` crops the same
+   overflow without creating a scroll container, scoped here via :has(.pt). */
+const PT_CSS = `
+#root .pt.pt, #root .pt.pt *, #root .pt.pt table, #root .pt.pt table * { font-size: 15px !important; }
+#root .pt.pt .pt-h1     { font-size: 30px !important; letter-spacing: .3px; }
+#root .pt.pt .pt-sub    { font-size: 16px !important; }
+#root .pt.pt .pt-sec    { font-size: 19px !important; }
+#root .pt.pt .pt-secar  { font-size: 15px !important; }
+#root .pt.pt .pt-num    { font-size: 16px !important; }
+#root .pt.pt .pt-code   { font-size: 26px !important; }
+#root .pt.pt .pt-name   { font-size: 19px !important; }
+#root .pt.pt .pt-kpi    { font-size: 26px !important; }
+#root .pt.pt .pt-kpis   { font-size: 21px !important; }
+#root .pt.pt .pt-lbl    { font-size: 12.5px !important; letter-spacing: .4px; }
+#root .pt.pt .pt-meta   { font-size: 14px !important; }
+#root .pt.pt .pt-chip   { font-size: 13px !important; }
+#root .pt.pt .pt-count  { font-size: 12px !important; }
+#root .pt.pt .pt-flowl  { font-size: 15px !important; }
+#root .pt.pt .pt-flowa  { font-size: 12.5px !important; }
+#root .pt.pt .pt-note   { font-size: 14.5px !important; }
+#root .pt.pt .pt-ico    { font-size: 21px !important; }
+#root .pt.pt .pt-ico-sm { font-size: 17px !important; }
+#root .pt.pt .pt-ico-xl { font-size: 48px !important; }
+#root .pt.pt .pt-tree-y { font-size: 16px !important; }
+#root .pt.pt .pt-tree-m { font-size: 15px !important; }
+#root .pt.pt .pt-tree-d { font-size: 15px !important; }
+#root .pt.pt .pt-tree-x { font-size: 12.5px !important; }
+#root .pt.pt table th   { font-size: 13px !important; }
+#root .pt.pt table td   { font-size: 14px !important; }
+#root .pt.pt .pt-btn    { font-size: 15px !important; }
+#root .pt.pt .pt-btn-sm { font-size: 14px !important; }
+#root .pt.pt input, #root .pt.pt input::placeholder { font-size: 15.5px !important; }
+
+/* Weight: the baseline goes from normal to semi-bold so ordinary text and
+   every table cell read heavier, while the elements that already carry an
+   inline 800/900 keep theirs and stay clearly above it. Deliberately NOT
+   !important — an !important weight here would flatten headings, totals and
+   body copy to one thickness, and "everything bold" is the same as nothing
+   bold. Table headers are pushed further up so the header row still wins. */
+#root .pt.pt            { font-weight: 600; }
+#root .pt.pt table td   { font-weight: 600; }
+#root .pt.pt table th   { font-weight: 900; }
+#root .pt.pt .pt-meta,
+#root .pt.pt .pt-note,
+#root .pt.pt .pt-flowa,
+#root .pt.pt .pt-tree-x { font-weight: 650; }
+#root .pt.pt input      { font-weight: 650; }
+
+/* sticky needs a non-scrolling ancestor chain — see the note above */
+html:has(.pt), body:has(.pt), #root:has(.pt) { overflow-x: clip; }
+#root .pt.pt .pt-rail { position: sticky; top: 8px; z-index: 40; }
+#root .pt.pt .pt-tree { position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow-y: auto; }
+
+#root .pt.pt .pt-shell  { display: grid; grid-template-columns: minmax(288px,330px) minmax(0,1fr); gap: 16px; align-items: start; }
+/* Folded away: the picker becomes a slim rail and the report takes the rest. */
+#root .pt.pt .pt-shell.pt-collapsed { grid-template-columns: 40px minmax(0,1fr); }
+#root .pt.pt .pt-tree-rail {
+  position: sticky; top: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 40px; padding: 12px 0;
+  border: 1px solid #e2e8f0; border-radius: 12px;
+  background: #fff; box-shadow: 0 10px 26px rgba(15,23,42,.07);
+  color: #334155; font: inherit; font-weight: 800; cursor: pointer;
+}
+#root .pt.pt .pt-tree-rail:hover { border-color: #1d4ed8; color: #1d4ed8; }
+#root .pt.pt .pt-tree-rail-txt {
+  writing-mode: vertical-rl; text-orientation: mixed;
+  white-space: nowrap; letter-spacing: .5px;
+}
+#root .pt.pt .pt-search { display: grid; grid-template-columns: minmax(140px,.7fr) minmax(220px,2fr) auto; gap: 12px; align-items: end; }
+
+/* Tablet: the tree stops earning a column of its own. */
+@media (max-width: 1024px) {
+  #root .pt.pt .pt-shell,
+  #root .pt.pt .pt-shell.pt-collapsed { grid-template-columns: minmax(0,1fr); }
+  #root .pt.pt .pt-tree  { position: static; max-height: 320px; }
+  /* No side rail on a narrow screen — it becomes an ordinary full-width bar. */
+  #root .pt.pt .pt-tree-rail { position: static; width: 100%; flex-direction: row; justify-content: center; padding: 10px; }
+  #root .pt.pt .pt-tree-rail-txt { writing-mode: horizontal-tb; }
+}
+@media (max-width: 700px) {
+  #root .pt.pt .pt-search { grid-template-columns: minmax(0,1fr); }
+  #root .pt.pt .pt-rail   { position: static; }
+  #root .pt.pt .pt-h1     { font-size: 24px !important; }
+  #root .pt.pt .pt-wrap   { padding-left: 10px; padding-right: 10px; }
+  #root .pt.pt .pt-code   { font-size: 21px !important; }
+  #root .pt.pt .pt-kpi    { font-size: 22px !important; }
+}
+
+@media print {
+  #root .pt.pt .no-print { display: none !important; }
+  #root .pt.pt .pt-shell { grid-template-columns: minmax(0,1fr) !important; }
+  #root .pt.pt .pt-hero  { background: #fff !important; color: #0f172a !important; padding: 0 0 12px !important; }
+  #root .pt.pt .pt-hero * { color: #0f172a !important; }
+  #root .pt.pt .pt-body  { margin-top: 0 !important; }
+  #root .pt.pt section   { break-inside: avoid; box-shadow: none !important; }
+  /* the on-screen scroll cap would guillotine a long table on paper */
+  #root .pt.pt .pt-tablewrap { max-height: none !important; overflow: visible !important; }
+  #root .pt.pt table th  { position: static !important; }
+  body { background: #fff; }
+}
+`;
 
 const RANGES = [
   { key: "3", label: "3 months", months: 3 },
@@ -128,9 +250,12 @@ const RANGES = [
   { key: "all", label: "All time", months: null },
 ];
 
+/* A traceability screen must not dress a real zero up as "no data": a lot that
+   truly moved 0 kg is a finding, an em-dash is a shrug. "—" is now reserved
+   for a value that genuinely is not there. */
 const num = (v, dp = 2) =>
-  Number.isFinite(v) && v !== 0 ? Number(v).toFixed(dp).replace(/\.00$/, "") : "—";
-const kg = (v) => (Number.isFinite(v) && v !== 0 ? `${num(v)} kg` : "—");
+  Number.isFinite(v) ? Number(v).toFixed(dp).replace(/\.0+$/, "") : "—";
+const kg = (v) => (Number.isFinite(v) ? `${num(v)} kg` : "—");
 
 /* ===== Flow chrome ===== */
 
@@ -167,12 +292,13 @@ function Step({ id, n, icon, title, titleAr, accent, chip, first, children }) {
               placeItems: "center",
               flexShrink: 0,
             }}
+            className="pt-num"
           >
             {n}
           </span>
-          <span style={{ fontSize: "1.15rem" }}>{icon}</span>
-          <b style={{ color: C.ink, fontSize: "1.02rem" }}>{title}</b>
-          <span style={{ color: C.muted, fontWeight: 700, fontSize: ".88rem" }}>{titleAr}</span>
+          <span className="pt-ico">{icon}</span>
+          <b className="pt-sec" style={{ color: C.ink }}>{title}</b>
+          <span className="pt-secar" style={{ color: C.muted, fontWeight: 700 }}>{titleAr}</span>
           {chip ? <span style={{ marginInlineStart: "auto" }}>{chip}</span> : null}
         </div>
         <div style={{ padding: 16 }}>{children}</div>
@@ -183,7 +309,7 @@ function Step({ id, n, icon, title, titleAr, accent, chip, first, children }) {
 
 function Empty({ text }) {
   return (
-    <div style={{ color: C.muted, fontStyle: "italic", padding: "12px 2px", fontSize: ".9rem" }}>{text}</div>
+    <div className="pt-meta" style={{ color: C.muted, fontStyle: "italic", padding: "12px 2px" }}>{text}</div>
   );
 }
 
@@ -210,12 +336,12 @@ function LotGap({ rows, lot, onUseLot, onClearLot, what }) {
 
   return (
     <div
+      className="pt-note"
       style={{
         border: "1px solid #fcd34d",
         background: "#fffbeb",
         borderRadius: 12,
         padding: "12px 14px",
-        fontSize: ".86rem",
         color: "#78350f",
         lineHeight: 1.8,
       }}
@@ -234,12 +360,12 @@ function LotGap({ rows, lot, onUseLot, onClearLot, what }) {
         {others.slice(0, 6).map((o) => (
           <button
             key={o.key}
+            className="pt-btn-sm"
             onClick={() => onUseLot({ prodDate: o.prodDate, expiryDate: o.expiryDate })}
             style={{
               ...S.btn("#fff", "#92400e"),
               border: "1px solid #fcd34d",
               padding: "6px 12px",
-              fontSize: ".78rem",
               boxShadow: "none",
             }}
           >
@@ -248,7 +374,8 @@ function LotGap({ rows, lot, onUseLot, onClearLot, what }) {
         ))}
         <button
           onClick={onClearLot}
-          style={{ ...S.btn("#92400e"), padding: "6px 12px", fontSize: ".78rem", boxShadow: "none" }}
+          className="pt-btn-sm"
+          style={{ ...S.btn("#92400e"), padding: "6px 12px", boxShadow: "none" }}
         >
           Show all lots / اعرض كل الدفعات
         </button>
@@ -262,6 +389,7 @@ function ViaBadge({ via }) {
   return (
     <span
       title="Matched through the catalog on the product name — this record predates item codes."
+      className="pt-chip"
       style={{ ...S.chip("#fef3c7", "#92400e"), marginInlineStart: 6 }}
     >
       by name
@@ -271,7 +399,9 @@ function ViaBadge({ via }) {
 
 function Table({ head, children, min = 900 }) {
   return (
-    <div style={{ overflowX: "auto" }}>
+    // A single step can carry hundreds of dispatch lines; capping the scroll
+    // box keeps the next step reachable instead of a mile below the fold.
+    <div className="pt-tablewrap" style={{ overflow: "auto", maxHeight: "62vh", border: `1px solid ${C.line}`, borderRadius: 10 }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: min }}>
         <thead>
           <tr>
@@ -286,59 +416,335 @@ function Table({ head, children, min = 900 }) {
   );
 }
 
-/* ===== Lot tree =====
-   A manufactured line can carry 250+ output rows over 50+ production dates.
-   Listing those dates as text is unreadable and a 50-option modal is worse, so
-   the lots live in a year → month → day tree, the same shape the branch views
-   already use. One click picks one day's lot. */
+/* ===== In-branch traceability =====
+   One carcass is broken down into six or eight cuts, and the log stores that
+   as six or eight rows that repeat the SAME raw material, the same batch id,
+   the same original dates and the same 18.6 kg over and over. Printed flat it
+   reads as six different inputs, which is the opposite of what happened, and
+   the eye has to verify by hand that all six really do say 18.6.
+
+   So the raw side is stated ONCE and merged down (rowSpan) across its own
+   outputs, exactly the way the paper form is laid out: one input, a bracket,
+   the cuts that came out of it. */
+
+/** Group batch rows by the input they came out of. */
+function groupBatches(rows) {
+  const groups = new Map();
+  (rows || []).forEach((b) => {
+    const key = [b.batchId, b.rawCode, b.rawName, b.origProdDate, b.origExpDate, b.branch].join("|");
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        date: b.date,
+        branch: b.branch,
+        batchId: b.batchId,
+        rawCode: b.rawCode,
+        rawName: b.rawName,
+        // The raw weight is repeated on every output row of one batch, so it
+        // is the batch's single input weight — never a sum of the repeats.
+        rawWeight: b.rawWeight,
+        origProdDate: b.origProdDate,
+        origExpDate: b.origExpDate,
+        openedDate: b.openedDate,
+        bestBefore: b.bestBefore,
+        via: b.via,
+        roles: new Set(),
+        rows: [],
+      });
+    }
+    const g = groups.get(key);
+    g.roles.add(b.role);
+    g.rows.push(b);
+    if (!g.rawWeight) g.rawWeight = b.rawWeight;
+    if (!g.openedDate) g.openedDate = b.openedDate;
+    if (!g.bestBefore) g.bestBefore = b.bestBefore;
+    if (String(b.date) > String(g.date || "")) g.date = b.date;
+  });
+  return Array.from(groups.values()).map((g) => ({
+    ...g,
+    roles: Array.from(g.roles),
+    outWeight: g.rows.reduce((a, r) => a + r.finalWeight, 0),
+  }));
+}
+
+const ROLE_CHIP = {
+  input: { bg: "#fee2e2", fg: "#991b1b", label: "consumed", ar: "استُهلك" },
+  output: { bg: "#dcfce7", fg: "#166534", label: "produced", ar: "أُنتج" },
+  both: { bg: "#e0e7ff", fg: "#3730a3", label: "in + out", ar: "دخل وخرج" },
+};
+
+function BatchGroups({ groups }) {
+  const merged = {
+    ...S.td,
+    background: "#fbfcfe",
+    verticalAlign: "middle",
+    borderInlineEnd: `2px solid ${C.line}`,
+  };
+  return (
+    <Table
+      min={1560}
+      head={[
+        "Date",
+        "Branch",
+        "Batch / Lot ID",
+        "Raw material used",
+        "Orig. production",
+        "Orig. expiry",
+        "Opened",
+        "Best before",
+        "Raw weight (kg)",
+        "Product prepared (final)",
+        "Production (final)",
+        "Expiry (final)",
+        "Final weight (kg)",
+      ]}
+    >
+      {groups.map((g) => {
+        const n = g.rows.length;
+        // Cutting yield: what came out against what went in. On a disassembly
+        // batch this is the number the supervisor actually checks.
+        const yieldPct = g.rawWeight > 0 ? (g.outWeight / g.rawWeight) * 100 : null;
+        return (
+          <React.Fragment key={g.key}>
+            {/* The banner the paper form has: which batch, and how many cuts. */}
+            <tr>
+              <td
+                colSpan={13}
+                style={{
+                  ...S.td,
+                  background: `${C.batch}12`,
+                  borderTop: `2px solid ${C.batch}55`,
+                  fontWeight: 900,
+                  color: "#7c4a03",
+                }}
+              >
+                🔗 Batch / Lot: {g.batchId || "—"} — {n} row{n === 1 ? "" : "s"}
+                {g.roles.map((r) => (
+                  <span
+                    key={r}
+                    className="pt-chip"
+                    style={{ ...S.chip(ROLE_CHIP[r].bg, ROLE_CHIP[r].fg), marginInlineStart: 8 }}
+                  >
+                    {ROLE_CHIP[r].label} · {ROLE_CHIP[r].ar}
+                  </span>
+                ))}
+                {yieldPct != null ? (
+                  <span
+                    className="pt-chip"
+                    style={{
+                      ...S.chip("#f1f5f9", C.body),
+                      marginInlineStart: 8,
+                    }}
+                    title="إجمالي المُخرَج ÷ الوزن الخام"
+                  >
+                    out {num(g.outWeight)} of {num(g.rawWeight)} kg · {num(yieldPct, 1)}%
+                  </span>
+                ) : null}
+              </td>
+            </tr>
+
+            {g.rows.map((b, i) => (
+              <tr key={b.id}>
+                {/* Stated once, merged down over this batch's own outputs. */}
+                {i === 0 ? (
+                  <>
+                    <td rowSpan={n} style={merged}>
+                      {fmtDMY(g.date)}
+                      <ViaBadge via={g.via} />
+                    </td>
+                    <td rowSpan={n} style={{ ...merged, fontWeight: 800, color: C.batch }}>
+                      {g.branch || "—"}
+                    </td>
+                    <td rowSpan={n} style={{ ...merged, fontWeight: 900 }}>{g.batchId || "—"}</td>
+                    <td rowSpan={n} style={merged}>
+                      {g.rawCode ? <b style={{ color: C.shipment }}>{g.rawCode} · </b> : null}
+                      {g.rawName || "—"}
+                    </td>
+                    <td rowSpan={n} style={merged}>{fmtDMY(g.origProdDate) || "—"}</td>
+                    <td rowSpan={n} style={merged}>{fmtDMY(g.origExpDate) || "—"}</td>
+                    <td rowSpan={n} style={merged}>{fmtDMY(g.openedDate) || "—"}</td>
+                    <td rowSpan={n} style={merged}>{fmtDMY(g.bestBefore) || "—"}</td>
+                    <td rowSpan={n} style={{ ...merged, fontWeight: 900 }}>
+                      {num(g.rawWeight)} kg
+                    </td>
+                  </>
+                ) : null}
+
+                <td style={S.td}>
+                  {b.finalCode ? <b style={{ color: C.receiving }}>{b.finalCode} · </b> : null}
+                  {b.finalName || "—"}
+                </td>
+                <td style={S.td}>{fmtDMY(b.finalProdDate || g.origProdDate) || "—"}</td>
+                <td style={S.td}>{fmtDMY(b.finalExpDate || g.origExpDate) || "—"}</td>
+                <td style={{ ...S.td, fontWeight: 900 }}>{num(b.finalWeight)} kg</td>
+              </tr>
+            ))}
+          </React.Fragment>
+        );
+      })}
+    </Table>
+  );
+}
+
+/**
+ * One return channel — our branches, or outside customers.
+ *
+ * They are two tables rather than one with a "register" column because the
+ * questions differ: a branch return asks WHICH SITE to go and inspect, a
+ * customer return asks WHO to call and WHICH VEHICLE brought it back. The
+ * customer sheet is the only one carrying the car and driver, and folding it
+ * into the branch table meant those columns were simply never shown.
+ */
+function ReturnTrack({ title, titleAr, icon, accent, rows, empty, note, customer }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          borderInlineStart: `3px solid ${accent}`,
+          background: `${accent}0c`,
+          borderRadius: 8,
+          padding: "7px 11px",
+          marginBottom: 8,
+        }}
+      >
+        <span className="pt-ico-sm">{icon}</span>
+        <b className="pt-flowl" style={{ color: C.ink }}>{title}</b>
+        <span className="pt-flowa" style={{ color: C.muted, fontWeight: 700 }}>{titleAr}</span>
+        <span className="pt-chip" style={{ ...S.chip(`${accent}1a`, accent), marginInlineStart: "auto" }}>
+          {rows.length} record{rows.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {note ? (
+        <div className="pt-note" style={{ color: C.muted, margin: "0 0 8px", lineHeight: 1.7 }}>
+          {note}
+        </div>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <Empty text={empty} />
+      ) : (
+        <Table
+          min={customer ? 1120 : 980}
+          head={
+            customer
+              ? ["Date", "Customer", "Product", "Qty", "Type", "Expiry", "Origin", "Car no.", "Driver", "Action", "Photos", "Remarks"]
+              : ["Date", "Register", "From", "Product", "Qty", "Type", "Expiry", "Origin", "Action", "Remarks"]
+          }
+        >
+          {rows.map((r) => (
+            <tr key={`${r.source}-${r.id}`}>
+              <td style={S.td}>{fmtDMY(r.date)}<ViaBadge via={r.via} /></td>
+              {customer ? null : (
+                <td style={S.td}>
+                  <span className="pt-chip" style={S.chip(`${accent}14`, accent)}>{r.sourceLabel}</span>
+                </td>
+              )}
+              <td style={{ ...S.td, fontWeight: 800, color: customer ? accent : C.ink }}>
+                {r.place || r.customerName || "—"}
+              </td>
+              <td style={S.td}>
+                {r.matchedCode ? <b style={{ color: C.brandDeep }}>{r.matchedCode} · </b> : null}
+                {r.matchedName || "—"}
+              </td>
+              <td style={{ ...S.td, fontWeight: 800 }}>{num(r.qty)}</td>
+              <td style={S.td}>{r.qtyType || "—"}</td>
+              <td style={S.td}>{fmtDMY(r.expiryDate) || "—"}</td>
+              <td style={S.td}>{r.origin || "—"}</td>
+              {customer ? <td style={S.td}>{r.carNumber || "—"}</td> : null}
+              {customer ? <td style={S.td}>{r.driverName || "—"}</td> : null}
+              <td style={S.td}>{r.action || "—"}</td>
+              {customer ? <td style={S.td}>{r.images ? `📷 ${r.images}` : "—"}</td> : null}
+              <td style={S.td}>{r.remarks || "—"}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </div>
+  );
+}
+
+/* ===== Lot picker =====
+   A manufactured line can carry 250+ output rows over 50+ production dates, so
+   the lots need a list of their own rather than a dropdown. What that list has
+   to do is let someone CHOOSE — see below. */
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
-function groupLots(lots) {
-  const years = new Map();
+/** One accordion level, not two. A lot is grouped by the month it was produced
+ *  in — or, when it has no production date, the month it expires in. */
+function groupByMonth(lots) {
+  const months = new Map();
   (lots || []).forEach((l) => {
-    const d = l.prodDate || "";
-    const y = d ? d.slice(0, 4) : "—";
+    const d = l.prodDate || l.expiryDate || "";
     const ym = d ? d.slice(0, 7) : "—";
-    if (!years.has(y)) years.set(y, { year: y, n: 0, months: new Map() });
-    const yr = years.get(y);
-    yr.n += l.total;
-    if (!yr.months.has(ym)) yr.months.set(ym, { ym, n: 0, days: new Map() });
-    const mo = yr.months.get(ym);
-    mo.n += l.total;
-    if (!mo.days.has(d)) mo.days.set(d, { date: d, n: 0, lots: [] });
-    const day = mo.days.get(d);
-    day.n += l.total;
-    day.lots.push(l);
+    if (!months.has(ym)) {
+      months.set(ym, { ym, year: ym === "—" ? "—" : ym.slice(0, 4), records: 0, issues: 0, lots: [] });
+    }
+    const m = months.get(ym);
+    m.records += l.total;
+    m.issues += l.issues || 0;
+    m.lots.push(l);
   });
-  const desc = (a, b) => String(b).localeCompare(String(a));
-  return Array.from(years.values())
-    .sort((a, b) => desc(a.year, b.year))
-    .map((y) => ({
-      ...y,
-      months: Array.from(y.months.values())
-        .sort((a, b) => desc(a.ym, b.ym))
-        .map((m) => ({
-          ...m,
-          days: Array.from(m.days.values()).sort((a, b) => desc(a.date, b.date)),
-        })),
-    }));
+  return Array.from(months.values()).sort((a, b) => String(b.ym).localeCompare(String(a.ym)));
 }
 
-function LotTree({ lots, activeKey, onPick, onClear, busy }) {
-  const tree = useMemo(() => groupLots(lots), [lots]);
-  const [open, setOpen] = useState(() => new Set());
+const monthLabel = (ym) =>
+  ym === "—" ? "No date" : `${MONTH_NAMES[Number(ym.slice(5, 7)) - 1] || ""} ${ym.slice(0, 4)}`;
 
-  // Newest year and month start open; everything older stays folded.
+/** Whole days from today to an expiry date; null when there is no usable date. */
+function daysToExpiry(expiry) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(expiry || ""))) return null;
+  const ms = Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${todayYMD()}T00:00:00Z`);
+  return Math.round(ms / 86400000);
+}
+
+/* The five colours the flow steps already use. Repeating them on the lot card
+   is the whole point: a glance at a lot says which steps it will light up,
+   so picking one stops being a lottery. */
+const PIPS = [
+  { k: "shipments", c: C.shipment, label: "shipment", ar: "شحنة" },
+  { k: "receiving", c: C.receiving, label: "branch receiving", ar: "استلام فرع" },
+  { k: "batches", c: C.batch, label: "batch", ar: "دفعة تصنيع" },
+  { k: "dispatch", c: C.distribution, label: "final product", ar: "منتج نهائي" },
+  { k: "conditions", c: C.condition, label: "condition check", ar: "حالة اللحم" },
+  { k: "returns", c: C.returns, label: "return", ar: "مرتجع" },
+];
+
+/**
+ * The lot picker.
+ *
+ * The old shape was a year → month → day accordion of bare date rows: three
+ * clicks to reach a lot, and once you got there the row said nothing except a
+ * date and a total, so choosing between two lots meant picking one, reading
+ * five steps, going back and picking the other. The list below is one level
+ * deep and every lot states up front what is actually in it — which families,
+ * which branches, how close to expiry, and whether anything was flagged.
+ */
+function LotPicker({ lots, activeKey, onPick, onClear, onCollapse, busy }) {
+  const months = useMemo(() => groupByMonth(lots), [lots]);
+  const [open, setOpen] = useState(() => new Set());
+  const [query, setQuery] = useState("");
+  const [issuesOnly, setIssuesOnly] = useState(false);
+
+  /* Seed the newest month open, once per dataset. Re-seeding on every change
+     folded the list back up underneath whoever was reading it, because the
+     lots are rebuilt the moment the downstream half lands. */
+  const seeded = useRef("");
   useEffect(() => {
-    if (!tree.length) return;
-    const init = new Set([`y:${tree[0].year}`]);
-    if (tree[0].months[0]) init.add(`m:${tree[0].months[0].ym}`);
-    setOpen(init);
-  }, [tree]);
+    if (!months.length) return;
+    const sig = `${months.length}:${months[0].ym}`;
+    if (seeded.current === sig) return;
+    seeded.current = sig;
+    setOpen((prev) => new Set(prev).add(months[0].ym));
+  }, [months]);
 
   const toggle = (k) =>
     setOpen((prev) => {
@@ -348,136 +754,305 @@ function LotTree({ lots, activeKey, onPick, onClear, busy }) {
       return next;
     });
 
-  const row = (depth, activeRow) => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    width: "100%",
-    textAlign: "start",
-    border: "none",
-    background: activeRow ? "#eef2ff" : "transparent",
-    color: activeRow ? C.brandDeep : C.body,
-    font: "inherit",
-    fontWeight: depth === 0 ? 900 : depth === 1 ? 800 : 700,
-    fontSize: depth === 0 ? ".92rem" : ".85rem",
-    padding: "6px 8px",
-    paddingInlineStart: 8 + depth * 12,
-    borderRadius: 8,
-    cursor: "pointer",
-  });
-  const count = {
-    marginInlineStart: "auto",
-    background: "#eef2ff",
-    color: C.brandDeep,
+  const q = query.trim().toLowerCase();
+  const matches = useCallback(
+    (l) => {
+      if (issuesOnly && !(l.issues || l.counts.returns)) return false;
+      if (!q) return true;
+      return `${l.prodDate} ${fmtDMY(l.prodDate)} ${l.expiryDate} ${fmtDMY(l.expiryDate)} ${(
+        l.branches || []
+      ).join(" ")}`
+        .toLowerCase()
+        .includes(q);
+    },
+    [q, issuesOnly]
+  );
+
+  const visible = useMemo(
+    () => months.map((m) => ({ ...m, lots: m.lots.filter(matches) })).filter((m) => m.lots.length),
+    [months, matches]
+  );
+
+  const total = (lots || []).length;
+  const flagged = useMemo(
+    () => (lots || []).filter((l) => l.issues || l.counts.returns).length,
+    [lots]
+  );
+
+  const pill = (on, accent) => ({
+    border: `1px solid ${on ? accent : C.line}`,
+    background: on ? `${accent}14` : "#fff",
+    color: on ? accent : C.body,
     borderRadius: 999,
-    padding: "1px 8px",
-    fontSize: ".68rem",
+    padding: "5px 12px",
     fontWeight: 800,
-  };
+    cursor: "pointer",
+    font: "inherit",
+    flex: "1 1 0",
+    whiteSpace: "nowrap",
+  });
 
   return (
-    <aside
-      style={{
-        ...S.card,
-        padding: 12,
-        position: "sticky",
-        top: 12,
-        maxHeight: "calc(100vh - 40px)",
-        overflowY: "auto",
-      }}
-      className="no-print"
-    >
-      <div style={{ fontWeight: 900, color: C.ink, fontSize: ".95rem" }}>🗓 Production lots</div>
-      <div style={{ color: C.muted, fontSize: ".78rem", marginBottom: 10 }}>
-        دفعات الإنتاج — اختر يوماً
+    <aside style={{ ...S.card, padding: 12 }} className="no-print pt-tree">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="pt-sec" style={{ fontWeight: 900, color: C.ink }}>🗓 Production lots</div>
+        <span className="pt-count" style={{ color: C.muted, fontWeight: 800, marginInlineStart: "auto" }}>
+          {total}
+        </span>
+        <button
+          onClick={onCollapse}
+          title="اطوِ اللوحة / Collapse — give the report the full width"
+          aria-label="Collapse the lot picker"
+          style={{
+            border: `1px solid ${C.line}`,
+            background: "#fff",
+            color: C.body,
+            borderRadius: 8,
+            width: 26,
+            height: 26,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            font: "inherit",
+            fontWeight: 900,
+            flexShrink: 0,
+          }}
+        >
+          «
+        </button>
+      </div>
+      <div className="pt-meta" style={{ color: C.muted, marginBottom: 9 }}>
+        دفعات الإنتاج — اختر دفعة
       </div>
 
-      <button
-        onClick={onClear}
-        style={{
-          ...S.btn(!activeKey ? C.brandDeep : "#f1f5f9", !activeKey ? "#fff" : C.body),
-          width: "100%",
-          padding: "8px 12px",
-          fontSize: ".82rem",
-          boxShadow: "none",
-          marginBottom: 10,
-        }}
-      >
-        All lots / كل الدفعات
-      </button>
+      {total > 6 ? (
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="🔍 date or branch… / تاريخ أو فرع"
+          className="pt-btn-sm"
+          style={{ ...S.input, padding: "7px 10px", marginBottom: 7 }}
+        />
+      ) : null}
 
-      {busy ? <div style={{ color: C.muted, fontSize: ".8rem" }}>Loading…</div> : null}
+      <div className="pt-btn-sm" style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button
+          onClick={() => {
+            setIssuesOnly(false);
+            onClear();
+          }}
+          style={pill(!activeKey && !issuesOnly, C.brandDeep)}
+        >
+          All / الكل
+        </button>
+        <button
+          onClick={() => setIssuesOnly((v) => !v)}
+          disabled={!flagged}
+          title="الدفعات التي فيها مرتجع أو ملاحظة على حالة اللحم"
+          style={{ ...pill(issuesOnly, C.returns), opacity: flagged ? 1 : 0.45 }}
+        >
+          ⚠ {flagged} flagged
+        </button>
+      </div>
 
-      {tree.length === 0 && !busy ? (
-        <div style={{ color: C.muted, fontSize: ".82rem", fontStyle: "italic" }}>
-          لا توجد دفعات ضمن الفترة.
+      {busy ? <div className="pt-meta" style={{ color: C.muted }}>Loading…</div> : null}
+
+      {!visible.length && !busy ? (
+        <div className="pt-meta" style={{ color: C.muted, fontStyle: "italic" }}>
+          {total ? "لا نتائج لهذا الرشّح." : "لا توجد دفعات ضمن الفترة."}
         </div>
       ) : null}
 
-      {tree.map((y) => {
-        const yOpen = open.has(`y:${y.year}`);
+      {visible.map((m, mi) => {
+        const isOpen = open.has(m.ym);
+        const newYear = mi === 0 || visible[mi - 1].year !== m.year;
         return (
-          <div key={y.year}>
-            <button onClick={() => toggle(`y:${y.year}`)} style={row(0, false)}>
-              <span style={{ width: 12 }}>{yOpen ? "▾" : "▸"}</span>
-              <span>{y.year}</span>
-              <span style={count}>{y.n}</span>
+          <div key={m.ym}>
+            {newYear && m.year !== "—" ? (
+              <div
+                className="pt-lbl"
+                style={{
+                  color: C.muted,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  margin: "12px 0 4px",
+                  paddingInlineStart: 2,
+                  borderTop: `1px solid ${C.line}`,
+                  paddingTop: 8,
+                }}
+              >
+                {m.year}
+              </div>
+            ) : null}
+            <button
+              className="pt-tree-m"
+              onClick={() => toggle(m.ym)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                width: "100%",
+                textAlign: "start",
+                border: "none",
+                background: "transparent",
+                color: C.body,
+                font: "inherit",
+                fontWeight: 800,
+                padding: "6px 4px",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ width: 11, color: C.muted }}>{isOpen ? "▾" : "▸"}</span>
+              <span>{monthLabel(m.ym)}</span>
+              {m.issues ? <span style={{ color: C.returns }}>⚠</span> : null}
+              <span
+                className="pt-count"
+                style={{
+                  marginInlineStart: "auto",
+                  color: C.muted,
+                  fontWeight: 800,
+                }}
+              >
+                {m.lots.length}
+              </span>
             </button>
-            {yOpen
-              ? y.months.map((mth) => {
-                  const mOpen = open.has(`m:${mth.ym}`);
-                  const mLabel =
-                    mth.ym === "—" ? "No date" : MONTH_NAMES[Number(mth.ym.slice(5, 7)) - 1] || mth.ym;
+
+            {isOpen
+              ? m.lots.map((l) => {
+                  const active = l.key === activeKey;
+                  const left = daysToExpiry(l.expiryDate);
+                  const expired = left != null && left < 0;
+                  const soon = left != null && left >= 0 && left <= 7;
+                  const expColor = expired ? C.returns : soon ? "#b45309" : C.muted;
+                  const flag = (l.issues || 0) + (l.counts.returns || 0);
                   return (
-                    <div key={mth.ym}>
-                      <button onClick={() => toggle(`m:${mth.ym}`)} style={row(1, false)}>
-                        <span style={{ width: 12 }}>{mOpen ? "▾" : "▸"}</span>
-                        <span>{mLabel}</span>
-                        <span style={count}>{mth.n}</span>
-                      </button>
-                      {mOpen
-                        ? mth.days.map((d) =>
-                            d.lots.map((l) => {
-                              const active = l.key === activeKey;
-                              return (
-                                <button
-                                  key={l.key}
-                                  onClick={() => onPick(l)}
-                                  style={row(2, active)}
-                                  title={`Expiry ${fmtDMY(l.expiryDate) || "—"} · ${l.total} records`}
-                                >
-                                  <span style={{ width: 12 }}>{active ? "●" : "○"}</span>
-                                  <span style={{ minWidth: 0 }}>
-                                    {fmtDMY(d.date) || "No date"}
-                                    <span
-                                      style={{ display: "block", color: C.muted, fontSize: ".7rem", fontWeight: 700 }}
-                                    >
-                                      exp {fmtDMY(l.expiryDate) || "—"}
-                                    </span>
-                                  </span>
-                                  <span style={count}>{l.total}</span>
-                                </button>
-                              );
-                            })
-                          )
-                        : null}
-                    </div>
+                    <button
+                      key={l.key}
+                      onClick={() => onPick(l)}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "start",
+                        font: "inherit",
+                        cursor: "pointer",
+                        border: `1px solid ${active ? C.brandDeep : C.line}`,
+                        borderInlineStartWidth: 3,
+                        borderInlineStartColor: active ? C.brandDeep : flag ? C.returns : C.line,
+                        background: active ? "#eef2ff" : "#fff",
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                        <b className="pt-tree-d" style={{ color: active ? C.brandDeep : C.ink }}>
+                          {fmtDMY(l.prodDate) || "No prod. date"}
+                        </b>
+                        {flag ? (
+                          <span className="pt-count" style={{ color: C.returns, fontWeight: 900 }}>⚠</span>
+                        ) : null}
+                        <span
+                          className="pt-count"
+                          style={{
+                            marginInlineStart: "auto",
+                            background: active ? C.brandDeep : "#eef2ff",
+                            color: active ? "#fff" : C.brandDeep,
+                            borderRadius: 999,
+                            padding: "1px 7px",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {l.total}
+                        </span>
+                      </div>
+
+                      <div className="pt-tree-x" style={{ color: expColor, fontWeight: 700, marginTop: 2 }}>
+                        exp {fmtDMY(l.expiryDate) || "—"}
+                        {left != null
+                          ? expired
+                            ? ` · expired ${Math.abs(left)}d ago`
+                            : ` · ${left}d left`
+                          : ""}
+                      </div>
+
+                      {/* Which steps this lot will actually light up. */}
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
+                        {PIPS.filter((pp) => l.counts[pp.k] > 0).map((pp) => (
+                          <span
+                            key={pp.k}
+                            className="pt-count"
+                            title={`${l.counts[pp.k]} ${pp.label} — ${pp.ar}`}
+                            style={{
+                              background: `${pp.c}18`,
+                              color: pp.c,
+                              borderRadius: 5,
+                              padding: "1px 5px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {l.counts[pp.k]}
+                          </span>
+                        ))}
+                      </div>
+
+                      {l.branches?.length ? (
+                        <div
+                          className="pt-tree-x"
+                          style={{
+                            color: C.muted,
+                            marginTop: 4,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={l.branches.join(" · ")}
+                        >
+                          {l.branches.slice(0, 3).join(" · ")}
+                          {l.branches.length > 3 ? ` +${l.branches.length - 3}` : ""}
+                        </div>
+                      ) : null}
+                    </button>
                   );
                 })
               : null}
           </div>
         );
       })}
+
+      {/* What the coloured counts on each card mean. */}
+      {visible.length ? (
+        <div
+          className="pt-tree-x"
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            marginTop: 10,
+            paddingTop: 8,
+            borderTop: `1px solid ${C.line}`,
+            color: C.muted,
+          }}
+        >
+          {PIPS.map((pp) => (
+            <span key={pp.k} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: pp.c }} />
+              {pp.ar}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </aside>
   );
 }
 
-/** The flow itself, always visible: five stages with live counts, each one a
+/** The flow itself, always visible: six stages with live counts, each one a
  *  jump link. Without this the "flow chart" is invisible the moment a table
  *  grows past a screenful. */
 function FlowRail({ stages, onJump }) {
   return (
     <div
+      className="pt-rail"
       style={{
         ...S.card,
         padding: "12px 14px",
@@ -485,9 +1060,6 @@ function FlowRail({ stages, onJump }) {
         alignItems: "stretch",
         gap: 6,
         overflowX: "auto",
-        position: "sticky",
-        top: 8,
-        zIndex: 40,
       }}
     >
       {stages.map((st, i) => (
@@ -497,7 +1069,7 @@ function FlowRail({ stages, onJump }) {
             title={st.ar}
             style={{
               flex: "1 1 0",
-              minWidth: 150,
+              minWidth: 158,
               textAlign: "start",
               border: `1px solid ${st.n ? `${st.accent}55` : C.line}`,
               background: st.n ? `${st.accent}0f` : "#f8fafc",
@@ -516,19 +1088,22 @@ function FlowRail({ stages, onJump }) {
                   borderRadius: 6,
                   background: st.accent,
                   color: "#fff",
-                  fontSize: ".72rem",
                   fontWeight: 900,
                   display: "grid",
                   placeItems: "center",
                 }}
+                className="pt-count"
               >
                 {i + 1}
               </span>
-              <span style={{ fontSize: "1rem" }}>{st.icon}</span>
-              <b style={{ color: C.ink, fontSize: ".82rem" }}>{st.label}</b>
+              <span className="pt-ico-sm">{st.icon}</span>
+              <b className="pt-flowl" style={{ color: C.ink }}>{st.label}</b>
             </div>
-            <div style={{ color: C.muted, fontSize: ".72rem", marginTop: 3 }}>{st.ar}</div>
-            <div style={{ color: st.n ? st.accent : C.muted, fontWeight: 900, fontSize: "1.05rem", marginTop: 2 }}>
+            <div className="pt-flowa" style={{ color: C.muted, marginTop: 3 }}>{st.ar}</div>
+            <div
+              className="pt-kpis"
+              style={{ color: st.n ? st.accent : C.muted, fontWeight: 900, marginTop: 2 }}
+            >
               {st.value}
             </div>
           </button>
@@ -559,9 +1134,13 @@ export default function ProductTracePage() {
   // once the user has said which shipment they mean.
   const [arrivals, setArrivals] = useState(null);
   const [downstream, setDownstream] = useState(null);
-  const [treeReady, setTreeReady] = useState(false);
-  const [lot, setLot] = useState(null); // { prodDate, expiryDate } | null
+  const [lot, setLot] = useState(null); // { prodDate, expiryDate, key } | null
   const [branchId, setBranchId] = useState("");
+  // The picker is a tool, not part of the report: once a lot is chosen it can
+  // be folded away so the tables get the full width of the screen.
+  const [treeOpen, setTreeOpen] = useState(true);
+  // "بالكود فقط" — drop the rows that were only recognised by their name.
+  const [codedOnly, setCodedOnly] = useState(false);
   const [tracedFor, setTracedFor] = useState(null);
   const [error, setError] = useState("");
   const abortRef = useRef(null);
@@ -597,6 +1176,7 @@ export default function ProductTracePage() {
     if (abortRef.current) abortRef.current.abort();
     const ac = new AbortController();
     abortRef.current = ac;
+    setError("");
     setBusy(true);
     setProgress({ done: 0, total: 0, phase: "downstream" });
     try {
@@ -629,7 +1209,6 @@ export default function ProductTracePage() {
     setProgress({ done: 0, total: 0, phase: "arrivals" });
     setArrivals(null);
     setDownstream(null);
-    setTreeReady(false);
     setLot(null);
     setBranchId("");
     try {
@@ -658,7 +1237,6 @@ export default function ProductTracePage() {
         });
         setDownstream(down);
       }
-      setTreeReady(true);
       const next = new URLSearchParams(params);
       if (code) next.set("code", code);
       else next.delete("code");
@@ -670,32 +1248,57 @@ export default function ProductTracePage() {
     }
   }, [product, from, to, params, setParams]);
 
-  const arrivalLots = useMemo(() => (arrivals ? collectLots(arrivals) : []), [arrivals]);
-  // The tree offers the arrival lots while only the arrival half is read, then
-  // widens to every lot once the downstream half comes in — a manufactured
-  // product's lots only exist on the Final Product report.
-  const treeLots = useMemo(
-    () => (downstream && full ? collectLots(full) : arrivalLots),
-    [downstream, full, arrivalLots]
-  );
+  /* Everything on screen reads from here, not from `full`: the coded-only
+     switch has to reach the lot picker too, or you would pick a lot built out
+     of name-matched rows and land on six empty steps. */
+  const scoped = useMemo(() => {
+    if (!full) return null;
+    return codedOnly ? filterCodedOnly(full) : full;
+  }, [full, codedOnly]);
 
-  /** Picking a lot in the tree is what starts the downstream read. */
-  const pickLot = (l) => {
-    setLot(l ? { prodDate: l.prodDate, expiryDate: l.expiryDate, key: l.key } : null);
-    setBranchId("");
-    if (!downstream) runDownstream(tracedFor);
-  };
+  const byNameCount = useMemo(() => countByName(full), [full]);
+
+  /* The picker offers the arrival lots while only the arrival half is read,
+     then widens to every lot once the downstream half comes in — a
+     manufactured product's lots only exist on the Final Product report. */
+  const treeLots = useMemo(() => (scoped ? collectLots(scoped) : []), [scoped]);
+
+  /** Picking a lot is what starts the downstream read. Everything that selects
+   *  a lot goes through here — including the "jump to this date" buttons in the
+   *  gap warnings, which used to call setLot directly and so left the tree
+   *  unhighlighted, the branch filter stale, and the downstream half unread. */
+  const pickLot = useCallback(
+    (l) => {
+      if (!l) {
+        setLot(null);
+        setBranchId("");
+        return;
+      }
+      const prodDate = l.prodDate || "";
+      const expiryDate = l.expiryDate || "";
+      setLot({ prodDate, expiryDate, key: l.key || lotKey(prodDate, expiryDate) });
+      setBranchId("");
+      if (!downstream) runDownstream(tracedFor);
+    },
+    [downstream, runDownstream, tracedFor]
+  );
+  const clearLot = useCallback(() => pickLot(null), [pickLot]);
 
   // Everything below is the trace narrowed to the chosen lot.
+  /* "loose" instead of the old strict "both": a row belongs to the lot when it
+     agrees on every date it actually carries. Under the strict reading a branch
+     receiving line with a production date but a blank expiry — the normal case —
+     counted as a mismatch, so steps came up empty on lots that plainly exist.
+     See filterByDates for the full reasoning. */
   const shown = useMemo(() => {
-    if (!full) return null;
-    if (!lot) return full;
-    return filterByDates(full, {
-      mode: lot.prodDate && lot.expiryDate ? "both" : lot.prodDate ? "prod" : "expiry",
+    if (!scoped) return null;
+    if (!lot) return scoped;
+    return filterByDates(scoped, {
+      mode: "loose",
       prodDate: lot.prodDate,
       expiryDate: lot.expiryDate,
     });
-  }, [full, lot]);
+  }, [scoped, lot]);
 
   const stats = useMemo(() => (shown ? summarize(shown) : null), [shown]);
 
@@ -741,9 +1344,49 @@ export default function ProductTracePage() {
     return branchId ? shown.receiving.filter((r) => r.branch === branchId) : shown.receiving;
   }, [shown, branchId]);
 
+  /* ⑤ الحالة اليومية — the daily condition register, narrowed the same way the
+     receiving log is. It has no branch column: the site is written into the
+     remarks, and the engine resolves it there. */
+  const branchConditions = useMemo(() => {
+    if (!shown) return [];
+    return branchId ? shown.conditions.filter((c) => c.branch === branchId) : shown.conditions;
+  }, [shown, branchId]);
+
+  const conditionIssues = useMemo(
+    () => branchConditions.filter((c) => isConditionIssue(c.status)),
+    [branchConditions]
+  );
+
+  /* ⑥ الاسترجاع بمسارين — the two return channels, deliberately kept apart.
+     A branch return names one of our sites and follows the branch filter. A
+     CUSTOMER return names an outside buyer, so it resolves to no branch at
+     all: running it through the same filter deleted every customer return the
+     moment a branch was selected, which is exactly when someone is looking
+     hardest. The customer track therefore ignores branchId — an item the
+     customer sent back is part of this lot's story no matter which of our
+     sites is on screen. */
   const branchReturns = useMemo(() => {
     if (!shown) return [];
-    return branchId ? shown.returns.filter((r) => r.branch === branchId) : shown.returns;
+    const ours = shown.returns.filter((r) => !isCustomerReturn(r));
+    return branchId ? ours.filter((r) => r.branch === branchId) : ours;
+  }, [shown, branchId]);
+
+  const customerReturns = useMemo(
+    () => (shown ? shown.returns.filter(isCustomerReturn) : []),
+    [shown]
+  );
+
+  const customerReturnedQty = useMemo(
+    () => customerReturns.reduce((a, r) => a + r.qty, 0),
+    [customerReturns]
+  );
+
+  /* Condition lines whose branch could not be read out of the remarks. They
+     are hidden by the branch filter like any other unattributed row, so say so
+     instead of letting the step look emptier than the data is. */
+  const unattributedConditions = useMemo(() => {
+    if (!shown || !branchId) return 0;
+    return shown.conditions.filter((c) => !c.branch).length;
   }, [shown, branchId]);
 
   // Totalled over what is actually on screen, so the chip agrees with the rows
@@ -754,6 +1397,9 @@ export default function ProductTracePage() {
   );
 
   const selectedBranch = dist?.branches.find((b) => b.id === branchId) || null;
+
+  // One row per CUT, grouped under the one carcass they all came out of.
+  const batchGroups = useMemo(() => (shown ? groupBatches(shown.batches) : []), [shown]);
 
   // The transfers WE sent, as their own list. Kept separate from the branch's
   // receiving log on purpose: one says what left us, the other says what the
@@ -777,16 +1423,14 @@ export default function ProductTracePage() {
   );
 
   return (
-    <div style={S.page}>
-      <style>{`
-        @media print { .no-print { display: none !important; } body { background:#fff; } }
-      `}</style>
+    <div className="pt" style={S.page}>
+      <style>{PT_CSS}</style>
 
       {/* ── Hero ── */}
-      <div style={S.hero}>
-        <div style={S.wrap}>
+      <div className="pt-hero" style={S.hero}>
+        <div className="pt-wrap" style={S.wrap}>
           <button
-            className="no-print"
+            className="no-print pt-btn-sm"
             onClick={() => navigate(-1)}
             style={{
               background: "rgba(255,255,255,.16)",
@@ -801,28 +1445,31 @@ export default function ProductTracePage() {
           >
             ← Back
           </button>
-          <h1 style={{ margin: 0, fontSize: "1.7rem", fontWeight: 1000, letterSpacing: ".3px" }}>
+          <h1 className="pt-h1" style={{ margin: 0, fontWeight: 1000 }}>
             🧬 Product Traceability
           </h1>
-          <p style={{ margin: "6px 0 0", opacity: 0.92, fontWeight: 600 }}>
+          <p className="pt-sub" style={{ margin: "6px 0 0", opacity: 0.92, fontWeight: 600 }}>
             منظومة تتبع المنتج — من الشحنة الواردة إلى الفرع والمرتجعات
           </p>
         </div>
       </div>
 
-      <div style={{ ...S.wrap, marginTop: -44 }}>
+      <div className="pt-body pt-wrap" style={{ ...S.wrap, marginTop: -44 }}>
         {/* ── Search ── */}
-        <div style={S.card} className="no-print">
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(150px,0.7fr) minmax(240px,2fr) auto",
-              gap: 12,
-              alignItems: "end",
-            }}
-          >
+        {/* A real <form>, so Enter runs the trace. The pickers swallow Enter
+            only while their suggestion list is open, which is exactly right:
+            first Enter commits the suggestion, the next one searches. */}
+        <form
+          style={S.card}
+          className="no-print"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy) runTrace();
+          }}
+        >
+          <div className="pt-search">
             <div>
-              <label style={S.label}>Item Code / كود المنتج</label>
+              <label className="pt-lbl" style={S.label}>Item Code / كود المنتج</label>
               <ItemCodeInput
                 code={product.code}
                 name={product.name}
@@ -832,7 +1479,7 @@ export default function ProductTracePage() {
               />
             </div>
             <div>
-              <label style={S.label}>Product Name / اسم المنتج</label>
+              <label className="pt-lbl" style={S.label}>Product Name / اسم المنتج</label>
               <ItemNameInput
                 code={product.code}
                 name={product.name}
@@ -842,9 +1489,14 @@ export default function ProductTracePage() {
               />
             </div>
             <button
-              onClick={runTrace}
+              type="submit"
               disabled={busy}
-              style={{ ...S.btn(busy ? "#94a3b8" : C.brandDeep), whiteSpace: "nowrap" }}
+              className="pt-btn"
+              style={{
+                ...S.btn(busy ? "#94a3b8" : C.brandDeep),
+                whiteSpace: "nowrap",
+                cursor: busy ? "progress" : "pointer",
+              }}
             >
               {busy ? "Tracing…" : "🔍 Trace"}
             </button>
@@ -855,11 +1507,12 @@ export default function ProductTracePage() {
               {RANGES.map((r) => (
                 <button
                   key={r.key}
+                  type="button"
+                  className="pt-btn-sm"
                   onClick={() => applyRange(r.key)}
                   style={{
                     ...S.btn(rangeKey === r.key ? C.brand : "#eef2ff", rangeKey === r.key ? "#fff" : C.brandDeep),
                     padding: "8px 14px",
-                    fontSize: ".82rem",
                     boxShadow: "none",
                   }}
                 >
@@ -867,8 +1520,39 @@ export default function ProductTracePage() {
                 </button>
               ))}
             </div>
+            {/* Rows matched through the catalog on their NAME are a good guess,
+                not a fact. This drops them, so what is left is only what the
+                records themselves prove by carrying the code.
+
+                Always clickable. It is a search preference like the date range,
+                so it must be settable BEFORE a trace runs — and greying it out
+                when the current result happens to hold no name-matched rows
+                just looked broken without explaining anything. When there is
+                nothing to hide the switch simply changes nothing. */}
+            <button
+              type="button"
+              className="pt-btn-sm"
+              onClick={() => setCodedOnly((v) => !v)}
+              title={
+                !full
+                  ? "أظهر فقط السطور التي تحمل كود المنتج — Show only rows carrying the item code"
+                  : byNameCount
+                  ? `${byNameCount} سطراً مطابقاً بالاسم فقط — اضغط لإخفائها`
+                  : "كل السطور تحمل الكود أصلاً — لا شيء ليُخفى"
+              }
+              style={{
+                ...S.btn(codedOnly ? C.brandDeep : "#fff", codedOnly ? "#fff" : C.body),
+                border: `1px solid ${codedOnly ? C.brandDeep : C.line}`,
+                padding: "8px 14px",
+                boxShadow: "none",
+              }}
+            >
+              {codedOnly ? "☑" : "☐"} بالكود فقط / Coded only
+              {full && byNameCount ? ` (${byNameCount})` : ""}
+            </button>
+
             <div>
-              <label style={S.label}>From</label>
+              <label className="pt-lbl" style={S.label}>From</label>
               <input
                 type="date"
                 value={from}
@@ -877,7 +1561,7 @@ export default function ProductTracePage() {
               />
             </div>
             <div>
-              <label style={S.label}>To</label>
+              <label className="pt-lbl" style={S.label}>To</label>
               <input
                 type="date"
                 value={to}
@@ -886,52 +1570,90 @@ export default function ProductTracePage() {
               />
             </div>
             {full ? (
-              <button onClick={() => window.print()} style={{ ...S.btn("#0f172a"), padding: "9px 16px", fontSize: ".85rem" }}>
+              <button
+                type="button"
+                className="pt-btn-sm"
+                onClick={() => window.print()}
+                style={{ ...S.btn("#0f172a"), padding: "9px 16px" }}
+              >
                 🖨 Print
+              </button>
+            ) : null}
+            {busy ? (
+              <button
+                type="button"
+                className="pt-btn-sm"
+                onClick={() => abortRef.current?.abort()}
+                style={{ ...S.btn("#fff", C.body), border: `1px solid ${C.line}`, padding: "9px 16px", boxShadow: "none" }}
+              >
+                ✕ Cancel
               </button>
             ) : null}
           </div>
 
           {busy && progress.total > 0 ? (
-            <div style={{ marginTop: 12, color: C.muted, fontWeight: 700, fontSize: ".85rem" }}>
-              {progress.phase === "arrivals"
-                ? "Reading shipments and receiving logs… / قراءة الشحنات وسجلات الاستلام…"
-                : "Reading distribution and returns… / قراءة التوزيع والمرتجعات…"}{" "}
-              {progress.done}/{progress.total}
+            <div style={{ marginTop: 12 }}>
+              <div className="pt-meta" style={{ color: C.muted, fontWeight: 700, marginBottom: 5 }}>
+                {progress.phase === "arrivals"
+                  ? "Reading shipments and receiving logs… / قراءة الشحنات وسجلات الاستلام…"
+                  : "Reading distribution and returns… / قراءة التوزيع والمرتجعات…"}{" "}
+                {progress.done}/{progress.total}
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                    background: C.brand,
+                    transition: "width .25s ease",
+                  }}
+                />
+              </div>
             </div>
           ) : null}
           {error ? (
-            <div style={{ marginTop: 12, color: "#b91c1c", fontWeight: 800, fontSize: ".9rem" }}>⚠️ {error}</div>
+            <div className="pt-meta" style={{ marginTop: 12, color: "#b91c1c", fontWeight: 800 }}>⚠️ {error}</div>
           ) : null}
-        </div>
+        </form>
 
         {!shown || !tracedFor ? (
           <div style={{ ...S.card, marginTop: 16, textAlign: "center", color: C.muted, padding: "48px 18px" }}>
-            <div style={{ fontSize: "2.6rem", marginBottom: 10 }}>🧬</div>
-            <div style={{ fontWeight: 900, color: C.ink, fontSize: "1.05rem" }}>
+            <div className="pt-ico-xl" style={{ marginBottom: 10 }}>🧬</div>
+            <div className="pt-sec" style={{ fontWeight: 900, color: C.ink }}>
               Enter an item code to trace the product
             </div>
-            <div style={{ marginTop: 6 }}>
-              أدخل كود المنتج: الشحنة الواردة ← الكمية المستلمة ← التوزيع على الفروع ← سجل استلام الفرع ← المرتجعات.
+            <div className="pt-meta" style={{ marginTop: 6 }}>
+              أدخل كود المنتج: الشحنة الواردة ← التوزيع على الفروع ← التحويلات ← سجل استلام الفرع ← حالة اللحم اليومية ← المرتجعات.
             </div>
           </div>
         ) : (
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(230px, 260px) minmax(0, 1fr)",
-              gap: 16,
-              alignItems: "start",
-              marginTop: 16,
-            }}
+            className={`pt-shell${treeOpen ? "" : " pt-collapsed"}`}
+            style={{ marginTop: 16 }}
           >
-            <LotTree
-              lots={treeLots}
-              activeKey={lot?.key}
-              onPick={pickLot}
-              onClear={() => pickLot(null)}
-              busy={busy}
-            />
+            {treeOpen ? (
+              <LotPicker
+                lots={treeLots}
+                activeKey={lot?.key}
+                onPick={pickLot}
+                onClear={clearLot}
+                onCollapse={() => setTreeOpen(false)}
+                busy={busy}
+              />
+            ) : (
+              <button
+                className="no-print pt-tree-rail"
+                onClick={() => setTreeOpen(true)}
+                title="اعرض شجرة الدفعات / Show the lot picker"
+              >
+                <span className="pt-ico-sm">🗓</span>
+                <span className="pt-tree-rail-txt">
+                  Lots · {treeLots.length}
+                  {lot ? " · 1 selected" : ""}
+                </span>
+                <span className="pt-ico-sm">»</span>
+              </button>
+            )}
 
             <div style={{ minWidth: 0 }}>
             {/* Identity bar */}
@@ -943,36 +1665,38 @@ export default function ProductTracePage() {
                   borderRadius: 12,
                   padding: "10px 18px",
                   fontWeight: 1000,
-                  fontSize: "1.3rem",
                   letterSpacing: ".5px",
                 }}
+                className="pt-code"
               >
                 {tracedFor.code || "—"}
               </div>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontWeight: 900, color: C.ink, fontSize: "1.05rem" }}>{tracedFor.name || "—"}</div>
-                <div style={{ color: C.muted, fontSize: ".82rem", marginTop: 2 }}>
+                <div className="pt-name" style={{ fontWeight: 900, color: C.ink }}>{tracedFor.name || "—"}</div>
+                <div className="pt-meta" style={{ color: C.muted, marginTop: 2 }}>
                   {tracedFor.from || tracedFor.to
                     ? `${tracedFor.from ? fmtDMY(tracedFor.from) : "…"} → ${tracedFor.to ? fmtDMY(tracedFor.to) : "…"}`
                     : "All time"}{" "}
-                  · {full.scanned} reports scanned
+                  · {scoped.scanned} reports scanned
                 </div>
                 {/* What the search FOUND, before any lot filter. Without this an
                     empty step is ambiguous: nothing exists, or the lot filter
                     hid it? */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                   {[
-                    { k: "shipments", label: "shipments", ar: "شحنات", n: full.shipments.length },
-                    { k: "receiving", label: "receiving", ar: "استلام", n: full.receiving.length },
-                    { k: "batches", label: "batches", ar: "دفعات", n: full.batches.length },
-                    { k: "dispatch", label: "final product", ar: "منتج نهائي", n: full.dispatch.length },
-                    { k: "returns", label: "returns", ar: "مرتجعات", n: full.returns.length },
+                    { k: "shipments", label: "shipments", ar: "شحنات", n: scoped.shipments.length },
+                    { k: "receiving", label: "receiving", ar: "استلام", n: scoped.receiving.length },
+                    { k: "batches", label: "batches", ar: "دفعات", n: scoped.batches.length },
+                    { k: "dispatch", label: "final product", ar: "منتج نهائي", n: scoped.dispatch.length },
+                    { k: "conditions", label: "condition", ar: "حالة اللحم", n: scoped.conditions.length },
+                    { k: "returns", label: "returns", ar: "مرتجعات", n: scoped.returns.length },
                   ].map((f) => {
                     const shownN = shown[f.k].length;
                     const hidden = f.n > 0 && shownN === 0;
                     return (
                       <span
                         key={f.k}
+                        className="pt-chip"
                         title={
                           hidden
                             ? `${f.n} موجودة لكن الدفعة المختارة أخفتها — ${f.ar}`
@@ -990,12 +1714,37 @@ export default function ProductTracePage() {
                   })}
                 </div>
               </div>
+              {codedOnly ? (
+                <span
+                  className="pt-chip"
+                  style={S.chip(byNameCount ? "#dcfce7" : "#f1f5f9", byNameCount ? "#166534" : C.muted)}
+                  title={
+                    byNameCount
+                      ? "السطور المطابقة بالاسم فقط مخفية"
+                      : "لا توجد سطور مطابقة بالاسم — الفلتر لم يخفِ شيئاً"
+                  }
+                >
+                  {byNameCount
+                    ? `⌗ coded only · ${byNameCount} by-name hidden`
+                    : "⌗ coded only · every row already has a code"}
+                </span>
+              ) : null}
               {lot ? (
-                <span style={S.chip("#e0e7ff", C.brandDeep)}>
-                  🗓 Lot · Prod {fmtDMY(lot.prodDate) || "—"} · Exp {fmtDMY(lot.expiryDate) || "—"}
+                <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className="pt-chip" style={S.chip("#e0e7ff", C.brandDeep)}>
+                    🗓 Lot · Prod {fmtDMY(lot.prodDate) || "—"} · Exp {fmtDMY(lot.expiryDate) || "—"}
+                  </span>
+                  <button
+                    className="no-print pt-btn-sm"
+                    onClick={clearLot}
+                    title="ارجع لكل الدفعات"
+                    style={{ ...S.btn("#f1f5f9", C.body), padding: "4px 10px", boxShadow: "none" }}
+                  >
+                    ✕
+                  </button>
                 </span>
               ) : (
-                <span style={S.chip("#f1f5f9", C.body)}>All lots / كل الدفعات</span>
+                <span className="pt-chip" style={S.chip("#f1f5f9", C.body)}>All lots / كل الدفعات</span>
               )}
             </div>
 
@@ -1045,12 +1794,27 @@ export default function ProductTracePage() {
                   },
                   {
                     id: "step-5",
+                    icon: "🌡",
+                    label: "Condition",
+                    ar: "حالة اللحم",
+                    accent: C.condition,
+                    n: branchConditions.length,
+                    value: downstream
+                      ? conditionIssues.length
+                        ? `⚠ ${conditionIssues.length}`
+                        : `${branchConditions.length}`
+                      : "—",
+                  },
+                  {
+                    id: "step-6",
                     icon: "♻️",
                     label: "Returns",
-                    ar: "المرتجعات",
+                    ar: "مرتجعات الفروع + الزبائن",
                     accent: C.returns,
-                    n: branchReturns.length,
-                    value: downstream ? `${branchReturns.length}` : "—",
+                    n: branchReturns.length + customerReturns.length,
+                    value: downstream
+                      ? `${branchReturns.length} + ${customerReturns.length}`
+                      : "—",
                   },
                 ]}
               />
@@ -1068,11 +1832,11 @@ export default function ProductTracePage() {
                 accent={C.shipment}
                 chip={
                   originKind === "production" ? (
-                    <span style={S.chip(`${C.shipment}1a`, C.shipment)}>
+                    <span className="pt-chip" style={S.chip(`${C.shipment}1a`, C.shipment)}>
                       manufactured · {num(production.qty)} {production.unit} produced
                     </span>
                   ) : (
-                    <span style={S.chip(`${C.shipment}1a`, C.shipment)}>
+                    <span className="pt-chip" style={S.chip(`${C.shipment}1a`, C.shipment)}>
                       {kg(stats.shipmentWeight)} received · {stats.shipmentCount} shipment
                       {stats.shipmentCount === 1 ? "" : "s"}
                     </span>
@@ -1113,11 +1877,11 @@ export default function ProductTracePage() {
                           key={x.k}
                           style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: "11px 14px", background: "#fff" }}
                         >
-                          <div style={{ fontSize: ".72rem", fontWeight: 800, color: C.muted, textTransform: "uppercase" }}>
+                          <div className="pt-lbl" style={{ fontWeight: 800, color: C.muted, textTransform: "uppercase" }}>
                             {x.k}
                           </div>
-                          <div style={{ fontSize: ".72rem", color: C.muted, marginBottom: 5 }}>{x.ar}</div>
-                          <div style={{ fontSize: "1.15rem", fontWeight: 900, color: C.ink }}>{x.v}</div>
+                          <div className="pt-lbl" style={{ color: C.muted, marginBottom: 5 }}>{x.ar}</div>
+                          <div className="pt-kpis" style={{ fontWeight: 900, color: C.ink }}>{x.v}</div>
                         </div>
                       ))}
                     </div>
@@ -1131,8 +1895,8 @@ export default function ProductTracePage() {
                           padding: "11px 14px",
                           color: "#1e40af",
                           fontWeight: 700,
-                          fontSize: ".86rem",
                         }}
+                        className="pt-note"
                       >
                         👉 اختر يوم إنتاج من شجرة الدفعات على اليسار لتتبّع دفعة واحدة.
                         <span style={{ color: "#3b82f6", fontWeight: 600 }}>
@@ -1141,7 +1905,7 @@ export default function ProductTracePage() {
                         </span>
                       </div>
                     ) : null}
-                    <div style={{ color: C.muted, fontSize: ".82rem", marginTop: 12, lineHeight: 1.8 }}>
+                    <div className="pt-note" style={{ color: C.muted, marginTop: 12, lineHeight: 1.8 }}>
                       هذا منتج مُصنَّع — لا توجد له شحنة واردة، ورحلته تبدأ من تقرير المنتج النهائي.
                       <br />
                       <span>
@@ -1154,7 +1918,7 @@ export default function ProductTracePage() {
                       {production.orderNos.length ? (
                         <>
                           <br />
-                          <span style={{ fontSize: ".78rem" }}>
+                          <span className="pt-meta">
                             Order refs: {production.orderNos.slice(0, 6).join(", ")}
                             {production.orderNos.length > 6 ? ` +${production.orderNos.length - 6}` : ""}
                           </span>
@@ -1167,11 +1931,11 @@ export default function ProductTracePage() {
                     <Empty text="لا توجد شحنة واردة لهذه الدفعة ضمن الفترة. / No incoming shipment for this lot in range." />
                     {lot ? (
                       <LotGap
-                        rows={full.shipments}
+                        rows={scoped.shipments}
                         lot={lot}
                         what="shipment"
-                        onUseLot={setLot}
-                        onClearLot={() => setLot(null)}
+                        onUseLot={pickLot}
+                        onClearLot={clearLot}
                       />
                     ) : null}
                   </>
@@ -1209,9 +1973,9 @@ export default function ProductTracePage() {
                 accent={C.distribution}
                 chip={
                   !downstream ? (
-                    <span style={S.chip("#f1f5f9", C.body)}>not read yet</span>
+                    <span className="pt-chip" style={S.chip("#f1f5f9", C.body)}>not read yet</span>
                   ) : (
-                    <span style={S.chip(`${C.distribution}1a`, C.distribution)}>
+                    <span className="pt-chip" style={S.chip(`${C.distribution}1a`, C.distribution)}>
                       {kg(dist.ourQty)} to our branches
                     </span>
                   )
@@ -1219,13 +1983,14 @@ export default function ProductTracePage() {
               >
                 {!downstream ? (
                   <div style={{ textAlign: "center", padding: "10px 0" }}>
-                    <div style={{ color: C.muted, marginBottom: 10 }}>
+                    <div className="pt-meta" style={{ color: C.muted, marginBottom: 10 }}>
                       لم تُقرأ سجلات التوزيع والمرتجعات بعد.
                     </div>
                     <button
+                      className="pt-btn-sm"
                       onClick={() => runDownstream(tracedFor)}
                       disabled={busy}
-                      style={{ ...S.btn(C.brandDeep), padding: "9px 18px", fontSize: ".85rem" }}
+                      style={{ ...S.btn(C.brandDeep), padding: "9px 18px" }}
                     >
                       Read distribution / اقرأ التوزيع
                     </button>
@@ -1249,7 +2014,7 @@ export default function ProductTracePage() {
                             disabled={!has}
                             title={has ? "اعرض سجل استلام هذا الفرع" : "لا توجد كمية لهذا الفرع"}
                             style={{
-                              textAlign: "left",
+                              textAlign: "start",
                               border: `1px solid ${active ? C.distribution : C.line}`,
                               background: active ? `${C.distribution}12` : has ? "#fff" : "#f8fafc",
                               borderRadius: 12,
@@ -1259,11 +2024,11 @@ export default function ProductTracePage() {
                               font: "inherit",
                             }}
                           >
-                            <div style={{ fontWeight: 900, color: C.ink }}>{b.label}</div>
-                            <div style={{ color: C.muted, fontSize: ".76rem" }}>{b.labelAr}</div>
+                            <div className="pt-flowl" style={{ fontWeight: 900, color: C.ink }}>{b.label}</div>
+                            <div className="pt-flowa" style={{ color: C.muted }}>{b.labelAr}</div>
                             <div
+                              className="pt-kpi"
                               style={{
-                                fontSize: "1.35rem",
                                 fontWeight: 900,
                                 color: has ? C.distribution : C.muted,
                                 marginTop: 6,
@@ -1271,7 +2036,7 @@ export default function ProductTracePage() {
                             >
                               {has ? kg(b.qty) : "—"}
                             </div>
-                            <div style={{ color: C.muted, fontSize: ".74rem", marginTop: 2 }}>
+                            <div className="pt-flowa" style={{ color: C.muted, marginTop: 2 }}>
                               {b.rows.length} transfer{b.rows.length === 1 ? "" : "s"}
                               {b.lastDate ? ` · last ${fmtDMY(b.lastDate)}` : ""}
                             </div>
@@ -1295,19 +2060,19 @@ export default function ProductTracePage() {
                         padding: "12px 16px",
                       }}
                     >
-                      <span style={{ fontSize: "1.4rem" }}>🧾</span>
+                      <span className="pt-ico">🧾</span>
                       <div style={{ minWidth: 150 }}>
-                        <div style={{ fontWeight: 900, color: C.ink }}>Customers (total)</div>
-                        <div style={{ color: C.muted, fontSize: ".76rem" }}>الزبائن — إجمالي فقط</div>
+                        <div className="pt-flowl" style={{ fontWeight: 900, color: C.ink }}>Customers (total)</div>
+                        <div className="pt-flowa" style={{ color: C.muted }}>الزبائن — إجمالي فقط</div>
                       </div>
-                      <div style={{ fontSize: "1.35rem", fontWeight: 900, color: C.body }}>
+                      <div className="pt-kpi" style={{ fontWeight: 900, color: C.body }}>
                         {kg(dist.external.qty)}
                       </div>
-                      <div style={{ color: C.muted, fontSize: ".78rem" }}>
+                      <div className="pt-meta" style={{ color: C.muted }}>
                         {dist.external.count} dispatch line{dist.external.count === 1 ? "" : "s"} ·{" "}
                         {dist.external.customers} customer{dist.external.customers === 1 ? "" : "s"}
                       </div>
-                      <div style={{ color: C.muted, fontSize: ".76rem", marginInlineStart: "auto", textAlign: "right" }}>
+                      <div className="pt-flowa" style={{ color: C.muted, marginInlineStart: "auto", textAlign: "end" }}>
                         لا تُدرج الأسماء — التتبّع هنا لفروعنا
                         <br />
                         Names are not listed by design
@@ -1315,22 +2080,14 @@ export default function ProductTracePage() {
                     </div>
 
                     {/* One honest total for the whole lot */}
-                    <div style={{ color: C.muted, fontSize: ".8rem", marginTop: 10 }}>
+                    <div className="pt-note" style={{ color: C.muted, marginTop: 10 }}>
                       Dispatched in total: <b style={{ color: C.ink }}>{kg(dist.ourQty + dist.external.qty)}</b> —{" "}
                       {kg(dist.ourQty)} to our branches, {kg(dist.external.qty)} to customers.
                     </div>
 
-                    {shown.dispatch.length === 0 && lot ? (
-                      <div style={{ marginTop: 12 }}>
-                        <LotGap
-                          rows={full.dispatch}
-                          lot={lot}
-                          what="Final Product"
-                          onUseLot={setLot}
-                          onClearLot={() => setLot(null)}
-                        />
-                      </div>
-                    ) : null}
+                    {/* The same Final-Product gap warning also belongs to
+                        step ③, where the transfer rows actually live — showing
+                        it in both places just says the same thing twice. */}
                   </>
                 )}
               </Step>
@@ -1347,14 +2104,14 @@ export default function ProductTracePage() {
                   <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     {branchId ? (
                       <button
-                        className="no-print"
+                        className="no-print pt-btn-sm"
                         onClick={() => setBranchId("")}
-                        style={{ ...S.btn("#f1f5f9", C.body), padding: "5px 12px", fontSize: ".76rem", boxShadow: "none" }}
+                        style={{ ...S.btn("#f1f5f9", C.body), padding: "5px 12px", boxShadow: "none" }}
                       >
                         ✕ all branches
                       </button>
                     ) : null}
-                    <span style={S.chip(`${C.distribution}1a`, C.distribution)}>
+                    <span className="pt-chip" style={S.chip(`${C.distribution}1a`, C.distribution)}>
                       {transfers.length} transfer{transfers.length === 1 ? "" : "s"}
                       {transferredQty ? ` · ${kg(transferredQty)} sent` : ""}
                     </span>
@@ -1374,11 +2131,11 @@ export default function ProductTracePage() {
                     />
                     {lot ? (
                       <LotGap
-                        rows={full.dispatch}
+                        rows={scoped.dispatch}
                         lot={lot}
                         what="Final Product"
-                        onUseLot={setLot}
-                        onClearLot={() => setLot(null)}
+                        onUseLot={pickLot}
+                        onClearLot={clearLot}
                       />
                     ) : null}
                   </>
@@ -1417,13 +2174,14 @@ export default function ProductTracePage() {
                   <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     {downstream && transfers.length > 0 && branchReceiving.length > 0 ? (
                       <span
+                        className="pt-chip"
                         style={S.chip("#f1f5f9", C.body)}
                         title="مقارنة: المرسل مقابل المسجَّل في الفرع"
                       >
                         sent {kg(transferredQty)} → logged {kg(receivedQty)}
                       </span>
                     ) : null}
-                    <span style={S.chip(`${C.receiving}1a`, C.receiving)}>
+                    <span className="pt-chip" style={S.chip(`${C.receiving}1a`, C.receiving)}>
                       {branchReceiving.length} record{branchReceiving.length === 1 ? "" : "s"}
                     </span>
                   </span>
@@ -1440,11 +2198,11 @@ export default function ProductTracePage() {
                     />
                     {lot && !branchId ? (
                       <LotGap
-                        rows={full.receiving}
+                        rows={scoped.receiving}
                         lot={lot}
                         what="branch receiving"
-                        onUseLot={setLot}
-                        onClearLot={() => setLot(null)}
+                        onUseLot={pickLot}
+                        onClearLot={clearLot}
                       />
                     ) : null}
                   </>
@@ -1476,68 +2234,177 @@ export default function ProductTracePage() {
 
               </Step>
 
-              {/* ── ⑤ Returns ── */}
+              {/* ── ⑤ What the daily register says about its CONDITION ── */}
               <Step
                 id="step-5"
                 n="5"
+                icon="🌡"
+                title={selectedBranch ? `Daily condition — ${selectedBranch.label}` : "Daily meat condition"}
+                titleAr={
+                  selectedBranch ? `حالة اللحم اليومية — ${selectedBranch.labelAr}` : "حالة اللحم اليومية"
+                }
+                accent={C.condition}
+                chip={
+                  !downstream ? (
+                    <span className="pt-chip" style={S.chip("#f1f5f9", C.body)}>not read yet</span>
+                  ) : (
+                    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {conditionIssues.length ? (
+                        <span className="pt-chip" style={S.chip("#fee2e2", "#991b1b")}>
+                          ⚠ {conditionIssues.length} flagged · ملاحظات
+                        </span>
+                      ) : null}
+                      <span className="pt-chip" style={S.chip(`${C.condition}1a`, C.condition)}>
+                        {branchConditions.length} record{branchConditions.length === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                  )
+                }
+              >
+                {!downstream ? (
+                  <Empty text="لم يُقرأ سجل الحالة اليومية بعد. / The daily condition register has not been read yet." />
+                ) : branchConditions.length === 0 ? (
+                  <>
+                    <Empty
+                      text={
+                        branchId
+                          ? "لا ملاحظات حالة من هذا الفرع لهذه الدفعة. / No condition line from this branch for this lot."
+                          : "لا توجد ملاحظات حالة لهذه الدفعة. / No daily condition record for this lot."
+                      }
+                    />
+                    {lot && !branchId ? (
+                      <LotGap
+                        rows={scoped.conditions}
+                        lot={lot}
+                        what="condition"
+                        onUseLot={pickLot}
+                        onClearLot={clearLot}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                  {unattributedConditions ? (
+                    <div
+                      className="pt-note"
+                      style={{
+                        border: "1px solid #fcd34d",
+                        background: "#fffbeb",
+                        borderRadius: 10,
+                        padding: "9px 12px",
+                        color: "#78350f",
+                        marginBottom: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ⚠️ {unattributedConditions} سطر حالة بلا فرع مكتوب في الملاحظات — مخفي الآن بسبب
+                      ترشيح الفرع.{" "}
+                      <span style={{ fontWeight: 600 }}>
+                        {unattributedConditions} condition line
+                        {unattributedConditions === 1 ? "" : "s"} carry no POS in their remarks, so the
+                        branch filter hides them.
+                      </span>
+                    </div>
+                  ) : null}
+                  <Table min={900} head={["Date", "Branch", "Product", "Status", "Qty", "Unit", "Expiry", "Photos", "Remarks"]}>
+                    {branchConditions.map((c) => {
+                      const bad = isConditionIssue(c.status);
+                      return (
+                        <tr key={c.id}>
+                          <td style={S.td}>{fmtDMY(c.date)}<ViaBadge via={c.via} /></td>
+                          <td style={{ ...S.td, fontWeight: 800, color: C.condition }}>{c.branch || "—"}</td>
+                          <td style={S.td}>
+                            {c.matchedCode ? <b style={{ color: C.brandDeep }}>{c.matchedCode} · </b> : null}
+                            {c.matchedName || "—"}
+                          </td>
+                          <td style={S.td}>
+                            <span
+                              className="pt-chip"
+                              style={S.chip(bad ? "#fee2e2" : "#dcfce7", bad ? "#991b1b" : "#166534")}
+                            >
+                              {c.status || "—"}
+                            </span>
+                          </td>
+                          <td style={{ ...S.td, fontWeight: 800 }}>{num(c.qty)}</td>
+                          <td style={S.td}>{c.qtyType || "—"}</td>
+                          <td style={S.td}>{fmtDMY(c.expiryDate) || c.expiryRaw || "—"}</td>
+                          <td style={S.td}>{c.images ? `📷 ${c.images}` : "—"}</td>
+                          <td style={S.td}>{c.remarks || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </Table>
+                  </>
+                )}
+              </Step>
+
+              {/* ── ⑥ Returns — two channels ── */}
+              <Step
+                id="step-6"
+                n="6"
                 icon="♻️"
-                title="Returns"
-                titleAr="المرتجعات"
+                title="Returns — our branches & customers"
+                titleAr="المرتجعات — الفروع والزبائن"
                 accent={C.returns}
                 chip={
                   !downstream ? (
-                    <span style={S.chip("#f1f5f9", C.body)}>not read yet</span>
+                    <span className="pt-chip" style={S.chip("#f1f5f9", C.body)}>not read yet</span>
                   ) : (
-                    <span style={S.chip(`${C.returns}1a`, C.returns)}>
-                      {branchReturns.length} record{branchReturns.length === 1 ? "" : "s"}
-                      {returnedQty ? ` · ${num(returnedQty)} returned` : ""}
+                    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span className="pt-chip" style={S.chip(`${C.returns}1a`, C.returns)}>
+                        🏬 {branchReturns.length} branch
+                        {returnedQty ? ` · ${num(returnedQty)}` : ""}
+                      </span>
+                      <span className="pt-chip" style={S.chip("#fce7f3", "#9d174d")}>
+                        🧾 {customerReturns.length} customer
+                        {customerReturnedQty ? ` · ${num(customerReturnedQty)}` : ""}
+                      </span>
                     </span>
                   )
                 }
               >
                 {!downstream ? (
                   <Empty text="لم تُقرأ المرتجعات بعد. / Returns have not been read yet." />
-                ) : branchReturns.length === 0 ? (
+                ) : (
                   <>
-                    <Empty
-                      text={
+                    <ReturnTrack
+                      title="From our branches"
+                      titleAr="مرتجعات الفروع"
+                      icon="🏬"
+                      accent={C.returns}
+                      rows={branchReturns}
+                      empty={
                         branchId
                           ? "لا مرتجعات من هذا الفرع لهذه الدفعة. / No returns from this branch for this lot."
-                          : "لا توجد مرتجعات لهذه الدفعة. / No returns for this lot."
+                          : "لا مرتجعات من فروعنا لهذه الدفعة. / No branch returns for this lot."
                       }
                     />
-                    {lot && !branchId ? (
+
+                    <ReturnTrack
+                      title="From customers"
+                      titleAr="مرتجعات الزبائن"
+                      icon="🧾"
+                      accent="#9d174d"
+                      customer
+                      rows={customerReturns}
+                      note={
+                        branchId
+                          ? "مرتجع الزبون لا يخصّ فرعاً بعينه، فهو يظهر كاملاً حتى مع اختيار فرع. / A customer return belongs to no branch, so it is shown in full even while a branch is selected."
+                          : ""
+                      }
+                      empty="لم يُرجع أي زبون هذه الدفعة. / No customer returned this lot."
+                    />
+
+                    {branchReturns.length === 0 && customerReturns.length === 0 && lot && !branchId ? (
                       <LotGap
-                        rows={full.returns}
+                        rows={scoped.returns}
                         lot={lot}
                         what="return"
-                        onUseLot={setLot}
-                        onClearLot={() => setLot(null)}
+                        onUseLot={pickLot}
+                        onClearLot={clearLot}
                       />
                     ) : null}
                   </>
-                ) : (
-                  <Table min={980} head={["Date", "Register", "From", "Product", "Qty", "Type", "Expiry", "Origin", "Action", "Remarks"]}>
-                    {branchReturns.map((r) => (
-                      <tr key={`${r.source}-${r.id}`}>
-                        <td style={S.td}>{fmtDMY(r.date)}<ViaBadge via={r.via} /></td>
-                        <td style={S.td}>
-                          <span style={S.chip(`${C.returns}14`, C.returns)}>{r.sourceLabel}</span>
-                        </td>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{r.place || "—"}</td>
-                        <td style={S.td}>
-                          {r.matchedCode ? <b style={{ color: C.brandDeep }}>{r.matchedCode} · </b> : null}
-                          {r.matchedName || "—"}
-                        </td>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{num(r.qty)}</td>
-                        <td style={S.td}>{r.qtyType || "—"}</td>
-                        <td style={S.td}>{fmtDMY(r.expiryDate) || "—"}</td>
-                        <td style={S.td}>{r.origin || "—"}</td>
-                        <td style={S.td}>{r.action || "—"}</td>
-                        <td style={S.td}>{r.remarks || "—"}</td>
-                      </tr>
-                    ))}
-                  </Table>
                 )}
               </Step>
 
@@ -1546,54 +2413,46 @@ export default function ProductTracePage() {
                 <Step
                   n="+"
                   icon="🔄"
-                  title="Manufacturing batches"
-                  titleAr="دفعات التصنيع"
+                  title="In-branch traceability (batches)"
+                  titleAr="تقرير التتبّع داخل الفرع — دفعات التصنيع"
                   accent={C.batch}
-                  chip={<span style={S.chip(`${C.batch}1a`, C.batch)}>{shown.batches.length} records</span>}
+                  chip={
+                    <span className="pt-chip" style={S.chip(`${C.batch}1a`, C.batch)}>
+                      {batchGroups.length} batch{batchGroups.length === 1 ? "" : "es"} ·{" "}
+                      {shown.batches.length} line{shown.batches.length === 1 ? "" : "s"}
+                    </span>
+                  }
                 >
-                  <Table
-                    min={1040}
-                    head={["Date", "Branch", "Role", "Batch / Lot", "Raw material (in)", "In (kg)", "Final product (out)", "Out (kg)", "Production", "Expiry"]}
-                  >
-                    {shown.batches.map((b) => (
-                      <tr key={b.id}>
-                        <td style={S.td}>{fmtDMY(b.date)}<ViaBadge via={b.via} /></td>
-                        <td style={{ ...S.td, fontWeight: 800, color: C.batch }}>{b.branch || "—"}</td>
-                        <td style={S.td}>
-                          <span
-                            style={S.chip(
-                              b.role === "input" ? "#fee2e2" : b.role === "output" ? "#dcfce7" : "#e0e7ff",
-                              b.role === "input" ? "#991b1b" : b.role === "output" ? "#166534" : "#3730a3"
-                            )}
-                          >
-                            {b.role === "input" ? "consumed" : b.role === "output" ? "produced" : "in + out"}
-                          </span>
-                        </td>
-                        <td style={{ ...S.td, fontWeight: 800 }}>{b.batchId || "—"}</td>
-                        <td style={S.td}>
-                          {b.rawCode ? <b style={{ color: C.shipment }}>{b.rawCode} · </b> : null}
-                          {b.rawName || "—"}
-                        </td>
-                        <td style={S.td}>{num(b.rawWeight)}</td>
-                        <td style={S.td}>
-                          {b.finalCode ? <b style={{ color: C.receiving }}>{b.finalCode} · </b> : null}
-                          {b.finalName || "—"}
-                        </td>
-                        <td style={S.td}>{num(b.finalWeight)}</td>
-                        <td style={S.td}>{fmtDMY(b.finalProdDate || b.origProdDate) || "—"}</td>
-                        <td style={S.td}>{fmtDMY(b.finalExpDate || b.origExpDate) || "—"}</td>
-                      </tr>
-                    ))}
-                  </Table>
+                  <BatchGroups groups={batchGroups} />
                 </Step>
               ) : null}
             </div>
 
-            <p style={{ color: C.muted, fontSize: ".8rem", marginTop: 16, lineHeight: 1.7 }}>
-              Records saved before item codes were introduced carry no code of their own; they are matched
-              through the catalog on the product name and are marked <b>by name</b>.
-              <br />
-              السجلات القديمة (قبل إضافة الكود) تُطابَق عبر اسم المنتج من الكتالوج وتُعلَّم بـ <b>by name</b>.
+            <p className="pt-note" style={{ color: C.muted, marginTop: 16, lineHeight: 1.7 }}>
+              {codedOnly && byNameCount ? (
+                <>
+                  <b>بالكود فقط:</b> معروض هنا ما يحمل كود المنتج فعلاً — و{byNameCount} سطراً مطابقاً
+                  بالاسم مخفي.
+                  <br />
+                  <b>Coded only:</b> showing rows that carry the item code themselves; {byNameCount}{" "}
+                  name-matched row{byNameCount === 1 ? " is" : "s are"} hidden.
+                </>
+              ) : codedOnly ? (
+                <>
+                  <b>بالكود فقط:</b> كل السطور تحمل الكود أصلاً، فلم يُخفَ شيء.
+                  <br />
+                  <b>Coded only:</b> every matched row already carries the item code, so nothing was
+                  hidden.
+                </>
+              ) : (
+                <>
+                  Records saved before item codes were introduced carry no code of their own; they are
+                  matched through the catalog on the product name and are marked <b>by name</b>.
+                  <br />
+                  السجلات القديمة (قبل إضافة الكود) تُطابَق عبر اسم المنتج من الكتالوج وتُعلَّم بـ{" "}
+                  <b>by name</b>.
+                </>
+              )}
             </p>
             </div>
           </div>

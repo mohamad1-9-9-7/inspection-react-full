@@ -96,6 +96,23 @@ export function resolvePair({ code = "", name = "", byCode, byName }) {
   return { code: String(code || "").trim(), name: String(name || "").trim() };
 }
 
+/**
+ * Re-colour a caller's `border` shorthand, returning another shorthand.
+ *
+ * The obvious way to flag an unknown code is `borderColor: "#f59e0b"` on top
+ * of the caller's `border`. React warns about exactly that — and rightly: the
+ * catalog arrives a moment after first paint, `known` flips from false to
+ * true, the borderColor LONGHAND is dropped while the border SHORTHAND stays,
+ * and what the element ends up painting is then browser-dependent. Emitting a
+ * shorthand in both states means one property is set and cleared, never two
+ * that disagree — and the caller's own width and style survive, which a flat
+ * "1px solid" would have quietly thrown away (some screens use 1.5px).
+ */
+function recolorBorder(border, color) {
+  const m = String(border || "").trim().match(/^(\S+)\s+(\S+)/);
+  return m ? `${m[1]} ${m[2]} ${color}` : `1px solid ${color}`;
+}
+
 /* ===== Shared suggestion popup ===== */
 function Suggest({ open, loading, results, sel, onPick, accent }) {
   if (!open) return null;
@@ -249,7 +266,8 @@ export function ItemCodeInput({
           fontWeight: 800,
           letterSpacing: ".3px",
           ...style,
-          ...(code && !known ? { borderColor: "#f59e0b" } : null),
+          // Same property in both states — see recolorBorder.
+          ...(code && !known ? { border: recolorBorder(style?.border, "#f59e0b") } : null),
         }}
       />
       <Suggest
