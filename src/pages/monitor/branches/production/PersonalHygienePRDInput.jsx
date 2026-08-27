@@ -1,11 +1,26 @@
 // src/pages/monitor/branches/production/PersonalHygienePRDInput.jsx
 // Redesigned — unified production design + bilingual EN/AR
-import React, { useState } from "react";
+//
+// 👥 The list of names is NOT written here any more.
+// Who appears on this sheet comes from Settings → Staff Directory (the
+// `staff_directory` config record): every person carrying the
+// `prod_personal_hygiene` form key. Number, name and job title therefore always
+// match the company register — nothing is typed by hand.
+// See ../_shared/staffRegistry.js.
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import PRDReportHeader from "./_shared/PRDReportHeader";
 import { useLang } from "./_shared/i18n";
+import {
+  useStaffDirectory,
+  normalizeEmpNo,
+  normalizeName,
+} from "../_shared/staffRegistry";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+/** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
+const PH_FORM_KEY = "prod_personal_hygiene";
 
 const COLUMNS = [
   "Nails",
@@ -24,7 +39,10 @@ const COL_KEYS = [
   "ph_col_wounds",
 ];
 
-const DEFAULT_NAMES = [
+// Kept only so the sheet is never blank before anyone has been assigned to this
+// form in Settings → Staff Directory. The moment the directory holds people for
+// `prod_personal_hygiene`, this list is ignored.
+const FALLBACK_NAMES = [
   "El Arbi Azar",
   "Mamdouh Salah Ali Rezk",
   "Imran Khan",
@@ -39,8 +57,10 @@ const DEFAULT_NAMES = [
   "LEMEUIL",
 ];
 
-const makeRow = (name = "") => ({
+const makeRow = (name = "", empNo = "", job = "") => ({
+  empNo,
   name,
+  job,
   Nails: "",
   Hair: "",
   "Not wearing Jewelry": "",
@@ -49,6 +69,14 @@ const makeRow = (name = "") => ({
   "Open wounds/sores & cut": "",
   remarks: "",
 });
+
+const rowFromStaff = (s) => makeRow(s?.name || "", s?.empNo || "", s?.job || "");
+
+const isBlankRow = (r) =>
+  !String(r?.name || "").trim() &&
+  !String(r?.empNo || "").trim() &&
+  !String(r?.remarks || "").trim() &&
+  COLUMNS.every((c) => !String(r?.[c] || "").trim());
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -60,19 +88,77 @@ export default function PersonalHygienePRDInput() {
   const [opMsg, setOpMsg]           = useState("");
   const [saving, setSaving]         = useState(false);
 
-  const [entries, setEntries] = useState(DEFAULT_NAMES.map((n) => makeRow(n)));
+  const [entries, setEntries] = useState([]);
+
+  /* ===== Staff directory (Settings → Staff Directory) =====
+     `roster` is only the people assigned to this form, so the daily sheet lists
+     exactly who belongs to Production. `staff` still backs the lookups, so a
+     name typed for somebody outside the roster is still matched to a number. */
+  const {
+    roster,
+    staff: allStaff,
+    loading: staffLoading,
+    online: staffOnline,
+    byNo,
+    byName,
+  } = useStaffDirectory(PH_FORM_KEY);
+
+  /* Seed the table from the directory once it arrives — but only while nothing
+     has been typed, so a late server reply never wipes work in progress. */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading) return;
+    seededRef.current = true;
+    if (entries.length && !entries.every(isBlankRow)) return;
+    setEntries(
+      roster.length ? roster.map(rowFromStaff) : FALLBACK_NAMES.map((n) => makeRow(n))
+    );
+    // `entries` deliberately omitted: this must run on directory load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, staffLoading]);
+
+  const empNoOptions = useMemo(() => allStaff.map((s) => s.empNo), [allStaff]);
+  const nameOptions  = useMemo(() => allStaff.map((s) => s.name), [allStaff]);
 
   const handleChange = (rowIndex, field, value) => {
     setEntries((prev) => {
       const updated = [...prev];
-      updated[rowIndex] = { ...updated[rowIndex], [field]: value };
+      const row = updated[rowIndex] || makeRow();
+
+      // Typing either identifier fills the other cells straight from the register.
+      if (field === "empNo") {
+        const match = byNo.get(normalizeEmpNo(value));
+        updated[rowIndex] = match
+          ? { ...row, empNo: value, name: match.name, job: match.job || row.job }
+          : { ...row, empNo: value };
+        return updated;
+      }
+      if (field === "name") {
+        const match = byName.get(normalizeName(value));
+        updated[rowIndex] = match
+          ? { ...row, name: value, empNo: match.empNo, job: match.job || row.job }
+          : { ...row, name: value };
+        return updated;
+      }
+
+      updated[rowIndex] = { ...row, [field]: value };
       return updated;
     });
   };
 
-  const addRow = () => setEntries((p) => [...p, makeRow("")]);
+  const addRow = () => setEntries((p) => [...p, makeRow()]);
   const removeRow = (idx) =>
     setEntries((p) => (p.length > 1 ? p.filter((_, i) => i !== idx) : p));
+
+  /** Rebuild the sheet from the directory on demand. */
+  const loadRoster = () => {
+    if (!roster.length) return;
+    const typed = entries.some(
+      (e) => !isBlankRow(e) && !roster.some((s) => normalizeName(s.name) === normalizeName(e.name))
+    );
+    if (typed && !window.confirm(t("ph_roster_replace"))) return;
+    setEntries(roster.map(rowFromStaff));
+  };
 
   const handleSave = async () => {
     if (!date) return alert("⚠️ Please select a date");
@@ -121,6 +207,7 @@ export default function PersonalHygienePRDInput() {
   };
 
   const alignStart = isAr ? "right" : "left";
+  const showRosterHint = !staffLoading && roster.length === 0;
 
   return (
     <div className="ph-wrap" dir={dir}>
@@ -151,6 +238,14 @@ export default function PersonalHygienePRDInput() {
           </div>
         </div>
         <div className="ph-toolbar-right">
+          <button
+            onClick={loadRoster}
+            className="ph-btn ph-btn-ghost"
+            disabled={staffLoading || !roster.length}
+            title={t("ph_roster_hint")}
+          >
+            👥 {t("ph_load_roster")}{roster.length ? ` (${roster.length})` : ""}
+          </button>
           <button onClick={addRow} className="ph-btn ph-btn-ghost">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14"/></svg>
             {t("btn_add_row")}
@@ -158,13 +253,34 @@ export default function PersonalHygienePRDInput() {
         </div>
       </div>
 
+      {showRosterHint && <div className="ph-hint">👥 {t("ph_roster_empty")}</div>}
+      {!staffLoading && !staffOnline && (
+        <div className="ph-hint ph-hint-warn">📴 {t("ph_roster_offline")}</div>
+      )}
+
+      {/* Directory-backed suggestions for both employee columns */}
+      <datalist id="prd-ph-empno-options">
+        {empNoOptions.map((n) => {
+          const rec = byNo.get(normalizeEmpNo(n));
+          return <option key={n} value={n}>{rec?.name || ""}</option>;
+        })}
+      </datalist>
+      <datalist id="prd-ph-name-options">
+        {nameOptions.map((n) => {
+          const rec = byName.get(normalizeName(n));
+          return <option key={n} value={n}>{rec?.empNo || ""}</option>;
+        })}
+      </datalist>
+
       {/* Table */}
       <div className="ph-table-wrap">
         <table className="ph-table">
           <thead>
             <tr>
               <th style={{ width: 44 }}>{t("ph_col_no")}</th>
-              <th style={{ width: 200, textAlign: alignStart }}>{t("ph_col_name")}</th>
+              <th style={{ width: 96 }}>{t("ph_col_empno")}</th>
+              <th style={{ width: 190, textAlign: alignStart }}>{t("ph_col_name")}</th>
+              <th style={{ width: 140, textAlign: alignStart }}>{t("ph_col_job")}</th>
               {COL_KEYS.map((k, i) => (
                 <th key={i} className="ph-col-compact" title={COLUMNS[i]}>{t(k)}</th>
               ))}
@@ -179,10 +295,30 @@ export default function PersonalHygienePRDInput() {
                 <td>
                   <input
                     type="text"
+                    list="prd-ph-empno-options"
+                    value={entry.empNo || ""}
+                    onChange={(e) => handleChange(i, "empNo", e.target.value)}
+                    className="ph-input ph-input-no"
+                    placeholder={t("ph_req_empno")}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    list="prd-ph-name-options"
                     value={entry.name}
                     onChange={(e) => handleChange(i, "name", e.target.value)}
                     className="ph-input"
                     placeholder={t("ph_req_name")}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    value={entry.job || ""}
+                    onChange={(e) => handleChange(i, "job", e.target.value)}
+                    className="ph-input ph-input-job"
+                    placeholder={t("ph_optional")}
                   />
                 </td>
                 {COLUMNS.map((col) => {
@@ -280,6 +416,7 @@ const STYLES = `
     gap: 12px;
     margin-bottom: 12px;
   }
+  .ph-toolbar-right { display: inline-flex; gap: 8px; flex-wrap: wrap; }
   .ph-legend {
     display: inline-flex; gap: 16px;
     font-size: 12px; font-weight: 600; color: #64748b;
@@ -295,6 +432,16 @@ const STYLES = `
   .ph-chip-c  { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
   .ph-chip-nc { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
+  .ph-hint {
+    margin-bottom: 12px;
+    padding: 9px 13px;
+    border-radius: 9px;
+    font-size: 12.5px; font-weight: 700;
+    background: #e0f2fe; color: #075985;
+    border: 1px solid #bae6fd;
+  }
+  .ph-hint-warn { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
   .ph-btn {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 14px; border-radius: 8px;
@@ -302,11 +449,12 @@ const STYLES = `
     cursor: pointer; border: 1px solid transparent;
     transition: all .15s ease;
   }
+  .ph-btn:disabled { opacity: .5; cursor: not-allowed; }
   .ph-btn-ghost {
     background: #fff; color: #334155;
     border-color: #e2e8f0;
   }
-  .ph-btn-ghost:hover {
+  .ph-btn-ghost:hover:not(:disabled) {
     background: #f1f5f9; border-color: #cbd5e1;
   }
   .ph-btn-primary {
@@ -342,7 +490,7 @@ const STYLES = `
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    overflow: hidden;
+    overflow: auto;
     box-shadow: 0 1px 3px rgba(15,23,42,.04);
   }
   .ph-table {
@@ -394,6 +542,8 @@ const STYLES = `
     box-shadow: 0 0 0 3px rgba(14,165,233,.12);
   }
   .ph-input::placeholder { color: #cbd5e1; }
+  .ph-input-no  { text-align: center; font-weight: 700; letter-spacing: .02em; }
+  .ph-input-job { font-size: 12px; color: #475569; background: #f8fafc; }
 
   .ph-cell-select { text-align: center; padding: 4px !important; }
   .ph-select {

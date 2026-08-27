@@ -7,8 +7,14 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
+import { hasSection } from "../../utils/perms";
+import { isItemAllowed } from "../../utils/sectionItems";
+import { useInventoryOfficer } from "../workforce/workforceAccess";
 
-/** الوحدات داخل المخزون — الظهور يتبع صلاحية القسم، إلا ما عليه open:true فبيظهر للكل. */
+/** الوحدات داخل المخزون.
+ *  الظهور = صلاحية القسم المذكور بـ section (نفس القسم اللي بيحرس المسار بـApp.jsx).
+ *  ما في كرت «مفتوح للكل»: كرت بيوصل لصفحة محروسة ما بيجوز يبان لحدا ما إلو
+ *  صلاحيتها — بيضغط عليها وبيترمى ع الرئيسية، وبيفكر إنه النظام خربان. */
 const MODULES = [
   {
     id: "butcher",
@@ -32,9 +38,9 @@ const MODULES = [
   },
   {
     // وحدة مستقلّة عن الجزار — سجل الملاحم والجزارين والمشرفين.
-    // صفحة عادية مفتوحة: بتظهر لكل من بيوصل للمخزون بلا صلاحية خاصة.
+    // محروسة بقسم "workforce" — نفس اللي بيحرس /workforce.
     id: "workforce",
-    open: true,
+    section: "workforce",
     to: "/workforce",
     icon: "👥",
     ar: "القوى العاملة",
@@ -45,10 +51,12 @@ const MODULES = [
   },
   {
     // نفس كرت «Products Catalog» يلي بالإعدادات ← أدوات البيانات.
-    // نفس المكوّن ونفس البيانات — مدخل تاني بس.
-    // صفحة عادية مفتوحة: بتظهر لكل من بيوصل للمخزون بلا صلاحية خاصة.
+    // نفس المكوّن ونفس البيانات — مدخل تاني بس، فنفس الصلاحية بالضبط:
+    // بند "settings.products" لحاله، مش قسم الإعدادات كامل. هيك بتقدر تعطي
+    // موظف الكتالوج وبس بلا ما تفتح له نسخ احتياطي ولا تصدير.
     id: "products-catalog",
-    open: true,
+    section: "settings",
+    item: "settings.products",
     to: "/inventory/products",
     icon: "🏷️",
     kind: "tool",
@@ -59,14 +67,6 @@ const MODULES = [
     grad: "linear-gradient(135deg,#14b8a6,#0d9488)",
   },
 ];
-
-function currentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("currentUser") || "{}");
-  } catch {
-    return {};
-  }
-}
 
 const CSS = `
 #root .inv, #root .inv * { font-size: 17px !important; }
@@ -86,10 +86,17 @@ export default function InventoryHub() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
 
-  const user = currentUser();
-  const perms = Array.isArray(user.permissions) ? user.permissions : [];
-  const full = perms.includes("*") || perms.length === 0 || !!user.isAdmin;
-  const modules = MODULES.filter((m) => m.open || full || perms.includes(m.id));
+  /* الفلترة بنفس الدالة اللي بيستعملها حارس المسار (hasSection)، فالكرت
+     الظاهر بيفتح دايماً والكرت المخفي ما إله وجود — ما بيصير كرت بيرمي صاحبه
+     ع الرئيسية. القسم الافتراضي = معرّف الوحدة نفسه. */
+  /* «مسؤول المخزون» بيشوف كل كروت المخزون — هي كل صلاحيته، وهي كاملة. */
+  const { officer } = useInventoryOfficer();
+  const modules = MODULES.filter(
+    (m) =>
+      officer ||
+      (hasSection(m.section || m.id) &&
+        (!m.item || isItemAllowed(m.section || m.id, m.item)))
+  );
 
   return (
     <div dir={dir} className="inv" style={S.page}>

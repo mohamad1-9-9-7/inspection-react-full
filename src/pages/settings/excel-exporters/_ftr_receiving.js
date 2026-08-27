@@ -103,7 +103,9 @@ export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
         c0.border = BORDER_BLACK;
         COLUMNS.forEach((col, ci) => {
           let v = row[col.key];
-          if (col.key === "productionDate" || col.key === "expiryDate") v = formatDMY(v);
+          // `isDate` marks any other column that holds a date (POS 15's
+          // per-line received date), so it prints the same way as the rest.
+          if (col.isDate || col.key === "productionDate" || col.key === "expiryDate") v = formatDMY(v);
           const cell = ws.getCell(r, ci + 2);
           cell.value = v ?? "";
           cell.font = { size: 9 };

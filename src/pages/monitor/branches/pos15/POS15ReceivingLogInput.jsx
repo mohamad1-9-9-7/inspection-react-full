@@ -10,14 +10,35 @@ import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
 
-// أعمدة C / NC
+// أعمدة C / NC — `hint` يحمل نص النموذج الورقي الكامل خلف عنوان قصير
 const TICK_COLS = [
-  { key: "vehicleClean",     label: "Vehicle clean" },
-  { key: "handlerHygiene",   label: "Food handler hygiene" },
-  { key: "appearanceOK",     label: "Appearance" },
-  { key: "firmnessOK",       label: "Firmness" },
-  { key: "smellOK",          label: "Smell" },
-  { key: "packagingGood",    label: "Packaging of food is good / undamaged / clean / no pests" },
+  { key: "vehicleClean",   label: "Vehicle clean",    w: 105 },
+  { key: "handlerHygiene", label: "Handler hygiene",  w: 115, hint: "Food handler hygiene" },
+  { key: "appearanceOK",   label: "Appearance",       w: 105, hint: "Normal colour, free from discoloration" },
+  { key: "firmnessOK",     label: "Firmness",         w: 100, hint: "Firm rather than soft" },
+  { key: "smellOK",        label: "Smell",            w: 95,  hint: "Normal smell — no rancid or strange smell" },
+  { key: "packagingGood",  label: "Packaging intact", w: 125,
+    hint: "Packaging of food is good and undamaged, clean and no signs of pest infestation" },
+];
+
+/* عمود واحد معرّف مرة واحدة يبني الترويسة والصفوف — بنفس ترتيب شاشة العرض
+   وبنفس ترتيب POS 6 و POS 10: الكود واسم المنتج أولاً. */
+const COLUMNS = [
+  { key: "itemCode",        label: "Item Code",            w: 115, kind: "code" },
+  { key: "foodItem",        label: "Food Item",            w: 200, kind: "product" },
+  { key: "supplier",        label: "Name of the Supplier", w: 180 },
+  { key: "netWeight",       label: "Net Weight (kg)",      w: 110, kind: "number", step: "0.01", placeholder: "kg" },
+  { key: "vehicleTemp",     label: "Vehicle Temp (°C)",    w: 100, kind: "number", step: "0.1", placeholder: "°C" },
+  { key: "foodTemp",        label: "Food Temp (°C)",       w: 100, kind: "number", step: "0.1", placeholder: "°C" },
+  ...TICK_COLS.map((c) => ({ ...c, kind: "tick" })),
+  { key: "countryOfOrigin", label: "Country of origin",    w: 135 },
+  { key: "productionDate",  label: "Production Date",      w: 130, kind: "date" },
+  { key: "expiryDate",      label: "Expiry Date",          w: 130, kind: "date" },
+  { key: "invoiceNo",       label: "Invoice No.",          w: 120 },
+  { key: "date",            label: "Received date",        w: 130, kind: "date" },
+  { key: "time",            label: "Time",                 w: 90,  kind: "time" },
+  { key: "receivedBy",      label: "Received by",          w: 130 },
+  { key: "remarks",         label: "Remarks (if any)",     w: 200 },
 ];
 
 function emptyRow() {
@@ -79,28 +100,16 @@ export default function POS15ReceivingLogInput() {
   const tdCell = {
     border: "1px solid #1f3b70", padding: "12px 8px", height: 56, textAlign: "center", verticalAlign: "middle",
   };
+  // No nowrap/ellipsis here: a field that hides what was typed into it is not
+  // a data-entry field. The column widths below give each value room instead.
   const inputStyle = {
     width: "100%", boxSizing: "border-box", border: "1px solid #c7d2fe", borderRadius: 6,
-    padding: "9px 10px", minHeight: 40, fontSize: 13.5, fontFamily: "inherit", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+    padding: "9px 10px", minHeight: 40, fontSize: 13.5, fontFamily: "inherit", display: "block", minWidth: 0,
   };
   const btn = (bg) => ({
     background: bg, color: "#fff", border: "none", borderRadius: 10, padding: "10px 14px",
     fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,.15)",
   });
-
-  // ✅ بعد الإضافة: أضفنا عمود الوزن بعد Food Item
-  const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 100 }} />,   <col key="time" style={{ width: 84 }} />,
-    <col key="supplier" style={{ width: 170 }} />,
-    <col key="itemCode" style={{ width: 110 }} />, <col key="food" style={{ width: 190 }} />,
-    <col key="netW" style={{ width: 110 }} />, // ✅ جديد
-    <col key="vehT" style={{ width: 90 }} />, <col key="foodT" style={{ width: 90 }} />,
-    <col key="vehClean" style={{ width: 120 }} />, <col key="handler" style={{ width: 140 }} />,
-    <col key="appearanceOK" style={{ width: 120 }} />, <col key="firmnessOK" style={{ width: 110 }} />, <col key="smellOK" style={{ width: 110 }} />,
-    <col key="pack" style={{ width: 130 }} />,
-    <col key="origin" style={{ width: 120 }} />, <col key="prod" style={{ width: 120 }} />, <col key="exp" style={{ width: 120 }} />,
-    <col key="inv" style={{ width: 120 }} />, <col key="remarks" style={{ width: 180 }} />, <col key="received" style={{ width: 120 }} />,
-  ]), []);
 
   function updateRow(idx, key, val) {
     setRows((prev) => {
@@ -205,102 +214,48 @@ export default function POS15ReceivingLogInput() {
       {/* Table */}
       <div style={{ overflowX:"auto" }}>
         <table style={gridStyle}>
-          <colgroup>{colDefs}</colgroup>
+          <colgroup>
+            {COLUMNS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time</th>
-              <th style={thCell}>Name of the Supplier</th>
-              <th style={thCell}>Item Code</th>
-              <th style={thCell}>Food Item</th>
-              <th style={thCell}>Net Weight (kg)</th> {/* ✅ جديد */}
-              <th style={thCell}>Vehicle Temp (°C)</th>
-              <th style={thCell}>Food Temp (°C)</th>
-              <th style={thCell}>Vehicle clean</th>
-              <th style={thCell}>Food handler hygiene</th>
-              <th style={thCell}>Appearance</th>
-              <th style={thCell}>Firmness</th>
-              <th style={thCell}>Smell</th>
-              <th style={thCell}>Packaging of food is good and undamaged, clean and no signs of pest infestation</th>
-              <th style={thCell}>Country of origin</th>
-              <th style={thCell}>Production Date</th>
-              <th style={thCell}>Expiry Date</th>
-              <th style={thCell}>Invoice No:</th>
-              <th style={thCell}>Remarks (if any)</th>
-              <th style={thCell}>Received by</th>
+              {COLUMNS.map((c) => (
+                <th key={c.key} style={thCell} title={c.hint || c.label}>{c.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, idx) => (
               <tr key={idx}>
-                <td style={tdCell}>
-                  <input type="date" value={r.date} onChange={(e)=>updateRow(idx, "date", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="time" value={r.time} onChange={(e)=>updateRow(idx, "time", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.supplier} onChange={(e)=>updateRow(idx, "supplier", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <ItemCodeInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <ItemNameInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} placeholder="Search code or product…" />
-                </td>
-
-                {/* ✅ خلية الوزن */}
-                <td style={tdCell}>
-                  <input
-                    type="number" step="0.01"
-                    value={r.netWeight}
-                    onChange={(e)=>updateRow(idx, "netWeight", e.target.value)}
-                    style={inputStyle}
-                    placeholder="kg"
-                  />
-                </td>
-
-                <td style={tdCell}>
-                  <input type="number" step="0.1" value={r.vehicleTemp} onChange={(e)=>updateRow(idx, "vehicleTemp", e.target.value)} style={inputStyle} placeholder="°C" />
-                </td>
-                <td style={tdCell}>
-                  <input type="number" step="0.1" value={r.foodTemp} onChange={(e)=>updateRow(idx, "foodTemp", e.target.value)} style={inputStyle} placeholder="°C" />
-                </td>
-
-                {/* C / NC */}
-                {TICK_COLS.map((c) => (
+                {COLUMNS.map((c) => (
                   <td key={c.key} style={tdCell}>
-                    <select
-                      value={r[c.key]}
-                      onChange={(e)=>updateRow(idx, c.key, e.target.value)}
-                      style={inputStyle}
-                      title="C = Conform, NC = Non-Conform"
-                    >
-                      <option value=""></option>
-                      <option value="C">C</option>
-                      <option value="NC">NC</option>
-                    </select>
+                    {c.kind === "code" ? (
+                      <ItemCodeInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} />
+                    ) : c.kind === "product" ? (
+                      <ItemNameInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} placeholder="Search code or product…" />
+                    ) : c.kind === "tick" ? (
+                      <select
+                        value={r[c.key]}
+                        onChange={(e)=>updateRow(idx, c.key, e.target.value)}
+                        style={inputStyle}
+                        title={c.hint ? `${c.hint} — C = Conform, NC = Non-Conform` : "C = Conform, NC = Non-Conform"}
+                      >
+                        <option value=""></option>
+                        <option value="C">C</option>
+                        <option value="NC">NC</option>
+                      </select>
+                    ) : (
+                      <input
+                        type={c.kind === "date" ? "date" : c.kind === "time" ? "time" : c.kind === "number" ? "number" : "text"}
+                        step={c.step}
+                        placeholder={c.placeholder}
+                        value={r[c.key]}
+                        onChange={(e)=>updateRow(idx, c.key, e.target.value)}
+                        style={inputStyle}
+                      />
+                    )}
                   </td>
                 ))}
-
-                <td style={tdCell}>
-                  <input type="text" value={r.countryOfOrigin} onChange={(e)=>updateRow(idx, "countryOfOrigin", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="date" value={r.productionDate} onChange={(e)=>updateRow(idx, "productionDate", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="date" value={r.expiryDate} onChange={(e)=>updateRow(idx, "expiryDate", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.invoiceNo} onChange={(e)=>updateRow(idx, "invoiceNo", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.remarks} onChange={(e)=>updateRow(idx, "remarks", e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.receivedBy} onChange={(e)=>updateRow(idx, "receivedBy", e.target.value)} style={inputStyle} />
-                </td>
               </tr>
             ))}
           </tbody>

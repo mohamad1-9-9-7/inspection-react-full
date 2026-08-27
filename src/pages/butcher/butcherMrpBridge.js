@@ -31,6 +31,19 @@ export const bomInputItem = (mrpCfg, bom) => itemById(mrpCfg, bom?.inputId);
 export const bomIsMultiPath = (bom) =>
   bom?.multiPathways === true && (bom?.pathways || []).some((p) => p.active !== false);
 
+/* ══════════════ النسبة المعيارية (Standard yield) ══════════════
+   خاصية على مستوى الوصفة تُضبط من «التصنيع ← قوائم التقطيع». الجزار لا يراها
+   إطلاقاً — الكشك يلتقطها بصمت داخل السجل، والمقارنة تُعرض بكرت المشرف فقط. */
+
+/** هل الوصفة بتطلب تاريخ انتهاء المادة الخام؟ */
+export const bomNeedsRawExpiry = (bom) => bom?.requireRawExpiry === true;
+
+/** هل الوصفة مفعّل عليها فحص النسبة المعيارية؟ */
+export const bomStdOn = (bom) => bom?.stdYield === true;
+
+/** التسامح ± بالنقاط المئوية (صفر = تطابق تام). */
+export const bomStdTol = (bom) => Math.abs(num(bom?.stdTolPct));
+
 /** المسارات الفعّالة لوصفة — فاضية لو الوصفة مش متعددة المسارات. */
 export const activePathwaysOf = (bom) =>
   bom?.multiPathways === true
@@ -170,6 +183,9 @@ export function bomLines(mrpCfg, bom, kind) {
         kind: kind === "wastes" ? "waste" : "product",
         targetQty: num(l.qty),
         required: l.required === true,   // منتج إلزامي — لازم الجزار يوزنه (Qty>0)
+        // النسبة المعيارية من وزن الخام — تُنقل مع السطر لتُلتقط بالسجل، ولا
+        // تُعرض أبداً بلوحة الجزار. مرجعها الوحيد كرت المشرف.
+        stdPct: num(l.stdPct),
       };
     })
     .filter(Boolean);

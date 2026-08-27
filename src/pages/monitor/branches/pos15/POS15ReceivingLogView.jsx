@@ -475,8 +475,13 @@ export default function POS15ReceivingLogView() {
       @page { size: A4 landscape; margin: 10mm; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       body { margin:0; font-family: Inter, Arial, sans-serif; color:#0f172a; font-size:11px; }
-      table { border-collapse: collapse; width:100%; }
-      th, td { border:1.5px solid #94a3b8; padding:5px; font-size:10px; }
+      /* The on-screen table is as wide as its columns need and scrolls. On
+         paper it has to fit the sheet instead, so the inline width and the
+         fixed column widths are overridden and the text wraps. */
+      div { overflow: visible !important; }
+      table { border-collapse: collapse; width:100% !important; min-width:0 !important; table-layout: auto !important; }
+      colgroup, col { width: auto !important; }
+      th, td { border:1.5px solid #94a3b8; padding:4px; font-size:9px; word-break: break-word; }
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;

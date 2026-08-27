@@ -53,7 +53,7 @@ export const STAFF_FORMS = [
   { key: "pos19_personal_hygiene", reportType: "pos19_personal_hygiene",   site: "POS 19",  siteAr: "موتور سيتي",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "ftr1_personal_hygiene",  reportType: "ftr1_personal_hygiene",    site: "FTR 1",   siteAr: "حديقة المشرف",  en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "ftr2_personal_hygiene",  reportType: "ftr2_personal_hygiene",    site: "FTR 2",   siteAr: "الممزر",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
-  { key: "prod_personal_hygiene",  reportType: "prod_personal_hygiene",    site: "Production", siteAr: "الإنتاج",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "prod_personal_hygiene",  reportType: "prod_personal_hygiene",    site: "Production", siteAr: "الإنتاج",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
 
   // ── QCS people forms (pickers, not row pre-fill) ──
   { key: "qcs_staff_sickness",     reportType: "qcs_staff_sickness",           site: "QCS", siteAr: "القصيص", en: "Staff Sickness", ar: "مرض الموظفين",  autoFills: false, wired: true },

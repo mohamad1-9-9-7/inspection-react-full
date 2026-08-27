@@ -193,7 +193,31 @@ export const SECTION_ITEMS = {
     ],
   },
 
-  settings: { kind: "none" },
+  // ⚙️ الإعدادات — كل أداة صلاحية لحالها.
+  //
+  // سبب التفصيل: «كتالوج المنتجات» بيتطلب موظف يضيف منتجات وباركودات، وهاد
+  // شغل يومي ما إله علاقة بالنسخ الاحتياطي ولا بشجرة التواريخ. فبدل ما نعطيه
+  // الإعدادات كلها، منعطيه بندها لحاله.
+  //
+  // المعرّفات هنّ نفس `item.id` بـSECTIONS داخل SettingsPage مسبوقة بـ"settings."،
+  // فالربط سطر واحد هناك ولا في جدول ترجمة بينساه حدا.
+  //
+  // ⚠️ أقسام الحسابات/الفوترة/الأمان/أدوات المدير مش مذكورة هون عن قصد:
+  // SettingsPage أصلاً ما بيعرضها لغير الأدمن مهما كانت القائمة.
+  settings: {
+    kind: "pages",
+    items: [
+      { id: "settings.products",        icon: "🏷️", label: "Products Catalog" },
+      { id: "settings.staff-directory", icon: "🧑‍🍳", label: "Staff Directory" },
+      { id: "settings.inventory",       icon: "🗃️", label: "Data Inventory" },
+      { id: "settings.date-tree",       icon: "📆", label: "Date Tree Explorer" },
+      { id: "settings.export",          icon: "📤", label: "Bulk Export" },
+      { id: "settings.backup",          icon: "💾", label: "Backup & Restore" },
+      { id: "settings.excel-backup",    icon: "🗂️", label: "Excel Backup" },
+      { id: "settings.appearance",      icon: "🎨", label: "Appearance & Language" },
+      { id: "settings.notifications",   icon: "🔔", label: "Notifications" },
+    ],
+  },
 };
 
 /**

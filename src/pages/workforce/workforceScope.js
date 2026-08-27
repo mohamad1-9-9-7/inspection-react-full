@@ -1,16 +1,20 @@
 // src/pages/workforce/workforceScope.js
 //
-// 👥 نطاق صفحة القوى العاملة — صفحة عادية مفتوحة، بلا تقييد أدمن.
-// Workforce scope: the page is open to anyone who reaches it — no admin gate.
+// 👥 نطاق صفحة القوى العاملة.
+// Workforce scope — one place that answers "what may this user do here?".
 //
-// الملف باقٍ كنقطة واحدة تستدعيها كل الشاشات (useWorkforceScope)، فإذا رجعنا
-// يوماً بدنا نضيّق النطاق منغيّرو هون بس — ما في شرط صلاحية موزّع على الشاشات.
+// الوصول لهالصفحة أصلاً محروس بقسم "workforce" (SectionRoute بـApp.jsx)، فمين
+// وصل لهون إلو على الأقل "view". اللي منقرّره هون: شو بيقدر يعمل بعد ما يوصل.
+//
+// كل صلاحية بتنقرأ من نفس مصدر النظام (crudPerms عبر can()) — ما في قائمة
+// صلاحيات ثانية خاصّة بالقوى العاملة، وما في شرط موزّع على الشاشات.
 //
 // بوابة الكشك تحت (checkEntry) شي تاني تماماً: بتفحص الرقم الوظيفي وحالة
 // الموظف وقت التسجيل — ما إلها علاقة بمين بيفتح هالصفحة.
 
 import { useMemo } from "react";
-import { getPerms } from "../../utils/perms";
+import { can, getPerms } from "../../utils/perms";
+import { isInventoryOfficer } from "./workforceAccess";
 import {
   personByEmpNo,
   personByUsername,
@@ -24,7 +28,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 /* ══════════════════════════════════════════════ النطاق */
 
 /**
- * حالة الصفحة للمستخدم الحالي — كل الصلاحيات مفتوحة.
+ * حالة الصفحة للمستخدم الحالي.
  *
  * @returns {{
  *   wf: object, loading: boolean, saving: boolean, error: string,
@@ -32,9 +36,16 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
  *   me: object|null,          الشخص المرتبط بحساب الدخول (أو null) — للعرض فقط
  *   role: string,             دور الشخص المرتبط (شارة عرض لا أكثر)
  *   isAdmin: boolean,
- *   seesAll: true, sites: [],
- *   canView/canManage/canTransfer/canRules/canEditSites: true,
- *   canSeeSite(), canSeePerson(), canManagePerson(), canDeletePerson(): true
+ *   seesAll: true,            الرؤية مفتوحة؛ التقييد على الإجراءات لا على العرض
+ *   sites: [],
+ *   canView: boolean,         قسم workforce ▸ view
+ *   canManage: boolean,       write أو edit — إضافة/تعديل/نقل موظف
+ *   canTransfer: boolean,     نفس canManage
+ *   canRules: boolean,        delete أو أدمن — القواعد بتمسّ كل الملاحم
+ *   canEditSites: boolean,    أدمن فقط
+ *   canDelete: boolean,       قسم workforce ▸ delete
+ *   canSeeSite(), canSeePerson(): true
+ *   canManagePerson(), canDeletePerson(): تتبع الصلاحيات فوق
  * }}
  */
 export function useWorkforceScope() {
@@ -43,31 +54,41 @@ export function useWorkforceScope() {
 
   return useMemo(() => {
     const perms = getPerms();
-    const isAdmin = !!(perms.isAdmin || perms.isFullAccess);
+    /* «مسؤول المخزون» صلاحياته داخل المخزون كاملة متل الأدمن — والقوى العاملة
+       جزء من المخزون، فبيعدّل ويحذف ويضبط القواعد متلو تماماً. */
+    const isAdmin = !!(perms.isAdmin || perms.isFullAccess) || isInventoryOfficer();
     const username = perms.user?.username || "";
     const me = personByUsername(wf, username);
 
     // الدور للعرض فقط (شارة الترويسة) — ما بيمنع ولا إجراء.
     const role = me?.role || (isAdmin ? "admin" : "user");
 
+    /* الصلاحيات — من crudPerms مباشرة، بلا قائمة موازية.
+       "write" أو "edit" = يقدر يضيف/يعدّل موظف وينقله. "delete" = يحذف. */
+    const canView    = isAdmin || can("workforce", "view");
+    const canManage  = isAdmin || can("workforce", "write") || can("workforce", "edit");
+    const canDeleteOp = isAdmin || can("workforce", "delete");
+
     return {
       ...store,
       me, role, isAdmin, username,
 
-      /* صفحة مفتوحة: الكل يشوف الكل ويعدّل */
+      /* النطاق: الكل يشوف الكل (السجل صغير ومعناه بيضيع لو تجزّأ)،
+         بس الإجراءات بتتبع صلاحية قسم "workforce". */
       seesAll: true,
       sites: [],
-      canView: true,
-      canManage: true,
-      canTransfer: true,
-      canRules: true,
-      canEditSites: true,
-      canSetManagerRole: true,
-      canDelete: true,
-      canDeletePerson: () => true,
+      canView,
+      canManage,
+      canTransfer: canManage,
+      canRules: canDeleteOp || isAdmin,   // القواعد بتمسّ كل الملاحم — للأدمن ومين إلو حذف
+      canEditSites: isAdmin,              // مشرف بيقدر يعمل ملحمة ما بيشوفها بعدين
+      canSetManagerRole: isAdmin,
+      canDelete: canDeleteOp,
+      canDeletePerson: (p) =>
+        canDeleteOp && (p?.role === "butcher" || isAdmin),
       canSeeSite: () => true,
       canSeePerson: () => true,
-      canManagePerson: () => true,
+      canManagePerson: () => canManage,
     };
   }, [store, wf]);
 }
@@ -115,14 +136,19 @@ export function checkEntry(wf, empNo, opts = {}) {
     return deny("suspended", "حسابك موقوف — راجع المشرف", "Your account is suspended — see your supervisor", { person });
   }
 
-  /* ③ بوابة الدور */
-  if (person.role !== "butcher" && !rules.supervisorCanEnter) {
-    return deny(
-      "role",
-      "المشرفون لا يسجّلون تقطيعاً — استعمل لوحة المشرف",
-      "Supervisors do not record cuts — use the supervisor board",
-      { person }
-    );
+  /* ③ بوابة الدور — غير الجزار لازم يكون مسمّى بالاسم بقائمة القواعد.
+     «كل المشرفين» أو «ولا مشرف» ما بيوصفوا الواقع: بملحمة فيها ثلاث مشرفين
+     ممكن واحد بس يقطّع فعلياً. فالقائمة بتحمل معرّفات الأشخاص المسموح لهم. */
+  if (person.role !== "butcher") {
+    const allowed = Array.isArray(rules.entrySupervisors) ? rules.entrySupervisors : [];
+    if (!allowed.includes(person.id)) {
+      return deny(
+        "role",
+        "غير مسموح لك بتسجيل التقطيع — استعمل لوحة المشرف",
+        "You are not allowed to record cuts — use the supervisor board",
+        { person }
+      );
+    }
   }
 
   /* ④ بوابة الـ PIN */

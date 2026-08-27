@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
 import { clearAppSession } from "../utils/authFetch";
+import { useInventoryOfficer } from "./workforce/workforceAccess";
 
 /* ══════════════════════════════════════════
    OPERATOR PICKER — who is working now?
@@ -309,11 +310,15 @@ function LegacyNamedDashboard() {
   const isAdmin      = !!currentUser.isAdmin;
   const employees    = currentUser.employees    || [];
 
+  /* «مسؤول المخزون» (دور بالقوى العاملة) لازم يشوف كرت المخزون حتى لو
+     حسابه بلا أي قسم — الكرت هو بابه الوحيد، وصلاحياته جوّاته كاملة. */
+  const { officer: invOfficer } = useInventoryOfficer();
   const visibleRoles = isFullAccess
     ? ALL_ROLES
     // anyOf = كرت مجمّع (مثل «المخزون») — يظهر إذا كان يملك أي وحدة بداخله
     : ALL_ROLES.filter(r =>
         permissions.includes(r.id) ||
+        (invOfficer && r.id === "inventory") ||
         (Array.isArray(r.anyOf) && r.anyOf.some(x => permissions.includes(x)))
       );
 
@@ -1056,12 +1061,15 @@ export default function NamedDashboard() {
   const isAdmin = !!currentUser.isAdmin;
   const employees = currentUser.employees || [];
 
+  /* «مسؤول المخزون» — نفس القاعدة تحت: الكرت بابه الوحيد. */
+  const { officer: invOfficer } = useInventoryOfficer();
   const visibleRoles = isFullAccess
     ? ALL_ROLES
     // anyOf = كرت مجمّع (مثل «المخزون») — يظهر إذا كان يملك أي وحدة بداخله
     : ALL_ROLES.filter(
         (r) =>
           permissions.includes(r.id) ||
+          (invOfficer && r.id === "inventory") ||
           (Array.isArray(r.anyOf) && r.anyOf.some((x) => permissions.includes(x)))
       );
 

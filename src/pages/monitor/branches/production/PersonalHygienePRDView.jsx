@@ -295,6 +295,12 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
 
   const date = data?.reportDate || "—";
   const entries = data?.entries || [];
+
+  /* Employee number and job title arrived with the Staff Directory link. Reports
+     saved before that have neither, so those columns only appear when the data
+     actually carries them — old sheets keep their original layout. */
+  const hasEmpNo = entries.some((r) => String(r?.empNo ?? r?.employeeNo ?? "").trim());
+  const hasJob   = entries.some((r) => String(r?.job ?? "").trim());
   const checkedBy = data?.checkedBy || "—";
   const verifiedBy = data?.verifiedBy || "—";
 
@@ -352,7 +358,9 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
             <thead>
               <tr style={theadRow}>
                 <th style={{ ...thCell, width: 70 }}>S.No</th>
+                {hasEmpNo && <th style={{ ...thCell, width: 100 }}>Employee No</th>}
                 <th style={{ ...thCell, minWidth: 180 }}>Employee Name</th>
+                {hasJob && <th style={{ ...thCell, minWidth: 150 }}>Job Title</th>}
                 {COLUMNS.map((c, i) => (<th key={i} style={{ ...thCell, minWidth: 140 }}>{c}</th>))}
                 <th style={{ ...thCell, minWidth: 260 }}>Remarks and Corrective Actions</th>
               </tr>
@@ -360,14 +368,16 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
             <tbody>
               {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length + 3} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>
+                  <td colSpan={COLUMNS.length + 3 + (hasEmpNo ? 1 : 0) + (hasJob ? 1 : 0)} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>
                     No entries
                   </td>
                 </tr>
               ) : entries.map((row, i) => (
                 <tr key={i} style={zebra(i)}>
                   <td style={tdCell}>{i + 1}</td>
+                  {hasEmpNo && <td style={{ ...tdCell, fontWeight: 700 }}>{row.empNo || row.employeeNo || ""}</td>}
                   <td style={{ ...tdCell, textAlign: "left" }}>{row.name || ""}</td>
+                  {hasJob && <td style={{ ...tdCell, textAlign: "left" }}>{row.job || ""}</td>}
                   {COLUMNS.map((c, k) => (<td key={k} style={tdCell}>{row[c] || ""}</td>))}
                   <td style={{ ...tdCell, textAlign: "left" }}>{row.remarks || ""}</td>
                 </tr>

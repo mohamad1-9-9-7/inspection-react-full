@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isItemAllowed } from "../../utils/sectionItems";
+import { isInventoryOfficer } from "./workforceAccess";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { activeSites } from "./workforceConfig";
 import { useWorkforceScope } from "./workforceScope";
@@ -30,7 +31,9 @@ const TABS = [
   { id: "rules",  icon: "⚙️", ar: "القواعد",  en: "Rules" },
 ];
 
-const allowedTabs = () => TABS.filter((x) => isItemAllowed("workforce", `workforce.${x.id}`));
+/* «مسؤول المخزون» بيشوف كل التبويبات — صلاحياته داخل المخزون كاملة. */
+const allowedTabs = () =>
+  TABS.filter((x) => isInventoryOfficer() || isItemAllowed("workforce", `workforce.${x.id}`));
 
 export default function WorkforceHub() {
   const navigate = useNavigate();
@@ -183,9 +186,10 @@ function Kpi({ icon, label, value, tone, muted }) {
 const S = {
   page: {
     minHeight: "100vh", background: C.bg, fontFamily: FONT, color: C.ink,
-    padding: "22px clamp(12px, 3vw, 28px) 44px", overflowX: "hidden",
+    padding: "22px clamp(12px, 2.4vw, 32px) 44px", overflowX: "hidden",
   },
-  wrap: { maxWidth: 1180, margin: "0 auto" },
+  // عرض الصفحة: بتاخد الشاشة كلها لحد 1560px — الشجرة بتحطّ كروت أكتر بالصف
+  wrap: { maxWidth: 1560, margin: "0 auto" },
 
   header: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -201,7 +205,7 @@ const S = {
     boxShadow: "0 8px 20px rgba(124,58,237,.26)",
   },
   title: { fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.2 },
-  sub: { color: C.mute, fontWeight: 600, marginTop: 3 },
+  sub: { color: C.mute, fontWeight: 700, marginTop: 3 },
   headBtns: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" },
   langBtn: { background: "#fff", border: `1px solid #d7e5f3`, color: C.blue },
   saving: { fontWeight: 800, color: C.mute },
@@ -229,11 +233,11 @@ const S = {
   },
   tab: {
     border: "1px solid transparent", background: "transparent", color: C.mute,
-    borderRadius: 10, padding: "9px 15px", fontWeight: 800, fontFamily: FONT,
+    borderRadius: 10, padding: "9px 16px", fontWeight: 900, fontFamily: FONT,
     cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
     transition: "background .14s ease, color .14s ease",
   },
   tabOn: { background: "#eff6ff", color: C.blue, borderColor: "#bfdbfe" },
 
-  foot: { marginTop: 20, textAlign: "center", color: C.faint, fontWeight: 800 },
+  foot: { marginTop: 20, textAlign: "center", color: C.mute, fontWeight: 800 },
 };

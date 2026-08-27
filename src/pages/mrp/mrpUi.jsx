@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { isItemAllowed } from "../../utils/sectionItems";
 import { can } from "../../utils/perms";
+import { isInventoryOfficer } from "../workforce/workforceAccess";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { ITEM_TYPES, UOMS, displayNameOf, itemById, nameOf, num, rolesOf } from "./mrpApi";
 import { normalizeCode, useProductCatalog } from "../monitor/branches/_shared/ProductPicker";
@@ -39,9 +40,13 @@ export const MRP_PAGES = [
    التصنيع والتقارير انشالت بطلب المستخدم — تقارير التقطيع صارت بصفحة
    «تقارير الجزار». */
 
-export const canOpenMrp = (pageId) => isItemAllowed("mrp", pageId);
-export const canEditMrp = () => can("mrp", "edit") || can("mrp", "write");
-export const canDeleteMrp = () => can("mrp", "delete") || can("mrp", "edit");
+/* «مسؤول المخزون» (دور بالقوى العاملة) بيمرق من كل بوابات المخزون —
+   بيفتح ويعدّل ويحذف متل الأدمن، بس داخل هالكرت وحده. */
+export const canOpenMrp = (pageId) => isInventoryOfficer() || isItemAllowed("mrp", pageId);
+export const canEditMrp = () =>
+  isInventoryOfficer() || can("mrp", "edit") || can("mrp", "write");
+export const canDeleteMrp = () =>
+  isInventoryOfficer() || can("mrp", "delete") || can("mrp", "edit");
 
 /* ══════════════ الأنماط ══════════════ */
 

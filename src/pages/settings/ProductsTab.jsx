@@ -234,7 +234,7 @@ export default function ProductsTab() {
           {form.editingKey && <Button onClick={startAdd} tone="secondary">+ New instead</Button>}
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ width: 200 }}>
+          <div style={{ flex: "0 1 200px", minWidth: 140 }}>
             <span style={label}>Barcode / Code</span>
             <input
               value={form.code}
@@ -245,7 +245,7 @@ export default function ProductsTab() {
               title={form.codeLocked ? "Master barcodes can't be changed — only the name." : undefined}
             />
           </div>
-          <div style={{ flex: "1 1 280px", minWidth: 240 }}>
+          <div style={{ flex: "1 1 240px", minWidth: 0 }}>
             <span style={label}>Product Name</span>
             <input
               value={form.name}
@@ -272,7 +272,7 @@ export default function ProductsTab() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="🔍 Search by barcode or name…"
-          style={{ ...input, maxWidth: 360 }}
+          style={{ ...input, flex: "1 1 240px", maxWidth: 360 }}
         />
         {msg && <span style={{ color: "#065f46", fontWeight: 800 }}>{msg}</span>}
       </div>
@@ -280,7 +280,7 @@ export default function ProductsTab() {
       {/* Table */}
       <div style={ui.tableWrap}>
         <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
-          <table style={ui.table}>
+          <table style={{ ...ui.table, minWidth: 620 }}>
             <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <tr>
                 <th style={{ ...th, width: 160 }}>Barcode</th>

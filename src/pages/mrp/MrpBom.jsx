@@ -51,7 +51,16 @@ const blankBom = (boms) => ({
   active: true,
   requireExactBalance: false,   // إلزام الجزار بتطابق تام: الخام = النواتج + الهدر
   requirePieceCount: false,     // إظهار خانة «عدد القطع» وإلزام الجزار بتعبئتها
+  // تاريخ انتهاء المادة الخام — الجزار بيقرأه عن ملصق الذبيحة/القطعة الداخلة
+  // ويدخّله وقت التسجيل. مفتاح مستقل لكل وصفة.
+  requireRawExpiry: false,
   allowSameIO: false,           // السماح بأن يكون المخرَج نفسه المدخل (تنظيف/تشذيب بوزن أقل)
+  // ── النسبة المعيارية (Standard yield) ──
+  // نسبة كل ناتج/هدر من وزن المادة الخام، تُعبّى بعمود «النسبة المعيارية ٪» على الأسطر.
+  // لا تظهر أبداً بلوحة تسجيل الجزار — فقط بكرت المشرف كجدول مقارنة
+  // (النسبة الفعلية مقابل المعيارية)، ومنع القبول لما الانحراف يتجاوز التسامح.
+  stdYield: false,              // مفتاح التفعيل لهالوصفة
+  stdTolPct: 5,                 // التسامح ± بالنقاط المئوية (معياري ٣٠٪ ± ٥ ⇒ ٢٥٪–٣٥٪)
   version: 1,
   history: [],
   createdAt: new Date().toISOString(),
@@ -90,7 +99,7 @@ const cloneLines = (lines) => (lines || []).map((l) => ({ ...l, id: freshId("ln"
  * `label` بادئة رسالة الخطأ — "" للمسطّحة، و«المسار CUT-0001-P1 — » للمسار.
  * يرجّع نص الخطأ أو "" إذا صحيحة.
  */
-function cutListError({ inputId, inItemName, outputs, wastes, inputQty, allowSameIO }, cfg, isAr, t, label = "") {
+function cutListError({ inputId, inItemName, outputs, wastes, inputQty, allowSameIO, stdYield }, cfg, isAr, t, label = "") {
   const all = [...(outputs || []), ...(wastes || [])];
   if ((outputs || []).length === 0) {
     return t({
@@ -155,7 +164,40 @@ function cutListError({ inputId, inItemName, outputs, wastes, inputQty, allowSam
       ar: `${label}الناتج + الهدر أكثر من كمية الداخل — صحّح الميزان.`,
     });
   }
+  // ── النسبة المعيارية: مدى كل سطر ٠–١٠٠، والمجموع ما بيتجاوز ١٠٠٪ من الخام ──
+  if (stdYield) {
+    for (const l of all) {
+      const v = num(l.stdPct);
+      if (v < 0 || v > 100) {
+        const it = itemById(cfg, l.itemId);
+        return t({
+          en: `${label}the standard % of "${nameOf(it, false) || l.itemId}" must be between 0 and 100.`,
+          ar: `${label}النسبة المعيارية لـ«${nameOf(it, true) || l.itemId}» لازم تكون بين ٠ و١٠٠.`,
+        });
+      }
+    }
+    const tot = stdTotalOf(all);
+    if (tot > 100 + 1e-9) {
+      return t({
+        en: `${label}the standard percentages add up to ${money(tot, 1)}% — they cannot exceed 100% of the raw weight.`,
+        ar: `${label}مجموع النسب المعيارية ${money(tot, 1)}٪ — ما بيصير يتجاوز ١٠٠٪ من وزن الخام.`,
+      });
+    }
+  }
   return "";
+}
+
+/** مجموع النسب المعيارية لمجموعة أسطر (نواتج + هدر). */
+function stdTotalOf(lines) {
+  return (lines || []).reduce((s, l) => s + num(l.stdPct), 0);
+}
+
+/** هل في نسبة معيارية معبّاة فعلاً بأي مكان بالوصفة (مسطّحة أو مسارات)؟ */
+function hasAnyStd(bom) {
+  const lists = bom?.multiPathways === true
+    ? (bom.pathways || []).flatMap((p) => [...(p.outputs || []), ...(p.wastes || [])])
+    : [...(bom?.outputs || []), ...(bom?.wastes || [])];
+  return lists.some((l) => num(l.stdPct) > 0);
 }
 
 /**
@@ -256,6 +298,7 @@ export default function MrpBom() {
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
         multiPathways: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
+        stdYield: false, stdTolPct: 5, requireRawExpiry: false,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -445,6 +488,24 @@ export default function MrpBom() {
     // الكميات اختيارية — بتقدر تحفظ الهيكل (الداخل + النواتج) وتعبّي الأوزان لاحقاً
     const inItemName = nameOf(inItem, isAr) || bom.inputId;
 
+    // ── النسبة المعيارية مفعّلة: لازم تسامح منطقي ونسبة معبّاة على الأقل ──
+    const stdYield = bom.stdYield === true;
+    if (stdYield) {
+      const tol = num(bom.stdTolPct);
+      if (tol < 0 || tol > 100) {
+        return t({
+          en: "The tolerance must be between 0 and 100 percentage points.",
+          ar: "نسبة التسامح لازم تكون بين ٠ و١٠٠ نقطة مئوية.",
+        });
+      }
+      if (!hasAnyStd(bom)) {
+        return t({
+          en: "Standard yield is on but no line has a standard % — fill the “Standard %” column, or switch it off.",
+          ar: "النسبة المعيارية مفعّلة وما في ولا سطر إله نسبة — عبّي عمود «النسبة المعيارية ٪»، أو أطفي الخاصية.",
+        });
+      }
+    }
+
     // وضع المسارات المتعددة — كل مسار يُتحقّق لوحده بنفس قواعد القائمة المسطّحة.
     if (bom.multiPathways === true) {
       const pws = bom.pathways || [];
@@ -459,7 +520,7 @@ export default function MrpBom() {
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
         const err = cutListError(
-          { inputId: bom.inputId, inItemName, outputs: pw.outputs, wastes: pw.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true },
+          { inputId: bom.inputId, inItemName, outputs: pw.outputs, wastes: pw.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true, stdYield },
           cfg, isAr, t, label
         );
         if (err) return err;
@@ -483,7 +544,7 @@ export default function MrpBom() {
     }
 
     return cutListError(
-      { inputId: bom.inputId, inItemName, outputs: bom.outputs, wastes: bom.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true },
+      { inputId: bom.inputId, inItemName, outputs: bom.outputs, wastes: bom.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true, stdYield },
       cfg, isAr, t, ""
     );
   };
@@ -519,6 +580,9 @@ export default function MrpBom() {
       outputs: JSON.parse(JSON.stringify(b.outputs || [])),
       wastes: JSON.parse(JSON.stringify(b.wastes || [])),
       pathways: JSON.parse(JSON.stringify(b.pathways || [])),
+      // إعدادات النسبة المعيارية جزء من الإصدار — التسامح ممكن يتغيّر مع الوقت
+      stdYield: b.stdYield === true,
+      stdTolPct: b.stdTolPct,
     };
     const bumped = {
       ...b,
@@ -547,6 +611,9 @@ export default function MrpBom() {
       outputs: JSON.parse(JSON.stringify(b.outputs || [])),
       wastes: JSON.parse(JSON.stringify(b.wastes || [])),
       pathways: JSON.parse(JSON.stringify(b.pathways || [])),
+      // إعدادات النسبة المعيارية جزء من الإصدار — التسامح ممكن يتغيّر مع الوقت
+      stdYield: b.stdYield === true,
+      stdTolPct: b.stdTolPct,
     };
     const restored = {
       ...b,
@@ -557,6 +624,10 @@ export default function MrpBom() {
       outputs: JSON.parse(JSON.stringify(snapshot.outputs || [])),
       wastes: JSON.parse(JSON.stringify(snapshot.wastes || [])),
       pathways: JSON.parse(JSON.stringify(snapshot.pathways || [])),
+      // الإصدارات القديمة بلا هالحقول — ساعتها منخلّي إعدادات الوصفة الحالية
+      ...(snapshot.stdYield === undefined
+        ? {}
+        : { stdYield: snapshot.stdYield === true, stdTolPct: snapshot.stdTolPct }),
     };
     const ok = await commit(
       (n) => {
@@ -647,6 +718,7 @@ export default function MrpBom() {
         )
       }
     >
+      <style>{BOM_CSS}</style>
       <Toast toast={toast} busy={busy} t={t} />
 
       {!draft ? (
@@ -890,6 +962,7 @@ function CutBuilder({
   const uom = input?.uom || "";
   const multiPathways = bom.multiPathways === true;   // خيار مستقل لهالوصفة
   const allowSameIO = bom.allowSameIO === true;       // السماح بمطابقة المدخل والمخرج
+  const stdYield = bom.stdYield === true;             // النسبة المعيارية (كرت المشرف)
 
   // كل الأصناف المستعملة بالقائمة (نواتج + هدر) — لمنع التكرار عبر السطور
   const usedIds = useMemo(
@@ -1062,101 +1135,86 @@ function CutBuilder({
             </Field>
           </div>
 
-          {/* ── تفعيل المسارات المتعددة لهالوصفة (خيار مستقل لكل قائمة) ── */}
-          <div style={{
-            ...S.chipRow, marginTop: 12, padding: "12px 14px", borderRadius: 14,
-            border: `1.5px solid ${multiPathways ? "#c9b8f2" : "#e3edf7"}`,
-            background: multiPathways ? "#f7f5ff" : "#fafcff",
-          }}>
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
-              <Switch
-                checked={multiPathways}
-                onChange={(v) => pathwayOps.enable(v)}
-              />
-              <span style={{ minWidth: 0 }}>
-                🔀 {t({ en: "Enable multi-routing pathways for this BOM", ar: "تفعيل مسارات التوزيع المتعددة لهالوصفة" })}
-                <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
-                  {multiPathways
-                    ? t({
-                        en: "On — the first pathway starts from the same products as this BOM. Add more alternative breakdowns, each with its own unique code (e.g. CUT-0001-P1).",
-                        ar: "مفعّل — أول مسار بيبلّش بنفس منتجات هالوصفة. ضيف تفكيكات بديلة، لكل واحد كود فريد (مثال: CUT-0001-P1).",
-                      })
-                    : t({
-                        en: "Off — this BOM uses a single flat breakdown (input → outputs + waste), the traditional way.",
-                        ar: "معطّل — هالوصفة بتستعمل تفكيك مسطّح واحد (داخل → نواتج + هدر)، بالطريقة التقليدية.",
-                      })}
-                </div>
-              </span>
-            </label>
+          <div style={BOM_UI.tip}>
+            💡 {t({
+              en: "Tip: 100 KG input makes every line read directly as a percentage.",
+              ar: "نصيحة: داخل ١٠٠ كجم بيخلي كل سطر ينقرأ كنسبة مئوية مباشرة.",
+            })}
           </div>
 
-          <div style={{ ...S.chipRow, marginTop: 12 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-              <Switch checked={bom.active !== false} onChange={(v) => patch({ active: v })} />
-              {t({ en: "Active BOM", ar: "قائمة مفعّلة" })}
-            </label>
-            <span style={S.hint}>
-              {t({
-                en: "Tip: 100 KG input makes every line read directly as a percentage.",
-                ar: "نصيحة: داخل ١٠٠ كجم بيخلي كل سطر ينقرأ كنسبة مئوية مباشرة.",
-              })}
-            </span>
-          </div>
-          <div style={{ ...S.chipRow, marginTop: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-              <Switch
-                checked={bom.requireExactBalance === true}
-                onChange={(v) => patch({ requireExactBalance: v })}
-              />
-              {t({ en: "Require exact balance (raw = products + waste)", ar: "إلزام تطابق تام (الخام = النواتج + الهدر)" })}
-            </label>
-            <span style={S.hint}>
-              {t({
+          {/* ── خيارات الوصفة ──
+              كروت موحّدة بدل صفوف مبعثرة. الشكل فقط — نفس المفاتيح ونفس
+              الدوال حرفياً (checked / onChange بلا أي تغيير). */}
+          <div style={BOM_UI.optGrid}>
+            <OptionCard
+              icon="🔀" accent="#6d28d9"
+              on={multiPathways}
+              onChange={(v) => pathwayOps.enable(v)}
+              title={t({ en: "Multi-routing pathways", ar: "مسارات التوزيع المتعددة" })}
+              hint={multiPathways
+                ? t({
+                    en: "On — the first pathway starts from the same products as this BOM. Add more alternative breakdowns, each with its own unique code (e.g. CUT-0001-P1).",
+                    ar: "مفعّل — أول مسار بيبلّش بنفس منتجات هالوصفة. ضيف تفكيكات بديلة، لكل واحد كود فريد (مثال: CUT-0001-P1).",
+                  })
+                : t({
+                    en: "Off — this BOM uses a single flat breakdown (input → outputs + waste), the traditional way.",
+                    ar: "معطّل — هالوصفة بتستعمل تفكيك مسطّح واحد (داخل → نواتج + هدر)، بالطريقة التقليدية.",
+                  })}
+            />
+
+            <OptionCard
+              icon="⚖️" accent="#0f766e"
+              on={bom.requireExactBalance === true}
+              onChange={(v) => patch({ requireExactBalance: v })}
+              title={t({ en: "Require exact balance", ar: "إلزام تطابق تام" })}
+              hint={t({
                 en: "When on, the butcher cannot save unless the raw weight equals the products + waste exactly.",
                 ar: "لما يكون مفعّل، الجزار ما بيقدر يحفظ إلا إذا وزن المادة الخام ساوى النواتج + الهدر تماماً.",
               })}
-            </span>
-          </div>
-          <div style={{ ...S.chipRow, marginTop: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-              <Switch
-                checked={bom.requirePieceCount === true}
-                onChange={(v) => patch({ requirePieceCount: v })}
-              />
-              {t({ en: "Show a piece-count box (required)", ar: "إظهار خانة عدد القطع (إلزامية)" })}
-            </label>
-            <span style={S.hint}>
-              {t({
+            />
+
+            <OptionCard
+              icon="🔢" accent="#1f6fd0"
+              on={bom.requirePieceCount === true}
+              onChange={(v) => patch({ requirePieceCount: v })}
+              title={t({ en: "Piece count (required)", ar: "عدد القطع (إلزامي)" })}
+              hint={t({
                 en: "When on, the butcher must enter the number of pieces before saving.",
                 ar: "لما يكون مفعّل، الجزار لازم يدخّل عدد القطع قبل الحفظ.",
               })}
-            </span>
+            />
+
+            <OptionCard
+              icon="📅" accent="#b45309"
+              on={bom.requireRawExpiry === true}
+              onChange={(v) => patch({ requireRawExpiry: v })}
+              title={t({ en: "Raw material expiry date", ar: "تاريخ انتهاء المادة الخام" })}
+              hint={t({
+                en: "When on, the butcher types the expiry date printed on the incoming carcass/cut before saving.",
+                ar: "لما يكون مفعّل، الجزار بيدخّل تاريخ الانتهاء المطبوع على الذبيحة/القطعة الداخلة قبل الحفظ.",
+              })}
+            />
+
+            <OptionCard
+              icon="♻️" accent="#0e7490"
+              on={allowSameIO}
+              onChange={(v) => patch({ allowSameIO: v })}
+              title={t({ en: "Allow same input/output product", ar: "السماح بتطابق المنتج المدخل والمخرج" })}
+              hint={allowSameIO
+                ? t({
+                    en: "On — the input item may also be an output (cleaning/trimming the same piece): once only, and its output weight must be less than the input.",
+                    ar: "مفعّل — الصنف الداخل بيصير كمان مخرَج (تنظيف/تشذيب نفس القطعة): مرة وحدة بس، ووزن مخرجه لازم يكون أقل من المدخل.",
+                  })
+                : t({
+                    en: "Off — an output/waste can never be the same item as the input (the traditional rule).",
+                    ar: "معطّل — ما بيصير المخرَج/الهدر يكون نفس صنف المدخل (القاعدة التقليدية).",
+                  })}
+            />
+
           </div>
 
-          {/* ── تجاوز قيد تطابق المدخل والمخرج (Same Item Override) ── */}
-          <div style={{
-            ...S.chipRow, marginTop: 12, padding: "12px 14px", borderRadius: 14,
-            border: `1.5px solid ${allowSameIO ? "#a7d9d3" : "#e3edf7"}`,
-            background: allowSameIO ? "#f0faf8" : "#fafcff",
-          }}>
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
-              <Switch checked={allowSameIO} onChange={(v) => patch({ allowSameIO: v })} />
-              <span style={{ minWidth: 0 }}>
-                ♻️ {t({ en: "Allow same input/output product", ar: "السماح بتطابق المنتج المدخل والمخرج" })}
-                <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
-                  {allowSameIO
-                    ? t({
-                        en: "On — the input item may also be an output (cleaning/trimming the same piece): once only, and its output weight must be less than the input.",
-                        ar: "مفعّل — الصنف الداخل بيصير كمان مخرَج (تنظيف/تشذيب نفس القطعة): مرة وحدة بس، ووزن مخرجه لازم يكون أقل من المدخل.",
-                      })
-                    : t({
-                        en: "Off — an output/waste can never be the same item as the input (the traditional rule).",
-                        ar: "معطّل — ما بيصير المخرَج/الهدر يكون نفس صنف المدخل (القاعدة التقليدية).",
-                      })}
-                </div>
-              </span>
-            </label>
-          </div>
+          {/* ── النسبة المعيارية + التسامح (تظهر للمشرف فقط) ── */}
+          <StdYieldCard t={t} bom={bom} patch={patch} canEdit={canEdit} />
         </fieldset>
       </Card>
 
@@ -1187,6 +1245,7 @@ function CutBuilder({
             accent="#047857"
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
+            showStd={stdYield}
             onAdd={() => addTo("outputs")}
             onPatch={(id, p) => patchList("outputs", id, p)}
             onDrop={(id) => dropFrom("outputs", id)}
@@ -1208,6 +1267,7 @@ function CutBuilder({
             accent="#b45309"
             disabledFor={lineDisabledForList("wastes")}
             onBlocked={onLineBlocked}
+            showStd={stdYield}
             onAdd={() => addTo("wastes")}
             onPatch={(id, p) => patchList("wastes", id, p)}
             onDrop={(id) => dropFrom("wastes", id)}
@@ -1432,6 +1492,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             accent="#047857"
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
+            showStd={bom.stdYield === true}
             showAny
             onAdd={() => ops.addLine(sel.id, "outputs")}
             onPatch={(id, p) => ops.patchLine(sel.id, "outputs", id, p)}
@@ -1453,6 +1514,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             accent="#b45309"
             disabledFor={lineDisabledForList("wastes")}
             onBlocked={onLineBlocked}
+            showStd={bom.stdYield === true}
             showAny
             onAdd={() => ops.addLine(sel.id, "wastes")}
             onPatch={(id, p) => ops.patchLine(sel.id, "wastes", id, p)}
@@ -1713,11 +1775,164 @@ function MassBalance({ t, math, uom }) {
   );
 }
 
+/* ══════════════ كرت خيار (مفتاح + شرح) ══════════════
+   شكل موحّد لكل مفاتيح الوصفة — أيقونة ملوّنة، عنوان، شرح، ومفتاح.
+   ما بيحمل أي منطق: بس بيمرّر on/onChange زي ما هنّ. */
+
+function OptionCard({ icon, accent, on, onChange, title, hint }) {
+  return (
+    <label
+      className="mrp-opt"
+      style={{
+        ...BOM_UI.opt,
+        ...(on ? { borderColor: accent, background: "#fff" } : null),
+      }}
+    >
+      <span
+        style={{
+          ...BOM_UI.optIcon,
+          background: on ? accent : "#eef4fb",
+          color: on ? "#fff" : "#8aa3b8",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ fontWeight: 900, display: "block", color: on ? accent : "#0f2740" }}>
+          {title}
+        </span>
+        <span style={{ ...S.hint, fontWeight: 700, display: "block", marginTop: 4 }}>
+          {hint}
+        </span>
+      </span>
+      <Switch checked={on} onChange={onChange} />
+    </label>
+  );
+}
+
+/* أنماط خاصة بهالصفحة — ما منلمس عُدّة mrpUi المشتركة. */
+const BOM_UI = {
+  optGrid: {
+    display: "grid", gap: 10, marginTop: 14,
+    gridTemplateColumns: "repeat(auto-fit,minmax(min(330px,100%),1fr))",
+  },
+  opt: {
+    display: "flex", alignItems: "flex-start", gap: 12,
+    border: "1.5px solid #e3edf7", background: "#fafcff", borderRadius: 16,
+    padding: "13px 14px", cursor: "pointer", minWidth: 0,
+  },
+  optIcon: {
+    width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+    display: "grid", placeItems: "center", fontSize: 18,
+  },
+  tip: {
+    marginTop: 12, background: "#f7fbff", border: "1px solid #e6eff8",
+    borderRadius: 12, padding: "10px 13px", color: "#5c7a94", fontWeight: 800,
+  },
+};
+
+/* تحسينات بصريّة مموضعة: تظليل متناوب للأسطر، تحويم، وحلقة تركيز واضحة. */
+const BOM_CSS = `
+#root .mrp-opt { transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease; }
+#root .mrp-opt:hover { box-shadow: 0 8px 20px rgba(15,39,64,.07); }
+#root .mrp-opt:active { transform: scale(.995); }
+#root .mrp table tbody tr:nth-child(even) > td { background: #fbfdff; }
+#root .mrp table tbody tr:hover > td { background: #f2f8ff; }
+#root .mrp input:focus, #root .mrp select:focus {
+  border-color: #9dc4ea !important; box-shadow: 0 0 0 3px rgba(31,111,208,.12);
+}
+`;
+
+/* ══════════════ النسبة المعيارية + التسامح ══════════════
+   خاصية على مستوى الوصفة: لما تنفعّل بيطلع عمود «النسبة المعيارية ٪» على أسطر
+   النواتج والهدر، وبيصير المشرف يشوف جدول مقارنة (فعلي مقابل معياري) بكرته.
+   لوحة تسجيل الجزار ما بتشوف ولا رقم من هالخاصية إطلاقاً. */
+
+function StdYieldCard({ t, bom, patch, canEdit }) {
+  const on = bom.stdYield === true;
+  const tol = num(bom.stdTolPct);
+
+  // ملخّص مباشر: مجموع النسب المعيارية (لكل مسار على حدة بوضع المسارات)
+  const groups = bom.multiPathways === true
+    ? (bom.pathways || []).filter((p) => p.active !== false).map((p) => ({
+        label: p.code || p.name || "—",
+        total: stdTotalOf([...(p.outputs || []), ...(p.wastes || [])]),
+      }))
+    : [{ label: "", total: stdTotalOf([...(bom.outputs || []), ...(bom.wastes || [])]) }];
+
+  return (
+    <div style={{
+      ...S.chipRow, marginTop: 12, padding: "12px 14px", borderRadius: 14,
+      border: `1.5px solid ${on ? "#f3ce9a" : "#e3edf7"}`,
+      background: on ? "#fffaf1" : "#fafcff",
+      display: "block",
+    }}>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
+        <Switch checked={on} disabled={!canEdit} onChange={(v) => patch({ stdYield: v })} />
+        <span style={{ minWidth: 0 }}>
+          🎯 {t({ en: "Standard yield % (supervisor card only)", ar: "النسبة المعيارية ٪ (كرت المشرف فقط)" })}
+          <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
+            {on
+              ? t({
+                  en: "On — a “Standard %” column appears on the output and waste lines (share of the raw weight). The butcher never sees it; the supervisor gets an actual-vs-standard table, and cannot accept work that falls outside the tolerance without writing a justification.",
+                  ar: "مفعّل — بيطلع عمود «النسبة المعيارية ٪» على أسطر النواتج والهدر (حصّة كل صنف من وزن الخام). الجزار ما بيشوفها إطلاقاً؛ المشرف بيشوف جدول مقارنة بين الفعلي والمعياري، وما بيقدر يقبل شغل خارج التسامح إلا بكتابة سبب.",
+                })
+              : t({
+                  en: "Off — no standard percentages are recorded, and the supervisor card shows the recorded weights only.",
+                  ar: "معطّل — ما في نسب معيارية، وكرت المشرف بيعرض الأوزان المسجّلة فقط.",
+                })}
+          </div>
+        </span>
+      </label>
+
+      {on && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 14,
+          marginTop: 12, paddingTop: 12, borderTop: "1px dashed #f0dcc0",
+        }}>
+          <Field
+            label={t({ en: "Tolerance ± (percentage points)", ar: "نسبة التسامح ± (نقطة مئوية)" })}
+            style={{ maxWidth: 190 }}
+          >
+            <NumInput
+              style={{ ...S.inputSm, width: 110 }}
+              disabled={!canEdit}
+              value={bom.stdTolPct}
+              onChange={(v) => patch({ stdTolPct: v })}
+            />
+          </Field>
+          <div style={{ ...S.hint, flex: 1, minWidth: 240 }}>
+            {t({
+              en: `Example: a standard of 30% with ±${money(tol, 1)} accepts an actual share from ${money(Math.max(0, 30 - tol), 1)}% to ${money(30 + tol, 1)}%. Anything outside blocks acceptance.`,
+              ar: `مثال: معياري ٣٠٪ مع ±${money(tol, 1)} بيقبل نسبة فعلية من ${money(Math.max(0, 30 - tol), 1)}٪ لـ${money(30 + tol, 1)}٪. أي شي برّا هالمجال بيمنع القبول.`,
+            })}
+            <div style={{ marginTop: 6 }}>
+              {t({ en: "Lines the butcher did not weigh at all are skipped.", ar: "الأسطر اللي الجزار ما وزنها إطلاقاً بتنستثنى من المقارنة." })}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {groups.map((g, i) => (
+              <Badge
+                key={`${g.label}-${i}`}
+                color={g.total > 100 ? "#a12626" : "#b45309"}
+                bg={g.total > 100 ? "#fff1f1" : "#fff7ea"}
+              >
+                {g.label ? `${g.label} · ` : ""}
+                {t({ en: "standard total", ar: "مجموع المعياري" })}: {money(g.total, 1)}%
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════════ أسطر (نواتج / هدر) ══════════════ */
 
 function CutLines({
   t, isAr, cfg, canEdit, icon, title, sub, addLabel, lines, inputQty,
-  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny,
+  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny, showStd,
 }) {
   const roleNames = preferRoles
     .map((r) => nameOf(ITEM_TYPES.find((x) => x.id === r) || {}, isAr))
@@ -1755,6 +1970,14 @@ function CutLines({
                 <th style={S.th}>{t({ en: "Qty", ar: "الكمية" })}</th>
                 <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
                 <th style={S.th}>{t({ en: "% of input", ar: "٪ من الداخل" })}</th>
+                {showStd && (
+                  <th style={{ ...S.th, minWidth: 150 }} title={t({
+                    en: "Standard share of the raw weight — shown to the supervisor only",
+                    ar: "الحصّة المعيارية من وزن الخام — تظهر للمشرف فقط",
+                  })}>
+                    🎯 {t({ en: "Standard %", ar: "النسبة المعيارية ٪" })}
+                  </th>
+                )}
                 {showAny && (
                   <th style={S.th} title={t({
                     en: "Shared item — ignored when identifying the pathway",
@@ -1806,6 +2029,32 @@ function CutLines({
                         ? <span style={{ color: "#8aa3b8" }}>—</span>
                         : inputQty > 0 && num(l.qty) > 0 ? `${share.toFixed(1)}%` : "—"}
                     </td>
+                    {showStd && (
+                      <td style={S.td}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                          <NumInput
+                            style={{ ...S.inputSm, width: 78 }}
+                            disabled={!canEdit}
+                            value={l.stdPct}
+                            onChange={(v) => onPatch(l.id, { stdPct: v })}
+                          />
+                          <span style={{ fontWeight: 900, color: "#b45309" }}>%</span>
+                          {canEdit && share > 0 && (
+                            <button
+                              type="button"
+                              style={{ ...S.btn, ...S.btnSm, padding: "5px 8px" }}
+                              title={t({
+                                en: "Fill from the quantity above",
+                                ar: "تعبئة من الكمية أعلاه",
+                              })}
+                              onClick={() => onPatch(l.id, { stdPct: Number(share.toFixed(2)) })}
+                            >
+                              ⤓
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     {showAny && (
                       <td style={S.td}>
                         <div style={{ display: "flex", justifyContent: "center" }}>

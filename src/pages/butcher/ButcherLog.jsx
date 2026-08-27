@@ -29,12 +29,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ButcherArt, { ART_IDS } from "./ButcherIcons";
-import { BRANCHES, altNameOf, branchCodeFromLabel, nameOf } from "./butcherOptions";
+import { BRANCHES, altNameOf, branchCodeFromLabel, nameOf, opNoLabel } from "./butcherOptions";
 import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butcherConfig";
 import {
   useMrpConfig, bomInputItem, bomLines, itemName, UNCAT,
   activeCuttingBoms, BOM_FACETS, bomFacetOptions, filterBomsByFacet, facetValueName,
   bomIsMultiPath, activePathwaysOf, bomTags, bomOriginOf, bomKindOf,
+  bomStdOn, bomStdTol, bomNeedsRawExpiry,
 } from "./butcherMrpBridge";
 import { saveOrQueue, useOutbox } from "./butcherOutbox";
 import { progressPct, useDayPlan } from "./butcherDayPlan";
@@ -42,8 +43,14 @@ import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 // سجل الموظفين المشترك (نفس المصدر الذي يستعمله رابط التدريب الداخلي) — قراءة فقط
 import { EMPLOYEES } from "../ohc/OHCUpload";
+// 👥 القوى العاملة — الجسر اللي بيخلّي الشاشة تعرف مين مسجّل دخول.
+// الجزار المربوط بحساب ما بيكتب رقمه ولا بيختار ملحمته: بتنعبّى وبتنقفل.
+import { accountIdentity, useWorkforce } from "../workforce/workforceConfig";
+import { getCurrentUser } from "../../utils/perms";
 
-const LAST_EMP_KEY = "butcher_last_emp";       // cache only — not a store
+const LAST_EMP_KEY = "butcher_last_emp";
+/** مفتاح «وزن المادة الخام» بلوحة الأرقام. */
+const RAW_KEY = "__raw__";       // cache only — not a store
 const LAST_BRANCH_KEY = "butcher_last_branch"; // cache only — not a store
 
 /* أحجام الخطوط — تتغلّب على `#root *` بفضل الكلاس (نفس التخصيص + ترتيب لاحق) */
@@ -135,15 +142,23 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** تنظيف خانة وزن أثناء الكتابة — أرقام ونقطة عشرية واحدة فقط. */
-function cleanDecimal(v) {
+/**
+ * تنظيف خانة وزن: أرقام + فاصلة عشرية واحدة + **خانتان عشريتان كحدّ أقصى**.
+ * الموازين بالملحمة بترجّع رقمين بعد الفاصلة، فـ10.25 مقبول و3.2454 بينقصّ
+ * لـ3.24 وقت الكتابة — بلا ما نترك الجزار يسجّل دقّة وهمية.
+ */
+const KG_DECIMALS = 2;
+function cleanDecimal(v, dp = KG_DECIMALS) {
   const s = normalizeDigits(v).replace(/[^\d.]/g, "");
   const dot = s.indexOf(".");
-  return dot < 0 ? s : s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
+  if (dot < 0) return s;
+  const frac = s.slice(dot + 1).replace(/\./g, "").slice(0, dp);
+  return `${s.slice(0, dot)}.${frac}`;
 }
 
-/** تنظيف خانة عدد صحيح (عدد القطع). */
-const cleanInt = (v) => normalizeDigits(v).replace(/[^\d]/g, "");
+/** تنظيف خانة عدد صحيح (عدد القطع): أرقام صحيحة فقط، بلا فاصلة ولا أصفار بادئة. */
+const cleanInt = (v) =>
+  normalizeDigits(v).replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "");
 
 /** Enter بخانة وزن → الخانة اللي بعدها — إدخال أسرع بلا لمس الشاشة. */
 function focusNextWeight(e) {
@@ -180,6 +195,17 @@ export default function ButcherLog() {
   const [bom, setBom] = useState(null);         // قائمة التقطيع المختارة
   const [carcass, setCarcass] = useState("");   // وزن المادة الخام قبل التقطيع
   const [pieceCount, setPieceCount] = useState(""); // عدد القطع (إن طلبته الوصفة)
+  // «ليست قطعة كاملة»: الداخل جزء من ذبيحة/قطعة (نص فخذ، بواقي…) فعدّ القطع
+  // ما إله معنى — بيرفع إلزامية العدد ويُحفظ كعلامة على السجل.
+  const [partialPiece, setPartialPiece] = useState(false);
+  // الوقت المستغرق للتقطيع — بالدقائق، يكتبه الجزار بنفسه بنافذة تطلع عند الحفظ
+  // تاريخ انتهاء المادة الخام — من ملصق الذبيحة/القطعة الداخلة
+  const [rawExpiry, setRawExpiry] = useState("");
+  // الخانة النشطة للوحة الأرقام: "" = مقفولة ، RAW_KEY = وزن الخام ،
+  // وإلا معرّف الصنف. لوحة الأرقام بتكتب بنفس دوال الإدخال بلا أي منطق جديد.
+  const [activeId, setActiveId] = useState("");
+  const [durationMin, setDurationMin] = useState("");
+  const [askTime, setAskTime] = useState(false);
   const [values, setValues] = useState({});     // { itemId: { w } }
   const [bomSearch, setBomSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -190,14 +216,39 @@ export default function ButcherLog() {
   // تاريخ إدخال البيانات — لحظة بدء التسجيل، بيتحدّث لحظياً ويُثبَّت وقت الحفظ
   const [entryAt, setEntryAt] = useState(() => new Date());
 
+  /* ── 👥 مين مسجّل دخول؟ ──────────────────────────────────────────────
+     الحساب بينعمل بمركز الحسابات، وبينربط بموظف من «القوى العاملة». إذا
+     الحساب مربوط بموظف نشط — **جزار كان أو مشرف** — النظام بيعرف اسمه ورقمه
+     الوظيفي وملحمته من السجل، فما بيضل يكتبهم كل مرّة وما بيقدر يكتب رقم غيره.
+     إذا مش مربوط (كشك مشترك مثلاً) بترجع الشاشة لسلوكها القديم حرفياً. */
+  const { wf: workforce } = useWorkforce();
+  const account = useMemo(() => getCurrentUser(), []);
+  const identity = useMemo(
+    () => accountIdentity(workforce, account?.username, isAr),
+    [workforce, account, isAr]
+  );
+  const locked = !!identity;
+
+  /* ملاحمه هو وبس — المشرف ممكن يغطّي أكتر من ملحمة، فبيختار من بينهنّ.
+     استثناء واحد: النقل اللي لسّا ما بلّش — سجلّه بيقول ملحمة جديدة ما وصلها
+     بعد، وهو فعلياً عم يشتغل بالقديمة، فبترجع القائمة كاملة لهالفترة. */
+  const myBranches = useMemo(() => {
+    const codes = identity?.sites || [];
+    if (!identity || identity.pending || codes.length === 0) return BRANCHES;
+    return BRANCHES.filter((b) => codes.includes(b.code));
+  }, [identity]);
+
   useEffect(() => {
+    /* الكاش المحلّي بيخدم الكشك المشترك بس. الحساب المربوط هويّته بتيجي من
+       السجل، فما منعبّي فوقها رقم آخر جزار استعمل نفس الجهاز. */
+    if (locked) return;
     try {
       const lastEmp = localStorage.getItem(LAST_EMP_KEY);
       const lastBranch = localStorage.getItem(LAST_BRANCH_KEY);
       if (lastEmp) setEmpNo(lastEmp);
       if (lastBranch) setBranch(lastBranch);
     } catch { /* ignore */ }
-  }, []);
+  }, [locked]);
 
   /* ساعة حيّة لتاريخ الإدخال — جهاز الكشك بيضل مفتوح طول الدوام، وبلا
      تحديث كان الحقل يعرض لحظة فتح الشاشة (ساعات قبل) لا لحظة التسجيل. */
@@ -213,22 +264,43 @@ export default function ButcherLog() {
   const dirRec = useMemo(() => EMPLOYEES[String(empNo || "").trim()] || null, [empNo]);
 
   const person = useMemo(() => {
-    const name = butcherRec?.name || dirRec?.name || "";
+    // سجل القوى العاملة أولاً: هو المصدر اللي بيقرّر مين هالحساب وبأي ملحمة.
+    const name = identity?.name || butcherRec?.name || dirRec?.name || "";
     if (!name && !dirRec) return null;
     return {
       name,
       job: dirRec?.job || "",
       branchLabel: dirRec?.branch || "",
-      branchCode: butcherRec?.branch || branchCodeFromLabel(dirRec?.branch),
+      /* اقتراح الملحمة — بس لما تكون وحدة لا لبس فيها. المشرف اللي بيغطّي
+         أكتر من ملحمة بيختار بنفسه، فما منقترح عليه الأولى ومنقفلها. */
+      branchCode:
+        (!identity?.pending && identity?.sites?.length === 1 ? identity.site : "") ||
+        butcherRec?.branch ||
+        branchCodeFromLabel(dirRec?.branch),
     };
-  }, [butcherRec, dirRec]);
+  }, [identity, butcherRec, dirRec]);
 
+  /* «معروف» = مسجّل بسجل القوى العاملة، أو بسجل جزاري الإعدادات، أو بسجل
+     الموظفين المشترك. القوى العاملة أقوى دليل — الحساب نفسه مربوط فيه. */
   const knownButcher =
-    (!!butcherRec && butcherRec.active !== false) || (!butcherRec && !!dirRec);
+    !!identity || (!!butcherRec && butcherRec.active !== false) || (!butcherRec && !!dirRec);
   const butcherBlocked = RULES.restrictButchers === true && !!empNo.trim() && !knownButcher;
 
   /* تعبئة الملحمة تلقائياً من سجل الموظف — بلا دهس اختيار المستخدم */
   const branchTouched = useRef(false);
+
+  /* الحساب المربوط: الرقم والملحمة بينتعبّوا من السجل وبينقفلوا.
+     أي تعديل بالقوى العاملة (نقل لملحمة ثانية مثلاً) بيوصل لهون لحاله. */
+  useEffect(() => {
+    if (!identity) return;
+    setEmpNo(identity.empNo);
+    // ملحمة وحدة = بتنعبّى وبتنقفل. أكتر من وحدة = بيختار هو، فما منفرض عليه
+    // الأولى ومنخلّيه ياخد باله إنه لازم يختار.
+    if (!identity.pending && identity.sites.length === 1) {
+      branchTouched.current = true;
+      setBranch(identity.sites[0]);
+    }
+  }, [identity]);
   useEffect(() => {
     if (branchTouched.current) return;
     if (!person?.branchCode || branch) return;
@@ -506,14 +578,23 @@ export default function ButcherLog() {
   /* عدد القطع — تطلبه بعض الوصفات فقط */
   const needPieces = bom?.requirePieceCount === true;
   const pieceCountNum = Math.floor(num(pieceCount));
-  const pieceMissing = needPieces && !(pieceCountNum > 0);
+  // «ليست قطعة كاملة» بتتجاوز الإلزامية — بس لما تكون الوصفة طالبة العدد أصلاً
+  const partial = needPieces && partialPiece;
+  const pieceMissing = needPieces && !partial && !(pieceCountNum > 0);
+
+  /* تاريخ انتهاء المادة الخام — تطلبه بعض الوصفات فقط */
+  const needExpiry = bomNeedsRawExpiry(bom);
+  const expiryMissing = needExpiry && !rawExpiry;
+  // تنبيه ليّن: التاريخ قبل يوم التقطيع = مادة منتهية — بنحذّر ولا بنمنع،
+  // لأن القرار قرار المشرف مش قرار الشاشة.
+  const expiryPassed = needExpiry && !!rawExpiry && rawExpiry < cutDate;
 
   /* المسار لسا مبهم: أوزان مُدخلة بس ما انحصر المسار بواحد (مشتركة فقط) */
   const pathwayPending = isMultiPath && filled.length > 0 && !determined;
 
   const canSave =
     filled.length > 0 && usedKg > 0 && !rawMissing && !overBlocks && !wasteMissing
-    && !balanceOff && !pieceMissing && !pathwayPending;
+    && !balanceOff && !pieceMissing && !expiryMissing && !pathwayPending;
 
   /* ------- الانتقالات ------- */
 
@@ -573,10 +654,42 @@ export default function ButcherLog() {
     setBom(b);
     setCarcass("");
     setPieceCount("");
+    setPartialPiece(false);
+    setRawExpiry("");
+    setDurationMin("");
+    setActiveId("");
     setValues({});
     setError("");
     setEntryAt(new Date());   // لحظة بداية هالتسجيل، لا لحظة فتح الشاشة
     setStep("cuts");
+  };
+
+  /* ── لوحة الأرقام: قراءة وكتابة الخانة النشطة ──
+     كل شي بيمرق من نفس setCarcass/setVal ونفس cleanDecimal، فالقواعد
+     (خانتان عشريتان، النِّسب، المسارات) ما بتتغيّر أبداً. */
+  const activeItem = activeId && activeId !== RAW_KEY
+    ? ALL.find((c) => c.itemId === activeId) || null
+    : null;
+  const activeValue = activeId === RAW_KEY ? carcass : (values[activeId]?.w || "");
+  const writeActive = (next) => {
+    const v = cleanDecimal(next);
+    if (activeId === RAW_KEY) { setCarcass(v); if (error) setError(""); return; }
+    if (activeId) setVal(activeId, "w", v);
+  };
+  const padKey = (k) => {
+    const cur = String(activeValue ?? "");
+    if (k === "back") return writeActive(cur.slice(0, -1));
+    if (k === "clear") return writeActive("");
+    if (k === ".") return writeActive(cur.includes(".") ? cur : `${cur || "0"}.`);
+    return writeActive(cur + k);
+  };
+  /* «التالي» = أول خانة متاحة بعد الحالية وما إلها وزن — الجزار بيمشي بلمسة. */
+  const padNext = () => {
+    const chain = [RAW_KEY, ...ALL.filter((c) => !itemLocked(c.itemId)).map((c) => c.itemId)];
+    const i = chain.indexOf(activeId);
+    const after = chain.slice(i + 1);
+    const empty = after.find((id) => (id === RAW_KEY ? !(carcassKg > 0) : !(num(values[id]?.w) > 0)));
+    setActiveId(empty || after[0] || "");
   };
 
   const setVal = (cutId, key, v) => {
@@ -594,7 +707,14 @@ export default function ButcherLog() {
     setError("");
   };
 
-  const save = async () => {
+  /* زر الحفظ ما بيحفظ فوراً — بيسأل عن الوقت المستغرق أولاً */
+  const requestSave = () => {
+    if (!canSave || saving) return;
+    setError("");
+    setAskTime(true);
+  };
+
+  const save = async (mins) => {
     if (!canSave || saving) return;
     setSaving(true);
     setError("");
@@ -624,8 +744,27 @@ export default function ButcherLog() {
         animal: inputItem?.ar || "",              // توافق مع View/Summary القديمة
         animalEn: inputItem?.en || "",
         carcassWeightKg: carcassKg,               // وزن المادة الخام قبل التقطيع
-        pieceCount: needPieces ? pieceCountNum : null,   // عدد القطع (إن طلبته الوصفة)
+        // عدد القطع (إن طلبته الوصفة) — و«جزء من قطعة» بتخلّيه بلا قيمة
+        pieceCount: needPieces && !partial ? pieceCountNum : null,
+        partialPiece: partial,
+        // تاريخ انتهاء المادة الخام — يدوي من ملصق المادة الداخلة
+        rawExpiryDate: needExpiry ? rawExpiry : "",
+        // الوقت المستغرق بالتقطيع (دقائق صحيحة) — يدوي من الجزار وقت الحفظ
+        durationMin: mins,
         mode: "bom",
+        // ── لقطة النسبة المعيارية ── تُحفظ بصمت مع السجل حتى لو تعدّلت الوصفة
+        // لاحقاً. لا تُعرض بهذه الشاشة إطلاقاً — مرجعها الوحيد كرت المشرف.
+        stdYieldOn: bomStdOn(bom),
+        stdTolPct: bomStdOn(bom) ? bomStdTol(bom) : 0,
+        // كم سطر إله نسبة معيارية وما انوزن إطلاقاً — يُستثنى من المقارنة، بس
+        // المشرف بيشوف عددهم حتى يعرف إنه الجدول ما بيغطّي الوصفة كاملة
+        stdSkipped: (() => {
+          if (!bomStdOn(bom)) return 0;
+          const ref = isMultiPath ? (determined ? [...chosenLineOf.values()] : []) : ALL;
+          return ref.filter(
+            (l) => num(l.stdPct) > 0 && !(num(values[l.itemId]?.w) > 0)
+          ).length;
+        })(),
         cuts: filled.map((x) => ({
           itemId: x.cut.itemId,
           cutId: x.cut.itemId,          // توافق مع الشاشات القديمة
@@ -637,6 +776,10 @@ export default function ButcherLog() {
           uom: x.cut.uom || "",
           weightKg: roundKg(x.weightKg, RULES.roundTo),
           targetKg: Number(targetKgOf(x.cut).toFixed(3)),
+          // النسبة المعيارية للسطر — من المسار المحدَّد إن وُجد، وإلا من السطر الموحّد
+          stdPct: bomStdOn(bom)
+            ? num(((isMultiPath && chosenLineOf.get(x.cut.itemId)) || x.cut).stdPct)
+            : 0,
           wasteBoneKg: 0,
           pctOfCarcass: Number(pctOf(x.weightKg).toFixed(2)),
         })),
@@ -662,11 +805,14 @@ export default function ButcherLog() {
         animal: itemName(inputItem, isAr),
         origin: bom?.ref || "",
         carcassKg, cutsKg, wasteKg, count: cutCount, netYieldPct, wastePct,
-        pieceCount: needPieces ? pieceCountNum : null,
+        pieceCount: needPieces && !partial ? pieceCountNum : null,
+        partialPiece: partial,
+        rawExpiry: needExpiry ? rawExpiry : "",
+        durationMin: mins,
         cutDate: RULES.allowBackdate === true ? cutDate : todayStr(),
         entryStamp: stampStr(new Date()),
         queued: res.queued === true,
-        refNo: res.refNo || "",     // رقم العملية المميّز من السيرفر
+        refNo: opNoLabel(res.refNo),   // رقم العملية المميّز من السيرفر + بادئة INV-
       });
       setStep("done");
       dayPlan.reload();
@@ -686,6 +832,10 @@ export default function ButcherLog() {
     setBom(null);
     setCarcass("");
     setPieceCount("");
+    setPartialPiece(false);
+    setRawExpiry("");
+    setDurationMin("");
+    setActiveId("");
     setValues({});
     setBomSearch("");
     setError("");
@@ -808,6 +958,11 @@ export default function ButcherLog() {
 
         {step !== "emp" && step !== "done" && (
           <div style={S.crumbs}>
+            {locked && (
+              <span className="bt-chip" style={S.crumb}>
+                👤 {identity.name} · #{identity.empNo}
+              </span>
+            )}
             {branchObj && <span className="bt-chip" style={S.crumb}>{nameOf(branchObj, isAr)}</span>}
             {kindName && <span className="bt-chip" style={S.crumb}>🐑 {kindName}</span>}
             {originName && <span className="bt-chip" style={S.crumb}>🌍 {originName}</span>}
@@ -827,8 +982,88 @@ export default function ButcherLog() {
           </div>
         )}
 
-        {/* 1 — الرقم الوظيفي + الملحمة */}
-        {step === "emp" && (
+        {/* 1 — الهوية + الملحمة.
+             حساب مربوط بموظف (جزار أو مشرف) → بطاقة جاهزة مقفولة
+             (اسم · رقم وظيفي · ملحمة). غير مربوط (كشك مشترك) → نفس الشاشة
+             القديمة حرفياً. */}
+        {step === "emp" && locked && (
+          <div style={S.card}>
+            <div className="bt-q" style={S.q}>
+              {t({ en: "Welcome", ar: "أهلاً" })}
+            </div>
+
+            <div className="bt-rise" style={S.person}>
+              <span style={S.personAvatar}>👤</span>
+              <span style={S.personBody}>
+                <span className="bt-name" style={S.personName}>{identity.name}</span>
+                <span className="bt-lbl" style={S.personJob}>
+                  {t({ en: "Employee no.", ar: "الرقم الوظيفي" })}: {identity.empNo}
+                  {identity.role === "supervisor" && ` · ${t({ en: "Supervisor", ar: "مشرف" })}`}
+                  {identity.role === "manager" && ` · ${t({ en: "Area manager", ar: "مدير منطقة" })}`}
+                </span>
+                {branchObj && (
+                  <span className="bt-lbl" style={S.personBranch}>
+                    {nameOf(branchObj, isAr)}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {identity.pending || identity.sites.length > 1 ? (
+              <>
+                <div className="bt-lbl" style={S.personHint}>
+                  {identity.pending
+                    ? t({
+                        en: "Your transfer has not started yet — choose the butchery you are working in today.",
+                        ar: "نقلك لسّا ما بلّش — اختر الملحمة اللي عم تشتغل فيها اليوم.",
+                      })
+                    : t({
+                        en: "You cover more than one butchery — pick the one you are working in today.",
+                        ar: "إنت مسؤول عن أكتر من ملحمة — اختر اللي عم تشتغل فيها اليوم.",
+                      })}
+                </div>
+                <select
+                  className="bt-cutnum"
+                  value={branch}
+                  onChange={(e) => { branchTouched.current = true; setBranch(e.target.value); }}
+                  style={S.select}
+                >
+                  <option value="">{t({ en: "Select…", ar: "اختر…" })}</option>
+                  {myBranches.map((b) => (
+                    <option key={b.code} value={b.code}>{nameOf(b, isAr)}</option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <div className="bt-lbl" style={S.personHint}>
+                {identity.role === "butcher"
+                  ? t({
+                      en: "Your number and butchery come from the workforce registry. Ask your supervisor if anything here is wrong.",
+                      ar: "رقمك وملحمتك بيجوا من سجل القوى العاملة. إذا في شي غلط هون راجع مشرفك.",
+                    })
+                  : t({
+                      en: "Your number and butchery come from the workforce registry. Whatever you record here is stamped with your own number.",
+                      ar: "رقمك وملحمتك بيجوا من سجل القوى العاملة. أي شي بتسجّله هون بينختم برقمك إنت.",
+                    })}
+              </div>
+            )}
+
+            <button
+              className="bt-btn"
+              onClick={startWithEmp}
+              autoFocus
+              disabled={RULES.requireBranch !== false && !branch}
+              style={{
+                ...S.primary,
+                ...(RULES.requireBranch === false || branch ? null : S.disabled),
+              }}
+            >
+              {t({ en: "Start", ar: "ابدأ" })}
+            </button>
+          </div>
+        )}
+
+        {step === "emp" && !locked && (
           <div style={S.card}>
             <div className="bt-q" style={S.q}>
               {t({ en: "Employee number", ar: "الرقم الوظيفي" })}
@@ -1021,29 +1256,101 @@ export default function ButcherLog() {
                   className="bt-num"
                   value={carcass}
                   onChange={(e) => setCarcass(cleanDecimal(e.target.value))}
+                  onFocus={() => setActiveId(RAW_KEY)}
                   onKeyDown={focusNextWeight}
                   data-bt-w=""
                   inputMode="decimal"
                   autoFocus
                   placeholder="0.00"
-                  style={{ ...S.input, ...(rawMissing && filled.length > 0 ? S.inputBad : null) }}
+                  style={{
+                    ...S.input,
+                    ...(rawMissing && filled.length > 0 ? S.inputBad : null),
+                    ...(activeId === RAW_KEY ? S.inputActive : null),
+                  }}
                 />
+                <span className="bt-lbl" style={S.hintSm}>
+                  {t({
+                    en: "Two decimals max (e.g. 10.25)",
+                    ar: "خانتان عشريتان كحدّ أقصى (مثال: ١٠٫٢٥)",
+                  })}
+                </span>
               </label>
               {needPieces && (
-                <label style={S.rawField}>
+                <div style={S.rawField}>
                   <span className="bt-lbl" style={S.lbl}>
                     {t({ en: "Number of pieces", ar: "عدد القطع" })}
                   </span>
                   <input
                     className="bt-num"
-                    value={pieceCount}
+                    value={partial ? "" : pieceCount}
                     onChange={(e) => setPieceCount(cleanInt(e.target.value))}
                     onKeyDown={focusNextWeight}
                     data-bt-w=""
                     inputMode="numeric"
-                    placeholder="0"
-                    style={{ ...S.input, ...(pieceMissing ? { borderColor: "#e88", background: "#fff7f7" } : null) }}
+                    disabled={partial}
+                    placeholder={partial ? "—" : "0"}
+                    style={{
+                      ...S.input,
+                      ...(pieceMissing ? S.inputBad : null),
+                      ...(partial ? S.inputOff : null),
+                    }}
                   />
+
+                  {/* تجاوز الإلزامية: الداخل جزء من قطعة، فما في عدد قطع */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartialPiece((v) => {
+                        if (!v) setPieceCount("");     // تفعيل = ما في عدد
+                        return !v;
+                      });
+                      if (error) setError("");
+                    }}
+                    style={{ ...S.partialBtn, ...(partial ? S.partialBtnOn : null) }}
+                  >
+                    <span style={{ ...S.partialBox, ...(partial ? S.partialBoxOn : null) }}>
+                      {partial ? "✓" : ""}
+                    </span>
+                    <span style={{ textAlign: "start" }}>
+                      {t({ en: "Not a whole piece", ar: "ليست قطعة كاملة" })}
+                      <span className="bt-lbl" style={S.partialHint}>
+                        {t({
+                          en: "Part of a carcass/cut — no piece count to record.",
+                          ar: "جزء من ذبيحة أو قطعة — ما في عدد قطع يتسجّل.",
+                        })}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {needExpiry && (
+                <label style={S.rawField}>
+                  <span className="bt-lbl" style={S.lbl}>
+                    📅 {t({ en: "Raw material expiry date", ar: "تاريخ انتهاء المادة الخام" })}
+                  </span>
+                  <input
+                    className="bt-cutnum"
+                    type="date"
+                    value={rawExpiry}
+                    onChange={(e) => { setRawExpiry(e.target.value); if (error) setError(""); }}
+                    style={{
+                      ...S.input,
+                      ...(expiryMissing ? S.inputBad : null),
+                      ...(expiryPassed ? { borderColor: "#e88", background: "#fff7f7" } : null),
+                    }}
+                  />
+                  <span className="bt-lbl" style={S.hintSm}>
+                    {expiryPassed
+                      ? t({
+                          en: "⚠️ This date is before the cutting date — the raw material is expired.",
+                          ar: "⚠️ هالتاريخ قبل تاريخ التقطيع — المادة الخام منتهية.",
+                        })
+                      : t({
+                          en: "From the label on the incoming carcass/cut.",
+                          ar: "من الملصق الموجود على الذبيحة/القطعة الداخلة.",
+                        })}
+                  </span>
                 </label>
               )}
 
@@ -1075,6 +1382,39 @@ export default function ButcherLog() {
               </div>
             </div>
 
+            {/* ── شريط التقدّم: كم انوزن من الخام وكم ضلّ ── */}
+            {carcassKg > 0 && (
+              <div style={S.progWrap}>
+                <div style={S.progTop}>
+                  <span className="bt-name" style={{ fontWeight: 900 }}>
+                    {isOver
+                      ? `⚠️ ${t({ en: "Over by", ar: "زايد" })} ${overKg.toFixed(2)} ${KG}`
+                      : `${t({ en: "Remaining", ar: "ضلّ" })} ${remainingKg.toFixed(2)} ${KG}`}
+                  </span>
+                  <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
+                    {usedKg.toFixed(2)} / {carcassKg.toFixed(2)} {KG}
+                  </span>
+                </div>
+                <div style={S.progBar}>
+                  <i style={{
+                    ...S.progFill,
+                    width: `${Math.min(100, carcassKg > 0 ? (cutsKg / carcassKg) * 100 : 0)}%`,
+                    background: "#2f8f83",
+                  }} />
+                  <i style={{
+                    ...S.progFill,
+                    width: `${Math.min(100, carcassKg > 0 ? (wasteKg / carcassKg) * 100 : 0)}%`,
+                    background: "#e0a63e",
+                  }} />
+                </div>
+                <div style={S.progLegend}>
+                  <span>🟩 {t({ en: "Products", ar: "النواتج" })} {cutsKg.toFixed(2)}</span>
+                  <span>🟧 {t({ en: "Waste", ar: "الهدر" })} {wasteKg.toFixed(2)}</span>
+                  <span>⬜ {t({ en: "Left", ar: "الباقي" })} {Math.max(0, remainingKg).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
             {/* بانر المسارات — التوجيه/الحالة (يظهر بوضع المسارات فقط) */}
             {isMultiPath && (
               <div className="bt-sum" style={{
@@ -1101,8 +1441,14 @@ export default function ButcherLog() {
             )}
 
             {/* ── المنتجات النهائية (قائمة موحّدة بلا تكرار) ── */}
-            <div className="bt-lbl" style={S.sectionLbl}>
-              {t({ en: "Final products", ar: "المنتجات النهائية" })}
+            <div style={S.sectionBar}>
+              <span className="bt-name" style={{ fontWeight: 900 }}>
+                🥩 {t({ en: "Final products", ar: "المنتجات النهائية" })}
+              </span>
+              <span className="bt-lbl" style={S.countChip}>
+                {productCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {productCuts.length}{" "}
+                {t({ en: "weighed", ar: "موزون" })}
+              </span>
             </div>
             <div style={S.grid}>
               {productCuts.map((c) => {
@@ -1116,6 +1462,8 @@ export default function ButcherLog() {
                     disabled={itemLocked(c.itemId)}
                     value={values[c.itemId]?.w || ""}
                     onChange={(v) => setVal(c.itemId, "w", v)}
+                    selected={activeId === c.itemId}
+                    onSelect={() => setActiveId(c.itemId)}
                     code={c.sku}
                     pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
                     pctLabel={t({ en: "of raw", ar: "من الخام" })}
@@ -1139,8 +1487,14 @@ export default function ButcherLog() {
             {/* ── الهدر (قائمة موحّدة بلا تكرار) ── */}
             {wasteCuts.length > 0 && (
               <>
-                <div className="bt-lbl" style={S.sectionLbl}>
-                  {t({ en: "Waste", ar: "الهدر" })}
+                <div style={S.sectionBar}>
+                  <span className="bt-name" style={{ fontWeight: 900 }}>
+                    🦴 {t({ en: "Waste", ar: "الهدر" })}
+                  </span>
+                  <span className="bt-lbl" style={S.countChip}>
+                    {wasteCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {wasteCuts.length}{" "}
+                    {t({ en: "weighed", ar: "موزون" })}
+                  </span>
                 </div>
                 <div style={S.wasteRow}>
                   {wasteCuts.map((c) => {
@@ -1152,6 +1506,8 @@ export default function ButcherLog() {
                         disabled={itemLocked(c.itemId)}
                         value={values[c.itemId]?.w || ""}
                         onChange={(v) => setVal(c.itemId, "w", v)}
+                        selected={activeId === c.itemId}
+                        onSelect={() => setActiveId(c.itemId)}
                         code={c.sku}
                         pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
                         pctLabel={t({ en: "of raw", ar: "من الخام" })}
@@ -1250,6 +1606,21 @@ export default function ButcherLog() {
             )}
             {error && <div className="bt-sum" style={S.error}>{error}</div>}
 
+            {/* ── لوحة الأرقام: إدخال بلمسة كبيرة بدل الكيبورد ── */}
+            {activeId && (
+              <NumPad
+                t={t}
+                title={activeId === RAW_KEY
+                  ? t({ en: "Raw material weight", ar: "وزن المادة الخام" })
+                  : (nameOf(activeItem, isAr) || "")}
+                value={activeValue}
+                onKey={padKey}
+                onNext={padNext}
+                onClose={() => setActiveId("")}
+                KG={KG}
+              />
+            )}
+
             {/* رصيف الحفظ — ملتصق بأسفل الشاشة حتى ما يضيع تحت شبكة طويلة */}
             <div style={S.saveDock}>
               {(carcassKg > 0 || filled.length > 0) && (
@@ -1269,7 +1640,7 @@ export default function ButcherLog() {
               )}
               <button
                 className="bt-btn"
-                onClick={save}
+                onClick={requestSave}
                 disabled={!canSave || saving}
                 style={{ ...S.primary, ...(canSave && !saving ? null : S.disabled) }}
               >
@@ -1325,6 +1696,24 @@ export default function ButcherLog() {
                   <b>{saved.pieceCount}</b>
                 </div>
               )}
+              {saved.partialPiece && (
+                <div className="bt-sum" style={S.doneRow}>
+                  <span>{t({ en: "Number of pieces", ar: "عدد القطع" })}</span>
+                  <b>{t({ en: "Not a whole piece", ar: "ليست قطعة كاملة" })}</b>
+                </div>
+              )}
+              {saved.rawExpiry && (
+                <div className="bt-sum" style={S.doneRow}>
+                  <span>📅 {t({ en: "Raw expiry", ar: "انتهاء المادة الخام" })}</span>
+                  <b>{saved.rawExpiry}</b>
+                </div>
+              )}
+              {saved.durationMin > 0 && (
+                <div className="bt-sum" style={S.doneRow}>
+                  <span>⏱️ {t({ en: "Time taken", ar: "الوقت المستغرق" })}</span>
+                  <b>{saved.durationMin} {t({ en: "min", ar: "دقيقة" })}</b>
+                </div>
+              )}
               <div className="bt-sum" style={S.doneRow}>
                 <span>{t({ en: "Total products", ar: "مجموع النواتج" })} ({saved.count})</span>
                 <b>{saved.cutsKg.toFixed(2)} {KG}</b>
@@ -1359,6 +1748,98 @@ export default function ButcherLog() {
             {t({ en: "Back", ar: "رجوع" })}
           </button>
         )}
+      </div>
+
+      {/* ── آخر خطوة قبل الحفظ: الوقت المستغرق بالدقائق ── */}
+      {askTime && (
+        <TimeAskModal
+          t={t}
+          dir={dir}
+          value={durationMin}
+          busy={saving}
+          onChange={(v) => setDurationMin(cleanInt(v))}
+          onCancel={() => setAskTime(false)}
+          onConfirm={async () => {
+            const mins = Math.floor(num(durationMin));
+            if (!(mins > 0)) return;
+            setAskTime(false);
+            await save(mins);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════ نافذة الوقت المستغرق ══════════════
+   الجزار بيكتب الوقت بنفسه بالدقائق (عدد صحيح) — ما في عدّاد تلقائي، لأن
+   العملية بتتقطّع وبترجع وما بيصير نقيس بالساعة من فتح الشاشة لحفظها. */
+
+function TimeAskModal({ t, dir, value, busy, onChange, onCancel, onConfirm }) {
+  const mins = Math.floor(Number(value) || 0);
+  const ok = mins > 0;
+  // عرض مساعد: ٩٠ دقيقة = ساعة و٣٠ دقيقة
+  const human = mins >= 60
+    ? `${Math.floor(mins / 60)} ${t({ en: "h", ar: "ساعة" })} ${mins % 60 ? `${mins % 60} ${t({ en: "min", ar: "دقيقة" })}` : ""}`
+    : "";
+
+  return (
+    <div style={S.overlay} onClick={busy ? undefined : onCancel}>
+      <div dir={dir} className="bt-pop" style={S.askBox} onClick={(e) => e.stopPropagation()}>
+        <div className="bt-name" style={S.askTitle}>
+          ⏱️ {t({ en: "Time taken", ar: "الوقت المستغرق" })}
+        </div>
+        <div className="bt-small" style={S.askSub}>
+          {t({
+            en: "How many minutes did this cutting operation take? Whole minutes only.",
+            ar: "كم دقيقة أخدت عملية التقطيع هاي؟ بالدقائق وأرقام صحيحة فقط.",
+          })}
+        </div>
+
+        <input
+          className="bt-num"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && ok && !busy) onConfirm(); }}
+          inputMode="numeric"
+          autoFocus
+          placeholder="0"
+          style={{ ...S.input, ...S.askInput }}
+        />
+        <div className="bt-small" style={S.askHint}>
+          {t({ en: "minutes", ar: "دقيقة" })}{human ? ` · ${human}` : ""}
+        </div>
+
+        {/* اختصارات سريعة — لمسة وحدة بدل الكتابة */}
+        <div style={S.askChips}>
+          {[15, 30, 45, 60, 90, 120].map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="bt-small"
+              onClick={() => onChange(String(m))}
+              style={{ ...S.askChip, ...(mins === m ? S.askChipOn : null) }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        <div style={S.askBtns}>
+          <button className="bt-btn" onClick={onCancel} disabled={busy} style={S.askCancel}>
+            {t({ en: "Back", ar: "رجوع" })}
+          </button>
+          <button
+            className="bt-btn"
+            onClick={onConfirm}
+            disabled={!ok || busy}
+            style={{ ...S.primary, ...(ok && !busy ? null : S.disabled) }}
+          >
+            {busy
+              ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+              : t({ en: "Save", ar: "حفظ" })}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1455,16 +1936,21 @@ function ItemArt({ item }) {
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
   item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
+  selected, onSelect,
 }) {
   const active = num(value) > 0;
   return (
     <div
       className="bt-press"
+      onClick={disabled ? undefined : onSelect}
       style={{
         ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null),
+        ...(selected ? S.cutCardSel : null),
         ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
       }}
     >
+      {/* علامة «تمّ» — الجزار بيشوف بلمحة شو خلّص */}
+      {active && <span style={S.doneDot}>✓</span>}
       {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
       <span className="bt-name" style={S.name}>
         {nameOf(item, isAr)}
@@ -1480,12 +1966,13 @@ function ItemCard({
           className="bt-cutnum"
           value={value}
           onChange={(e) => onChange(cleanDecimal(e.target.value))}
+          onFocus={onSelect}
           onKeyDown={focusNextWeight}
           data-bt-w=""
           inputMode="decimal"
           placeholder="0.00"
           disabled={disabled}
-          style={S.cutInput}
+          style={{ ...S.cutInput, ...(selected ? S.inputActive : null) }}
         />
       </label>
       {Number.isFinite(pct) && pct > 0 && (
@@ -1500,6 +1987,50 @@ function ItemCard({
           {active && ` (${num(value) >= target ? "+" : "−"}${Math.abs(num(value) - target).toFixed(2)})`}
         </span>
       )}
+    </div>
+  );
+}
+
+/* ════════════════════ لوحة الأرقام (كشك) ════════════════════
+   بديل الكيبورد لجزار على تابلت: أزرار كبيرة، رقم واضح، ومسح بلمسة.
+   ما بتحمل أي منطق — بترجّع الضغطة للصفحة اللي بتكتبها بنفس دوال الإدخال. */
+
+function NumPad({ t, title, value, onKey, onNext, onClose, KG }) {
+  const keys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "back"];
+  return (
+    <div style={S.pad}>
+      <div style={S.padHead}>
+        <span className="bt-name" style={{ fontWeight: 900, minWidth: 0 }}>{title}</span>
+        <span className="bt-num" style={S.padValue}>
+          {value || "0"} <span style={{ fontSize: ".5em", color: "#8aa3b8" }}>{KG}</span>
+        </span>
+        <button type="button" className="bt-small" style={S.padX} onClick={onClose}>
+          ✕ {t({ en: "Close", ar: "إغلاق" })}
+        </button>
+      </div>
+
+      <div style={S.padGrid}>
+        {keys.map((k) => (
+          <button
+            key={k}
+            type="button"
+            className="bt-press"
+            onClick={() => onKey(k)}
+            style={{ ...S.padKey, ...(k === "back" ? S.padKeyAlt : null) }}
+          >
+            {k === "back" ? "⌫" : k}
+          </button>
+        ))}
+      </div>
+
+      <div style={S.padBtns}>
+        <button type="button" className="bt-press" style={S.padClear} onClick={() => onKey("clear")}>
+          ↺ {t({ en: "Clear", ar: "تفريغ" })}
+        </button>
+        <button type="button" className="bt-press" style={S.padNext} onClick={onNext}>
+          {t({ en: "Next", ar: "التالي" })} ➜
+        </button>
+      </div>
     </div>
   );
 }
@@ -1785,7 +2316,6 @@ const S = {
     border: "1px solid #dbe6f2", borderRadius: 999, padding: "2px 12px",
   },
 
-  sectionLbl: { fontWeight: 900, color: "#6b8299", margin: "4px 0 10px" },
 
   card: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 22,
@@ -1816,6 +2346,122 @@ const S = {
     fontWeight: 800, color: "#3c5a75",
   },
   inputBad: { borderColor: "#e88", background: "#fff7f7" },
+  /* شريط التقدّم أعلى خطوة الأوزان */
+  progWrap: {
+    background: "#fff", border: "2px solid #dbe6f2", borderRadius: 18,
+    padding: "12px 14px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
+  },
+  progTop: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" },
+  progBar: {
+    display: "flex", height: 16, borderRadius: 999, overflow: "hidden",
+    background: "#eef4fb", border: "1px solid #dbe6f2",
+  },
+  progFill: { display: "block", height: "100%" },
+  progLegend: {
+    display: "flex", gap: 16, flexWrap: "wrap", color: "#6b8299", fontWeight: 800,
+  },
+  /* عنوان قسم مع عدّاد الإنجاز */
+  sectionBar: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+    margin: "16px 2px 8px",
+  },
+  countChip: {
+    marginInlineStart: "auto", background: "#f4f9ff", border: "1px solid #cfe0f0",
+    color: "#14507f", borderRadius: 999, padding: "5px 14px", fontWeight: 900,
+  },
+  /* الخانة النشطة — مربوطة بلوحة الأرقام */
+  inputActive: {
+    borderColor: "#1f6fd0", background: "#f4f9ff",
+    boxShadow: "0 0 0 4px rgba(31,111,208,.14)",
+  },
+  cutCardSel: {
+    borderColor: "#1f6fd0",
+    boxShadow: "0 0 0 4px rgba(31,111,208,.14), 0 10px 24px rgba(15,39,64,.10)",
+  },
+  doneDot: {
+    position: "absolute", insetInlineEnd: 10, insetBlockStart: 10,
+    width: 26, height: 26, borderRadius: "50%", background: "#047857", color: "#fff",
+    display: "grid", placeItems: "center", fontWeight: 900, fontSize: 15,
+  },
+  /* لوحة الأرقام */
+  pad: {
+    position: "sticky", bottom: 92, zIndex: 30,
+    background: "#fff", border: "2px solid #cfe0f0", borderRadius: 20,
+    padding: 12, marginTop: 14, display: "flex", flexDirection: "column", gap: 10,
+    boxShadow: "0 -10px 34px rgba(15,39,64,.14)",
+  },
+  padHead: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+    borderBottom: "1px dashed #dbe6f2", paddingBottom: 8,
+  },
+  padValue: {
+    marginInlineStart: "auto", fontWeight: 900, color: "#0f2740",
+    background: "#f4f9ff", border: "1px solid #cfe0f0", borderRadius: 12,
+    padding: "4px 16px", minWidth: 120, textAlign: "center",
+  },
+  padX: {
+    border: "1px solid #cfe0f0", background: "#fff", color: "#3c5a75",
+    borderRadius: 12, padding: "8px 14px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
+  padGrid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 },
+  padKey: {
+    border: "2px solid #dbe6f2", background: "#f9fcff", color: "#0f2740",
+    borderRadius: 16, padding: "16px 0", fontFamily: FONT, fontWeight: 900,
+    fontSize: 26, cursor: "pointer",
+  },
+  padKeyAlt: { background: "#fff7ed", borderColor: "#fcd9a4", color: "#8a5a12" },
+  padBtns: { display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 },
+  padClear: {
+    border: "2px solid #dbe6f2", background: "#fff", color: "#3c5a75", borderRadius: 16,
+    padding: "14px 0", fontFamily: FONT, fontWeight: 900, cursor: "pointer",
+  },
+  padNext: {
+    border: "none", background: "#1f6fd0", color: "#fff", borderRadius: 16,
+    padding: "14px 0", fontFamily: FONT, fontWeight: 900, cursor: "pointer",
+  },
+  inputOff: { background: "#eef4fb", color: "#8aa3b8", borderColor: "#dbe6f2", cursor: "not-allowed" },
+  hintSm: { color: "#8aa3b8", fontWeight: 700 },
+  /* نافذة الوقت المستغرق */
+  overlay: {
+    position: "fixed", inset: 0, background: "rgba(15,39,64,.5)",
+    display: "grid", placeItems: "center", padding: 16, zIndex: 90,
+  },
+  askBox: {
+    background: "#fff", borderRadius: 22, width: "min(420px,100%)", padding: 22,
+    fontFamily: FONT, color: "#0f2740", textAlign: "center",
+    boxShadow: "0 24px 60px rgba(15,39,64,.32)",
+    display: "flex", flexDirection: "column", gap: 10,
+  },
+  askTitle: { fontWeight: 900 },
+  askSub: { color: "#6b8299", fontWeight: 700, lineHeight: 1.6 },
+  askInput: { textAlign: "center", fontWeight: 900, letterSpacing: 1 },
+  askHint: { color: "#8aa3b8", fontWeight: 800 },
+  askChips: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" },
+  askChip: {
+    border: "2px solid #cfe0f0", background: "#fff", color: "#14507f",
+    borderRadius: 999, padding: "8px 16px", fontWeight: 900, fontFamily: FONT, cursor: "pointer",
+  },
+  askChipOn: { background: "#1f6fd0", color: "#fff", borderColor: "#1f6fd0" },
+  askBtns: { display: "flex", gap: 10, marginTop: 4 },
+  askCancel: {
+    flex: "0 0 auto", border: "1px solid #cfe0f0", background: "#fff", color: "#3c5a75",
+    borderRadius: 16, padding: "18px 18px", fontWeight: 900, fontFamily: FONT, cursor: "pointer",
+  },
+  /* «ليست قطعة كاملة» — تجاوز إلزامية عدد القطع */
+  partialBtn: {
+    display: "flex", alignItems: "flex-start", gap: 10, width: "100%",
+    border: "2px solid #cfe0f0", background: "#fff", color: "#3c5a75",
+    borderRadius: 14, padding: "11px 13px", fontFamily: FONT, fontWeight: 800,
+    cursor: "pointer", textAlign: "start",
+  },
+  partialBtnOn: { borderColor: "#b45309", background: "#fffaf1", color: "#8a5a12" },
+  partialBox: {
+    width: 26, height: 26, borderRadius: 9, flexShrink: 0,
+    border: "2px solid #cfe0f0", background: "#fff", color: "#fff",
+    display: "grid", placeItems: "center", fontWeight: 900,
+  },
+  partialBoxOn: { borderColor: "#b45309", background: "#b45309" },
+  partialHint: { display: "block", fontWeight: 700, color: "#8aa3b8", marginTop: 3 },
   disabled: { background: "#a9c3dd", cursor: "not-allowed" },
   back: {
     marginTop: 16, width: "100%", border: "1px solid #cfe0f0", background: "#fff",

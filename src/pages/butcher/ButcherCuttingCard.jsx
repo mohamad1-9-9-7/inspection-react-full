@@ -252,6 +252,14 @@ function OpBox({ row, isAr }) {
             {row.pathwayCode ? <span className="cc-chip ref">🛤️ {row.pathwayCode}</span> : null}
             {row.opNo ? <span className="cc-chip ref">{row.opNo}</span> : null}
             {row.time ? <span className="cc-chip">🕒 {row.time}</span> : null}
+            {row.rawExpiry ? (
+              <span className="cc-chip">📅 {isAr ? "ينتهي" : "exp"} {row.rawExpiry}</span>
+            ) : null}
+            {row.durationMin > 0 ? (
+              <span className="cc-chip">
+                ⏱️ {row.durationMin} {isAr ? "دقيقة" : "min"}
+              </span>
+            ) : null}
             {row.reviewStatus === "approved" ? (
               <span className="cc-chip ok">✓ {isAr ? "معتمد" : "Approved"}</span>
             ) : null}
@@ -265,6 +273,9 @@ function OpBox({ row, isAr }) {
           <span className="cc-rawv">{kg(row.carcassKg)}<i> {isAr ? "كجم" : "kg"}</i></span>
           {row.pieceCount !== null && row.pieceCount !== undefined ? (
             <span className="cc-lbl">{row.pieceCount} {isAr ? "قطعة" : "pc"}</span>
+          ) : null}
+          {row.partialPiece ? (
+            <span className="cc-lbl">{isAr ? "ليست قطعة كاملة" : "not a whole piece"}</span>
           ) : null}
         </span>
       </div>

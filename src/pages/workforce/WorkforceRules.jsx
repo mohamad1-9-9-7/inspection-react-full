@@ -4,8 +4,10 @@
 // كل قاعدة مكتوب تحتها **شو بتعمل فعلاً** — قاعدة بلا شرح بتنفتح غلط.
 
 import React from "react";
-import { DEFAULT_RULES } from "./workforceConfig";
-import { Banner, Btn, C, Card, Chip, SectionHead, Select } from "./workforceUi";
+import { DEFAULT_RULES, personName, siteLabel, sitesOfPerson } from "./workforceConfig";
+import {
+  Avatar, Banner, Btn, C, Card, Chip, ELLIPSIS, Empty, SectionHead, Select,
+} from "./workforceUi";
 
 /* ترتيب العرض — مجموعات منطقية لا قائمة طويلة */
 const GROUPS = [
@@ -34,10 +36,10 @@ const GROUPS = [
         enSub: "Stops recording under someone else's name. Costs ~2 seconds per entry.",
       },
       {
-        id: "supervisorCanEnter", kind: "toggle",
-        ar: "المشرف يقدر يسجّل تقطيع", en: "Supervisors may record cuts",
-        arSub: "مطفية = فصل واضح بين اللي بيشتغل واللي بيعتمد.",
-        enSub: "Off = a clean split between who works and who approves.",
+        id: "entrySupervisors", kind: "supervisors",
+        ar: "مين من المشرفين بيقدر يسجّل تقطيع", en: "Which supervisors may record cuts",
+        arSub: "الأصل فصل اللي بيشتغل عن اللي بيعتمد. بس بملحمة فيها ثلاث مشرفين ممكن واحد بس يقطّع فعلياً — فبتسمّيه بالاسم بدل ما تفتحها للكل. القائمة فاضية = ولا مشرف بيسجّل.",
+        enSub: "The default is a clean split between who works and who approves. But one supervisor out of three may actually cut — so you name him, instead of opening it to everyone. Empty list = no supervisor records.",
       },
     ],
   },
@@ -67,11 +69,24 @@ export default function WorkforceRules({ scope, save, t, isAr }) {
   const { wf } = scope;
   const rules = { ...DEFAULT_RULES, ...(wf.rules || {}) };
 
+  /* المشرفون النشطون فقط — تسمية مشرف مغادر ما إلها معنى. */
+  const supervisors = (wf.people || [])
+    .filter((p) => p.role === "supervisor" && p.status === "active")
+    .sort((a, b) => personName(a, isAr).localeCompare(personName(b, isAr)));
+
   const setRule = async (id, value) => {
     await save({ ...wf, rules: { ...rules, [id]: value } });
   };
 
-  const changed = Object.keys(DEFAULT_RULES).filter((k) => rules[k] !== DEFAULT_RULES[k]);
+  const sameAsDefault = (k) => {
+    const a = rules[k];
+    const b = DEFAULT_RULES[k];
+    if (Array.isArray(a) || Array.isArray(b)) {
+      return JSON.stringify(a || []) === JSON.stringify(b || []);
+    }
+    return a === b;
+  };
+  const changed = Object.keys(DEFAULT_RULES).filter((k) => !sameAsDefault(k));
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -106,7 +121,8 @@ export default function WorkforceRules({ scope, save, t, isAr }) {
 
           {g.rules.map((r, i) => {
             const value = rules[r.id];
-            const isDefault = value === DEFAULT_RULES[r.id];
+            const isDefault = sameAsDefault(r.id);
+            const wide = r.kind === "supervisors";
             return (
               <div
                 key={r.id}
@@ -116,7 +132,7 @@ export default function WorkforceRules({ scope, save, t, isAr }) {
                   borderTop: i === 0 ? "none" : `1px solid ${C.lineSoft}`,
                 }}
               >
-                <div style={{ flex: "1 1 300px", minWidth: 0 }}>
+                <div style={{ flex: wide ? "1 1 100%" : "1 1 300px", minWidth: 0, maxWidth: wide ? "none" : 900 }}>
                   <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {isAr ? r.ar : r.en}
                     {!isDefault && (
@@ -130,8 +146,16 @@ export default function WorkforceRules({ scope, save, t, isAr }) {
                   </div>
                 </div>
 
-                <div style={{ flexShrink: 0 }}>
-                  {r.kind === "toggle" ? (
+                <div style={{ flexShrink: 0, ...(wide ? { flex: "1 1 100%" } : null) }}>
+                  {r.kind === "supervisors" ? (
+                    <SupervisorPicker
+                      wf={wf}
+                      supervisors={supervisors}
+                      selected={Array.isArray(value) ? value : []}
+                      onChange={(list) => setRule(r.id, list)}
+                      t={t} isAr={isAr}
+                    />
+                  ) : r.kind === "toggle" ? (
                     <Toggle
                       on={!!value}
                       onChange={() => setRule(r.id, !value)}
@@ -154,6 +178,87 @@ export default function WorkforceRules({ scope, save, t, isAr }) {
           })}
         </Card>
       ))}
+    </div>
+  );
+}
+
+/* ── منتقي المشرفين المسموح لهم بالتسجيل ──
+   كل مشرف صف فيه اسمه ورقمه وملاحمه — بلا الملحمة الاختيار أعمى: بتلاقي
+   اسمين متشابهين وما بتعرف أي واحد قصدك. */
+function SupervisorPicker({ wf, supervisors, selected, onChange, t, isAr }) {
+  const has = (id) => selected.includes(id);
+  const toggle = (id) =>
+    onChange(has(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+
+  if (supervisors.length === 0) {
+    return (
+      <Empty
+        icon="🧑‍🍳"
+        title={t({ en: "No active supervisor registered", ar: "ما في مشرف نشط مسجّل" })}
+        sub={t({
+          en: "Add supervisors in the People tab first — this rule names them one by one.",
+          ar: "ضيف مشرفين من تبويب الموظفين أولاً — هالقاعدة بتسمّيهم واحد واحد.",
+        })}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <Chip bg={selected.length ? "#ecfdf5" : C.band} fg={selected.length ? C.green : C.mute}
+              bd={selected.length ? "#a7f3d0" : "transparent"}>
+          {selected.length} / {supervisors.length} {t({ en: "allowed", ar: "مسموح" })}
+        </Chip>
+        {selected.length > 0 && (
+          <Btn size="sm" tone="quiet" onClick={() => onChange([])}>
+            ✕ {t({ en: "Allow none", ar: "ولا واحد" })}
+          </Btn>
+        )}
+      </div>
+
+      <div style={{
+        display: "grid", gap: 6,
+        gridTemplateColumns: "repeat(auto-fill,minmax(min(260px,100%),1fr))",
+      }}>
+        {supervisors.map((p) => {
+          const on = has(p.id);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              className="wf-row"
+              onClick={() => toggle(p.id)}
+              aria-pressed={on}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, textAlign: "start",
+                border: `1.5px solid ${on ? "#a7f3d0" : C.lineSoft}`,
+                background: on ? "#ecfdf5" : "#fff",
+                borderRadius: 12, padding: "9px 12px", width: "100%",
+                fontFamily: "inherit", cursor: "pointer", color: C.ink,
+              }}
+            >
+              <Avatar
+                name={personName(p, isAr)}
+                color={on ? C.green : C.violet}
+                soft={on ? "#d1fae5" : "#f5f3ff"}
+                size={34}
+              />
+              <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                <div className="wf-name" style={ELLIPSIS(900, "inherit")}>{personName(p, isAr)}</div>
+                <div className="wf-lbl" style={{ ...ELLIPSIS(800, C.faint), marginTop: 1 }}>
+                  #{p.empNo}
+                  {" · "}
+                  {sitesOfPerson(p).map((c) => siteLabel(wf, c, isAr)).join(" · ") || "—"}
+                </div>
+              </div>
+              <span style={{ flexShrink: 0, fontWeight: 900, color: on ? C.green : "#cbd5e1" }}>
+                {on ? "✓" : "○"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

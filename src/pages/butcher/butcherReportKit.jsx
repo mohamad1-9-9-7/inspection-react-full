@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
-import { BRANCHES, TYPE, isSpecialCut, nameOf } from "./butcherOptions";
+import { BRANCHES, TYPE, isSpecialCut, nameOf, opNoLabel } from "./butcherOptions";
 import { butcherLabel, isLocked, useButcherConfig } from "./butcherConfig";
 import { useMrpConfig } from "./butcherMrpBridge";
 
@@ -132,7 +132,11 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     ? p.cuts
     : [{ cutId: p.cutId, cut: p.cut, weightKg: p.weightKg, wasteBoneKg: p.wasteBoneKg }];
 
-  const cuts = rawCuts.map((c) => {
+  // النسبة المعيارية — لقطة محفوظة مع السجل وقت التسجيل (لا تُقرأ من الوصفة الحالية)
+  const stdOn = p.stdYieldOn === true;
+  const stdTolPct = Math.abs(num(p.stdTolPct));
+
+  const cuts0 = rawCuts.map((c) => {
     // الأسماء محفوظة وقت الإدخال — لقطة موثوقة، مع رجوع للّغة الأخرى
     const name = (isAr ? c.cut : c.cutEn) || c.cut || c.cutEn || "—";
     const alt = (isAr ? c.cutEn : c.cut) || "";
@@ -143,6 +147,8 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
       itemId: c.itemId || c.cutId || "",
       name,
       nameAlt: alt && alt !== name ? alt : "",
+      // الاسم الإنجليزي صراحةً — شاشات تواجه Odoo بتعرضه مهما كانت لغة الواجهة
+      nameEn: c.cutEn || c.cut || "—",
       sku: c.sku || c.code || "",
       uom: c.uom || "KG",
       kind,
@@ -151,15 +157,46 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
       targetKg,
       // انحراف عن هدف الوصفة (٪) — يظهر فقط لما يكون في هدف
       deltaPct: targetKg > 0 ? ((weightKg - targetKg) / targetKg) * 100 : null,
+      stdPct: num(c.stdPct),
     };
   });
 
   const carcassKg = num(p.carcassWeightKg);
-  const cutsKg = cuts.reduce((s, c) => s + (c.isWaste ? 0 : c.weightKg), 0);
-  const wasteKg = cuts.reduce((s, c) => s + num(c.wasteBoneKg) + (c.isWaste ? c.weightKg : 0), 0);
+  const cutsKg = cuts0.reduce((s, c) => s + (c.isWaste ? 0 : c.weightKg), 0);
+  const wasteKg = cuts0.reduce((s, c) => s + num(c.wasteBoneKg) + (c.isWaste ? c.weightKg : 0), 0);
   // بلا وزن مادة خام (سجلات الأجزاء القديمة) الأساس = المُدخَل كلّه
   const baseKg = carcassKg > 0 ? carcassKg : cutsKg + wasteKg;
   const accounted = cutsKg + wasteKg;
+
+  /* ── مقارنة النسبة الفعلية بالنسبة المعيارية ──
+     الفعلي = وزن السطر ÷ وزن الخام. التسامح بالنقاط المئوية (معياري ٣٠٪ ± ٥
+     ⇒ يُقبل من ٢٥٪ لـ٣٥٪). السطر اللي ما انوزن إطلاقاً بيُستثنى من المقارنة. */
+  const cuts = cuts0.map((c) => {
+    const actualPct = baseKg > 0 ? (c.weightKg / baseKg) * 100 : 0;
+    const checked = stdOn && c.stdPct > 0 && c.weightKg > 0;
+    const deltaPts = checked ? actualPct - c.stdPct : null;
+    return {
+      ...c,
+      actualPct,
+      stdChecked: checked,
+      stdDeltaPts: deltaPts,
+      stdOk: checked ? Math.abs(deltaPts) <= stdTolPct + 1e-9 : true,
+    };
+  });
+
+  const stdLines = cuts.filter((c) => c.stdChecked);
+  const stdOffLines = stdLines.filter((c) => !c.stdOk);
+  const stdCheck = {
+    on: stdOn,                       // الوصفة مفعّل عليها الفحص
+    tolPct: stdTolPct,
+    lines: stdLines,                 // الأسطر المفحوصة فعلاً
+    off: stdOffLines,                // الأسطر خارج التسامح
+    // أسطر معيارية ما انوزنت إطلاقاً — عدّها الكشك وقت الحفظ (الأسطر الفاضية
+    // ما بتنحفظ بالسجل، فما فينا نستنتجها من `cuts`)
+    skipped: stdOn ? num(p.stdSkipped) : 0,
+    // مطابق = ما في سطر خارج التسامح (بلا أسطر مفحوصة = مطابق، ما في شي يُقارن)
+    pass: stdOffLines.length === 0,
+  };
 
   return {
     id: rec.id || rec._id || p.savedAt,
@@ -167,7 +204,7 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     day, entryDay, time,
     // رقم العملية المميّز — «POS 10 — 00001»، يخصّصه السيرفر لكل فرع على حدة.
     // السجلات القديمة (قبل التفعيل) بلا رقم — نعرضها بشرطة بدل فراغ.
-    opNo: p.refNo || "",
+    opNo: opNoLabel(p.refNo),
     employeeNo: p.butcherName
       ? `${p.butcherName} (${p.employeeNo || "—"})`
       : butcherLabel(cfg, p.employeeNo),
@@ -198,6 +235,7 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     inputItemId: p.inputItemId || "",
     inputSku: p.inputSku || "",
     inputName: (isAr ? p.animal : p.animalEn) || p.animal || p.animalEn || "—",
+    inputNameEn: p.animalEn || p.animal || "—",
     inputNameAlt: (() => {
       const main = (isAr ? p.animal : p.animalEn) || p.animal || p.animalEn || "";
       const alt = (isAr ? p.animalEn : p.animal) || "";
@@ -205,16 +243,89 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     })(),
     pieceCount: Number.isFinite(Number(p.pieceCount)) && p.pieceCount !== null
       ? Number(p.pieceCount) : null,
+    // الوصفة طالبة عدد القطع بس الداخل جزء من ذبيحة/قطعة — الجزار تجاوزها بوعي
+    partialPiece: p.partialPiece === true,
+    // تاريخ انتهاء المادة الخام (yyyy-mm-dd) — "" إذا الوصفة ما بتطلبه
+    rawExpiry: String(p.rawExpiryDate || "").slice(0, 10),
+    // الوقت المستغرق بالتقطيع (دقائق) — يكتبه الجزار وقت الحفظ، وبلاه null
+    durationMin: Number.isFinite(Number(p.durationMin)) && num(p.durationMin) > 0
+      ? Math.floor(num(p.durationMin)) : null,
     // الأوزان
     carcassKg, cutsKg, wasteKg, baseKg, cuts,
     // الفاقد غير المسجّل = خام − (نواتج + هدر)
     unaccountedKg: carcassKg > 0 ? carcassKg - accounted : 0,
     yieldPct: pct(cutsKg, baseKg),
     wastePct: pct(wasteKg, baseKg),
+    // مقارنة المعياري — تُستهلك بكرت المشرف (وحده) للعرض ولمنع القبول
+    stdCheck,
     review: p.review || null,
     reviewStatus: p.review?.status || "",
+    // طلب التعديل/الإلغاء المرفوع من مشرف الملحمة (إن وُجد)
+    changeRequest: p.changeRequest || null,
+    crStatus: p.changeRequest?.status || "",
   };
 }
+
+/* ══════════════ طلبات التعديل والإلغاء ══════════════
+ *
+ * جزار خربط بالأرقام → مشرف ملحمته بيرفع طلب لمسؤول المخزون.
+ *
+ * الحالات الثلاث ومعناها:
+ *   open      طلب مرفوع → **العملية محجورة فوراً**: بتختفي من كل الشاشات
+ *             والتقارير والتصافي، وبتضل بادية لمشرف ملحمتها وللمسؤول وحدهم.
+ *             السبب: الرقم الغلط ما بيجوز يضل يشوّه التصافي لحد ما المسؤول
+ *             يفضى — بس المشرف بنفس الوقت ما بيملك سلطة إتلاف.
+ *   approved  المسؤول وافق → إلغاء نهائي موثّق. السجل بيضل بالقاعدة (حذفه
+ *             فعلياً بيكسر تتبّع المنتج والأرقام المرجعية INV- وبيخلّي فجوة
+ *             بالعدّاد ما إلها تفسير) بس ما بيبيّن إلا للمسؤول والأدمن.
+ *   rejected  المسؤول رفض → العملية بترجع طبيعية ١٠٠٪ وبتنحسب متل قبل.
+ *
+ * ما في «تصحيح أرقام» ضمن الطلب عن قصد: السجل لازم يضل يمثّل شو أدخل
+ * الجزار فعلاً. الغلط بينلغى والجزار بيعيد التسجيل صح.
+ */
+
+/** حالات طلب التعديل. */
+export const CR_STATUS = {
+  open:     { ar: "بانتظار المسؤول", en: "Awaiting officer", bg: "#fff7ed", fg: "#9a3412", bd: "#fed7aa" },
+  approved: { ar: "ملغاة",           en: "Cancelled",        bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
+  rejected: { ar: "طلب مرفوض",       en: "Request rejected", bg: "#f8fafc", fg: "#475569", bd: "#e2e8f0" },
+};
+
+/** نوع الطلب. */
+export const CR_KINDS = {
+  disable: { ar: "تعطيل العملية", en: "Disable the record" },
+  delete:  { ar: "إلغاء العملية",  en: "Cancel the record" },
+};
+
+/** طلب مرفوع لسّا ما انبتّ فيه. */
+export const isQuarantined = (row) => row?.crStatus === "open";
+
+/** ملغاة نهائياً بموافقة المسؤول. */
+export const isCancelled = (row) => row?.crStatus === "approved";
+
+/** مشمولة بأي حالة بتخفيها عن الناس العاديين. */
+export const isHidden = (row) => isQuarantined(row) || isCancelled(row);
+
+/**
+ * هل يشوف هذا المستخدم هذا السجل؟
+ *
+ * @param row     صف مُطبَّع
+ * @param viewer  { isAdmin, isOfficer, siteScope: string[] }
+ *                `siteScope` = ملاحم المشرف؛ فاضية = ما بيشوف المحجور.
+ */
+export function canSeeRow(row, viewer = {}) {
+  if (!isHidden(row)) return true;
+  if (viewer.isAdmin || viewer.isOfficer) return true;
+  // المحجور بيبين لمشرف ملحمته حتى يتابع طلبه؛ الملغى نهائياً لأ.
+  if (isQuarantined(row)) {
+    const sites = viewer.siteScope || [];
+    return sites.includes(String(row.branchCode || ""));
+  }
+  return false;
+}
+
+/** الصفوف اللي بتنحسب بالتقارير والمجاميع — المحجور والملغى ما بينحسبوا. */
+export const countableRows = (rows) => (rows || []).filter((r) => !isHidden(r));
 
 /** كل الصفوف المُطبَّعة مرتّبة (الأحدث أولاً). */
 export function useNormalizedRows(records, { cfg, mrpCfg, isAr }) {

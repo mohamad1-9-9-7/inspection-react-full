@@ -15,9 +15,9 @@ export const C = {
   band: "#f6faff",      // خلفية شريط داخلي — بديل الحدود
   line: "#e3edf7",
   lineSoft: "#f0f6fc",
-  ink: "#0f2740",
-  mute: "#64809a",
-  faint: "#95acc0",
+  ink: "#0a1f36",
+  mute: "#3f5f7d",
+  faint: "#63819c",
   blue: "#1f6fd0",
   green: "#059669",
   amber: "#d97706",
@@ -42,15 +42,18 @@ export const AR_NUM = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "
 
 /* أحجام الخط — تتغلّب على `#root *{font-size:14px!important}` بكلاس أخصّ */
 export const WF_CSS = `
-#root .wf, #root .wf * { font-size: 15px !important; }
-#root .wf-title  { font-size: 27px !important; }
-#root .wf-h      { font-size: 19px !important; }
-#root .wf-h2     { font-size: 16px !important; }
-#root .wf-sub    { font-size: 13.5px !important; }
-#root .wf-lbl    { font-size: 12.5px !important; }
-#root .wf-kpi    { font-size: 27px !important; }
-#root .wf-chip   { font-size: 12.5px !important; }
-#root .wf-name   { font-size: 15.5px !important; }
+#root .wf, #root .wf * { font-size: 15.5px !important; }
+#root .wf, #root .wf input, #root .wf select, #root .wf textarea, #root .wf button {
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+#root .wf-title  { font-size: 29px !important; }
+#root .wf-h      { font-size: 20px !important; }
+#root .wf-h2     { font-size: 17px !important; }
+#root .wf-sub    { font-size: 14.5px !important; }
+#root .wf-lbl    { font-size: 13.5px !important; }
+#root .wf-kpi    { font-size: 29px !important; }
+#root .wf-chip   { font-size: 13px !important; }
+#root .wf-name   { font-size: 16.5px !important; }
 
 #root .wf-press  { transition: transform .13s ease, box-shadow .18s ease, border-color .18s ease; }
 #root .wf-press:hover  { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(15,39,64,.10); }
@@ -62,10 +65,10 @@ export const WF_CSS = `
 #root .wf-rise { animation: wfRise .22s ease both; }
 
 @media (max-width: 860px) {
-  #root .wf, #root .wf * { font-size: 14.5px !important; }
-  #root .wf-title { font-size: 22px !important; }
-  #root .wf-kpi   { font-size: 22px !important; }
-  #root .wf-h     { font-size: 17px !important; }
+  #root .wf, #root .wf * { font-size: 15px !important; }
+  #root .wf-title { font-size: 23px !important; }
+  #root .wf-kpi   { font-size: 23px !important; }
+  #root .wf-h     { font-size: 18px !important; }
   #root .wf-hidesm { display: none !important; }
 }
 `;
@@ -109,14 +112,14 @@ export function Field({ label, hint, children, span }) {
     <label style={{ display: "grid", gap: 6, minWidth: 0, gridColumn: span ? `span ${span}` : undefined }}>
       <span className="wf-lbl" style={{ fontWeight: 800, color: C.mute }}>{label}</span>
       {children}
-      {hint && <span className="wf-lbl" style={{ color: C.faint, fontWeight: 600, lineHeight: 1.6 }}>{hint}</span>}
+      {hint && <span className="wf-lbl" style={{ color: C.faint, fontWeight: 700, lineHeight: 1.6 }}>{hint}</span>}
     </label>
   );
 }
 
 export const inputStyle = {
   border: `1px solid #d7e5f3`, borderRadius: 11, padding: "10px 13px",
-  fontFamily: FONT, fontWeight: 700, color: C.ink, background: "#fff",
+  fontFamily: FONT, fontWeight: 800, color: C.ink, background: "#fff",
   width: "100%", boxSizing: "border-box", outline: "none",
 };
 
@@ -182,7 +185,7 @@ export function SectionHead({ icon, title, sub, right }) {
           <span>{icon}</span><span>{title}</span>
         </div>
         {sub && (
-          <div className="wf-sub" style={{ color: C.mute, fontWeight: 600, marginTop: 4, lineHeight: 1.65, maxWidth: 620 }}>
+          <div className="wf-sub" style={{ color: C.mute, fontWeight: 700, marginTop: 4, lineHeight: 1.65, maxWidth: 780 }}>
             {sub}
           </div>
         )}
@@ -201,7 +204,7 @@ export function Empty({ icon = "📭", title, sub, action }) {
       <div style={{ fontSize: 40, lineHeight: 1, opacity: 0.75 }}>{icon}</div>
       <div className="wf-h2" style={{ fontWeight: 900, color: C.ink }}>{title}</div>
       {sub && (
-        <div className="wf-sub" style={{ color: C.mute, fontWeight: 600, maxWidth: 460, lineHeight: 1.7 }}>
+        <div className="wf-sub" style={{ color: C.mute, fontWeight: 700, maxWidth: 520, lineHeight: 1.7 }}>
           {sub}
         </div>
       )}
@@ -220,7 +223,7 @@ export function Banner({ tone = "info", children, onClose }) {
   return (
     <div style={{
       background: tones.bg, color: tones.fg, border: `1px solid ${tones.bd}`,
-      borderRadius: 12, padding: "11px 14px", fontWeight: 700, lineHeight: 1.7,
+      borderRadius: 12, padding: "11px 14px", fontWeight: 800, lineHeight: 1.7,
       display: "flex", alignItems: "flex-start", gap: 9,
     }}>
       <span aria-hidden="true" style={{ flexShrink: 0 }}>{tones.icon}</span>
@@ -255,7 +258,7 @@ export function Modal({ title, icon, dir, wide, onClose, children, footer, z = 1
         className="wf wf-rise"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff", borderRadius: 20, width: wide ? "min(820px,100%)" : "min(560px,100%)",
+          background: "#fff", borderRadius: 20, width: wide ? "min(1040px,100%)" : "min(620px,100%)",
           maxHeight: "92vh", overflow: "auto", color: C.ink,
           boxShadow: "0 32px 72px rgba(9,25,43,.32)",
         }}
@@ -296,6 +299,12 @@ export function Modal({ title, icon, dir, wide, onClose, children, footer, z = 1
 }
 
 /** شبكة حقول متجاوبة. */
+/* سطر واحد لا يلتفّ ولا يزيح جاره — الاسم الطويل بينقصّ بثلاث نقاط. */
+export const ELLIPSIS = (weight, color) => ({
+  fontWeight: weight, color,
+  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+});
+
 export const grid2 = {
-  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(210px,100%),1fr))", gap: 14,
+  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(230px,100%),1fr))", gap: 14,
 };

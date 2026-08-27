@@ -70,7 +70,8 @@ export function buildMoves(rows, { t, isAr }) {
       sortKey: `${r.day}T${r.time || "00:00"}`,
       branchName: r.branchName,                            // ٣ الموقع
       branchCode: r.branchCode,
-      butcher: r.employeeNo,                               // ٤ القصاب
+      butcher: r.employeeNo,                               // ٤ القصاب (الاسم والرقم)
+      butcherNo: r.employeeNoRaw || "",                    // الرقم الوظيفي وحده — للشاشة
       butcherJob: r.payload?.butcherJob || "",
       bomRef: r.bomRef || "",                              // ٥ الوصفة والمسار
       bomCat: r.bomCatName || "",
@@ -101,6 +102,7 @@ export function buildMoves(rows, { t, isAr }) {
       kind: "raw",                                         // ٧ نوع المنتج
       kindLabel: L.raw,
       product: r.inputName,                                // ٨ المنتج
+      productEn: r.inputNameEn || r.inputName,              // الاسم الإنجليزي للشاشة
       productAlt: r.inputNameAlt || "",
       sku: r.inputSku || "",
       qty: inQty,                                          // ٩ الكمية
@@ -109,6 +111,9 @@ export function buildMoves(rows, { t, isAr }) {
       targetKg: 0,
       deltaPct: null,
       pieceCount: r.pieceCount,
+      partialPiece: r.partialPiece === true,      // جزء من قطعة — ما في عدّ
+      durationMin: r.durationMin || null,         // الوقت المستغرق (دقائق)
+      rawExpiry: r.rawExpiry || "",               // تاريخ انتهاء المادة الخام
       from: stockLoc(r.branchCode, isAr),
       to: prodLoc(isAr),
     });
@@ -125,6 +130,7 @@ export function buildMoves(rows, { t, isAr }) {
         kind,
         kindLabel: L[kind],
         product: c.name,
+        productEn: c.nameEn || c.name,
         productAlt: c.nameAlt || "",
         sku: c.sku || "",
         qty: c.weightKg,
@@ -133,6 +139,9 @@ export function buildMoves(rows, { t, isAr }) {
         targetKg: c.targetKg || 0,
         deltaPct: c.deltaPct,
         pieceCount: null,
+        partialPiece: false,
+        durationMin: r.durationMin || null,
+        rawExpiry: r.rawExpiry || "",
         from: prodLoc(isAr),
         to: stockLoc(r.branchCode, isAr),
       });
@@ -145,16 +154,20 @@ export function buildMoves(rows, { t, isAr }) {
 /* ══════════════ الأعمدة — مصدر واحد للجدول والفرز والتصدير ══════════════ */
 
 export const MOVE_COLS = [
-  { id: "date",    ar: "التاريخ",        en: "Date",            sort: "sortKey",    w: 128 },
+  { id: "date",    ar: "تاريخ التقطيع",  en: "Cut Date",        sort: "sortKey",    w: 128 },
   { id: "ref",     ar: "رمز العملية",    en: "Reference",       sort: "ref",        w: 150 },
-  { id: "loc",     ar: "الموقع",         en: "Location",        sort: "branchName", w: 150 },
-  { id: "butcher", ar: "القصاب",         en: "Butcher",         sort: "butcher",    w: 168 },
-  { id: "bom",     ar: "المسار والوصفة", en: "BOM · Pathway",   sort: "bomKey",     w: 176 },
-  { id: "move",    ar: "الحركة",         en: "Move",            sort: "dir",        w: 226 },
+  { id: "loc",     ar: "الموقع",         en: "Location",        sort: "branchName", w: 110 },
+  { id: "butcher", ar: "القصاب",         en: "Butcher",         sort: "butcher",    w: 118 },
+  { id: "bom",     ar: "المسار والوصفة", en: "BOM · Pathway",   sort: "bomKey",     w: 132 },
+  { id: "cat",     ar: "الفئة",          en: "Category",        sort: "bomCat",     w: 150 },
+  { id: "move",    ar: "الحركة",         en: "Move",            sort: "dir",        w: 122 },
   { id: "ptype",   ar: "نوع المنتج",     en: "Product Type",    sort: "kind",       w: 124 },
   { id: "product", ar: "المنتج",         en: "Product",         sort: "product",    w: 268 },
-  { id: "qty",     ar: "الكمية",         en: "Quantity Done",   sort: "qty",        w: 120, num: true },
-  { id: "uom",     ar: "وحدة القياس",    en: "Unit of Measure", sort: "uom",        w: 112 },
+  { id: "qty",     ar: "الوزن",          en: "Weight",          sort: "qty",        w: 120, num: true },
+  { id: "uom",     ar: "UOM",            en: "UOM",             sort: "uom",        w: 76 },
+  { id: "pcs",     ar: "عدد القطع",      en: "Pieces",          sort: "pieceCount", w: 104, num: true },
+  { id: "dur",     ar: "الوقت (دقيقة)",  en: "Time (min)",      sort: "durationMin", w: 112, num: true },
+  { id: "exp",     ar: "انتهاء الخام",   en: "Raw Expiry",      sort: "rawExpiry",  w: 126 },
   { id: "pct",     ar: "النسبة الفعلية", en: "Actual %",        sort: "pctActual",  w: 124, num: true },
   { id: "state",   ar: "الحالة",         en: "Status",          sort: "state",      w: 120 },
   { id: "by",      ar: "تدققت من قبل",   en: "Checked By",      sort: "checkedBy",  w: 162 },
@@ -173,10 +186,16 @@ export function buildMovesAoa(moves, { isAr, cols = MOVE_COLS } = {}) {
       case "loc":     return `${m.branchName}${m.branchCode ? ` (${m.branchCode})` : ""}`;
       case "butcher": return m.butcher;
       case "bom":     return `${m.bomRef || "—"}${m.pathwayCode ? ` / ${m.pathwayCode}` : ""}`;
+      case "cat":     return m.bomCat || "";
       case "move":    return `${m.dirLabel}: ${m.from} → ${m.to}`;
       case "ptype":   return m.kindLabel;
       case "product": return `${m.sku ? `[${m.sku}] ` : ""}${m.product}`;
       case "qty":     return Number(m.qty.toFixed(3));
+      case "pcs":     if (m.partialPiece) return isAr ? "جزء من قطعة" : "part of a piece";
+        return m.pieceCount === null || m.pieceCount === undefined
+          ? "" : Number(m.pieceCount);
+      case "dur":     return m.durationMin > 0 ? Number(m.durationMin) : "";
+      case "exp":     return m.rawExpiry || "";
       case "uom":     return m.uom;
       case "pct":     return Number(m.pctActual.toFixed(2));
       case "state":   return m.stateLabel;
@@ -194,6 +213,7 @@ const GROUPS = [
   { id: "branch",  ar: "الموقع",        en: "Location",     get: (m) => m.branchName || "—" },
   { id: "butcher", ar: "القصاب",        en: "Butcher",      get: (m) => m.butcher || "—" },
   { id: "bom",     ar: "الوصفة",        en: "BOM",          get: (m) => m.bomRef || "—" },
+  { id: "cat",     ar: "الفئة",         en: "Category",     get: (m) => m.bomCat || "—" },
   { id: "pathway", ar: "المسار",        en: "Pathway",      get: (m) => m.pathwayLabel || "—" },
   { id: "dir",     ar: "نوع الحركة",    en: "Move type",    get: (m) => m.dirLabel },
   { id: "kind",    ar: "نوع المنتج",    en: "Product type", get: (m) => m.kindLabel },
@@ -228,6 +248,7 @@ const SEARCH_FIELDS = [
   { id: "ref",     ar: "رمز العملية", en: "Reference", get: (m) => m.ref },
   { id: "butcher", ar: "القصاب",      en: "Butcher",   get: (m) => m.butcher },
   { id: "branch",  ar: "الموقع",      en: "Location",  get: (m) => `${m.branchName} ${m.branchCode}` },
+  { id: "cat",     ar: "الفئة",       en: "Category",  get: (m) => m.bomCat || "" },
 ];
 
 /** مفضّلات جاهزة — بحث محفوظ بضغطة واحدة. */
@@ -238,6 +259,7 @@ const FAVORITES = [
   { id: "fav_dev",   ar: "انحرافات عن الوصفة",   en: "Recipe deviations",  filters: ["f_dev"], group: ["product"] },
   { id: "fav_day",   ar: "تجميع حسب اليوم",      en: "By cut date",        filters: [], group: ["date"] },
   { id: "fav_who",   ar: "تجميع حسب القصاب",     en: "By butcher",         filters: [], group: ["butcher", "kind"] },
+  { id: "fav_cat",   ar: "تجميع حسب الفئة",      en: "By category",        filters: [], group: ["cat", "product"] },
 ];
 
 const PAGE_SIZES = [20, 80, 200, 500];
@@ -456,7 +478,7 @@ export const ODOO_CSS = `
 #root .odv .odv-table { width: 100%; border-collapse: collapse; background: #fff; }
 #root .odv .odv-table th, #root .odv .odv-table td { font-size: 13px !important; }
 #root .odv .odv-table thead th {
-  position: sticky; top: 0; z-index: 3; background: #fff; color: #4c4c4c; font-weight: 500;
+  position: sticky; top: 0; z-index: 3; background: #fff; color: #111; font-weight: 800;
   text-align: start; padding: 7px 8px; border-bottom: 1px solid #cfcfcf; white-space: nowrap;
   cursor: pointer; user-select: none;
 }
@@ -464,27 +486,27 @@ export const ODOO_CSS = `
 #root .odv .odv-table thead th.num, #root .odv .odv-table td.num { text-align: end; }
 #root .odv .odv-table thead th .sc { color: ${PLUM}; margin-inline-start: 4px; font-size: 10px !important; }
 #root .odv .odv-table tbody td {
-  padding: 5px 8px; border-bottom: 1px solid #ededed; color: #333; vertical-align: middle;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 5px 8px; border-bottom: 1px solid #ededed; color: #111; font-weight: 700;
+  vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #root .odv .odv-table tbody tr.odv-row:hover > td { background: #f4f0f3 !important; cursor: pointer; }
 #root .odv .odv-table tbody tr.odv-row.sel > td { background: #f7f2f6 !important; }
 #root .odv .odv-table tbody tr.odv-grow > td {
-  background: #eee !important; font-weight: 600; color: #222; border-bottom: 1px solid #dcdcdc;
+  background: #eee !important; font-weight: 900; color: #000; border-bottom: 1px solid #dcdcdc;
   padding: 6px 8px;
 }
 #root .odv .odv-table tbody tr.odv-grow:hover > td { background: #e6e6e6 !important; cursor: pointer; }
 #root .odv .odv-table tfoot td {
   position: sticky; bottom: 0; background: #f7f7f7; border-top: 1px solid #cfcfcf;
-  font-weight: 700; color: #222; padding: 6px 8px; white-space: nowrap;
+  font-weight: 900; color: #000; padding: 6px 8px; white-space: nowrap;
 }
 #root .odv .odv-cbx { width: 30px; text-align: center !important; padding-inline: 6px !important; }
 #root .odv .odv-cbx input { cursor: pointer; }
 #root .odv .odv-caret { display: inline-block; width: 12px; color: #666; font-size: 11px !important; }
-#root .odv .odv-sub { display: block; color: #9b9b9b; font-size: 11px !important; line-height: 1.35; }
+#root .odv .odv-sub { display: block; color: #6b6b6b; font-weight: 600; font-size: 11px !important; line-height: 1.35; }
 #root .odv .odv-link { color: #017e84; font-weight: 500; }
 #root .odv .odv-row:hover .odv-link { text-decoration: underline; }
-#root .odv .odv-sku { color: #7d7d7d; }
+#root .odv .odv-sku { color: #444; font-weight: 800; }
 #root .odv .odv-arrow { color: #9b9b9b; padding: 0 4px; }
 
 /* ── وسوم وحالات ── */
@@ -873,6 +895,7 @@ export default function OdooMoves({
         depth,
         rows: sub,
         qty: sub.reduce((s, m) => s + m.qty, 0),
+        pcs: sub.reduce((s, m) => s + (Number(m.pieceCount) || 0), 0),
         outQty: sub.reduce((s, m) => s + (m.dir === "produce" ? m.qty : 0), 0),
         inQty: sub.reduce((s, m) => s + (m.dir === "consume" ? m.qty : 0), 0),
         children: depth + 1 < group.length ? build(sub, depth + 1, `${path}/${g.id}:${k}`) : null,
@@ -900,6 +923,7 @@ export default function OdooMoves({
       inQty: src.reduce((s, m) => s + (m.dir === "consume" ? m.qty : 0), 0),
       outQty: src.reduce((s, m) => s + (m.dir === "produce" && m.kind === "product" ? m.qty : 0), 0),
       wasteQty: src.reduce((s, m) => s + (m.dir === "produce" && m.kind !== "product" ? m.qty : 0), 0),
+      pcs: src.reduce((s, m) => s + (Number(m.pieceCount) || 0), 0),
       ops: new Set(src.map((m) => m.rowId)).size,
     };
   }, [paged, sorted, tree]);
@@ -1006,35 +1030,50 @@ export default function OdooMoves({
           ? <span className="odv-link">{m.ref}</span>
           : <span style={{ color: "#bbb" }}>—</span>;
       case "loc":
-        return (<>{m.branchName}<span className="odv-sub">{m.branchCode}</span></>);
-      case "butcher":
-        return (<>{m.butcher}{m.butcherJob ? <span className="odv-sub">{m.butcherJob}</span> : null}</>);
-      case "bom":
+        // الواجهة الأساسية: الكود وحده (QCS) حتى ما يتمدّد الجدول — الاسم الكامل
+        // بيضل بتفاصيل العملية وبالتصدير وبقوائم التجميع.
         return (
-          <>
+          <span title={m.branchName}>{m.branchCode || m.branchName || "—"}</span>
+        );
+      case "butcher":
+        // الواجهة الأساسية: الرقم الوظيفي وحده — الاسم والوظيفة بيضلّوا
+        // بتفاصيل العملية وبالتصدير وبقوائم التجميع.
+        return (
+          <span title={`${m.butcher}${m.butcherJob ? ` — ${m.butcherJob}` : ""}`}>
+            {m.butcherNo || m.butcher || "—"}
+          </span>
+        );
+      case "bom":
+        // الواجهة الأساسية: الأكواد وحدها (CUT-0001 · CUT-0001-P2) — اسم المسار
+        // والفئة بيضلّوا بتفاصيل العملية وبالتصدير وبقوائم التجميع.
+        return (
+          <span
+            title={[m.bomRef, m.pathwayLabel, m.bomCat].filter(Boolean).join(" · ")}
+          >
             {m.bomRef || <span style={{ color: "#bbb" }}>—</span>}
-            <span className="odv-sub">
-              {m.pathwayLabel ? `🔀 ${m.pathwayLabel}` : (m.bomCat || "")}
-            </span>
-          </>
+            {m.pathwayCode ? <span className="odv-sub">🔀 {m.pathwayCode}</span> : null}
+          </span>
         );
       case "move":
+        // الواجهة الأساسية: نوع الحركة وحده — مسار المواقع (مخزون ↔ إنتاج) ثابت
+        // ومعروف، وبيضل ظاهر بتفاصيل العملية وبالتصدير.
         return (
-          <>
-            <span className="odv-dir">
-              <span className={`odv-dot ${m.dir}`} />{m.dirLabel}
-            </span>
-            <span className="odv-sub">{m.from}<span className="odv-arrow">→</span>{m.to}</span>
-          </>
+          <span className="odv-dir" title={`${m.from} → ${m.to}`}>
+            <span className={`odv-dot ${m.dir}`} />{m.dirLabel}
+          </span>
         );
+      case "cat":
+        return m.bomCat || <span style={{ color: "#bbb" }}>—</span>;
       case "ptype":
         return <span className={`odv-tag ${m.kind}`}>{m.kindLabel}</span>;
       case "product":
+        // الواجهة الأساسية: الكود + الاسم الإنجليزي وحده (الشاشة بتحاكي Odoo).
+        // الاسم العربي بيضل بتفاصيل العملية وبباقي شاشات التقارير.
         return (
-          <>
-            {m.sku ? <span className="odv-sku">[{m.sku}] </span> : null}{m.product}
-            {m.productAlt ? <span className="odv-sub">{m.productAlt}</span> : null}
-          </>
+          <span title={[m.product, m.productAlt].filter(Boolean).join(" · ")}>
+            {m.sku ? <span className="odv-sku">[{m.sku}] </span> : null}
+            {m.productEn || m.product}
+          </span>
         );
       case "qty":
         return (
@@ -1045,11 +1084,24 @@ export default function OdooMoves({
                 {t({ en: "target", ar: "الهدف" })} {n2(m.targetKg)}
               </span>
             )}
-            {m.pieceCount !== null && m.pieceCount !== undefined && (
-              <span className="odv-sub">{n0(m.pieceCount)} {t({ en: "pcs", ar: "قطعة" })}</span>
-            )}
           </>
         );
+      case "pcs":
+        // عدد القطع يُسجَّل مرة وحدة للعملية (على سطر المادة الخام) — باقي الأسطر «—».
+        // و«جزء من قطعة» يعني الجزار تجاوز العدّ بوعي لأن الداخل مش قطعة كاملة.
+        if (m.partialPiece) {
+          return (
+            <span className="odv-sub" style={{ marginTop: 0 }}>
+              {t({ en: "part of a piece", ar: "جزء من قطعة" })}
+            </span>
+          );
+        }
+        return m.pieceCount === null || m.pieceCount === undefined
+          ? "—" : n0(m.pieceCount);
+      case "dur":
+        return m.durationMin > 0 ? n0(m.durationMin) : "—";
+      case "exp":
+        return m.rawExpiry || "—";
       case "uom":
         return m.uom;
       case "pct":
@@ -1123,7 +1175,9 @@ export default function OdooMoves({
           </td>
           {tailCols.map((c) => (
             <td key={c.id} className={c.num ? "num" : ""}>
-              {c.id === "qty" ? n2(g.qty) : c.id === "uom" ? "KG" : ""}
+              {c.id === "qty" ? n2(g.qty)
+                : c.id === "pcs" ? (g.pcs > 0 ? n0(g.pcs) : "")
+                : c.id === "uom" ? "KG" : ""}
             </td>
           ))}
         </tr>
@@ -1461,6 +1515,13 @@ export default function OdooMoves({
                       </td>
                     );
                   }
+                  if (c.id === "pcs") {
+                    return (
+                      <td key={c.id} className="num">
+                        {sums.pcs > 0 ? n0(sums.pcs) : ""}
+                      </td>
+                    );
+                  }
                   if (c.id === "uom") return <td key={c.id}>KG</td>;
                   return <td key={c.id} className={c.num ? "num" : ""} />;
                 })}
@@ -1551,7 +1612,7 @@ function RecordDialog({ rec, t, isAr, onClose }) {
                   <tr>
                     <th>{t({ en: "Product", ar: "المنتج" })}</th>
                     <th>{t({ en: "Product Type", ar: "نوع المنتج" })}</th>
-                    <th className="num">{t({ en: "Quantity", ar: "الكمية" })}</th>
+                    <th className="num">{t({ en: "Weight", ar: "الوزن" })}</th>
                     <th>{t({ en: "UoM", ar: "الوحدة" })}</th>
                     <th className="num">{t({ en: "Target", ar: "الهدف" })}</th>
                     <th className="num">{t({ en: "Actual %", ar: "النسبة الفعلية" })}</th>

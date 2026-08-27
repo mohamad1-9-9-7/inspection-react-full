@@ -26,13 +26,22 @@ import {
   C, Card, Chip, DeltaCell, EmptyBox, ErrorNote, KIT_CSS, MiniBar, MultiPicker,
   ReviewChip, S, Skeleton, SortTh, TableWrap, downloadExcel, downloadPdf,
   groupTree, inSet, kg, monthStart, pct, shiftDays, sortRows, todayStr, totalsOf,
-  useButcherData, useNormalizedRows, wasteBreakdown,
+  useButcherData, useNormalizedRows, wasteBreakdown, canSeeRow,
 } from "./butcherReportKit";
+import { useRowViewer } from "./butcherViewer";
 import OdooMoves, {
   OdooNavbar, ODOO_SKIN_CSS, buildMoves, buildMovesAoa, MOVE_COLS,
 } from "./ButcherOdooMoves";
 
 /* ══════════════ ثابتات ══════════════ */
+
+/* شريط طيّ عريض — عنوان قسم قابل للفتح والإغلاق */
+const FOLD_BAR = {
+  display: "flex", alignItems: "center", gap: 10, width: "100%",
+  background: "#fff", border: "1px solid #dbe6f2", borderRadius: 14,
+  padding: "11px 14px", fontWeight: 900, color: C.ink, cursor: "pointer",
+  textAlign: "start",
+};
 
 const TABS = [
   { id: "moves",     icon: "📦", ar: "حركات المنتج", en: "Product Moves" },
@@ -285,7 +294,16 @@ export default function ButcherView() {
   // نسحب نافذة المقارنة مع النافذة الحالية بطلب واحد، ونفصلها محلياً
   const { records, loading, error, truncated, reload, cfg, mrpCfg } =
     useButcherData({ from: compare ? prevFrom : from, to });
-  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
+  const rawRows = useNormalizedRows(records, { cfg, mrpCfg, isAr });
+
+  /* العمليات المحجورة (طلب تعديل مرفوع) والملغاة (وافق عليها المسؤول) ما
+     بتبيّن هون ولا بتنحسب بأي رقم — هاد كل معنى الحجر. مشرف الملحمة
+     بيشوف طلبه ويتابعه من لوحة المشرف، والمسؤول بيشوف كل شي. */
+  const viewer = useRowViewer(isAr);
+  const all = useMemo(
+    () => rawRows.filter((r) => canSeeRow(r, viewer)),
+    [rawRows, viewer]
+  );
 
   /* ── الفلاتر ── */
   const [branches, setBranches] = useState([]);
@@ -309,6 +327,10 @@ export default function ButcherView() {
   const [onlyNoOpNo, setOnlyNoOpNo] = useState(false);
   const [onlyBackdated, setOnlyBackdated] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // الفلاتر والمؤشّرات مطويّة افتراضياً — الشاشة تفتح على الجداول مباشرة،
+  // والمشرف يفتح اللي بده إياه بضغطة. الطباعة بتفتحهم دايماً.
+  const [openFilters, setOpenFilters] = useState(false);
+  const [openKpis, setOpenKpis] = useState(false);
 
   /* ── العرض ── */
   const [tab, setTab] = useState("moves");
@@ -770,6 +792,7 @@ export default function ButcherView() {
       t({ en: "Unaccounted kg", ar: "فاقد غير مسجّل" }),
       t({ en: "Yield %", ar: "التصافي ٪" }),
       t({ en: "Waste %", ar: "الهدر ٪" }),
+      t({ en: "Duration (min)", ar: "الوقت (دقيقة)" }),
       t({ en: "Lines", ar: "عدد الأسطر" }),
       t({ en: "Status", ar: "الحالة" }),
       t({ en: "Reviewed by", ar: "روجع بواسطة" }),
@@ -783,7 +806,7 @@ export default function ButcherView() {
       r.pathwayCode || "", r.pathwayName || "", r.inputName, r.inputSku || "",
       +kg(r.carcassKg), r.pieceCount ?? "", +kg(r.cutsKg), +kg(r.wasteKg),
       +kg(r.unaccountedKg), +r.yieldPct.toFixed(1), +r.wastePct.toFixed(1),
-      r.cuts.length, statusName(r.reviewStatus),
+      r.durationMin ?? "", r.cuts.length, statusName(r.reviewStatus),
       r.review?.by || "", r.review?.at ? String(r.review.at).slice(0, 16).replace("T", " ") : "",
       r.review?.reason || "",
     ]);
@@ -941,7 +964,7 @@ export default function ButcherView() {
       // نفس أعمدة شاشة «حركات المنتج» الـ١٣ حرفياً — النسخة الورقية تطابق العرض
       { name: "Product Moves", aoa: buildMovesAoa(moves, { isAr }),
         widths: MOVE_COLS.map((c) => Math.round(c.w / 7)) },
-      { name: "Operations",  aoa: opsAoa,      widths: [16, 12, 12, 8, 22, 12, 16, 12, 14, 14, 14, 16, 12, 20, 24, 12, 10, 8, 10, 10, 12, 9, 9, 8, 14, 16, 16, 30] },
+      { name: "Operations",  aoa: opsAoa,      widths: [16, 12, 12, 8, 22, 12, 16, 12, 14, 14, 14, 16, 12, 20, 24, 12, 10, 8, 10, 10, 12, 9, 9, 12, 8, 14, 16, 16, 30] },
       { name: "Lines",       aoa: lines,       widths: [16, 12, 22, 16, 14, 14, 14, 16, 18, 24, 10, 26, 12, 10, 8, 10, 10, 10, 10, 14] },
       { name: "By date",     aoa: daily,       widths: [12, 11, 12, 12, 12, 12, 10, 10, 11] },
       { name: "By butcher",  aoa: perButcher,  widths: [24, 11, 12, 12, 12, 12, 10, 10, 14, 22, 12, 10] },
@@ -1049,15 +1072,15 @@ export default function ButcherView() {
     blocks.push({
       title: "Operations",
       head: ["Op no.", "Date", "Butcher", "Butchery", "Type", "Origin", "Recipe", "Pathway",
-        "Raw kg", "Products", "Waste", "Yield %", "Status"],
+        "Raw kg", "Products", "Waste", "Yield %", "Time", "Status"],
       rows: rows.slice(0, 600).map((r) => [
         r.opNo || "-", r.day, r.employeeNo, r.branchName,
         r.bomKindName || "-", r.bomOriginName || "-", r.bomRef || "-", r.pathwayCode || "-",
         kg(r.carcassKg), kg(r.cutsKg), kg(r.wasteKg), r.yieldPct.toFixed(1),
-        r.reviewStatus || "pending",
+        r.durationMin || "-", r.reviewStatus || "pending",
       ]),
       columnStyles: { 8: { halign: "right" }, 9: { halign: "right" }, 10: { halign: "right" },
-        11: { halign: "right" } },
+        11: { halign: "right" }, 12: { halign: "right" } },
     });
 
     if (issues.length) {
@@ -1200,19 +1223,33 @@ ${ODOO_SKIN_CSS}`}</style>
             : t({ en: "Pick a period, then narrow by anything", ar: "اختر الفترة ثم ضيّق حسب أي شيء" })}
           actions={
             <div style={{ display: "flex", gap: 8, marginInlineStart: "auto", flexWrap: "wrap" }}>
+              {openFilters && (
+                <button
+                  type="button"
+                  className={`bv-flag ${showAdvanced ? "on" : ""}`}
+                  onClick={() => setShowAdvanced((v) => !v)}
+                >
+                  ⚙️ {t({ en: "Advanced", ar: "فلاتر متقدّمة" })} {showAdvanced ? "▲" : "▼"}
+                </button>
+              )}
+              {openFilters && (
+                <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resetAll}>
+                  ✕ {t({ en: "Reset", ar: "تصفير" })}
+                </button>
+              )}
               <button
                 type="button"
-                className={`bv-flag ${showAdvanced ? "on" : ""}`}
-                onClick={() => setShowAdvanced((v) => !v)}
+                style={{ ...S.btn, ...S.btnSm, ...(openFilters ? null : S.btnPrimary) }}
+                onClick={() => setOpenFilters((v) => !v)}
               >
-                ⚙️ {t({ en: "Advanced", ar: "فلاتر متقدّمة" })} {showAdvanced ? "▲" : "▼"}
-              </button>
-              <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resetAll}>
-                ✕ {t({ en: "Reset", ar: "تصفير" })}
+                {openFilters
+                  ? `▲ ${t({ en: "Collapse", ar: "طيّ" })}`
+                  : `▼ ${t({ en: "Open filters", ar: "فتح الفلاتر" })}`}
               </button>
             </div>
           }
         >
+          {openFilters && (<>
           {/* الفترات الجاهزة */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             {presets.map((p) => (
@@ -1377,9 +1414,26 @@ ${ODOO_SKIN_CSS}`}</style>
               </button>
             </div>
           )}
+          </>)}
         </Card>
 
         {/* ══ المؤشّرات ══ */}
+        <button
+          type="button"
+          className="bk-noprint"
+          style={FOLD_BAR}
+          onClick={() => setOpenKpis((v) => !v)}
+        >
+          <span>📊 {t({ en: "Key figures", ar: "المؤشّرات" })}</span>
+          <span style={{ color: C.muted, fontWeight: 800 }}>
+            {openKpis
+              ? t({ en: "hide", ar: "إخفاء" })
+              : t({ en: `${fmtInt(rows.length)} operations · show`, ar: `${fmtInt(rows.length)} عملية · إظهار` })}
+          </span>
+          <span style={{ marginInlineStart: "auto" }}>{openKpis ? "▲" : "▼"}</span>
+        </button>
+
+        {(openKpis || printAll) && (
         <div className="bk-kpis" style={S.kpiGrid}>
           <StatCard
             icon="🧾" color={C.blue}
@@ -1453,6 +1507,7 @@ ${ODOO_SKIN_CSS}`}</style>
             })}
           />
         </div>
+        )}
 
         <ErrorNote error={error} t={t} onRetry={reload} />
 
@@ -1694,7 +1749,7 @@ ${ODOO_SKIN_CSS}`}</style>
                   </div>
                 }
               >
-                <TableWrap minWidth={1080}>
+                <TableWrap minWidth={1160}>
                   <thead>
                     <tr>
                       <SortTh label={t({ en: "Operation", ar: "العملية" })} col="opNo" sort={sort} onSort={toggleSort} />
@@ -1707,6 +1762,7 @@ ${ODOO_SKIN_CSS}`}</style>
                       <SortTh label={t({ en: "Products", ar: "النواتج" })} col="cutsKg" sort={sort} onSort={toggleSort} numeric />
                       <SortTh label={t({ en: "Waste", ar: "الهدر" })} col="wasteKg" sort={sort} onSort={toggleSort} numeric />
                       <SortTh label={t({ en: "Yield %", ar: "التصافي ٪" })} col="yieldPct" sort={sort} onSort={toggleSort} numeric />
+                      <SortTh label={t({ en: "Time (min)", ar: "الوقت (دقيقة)" })} col="durationMin" sort={sort} onSort={toggleSort} numeric />
                       <SortTh label={t({ en: "Status", ar: "الحالة" })} col="reviewStatus" sort={sort} onSort={toggleSort} />
                     </tr>
                   </thead>
@@ -1778,6 +1834,11 @@ ${ODOO_SKIN_CSS}`}</style>
                             <td style={{ ...S.td, ...S.tdNum, color: C.teal }}>{fmt(r.cutsKg)}</td>
                             <td style={{ ...S.td, ...S.tdNum, color: C.amber }}>{fmt(r.wasteKg)}</td>
                             <td style={{ ...S.td, ...S.tdNum, color: C.green }}>{r.yieldPct.toFixed(1)}%</td>
+                            <td style={{ ...S.td, ...S.tdNum }}>
+                              {r.durationMin > 0
+                                ? <b>{r.durationMin}</b>
+                                : <span className="bk-lbl" style={{ color: C.muted }}>—</span>}
+                            </td>
                             <td style={S.td}>
                               <ReviewChip status={r.reviewStatus} t={t} />
                               {r.unaccountedKg > 0.005 && (
@@ -1790,7 +1851,7 @@ ${ODOO_SKIN_CSS}`}</style>
 
                           {open && (
                             <tr>
-                              <td colSpan={11} style={{ ...S.td, background: C.soft, padding: 0 }}>
+                              <td colSpan={12} style={{ ...S.td, background: C.soft, padding: 0 }}>
                                 <div style={{ padding: "14px 16px" }}>
                                   <TableWrap minWidth={620}>
                                     <thead>

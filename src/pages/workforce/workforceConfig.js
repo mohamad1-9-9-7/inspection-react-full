@@ -24,12 +24,29 @@ const EVT = "workforce_config_changed";
 
 /* ══════════════════════════════════════════════ الثوابت */
 
-/** الأدوار — واحد فقط لكل شخص. */
+/** الأدوار — واحد فقط لكل شخص.
+ *
+ * ⚠️ المعرّفات ثابتة ولا تُغيَّر: السجلات المحفوظة بتخزّن `role` كنصّ، فتغيير
+ * معرّف بيتيه كل الموظفين المسجّلين عليه. التسميات وحدها هي اللي بتتعدّل —
+ * ولهيك `manager` صار اسمه «مدير الإنتاج» بلا ما نلمس المعرّف.
+ *
+ * `floor: true` = دور شغل الملحمة (بيظهر بشجرة الملاحم كصف مستقل).
+ * الجزار والمشرف إلهم مكانهم الخاص بالشجرة، والباقي بيتجمّعوا بصف «أدوار أخرى».
+ */
 export const ROLES = [
-  { id: "butcher",    icon: "🔪",   ar: "جزار",       en: "Butcher" },
-  { id: "supervisor", icon: "🧑‍🍳", ar: "مشرف",       en: "Supervisor" },
-  { id: "manager",    icon: "🗂️",   ar: "مدير منطقة", en: "Area manager" },
+  { id: "butcher",          icon: "🔪",   ar: "جزار",             en: "Butcher" },
+  { id: "supervisor",       icon: "🧑‍🍳", ar: "مشرف",             en: "Supervisor" },
+  { id: "manager",          icon: "🏭",   ar: "مدير الإنتاج",     en: "Production manager" },
+  { id: "inventoryOfficer", icon: "📦",   ar: "مسؤول المخزون",    en: "Inventory officer" },
+  { id: "dataEntry",        icon: "⌨️",   ar: "مدخل بيانات",      en: "Data entry" },
 ];
+
+/** أدوار المكتب — كل شي غير الجزار والمشرف. */
+export const OFFICE_ROLES = ROLES.filter(
+  (r) => r.id !== "butcher" && r.id !== "supervisor"
+).map((r) => r.id);
+
+export const isOfficeRole = (role) => OFFICE_ROLES.includes(role);
 
 /** حالات الموظف. */
 export const STATUSES = [
@@ -92,7 +109,11 @@ export const DEFAULT_RULES = {
   lockUnknownEmp: true,       // رقم وظيفي غير مسجّل = ممنوع الدخول
   autoSiteFromPerson: true,   // الملحمة تُملأ تلقائياً وتُقفل (لا قائمة مفتوحة)
   requirePin: false,          // رقم وظيفي + PIN من ٤ أرقام
-  supervisorCanEnter: false,  // هل يقدر المشرف يسجّل تقطيع بنفسه
+  // مين من المشرفين مسموح له يسجّل تقطيع — قائمة معرّفات أشخاص (`person.id`).
+  // كانت مفتاح واحد للكل (`supervisorCanEnter`)؛ صارت تخصيص بالاسم، لأن
+  // «كل المشرفين» و«ولا مشرف» ما بيوصفوا ملحمة فيها مشرف بيقطّع وواحد لأ.
+  // فاضية = ولا مشرف. الجزار ما إله علاقة بهالقاعدة إطلاقاً.
+  entrySupervisors: [],
   blockOnLeft: true,          // "مغادر" = ممنوع نهائياً (لا استثناء)
 };
 
@@ -114,10 +135,32 @@ export function mergeWorkforce(saved) {
   return {
     sites:  Array.isArray(saved.sites)  ? saved.sites.map(normalizeSite)    : base.sites,
     people: Array.isArray(saved.people) ? saved.people.map(normalizePerson) : base.people,
-    rules:  { ...base.rules, ...(saved.rules || {}) },
+    rules:  migrateRules(base.rules, saved),
     updatedAt: saved.updatedAt || null,
     updatedBy: saved.updatedBy || "",
   };
+}
+
+/**
+ * ترحيل القواعد المحفوظة.
+ *
+ * `supervisorCanEnter: true` القديمة كانت بتسمح لكل المشرفين. منترجمها لقائمة
+ * فيها كل المشرفين المسجّلين وقت القراءة — فالسلوك ما بيتغيّر بيوم الترقية،
+ * وبعدها المستخدم بيشيل منها اللي ما بدّو ياه. المفتاح القديم بينحذف.
+ */
+function migrateRules(baseRules, saved) {
+  const rules = { ...baseRules, ...(saved?.rules || {}) };
+
+  if (!Array.isArray(rules.entrySupervisors)) {
+    rules.entrySupervisors = rules.supervisorCanEnter
+      ? (saved?.people || [])
+          .filter((p) => p?.role === "supervisor" && p?.id)
+          .map((p) => String(p.id))
+      : [];
+  }
+  delete rules.supervisorCanEnter;
+
+  return rules;
 }
 
 function normalizeSite(s) {
@@ -146,6 +189,7 @@ function normalizePerson(p) {
     sites:         sites.length ? sites : (site ? [site] : []),
     supervisorId:  String(p?.supervisorId || ""),
     username:      String(p?.username || "").trim(),
+    accountName:   String(p?.accountName || "").trim(),
     pin:           String(p?.pin || "").trim(),
     status:        STATUSES.some((s) => s.id === p?.status) ? p.status : "active",
     effectiveFrom: p?.effectiveFrom || "",
@@ -167,7 +211,7 @@ export const todayISO = () => new Date().toISOString().slice(0, 10);
 export function newPerson(role = "butcher") {
   return {
     id: newId(), empNo: "", name: "", nameEn: "", role,
-    site: "", sites: [], supervisorId: "", username: "", pin: "",
+    site: "", sites: [], supervisorId: "", username: "", accountName: "", pin: "",
     status: "active", effectiveFrom: todayISO(), note: "",
     createdAt: null, createdBy: "", history: [],
   };
@@ -303,6 +347,62 @@ export const personByUsername = (wf, username) => {
     (p) => String(p.username || "").trim().toLowerCase() === key
   ) || null;
 };
+
+/** خريطة اسم المستخدم ← الموظف المربوط فيه. لفحص «مربوط مسبقاً». */
+export function accountLinks(wf, exceptId = "") {
+  const m = new Map();
+  for (const p of wf?.people || []) {
+    const key = String(p.username || "").trim().toLowerCase();
+    if (!key || p.id === exceptId) continue;
+    m.set(key, p);
+  }
+  return m;
+}
+
+/**
+ * هوية صاحب الحساب من سجل القوى العاملة — الجسر اللي بتقرأ منه شاشات الجزار.
+ *
+ * **لكل الأدوار، مش للجزار وحده.** المشرف كمان بيسجّل أوزان وبيفتح «شغلي»،
+ * ولمّا يكون حسابه مربوط لازم ينحصر برقمه الوظيفي هو — تماماً متل الجزار.
+ * لو تركناه حرّ كان يقدر يكتب رقم أي جزار ويسجّل باسمه أو يتفرّج على شغله.
+ *
+ * بترجّع { person, empNo, name, role, site, sites, pending } لما يكون الحساب
+ * مربوط بموظف **نشط** إله رقم وظيفي وملحمة؛ وإلا بترجّع null فالشاشة بترجع
+ * لسلوكها القديم (إدخال الرقم بالإيد) بلا ما ينكسر شي.
+ *
+ * `sites` = كل ملاحمه (المشرف ممكن يغطّي أكتر من وحدة) — الشاشة بتخلّيه
+ * يختار من بينهنّ وبس، لا من قائمة الفروع كلها. **بتضل مليانة دايماً**، حتى
+ * وقت النقل المعلّق: هي أساس حصر لوحة المشرف، وتفريغها كان بيفتحله كل الملاحم.
+ * اللي بينفرغ وقت النقل هو `site` (الملحمة المعتمدة لليوم) لا أكتر.
+ *
+ * ما بتفحص PIN ولا بتصدر منع — هي تعبئة هوية لا بوابة. البوابة هي checkEntry.
+ */
+export function accountIdentity(wf, username, isAr = true) {
+  const person = personByUsername(wf, username);
+  if (!person) return null;
+  if (person.status !== "active") return null;
+  /* «مسؤول المخزون» ما بينقفل: القفل موجود ليمنع الجزار أو المشرف يشتغل
+     برقم زميله، وهو دوره فوق الملاحم كلها لا داخل وحدة منها. */
+  if (person.role === "inventoryOfficer") return null;
+
+  const empNo = String(person.empNo || "").trim();
+  const sites = sitesOfPerson(person);
+  if (!empNo || sites.length === 0) return null;
+
+  const base = {
+    person, empNo,
+    name: personName(person, isAr),
+    role: person.role,
+  };
+
+  // النقل اللي لسّا ما بلّش: الرقم بيضل مقفول، بس الملحمة المعتمدة بتنفرغ
+  // وبتنختار يدوي لهالفترة القصيرة — لأنه سجلّه بيقول ملحمة ما وصلها بعد.
+  if (person.effectiveFrom && person.effectiveFrom > todayISO()) {
+    return { ...base, site: "", sites, pending: true };
+  }
+
+  return { ...base, site: sites[0], sites, pending: false };
+}
 
 /** كل الملاحم التي يغطّيها شخص — الجزار ملحمة، المشرف قائمة. */
 export function sitesOfPerson(person) {

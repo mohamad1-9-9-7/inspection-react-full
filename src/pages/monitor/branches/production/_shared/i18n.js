@@ -97,7 +97,9 @@ export const STR = {
   // Personal Hygiene
   ph_subtitle:        { en: "PRD — Production Area • Daily employee hygiene inspection", ar: "الإنتاج — فحص يومي للنظافة الشخصية" },
   ph_col_no:          { en: "#",                       ar: "#" },
+  ph_col_empno:       { en: "Emp. No",                 ar: "الرقم الوظيفي" },
   ph_col_name:        { en: "Employee Name",           ar: "اسم الموظف" },
+  ph_col_job:         { en: "Job Title",               ar: "المسمى الوظيفي" },
   ph_col_nails:       { en: "Nails",                   ar: "الأظافر" },
   ph_col_hair:        { en: "Hair",                    ar: "الشعر" },
   ph_col_jewelry:     { en: "No Jewelry",              ar: "بدون مجوهرات" },
@@ -108,7 +110,18 @@ export const STR = {
   ph_conform:         { en: "Conform",                 ar: "مطابق" },
   ph_nonconform:      { en: "Non-conform",             ar: "غير مطابق" },
   ph_req_name:        { en: "Employee name…",          ar: "اسم الموظف…" },
+  ph_req_empno:       { en: "No…",                     ar: "الرقم…" },
   ph_req_nc:          { en: "Required if NC",          ar: "مطلوب عند NC" },
+  // Staff Directory link (Settings → Staff Directory)
+  ph_load_roster:     { en: "Load roster",             ar: "تحميل قائمة الموظفين" },
+  ph_roster_hint:     { en: "Employees assigned to Production · Personal Hygiene in Settings → Staff Directory",
+                        ar: "الموظفون المعيّنون على الإنتاج · النظافة الشخصية من الإعدادات ← سجل الموظفين" },
+  ph_roster_replace:  { en: "Replace the current rows with the staff directory list?",
+                        ar: "استبدال الأسطر الحالية بقائمة سجل الموظفين؟" },
+  ph_roster_empty:    { en: "No employee is assigned to this sheet yet — add them in Settings → Staff Directory (Production · Personal Hygiene). The names below are a temporary fallback.",
+                        ar: "لا يوجد موظفون معيّنون لهذا النموذج بعد — أضِفهم من الإعدادات ← سجل الموظفين (الإنتاج · النظافة الشخصية). الأسماء أدناه مؤقتة." },
+  ph_roster_offline:  { en: "Showing the saved copy of the staff directory — the server could not be reached.",
+                        ar: "يتم عرض النسخة المحفوظة من سجل الموظفين — تعذّر الوصول إلى الخادم." },
   ph_optional:        { en: "Optional…",               ar: "اختياري…" },
 
   // Cleaning Checklist

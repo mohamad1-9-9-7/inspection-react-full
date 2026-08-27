@@ -10,12 +10,13 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  ROLES, STATUSES, activeSites, directoryEntry, newPerson, personById, personName,
-  removePerson, searchDirectory, setPersonStatus, siteLabel, sitesOfPerson,
+  ROLES, STATUSES, activeSites, directoryEntry, isOfficeRole, newPerson, personById,
+  personName, removePerson, searchDirectory, setPersonStatus, siteLabel, sitesOfPerson,
   supervisorsOfSite, transferPerson, upsertPerson, validatePerson,
 } from "./workforceConfig";
+import AccountLink from "./WorkforceAccountLink";
 import {
-  AR_NUM, Avatar, Banner, Btn, C, Card, Chip, Empty, Field, Input, Modal,
+  AR_NUM, Avatar, Banner, Btn, C, Card, Chip, ELLIPSIS, Empty, Field, Input, Modal,
   SectionHead, Select, grid2, supColor,
 } from "./workforceUi";
 
@@ -56,7 +57,7 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
       if (fStatus && p.status !== fStatus) return false;
       if (fSite && !sitesOfPerson(p).includes(fSite)) return false;
       if (needle) {
-        const hay = `${p.empNo} ${p.name} ${p.nameEn} ${p.username}`.toLowerCase();
+        const hay = `${p.empNo} ${p.name} ${p.nameEn} ${p.username} ${p.accountName}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
@@ -70,9 +71,15 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
       const here = visible.filter((p) => sitesOfPerson(p).includes(s.code));
       // الترتيب بالاسم حتى يبقى رقم/لون كل مشرف ثابتاً بين الرسمات
       const sups = here
-        .filter((p) => p.role !== "butcher")
+        .filter((p) => p.role === "supervisor")
         .sort((a, b) => String(a.name || a.nameEn).localeCompare(String(b.name || b.nameEn)));
       const butchers = here.filter((p) => p.role === "butcher");
+      /* أدوار المكتب (مدير الإنتاج · مسؤول المخزون · مدخل بيانات): مربوطين
+         بالملحمة بس ما بيشرفوا على جزارين، فما بيصير ينحطّوا بشريط المشرفين
+         ولا ينفتح تحتهم مجموعة «＋ جزار». صفّهم الخاص تحت. */
+      const office = here
+        .filter((p) => isOfficeRole(p.role))
+        .sort((a, b) => String(a.name || a.nameEn).localeCompare(String(b.name || b.nameEn)));
       const groups = sups.map((sup, i) => ({
         sup, i,
         list: butchers.filter((b) => b.supervisorId === sup.id),
@@ -80,7 +87,7 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
       const orphans = butchers.filter(
         (b) => !b.supervisorId || !sups.some((s2) => s2.id === b.supervisorId)
       );
-      return { site: s, groups, orphans, sups, butchers, total: here.length };
+      return { site: s, groups, orphans, sups, office, butchers, total: here.length };
     });
   }, [sites, visible, fSite]);
 
@@ -185,6 +192,38 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
     );
   };
 
+  /** كرت دور المكتب — نفس مقاس كرت الجزار، بس الدور مكتوب لأنه مش بديهي
+      من مكانه بالشجرة (الجزار بيبيّن دوره من إنه تحت مشرف). */
+  const OfficeCard = ({ p }) => {
+    const st = statusMeta(p.status);
+    const off = p.status !== "active";
+    const rm = roleMeta(p.role);
+    return (
+      <div
+        className="wf-row"
+        style={{
+          display: "flex", alignItems: "center", gap: 9,
+          background: off ? st.bg : "#fff",
+          border: `1px solid ${off ? st.bd : C.line}`,
+          borderRadius: 12, padding: "8px 11px", minWidth: 0,
+        }}
+      >
+        <Avatar name={personName(p, isAr)} color={C.violet} soft="#f5f3ff" size={31} icon={rm.icon} />
+        <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+          <div className="wf-name" style={ELLIPSIS(800, C.ink)}>
+            {personName(p, isAr)}
+          </div>
+          <div className="wf-lbl" style={{ ...ELLIPSIS(800, C.faint), marginTop: 1 }}>
+            {isAr ? rm.ar : rm.en} · #{p.empNo}
+            {!p.username && ` · ${t({ en: "no login", ar: "بلا حساب" })}`}
+            {off && ` · ${isAr ? st.ar : st.en}`}
+          </div>
+        </div>
+        <Acts p={p} />
+      </div>
+    );
+  };
+
   /** كرت الجزار — مضغوط، بشبكة، حتى يبيّن أكبر عدد بأقل مساحة. */
   const ButcherCard = ({ p, accent }) => {
     const st = statusMeta(p.status);
@@ -207,6 +246,7 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
           </div>
           <div className="wf-lbl" style={{ ...ELLIPSIS(800, C.faint), marginTop: 1 }}>
             #{p.empNo}
+            {!p.username && ` · ${t({ en: "no login", ar: "بلا حساب" })}`}
             {off && ` · ${isAr ? st.ar : st.en}`}
             {future && ` · ${t({ en: "from", ar: "من" })} ${p.effectiveFrom}`}
           </div>
@@ -293,7 +333,7 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
       </Card>
 
       {/* ══════════ الشجرة ══════════ */}
-      {!flat && tree.map(({ site, groups, orphans, sups, butchers }) => (
+      {!flat && tree.map(({ site, groups, orphans, sups, office, butchers }) => (
         <Card key={site.code} pad={0} style={{ overflow: "hidden" }}>
           {/* رأس الملحمة */}
           <div style={{
@@ -322,6 +362,11 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
               <Chip bg="#eff6ff" fg="#1e40af" bd="#bfdbfe">
                 🔪 {butchers.length} {t({ en: "butchers", ar: "جزار" })}
               </Chip>
+              {office.length > 0 && (
+                <Chip bg="#f8fafc" fg="#475569" bd="#e2e8f0">
+                  🗂️ {office.length} {t({ en: "other", ar: "أخرى" })}
+                </Chip>
+              )}
             </div>
           </div>
 
@@ -358,6 +403,18 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
               </div>
             )}
           </div>
+
+          {/* ①ب أدوار المكتب على هالملحمة — بلا مجموعات جزارين */}
+          {office.length > 0 && (
+            <div style={{ background: "#fff", padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
+              <div className="wf-lbl" style={{ fontWeight: 900, color: C.mute, marginBottom: 9 }}>
+                {t({ en: "OTHER ROLES ON THIS SITE", ar: "أدوار أخرى على هذه الملحمة" })}
+              </div>
+              <div style={butcherGrid}>
+                {office.map((p) => <OfficeCard key={p.id} p={p} />)}
+              </div>
+            </div>
+          )}
 
           {/* ② مجموعة كل مشرف */}
           <div style={{ padding: "6px 18px 16px" }}>
@@ -420,7 +477,7 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
               </div>
             )}
 
-            {sups.length === 0 && orphans.length === 0 && butchers.length === 0 && (
+            {sups.length === 0 && orphans.length === 0 && butchers.length === 0 && office.length === 0 && (
               <div className="wf-sub" style={{ color: C.faint, fontWeight: 700, padding: "14px 0 4px" }}>
                 {t({ en: "Nobody assigned to this site yet.", ar: "ما في حدا مربوط بهالملحمة بعد." })}
               </div>
@@ -786,12 +843,6 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
   );
 }
 
-/* سطر واحد لا يلتفّ ولا يزيح جاره — الاسم الطويل بينقصّ بثلاث نقاط. */
-const ELLIPSIS = (weight, color) => ({
-  fontWeight: weight, color,
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-});
-
 /* ── صف إجراء داخل قائمة «⋯» ── */
 function ActionRow({ icon, label, hint, danger, onClick }) {
   return (
@@ -829,10 +880,11 @@ const KIND_LABEL = {
 
 /* ═══════════════════════════════════════════════ محرّر الموظف
  *
- * النافذة مقسومة لثلاث خطوات مرقّمة بدل كومة حقول:
+ * النافذة مقسومة لأربع خطوات مرقّمة بدل كومة حقول:
  *   ① مين  — الدور + اختيار الموظف من سجل الموظفين (لا كتابة يدوية)
- *   ② وين  — الملحمة + المشرف (أو حساب الدخول للمشرف)
- *   ③ متى  — الحالة وتاريخ السريان
+ *   ② وين  — الملحمة + المشرف المسؤول
+ *   ③ حساب — ربطه بحساب دخول موجود (بحث، لا كتابة يدوية)
+ *   ④ متى  — الحالة وتاريخ السريان
  * الترقيم بيخلّي المستخدم يعرف وين واقف، والحقل المطلوب ما بيضيع بالزحمة.
  */
 function PersonEditor({
@@ -844,8 +896,10 @@ function PersonEditor({
 
   const [picking, setPicking] = useState(false);
 
+  /* أدوار المكتب (مدير الإنتاج · مسؤول المخزون · مدخل بيانات) للأدمن — متل
+     ما كان دور «المدير» من قبل. الدور المحفوظ بيضل ظاهر حتى ما يعلق السجل. */
   const roleChoices = ROLES.filter(
-    (r) => r.id !== "manager" || canSetManagerRole || draft.role === "manager"
+    (r) => !isOfficeRole(r.id) || canSetManagerRole || draft.role === r.id
   );
 
   /* المشرفون على الملحمة المختارة فقط — لا يظهر مشرف من ملحمة ثانية */
@@ -986,7 +1040,7 @@ function PersonEditor({
             </Select>
           </Field>
 
-          {isButcher ? (
+          {isButcher && (
             <Field
               label={t({ en: "Supervisor", ar: "المشرف" })}
               hint={t({
@@ -1005,16 +1059,6 @@ function PersonEditor({
                 ))}
               </Select>
             </Field>
-          ) : (
-            <Field
-              label={t({ en: "Login username (optional)", ar: "اسم مستخدم الدخول (اختياري)" })}
-              hint={t({
-                en: "Links this supervisor to their account. Without it they show in the tree but see nothing when they log in.",
-                ar: "بيربط المشرف بحسابو. بدونه بيضل ظاهر بالشجرة بس ما بيشوف شي لما يسجّل دخول.",
-              })}
-            >
-              <Input value={draft.username} onChange={(e) => set("username", e.target.value)} />
-            </Field>
           )}
         </div>
 
@@ -1028,9 +1072,19 @@ function PersonEditor({
         )}
       </div>
 
-      {/* ③ متى */}
+      {/* ③ حساب الدخول — يُختار من مركز الحسابات، لا يُكتب بالإيد */}
       <div style={stepBox}>
-        <StepHead n="3" title={t({ en: "When", ar: "متى" })} />
+        <StepHead n="3" title={t({ en: "Login account", ar: "حساب الدخول" })} />
+
+        <AccountLink
+          draft={draft} setDraft={setDraft} wf={wf}
+          isButcher={isButcher} t={t} isAr={isAr} dir={dir}
+        />
+      </div>
+
+      {/* ④ متى */}
+      <div style={stepBox}>
+        <StepHead n="4" title={t({ en: "When", ar: "متى" })} />
         <div style={grid2}>
           <Field label={t({ en: "Status", ar: "الحالة" })}>
             <Select value={draft.status} onChange={(e) => set("status", e.target.value)}>

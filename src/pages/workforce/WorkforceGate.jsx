@@ -47,7 +47,8 @@ export default function WorkforceGate({ scope, t, isAr }) {
   const sup = result?.person?.supervisorId ? personById(wf, result.person.supervisorId) : null;
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    // البوابة نموذج قصير — بتضل بعمود مقروء مهما اتّسعت الصفحة
+    <div style={{ display: "grid", gap: 16, maxWidth: 1100 }}>
       <SectionHead
         icon="🚪"
         title={t({ en: "Gate simulator", ar: "محاكي البوابة" })}
@@ -210,7 +211,12 @@ export default function WorkforceGate({ scope, t, isAr }) {
           <RuleChip on={rules.lockUnknownEmp} ar="رفض غير المسجّل" en="Block unknown" isAr={isAr} />
           <RuleChip on={rules.autoSiteFromPerson} ar="قفل الملحمة" en="Lock site" isAr={isAr} />
           <RuleChip on={rules.requirePin} ar="PIN" en="PIN" isAr={isAr} />
-          <RuleChip on={rules.supervisorCanEnter} ar="المشرف يسجّل" en="Supervisor records" isAr={isAr} />
+          <RuleChip
+            on={(rules.entrySupervisors || []).length > 0}
+            ar={`مشرفون يسجّلون: ${(rules.entrySupervisors || []).length}`}
+            en={`Supervisors who record: ${(rules.entrySupervisors || []).length}`}
+            isAr={isAr}
+          />
           <RuleChip on={rules.multiSite} ar="ملاحم متعددة" en="Multi-site" isAr={isAr} />
         </div>
         <div className="wf-lbl" style={{ color: C.faint, fontWeight: 700, marginTop: 10 }}>

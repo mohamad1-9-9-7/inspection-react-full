@@ -10,6 +10,24 @@ import { INSPECTION_BRANCHES } from "../inspection/inspectionBranches";
 
 export const TYPE = "butcher_cut_log";
 
+/* ══════════ رقم العملية المرجعي ══════════
+   السيرفر بيخصّص رقم فريد لكل فرع («QCS — 00009») ويحفظه بـpayload.refNo.
+   العرض بكل الشاشات والتصديرات بيزيد عليه بادئة **INV-** وبيقصّر الشرطة الطويلة
+   لشرطة عادية بلا مسافات، فيصير «INV-QCS-00009». كله بالعرض فقط — العدّاد
+   وKEEP_REF بالسيرفر ما بينمسّوا، والسجلات القديمة بتظهر بنفس الشكل الجديد
+   بلا أي ترحيل. */
+
+export const OP_PREFIX = "INV-";
+
+/** رقم العملية بشكله المعروض — "" إذا السجل بلا رقم بعد. */
+export const opNoLabel = (refNo) => {
+  const s = String(refNo || "").trim();
+  if (!s) return "";
+  // «QCS — 00010» → «QCS-00010» (شرطة طويلة أو قصيرة مع مسافاتها → شرطة واحدة)
+  const flat = s.replace(/\s*[—–-]\s*/g, "-");
+  return flat.startsWith(OP_PREFIX) ? flat : `${OP_PREFIX}${flat}`;
+};
+
 /* الملاحم/الفروع — من سجل الفروع الموحّد (لا نكرّر قائمة ثانية). */
 export const BRANCHES = INSPECTION_BRANCHES.map((b) => ({
   code: b.code,

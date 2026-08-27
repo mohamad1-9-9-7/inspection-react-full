@@ -42,6 +42,8 @@ import SecurityControlsTab, { getSecuritySettings } from "./SecurityControlsTab"
 import BillingPlansTab from "./BillingPlansTab";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
+import { isItemAllowed } from "../../utils/sectionItems";
+
 const SECTIONS = [
   {
     id: "general",
@@ -328,7 +330,11 @@ export default function SettingsPage() {
     const canAccessItem = (item) => {
       if (isAdmin || isSuperAdmin || isFullAccess) return true;
       if (!permissions.includes("settings")) return false;
-      return ["general", "data"].includes(item.sectionId);
+      // الأقسام الإدارية (الحسابات · الفوترة · الأمان · أدوات المدير) للأدمن وبس.
+      if (!["general", "data"].includes(item.sectionId)) return false;
+      // وجوّا المسموح: البند لازم يكون ضمن البنود المعطاة لهالحساب.
+      // قائمة فاضية = بلا تقييد (السلوك القديم لكل الحسابات الحالية).
+      return isItemAllowed("settings", `settings.${item.id}`);
     };
 
     return SECTIONS.map((section) => ({

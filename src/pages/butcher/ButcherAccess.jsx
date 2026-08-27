@@ -10,13 +10,18 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { isItemAllowed } from "../../utils/sectionItems";
+import { isInventoryOfficer } from "../workforce/workforceAccess";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
 
 /**
  * هل يُسمح لهذا المستخدم بفتح صفحة الجزار المطلوبة؟
- * كل الصفحات — بما فيها الإعدادات — تتبع نفس القاعدة: لا استثناء لصفة "مدير".
+ * كل الصفحات تتبع نفس القاعدة: لا استثناء لصفة "مدير".
+ *
+ * الاستثناء الوحيد: **مسؤول المخزون** — دور بالقوى العاملة بيعطي صلاحيات
+ * كاملة داخل كرت المخزون كله (الجزار · التصنيع · القوى العاملة · الكتالوج).
  */
-export const canOpenButcherPage = (itemId) => isItemAllowed("butcher", itemId);
+export const canOpenButcherPage = (itemId) =>
+  isInventoryOfficer() || isItemAllowed("butcher", itemId);
 
 /** شاشة "لا صلاحية" موحّدة. */
 export function NoAccess({ page }) {
