@@ -27,6 +27,8 @@ import {
   computeTotals,
   fmt2,
   getToday,
+  isCustomReason,
+  itemReasons,
   lineValue,
   prepareItem,
   rowHasData,
@@ -308,7 +310,6 @@ export default function DestructionInput() {
       const cur = { ...next[idx], [field]: value };
 
       if (field === "qtyType" && value !== OTHER) cur.customQtyType = "";
-      if (field === "reason" && value !== OTHER) cur.customReason = "";
       if (field === "method" && value !== OTHER) cur.customMethod = "";
 
       /* Catalog auto-fill, exactly like the Returns register */
@@ -324,6 +325,45 @@ export default function DestructionInput() {
       next[idx] = cur;
       return next;
     });
+  };
+
+  /* ===== reasons — one line may carry more than one =====
+     The raw array is the editing state (it may hold one still-empty free-text
+     slot); `itemReasons` is only the bridge for rows saved before this field
+     existed. Empty slots are dropped by prepareItem on save. */
+  const rowReasons = (row) => (Array.isArray(row?.reasons) ? row.reasons : itemReasons(row));
+
+  const setReasons = (idx, next) =>
+    setRows((prev) => {
+      const list = [...prev];
+      list[idx] = { ...list[idx], reasons: next };
+      return list;
+    });
+
+  const addReason = (idx, value) => {
+    const v = String(value || "").trim();
+    if (!v) return;
+    const cur = rowReasons(rows[idx]);
+    if (v === OTHER) {
+      /* "Other..." adds one empty free-text slot to fill in */
+      if (cur.some(isCustomReason) || cur.includes("")) return;
+      setReasons(idx, [...cur, ""]);
+      return;
+    }
+    if (cur.includes(v)) return;
+    setReasons(idx, [...cur, v]);
+  };
+
+  const removeReason = (idx, at) => {
+    const cur = rowReasons(rows[idx]).slice();
+    cur.splice(at, 1);
+    setReasons(idx, cur);
+  };
+
+  const editCustomReason = (idx, at, value) => {
+    const cur = rowReasons(rows[idx]).slice();
+    cur[at] = value;
+    setReasons(idx, cur);
   };
 
   const addRow = () => setRows((prev) => [...prev, blankItem()]);
@@ -390,8 +430,7 @@ export default function DestructionInput() {
         !String(r.productName || "").trim() ||
         !(Number(r.quantity) > 0) ||
         (r.qtyType === OTHER && !String(r.customQtyType || "").trim()) ||
-        !String(r.reason || "").trim() ||
-        (r.reason === OTHER && !String(r.customReason || "").trim()) ||
+        !itemReasons(r).length ||
         (r.method === OTHER && !String(r.customMethod || "").trim());
       if (bad) rErr[idx] = true;
     });
@@ -403,7 +442,7 @@ export default function DestructionInput() {
       rErr,
       msg: ok
         ? ""
-        : "Please complete the highlighted fields: Branch, Destruction Date, Destroyed By, Approved By, and for every line Product, Quantity (> 0) and Reason.",
+        : "Please complete the highlighted fields: Branch, Destruction Date, Destroyed By, Approved By, and for every line Product, Quantity (> 0) and at least one Reason.",
     };
   };
 
@@ -710,7 +749,7 @@ export default function DestructionInput() {
               <th style={{ ...th, width: 96 }}>UNIT</th>
               <th style={{ ...th, width: 100 }}>UNIT COST</th>
               <th style={{ ...th, width: 104 }}>VALUE (AED)</th>
-              <th style={{ ...th, width: 170 }}>REASON *</th>
+              <th style={{ ...th, width: 210 }}>REASON(S) *</th>
               <th style={{ ...th, width: 170 }}>METHOD</th>
               <th style={th}>REMARKS</th>
               <th style={{ ...th, width: 110 }}>PHOTOS</th>
@@ -822,27 +861,70 @@ export default function DestructionInput() {
                   {fmt2(lineValue(row))}
                 </td>
 
-                <td style={td}>
-                  <select
-                    style={inp(idx)}
-                    value={row.reason}
-                    onChange={(e) => handleChange(idx, "reason", e.target.value)}
-                  >
-                    <option value="">Select reason</option>
-                    {REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                  {row.reason === OTHER && (
-                    <input
-                      style={{ ...inp(idx), marginTop: 8 }}
-                      placeholder="Enter reason"
-                      value={row.customReason}
-                      onChange={(e) => handleChange(idx, "customReason", e.target.value)}
-                    />
-                  )}
+                <td style={{ ...td, textAlign: "left" }}>
+                  {(() => {
+                    const picked = rowReasons(row);
+                    const taken = new Set(picked);
+                    const hasCustom = picked.some((r) => r === "" || isCustomReason(r));
+                    return (
+                      <>
+                        {picked.length > 0 && (
+                          <div style={reasonChips}>
+                            {picked.map((r, ri) =>
+                              r === "" || isCustomReason(r) ? (
+                                <div key={`c-${ri}`} style={reasonCustomWrap}>
+                                  <input
+                                    autoFocus={r === ""}
+                                    style={reasonCustomInput}
+                                    placeholder="Enter reason"
+                                    value={r}
+                                    onChange={(e) => editCustomReason(idx, ri, e.target.value)}
+                                  />
+                                  <button
+                                    onClick={() => removeReason(idx, ri)}
+                                    style={reasonChipX}
+                                    title="Remove this reason"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <span key={`r-${ri}`} style={reasonChip}>
+                                  <span style={{ lineHeight: 1.25 }}>{r}</span>
+                                  <button
+                                    onClick={() => removeReason(idx, ri)}
+                                    style={reasonChipX}
+                                    title="Remove this reason"
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              )
+                            )}
+                          </div>
+                        )}
+                        <select
+                          style={{ ...inp(idx), marginTop: picked.length ? 8 : 0 }}
+                          value=""
+                          onChange={(e) => {
+                            addReason(idx, e.target.value);
+                            e.target.value = "";
+                          }}
+                        >
+                          <option value="">
+                            {picked.length ? "+ Add another reason" : "Select reason"}
+                          </option>
+                          {REASONS.filter(
+                            (r) => (r === OTHER ? !hasCustom : !taken.has(r))
+                          ).map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    );
+                  })()}
                 </td>
 
                 <td style={td}>
@@ -1158,6 +1240,61 @@ const btnGhost = {
   background: "transparent",
   color: "#7f1d1d",
   border: "1px solid rgba(127,29,29,.45)",
+};
+
+const reasonChips = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+};
+
+const reasonChip = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  maxWidth: "100%",
+  padding: "5px 6px 5px 9px",
+  borderRadius: 999,
+  background: "#fdeaea",
+  border: "1.5px solid #e5b8b8",
+  color: "#7f1d1d",
+  fontSize: 12,
+  fontWeight: 800,
+  textAlign: "left",
+};
+
+const reasonChipX = {
+  border: "none",
+  background: "#7f1d1d",
+  color: "#fff",
+  width: 18,
+  height: 18,
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 900,
+  lineHeight: 1,
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+const reasonCustomWrap = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  width: "100%",
+};
+
+const reasonCustomInput = {
+  flex: 1,
+  minWidth: 0,
+  boxSizing: "border-box",
+  padding: "7px 9px",
+  borderRadius: 10,
+  border: "1.5px solid #e5b8b8",
+  background: "#fffafa",
+  fontSize: 12.5,
+  fontWeight: 700,
+  fontFamily: "inherit",
 };
 
 const btnImg = {

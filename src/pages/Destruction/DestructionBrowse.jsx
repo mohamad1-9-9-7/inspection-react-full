@@ -31,6 +31,7 @@ import { escapeHtml } from "../shared/emailReportUtils";
 import { MAWASHI_LOGO_B64 } from "../../assets/mawashi-logo-b64";
 import { arrangeItems, GROUP_LABEL } from "../shared/itemSortGroup";
 import { getRefNo, isPendingRef } from "../../utils/reportRef";
+import { itemReasons, REASON_SEP } from "./destructionOptions";
 
 /* API report type — also the key the reference prefix is looked up by. */
 const TYPE = "destruction_record";
@@ -94,9 +95,12 @@ function adaptItem(it, header, refNo) {
     customButchery: src.customButchery ?? h.customBranch ?? "",
     /* "ORIGIN" column is relabelled BATCH / LOT */
     origin: src.origin ?? src.batchNo ?? "",
-    /* "ACTION" column is relabelled REASON */
-    action: src.action ?? src.reason ?? "",
-    customAction: src.customAction ?? src.customReason ?? "",
+    /* "ACTION" column is relabelled REASON. A line may carry several reasons:
+       `action` is the joined display text, `reasonList` keeps them apart so
+       the Reason filter and the KPI counts stay per-reason. */
+    reasonList: itemReasons(src),
+    action: src.action ?? itemReasons(src).join(REASON_SEP),
+    customAction: src.customAction ?? "",
     /* Destruction extras surfaced in the row detail */
     destructionMethod: method || headerMethod,
     destructionDate: h.destructionDate || "",
@@ -153,6 +157,21 @@ function actionText(row) {
   return row?.action === "إجراء آخر..." || row?.action === "Other..."
     ? row?.customAction || ""
     : row?.action || "";
+}
+/* Every reason on a row — the multi-reason list when present, else the single
+   legacy value. Used by the Reason filter and the reason KPIs. */
+function reasonsOf(row) {
+  const list = Array.isArray(row?.reasonList) ? row.reasonList.filter(Boolean) : [];
+  if (list.length) return list;
+  const one = actionText(row);
+  return one ? [one] : [];
+}
+/* Reasons for a row after the change log is applied. A recorded change carries
+   one text value, so it replaces the whole set. */
+function latestReasons(row, changeTo) {
+  const to = changeTo == null ? "" : String(changeTo).trim();
+  if (to) return [to];
+  return reasonsOf(row);
 }
 function itemKey(row) {
   return [
@@ -2796,7 +2815,8 @@ export default function DestructionBrowse() {
       for (const it of (rep.items || [])) {
         posSet.add(safeButchery(it) || "—");
         originSet.add(it.origin || "—");
-        actionSet.add(actionText(it) || "—");
+        for (const r of reasonsOf(it)) actionSet.add(r);
+        if (!reasonsOf(it).length) actionSet.add("—");
       }
     const sortFn = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base" });
     return {
@@ -2812,7 +2832,11 @@ export default function DestructionBrowse() {
     const action = actionText(row) || "—";
     if (posSel.length && !posSel.includes(pos)) return false;
     if (originSel.length && !originSel.includes(origin)) return false;
-    if (actionSel.length && !actionSel.includes(action)) return false;
+    if (actionSel.length) {
+      const rs = reasonsOf(row);
+      const list = rs.length ? rs : [action];
+      if (!list.some((r) => actionSel.includes(r))) return false;
+    }
     if (qtySel !== "any" && qtyKind(row) !== qtySel) return false;
     if (hasImages !== "any") {
       const has = Array.isArray(row.images) && row.images.length > 0;
@@ -2874,7 +2898,8 @@ export default function DestructionBrowse() {
         else if (isPcsType(it.qtyType)) { posPcs[pos] = (posPcs[pos] || 0) + q; totalQtyPcs += q; }
 
         const act = latestActionFor(date, it);
-        if (act) byActionLatest[act] = (byActionLatest[act] || 0) + 1;
+        for (const r of latestReasons(it, changeMapByDate.get(date)?.get(itemKey(it))?.to))
+          byActionLatest[r] = (byActionLatest[r] || 0) + 1;
         if (isCondemnation(act)) {
           condemnationCount += 1;
           if (isKgType(it.qtyType)) condemnationKg += q;
@@ -3276,7 +3301,7 @@ export default function DestructionBrowse() {
         const ch = inner.get(itemKey(it));
         const act = ch?.to ?? actionText(it);
         posMap[pos] = (posMap[pos] || 0) + 1;
-        if (act) actMap[act] = (actMap[act] || 0) + 1;
+        for (const r of latestReasons(it, ch?.to)) actMap[r] = (actMap[r] || 0) + 1;
         if (isCondemnation(act)) {
           condCount += 1;
           if (isKgType(it.qtyType)) condKg += q;
@@ -3978,7 +4003,8 @@ export default function DestructionBrowse() {
              Overview KPI (byActionLatest), so Condemnation% here == what the user
              sees on screen. Items with a blank action are NOT in the denominator. */
           const act = latestActionFor(date, it) || "";
-          if (act) actionCount.set(act, (actionCount.get(act) || 0) + 1);
+          for (const r of latestReasons(it, changeMapByDate.get(date)?.get(itemKey(it))?.to))
+            actionCount.set(r, (actionCount.get(r) || 0) + 1);
           if (isCondemnation(act)) { condCount++; dCond++; if (isKgType(it.qtyType)) condKg += q; condProduct.set(prod, (condProduct.get(prod) || 0) + 1); posCond.set(pos, (posCond.get(pos) || 0) + 1); originCond.set(origin, (originCond.get(origin) || 0) + 1); }
           if ((act || "").toLowerCase() === "use in production") useProdCount++;
           if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount++;
@@ -6068,7 +6094,16 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                       </div>
                     ) : (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span>{search ? highlight(curr || "", search) : curr}</span>
+                        {reasonsOf(row).length > 1 ? (
+                          /* several reasons on one line — one pill each */
+                          reasonsOf(row).map((r, ri) => (
+                            <span key={ri} style={{ ...sx.pill, fontSize: 11 }}>
+                              {search ? highlight(r, search) : r}
+                            </span>
+                          ))
+                        ) : (
+                          <span>{search ? highlight(curr || "", search) : curr}</span>
+                        )}
                         {hasTrail && onOpenAudit && (
                           <button onClick={() => onOpenAudit(row, trail)} title={`${trail.length} change(s)`} style={{
                             ...sx.btn, padding: "1px 6px", fontSize: 10,

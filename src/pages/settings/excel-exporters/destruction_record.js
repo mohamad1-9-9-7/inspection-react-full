@@ -6,7 +6,7 @@ import {
   pageSetupLandscape,
 } from "./_lib";
 import {
-  computeTotals, fmt2, lineValue, num, resolveOption, safeArr,
+  computeTotals, fmt2, lineValue, num, reasonsText, resolveOption, safeArr,
 } from "../../Destruction/destructionOptions";
 import { getRefNo } from "../../../utils/reportRef";
 
@@ -21,7 +21,7 @@ const COLS = [
   { label: "Unit",         width: 9  },
   { label: "Unit Cost",    width: 11 },
   { label: "Value (AED)",  width: 12 },
-  { label: "Reason",       width: 28 },
+  { label: "Reason(s)",    width: 30 },
   { label: "Method",       width: 26 },
   { label: "Remarks",      width: 26 },
 ];
@@ -152,7 +152,7 @@ export default async function build(wb, record, ctx) {
         resolveOption(it?.qtyType, it?.customQtyType),
         num(it?.unitCost),
         num(lineValue(it)),
-        resolveOption(it?.reason, it?.customReason),
+        reasonsText(it),
         resolveOption(it?.method, it?.customMethod) || defaultMethod,
         it?.remarks || "",
       ];

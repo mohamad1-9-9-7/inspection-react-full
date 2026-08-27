@@ -97,6 +97,42 @@ export function resolveOption(value, custom) {
   return v;
 }
 
+/* ───────── reasons (one line may carry more than one) ─────────
+   `reasons` is the canonical list: catalog values from REASONS plus, at most,
+   one free-text entry stored verbatim (anything not in REASONS is the custom
+   one). `reason` / `customReason` stay in sync so records written before
+   multi-reason support — and any reader still expecting one value — keep working. */
+export const REASON_SEP = " + ";
+
+const REASON_SET = new Set(REASONS);
+
+/** True when the value is a free-typed reason rather than a catalog one. */
+export function isCustomReason(v) {
+  const s = String(v ?? "").trim();
+  return !!s && !REASON_SET.has(s);
+}
+
+/** Every reason on a line, de-duplicated. Falls back to the legacy single field. */
+export function itemReasons(it) {
+  const out = [];
+  const push = (v) => {
+    const s = String(v ?? "").trim();
+    if (s && s !== OTHER && !out.includes(s)) out.push(s);
+  };
+  const list = safeArr(it?.reasons);
+  if (list.length) {
+    list.forEach(push);
+    return out;
+  }
+  push(resolveOption(it?.reason, it?.customReason));
+  return out;
+}
+
+/** Display string for a line's reasons — "Expired + Contamination". */
+export function reasonsText(it) {
+  return itemReasons(it).join(REASON_SEP);
+}
+
 export function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -122,6 +158,7 @@ export function blankItem() {
     qtyType: "KG",
     customQtyType: "",
     unitCost: "",
+    reasons: [],
     reason: "",
     customReason: "",
     method: "",
@@ -175,9 +212,7 @@ export function computeTotals(items) {
 export function countReasons(items) {
   const map = new Map();
   for (const it of safeArr(items)) {
-    const r = resolveOption(it?.reason, it?.customReason);
-    if (!r) continue;
-    map.set(r, (map.get(r) || 0) + 1);
+    for (const r of itemReasons(it)) map.set(r, (map.get(r) || 0) + 1);
   }
   return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 }
@@ -186,6 +221,9 @@ export function countReasons(items) {
 export function prepareItem(r) {
   const q = Number(r?.quantity);
   const c = Number(r?.unitCost);
+  const reasons = itemReasons(r);
+  const first = reasons[0] || "";
+  const firstIsCustom = isCustomReason(first);
   return {
     itemCode: String(r?.itemCode || "").trim(),
     productName: String(r?.productName || "").trim(),
@@ -196,8 +234,10 @@ export function prepareItem(r) {
     qtyType: String(r?.qtyType || "").trim(),
     customQtyType: String(r?.customQtyType || "").trim(),
     unitCost: Number.isFinite(c) ? c : "",
-    reason: String(r?.reason || "").trim(),
-    customReason: String(r?.customReason || "").trim(),
+    reasons,
+    /* legacy single-reason mirror — the first reason wins */
+    reason: firstIsCustom ? OTHER : first,
+    customReason: firstIsCustom ? first : "",
     method: String(r?.method || "").trim(),
     customMethod: String(r?.customMethod || "").trim(),
     remarks: String(r?.remarks || "").trim(),
@@ -215,6 +255,7 @@ export function rowHasData(r) {
     r?.expiry ||
     r?.remarks ||
     r?.reason ||
+    (r?.reasons?.length || 0) > 0 ||
     r?.method ||
     (r?.images?.length || 0) > 0 ||
     (r?.quantity !== "" && r?.quantity != null) ||
