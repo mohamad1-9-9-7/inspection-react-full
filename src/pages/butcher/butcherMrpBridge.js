@@ -180,6 +180,10 @@ export function bomLines(mrpCfg, bom, kind) {
         ar: it.ar || "",
         en: it.en || "",
         uom: it.uom || "",
+        // 📷 صورة الصنف — بتنقل مع السطر لأن كرت الجزار بيقرأ من هالكائن لا
+        // من سجل الأصناف. بدونها الصورة اللي انرفعت من صفحة الأصناف ما بتوصل
+        // للكشك أبداً — وهي كل الفايدة (أغلب الجزارين ما بيقروا).
+        imageUrl: it.imageUrl || "",
         kind: kind === "wastes" ? "waste" : "product",
         targetQty: num(l.qty),
         required: l.required === true,   // منتج إلزامي — لازم الجزار يوزنه (Qty>0)

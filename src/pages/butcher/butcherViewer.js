@@ -55,6 +55,9 @@ export function useRowViewer(isAr = true) {
 
     return {
       wf, identity, isAdmin, isOfficer: officer, isFull, siteScope,
+      /* مشرف فعلاً — لا أي حدا صادف إنه مربوط بنفس الملحمة. يفرّق: العملية
+         المحجورة بتبيّن للمشرف وبس، مش لجزار زميل بنفس الملحمة. */
+      isSupervisor: identity?.role === "supervisor",
       canRequestFor,
       canDecide: isFull,
       username: account?.username || "",

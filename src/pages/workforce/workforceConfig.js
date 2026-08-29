@@ -30,14 +30,21 @@ const EVT = "workforce_config_changed";
  * معرّف بيتيه كل الموظفين المسجّلين عليه. التسميات وحدها هي اللي بتتعدّل —
  * ولهيك `manager` صار اسمه «مدير الإنتاج» بلا ما نلمس المعرّف.
  *
- * `floor: true` = دور شغل الملحمة (بيظهر بشجرة الملاحم كصف مستقل).
- * الجزار والمشرف إلهم مكانهم الخاص بالشجرة، والباقي بيتجمّعوا بصف «أدوار أخرى».
+ * الجزار والمشرف إلهم مكانهم الخاص بشجرة الملاحم، والباقي بيتجمّعوا بصف
+ * «أدوار أخرى».
+ *
+ * `scope: "all"` = **دور على مستوى الشركة كلها، مش مربوط بملحمة**.
+ * مسؤول المخزون مسؤول عن كل الملاحم لا عن وحدة — فربطه بملحمة واحدة غلط
+ * بالنموذج نفسه: بيخلّي الشجرة تحطّه تحت ملحمة، والتحقّق يطلب منه ملحمة،
+ * وبيبيّن كأنه «بلا ملحمة» بشاشة التحذير. هالعلَم بيمنع الثلاثة.
+ * (مدير الإنتاج ومدخل البيانات لسّا على السلوك القديم — صلاحياتهم لسّا
+ * ما تحدّدت، فما منغيّر نموذجهم قبل ما نعرف شو بدهم.)
  */
 export const ROLES = [
   { id: "butcher",          icon: "🔪",   ar: "جزار",             en: "Butcher" },
   { id: "supervisor",       icon: "🧑‍🍳", ar: "مشرف",             en: "Supervisor" },
   { id: "manager",          icon: "🏭",   ar: "مدير الإنتاج",     en: "Production manager" },
-  { id: "inventoryOfficer", icon: "📦",   ar: "مسؤول المخزون",    en: "Inventory officer" },
+  { id: "inventoryOfficer", icon: "📦",   ar: "مسؤول المخزون",    en: "Inventory officer", scope: "all" },
   { id: "dataEntry",        icon: "⌨️",   ar: "مدخل بيانات",      en: "Data entry" },
 ];
 
@@ -47,6 +54,15 @@ export const OFFICE_ROLES = ROLES.filter(
 ).map((r) => r.id);
 
 export const isOfficeRole = (role) => OFFICE_ROLES.includes(role);
+
+/** أدوار بتغطّي كل الملاحم — ما بتنربط بملحمة ولا بتنعدّ «بلا ملحمة». */
+export const COMPANY_WIDE_ROLES = ROLES.filter((r) => r.scope === "all").map((r) => r.id);
+
+/** هل هذا الدور على مستوى الشركة كلها؟ */
+export const isCompanyWideRole = (role) => COMPANY_WIDE_ROLES.includes(role);
+
+/** هل هذا الشخص يغطّي كل الملاحم؟ */
+export const coversAllSites = (person) => isCompanyWideRole(person?.role);
 
 /** حالات الموظف. */
 export const STATUSES = [
@@ -460,7 +476,11 @@ export function validatePerson(wf, draft, existingId = "") {
   }
 
   const sites = sitesOfPerson(draft);
-  if (sites.length === 0) add("لازم تختار ملحمة", "A site must be selected");
+  /* الأدوار على مستوى الشركة (مسؤول المخزون) ما بتنربط بملحمة أصلاً —
+     طلب ملحمة منها بيجبرك تحطّه بوحدة وهو مسؤول عنهنّ كلهنّ. */
+  if (sites.length === 0 && !coversAllSites(draft)) {
+    add("لازم تختار ملحمة", "A site must be selected");
+  }
   if (draft.role === "butcher" && !wf?.rules?.multiSite && sites.length > 1) {
     add("الجزار مربوط بملحمة واحدة حسب القواعد", "Butchers are limited to one site by the rules");
   }

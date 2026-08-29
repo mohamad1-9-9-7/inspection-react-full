@@ -371,7 +371,9 @@ const CuttingCard = React.forwardRef(function CuttingCard(
     );
     return { raw, waste, products, yieldPct: raw > 0 ? (products / raw) * 100 : 0 };
   }, [ops]);
-  const approver = ops.find((r) => r.review?.by)?.review?.by || "";
+  // اسم الشخص قبل اسم الحساب — في حسابات مسمّاة باسم الملحمة
+  const approverRec = ops.find((r) => r.review?.byName || r.review?.by)?.review;
+  const approver = approverRec?.byName || approverRec?.by || "";
 
   return (
     <div className="cc" ref={ref}>

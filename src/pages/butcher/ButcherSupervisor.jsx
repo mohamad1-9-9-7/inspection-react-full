@@ -22,8 +22,8 @@ import { BRANCHES, TYPE, nameOf } from "./butcherOptions";
 import { butcherLabel, useButcherConfig } from "./butcherConfig";
 import { useMrpConfig } from "./butcherMrpBridge";
 import {
-  CR_KINDS, CR_STATUS, canSeeRow, downloadExcel, isCancelled, isHidden,
-  isQuarantined, normalizeRecord,
+  CR_ACTIONS, CR_KINDS, CR_STATUS, canSeeRow, crHistory, crStatusText,
+  downloadExcel, isCancelled, isHidden, isQuarantined, normalizeRecord,
 } from "./butcherReportKit";
 import { useRowViewer } from "./butcherViewer";
 import CuttingCard, { CARD_CSS, CuttingCardPrint } from "./ButcherCuttingCard";
@@ -37,31 +37,140 @@ import { can, getCurrentUser } from "../../utils/perms";
 import { siteLabel } from "../workforce/workforceConfig";
 
 const CSS = `
-#root .bs, #root .bs * { font-size: 18px !important; }
-#root .bs-title  { font-size: 34px !important; }
-#root .bs-sub    { font-size: 16px !important; }
-#root .bs-kpi    { font-size: 38px !important; }
-#root .bs-name   { font-size: 23px !important; }
-#root .bs-cname  { font-size: 19px !important; line-height: 1.3 !important; }
-#root .bs-stat   { font-size: 22px !important; }
-#root .bs-chip   { font-size: 15px !important; }
-#root .bs-small  { font-size: 15px !important; }
+/* ── الخطوط: شاشة بتتقرا من بعيد بالملحمة، فالأساس أكبر من الافتراضي ── */
+#root .bs, #root .bs * { font-size: 17px !important; }
+#root .bs-title  { font-size: 30px !important; }
+#root .bs-sub    { font-size: 15px !important; }
+#root .bs-kpi    { font-size: 30px !important; }
+#root .bs-name   { font-size: 20px !important; }
+#root .bs-cname  { font-size: 18px !important; line-height: 1.35 !important; }
+#root .bs-stat   { font-size: 20px !important; }
+#root .bs-chip   { font-size: 13px !important; }
+#root .bs-small  { font-size: 13.5px !important; }
 @media (max-width: 1100px) {
   #root .bs, #root .bs * { font-size: 16px !important; }
-  #root .bs-title { font-size: 26px !important; }
-  #root .bs-kpi   { font-size: 30px !important; }
-  #root .bs-name  { font-size: 20px !important; }
-  #root .bs-cname { font-size: 17px !important; }
-  #root .bs-stat  { font-size: 20px !important; }
+  #root .bs-title { font-size: 25px !important; }
+  #root .bs-kpi   { font-size: 26px !important; }
+  #root .bs-name  { font-size: 19px !important; }
 }
 @media (max-width: 820px) {
   #root .bs, #root .bs * { font-size: 15px !important; }
-  #root .bs-title { font-size: 23px !important; }
-  #root .bs-kpi   { font-size: 26px !important; }
-  #root .bs-name  { font-size: 18px !important; }
+  #root .bs-title { font-size: 22px !important; }
+  #root .bs-kpi   { font-size: 24px !important; }
   #root .bs-cname { font-size: 16px !important; }
   #root .bs-stat  { font-size: 18px !important; }
 }
+
+/* ── الهيكل ── */
+#root .bs-shell { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+#root .bs-panel {
+  background: #fff; border: 1px solid #dbe6f2; border-radius: 18px; padding: 16px;
+  box-shadow: 0 8px 24px rgba(15,39,64,.05);
+}
+#root .bs-panel-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+#root .bs-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ── الترويسة ── */
+#root .bs-hero {
+  border-radius: 22px; padding: 18px 20px; color: #fff;
+  background: linear-gradient(135deg,#0b3358,#1f6fd0 55%,#0f766e);
+  box-shadow: 0 16px 40px rgba(11,51,88,.22);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+#root .bs-hero .bs-sub { color: rgba(255,255,255,.86); }
+#root .bs-hero-badge {
+  display: inline-flex; align-items: center; gap: 7px; margin-top: 8px;
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3);
+  border-radius: 999px; padding: 4px 13px; font-weight: 800;
+}
+#root .bs-hbtn {
+  border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.13); color: #fff;
+  border-radius: 12px; padding: 10px 16px; font-weight: 800; font-family: inherit;
+  cursor: pointer; white-space: nowrap; transition: background .15s ease;
+}
+#root .bs-hbtn:hover:not(:disabled) { background: rgba(255,255,255,.26); }
+#root .bs-hbtn:disabled { opacity: .55; cursor: not-allowed; }
+#root .bs-hbtn.solid { background: #fff; color: #14507f; border-color: #fff; }
+
+/* ── المؤشرات ── */
+#root .bs-kpis {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(168px,100%), 1fr));
+}
+#root .bs-kpi-box {
+  background: #fff; border: 1px solid #dbe6f2; border-radius: 16px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  box-shadow: 0 8px 22px rgba(15,39,64,.05);
+}
+#root .bs-kpi-ic {
+  width: 44px; height: 44px; border-radius: 13px; flex: 0 0 auto;
+  display: grid; place-items: center; font-size: 21px !important;
+}
+#root .bs-kpi-txt { min-width: 0; }
+#root button.bs-kpi-box { cursor: pointer; text-align: start; font-family: inherit; }
+#root button.bs-kpi-box:hover { border-color: #bcd6ef; box-shadow: 0 12px 28px rgba(15,39,64,.09); }
+
+/* ── كروت الجزارين ── */
+#root .bs-cards {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(360px,100%), 1fr));
+}
+#root .bs-card {
+  background: #fff; border: 1px solid #dbe6f2; border-radius: 18px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  box-shadow: 0 8px 22px rgba(15,39,64,.05);
+  transition: box-shadow .16s ease, border-color .16s ease, transform .16s ease;
+}
+#root .bs-card:hover { border-color: #bcd6ef; box-shadow: 0 16px 34px rgba(15,39,64,.10); transform: translateY(-2px); }
+#root .bs-card.hot { border-color: #fdba74; }
+#root .bs-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+#root .bs-card-id { min-width: 0; flex: 1; }
+#root .bs-card-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+#root .bs-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+#root .bs-card-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: auto; }
+#root .bs-bar { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: #eef4fb; }
+#root .bs-bar i { display: block; height: 100%; }
+
+/* ── كرت الطلبات ── */
+#root .bs-reqs { display: flex; flex-direction: column; gap: 10px; }
+#root .bs-req {
+  border: 1px solid #fed7aa; background: #fff7ed; border-radius: 16px; padding: 14px;
+  display: grid; gap: 12px; grid-template-columns: minmax(0,1fr) auto; align-items: start;
+}
+#root .bs-req.done { border-color: #e2e8f0; background: #f8fafc; }
+/* عمود قرار ضيّق: الشارة وزرّين تحت بعض. لولا الحدّ الأعلى، صف الأزرار
+   بياخد نص عرض الكرت وبيضغط نصّ الطلب على عمود رفيع. */
+#root .bs-req-side {
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  min-width: 168px; max-width: 232px;
+}
+#root .bs-req-side > span { text-align: center; }
+#root .bs-req-side > button { width: 100%; }
+@media (max-width: 760px) {
+  #root .bs-req { grid-template-columns: minmax(0,1fr); }
+  #root .bs-req-side { flex-direction: row; flex-wrap: wrap; max-width: none; }
+  #root .bs-req-side > button { width: auto; }
+  #root .bs-card-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── سجل العملية ── */
+#root .bs-tl { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+#root .bs-tl-item {
+  display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 10px;
+  padding-bottom: 12px; position: relative;
+}
+#root .bs-tl-item:not(:last-child)::before {
+  content: ""; position: absolute; inset-inline-start: 12px; top: 26px; bottom: 0;
+  width: 2px; background: #e2e8f0;
+}
+#root .bs-tl-dot {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff; border: 2px solid #e2e8f0; font-size: 12px !important; z-index: 1;
+}
+
 #root .bs-row { transition: box-shadow .16s ease, border-color .16s ease, background .16s ease; }
 #root .bs-row:hover { border-color: #bcd6ef; background: #fbfdff; box-shadow: 0 12px 28px rgba(15,39,64,.09); }
 @keyframes bsRise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
@@ -141,6 +250,9 @@ export default function ButcherSupervisor() {
   const [queue, setQueue] = useState(false);       // طابور المراجعة لكل الجزارين
   const [requesting, setRequesting] = useState(null); // رفع طلب: الصف
   const [deciding, setDeciding] = useState(null);     // قرار المسؤول: الصف
+  const [focusId, setFocusId] = useState("");         // فتح عملية وحدة من كرت الطلبات
+  const [scanning, setScanning] = useState(false);    // فحص شامل عن طلبات قديمة
+  const [scannedAt, setScannedAt] = useState("");     // وقت آخر فحص شامل
   const [exporting, setExporting] = useState(false);
 
   /* ── 👥 مين عم يتفرّج؟ ───────────────────────────────────────────────
@@ -187,6 +299,8 @@ export default function ButcherSupervisor() {
       );
       if (!res.ok) throw new Error(`Server ${res.status}`);
       setRecords(toArray(await res.json()));
+      // تحميل جديد = نافذة جديدة، فنتيجة الفحص الشامل القديمة ما عادت تمثّلها
+      setScannedAt("");
     } catch (e) {
       setError(e?.message || t({ en: "Failed to load data", ar: "تعذّر تحميل البيانات" }));
       setRecords([]);
@@ -261,16 +375,18 @@ export default function ButcherSupervisor() {
           rows: [],
           kg: 0, productsKg: 0, wasteKg: 0, baseKg: 0,
           pending: 0, approved: 0, rejected: 0, stdOff: 0,
-          live: 0, held: 0,
+          live: 0, held: 0, crOpen: 0, cancelled: 0,
           lastAt: "",
         });
       }
       const b = map.get(key);
-      /* الصف بينضاف للقائمة دايماً حتى يوصله المشرف ويتابع طلبه، بس المحجور
-         والملغى ما بينحسبوا بأي وزن ولا تصافي ولا عدّاد — نفس قاعدة الـKPI. */
+      /* الصف بينضاف للقائمة دايماً. الملغى وحده ما بينحسب بأي وزن ولا تصافي
+         ولا عدّاد — نفس قاعدة الـKPI. اللي عليه طلب مفتوح بينحسب متل غيره
+         وبينعدّ كمان بـcrOpen حتى تبيّن شارته على الكرت. */
       b.rows.push(e);
       if (e.branchName && e.branchName !== "—") b.branches.add(e.branchName);
-      if (isHidden(e)) { b.held += 1; return; }
+      if (isHidden(e)) { b.held += 1; b.cancelled += 1; return; }
+      if (isQuarantined(e)) b.crOpen += 1;
       b.live += 1;
       b.productsKg += e.productsKg;
       b.wasteKg += e.wasteKg;
@@ -304,16 +420,72 @@ export default function ButcherSupervisor() {
     });
   }, [filtered, cfg, sortKey]);
 
-  /* مؤشرات أعلى الصفحة — من `live`: عملية محجورة أو ملغاة ما بتنحسب بأي رقم،
-     وهاد كل معنى الحجر. عدّاد الطلبات المفتوحة منفصل ليشوفه المسؤول. */
+  /* مؤشرات أعلى الصفحة — من `live`: الملغى وحده برّا كل رقم. العملية اللي
+     عليها طلب مفتوح بتضل محسوبة (معلّمة)، وعدّادها بكرت الطلبات فوق. */
   const kpi = useMemo(() => ({
     butchers: butchers.length,
     carcasses: live.length,
     kg: live.reduce((s, e) => s + e.productsKg + e.wasteKg, 0),
     pending: live.filter((e) => e.reviewStatus === "pending").length,
     stdOff: live.filter((e) => e.stdCheck?.on && !e.stdCheck.pass).length,
-    requests: filtered.filter((e) => isQuarantined(e)).length,
   }), [butchers, live, filtered]);
+
+  /* ── 📋 كرت الطلبات المنفصل ────────────────────────────────────────
+     مصدره `entries` لا `filtered`: طلب مرفوع على عملية من قبل أسبوع لازم
+     يضل بادّ للمسؤول حتى لو الفلتر مضبوط على اليوم — الفلاتر للتصفّح، مش
+     مصفاة تخفي شغل مستنّي قرار. اللي بيضل مطبَّق: نطاق الحساب والرؤية. */
+  const visible = useMemo(
+    () => entries.filter(
+      (e) => (!scoped || scopeSites.includes(e.branchCode)) && canSeeRow(e, viewer)
+    ),
+    [entries, scoped, scopeSites, viewer]
+  );
+
+  const openRequests = useMemo(
+    () => visible
+      .filter(isQuarantined)
+      .sort((a, b) => String(a.changeRequest?.at || "").localeCompare(String(b.changeRequest?.at || ""))),
+    [visible]
+  );
+
+  const decidedRequests = useMemo(
+    () => visible
+      .filter((e) => isCancelled(e) || e.crStatus === "rejected")
+      .sort((a, b) =>
+        String(b.changeRequest?.decidedAt || "").localeCompare(String(a.changeRequest?.decidedAt || ""))),
+    [visible]
+  );
+
+  /* فحص شامل — الصفحة بتحمّل نافذة الفلتر وبس، فطلب على عملية قديمة ممكن
+     يكون برّا التحميل أصلاً. الزر بيسحب آخر ٩٠ يوم مرّة وحدة وبيدمج
+     **السجلات اللي عليها طلب** فقط — الباقي بينرمى، فما بتكبر الذاكرة ولا
+     بتتشوّه أرقام الفترة المعروضة (الفلترة على التاريخ بتضل شغّالة). */
+  const scanRequests = useCallback(async () => {
+    if (scanning) return;
+    setScanning(true);
+    setError("");
+    try {
+      const wide = new Date();
+      wide.setDate(wide.getDate() - 90);
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000` +
+        `&from=${wide.toISOString().slice(0, 10)}&to=${todayStr()}`,
+        { headers: { Accept: "application/json" }, cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`Server ${res.status}`);
+      const withCr = toArray(await res.json()).filter((r) => r?.payload?.changeRequest);
+      setRecords((prev) => {
+        const seen = new Set(prev.map((r) => r.id ?? r._id));
+        const extra = withCr.filter((r) => !seen.has(r.id ?? r._id));
+        return extra.length ? [...prev, ...extra] : prev;
+      });
+      setScannedAt(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+    } catch (e) {
+      setError(e?.message || t({ en: "Scan failed", ar: "تعذّر الفحص" }));
+    } finally {
+      setScanning(false);
+    }
+  }, [scanning, t]);
 
   /* ── حفظ المراجعة (قبول — عادي أو مع توضيح) ── */
   const saveReview = useCallback(async (entry, nextStatus, reason = "") => {
@@ -327,6 +499,10 @@ export default function ButcherSupervisor() {
       const review = {
         status: nextStatus,
         by: currentUser().username || currentUser().name || "supervisor",
+        /* اسم الشخص جنب اسم الحساب: في حسابات مسمّاة باسم الملحمة («POS 15»)،
+           واسم الملحمة ما بيجاوب «مين قبِلها». الاسم بيتقرا من القوى العاملة
+           إذا الحساب مربوط، وإلا من اسم العرض تبع الحساب. */
+        byName: viewer.identity?.name || viewer.displayName || currentUser().username || "",
         at: new Date().toISOString(),
         reason: outOfTol ? String(reason || "").trim() : "",
         // قبول استثنائي: السبب إلزامي، ومعه لقطة الانحرافات وقت القبول
@@ -396,60 +572,92 @@ export default function ButcherSupervisor() {
     }
   }, [busyId, t]);
 
+  /* ── 📜 سجل الحركات ──
+     كل حركة بتنضاف لآخر السجل بدل ما تدهس اللي قبلها. الحالة لحالها ما
+     بتحكي القصة: عملية ملغاة اليوم ممكن تكون انطلبت وانرجعت وانطلبت من
+     جديد — والمدقّق بيسأل عن هالتسلسل بالذات. */
+  const priorHistory = (entry) => {
+    const cr = entry.changeRequest;
+    if (Array.isArray(cr?.history) && cr.history.length) return cr.history;
+    /* أول كتابة على سجل قديم: منحفظ قصته المبنيّة من الحقول المسطّحة حتى
+       ما تضيع لما ينكتب فوقها. */
+    return crHistory(entry).map((h) => ({ ...h }));
+  };
+
+  const withEvent = (entry, next, event) => ({
+    ...next,
+    history: [...priorHistory(entry), event],
+  });
+
+  const me = () => ({
+    by: viewer.username,
+    byName: viewer.identity ? viewer.identity.name : viewer.displayName,
+  });
+
   /** رفع الطلب — مشرف الملحمة نفسها وبس. */
-  const raiseRequest = (entry, kind, reason) =>
-    saveChangeRequest(entry, {
+  const raiseRequest = (entry, kind, reason) => {
+    const at = new Date().toISOString();
+    const who = me();
+    return saveChangeRequest(entry, withEvent(entry, {
       status: "open",
       kind,
       reason: String(reason || "").trim(),
-      by: viewer.username,
-      byName: viewer.identity ? viewer.identity.name : viewer.displayName,
+      ...who,
       bySite: entry.branchCode || "",
-      at: new Date().toISOString(),
-    });
+      at,
+      /* قرار قديم على نفس العملية بينمسح من الحقول المسطّحة — القصة محفوظة
+         بالسجل، والحقول لازم تمثّل الطلب المفتوح الحالي وبس. */
+      decidedBy: "", decidedByName: "", decidedAt: "", decisionNote: "",
+    }, { action: "requested", at, ...who, kind, note: String(reason || "").trim() }));
+  };
+
+  /** إلغاء مباشر — الأدمن ومسؤول المخزون ما بيرفعوا طلب لحالهم وبعدين
+      يبتّوا فيه. الطلب والقرار بينكتبوا بنفس اللحظة وباسمهم، فالسجل بيضل
+      كامل: مين ألغى، ليش، وإيمتى. */
+  const cancelDirect = (entry, kind, reason) => {
+    const at = new Date().toISOString();
+    const who = me();
+    const note = String(reason || "").trim();
+    return saveChangeRequest(entry, withEvent(entry, {
+      status: "approved",
+      kind,
+      reason: note,
+      ...who,
+      bySite: entry.branchCode || "",
+      at,
+      direct: true,
+      decidedBy: who.by,
+      decidedByName: who.byName,
+      decidedAt: at,
+      decisionNote: "",
+    }, { action: "cancelled", at, ...who, kind, note }));
+  };
 
   /** قرار المسؤول — تثبيت الإلغاء أو رجوع العملية طبيعية. */
-  const decideRequest = (entry, decision, note) =>
-    saveChangeRequest(entry, {
+  const decideRequest = (entry, decision, note) => {
+    const at = new Date().toISOString();
+    const who = me();
+    const txt = String(note || "").trim();
+    /* «رفض» على طلب مفتوح = رجوع العملية طبيعية. «رفض» على عملية ملغاة
+       أصلاً = إرجاعها. نفس الحقل، وبس السطر بالسجل بيفرّق. */
+    const wasCancelled = entry.crStatus === "approved";
+    const action = decision === "approved"
+      ? "cancelled"
+      : (wasCancelled ? "restored" : "rejected");
+    return saveChangeRequest(entry, withEvent(entry, {
       ...(entry.changeRequest || {}),
       status: decision,                   // approved | rejected
-      decidedBy: viewer.username,
-      decidedByName: viewer.displayName,
-      decidedAt: new Date().toISOString(),
-      decisionNote: String(note || "").trim(),
-    });
-
-  /* قبول كل ما هو بانتظار المراجعة لجزّار */
-  const approveAll = async (b) => {
-    const pending = b.rows.filter((r) => r.reviewStatus === "pending");
-    // الشغل خارج التسامح المعياري ما بينقبل بالجملة — بده سبب مكتوب لكل تقرير
-    const blocked = pending.filter((r) => r.stdCheck?.on && !r.stdCheck.pass);
-    const pendingRows = pending.filter((r) => !blocked.includes(r));
-    if (!pending.length) return;
-    if (!pendingRows.length) {
-      window.alert(t({
-        en: `All ${blocked.length} pending report(s) for ${b.name} are outside the standard tolerance — open each one and accept it with an explanation.`,
-        ar: `كل التقارير المعلّقة (${blocked.length}) للجزّار ${b.name} خارج التسامح المعياري — افتح كل واحد واقبله مع توضيح.`,
-      }));
-      return;
-    }
-    const ok = window.confirm(
-      t({
-        en: `Approve all ${pendingRows.length} pending report(s) for ${b.name}?${
-          blocked.length ? `\n\n${blocked.length} report(s) outside the standard tolerance will be skipped — each needs an explanation.` : ""
-        }`,
-        ar: `قبول كل التقارير المعلّقة (${pendingRows.length}) للجزّار ${b.name}؟${
-          blocked.length ? `\n\nفي ${blocked.length} تقرير خارج التسامح المعياري رح تتخطّى — كل واحد بده توضيح.` : ""
-        }`,
-      })
-    );
-    if (!ok) return;
-    for (const row of pendingRows) {
-      // بالتسلسل حتى لا نضرب السيرفر بعشرات الطلبات دفعة واحدة
-      // eslint-disable-next-line no-await-in-loop
-      await saveReview(row, "approved");
-    }
+      decidedBy: who.by,
+      decidedByName: who.byName,
+      decidedAt: at,
+      decisionNote: txt,
+    }, { action, at, ...who, kind: entry.changeRequest?.kind || "", note: txt }));
   };
+
+  /* ⛔ ما في «قبول الكل» ولا «قبول المعروض» — انشالوا عن قصد بطلب المشرف:
+     كل تقرير بينفتح، بينقرا، وبينقبل لحاله. زر واحد بيعتمد عشر عمليات
+     بيخلّي التوقيع أرخص من قراءة الأرقام، وهاد بالضبط اللي المراجعة موجودة
+     تمنعه. القبول السريع صار عبر «قائمة المراجعة» — وحدة ورا التانية. */
 
   /* تصدير سجل المراجعة — دليل تدقيق جاهز: كل تقرير معروض + أسطر الانحراف */
   const exportExcel = async () => {
@@ -463,6 +671,9 @@ export default function ButcherSupervisor() {
         "Pathway", "Raw material", "Raw kg", "Products kg", "Waste kg", "Yield %", "Time (min)",
         "Standard check", "Tolerance ±", "Off-standard lines", "Review", "Reviewed by",
         "Reviewed at", "Reason", "Accepted with justification",
+        // الطلب المفتوح ما بيشيل الصف من التقرير — بيظهر معلّم، فالمدقّق
+        // بيشوف الرقم وبيشوف إنه في طلب إلغاء عم يستنّى قرار عليه.
+        "Cancellation request", "Request reason", "Requested by",
       ];
       const rows = live
         .slice()
@@ -476,8 +687,12 @@ export default function ButcherSupervisor() {
           r.stdCheck?.on ? r.stdCheck.tolPct : "",
           r.stdCheck?.on ? r.stdCheck.off.length : "",
           r.reviewStatus,
-          r.review?.by || "", r.review?.at ? new Date(r.review.at).toLocaleString("en-GB") : "",
+          r.review?.byName || r.review?.by || "",
+          r.review?.at ? new Date(r.review.at).toLocaleString("en-GB") : "",
           r.review?.reason || "", r.review?.override ? "YES" : "",
+          isQuarantined(r) ? "PENDING OFFICER" : "",
+          isQuarantined(r) ? (r.changeRequest?.reason || "") : "",
+          isQuarantined(r) ? (r.changeRequest?.byName || r.changeRequest?.by || "") : "",
         ]);
 
       const devHead = [
@@ -498,7 +713,7 @@ export default function ButcherSupervisor() {
         {
           name: "Review log",
           aoa: [["Supervisor review log", `${from} → ${to}`, `Exported ${stamp}`], [], head, ...rows],
-          widths: [12, 8, 16, 22, 10, 18, 12, 20, 26, 11, 12, 11, 10, 11, 16, 12, 12, 12, 18, 18, 40, 12],
+          widths: [12, 8, 16, 22, 10, 18, 12, 20, 26, 11, 12, 11, 10, 11, 16, 12, 12, 12, 18, 18, 40, 12, 18, 40, 18],
         },
         {
           name: "Deviations",
@@ -515,6 +730,8 @@ export default function ButcherSupervisor() {
 
   /* قبول تقرير واحد — خارج التسامح المعياري بيمرّ عبر نافذة السبب الإلزامي */
   const approveOne = (row) => {
+    // حزام أمان: الزر مقفول أصلاً على المحجور، بس القبول ممكن ينندَه من مكان تاني.
+    if (isHidden(row) || isQuarantined(row)) return;
     if (row.stdCheck?.on && !row.stdCheck.pass) {
       setJustifying({ id: row.id, row });
       return;
@@ -522,26 +739,11 @@ export default function ButcherSupervisor() {
     saveReview(row, "approved");
   };
 
-  /* قبول مجموعة (المعروض بالنافذة) — بالتسلسل، والمنحرف ما بيدخل أصلاً */
-  const approveMany = async (list) => {
-    const rows = (list || []).filter(
-      (r) => r.reviewStatus === "pending" && !(r.stdCheck?.on && !r.stdCheck.pass)
-    );
-    if (!rows.length) return;
-    if (!window.confirm(t({
-      en: `Accept ${rows.length} report(s)?`,
-      ar: `قبول ${rows.length} تقرير؟`,
-    }))) return;
-    for (const row of rows) {
-      // eslint-disable-next-line no-await-in-loop
-      await saveReview(row, "approved");
-    }
-  };
-
   /* صفوف طابور المراجعة — المعلّق ضمن الفلتر الحالي، الأقدم أولاً.
-     العملية المحجورة ما بتدخل الطابور: مصيرها بيد المسؤول لا المراجعة. */
+     اللي عليه طلب إلغاء مفتوح ما بيدخل الطابور: قبوله موقوف لحد ما يقرّر
+     مسؤول المخزون، فمكانه كرت الطلبات لا طابور المراجعة. */
   const queueRows = live
-    .filter((e) => e.reviewStatus === "pending")
+    .filter((e) => e.reviewStatus === "pending" && !isQuarantined(e))
     .slice()
     .sort((a, b) => `${a.day} ${a.time}`.localeCompare(`${b.day} ${b.time}`));
 
@@ -553,6 +755,10 @@ export default function ButcherSupervisor() {
     (e) => e.reviewStatus === "rejected" && (!scoped || scopeSites.includes(e.branchCode))
   ).length;
 
+  /* العملية المفتوحة من كرت الطلبات — منجيبها من القائمة الحيّة بالـid لا
+     من نسخة محفوظة بالحالة: بعد القرار بتتحدّث بالكرت بلا ما نسكّر النافذة. */
+  const focusRow = focusId ? visible.find((e) => e.id === focusId) || null : null;
+
   const filtersOn = !!branch || !!status || stdOnly || crOnly || !!query.trim()
     || period !== "today" || sortKey !== "pending";
 
@@ -562,55 +768,42 @@ export default function ButcherSupervisor() {
   return (
     <div dir={dir} className="bs" style={S.page}>
       <style>{CSS}</style>
-      <div style={S.wrap}>
+      <div className="bs-shell">
 
         {/* ── الترويسة ── */}
-        <div style={{ ...S.header, ...S.hero }}>
+        <div className="bs-hero">
           <div style={{ minWidth: 0 }}>
-            <div className="bs-title" style={S.title}>
+            <div className="bs-title" style={{ fontWeight: 900 }}>
               🧑‍🍳 {t({ en: "Supervisor Board", ar: "لوحة المشرف" })}
             </div>
-            <div className="bs-sub" style={S.sub}>
+            <div className="bs-sub" style={{ fontWeight: 700, marginTop: 3 }}>
               {t({
-                en: "What every butcher worked on — review and accept",
-                ar: "شو اشتغل كل جزّار — مراجعة وقبول",
+                en: "What every butcher worked on — reviewed one report at a time",
+                ar: "شو اشتغل كل جزّار — مراجعة تقرير تقرير",
               })}
             </div>
             {scoped && (
-              <div className="bs-sub" style={S.scopeNote}>
+              <div className="bs-hero-badge bs-small">
                 🔒 {t({ en: "Your butcheries only", ar: "ملاحمك إنت وبس" })}
                 {": "}
                 {scopeSites.map((c) => siteLabel(viewer.wf, c, isAr)).join(" · ")}
               </div>
             )}
           </div>
-          <div style={S.headerBtns}>
-            {canReview && kpi.pending > 0 && (
-              <button
-                type="button"
-                style={{ ...S.btn, ...S.btnPrimary }}
-                onClick={() => setQueue(true)}
-                title={t({
-                  en: "Review every pending report in the current filter, one after another.",
-                  ar: "راجع كل التقارير المعلّقة ضمن الفلتر الحالي وحدة ورا التانية.",
-                })}
-              >
-                📋 {t({ en: "Review queue", ar: "طابور المراجعة" })} ({kpi.pending})
-              </button>
-            )}
-            <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
+          <div className="bs-acts">
+            <LangToggle lang={lang} toggle={toggle} />
             <button
               type="button"
-              style={{ ...S.btn, ...(exporting || !live.length ? S.btnOff : null) }}
+              className="bs-hbtn"
               onClick={exportExcel}
               disabled={exporting || !live.length}
             >
               {exporting ? t({ en: "Exporting…", ar: "جارٍ التصدير…" }) : `⤓ ${t({ en: "Excel", ar: "إكسل" })}`}
             </button>
-            <button type="button" style={S.btn} onClick={load} disabled={loading}>
+            <button type="button" className="bs-hbtn" onClick={load} disabled={loading}>
               {loading ? t({ en: "Loading…", ar: "جارٍ التحميل…" }) : `↻ ${t({ en: "Refresh", ar: "تحديث" })}`}
             </button>
-            <button type="button" style={S.btn} onClick={() => navigate("/butcher", { replace: true })}>
+            <button type="button" className="bs-hbtn solid" onClick={() => navigate("/butcher", { replace: true })}>
               {t({ en: "Back", ar: "رجوع" })}
             </button>
           </div>
@@ -626,20 +819,84 @@ export default function ButcherSupervisor() {
         )}
         {error && <div style={S.errorBar}>⚠️ {error}</div>}
 
-        {/* ── المؤشرات ── */}
-        <div style={S.kpiRow}>
-          <Kpi label={t({ en: "Butchers", ar: "الجزارون" })} value={kpi.butchers} tone="#1f6fd0" />
-          <Kpi label={t({ en: "Carcasses", ar: "الذبائح" })} value={kpi.carcasses} tone="#0f766e" />
-          <Kpi label={`${t({ en: "Total", ar: "الإجمالي" })} ${KG}`} value={kpi.kg.toFixed(1)} tone="#7c3aed" />
-          <Kpi label={t({ en: "Pending review", ar: "بانتظار المراجعة" })} value={kpi.pending} tone="#b45309" />
-          <Kpi label={t({ en: "Off standard", ar: "خارج المعياري" })} value={kpi.stdOff} tone="#b91c1c" />
+        {/* ── المؤشرات ── المعلّق وطلبات الإلغاء أزرار: بتوصّل لشغلها مباشرة */}
+        <div className="bs-kpis">
+          <Kpi icon="👷" label={t({ en: "Butchers", ar: "الجزارون" })} value={kpi.butchers} tone="#1f6fd0" />
+          <Kpi icon="🥩" label={t({ en: "Operations", ar: "عمليات" })} value={kpi.carcasses} tone="#0f766e" />
+          <Kpi icon="⚖️" label={`${t({ en: "Total", ar: "الإجمالي" })} ${KG}`} value={kpi.kg.toFixed(1)} tone="#7c3aed" />
+          <Kpi
+            icon="⏳" label={t({ en: "Pending review", ar: "بانتظار المراجعة" })}
+            value={kpi.pending} tone="#b45309"
+            onClick={canReview && kpi.pending > 0 ? () => setQueue(true) : null}
+            hint={canReview && kpi.pending > 0
+              ? t({ en: "Open the review list", ar: "افتح قائمة المراجعة" })
+              : ""}
+          />
+          <Kpi
+            icon="⚠️" label={t({ en: "Off standard", ar: "خارج المعياري" })}
+            value={kpi.stdOff} tone="#b91c1c"
+            onClick={kpi.stdOff > 0 ? () => { setStdOnly(true); setStatus(""); } : null}
+          />
+          <Kpi
+            icon="🚩" label={t({ en: "Cancellation requests", ar: "طلبات الإلغاء" })}
+            value={openRequests.length} tone="#9a3412"
+            onClick={openRequests.length
+              ? () => document.getElementById("bs-requests")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              : null}
+            hint={t({ en: "Go to the requests card", ar: "روح لكرت الطلبات" })}
+          />
         </div>
+
+        {/* ── ⏳ كرت الطلبات: شغل مستنّي قرار مسؤول المخزون ──
+            كرت منفصل عن كروت الجزارين عن قصد — الطلب مش «تقرير تاني»، هو
+            قرار مستنّي، ومكانه فوق حتى ما ينتظر حدا يدوّر عليه. */}
+        {(canDecide || openRequests.length > 0 || decidedRequests.length > 0) && (
+        <RequestsPanel
+          open={openRequests}
+          decided={decidedRequests}
+          t={t} isAr={isAr} KG={KG}
+          canDecide={canDecide}
+          busyId={busyId}
+          onDecide={(r) => setDeciding(r)}
+          onOpenRow={(r) => setFocusId(r.id)}
+          onScan={scanRequests}
+          scanning={scanning}
+          scannedAt={scannedAt}
+        />
+        )}
 
         {/* ── خطة اليوم: هدف كل ملحمة والإنجاز عليه ── */}
         <DayPlanPanel t={t} isAr={isAr} canEdit={canReview} KG={KG} />
 
         {/* ── الفلاتر ── */}
-        <div style={S.filters}>
+        <div className="bs-panel">
+          <div className="bs-panel-head">
+            <div style={{ minWidth: 0 }}>
+              <div className="bs-name" style={{ fontWeight: 900 }}>
+                🔎 {t({ en: "Browse", ar: "تصفّح" })}
+              </div>
+              <div className="bs-small" style={S.cardMeta}>
+                {t({
+                  en: "Filters change what you browse — they never change a decision that is waiting.",
+                  ar: "الفلاتر بتغيّر اللي عم تتصفّحه — ما بتمسّ أي قرار مستنّي.",
+                })}
+              </div>
+            </div>
+            <div className="bs-acts">
+              <button
+                type="button"
+                disabled={!filtersOn}
+                onClick={() => {
+                  setBranch(""); setStatus(""); setStdOnly(false); setCrOnly(false); setQuery("");
+                  setPeriod("today"); setSortKey("pending");
+                }}
+                style={{ ...S.btn, ...S.btnSm, ...(filtersOn ? null : S.btnOff) }}
+              >
+                ↺ {t({ en: "Clear filters", ar: "مسح الفلاتر" })}
+              </button>
+            </div>
+          </div>
           <div style={S.chipRow}>
             {[
               { id: "today", ar: "اليوم", en: "Today" },
@@ -707,7 +964,7 @@ export default function ButcherSupervisor() {
             </Field>
             {/* طلبات التعديل المفتوحة — مدخل المسؤول للبتّ فيها، وطريق المشرف
                 ليتابع طلبه. بيظهر بس لما يكون في طلب فعلاً. */}
-            {kpi.requests > 0 && (
+            {openRequests.length > 0 && (
               <Field label={t({ en: "Change requests", ar: "طلبات التعديل" })}>
                 <button
                   type="button"
@@ -716,7 +973,7 @@ export default function ButcherSupervisor() {
                 >
                   {crOnly
                     ? "⏳ " + t({ en: "Open requests only", ar: "الطلبات المفتوحة فقط" })
-                    : `⏳ ${kpi.requests} ${t({ en: "open", ar: "مفتوح" })}`}
+                    : `⏳ ${openRequests.length} ${t({ en: "open", ar: "مفتوح" })}`}
                 </button>
               </Field>
             )}
@@ -727,19 +984,6 @@ export default function ButcherSupervisor() {
                 placeholder={t({ en: "name or number…", ar: "اسم أو رقم…" })}
                 style={S.input}
               />
-            </Field>
-            <Field label={t({ en: "Reset", ar: "إعادة ضبط" })}>
-              <button
-                type="button"
-                disabled={!filtersOn}
-                onClick={() => {
-                  setBranch(""); setStatus(""); setStdOnly(false); setCrOnly(false); setQuery("");
-                  setPeriod("today"); setSortKey("pending");
-                }}
-                style={{ ...S.input, ...S.stdFilterBtn, ...(filtersOn ? S.resetOn : S.btnOff) }}
-              >
-                ↺ {t({ en: "Clear filters", ar: "مسح الفلاتر" })}
-              </button>
             </Field>
             <Field label={t({ en: "Sort by", ar: "الترتيب" })}>
               <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} style={S.input}>
@@ -753,18 +997,23 @@ export default function ButcherSupervisor() {
           </div>
         </div>
 
-        {/* ── كروت الجزارين ── */}
+        {/* ── كروت الجزارين ──
+            كرت لكل جزّار بشبكة تتأقلم مع العرض. ما في «قبول الكل» ولا
+            «قبول المعروض» عن قصد: كل تقرير بينفتح وبينقبل لحاله — المراجعة
+            بالجملة كانت بتخلّي التوقيع أرخص من قراءة الأرقام. */}
         {loading && (
-          <div style={S.list}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} style={{ ...S.row, ...S.skeleton }}>
-                <div style={{ ...S.skLine, width: 52, height: 52, borderRadius: 16 }} />
-                <div style={{ ...S.rowId, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ ...S.skLine, width: "45%", height: 20 }} />
-                  <div style={{ ...S.skLine, width: "70%" }} />
+          <div className="bs-cards">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bs-card" style={S.skeleton}>
+                <div className="bs-card-head">
+                  <div style={{ ...S.skLine, width: 52, height: 52, borderRadius: 16 }} />
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ ...S.skLine, width: "60%", height: 18 }} />
+                    <div style={{ ...S.skLine, width: "80%" }} />
+                  </div>
                 </div>
-                <div style={{ ...S.skLine, width: 260, height: 46 }} />
-                <div style={{ ...S.skLine, width: 160, height: 40, marginInlineStart: "auto" }} />
+                <div style={{ ...S.skLine, height: 52 }} />
+                <div style={{ ...S.skLine, height: 40 }} />
               </div>
             ))}
           </div>
@@ -779,24 +1028,25 @@ export default function ButcherSupervisor() {
           </div>
         )}
 
-        <div style={S.list}>
+        <div className="bs-cards">
           {butchers.map((b) => (
-            <div key={b.empNo} className="bs-row bs-rise" style={S.row}>
+            <div key={b.empNo} className={`bs-card bs-rise${b.crOpen > 0 ? " hot" : ""}`}>
               {/* الهوية */}
-              <span style={S.avatar}>{initials(b.name, b.empNo)}</span>
-              <div style={S.rowId}>
-                <div className="bs-cname" style={S.cardName} title={b.name}>{b.name}</div>
-                <div className="bs-small" style={S.cardMeta}>
-                  #{b.empNo}{b.job ? ` · ${b.job}` : ""}
-                  {b.branchList.length ? ` · ${b.branchList.join(" · ")}` : ""}
-                </div>
-                <div className="bs-small" style={S.cardMeta}>
-                  🕒 {t({ en: "Last activity", ar: "آخر نشاط" })}: {b.lastAt || "—"}
+              <div className="bs-card-head">
+                <span style={S.avatar}>{initials(b.name, b.empNo)}</span>
+                <div className="bs-card-id">
+                  <div className="bs-cname" style={S.cardName} title={b.name}>{b.name}</div>
+                  <div className="bs-small" style={S.cardMeta}>
+                    #{b.empNo}{b.job ? ` · ${b.job}` : ""}
+                  </div>
+                  <div className="bs-small" style={S.cardMeta}>
+                    🏪 {b.branchList.join(" · ") || "—"}
+                  </div>
                 </div>
               </div>
 
               {/* الحالات */}
-              <div style={S.rowChips}>
+              <div className="bs-card-chips">
                 {b.pending > 0 && <StatusChip id="pending" n={b.pending} isAr={isAr} />}
                 {b.approved > 0 && <StatusChip id="approved" n={b.approved} isAr={isAr} />}
                 {b.rejected > 0 && <StatusChip id="rejected" n={b.rejected} isAr={isAr} />}
@@ -805,24 +1055,47 @@ export default function ButcherSupervisor() {
                     ⚠️ {t({ en: "Off standard", ar: "خارج المعياري" })} · {b.stdOff}
                   </span>
                 )}
+                {b.crOpen > 0 && (
+                  <span
+                    className="bs-chip"
+                    style={{
+                      ...S.chip, background: CR_STATUS.open.bg,
+                      color: CR_STATUS.open.fg, border: `1px solid ${CR_STATUS.open.bd}`,
+                    }}
+                  >
+                    ⏳ {t({ en: "Cancellation requested", ar: "طلب إلغاء" })} · {b.crOpen}
+                  </span>
+                )}
+                {b.cancelled > 0 && (
+                  <span
+                    className="bs-chip"
+                    style={{
+                      ...S.chip, background: CR_STATUS.approved.bg,
+                      color: CR_STATUS.approved.fg, border: `1px solid ${CR_STATUS.approved.bd}`,
+                    }}
+                  >
+                    🚫 {t({ en: "Cancelled", ar: "ملغاة" })} · {b.cancelled}
+                  </span>
+                )}
               </div>
 
-              {/* الأرقام + شريط النواتج/الهدر */}
-              <div style={S.rowStats}>
-                <div style={S.statStrip}>
-                  <Stat label={t({ en: "Carcasses", ar: "ذبائح" })} value={b.count} />
-                  <Stat label={KG} value={b.kg.toFixed(1)} />
-                  <Stat label={t({ en: "Yield", ar: "التصافي" })} value={`${b.yieldPct.toFixed(1)}%`} tone="#0f766e" />
-                  <Stat label={t({ en: "Waste", ar: "الهدر" })} value={`${b.wastePct.toFixed(1)}%`} tone="#b45309" />
-                </div>
-                <div style={S.mixBar} title={t({ en: "Products vs waste", ar: "النواتج مقابل الهدر" })}>
-                  <i style={{ width: `${Math.min(b.yieldPct, 100)}%`, background: "#2f8f83" }} />
-                  <i style={{ width: `${Math.min(b.wastePct, 100)}%`, background: "#e0a63e" }} />
-                </div>
+              {/* الأرقام */}
+              <div className="bs-card-stats">
+                <Stat label={t({ en: "Operations", ar: "عمليات" })} value={b.count} />
+                <Stat label={KG} value={b.kg.toFixed(1)} />
+                <Stat label={t({ en: "Yield", ar: "التصافي" })} value={`${b.yieldPct.toFixed(1)}%`} tone="#0f766e" />
+                <Stat label={t({ en: "Waste", ar: "الهدر" })} value={`${b.wastePct.toFixed(1)}%`} tone="#b45309" />
+              </div>
+              <div className="bs-bar" title={t({ en: "Products vs waste", ar: "النواتج مقابل الهدر" })}>
+                <i style={{ width: `${Math.min(b.yieldPct, 100)}%`, background: "#2f8f83" }} />
+                <i style={{ width: `${Math.min(b.wastePct, 100)}%`, background: "#e0a63e" }} />
               </div>
 
-              {/* الأزرار */}
-              <div style={S.rowBtns}>
+              {/* التذييل */}
+              <div className="bs-card-foot">
+                <span className="bs-small" style={{ ...S.cardMeta, marginInlineEnd: "auto" }}>
+                  🕒 {b.lastAt || "—"}
+                </span>
                 <button
                   type="button"
                   style={{ ...S.btn, ...S.btnPrimary }}
@@ -830,11 +1103,6 @@ export default function ButcherSupervisor() {
                 >
                   🧾 {t({ en: "Open work", ar: "شو اشتغل" })} ({b.count})
                 </button>
-                {canReview && b.pending > 0 && (
-                  <button type="button" style={{ ...S.btn, ...S.btnOk }} onClick={() => approveAll(b)}>
-                    ✓ {t({ en: "Approve all", ar: "قبول الكل" })}
-                  </button>
-                )}
               </div>
             </div>
           ))}
@@ -858,7 +1126,6 @@ export default function ButcherSupervisor() {
           onDecide={(r) => setDeciding(r)}
           onClose={() => setOpenEmp(null)}
           onApprove={approveOne}
-          onApproveMany={approveMany}
         />
       )}
 
@@ -881,7 +1148,25 @@ export default function ButcherSupervisor() {
           onDecide={(r) => setDeciding(r)}
           onClose={() => setQueue(false)}
           onApprove={approveOne}
-          onApproveMany={approveMany}
+        />
+      )}
+
+      {/* ── عملية وحدة مفتوحة من كرت الطلبات — نفس نافذة «شو اشتغل» ── */}
+      {focusRow && (
+        <WorkModal
+          title={{ avatar: "⏳", main: focusRow.opNo || focusRow.inputName }}
+          subtitle={`${focusRow.butcherName || "—"} · #${focusRow.empNo} · ${focusRow.branchName} · ${focusRow.day} ${focusRow.time}`}
+          rows={[focusRow]}
+          defaultView="review"
+          t={t} isAr={isAr} dir={dir} KG={KG}
+          canReview={canReview}
+          busyId={busyId}
+          canRequestFor={canRequestFor}
+          canDecide={canDecide}
+          onRequest={(r) => setRequesting(r)}
+          onDecide={(r) => setDeciding(r)}
+          onClose={() => setFocusId("")}
+          onApprove={approveOne}
         />
       )}
 
@@ -890,10 +1175,16 @@ export default function ButcherSupervisor() {
         <RequestModal
           t={t} isAr={isAr} dir={dir}
           row={requesting}
+          /* المسؤول/الأدمن ما بيرفع طلب لحاله وبعدين يبتّ فيه — بيلغي مباشرة */
+          direct={!canRequestFor(requesting.branchCode) && canDecide}
           busy={busyId === requesting.id}
           onClose={() => setRequesting(null)}
           onSubmit={async (kind, reason) => {
-            await raiseRequest(requesting, kind, reason);
+            if (!canRequestFor(requesting.branchCode) && canDecide) {
+              await cancelDirect(requesting, kind, reason);
+            } else {
+              await raiseRequest(requesting, kind, reason);
+            }
             setRequesting(null);
           }}
         />
@@ -933,18 +1224,28 @@ export default function ButcherSupervisor() {
 
 /* ============================ مكوّنات ============================ */
 
-function Kpi({ label, value, tone }) {
+/** مؤشّر: أيقونة + رقم + عنوان. مع onClick بيصير زر بيوصّل لشغله. */
+function Kpi({ icon, label, value, tone, onClick, hint }) {
+  const inner = (
+    <>
+      <span className="bs-kpi-ic" style={{ background: `${tone}14`, color: tone }}>{icon}</span>
+      <span className="bs-kpi-txt">
+        <span className="bs-kpi" style={{ ...S.kpiValue, color: tone, display: "block" }}>{value}</span>
+        <span className="bs-small" style={{ ...S.kpiLabel, display: "block" }}>{label}</span>
+      </span>
+    </>
+  );
+  if (!onClick) return <div className="bs-kpi-box">{inner}</div>;
   return (
-    <div style={S.kpiBox}>
-      <div className="bs-kpi" style={{ ...S.kpiValue, color: tone }}>{value}</div>
-      <div className="bs-small" style={S.kpiLabel}>{label}</div>
-    </div>
+    <button type="button" className="bs-kpi-box" onClick={onClick} title={hint || ""}>
+      {inner}
+    </button>
   );
 }
 
 function Stat({ label, value, tone }) {
   return (
-    <div style={S.statBox}>
+    <div style={S.statBox} title={`${label}: ${value}`}>
       <div className="bs-stat" style={{ ...S.statValue, ...(tone ? { color: tone } : null) }}>
         {value}
       </div>
@@ -954,7 +1255,8 @@ function Stat({ label, value, tone }) {
 }
 
 function StatusChip({ id, n, isAr, big }) {
-  const s = STATUS[id];
+  // حالة غير معروفة (سجل قديم) ما بتكسر الشاشة — بترجع لـ«بانتظار المراجعة»
+  const s = STATUS[id] || STATUS.pending;
   return (
     <span
       className="bs-chip"
@@ -1022,7 +1324,7 @@ function groupByButcherDay(rows) {
 function WorkModal({
   title, subtitle, rows, t, isAr, dir, KG, canReview, busyId, defaultView = "card",
   canRequestFor, canDecide, onRequest, onDecide,
-  onClose, onApprove, onApproveMany,
+  onClose, onApprove,
 }) {
   const [view, setView] = useState(defaultView);   // card | review
   const [only, setOnly] = useState("all");    // all | pending | off
@@ -1037,8 +1339,10 @@ function WorkModal({
 
   const shown = useMemo(
     () => rows.filter((r) => {
-      if (only === "pending") return r.reviewStatus === "pending";
-      if (only === "off") return stdBlocked(r);
+      /* الملغى برّا عدّادات الفلترة (tot) — فلازم يكون برّا نتيجتها كمان،
+         وإلا الشارة بتقول ٣ والقائمة بتعرض ٤. */
+      if (only === "pending") return r.reviewStatus === "pending" && !isCancelled(r);
+      if (only === "off") return stdBlocked(r) && !isCancelled(r);
       return true;
     }),
     [rows, only]
@@ -1047,21 +1351,25 @@ function WorkModal({
   // مجموعات اليوم الكاملة (بلا تصفية) — البطاقة وثيقة يوم، مش نتيجة فلتر
   const fullByKey = useMemo(() => {
     const m = new Map();
-    groupByButcherDay(rows).forEach((g) => m.set(g.key, g));
+    // بطاقة التقطيع وثيقة شغل: الملغى ما بيطلع عليها ولا بينحسب بمجاميعها
+    groupByButcherDay(rows.filter((r) => !isCancelled(r))).forEach((g) => m.set(g.key, g));
     return m;
   }, [rows]);
   const fullOf = (g) => fullByKey.get(g.key) || g;
 
-  const tot = useMemo(() => ({
-    count: rows.length,
-    pending: rows.filter((r) => r.reviewStatus === "pending").length,
-    off: rows.filter((r) => stdBlocked(r)).length,
-    kg: rows.reduce((s, r) => s + r.productsKg + r.wasteKg, 0),
-    rawKg: rows.reduce((s, r) => s + r.carcassKg, 0),
-  }), [rows]);
-
-  // قابل للقبول بالجملة = معلّق وضمن التسامح المعياري
-  const bulkRows = shown.filter((r) => r.reviewStatus === "pending" && !stdBlocked(r));
+  /* مجاميع النافذة — من الحيّ وحده. الملغى بيضل بالقائمة معلّم، بس ما
+     بينحسب بكيلو ولا بعدّاد: نفس قاعدة كل الشاشات. */
+  const tot = useMemo(() => {
+    const liveRows = rows.filter((r) => !isCancelled(r));
+    return {
+      count: liveRows.length,
+      pending: liveRows.filter((r) => r.reviewStatus === "pending").length,
+      off: liveRows.filter((r) => stdBlocked(r)).length,
+      kg: liveRows.reduce((s, r) => s + r.productsKg + r.wasteKg, 0),
+      rawKg: liveRows.reduce((s, r) => s + r.carcassKg, 0),
+      cancelled: rows.length - liveRows.length,
+    };
+  }, [rows]);
 
   const TABS = [
     { id: "card", ic: "🧾", ar: "بطاقة التقطيع", en: "Cutting card" },
@@ -1141,20 +1449,6 @@ function WorkModal({
             {t({ en: "Recorded", ar: "مسجّل" })} <b>{tot.kg.toFixed(1)}</b> {KG}
           </span>
 
-          {canReview && bulkRows.length > 0 && (
-            <button
-              type="button"
-              style={{ ...S.btn, ...S.btnOk, ...(busyId ? S.btnOff : null) }}
-              disabled={!!busyId}
-              onClick={() => onApproveMany(bulkRows)}
-              title={t({
-                en: "Reports outside the standard tolerance are never accepted in bulk.",
-                ar: "التقارير خارج التسامح المعياري ما بتنقبل بالجملة أبداً.",
-              })}
-            >
-              ✓ {t({ en: "Accept shown", ar: "قبول المعروض" })} ({bulkRows.length})
-            </button>
-          )}
         </div>
 
         {/* ── الجسم ── */}
@@ -1237,6 +1531,224 @@ function WorkModal({
   );
 }
 
+/* ══════════════ 📜 سجل العملية ══════════════
+   خط زمني قصير: مين عمل شو وإيمتى وليش. بيطلع بكرت الطلبات وبصندوق
+   المراجعة — نفس المكوّن بالمكانين حتى ما تختلف القصة حسب الشاشة. */
+
+function CrTimeline({ row, t, isAr }) {
+  const items = crHistory(row);
+  if (!items.length) return null;
+
+  const tone = {
+    requested: { bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" },
+    cancelled: { bg: "#fef2f2", bd: "#fca5a5", fg: "#991b1b" },
+    restored:  { bg: "#ecfdf5", bd: "#6ee7b7", fg: "#047857" },
+    rejected:  { bg: "#f1f5f9", bd: "#cbd5e1", fg: "#475569" },
+  };
+
+  return (
+    <div className="bs-tl">
+      {items.map((h, i) => {
+        const meta = CR_ACTIONS[h.action] || CR_ACTIONS.requested;
+        const c = tone[h.action] || tone.rejected;
+        return (
+          <div className="bs-tl-item" key={`${h.at}-${i}`}>
+            <span className="bs-tl-dot" style={{ borderColor: c.bd, background: c.bg }}>
+              {meta.icon}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div className="bs-small" style={{ fontWeight: 900, color: c.fg }}>
+                {isAr ? meta.ar : meta.en}
+                {h.kind && h.action === "requested"
+                  ? ` · ${isAr ? CR_KINDS[h.kind]?.ar : CR_KINDS[h.kind]?.en}`
+                  : ""}
+              </div>
+              <div className="bs-small" style={S.cardMeta}>
+                👤 {h.byName || h.by || "—"}
+                {h.at ? ` · 🕒 ${String(h.at).slice(0, 16).replace("T", " ")}` : ""}
+              </div>
+              {h.note && (
+                <div className="bs-small" style={{ marginTop: 3, lineHeight: 1.6 }}>«{h.note}»</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="bs-small" style={{ ...S.cardMeta, fontWeight: 800 }}>
+        {t({
+          en: "Every action is kept — the record itself is never deleted.",
+          ar: "كل حركة محفوظة — السجل نفسه ما بينحذف أبداً.",
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════ ⏳ كرت الطلبات المستنّية قرار المخزون ══════════════
+ *
+ * ليش كرت لحاله ومش فلتر:
+ *   الطلب مش تقرير تاني بين التقارير — هو **شغل واقف عند حدا تاني**. لما
+ *   كان مجرّد خيار جوّا الفلاتر، مسؤول المخزون لازم يعرف إنه في طلب حتى
+ *   يفتح الفلتر ويدوّر عليه، والمشرف يرفع طلب وما بيعرف وين راح.
+ *
+ * القائمة ما بتتبع فلاتر الصفحة (التاريخ/الملحمة/البحث) عن قصد: قرار
+ * مستنّي ما بيجوز يختفي لأن حدا غيّر مدى التصفّح. اللي بيضل مطبَّق نطاق
+ * الحساب وحده. والطلبات الأقدم من نافذة التحميل بيجيبها زر «فحص شامل».
+ */
+function RequestsPanel({
+  open, decided, t, isAr, KG, canDecide, busyId,
+  onDecide, onOpenRow, onScan, scanning, scannedAt,
+}) {
+  const [tab, setTab] = useState("open");          // open | done
+  const [openLog, setOpenLog] = useState(() => new Set());
+
+  const list = tab === "open" ? open : decided;
+  const toggleLog = (id) =>
+    setOpenLog((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const TABS = [
+    { id: "open", ic: "⏳", ar: "مستنّي قرار", en: "Awaiting decision", n: open.length },
+    { id: "done", ic: "📜", ar: "قرارات سابقة", en: "Decided", n: decided.length },
+  ];
+
+  return (
+    <div id="bs-requests" className="bs-panel" style={open.length ? S.panelHot : null}>
+      <div className="bs-panel-head">
+        <div style={{ minWidth: 0 }}>
+          <div className="bs-name" style={{ fontWeight: 900 }}>
+            🚩 {t({ en: "Cancellation requests", ar: "طلبات الإلغاء" })}
+          </div>
+          <div className="bs-small" style={S.cardMeta}>
+            {canDecide
+              ? t({
+                  en: "Raised by butchery supervisors. The record stays live and counted until you decide.",
+                  ar: "رفعها مشرفو الملاحم. العملية بتضل شغّالة ومحسوبة لحد ما تقرّر إنت.",
+                })
+              : t({
+                  en: "With the inventory officer. Your record stays live and counted until the decision.",
+                  ar: "عند مسؤول المخزون. عمليتك بتضل شغّالة ومحسوبة لحد ما يجي القرار.",
+                })}
+            {scannedAt ? ` · 🔎 ${t({ en: "scanned", ar: "آخر فحص" })} ${scannedAt}` : ""}
+          </div>
+        </div>
+        <div className="bs-acts">
+          <div style={S.segment}>
+            {TABS.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => setTab(x.id)}
+                style={{ ...S.segBtn, ...(tab === x.id ? S.segBtnOn : null) }}
+              >
+                {x.ic} {t(x)} · {x.n}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnSm, ...(scanning ? S.btnOff : null) }}
+            disabled={scanning}
+            onClick={onScan}
+            title={t({
+              en: "The board loads the filtered date window only. This checks the last 90 days for requests on older records.",
+              ar: "اللوحة بتحمّل مدى الفلتر وبس. هاد بيفحص آخر ٩٠ يوم عن طلبات على عمليات أقدم.",
+            })}
+          >
+            {scanning
+              ? t({ en: "Scanning…", ar: "جارٍ الفحص…" })
+              : "🔎 " + t({ en: "Scan older", ar: "فحص شامل" })}
+          </button>
+        </div>
+      </div>
+
+      {list.length === 0 && (
+        <div className="bs-small" style={{ ...S.cardMeta, fontWeight: 800 }}>
+          {tab === "open"
+            ? `✓ ${t({ en: "Nothing is waiting for a decision.", ar: "ما في ولا طلب مستنّي قرار." })}`
+            : t({ en: "No decisions yet.", ar: "ما في قرارات بعد." })}
+        </div>
+      )}
+
+      <div className="bs-reqs">
+        {list.map((r) => {
+          const cr = r.changeRequest || {};
+          const meta = CR_STATUS[cr.status] || CR_STATUS.open;
+          const waiting = cr.status === "open";
+          const info = crStatusText(r, isAr);
+          const logOpen = openLog.has(r.id);
+          return (
+            <div key={r.id} className={`bs-req bs-rise${waiting ? "" : " done"}`}>
+              <div style={{ minWidth: 0 }}>
+                <div className="bs-cname" style={S.cardName}>
+                  {r.opNo ? `${r.opNo} · ` : ""}{r.inputName}
+                  {r.bomRef ? ` · ${r.bomRef}` : ""}
+                </div>
+                <div className="bs-small" style={S.cardMeta}>
+                  🕒 {r.day} {r.time} · 👤 {r.butcherName || "—"} #{r.empNo} · 🏪 {r.branchName}
+                  {" · "}⚖️ {(r.productsKg + r.wasteKg).toFixed(1)} {KG}
+                </div>
+                <div className="bs-small" style={{ marginTop: 6, fontWeight: 900, color: meta.fg }}>
+                  {isAr ? CR_KINDS[cr.kind]?.ar : CR_KINDS[cr.kind]?.en}
+                  {" — "}{cr.byName || cr.by || "—"}
+                  {cr.at ? ` · ${String(cr.at).slice(0, 16).replace("T", " ")}` : ""}
+                </div>
+                {cr.reason && (
+                  <div className="bs-small" style={{ marginTop: 2, lineHeight: 1.6 }}>«{cr.reason}»</div>
+                )}
+
+                <button
+                  type="button"
+                  style={{ ...S.linkBtn, marginTop: 8 }}
+                  onClick={() => toggleLog(r.id)}
+                >
+                  {logOpen ? "▲" : "▼"} 📜 {t({ en: "History", ar: "سجل العملية" })}
+                </button>
+                {logOpen && <CrTimeline row={r} t={t} isAr={isAr} />}
+              </div>
+
+              <div className="bs-req-side">
+                <span
+                  className="bs-chip"
+                  style={{ ...S.chip, background: meta.bg, color: meta.fg, border: `1px solid ${meta.bd}` }}
+                  title={info?.label || ""}
+                >
+                  {waiting ? "⏳ " : cr.status === "approved" ? "🚫 " : "↩︎ "}
+                  {isAr ? meta.ar : meta.en}
+                </span>
+                <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => onOpenRow(r)}>
+                  🧾 {t({ en: "Open the record", ar: "افتح العملية" })}
+                </button>
+                {canDecide && (
+                  <button
+                    type="button"
+                    style={{
+                      ...S.btn, ...S.btnSm,
+                      ...(waiting ? S.btnOk : null),
+                      ...(busyId === r.id ? S.btnOff : null),
+                    }}
+                    disabled={busyId === r.id}
+                    onClick={() => onDecide(r)}
+                  >
+                    {waiting
+                      ? "⚖️ " + t({ en: "Decide", ar: "البتّ بالطلب" })
+                      : cr.status === "approved"
+                        ? "↩︎ " + t({ en: "Restore", ar: "إرجاع" })
+                        : "⚖️ " + t({ en: "Review", ar: "مراجعة" })}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════ صندوق تنفيذ واحد بعرض المراجعة ══════════════ */
 
 function ReportBox({
@@ -1250,15 +1762,19 @@ function ReportBox({
   const cancelled = isCancelled(r);
   const cr = r.changeRequest;
   /* الطلب بيتقدّم مرّة وحدة: ما في طلب مفتوح، وما هي ملغاة أصلاً، والمشرف
-     مشرف هالملحمة بالذات. مشرف البرشا للبرشا وبس. */
-  const mayRequest =
-    !quarantined && !cancelled && canRequestFor && canRequestFor(r.branchCode);
+     مشرف هالملحمة بالذات. مشرف البرشا للبرشا وبس.
+     الأدمن ومسؤول المخزون: نفس الزر بس بيلغي مباشرة — صاحب القرار ما بيرفع
+     طلب لحاله. */
+  const mine = !!(canRequestFor && canRequestFor(r.branchCode));
+  const direct = !mine && !!canDecide;
+  const mayRequest = !quarantined && !cancelled && (mine || direct);
 
   return (
     <div style={{
       ...S.reportBox,
       ...(r.reviewStatus === "rejected" ? S.reportBoxBad : null),
       ...(blocked ? S.reportBoxWarn : null),
+      ...(quarantined ? S.reportBoxCr : null),
       ...(isHidden(r) ? S.reportBoxHeld : null),
     }}>
       <div style={S.reportHead}>
@@ -1297,43 +1813,33 @@ function ReportBox({
               title={cr.reason || ""}
             >
               {cr.status === "open" ? "⏳ " : cr.status === "approved" ? "🚫 " : "↩︎ "}
-              {isAr ? CR_STATUS[cr.status]?.ar : CR_STATUS[cr.status]?.en}
+              {crStatusText(r, isAr)?.label}
             </span>
           )}
           <StatusChip id={r.reviewStatus} isAr={isAr} big />
         </div>
       </div>
 
-      {/* تفاصيل الطلب — مين طلب وليش وشو صار */}
+      {/* سجل العملية — القصة كاملة: مين طلب، ليش، ومين قرّر شو */}
       {cr && (
         <div style={S.crBox}>
           <div style={{ fontWeight: 900 }}>
-            {isAr ? CR_KINDS[cr.kind]?.ar : CR_KINDS[cr.kind]?.en}
-            {" — "}
-            {cr.byName || cr.by || "—"}
-            {cr.at ? ` · ${String(cr.at).slice(0, 16).replace("T", " ")}` : ""}
+            📜 {t({ en: "Record history", ar: "سجل العملية" })}
           </div>
-          {cr.reason && (
-            <div className="bs-small" style={{ marginTop: 4, lineHeight: 1.7 }}>
-              «{cr.reason}»
-            </div>
-          )}
-          {cr.status !== "open" && (
-            <div className="bs-small" style={{ marginTop: 6, fontWeight: 800 }}>
-              {cr.status === "approved"
-                ? t({ en: "Cancelled by", ar: "ألغاها" })
-                : t({ en: "Request rejected by", ar: "رفض الطلب" })}
-              {" "}
-              {cr.decidedByName || cr.decidedBy || "—"}
-              {cr.decidedAt ? ` · ${String(cr.decidedAt).slice(0, 16).replace("T", " ")}` : ""}
-              {cr.decisionNote ? ` — «${cr.decisionNote}»` : ""}
-            </div>
-          )}
+          <CrTimeline row={r} t={t} isAr={isAr} />
           {quarantined && (
-            <div className="bs-small" style={{ marginTop: 6, fontWeight: 800 }}>
-              🔒 {t({
-                en: "Held: this record is out of every report and total until the inventory officer decides.",
-                ar: "محجورة: برّا كل التقارير والمجاميع لحد ما يقرّر مسؤول المخزون.",
+            <div className="bs-small" style={{ fontWeight: 800 }}>
+              ⏳ {t({
+                en: "Still live: the record stays in every report and total, flagged, until the inventory officer decides. Acceptance is on hold.",
+                ar: "لسّا شغّالة: العملية بتضل بكل التقارير والمجاميع، معلّمة بشارة، لحد ما يقرّر مسؤول المخزون. القبول موقوف بس.",
+              })}
+            </div>
+          )}
+          {cancelled && (
+            <div className="bs-small" style={{ fontWeight: 800 }}>
+              🚫 {t({
+                en: "Cancelled: shown in the reports with this status, but outside every total and export.",
+                ar: "ملغاة: بتبيّن بالتقارير بهالحالة، بس برّا كل مجموع وتصدير.",
               })}
             </div>
           )}
@@ -1396,7 +1902,8 @@ function ReportBox({
       )}
       {r.review?.at && (
         <div className="bs-small" style={S.cardMeta}>
-          {t({ en: "Reviewed by", ar: "روجع بواسطة" })} {r.review.by || "—"} ·{" "}
+          {t({ en: "Reviewed by", ar: "روجع بواسطة" })}{" "}
+          {r.review.byName || r.review.by || "—"} ·{" "}
           {new Date(r.review.at).toLocaleString(isAr ? "ar-EG" : "en-GB", {
             dateStyle: "short", timeStyle: "short",
           })}
@@ -1411,12 +1918,33 @@ function ReportBox({
               style={{ ...S.btn, ...S.btnWarn, ...(busyId === r.id ? S.btnOff : null) }}
               disabled={busyId === r.id}
               onClick={() => onRequest(r)}
+              title={direct
+                ? t({
+                    en: "You decide directly — the record is cancelled the moment you confirm.",
+                    ar: "القرار إلك مباشرة — العملية بتنلغى بلحظة التأكيد.",
+                  })
+                : t({
+                    en: "The record stays live and flagged; the inventory officer decides.",
+                    ar: "العملية بتضل شغّالة ومعلّمة، والقرار لمسؤول المخزون.",
+                  })}
+            >
+              {direct
+                ? "🚫 " + t({ en: "Cancel the record", ar: "إلغاء العملية" })
+                : "✏️ " + t({ en: "Request cancellation", ar: "طلب تعديل / إلغاء" })}
+            </button>
+          )}
+          {cancelled && canDecide && (
+            <button
+              type="button"
+              style={{ ...S.btn, ...(busyId === r.id ? S.btnOff : null) }}
+              disabled={busyId === r.id}
+              onClick={() => onDecide(r)}
               title={t({
-                en: "The record is held immediately; the inventory officer decides.",
-                ar: "العملية بتنحجر فوراً، والقرار لمسؤول المخزون.",
+                en: "Put the record back into reports and totals.",
+                ar: "رجّع العملية للتقارير والمجاميع.",
               })}
             >
-              ✏️ {t({ en: "Request cancellation", ar: "طلب تعديل / إلغاء" })}
+              ↩︎ {t({ en: "Restore the record", ar: "إرجاع العملية" })}
             </button>
           )}
           {quarantined && canDecide && (
@@ -1434,11 +1962,16 @@ function ReportBox({
             style={{
               ...S.btn,
               ...(blocked ? S.btnWarn : S.btnOk),
-              ...(busyId === r.id || done || isHidden(r) ? S.btnOff : null),
+              ...(busyId === r.id || done || isHidden(r) || quarantined ? S.btnOff : null),
             }}
-            disabled={busyId === r.id || done || isHidden(r)}
+            disabled={busyId === r.id || done || isHidden(r) || quarantined}
             onClick={() => onApprove(r)}
-            title={blocked
+            title={quarantined
+              ? t({
+                  en: "A cancellation request is open — the inventory officer decides before this can be accepted.",
+                  ar: "في طلب إلغاء مفتوح — لازم يقرّر مسؤول المخزون قبل ما تنقبل.",
+                })
+              : blocked
               ? t({
                   en: "Outside the standard tolerance — acceptance needs an explanation.",
                   ar: "خارج التسامح المعياري — القبول بده توضيح.",
@@ -1916,7 +2449,7 @@ function JustifyModal({ row, onCancel, onConfirm, busy, t, isAr, dir }) {
    المشرف بيشوف بوضوح شو رح يصير قبل ما يضغط: العملية بتنحجر فوراً، والقرار
    النهائي مش إلو. السبب إلزامي — طلب بلا سبب ما بيقدر المسؤول يبتّ فيه. */
 
-function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir }) {
+function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir, direct }) {
   const [kind, setKind] = useState("delete");
   const [reason, setReason] = useState("");
   const ok = reason.trim().length >= 5;
@@ -1925,7 +2458,9 @@ function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir }) {
     <div style={S.overlay} onClick={onClose}>
       <div dir={dir} className="bs-rise" style={S.smallModal} onClick={(e) => e.stopPropagation()}>
         <div className="bs-name" style={S.cardName}>
-          ✏️ {t({ en: "Request cancellation", ar: "طلب تعديل / إلغاء" })}
+          {direct
+            ? "🚫 " + t({ en: "Cancel the record", ar: "إلغاء العملية" })
+            : "✏️ " + t({ en: "Request cancellation", ar: "طلب تعديل / إلغاء" })}
         </div>
         <div className="bs-small" style={S.cardMeta}>
           {row.opNo ? `${row.opNo} · ` : ""}
@@ -1934,10 +2469,15 @@ function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir }) {
         </div>
 
         <div style={{ ...S.crBox, marginTop: 12 }}>
-          🔒 {t({
-            en: "As soon as you send this, the record leaves every report, total and export. Only the inventory officer can cancel it for good or put it back.",
-            ar: "بلحظة ما تبعت الطلب، العملية بتطلع من كل التقارير والمجاميع والتصدير. مسؤول المخزون وحده بيقدر يثبّت الإلغاء أو يرجّعها.",
-          })}
+          {direct
+            ? "🚫 " + t({
+en: "You are the decision — confirming cancels the record right away: out of every total and export. It stays listed, marked cancelled in your name, and you can put it back later. Every action is written to the record history.",
+ar: "القرار إلك — التأكيد بيلغي العملية فوراً: بتطلع من كل مجموع وتصدير، وبتضل بادّة بالتقارير معلّمة «ملغاة» باسمك. بتقدر ترجّعها بعدين، وكل حركة بتنكتب بسجل العملية.",
+              })
+            : "⏳ " + t({
+                en: "The record stays live and counted, flagged for the inventory officer. Nothing is removed until the officer decides — and acceptance is on hold meanwhile.",
+                ar: "العملية بتضل شغّالة ومحسوبة، معلّمة لمسؤول المخزون. ما بينشال شي لحد ما يقرّر — والقبول موقوف بهالفترة.",
+              })}
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -1982,8 +2522,10 @@ function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir }) {
             onClick={() => onSubmit(kind, reason)}
           >
             {busy
-              ? t({ en: "Sending…", ar: "جارٍ الإرسال…" })
-              : t({ en: "Send to the inventory officer", ar: "إرسال لمسؤول المخزون" })}
+              ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+              : direct
+                ? t({ en: "Cancel it now", ar: "ثبّت الإلغاء" })
+                : t({ en: "Send to the inventory officer", ar: "إرسال لمسؤول المخزون" })}
           </button>
         </div>
       </div>
@@ -1996,12 +2538,17 @@ function RequestModal({ row, onClose, onSubmit, busy, t, isAr, dir }) {
 function DecideModal({ row, onClose, onDecide, busy, t, isAr, dir }) {
   const [note, setNote] = useState("");
   const cr = row.changeRequest || {};
+  /* ملغاة أصلاً؟ إذاً هالنافذة للإرجاع لا للبتّ — القرار انأخذ، واللي باقي
+     هو التراجع عنه. نفس الحقل ونفس السجل، بس بلا زر «ثبّت الإلغاء». */
+  const restoring = cr.status === "approved";
 
   return (
     <div style={S.overlay} onClick={onClose}>
       <div dir={dir} className="bs-rise" style={S.smallModal} onClick={(e) => e.stopPropagation()}>
         <div className="bs-name" style={S.cardName}>
-          ⚖️ {t({ en: "Decide the request", ar: "البتّ بالطلب" })}
+          {restoring
+            ? "↩︎ " + t({ en: "Restore the record", ar: "إرجاع العملية" })
+            : "⚖️ " + t({ en: "Decide the request", ar: "البتّ بالطلب" })}
         </div>
         <div className="bs-small" style={S.cardMeta}>
           {row.opNo ? `${row.opNo} · ` : ""}
@@ -2034,8 +2581,8 @@ function DecideModal({ row, onClose, onDecide, busy, t, isAr, dir }) {
 
         <div className="bs-small" style={{ ...S.cardMeta, marginTop: 10, lineHeight: 1.7 }}>
           {t({
-            en: "Cancelling keeps the record in the database, marked cancelled with who asked and who decided — deleting it outright would break product traceability and leave a gap in the INV- counter.",
-            ar: "الإلغاء بيخلّي السجل بالقاعدة معلّم «ملغى» مع مين طلب ومين قرّر — الحذف الفعلي بيكسر تتبّع المنتج وبيخلّي فجوة بعدّاد INV-.",
+en: "Cancelling keeps the record listed and marked cancelled, with who asked and who decided — deleting it outright would break product traceability and leave a gap in the INV- counter.",
+ar: "الإلغاء بيخلّي السجل ظاهر بالتقارير معلّم «ملغى» مع مين طلب ومين قرّر — الحذف الفعلي بيكسر تتبّع المنتج وبيخلّي فجوة بعدّاد INV-.",
           })}
         </div>
 
@@ -2045,22 +2592,26 @@ function DecideModal({ row, onClose, onDecide, busy, t, isAr, dir }) {
           </button>
           <button
             type="button"
-            style={{ ...S.btn, ...(busy ? S.btnOff : null) }}
+            style={{ ...S.btn, ...(restoring ? S.btnOk : null), ...(busy ? S.btnOff : null) }}
             disabled={busy}
             onClick={() => onDecide("rejected", note)}
           >
-            ↩︎ {t({ en: "Reject — put it back", ar: "رفض — رجّعها" })}
+            ↩︎ {restoring
+              ? t({ en: "Put it back into the reports", ar: "رجّعها للتقارير" })
+              : t({ en: "Reject — put it back", ar: "رفض — رجّعها" })}
           </button>
-          <button
-            type="button"
-            style={{ ...S.btn, ...S.btnWarn, ...(busy ? S.btnOff : null) }}
-            disabled={busy}
-            onClick={() => onDecide("approved", note)}
-          >
-            🚫 {busy
-              ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
-              : t({ en: "Approve — cancel it", ar: "موافقة — ثبّت الإلغاء" })}
-          </button>
+          {!restoring && (
+            <button
+              type="button"
+              style={{ ...S.btn, ...S.btnWarn, ...(busy ? S.btnOff : null) }}
+              disabled={busy}
+              onClick={() => onDecide("approved", note)}
+            >
+              🚫 {busy
+                ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+                : t({ en: "Approve — cancel it", ar: "موافقة — ثبّت الإلغاء" })}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2077,22 +2628,8 @@ const S = {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
     padding: "18px 14px 40px", overflowX: "hidden",
   },
-  wrap: { maxWidth: "100%", margin: "0 auto" },
 
-  header: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    flexWrap: "wrap", gap: 10, marginBottom: 14,
-  },
-  title: { fontWeight: 900 },
-  sub: { color: "#6b8299", fontWeight: 700, marginTop: 2 },
   /* شارة النطاق — لون هادي، مش تحذير: هالحصر طبيعي مش خلل. */
-  scopeNote: {
-    color: "#4c1d95", fontWeight: 900, marginTop: 6,
-    background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 999,
-    padding: "3px 12px", display: "inline-block",
-  },
-  headerBtns: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
-  langBtn: { background: "#fff", border: "1px solid #cfe0f0", color: "#1f6fd0" },
 
   btn: {
     border: "1.5px solid #cfe0f0", background: "#fff", color: "#3c5a75",
@@ -2105,29 +2642,16 @@ const S = {
 
   noteBar: {
     background: "#f3f8fd", border: "1px solid #cfe0f0", color: "#3c5a75",
-    borderRadius: 12, padding: "10px 14px", marginBottom: 12, fontWeight: 800,
+    borderRadius: 12, padding: "10px 14px", fontWeight: 800,
   },
   errorBar: {
     background: "#fff1f1", border: "1px solid #f5c2c2", color: "#a12626",
-    borderRadius: 12, padding: "10px 14px", marginBottom: 12, fontWeight: 800,
+    borderRadius: 12, padding: "10px 14px", fontWeight: 800,
   },
 
-  kpiRow: {
-    display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(190px,100%),1fr))",
-    gap: 12, marginBottom: 14,
-  },
-  kpiBox: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 16,
-    padding: "16px 18px", textAlign: "center",
-    boxShadow: "0 8px 22px rgba(15,39,64,.05)",
-  },
   kpiValue: { fontWeight: 900, lineHeight: 1.1 },
   kpiLabel: { color: "#6b8299", fontWeight: 800, marginTop: 6 },
 
-  filters: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 16,
-    padding: 14, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12,
-  },
   chipRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   chipBtn: {
     border: "1px solid #cfe0f0", background: "#fff", color: "#14507f",
@@ -2150,17 +2674,6 @@ const S = {
   },
 
   /* قائمة الجزارين — سطر تحت سطر، مش شبكة كروت */
-  list: { display: "flex", flexDirection: "column", gap: 10 },
-  row: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 16,
-    padding: "12px 14px", display: "flex", alignItems: "center", gap: 14,
-    flexWrap: "wrap", boxShadow: "0 6px 18px rgba(15,39,64,.05)",
-  },
-  rowId: { flex: "1 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 },
-  rowChips: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" },
-  rowStats: { display: "flex", flexDirection: "column", gap: 6, minWidth: 260 },
-  statStrip: { display: "flex", gap: 8 },
-  rowBtns: { display: "flex", gap: 8, flexWrap: "wrap", marginInlineStart: "auto" },
   avatar: {
     width: 52, height: 52, borderRadius: 16, flexShrink: 0,
     display: "grid", placeItems: "center", fontWeight: 900, color: "#fff",
@@ -2215,7 +2728,7 @@ const S = {
   /* ── خطة اليوم ── */
   planWrap: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 18,
-    padding: 16, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12,
+    padding: 16, display: "flex", flexDirection: "column", gap: 12,
   },
   planHead: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -2349,6 +2862,11 @@ const S = {
   reportBoxHeld: {
     border: "1px dashed #cbd5e1", background: "#f8fafc", opacity: 0.92,
   },
+  /* الطلب المفتوح: الصف بيضل كامل وواضح — بس معلّم بإطار كهرماني حتى ما
+     حدا يعتمد عليه وهو ما بيعرف إنه في طلب إلغاء عم يستنّى. */
+  reportBoxCr: { border: "2px solid #fdba74", background: "#fffdf8" },
+
+  /* ── كرت الطلبات المستنّية ── */
   crBox: {
     marginTop: 10, padding: "10px 12px", borderRadius: 12,
     background: "#fff7ed", border: "1px solid #fed7aa", color: "#7c2d12",
@@ -2368,16 +2886,13 @@ const S = {
   shareFill: { display: "block", height: "100%", borderRadius: 999 },
   shareVal: { fontStyle: "normal", fontWeight: 900, color: "#3c5a75", minWidth: 46 },
   btnSm: { padding: "7px 13px", borderRadius: 10 },
-  hero: {
-    background: "linear-gradient(135deg,#ffffff,#eaf3fc 60%,#e6f6f2)",
-    border: "1px solid #dbe6f2", borderRadius: 20, padding: "16px 18px",
-    boxShadow: "0 10px 26px rgba(15,39,64,.06)",
+  /* زر نصّي — لفتح/طيّ سجل العملية بلا ما يزاحم أزرار القرار */
+  linkBtn: {
+    border: "none", background: "none", padding: 0, color: "#14507f",
+    fontWeight: 900, fontFamily: FONT, cursor: "pointer", textAlign: "start",
   },
-  resetOn: { background: "#fff", borderColor: "#cfe0f0", color: "#1f6fd0" },
-  mixBar: {
-    display: "flex", height: 10, borderRadius: 999, overflow: "hidden",
-    background: "#e8f0f9", border: "1px solid #dbe6f2",
-  },
+  /* كرت فيه شغل مستنّي — إطار كهرماني بدل ما يضيع بين الكروت البيضا */
+  panelHot: { border: "2px solid #fdba74", background: "#fffdf8" },
   skeleton: { gap: 10, pointerEvents: "none" },
   skLine: { height: 14, borderRadius: 8, background: "linear-gradient(90deg,#eef4fb,#e2ecf7,#eef4fb)" },
   stdFilterBtn: { cursor: "pointer", fontWeight: 900, textAlign: "start" },

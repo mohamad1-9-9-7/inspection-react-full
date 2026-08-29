@@ -19,6 +19,7 @@ import {
   NumInput, S, SearchBox, Select, Switch, Toast, canEditMrp, canOpenMrp,
 } from "./mrpUi";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
+import MrpImageField from "./MrpImageField";
 
 const PAGE = "mrp.bom";
 
@@ -365,6 +366,16 @@ export default function MrpBom() {
       const x = (next[spec.key] || []).find((y) => y.id === row.id);
       if (x) x.active = v;
     }, null);
+
+  /* صورة التعريف — صورة وحدة لكل نوع/منشأ/فئة. منخزّن الرابط فقط: الملف
+     نفسه على Cloudinary، والسيرفر بيرفض أي payload فيه base64. */
+  const imageLookup = (spec, row, url) =>
+    commit((next) => {
+      const x = (next[spec.key] || []).find((y) => y.id === row.id);
+      if (x) x.imageUrl = url || "";
+    }, url
+      ? t({ en: "Picture saved.", ar: "انحفظت الصورة." })
+      : t({ en: "Picture removed.", ar: "انحذفت الصورة." }));
 
   /* لا حذف للتعريفات — التعطيل هو البديل: القوائم المربوطة فيه بتضل سليمة
      وسجلات التقطيع القديمة بتحافظ على اسم النوع/المنشأ/الفئة تبعها. */
@@ -893,6 +904,7 @@ export default function MrpBom() {
           onAdd={addLookup}
           onRename={renameLookup}
           onToggle={toggleLookup}
+          onImage={imageLookup}
         />
       )}
 
@@ -1600,7 +1612,7 @@ function LookupField({ t, isAr, label, spec, options, value, onChange, onAdd, ca
 }
 
 /** بطاقة إدارة التعريفات — إضافة · إعادة تسمية · تفعيل · حذف. */
-function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle }) {
+function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onImage }) {
   const [open, setOpen] = useState(false);
   const total = LOOKUP_LIST.reduce((s, spec) => s + (cfg[spec.key] || []).length, 0);
 
@@ -1624,7 +1636,7 @@ function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
             <LookupBox
               key={spec.key}
               spec={spec} t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} busy={busy}
-              onAdd={onAdd} onRename={onRename} onToggle={onToggle}
+              onAdd={onAdd} onRename={onRename} onToggle={onToggle} onImage={onImage}
             />
           ))}
         </div>
@@ -1634,7 +1646,7 @@ function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
 }
 
 /** صندوق تعريف واحد داخل بطاقة التعريفات. */
-function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle }) {
+function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onImage }) {
   const list = cfg[spec.key] || [];
   const countFor = (id) => (cfg.boms || []).filter((b) => (b[spec.field] || "") === id).length;
 
@@ -1696,6 +1708,13 @@ function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
                     <span style={{ ...S.hint, minWidth: 46 }}>
                       {off ? t({ en: "off", ar: "معطّل" }) : t({ en: "on", ar: "مفعّل" })}
                     </span>
+                    {/* 📷 جنب زر التفعيل بالضبط — الصورة بتظهر للجزار بشاشة
+                        اختيار النوع/المنشأ/الفئة بدل الاسم المكتوب. */}
+                    <MrpImageField
+                      compact t={t} disabled={busy}
+                      value={row.imageUrl || ""}
+                      onChange={(url) => onImage(spec, row, url)}
+                    />
                     <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
                       disabled={busy} onClick={() => onRename(spec, row)}
                       title={t({ en: "Rename", ar: "إعادة تسمية" })}>

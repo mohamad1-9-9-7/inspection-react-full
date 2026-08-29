@@ -25,7 +25,10 @@ export function getPerms() {
   const permissions = Array.isArray(u.permissions) ? u.permissions : [];
   const crudPerms   = (u.crudPerms && typeof u.crudPerms === "object") ? u.crudPerms : {};
   const isFullAccess = permissions.includes("*");
-  const isAdmin      = !!u.isAdmin;
+  /* «الأدمن الشامل» (isSuperAdmin) صاحب النظام كلّه — لازم يمرق من كل فحص
+     متل الأدمن العادي بالضبط. كان ناقص هون، فصارت كل شاشة تفحصه لحالها (أو
+     تنساه) وصاحب الحساب يتحرم من قسم هو مالكو. المصدر واحد: من هون وطالع. */
+  const isAdmin      = !!u.isAdmin || !!u.isSuperAdmin;
 
   return {
     user: u,

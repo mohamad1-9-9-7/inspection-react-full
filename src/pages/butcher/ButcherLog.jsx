@@ -1207,6 +1207,9 @@ export default function ButcherLog() {
                     : (b.outputs || []).length;
                   return (
                     <button key={b.id} className="bt-press" onClick={() => pickBom(b)} style={S.tile}>
+                      {/* صورة المادة الخام — الوصفة بتنعرف من الداخل إلها،
+                          فصورته هي أوضح تعريف للوصفة عند جزار ما بيقرأ. */}
+                      {inp?.imageUrl && <img src={inp.imageUrl} alt="" style={S.tileImg} />}
                       <span className="bt-name" style={S.name}>{itemName(inp, isAr)}</span>
                       {altNameOf(inp, isAr) && (
                         <span className="bt-lbl" style={S.altName}>{altNameOf(inp, isAr)}</span>
@@ -2050,6 +2053,11 @@ function FacetStep({ dim, pick, onPick, title, t, isAr }) {
       <div style={S.grid}>
         {pick.opts.map((o) => (
           <button key={o.id} className="bt-press" onClick={() => onPick(o.id)} style={S.tile}>
+            {/* 📷 صورة النوع/المنشأ/الفئة — أغلب الجزارين ما بيقروا، فالصورة
+                هي اللي بتعرّفهم على الخيار. بتنضاف من صفحة الـBOM. */}
+            {o.imageUrl && (
+              <img src={o.imageUrl} alt="" style={S.tileImg} />
+            )}
             <span className="bt-name" style={S.name}>{nameOf(o, isAr) || o.id}</span>
             <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
               {o.count} {label}
@@ -2273,6 +2281,12 @@ const S = {
   artImg: {
     width: "100%", height: "100%", objectFit: "cover",
     borderRadius: 16, display: "block",
+  },
+  /* صورة خيار النوع/المنشأ/الفئة — كبيرة عن قصد: هي بديل القراءة لا زينة
+     جنبها، فلازم تبيّن من مسافة الميزان. */
+  tileImg: {
+    width: "100%", maxWidth: 240, aspectRatio: "4 / 3", objectFit: "cover",
+    borderRadius: 18, display: "block", background: "#f2f7fc",
   },
   /* الهدر والعظم — صفّ منفصل بلون مختلف عن شبكة المنتجات */
   wasteRow: {

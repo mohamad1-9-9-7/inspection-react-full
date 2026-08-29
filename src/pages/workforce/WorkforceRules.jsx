@@ -190,6 +190,11 @@ function SupervisorPicker({ wf, supervisors, selected, onChange, t, isAr }) {
   const toggle = (id) =>
     onChange(has(id) ? selected.filter((x) => x !== id) : [...selected, id]);
 
+  /* مشرف انحذف أو انوقف بيضل معرّفه محفوظ بالقاعدة. ما منعرض عدّاد بيقول
+     «٣ من ٢» — منعدّ المسمّين الموجودين فعلاً. (المعرّف الميت ما بيأذي:
+     بوابة الكشك بتقارن بالمعرّف وما رح تلاقي حدا.) */
+  const liveSelected = selected.filter((id) => supervisors.some((p) => p.id === id));
+
   if (supervisors.length === 0) {
     return (
       <Empty
@@ -206,9 +211,9 @@ function SupervisorPicker({ wf, supervisors, selected, onChange, t, isAr }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <Chip bg={selected.length ? "#ecfdf5" : C.band} fg={selected.length ? C.green : C.mute}
-              bd={selected.length ? "#a7f3d0" : "transparent"}>
-          {selected.length} / {supervisors.length} {t({ en: "allowed", ar: "مسموح" })}
+        <Chip bg={liveSelected.length ? "#ecfdf5" : C.band} fg={liveSelected.length ? C.green : C.mute}
+              bd={liveSelected.length ? "#a7f3d0" : "transparent"}>
+          {liveSelected.length} / {supervisors.length} {t({ en: "allowed", ar: "مسموح" })}
         </Chip>
         {selected.length > 0 && (
           <Btn size="sm" tone="quiet" onClick={() => onChange([])}>

@@ -27,6 +27,7 @@ import {
   ReviewChip, S, Skeleton, SortTh, TableWrap, downloadExcel, downloadPdf,
   groupTree, inSet, kg, monthStart, pct, shiftDays, sortRows, todayStr, totalsOf,
   useButcherData, useNormalizedRows, wasteBreakdown, canSeeRow,
+  CrChip, isCancelled, isQuarantined, crHistory, crStatusText, CR_ACTIONS, CR_KINDS,
 } from "./butcherReportKit";
 import { useRowViewer } from "./butcherViewer";
 import OdooMoves, {
@@ -276,6 +277,49 @@ function AggTh({ label, col, sort, setSort, numeric }) {
   );
 }
 
+/* ══════════════ سجل طلب الإلغاء ══════════════
+   نفس بيانات لوحة المشرف، بشكل مضغوط جوّا الصف المفتوح. */
+function CrLog({ row, t, isAr }) {
+  const items = crHistory(row);
+  if (!items.length) return null;
+  const info = crStatusText(row, isAr);
+
+  return (
+    <div style={{
+      marginTop: 12, padding: "12px 14px", borderRadius: 12,
+      background: "#fff", border: "1px solid #e5e7eb",
+    }}>
+      <div style={{ fontWeight: 900, marginBottom: 8 }}>
+        📜 {t({ en: "Cancellation history", ar: "سجل طلب الإلغاء" })}
+        {info ? ` — ${info.label}` : ""}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map((h, i) => {
+          const meta = CR_ACTIONS[h.action] || CR_ACTIONS.requested;
+          return (
+            <div key={`${h.at}-${i}`} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span aria-hidden="true">{meta.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800 }}>
+                  {isAr ? meta.ar : meta.en}
+                  {h.kind && h.action === "requested"
+                    ? ` · ${isAr ? CR_KINDS[h.kind]?.ar : CR_KINDS[h.kind]?.en}`
+                    : ""}
+                </div>
+                <div className="bk-lbl" style={{ color: C.muted }}>
+                  {h.byName || h.by || "—"}
+                  {h.at ? ` · ${String(h.at).slice(0, 16).replace("T", " ")}` : ""}
+                </div>
+                {h.note && <div className="bk-lbl">«{h.note}»</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════ الصفحة ══════════════ */
 
 export default function ButcherView() {
@@ -296,10 +340,16 @@ export default function ButcherView() {
     useButcherData({ from: compare ? prevFrom : from, to });
   const rawRows = useNormalizedRows(records, { cfg, mrpCfg, isAr });
 
-  /* العمليات المحجورة (طلب تعديل مرفوع) والملغاة (وافق عليها المسؤول) ما
-     بتبيّن هون ولا بتنحسب بأي رقم — هاد كل معنى الحجر. مشرف الملحمة
-     بيشوف طلبه ويتابعه من لوحة المشرف، والمسؤول بيشوف كل شي. */
+  /* ── الرؤية والاحتساب: قاعدتين منفصلتين ──
+     • **الرؤية**: كل شي بيبيّن. حتى الملغى بيضل بجدول العمليات بحالته
+       الصريحة («ملغاة — ألغاها فلان»). سطر بيختفي بلا أثر من تقرير الجزار
+       بيخلّي الناس تشك بالنظام كلّه؛ الشفافية أنضف من الإخفاء.
+     • **الاحتساب**: الملغى برّا كل مجموع ومؤشّر وتجميعة (`filtered`)،
+       والمعلّق عليه طلب بينحسب عادي (الطلب مش قرار).
+     كل الإحصاءات تحت مبنيّة على `filtered`، والجدول وحده بيستعمل `shown`. */
   const viewer = useRowViewer(isAr);
+  const [crOnly, setCrOnly] = useState(false);
+  const [cancelledOnly, setCancelledOnly] = useState(false);
   const all = useMemo(
     () => rawRows.filter((r) => canSeeRow(r, viewer)),
     [rawRows, viewer]
@@ -464,6 +514,8 @@ export default function ButcherView() {
       if (!inSet(pathways, r.pathwayCode)) return false;
       if (!inSet(inputs, r.inputItemId || r.inputName)) return false;
       if (!inSet(statuses, r.reviewStatus || "pending")) return false;
+      if (crOnly && !isQuarantined(r)) return false;
+      if (cancelledOnly && !isCancelled(r)) return false;
       if (items.length && !r.cuts.some((c) => items.includes(c.itemId || c.name))) return false;
       if (yMin !== null && r.yieldPct < yMin) return false;
       if (yMax !== null && r.yieldPct > yMax) return false;
@@ -479,7 +531,8 @@ export default function ButcherView() {
           r.opNo, r.employeeNo, r.employeeNoRaw, r.butcherName, r.bomRef, r.bomCatName,
           r.bomKindName, r.bomOriginName,
           r.pathwayCode, r.pathwayName, r.inputName, r.inputNameAlt, r.inputSku,
-          r.branchName, r.branchCode, r.day, r.entryDay, r.review?.by, r.review?.reason,
+          r.branchName, r.branchCode, r.day, r.entryDay,
+          r.review?.by, r.review?.byName, r.review?.reason,
           ...r.cuts.map((c) => `${c.name} ${c.nameAlt} ${c.sku}`),
         ].join(" ").toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -488,13 +541,20 @@ export default function ButcherView() {
     };
   }, [branches, butchers, kinds, origins, cats, recipes, pathways, inputs, items, statuses, q, opQ,
       yieldMin, yieldMax, devPct, onlyDeviating, onlyUnaccounted, onlyPathway,
-      onlyNoOpNo, onlyBackdated]);
+      onlyNoOpNo, onlyBackdated, crOnly, cancelledOnly]);
 
-  const filtered = useMemo(() => scope.filter(passes), [scope, passes]);
-  const rows = useMemo(() => sortRows(filtered, sort.key, sort.dir), [filtered, sort]);
+  /* `shown` = كل اللي بيطلع بجدول العمليات (الملغى معه، معلّم بحالته).
+     `filtered` = اللي بينحسب — الملغى برّا. كل مؤشّر وتجميعة تحت بتقرا
+     `filtered`، فما في رقم بينبنى على عملية ملغاة. */
+  const shown = useMemo(() => scope.filter(passes), [scope, passes]);
+  const filtered = useMemo(() => shown.filter((r) => !isCancelled(r)), [shown]);
+  const cancelledCount = shown.length - filtered.length;
+  const rows = useMemo(() => sortRows(shown, sort.key, sort.dir), [shown, sort]);
 
   const prevRows = useMemo(
-    () => (compare ? all.filter((r) => r.day >= prevFrom && r.day <= prevTo).filter(passes) : []),
+    () => (compare
+      ? all.filter((r) => r.day >= prevFrom && r.day <= prevTo && !isCancelled(r)).filter(passes)
+      : []),
     [compare, all, prevFrom, prevTo, passes]
   );
 
@@ -675,6 +735,10 @@ export default function ButcherView() {
             `${c.name}: ${c.deltaPct > 0 ? "+" : ""}${c.deltaPct.toFixed(1)}%`, "red", 3);
         }
       });
+      if (isQuarantined(r)) {
+        push(r, t({ en: "Cancellation requested", ar: "طلب إلغاء معلّق" }),
+          r.changeRequest?.reason || "—", "amber", 3);
+      }
       if (r.reviewStatus === "rejected") {
         push(r, t({ en: "Rejected", ar: "مرفوض" }), r.review?.reason || "—", "red", 3);
       }
@@ -689,8 +753,14 @@ export default function ButcherView() {
           t({ en: `entered ${r.entryDay}`, ar: `أُدخل ${r.entryDay}` }), "grey", 1);
       }
     });
+    /* الملغى مش بـ`filtered` (ما بينحسب)، بس لازم يطلع بالتنبيهات: عملية
+       انلغت بعد ما انسجّلت خبر يهمّ المشرف، مش تفصيل بينشال بصمت. */
+    shown.filter(isCancelled).forEach((r) => {
+      push(r, t({ en: "Cancelled record", ar: "عملية ملغاة" }),
+        crStatusText(r, true)?.label || "—", "red", 3);
+    });
     return out.sort((a, b) => b.sev - a.sev || b.day.localeCompare(a.day));
-  }, [filtered, devPct, t]);
+  }, [filtered, shown, devPct, t]);
 
   /* ══ الفلاتر الفعّالة كشرائح ══ */
   const chips = useMemo(() => {
@@ -723,12 +793,14 @@ export default function ButcherView() {
     if (onlyPathway) list.push({ label: t({ en: "Has pathway", ar: "له مسار" }), text: "✓", clear: () => setOnlyPathway(false) });
     if (onlyNoOpNo) list.push({ label: t({ en: "No operation no.", ar: "بلا رقم عملية" }), text: "✓", clear: () => setOnlyNoOpNo(false) });
     if (onlyBackdated) list.push({ label: t({ en: "Backdated", ar: "بأثر رجعي" }), text: "✓", clear: () => setOnlyBackdated(false) });
+    if (crOnly) list.push({ label: t({ en: "Cancellation requested", ar: "طلب إلغاء معلّق" }), text: "✓", clear: () => setCrOnly(false) });
+    if (cancelledOnly) list.push({ label: t({ en: "Cancelled only", ar: "الملغاة فقط" }), text: "✓", clear: () => setCancelledOnly(false) });
     return list;
   }, [t, branches, branchOpts, butchers, butcherOpts, kinds, kindOpts, origins, originOpts,
       cats, catOpts, recipes, recipeOpts,
       pathways, pathwayOpts, inputs, inputOpts, items, itemOpts, statuses, statusOpts,
       q, opQ, yieldMin, yieldMax, onlyDeviating, devPct, onlyUnaccounted, onlyPathway,
-      onlyNoOpNo, onlyBackdated]);
+      onlyNoOpNo, onlyBackdated, crOnly, cancelledOnly]);
 
   const resetFilters = () => {
     setBranches([]); setButchers([]); setKinds([]); setOrigins([]);
@@ -736,6 +808,7 @@ export default function ButcherView() {
     setInputs([]); setItems([]); setStatuses([]); setQ(""); setOpQ("");
     setYieldMin(""); setYieldMax(""); setOnlyDeviating(false); setOnlyUnaccounted(false);
     setOnlyPathway(false); setOnlyNoOpNo(false); setOnlyBackdated(false);
+    setCrOnly(false); setCancelledOnly(false);
   };
 
   const resetAll = () => {
@@ -798,6 +871,8 @@ export default function ButcherView() {
       t({ en: "Reviewed by", ar: "روجع بواسطة" }),
       t({ en: "Reviewed at", ar: "تاريخ المراجعة" }),
       t({ en: "Reason", ar: "السبب" }),
+      t({ en: "Cancellation request", ar: "طلب الإلغاء" }),
+      t({ en: "Request reason", ar: "سبب الطلب" }),
     ];
     const body = rows.map((r) => [
       r.opNo || "", r.day, r.entryDay || "", r.time || "", r.employeeNo, r.employeeNoRaw,
@@ -807,8 +882,15 @@ export default function ButcherView() {
       +kg(r.carcassKg), r.pieceCount ?? "", +kg(r.cutsKg), +kg(r.wasteKg),
       +kg(r.unaccountedKg), +r.yieldPct.toFixed(1), +r.wastePct.toFixed(1),
       r.durationMin ?? "", r.cuts.length, statusName(r.reviewStatus),
-      r.review?.by || "", r.review?.at ? String(r.review.at).slice(0, 16).replace("T", " ") : "",
+      r.review?.byName || r.review?.by || "",
+      r.review?.at ? String(r.review.at).slice(0, 16).replace("T", " ") : "",
       r.review?.reason || "",
+      isQuarantined(r)
+        ? t({ en: "Pending officer", ar: "بانتظار المسؤول" })
+        : isCancelled(r)
+          ? t({ en: "Cancelled", ar: "ملغاة" })
+          : "",
+      r.changeRequest?.reason || "",
     ]);
     return [head, ...body];
   }, [rows, t, statusLabel]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -964,7 +1046,7 @@ export default function ButcherView() {
       // نفس أعمدة شاشة «حركات المنتج» الـ١٣ حرفياً — النسخة الورقية تطابق العرض
       { name: "Product Moves", aoa: buildMovesAoa(moves, { isAr }),
         widths: MOVE_COLS.map((c) => Math.round(c.w / 7)) },
-      { name: "Operations",  aoa: opsAoa,      widths: [16, 12, 12, 8, 22, 12, 16, 12, 14, 14, 14, 16, 12, 20, 24, 12, 10, 8, 10, 10, 12, 9, 9, 12, 8, 14, 16, 16, 30] },
+      { name: "Operations",  aoa: opsAoa,      widths: [16, 12, 12, 8, 22, 12, 16, 12, 14, 14, 14, 16, 12, 20, 24, 12, 10, 8, 10, 10, 12, 9, 9, 12, 8, 14, 16, 16, 30, 18, 34] },
       { name: "Lines",       aoa: lines,       widths: [16, 12, 22, 16, 14, 14, 14, 16, 18, 24, 10, 26, 12, 10, 8, 10, 10, 10, 10, 14] },
       { name: "By date",     aoa: daily,       widths: [12, 11, 12, 12, 12, 12, 10, 10, 11] },
       { name: "By butcher",  aoa: perButcher,  widths: [24, 11, 12, 12, 12, 12, 10, 10, 14, 22, 12, 10] },
@@ -1199,6 +1281,14 @@ ${ODOO_SKIN_CSS}`}</style>
             <span className="bv-hpill">
               🔢 {fmtInt(opCovered)}/{fmtInt(filtered.length)} {t({ en: "numbered", ar: "مرقّمة" })}
             </span>
+            {cancelledCount > 0 && (
+              <span className="bv-hpill" title={t({
+                en: "Cancelled operations are listed with their status but excluded from every total.",
+                ar: "العمليات الملغاة بتنعرض بحالتها بس ما بتدخل بأي مجموع.",
+              })}>
+                🚫 {fmtInt(cancelledCount)} {t({ en: "cancelled (not counted)", ar: "ملغاة (غير محسوبة)" })}
+              </span>
+            )}
           </div>
         </header>
 
@@ -1380,6 +1470,10 @@ ${ODOO_SKIN_CSS}`}</style>
                     lbl: t({ en: "Missing operation no.", ar: "بلا رقم عملية" }) },
                   { on: onlyBackdated, set: setOnlyBackdated, icon: "🕗",
                     lbl: t({ en: "Backdated entry", ar: "إدخال بأثر رجعي" }) },
+                  { on: crOnly, set: setCrOnly, icon: "⏳",
+                    lbl: t({ en: "Cancellation requested", ar: "طلب إلغاء معلّق" }) },
+                  { on: cancelledOnly, set: setCancelledOnly, icon: "🚫",
+                    lbl: t({ en: "Cancelled only", ar: "الملغاة فقط" }) },
                   { on: compare, set: setCompare, icon: "📊",
                     lbl: t({ en: "Compare with previous period", ar: "قارن بالفترة السابقة" }) },
                 ].map((f) => (
@@ -1501,10 +1595,15 @@ ${ODOO_SKIN_CSS}`}</style>
             icon="⏳" color={C.amber} invert
             label={t({ en: "Pending review", ar: "بانتظار المراجعة" })}
             value={fmtInt(filtered.filter((r) => (r.reviewStatus || "pending") === "pending").length)}
-            hint={t({
-              en: `${filtered.filter((r) => r.reviewStatus === "rejected").length} rejected`,
-              ar: `${filtered.filter((r) => r.reviewStatus === "rejected").length} مرفوض`,
-            })}
+            hint={filtered.filter(isQuarantined).length
+              ? t({
+                  en: `${filtered.filter(isQuarantined).length} cancellation request(s)`,
+                  ar: `${filtered.filter(isQuarantined).length} طلب إلغاء معلّق`,
+                })
+              : t({
+                  en: `${filtered.filter((r) => r.reviewStatus === "rejected").length} rejected`,
+                  ar: `${filtered.filter((r) => r.reviewStatus === "rejected").length} مرفوض`,
+                })}
           />
         </div>
         )}
@@ -1841,6 +1940,11 @@ ${ODOO_SKIN_CSS}`}</style>
                             </td>
                             <td style={S.td}>
                               <ReviewChip status={r.reviewStatus} t={t} />
+                              {r.crStatus && (
+                                <div style={{ marginTop: 5 }}>
+                                  <CrChip row={r} isAr={isAr} />
+                                </div>
+                              )}
                               {r.unaccountedKg > 0.005 && (
                                 <div style={{ marginTop: 5 }}>
                                   <Chip tone="amber">⚖️ {fmt(r.unaccountedKg)} kg</Chip>
@@ -1906,7 +2010,8 @@ ${ODOO_SKIN_CSS}`}</style>
                                     )}
                                     {r.review?.at && (
                                       <span className="bk-lbl" style={{ color: C.muted }}>
-                                        {t({ en: "Reviewed by", ar: "روجع بواسطة" })} {r.review.by || "—"} ·{" "}
+                                        {t({ en: "Reviewed by", ar: "روجع بواسطة" })}{" "}
+                                        {r.review.byName || r.review.by || "—"} ·{" "}
                                         {String(r.review.at).slice(0, 16).replace("T", " ")}
                                       </span>
                                     )}
@@ -1921,6 +2026,11 @@ ${ODOO_SKIN_CSS}`}</style>
                                       </span>
                                     )}
                                   </div>
+
+                                  {/* سجل طلب الإلغاء — القصة كاملة مع العملية
+                                      نفسها، فما بيضطر حدا يروح للوحة المشرف
+                                      ليعرف ليش هالسطر ملغى. */}
+                                  <CrLog row={r} t={t} isAr={isAr} />
                                 </div>
                               </td>
                             </tr>

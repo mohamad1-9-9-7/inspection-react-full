@@ -90,13 +90,18 @@ export default function InventoryHub() {
      الظاهر بيفتح دايماً والكرت المخفي ما إله وجود — ما بيصير كرت بيرمي صاحبه
      ع الرئيسية. القسم الافتراضي = معرّف الوحدة نفسه. */
   /* «مسؤول المخزون» بيشوف كل كروت المخزون — هي كل صلاحيته، وهي كاملة. */
-  const { officer } = useInventoryOfficer();
+  const { officer, resolved } = useInventoryOfficer();
   const modules = MODULES.filter(
     (m) =>
       officer ||
       (hasSection(m.section || m.id) &&
         (!m.item || isItemAllowed(m.section || m.id, m.item)))
   );
+
+  /* سجل القوى العاملة بيوصل بعد أول رسمة. لو عرضنا «ما في صلاحية» قبل ما
+     يوصل، مسؤول المخزون بيشوف رسالة حرمان لجزء من الثانية وبعدين بتختفي —
+     مربك بلا داعٍ. منستنّى الجواب قبل ما نحكم. */
+  const stillChecking = !resolved && modules.length === 0;
 
   return (
     <div dir={dir} className="inv" style={S.page}>
@@ -161,7 +166,13 @@ export default function InventoryHub() {
           ))}
         </div>
 
-        {modules.length === 0 && (
+        {stillChecking && (
+          <div style={S.empty}>
+            {t({ en: "Checking your access…", ar: "عم نتأكّد من صلاحياتك…" })}
+          </div>
+        )}
+
+        {!stillChecking && modules.length === 0 && (
           <div style={S.empty}>
             {t({
               en: "You do not have access to any inventory module.",

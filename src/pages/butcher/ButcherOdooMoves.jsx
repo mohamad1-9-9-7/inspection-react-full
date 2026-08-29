@@ -17,6 +17,9 @@
 // جدول بصفوف مجموعات قابلة للطيّ وسطر مجاميع، ونافذة سجل بشكل استمارة Odoo.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CR_ACTIONS, CR_KINDS, crHistory, crStatusText, editorName, isCancelled, lastEditOf,
+} from "./butcherReportKit";
 
 /* ══════════════ أدوات ══════════════ */
 
@@ -29,6 +32,16 @@ const pctOf = (part, whole) => (whole > 0 ? (part / whole) * 100 : 0);
 const stockLoc = (code, isAr) =>
   `${String(code || "WH").replace(/\s+/g, "")}/${isAr ? "المخزون" : "Stock"}`;
 const prodLoc = (isAr) => (isAr ? "مواقع افتراضية/الإنتاج" : "Virtual Locations/Production");
+
+/* نصّ الحركة الأخيرة — قصير، بيلحق اسم الشخص بعمود «آخر تعديل». */
+const ACT_AR = {
+  approved: "قبول", reviewed: "مراجعة", requested: "طلب إلغاء",
+  cancelled: "إلغاء", restored: "إرجاع", rejected: "رفض الطلب",
+};
+const ACT_EN = {
+  approved: "accepted", reviewed: "reviewed", requested: "cancellation requested",
+  cancelled: "cancelled", restored: "restored", rejected: "request rejected",
+};
 
 /* ══════════════ بناء الحركات ══════════════ */
 
@@ -46,7 +59,8 @@ export function buildMoves(rows, { t, isAr }) {
     produce: t({ en: "Produced", ar: "أُنتج" }),
     done:    t({ en: "Done", ar: "مكتملة" }),
     waiting: t({ en: "Waiting", ar: "قيد المراجعة" }),
-    cancel:  t({ en: "Cancelled", ar: "مرفوضة" }),
+    cancel:  t({ en: "Rejected", ar: "مرفوضة" }),
+    cancelled: t({ en: "Cancelled", ar: "ملغاة" }),
   };
 
   const out = [];
@@ -54,8 +68,12 @@ export function buildMoves(rows, { t, isAr }) {
 
   rows.forEach((r) => {
     const review = r.review || {};
-    const state =
-      r.reviewStatus === "approved" ? "done"
+    /* الإلغاء بيسبق حالة المراجعة: عملية ملغاة ما بتصير «مكتملة» لأن حدا
+       كان قبلها. سطرها بيضل موجود للقراءة، بس بحالة «ملغاة» وبلا احتساب. */
+    const cancelledOp = isCancelled(r);
+    const lastEdit = r.lastEdit || lastEditOf(r);
+    const state = cancelledOp ? "cancelled"
+      : r.reviewStatus === "approved" ? "done"
         : r.reviewStatus === "rejected" ? "cancel"
           : "waiting";
 
@@ -81,9 +99,17 @@ export function buildMoves(rows, { t, isAr }) {
       bomKey: `${r.bomRef || "~"}${r.pathwayCode ? `/${r.pathwayCode}` : ""}`,
       state,                                               // ١٢ الحالة
       stateLabel: L[state],
+      cancelled: cancelledOp,
       locked: !!r.locked,
-      checkedBy: review.by || "",                          // ١٣ تدققت من قبل
-      checkedAt: review.at ? String(review.at).slice(0, 16).replace("T", " ") : "",
+      /* ١٣ آخر تعديل — اسم **الشخص** لا الحساب ولا الملحمة، وآخر حركة لا
+         أول مراجعة: قبول، طلب إلغاء، إلغاء، أو إرجاع — أيّهن أحدث. */
+      checkedBy: editorName(lastEdit) || review.byName || review.by || "",
+      checkedAt: lastEdit?.at
+        ? String(lastEdit.at).slice(0, 16).replace("T", " ")
+        : (review.at ? String(review.at).slice(0, 16).replace("T", " ") : ""),
+      checkedAction: lastEdit
+        ? (isAr ? (ACT_AR[lastEdit.action] || "") : (ACT_EN[lastEdit.action] || ""))
+        : "",
       reason: review.reason || "",
       baseKg: r.baseKg,
       unaccountedKg: r.unaccountedKg,
@@ -170,7 +196,8 @@ export const MOVE_COLS = [
   { id: "exp",     ar: "انتهاء الخام",   en: "Raw Expiry",      sort: "rawExpiry",  w: 126 },
   { id: "pct",     ar: "النسبة الفعلية", en: "Actual %",        sort: "pctActual",  w: 124, num: true },
   { id: "state",   ar: "الحالة",         en: "Status",          sort: "state",      w: 120 },
-  { id: "by",      ar: "تدققت من قبل",   en: "Checked By",      sort: "checkedBy",  w: 162 },
+  { id: "by",      ar: "آخر تعديل",      en: "Last Edited By",  sort: "checkedBy",  w: 150 },
+  { id: "lastact", ar: "آخر حركة",       en: "Last Action",     sort: "checkedAt",  w: 186 },
 ];
 
 /**
@@ -200,6 +227,7 @@ export function buildMovesAoa(moves, { isAr, cols = MOVE_COLS } = {}) {
       case "pct":     return Number(m.pctActual.toFixed(2));
       case "state":   return m.stateLabel;
       case "by":      return m.checkedBy || "—";
+      case "lastact": return `${m.checkedAction ? `${m.checkedAction} · ` : ""}${m.checkedAt || ""}`.trim() || "—";
       default:        return "";
     }
   };
@@ -233,7 +261,8 @@ const FILTERS = [
   { sep: true },
   { id: "f_done",    cat: "state", ar: "مكتملة",          en: "Done",         test: (m) => m.state === "done" },
   { id: "f_wait",    cat: "state", ar: "قيد المراجعة",    en: "Waiting",      test: (m) => m.state === "waiting" },
-  { id: "f_cancel",  cat: "state", ar: "مرفوضة",          en: "Cancelled",    test: (m) => m.state === "cancel" },
+  { id: "f_cancel",  cat: "state", ar: "مرفوضة",          en: "Rejected",     test: (m) => m.state === "cancel" },
+  { id: "f_cancelled", cat: "state", ar: "ملغاة",         en: "Cancelled",    test: (m) => m.state === "cancelled" },
   { sep: true },
   { id: "f_dev",     cat: "flag",  ar: "انحراف عن الهدف", en: "Off target",   test: (m) => m.deltaPct !== null && Math.abs(m.deltaPct) > 10 },
   { id: "f_noref",   cat: "flag",  ar: "بلا رقم عملية",   en: "No reference", test: (m) => !m.ref },
@@ -517,6 +546,13 @@ export const ODOO_CSS = `
 #root .odv .odv-badge.done { background: #28a745; }
 #root .odv .odv-badge.waiting { background: #f0ad4e; }
 #root .odv .odv-badge.cancel { background: #d9534f; }
+#root .odv .odv-badge.cancelled { background: #7f1d1d; }
+#root .odv .odv-cxbox {
+  margin: 10px 0; padding: 10px 12px; border-radius: 6px;
+  background: #fdf2f2; border: 1px solid #f3c9c9; color: #7f1d1d;
+}
+#root .odv .odv-cxlog { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+#root .odv .odv-cxlog > div { display: flex; flex-direction: column; }
 #root .odv .odv-tag {
   display: inline-block; border-radius: 3px; padding: 1px 7px; font-size: 11px !important;
   font-weight: 500; border: 1px solid; white-space: nowrap;
@@ -838,6 +874,9 @@ export default function OdooMoves({
   const [view, setView] = useState("list");
   const [pivotDim, setPivotDim] = useState("branch");
   const [rec, setRec] = useState(null);                // السجل المفتوح
+  /* العملية الملغاة سطر عادي بهالجدول متل غيرها — الفرق الوحيد شارة
+     الحالة «ملغاة» واسم اللي ألغاها. ما في إخفاء ولا خيار إظهار: الحالة
+     بتحكي، والإخفاء بيخلّي الواحد يدوّر على سطر بيعرف إنه موجود. */
 
   const L = (o) => (isAr ? o.ar : o.en);
   const cols = useMemo(() => MOVE_COLS.filter((c) => !hidden.has(c.id)), [hidden]);
@@ -1123,8 +1162,16 @@ export default function OdooMoves({
           </>
         );
       case "by":
-        return m.checkedBy
-          ? (<>{m.checkedBy}<span className="odv-sub">{m.checkedAt}</span></>)
+        return m.checkedBy || <span style={{ color: "#bbb" }}>—</span>;
+      case "lastact":
+        return m.checkedAt || m.checkedAction
+          ? (
+            <>
+              {m.checkedAction || ""}
+              {m.checkedAction && m.checkedAt ? " · " : ""}
+              {m.checkedAt || ""}
+            </>
+          )
           : <span style={{ color: "#bbb" }}>—</span>;
       default:
         return null;
@@ -1548,8 +1595,11 @@ function RecordDialog({ rec, t, isAr, onClose }) {
     return () => document.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
-  const st = rec.reviewStatus === "approved" ? "done"
-    : rec.reviewStatus === "rejected" ? "cancel" : "waiting";
+  const cancelled = isCancelled(rec);
+  const st = cancelled ? "cancelled"
+    : rec.reviewStatus === "approved" ? "done"
+      : rec.reviewStatus === "rejected" ? "cancel" : "waiting";
+  const log = crHistory(rec);
   const F = ({ k, v }) => (
     <div className="odv-fr"><span className="k">{k}</span><span className="v">{v || "—"}</span></div>
   );
@@ -1567,8 +1617,40 @@ function RecordDialog({ rec, t, isAr, onClose }) {
           <div className="odv-statusbar">
             <span className={`odv-st ${st === "waiting" ? "on" : ""}`}>{t({ en: "Waiting", ar: "قيد المراجعة" })}</span>
             <span className={`odv-st ${st === "done" ? "on" : ""}`}>{t({ en: "Done", ar: "مكتملة" })}</span>
-            <span className={`odv-st ${st === "cancel" ? "on" : ""}`}>{t({ en: "Cancelled", ar: "مرفوضة" })}</span>
+            <span className={`odv-st ${st === "cancelled" ? "on" : ""}`}>{t({ en: "Cancelled", ar: "ملغاة" })}</span>
           </div>
+
+          {/* عملية ملغاة: الحالة بالاسم، وسجلها كامل جوّا نفس النافذة */}
+          {cancelled && (
+            <div className="odv-cxbox">
+              <b>🚫 {crStatusText(rec, isAr)?.label}</b>
+              <div className="odv-cxlog">
+                {log.map((h, i) => {
+                  const meta = CR_ACTIONS[h.action] || CR_ACTIONS.requested;
+                  return (
+                    <div key={`${h.at}-${i}`}>
+                      <span>{meta.icon} <b>{isAr ? meta.ar : meta.en}</b>
+                        {h.kind && h.action === "requested"
+                          ? ` · ${isAr ? CR_KINDS[h.kind]?.ar : CR_KINDS[h.kind]?.en}`
+                          : ""}
+                      </span>
+                      <span className="odv-sub">
+                        {h.byName || h.by || "—"}
+                        {h.at ? ` · ${String(h.at).slice(0, 16).replace("T", " ")}` : ""}
+                        {h.note ? ` — «${h.note}»` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="odv-sub">
+                {t({
+                  en: "A cancelled operation is kept for traceability but generates no stock move.",
+                  ar: "العملية الملغاة محفوظة للتتبّع، بس ما بتولّد أي حركة مخزون.",
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="odv-fh">{rec.opNo || t({ en: "Unnumbered operation", ar: "عملية بلا رقم" })}</div>
 
@@ -1588,8 +1670,14 @@ function RecordDialog({ rec, t, isAr, onClose }) {
               <F k={t({ en: "Produced", ar: "النواتج" })} v={`${n2(rec.cutsKg)} KG`} />
               <F k={t({ en: "Waste", ar: "الهدر" })} v={`${n2(rec.wasteKg)} KG`} />
               <F k={t({ en: "Yield", ar: "التصافي" })} v={`${rec.yieldPct.toFixed(2)}%`} />
-              <F k={t({ en: "Checked by", ar: "تدققت من قبل" })}
-                v={rec.review?.by ? `${rec.review.by} · ${String(rec.review.at || "").slice(0, 16).replace("T", " ")}` : ""} />
+              <F k={t({ en: "Last edited by", ar: "آخر تعديل" })}
+                v={(() => {
+                  const e = rec.lastEdit || lastEditOf(rec);
+                  if (!e) return "";
+                  const who = editorName(e);
+                  const act = isAr ? (ACT_AR[e.action] || "") : (ACT_EN[e.action] || "");
+                  return `${who}${act ? ` · ${act}` : ""} · ${String(e.at || "").slice(0, 16).replace("T", " ")}`;
+                })()} />
             </div>
           </div>
 

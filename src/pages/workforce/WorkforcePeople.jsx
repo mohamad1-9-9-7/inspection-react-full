@@ -10,9 +10,11 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  ROLES, STATUSES, activeSites, directoryEntry, isOfficeRole, newPerson, personById,
-  personName, removePerson, searchDirectory, setPersonStatus, siteLabel, sitesOfPerson,
-  supervisorsOfSite, transferPerson, upsertPerson, validatePerson,
+  ROLES, STATUSES, activeSites, coversAllSites, directoryEntry, isCompanyWideRole,
+  isOfficeRole,
+  newPerson, personById, personName, removePerson, searchDirectory, setPersonStatus,
+  siteLabel, sitesOfPerson, supervisorsOfSite, transferPerson, upsertPerson,
+  validatePerson,
 } from "./workforceConfig";
 import AccountLink from "./WorkforceAccountLink";
 import {
@@ -55,7 +57,8 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
       if (!canSeePerson(p)) return false;
       if (fRole && p.role !== fRole) return false;
       if (fStatus && p.status !== fStatus) return false;
-      if (fSite && !sitesOfPerson(p).includes(fSite)) return false;
+      // فلتر الملحمة ما بيشيل مين بيغطّي الكل — هو تبع هالملحمة كمان.
+      if (fSite && !coversAllSites(p) && !sitesOfPerson(p).includes(fSite)) return false;
       if (needle) {
         const hay = `${p.empNo} ${p.name} ${p.nameEn} ${p.username} ${p.accountName}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -68,7 +71,9 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
   const tree = useMemo(() => {
     const inScope = sites.filter((s) => !fSite || s.code === fSite);
     return inScope.map((s) => {
-      const here = visible.filter((p) => sitesOfPerson(p).includes(s.code));
+      const here = visible.filter(
+        (p) => !coversAllSites(p) && sitesOfPerson(p).includes(s.code)
+      );
       // الترتيب بالاسم حتى يبقى رقم/لون كل مشرف ثابتاً بين الرسمات
       const sups = here
         .filter((p) => p.role === "supervisor")
@@ -91,8 +96,17 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
     });
   }, [sites, visible, fSite]);
 
+  /* أدوار على مستوى الشركة (مسؤول المخزون) — مش تبع ملحمة، فما بتنحط
+     بشجرة الملاحم ولا بتنعدّ «بلا ملحمة». إلها كرتها فوق. */
+  const companyWide = useMemo(
+    () => visible.filter((p) => coversAllSites(p)),
+    [visible]
+  );
+
   const homeless = useMemo(
-    () => visible.filter((p) => !sitesOfPerson(p).some((c) => sites.some((s) => s.code === c))),
+    () => visible.filter(
+      (p) => !coversAllSites(p) && !sitesOfPerson(p).some((c) => sites.some((s) => s.code === c))
+    ),
     [visible, sites]
   );
 
@@ -100,8 +114,9 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
 
   const openNew = (role, site = "", supervisorId = "") => {
     const draft = newPerson(role);
+    // الدور الشامل ما بيتعبّى بملحمة ولو كان في فلتر ملحمة شغّال.
     const only = sites.length === 1 ? sites[0].code : "";
-    const s = site || fSite || only || "";
+    const s = isCompanyWideRole(role) ? "" : (site || fSite || only || "");
     setErrors([]);
     setEditing({ ...draft, site: s, sites: s ? [s] : [], supervisorId });
   };
@@ -332,6 +347,36 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
         </div>
       </Card>
 
+      {/* ══════════ على كل الملاحم ══════════
+           مسؤول المخزون مسؤول عن الملاحم كلها، فمكانه فوق الشجرة لا جوّاتها. */}
+      {!flat && companyWide.length > 0 && (
+        <Card pad={14} style={{ borderColor: "#ddd6fe", background: "#fbfaff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 11 }}>
+            <span style={{
+              width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+              display: "grid", placeItems: "center", fontSize: 19,
+              background: "linear-gradient(135deg,#6d28d9,#4338ca)", color: "#fff",
+            }}>
+              🏢
+            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="wf-h" style={{ fontWeight: 900, lineHeight: 1.25 }}>
+                {t({ en: "Across all butcheries", ar: "على كل الملاحم" })}
+              </div>
+              <div className="wf-lbl" style={{ color: C.faint, fontWeight: 800, marginTop: 2 }}>
+                {t({
+                  en: "Not tied to one site — responsible for every butchery.",
+                  ar: "مش مربوطين بملحمة — مسؤولين عن الملاحم كلها.",
+                })}
+              </div>
+            </div>
+          </div>
+          <div style={butcherGrid}>
+            {companyWide.map((p) => <OfficeCard key={p.id} p={p} />)}
+          </div>
+        </Card>
+      )}
+
       {/* ══════════ الشجرة ══════════ */}
       {!flat && tree.map(({ site, groups, orphans, sups, office, butchers }) => (
         <Card key={site.code} pad={0} style={{ overflow: "hidden" }}>
@@ -520,7 +565,13 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
                         {roleMeta(p.role).icon} #{p.empNo}
                       </div>
                     </div>
-                    <Chip>{sitesOfPerson(p).map((c) => siteLabel(wf, c, isAr)).join(" · ") || "—"}</Chip>
+                    {coversAllSites(p) ? (
+                      <Chip bg="#f5f3ff" fg="#5b21b6" bd="#ddd6fe">
+                        🏢 {t({ en: "All butcheries", ar: "كل الملاحم" })}
+                      </Chip>
+                    ) : (
+                      <Chip>{sitesOfPerson(p).map((c) => siteLabel(wf, c, isAr)).join(" · ") || "—"}</Chip>
+                    )}
                     {sup && <Chip bg="#f5f3ff" fg="#5b21b6" bd="#ddd6fe">🧑‍🍳 {personName(sup, isAr)}</Chip>}
                     {p.status !== "active" && (
                       <Chip bg={statusMeta(p.status).bg} fg={statusMeta(p.status).fg} bd={statusMeta(p.status).bd}>
@@ -586,7 +637,8 @@ export default function WorkforcePeople({ scope, save, t, isAr, dir }) {
                 onClick={() => { openEdit(menuFor); setMenuFor(null); }}
               />
             )}
-            {canTransfer && (
+            {/* النقل ما إلو معنى لدور بيغطّي الملاحم كلها. */}
+            {canTransfer && !coversAllSites(menuFor) && (
               <ActionRow
                 icon="🔀"
                 label={t({ en: "Transfer to another site", ar: "نقل لملحمة ثانية" })}
@@ -892,6 +944,8 @@ function PersonEditor({
 }) {
   const isNew = !(wf.people || []).some((p) => p.id === draft.id);
   const isButcher = draft.role === "butcher";
+  /* دور على مستوى الشركة (مسؤول المخزون) — ما بينختارلو ملحمة إطلاقاً. */
+  const allSites = coversAllSites(draft);
   const set = (k, v) => setDraft({ ...draft, [k]: v });
 
   const [picking, setPicking] = useState(false);
@@ -977,6 +1031,9 @@ function PersonEditor({
               onClick={() => setDraft({
                 ...draft, role: r.id,
                 supervisorId: r.id === "butcher" ? draft.supervisorId : "",
+                /* التحويل لدور شامل بينظّف الملحمة — وإلا بتضل محفوظة عليه
+                   وبتطلّعه بشجرة ملحمة هو مسؤول عن كلهنّ. */
+                ...(isCompanyWideRole(r.id) ? { site: "", sites: [] } : null),
               })}
             >
               {r.icon} {isAr ? r.ar : r.en}
@@ -1032,6 +1089,14 @@ function PersonEditor({
       <div style={stepBox}>
         <StepHead n="2" title={t({ en: "Where", ar: "وين" })} />
 
+        {allSites ? (
+          <Banner tone="info">
+            🏢 {t({
+              en: "This role covers every butchery — there is no single site to pick.",
+              ar: "هالدور بيغطّي كل الملاحم — ما في ملحمة وحدة تنختار.",
+            })}
+          </Banner>
+        ) : (
         <div style={grid2}>
           <Field label={t({ en: "Site", ar: "الملحمة" })}>
             <Select value={draft.site} onChange={(e) => setSite(e.target.value)}>
@@ -1061,6 +1126,7 @@ function PersonEditor({
             </Field>
           )}
         </div>
+        )}
 
         {isButcher && draft.site && supers.length === 0 && (
           <Banner tone="warn">

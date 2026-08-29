@@ -48,8 +48,15 @@ export const REPORT_LIMIT = 5000;
 /**
  * تحميل سجلات الجزار وتطبيعها لصفوف جاهزة للعرض.
  * كل صف = تنفيذ واحد (ذبيحة/وصفة) مع مصفوفة قطعه.
+ *
+ * @param from        بداية النافذة (yyyy-mm-dd)
+ * @param to          نهايتها
+ * @param employeeNo  سحب سجلات جزار واحد — الفلترة على السيرفر لما يدعمها،
+ *                    والشاشة بتفلتر محلياً على أي حال فالنتيجة صحيحة بالحالتين.
+ * @param enabled     false = ما تسحب إشي. شاشة «شغلي» ما إلها معنى قبل ما
+ *                    نعرف الرقم الوظيفي، وسحب كل الملاحم وقتها هدر صافي.
  */
-export function useButcherData({ from = "", to = "" } = {}) {
+export function useButcherData({ from = "", to = "", employeeNo = "", enabled = true } = {}) {
   const { cfg } = useButcherConfig();
   const { cfg: mrpCfg } = useMrpConfig({ refetchOnFocus: false });
   const [records, setRecords] = useState([]);
@@ -59,6 +66,14 @@ export function useButcherData({ from = "", to = "" } = {}) {
   const [truncated, setTruncated] = useState(false);
 
   const load = useCallback(async () => {
+    if (!enabled) {
+      // مو تحميل فاضي: ما في طلب أصلاً، والشاشة بتعرض بوابتها بدل مؤشّر دوران
+      setRecords([]);
+      setTruncated(false);
+      setError("");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -68,6 +83,8 @@ export function useButcherData({ from = "", to = "" } = {}) {
       const range = [
         from ? `&from=${encodeURIComponent(from)}` : "",
         to ? `&to=${encodeURIComponent(to)}` : "",
+        // الخوادم الأقدم بتتجاهلها متل from/to — والفلترة المحلية بتضبط النتيجة
+        employeeNo ? `&employeeNo=${encodeURIComponent(employeeNo)}` : "",
       ].join("");
       const res = await fetch(
         `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=${REPORT_LIMIT}${range}`,
@@ -84,7 +101,7 @@ export function useButcherData({ from = "", to = "" } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, employeeNo, enabled]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -260,6 +277,8 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     stdCheck,
     review: p.review || null,
     reviewStatus: p.review?.status || "",
+    // مين آخر واحد لمس السجل (مراجعة أو قرار إلغاء) — يُحسب تحت
+    lastEdit: null,
     // طلب التعديل/الإلغاء المرفوع من مشرف الملحمة (إن وُجد)
     changeRequest: p.changeRequest || null,
     crStatus: p.changeRequest?.status || "",
@@ -271,14 +290,16 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
  * جزار خربط بالأرقام → مشرف ملحمته بيرفع طلب لمسؤول المخزون.
  *
  * الحالات الثلاث ومعناها:
- *   open      طلب مرفوع → **العملية محجورة فوراً**: بتختفي من كل الشاشات
- *             والتقارير والتصافي، وبتضل بادية لمشرف ملحمتها وللمسؤول وحدهم.
- *             السبب: الرقم الغلط ما بيجوز يضل يشوّه التصافي لحد ما المسؤول
- *             يفضى — بس المشرف بنفس الوقت ما بيملك سلطة إتلاف.
- *   approved  المسؤول وافق → إلغاء نهائي موثّق. السجل بيضل بالقاعدة (حذفه
- *             فعلياً بيكسر تتبّع المنتج والأرقام المرجعية INV- وبيخلّي فجوة
- *             بالعدّاد ما إلها تفسير) بس ما بيبيّن إلا للمسؤول والأدمن.
- *   rejected  المسؤول رفض → العملية بترجع طبيعية ١٠٠٪ وبتنحسب متل قبل.
+ *   open      طلب مرفوع → **العملية بتضل ظاهرة وبتنحسب متل قبل**، بس معلّمة
+ *             بشارة «بانتظار مسؤول المخزون» بكل شاشة بتطلع فيها، وبتظهر
+ *             بكرت الطلبات المنفصل بلوحة المشرف. الطلب مش قرار: مجرّد ما
+ *             حدا يطلب الإلغاء ما بيجوز الرقم يختفي من التقارير — يومية
+ *             بتنقص بلا أثر أسوأ بكتير من رقم مشكوك فيه معلّم بوضوح.
+ *   approved  المسؤول وافق → **هون بس** بتطلع العملية من كل تقرير ومجموع
+ *             وتصدير. السجل بيضل بالقاعدة (حذفه فعلياً بيكسر تتبّع المنتج
+ *             والأرقام المرجعية INV- وبيخلّي فجوة بالعدّاد ما إلها تفسير)
+ *             وبيبيّن للمسؤول والأدمن ولمشرف ملحمتها — حتى يشوف نتيجة طلبه.
+ *   rejected  المسؤول رفض → العملية طبيعية ١٠٠٪، وبيضل سجل القرار موثّق.
  *
  * ما في «تصحيح أرقام» ضمن الطلب عن قصد: السجل لازم يضل يمثّل شو أدخل
  * الجزار فعلاً. الغلط بينلغى والجزار بيعيد التسجيل صح.
@@ -286,9 +307,9 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
 
 /** حالات طلب التعديل. */
 export const CR_STATUS = {
-  open:     { ar: "بانتظار المسؤول", en: "Awaiting officer", bg: "#fff7ed", fg: "#9a3412", bd: "#fed7aa" },
-  approved: { ar: "ملغاة",           en: "Cancelled",        bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
-  rejected: { ar: "طلب مرفوض",       en: "Request rejected", bg: "#f8fafc", fg: "#475569", bd: "#e2e8f0" },
+  open:     { ar: "بانتظار مسؤول المخزون", en: "Awaiting inventory officer", bg: "#fff7ed", fg: "#9a3412", bd: "#fed7aa" },
+  approved: { ar: "ملغاة",                  en: "Cancelled",                  bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
+  rejected: { ar: "طلب مرفوض",              en: "Request rejected",           bg: "#f8fafc", fg: "#475569", bd: "#e2e8f0" },
 };
 
 /** نوع الطلب. */
@@ -297,34 +318,168 @@ export const CR_KINDS = {
   delete:  { ar: "إلغاء العملية",  en: "Cancel the record" },
 };
 
-/** طلب مرفوع لسّا ما انبتّ فيه. */
+/** طلب مرفوع لسّا ما انبتّ فيه — ظاهر ومحسوب، بس معلّم. */
 export const isQuarantined = (row) => row?.crStatus === "open";
 
-/** ملغاة نهائياً بموافقة المسؤول. */
+/** ملغاة نهائياً بقرار المسؤول. */
 export const isCancelled = (row) => row?.crStatus === "approved";
 
-/** مشمولة بأي حالة بتخفيها عن الناس العاديين. */
-export const isHidden = (row) => isQuarantined(row) || isCancelled(row);
+/**
+ * مخفيّة عن التقارير والمجاميع.
+ *
+ * ⚠️ الإلغاء المعتمد وحده — الطلب المفتوح ما بيخفي شي. غيّرنا هالسطر عن
+ * قصد: كان الطلب لحالو بيشيل العملية من كل شاشة، فمشرف بيرفع طلب وبتضيع
+ * كمية اليوم قبل ما حدا يقرّر. القرار بيد المسؤول، والحجب أثر القرار.
+ */
+export const isHidden = (row) => isCancelled(row);
 
 /**
  * هل يشوف هذا المستخدم هذا السجل؟
  *
- * @param row     صف مُطبَّع
- * @param viewer  { isAdmin, isOfficer, siteScope: string[] }
- *                `siteScope` = ملاحم المشرف؛ فاضية = ما بيشوف المحجور.
+ * **الجواب اليوم: الكل بيشوف كل شي.** العملية الملغاة بتضل بادّة بالتقارير
+ * بحالتها الصريحة («ملغاة — ألغاها فلان») بدل ما تختفي: اختفاء سطر من تقرير
+ * الجزار بلا أثر بيخلّي الناس تشك بالنظام، والشفافية أنفع من الإخفاء.
+ * اللي بيفرق: **الاحتساب** — الملغى برّا كل مجموع (countableRows).
+ *
+ * الدالّة باقية (وباقي viewer) لأنها المكان الوحيد لأي حصر مستقبلي، فما
+ * ينوزّع الشرط على عشر شاشات لما نحتاجه.
  */
-export function canSeeRow(row, viewer = {}) {
-  if (!isHidden(row)) return true;
-  if (viewer.isAdmin || viewer.isOfficer) return true;
-  // المحجور بيبين لمشرف ملحمته حتى يتابع طلبه؛ الملغى نهائياً لأ.
-  if (isQuarantined(row)) {
-    const sites = viewer.siteScope || [];
-    return sites.includes(String(row.branchCode || ""));
-  }
-  return false;
+export function canSeeRow(row, viewer = {}) {   // eslint-disable-line no-unused-vars
+  return true;
 }
 
-/** الصفوف اللي بتنحسب بالتقارير والمجاميع — المحجور والملغى ما بينحسبوا. */
+/* ══════════════ سجل العملية (History) ══════════════
+ *
+ * كل حركة على الطلب بتتسجّل بسطر: مين، إيمتى، شو عمل، وليش. السبب إنه
+ * «الحالة» لحالها ما بتحكي القصة — عملية ملغاة اليوم ممكن تكون انطلبت
+ * مرتين وانرجعت مرّة، وهاد بالضبط اللي بيسأل عنه المدقّق.
+ *
+ * التوافق مع القديم: السجلات المكتوبة قبل هالنسخة ما فيها history، فمنبنيها
+ * من الحقول المسطّحة (at/by + decidedAt/decidedBy) — نفس القصة بلا فجوة.
+ */
+
+/** أنواع الحركات ونصوصها. */
+export const CR_ACTIONS = {
+  requested: { ar: "رفع طلب إلغاء",     en: "Cancellation requested", icon: "✏️" },
+  cancelled: { ar: "ثبّت الإلغاء",       en: "Cancelled",              icon: "🚫" },
+  restored:  { ar: "رجّع العملية",       en: "Restored",               icon: "↩︎" },
+  rejected:  { ar: "رفض الطلب",          en: "Request rejected",       icon: "↩︎" },
+};
+
+/**
+ * سجل الحركات لصف مُطبَّع — الأقدم أولاً.
+ * @returns {{action:string, at:string, by:string, byName:string, note:string, kind:string}[]}
+ */
+export function crHistory(row) {
+  const cr = row?.changeRequest;
+  if (!cr) return [];
+
+  if (Array.isArray(cr.history) && cr.history.length) {
+    return cr.history
+      .map((h) => ({
+        action: h.action || "requested",
+        at: h.at || "",
+        by: h.by || "",
+        byName: h.byName || h.by || "",
+        note: h.note || "",
+        kind: h.kind || cr.kind || "",
+      }))
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  }
+
+  /* سجل قديم — منركّب القصة من الحقول المسطّحة */
+  const out = [];
+  if (cr.at) {
+    out.push({
+      action: cr.direct ? "cancelled" : "requested",
+      at: cr.at, by: cr.by || "", byName: cr.byName || cr.by || "",
+      note: cr.reason || "", kind: cr.kind || "",
+    });
+  }
+  if (cr.decidedAt && !(cr.direct && cr.status === "approved")) {
+    out.push({
+      action: cr.status === "approved" ? "cancelled" : "restored",
+      at: cr.decidedAt, by: cr.decidedBy || "",
+      byName: cr.decidedByName || cr.decidedBy || "",
+      note: cr.decisionNote || "", kind: cr.kind || "",
+    });
+  }
+  return out;
+}
+
+/**
+ * آخر حركة على السجل: **مين عدّل عليه آخر مرّة**، لا مين دقّقه أول مرّة.
+ *
+ * المرشّحون: المراجعة (قبول) وكل حركات طلب الإلغاء. منرتّبهم بالوقت ومناخد
+ * الأخير. الاسم بيرجع كـ`byName` أولاً (اسم الشخص) وبعدين `by` (اسم
+ * الحساب) — لأنه الحسابات أحياناً مسمّاة باسم الملحمة، واسم الملحمة ما
+ * بيجاوب على سؤال «مين عدّلها».
+ *
+ * @returns {{at:string, by:string, byName:string, action:string}|null}
+ */
+export function lastEditOf(row) {
+  const out = [];
+  const rev = row?.review;
+  if (rev?.at) {
+    out.push({
+      at: rev.at,
+      by: rev.by || "",
+      byName: rev.byName || rev.by || "",
+      action: rev.status === "approved" ? "approved" : "reviewed",
+    });
+  }
+  crHistory(row).forEach((h) => {
+    if (h.at) out.push({ at: h.at, by: h.by, byName: h.byName, action: h.action });
+  });
+  if (!out.length) return null;
+  out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  return out[out.length - 1];
+}
+
+/** اسم صالح للعرض من حركة — الشخص قبل الحساب. */
+export const editorName = (e) => (e ? (e.byName || e.by || "") : "");
+
+/** آخر مين اتّخذ قرار على العملية (للحالة المعروضة: «ملغاة — فلان»). */
+export function crDecider(row) {
+  const cr = row?.changeRequest;
+  if (!cr) return "";
+  return cr.decidedByName || cr.decidedBy || cr.byName || cr.by || "";
+}
+
+/**
+ * نص الحالة الجاهز للعرض — بالاسم لا بالكود.
+ * @returns {{ label: string, tone: "amber"|"red"|"grey" }|null}
+ */
+export function crStatusText(row, isAr = true) {
+  const st = row?.crStatus;
+  if (!st) return null;
+  const who = crDecider(row);
+  if (st === "open") {
+    const by = row.changeRequest?.byName || row.changeRequest?.by || "";
+    return {
+      tone: "amber",
+      label: isAr
+        ? `طلب إلغاء معلّق${by ? ` — طلبه ${by}` : ""}`
+        : `Cancellation requested${by ? ` — by ${by}` : ""}`,
+    };
+  }
+  if (st === "approved") {
+    return {
+      tone: "red",
+      label: isAr
+        ? `ملغاة${who ? ` — ألغاها ${who}` : ""}`
+        : `Cancelled${who ? ` — by ${who}` : ""}`,
+    };
+  }
+  return {
+    tone: "grey",
+    label: isAr
+      ? `طلب مرفوض${who ? ` — ${who}` : ""}`
+      : `Request rejected${who ? ` — ${who}` : ""}`,
+  };
+}
+
+/** الصفوف اللي بتنحسب بالتقارير والمجاميع — الملغى وحده برّا. */
 export const countableRows = (rows) => (rows || []).filter((r) => !isHidden(r));
 
 /** كل الصفوف المُطبَّعة مرتّبة (الأحدث أولاً). */
@@ -332,7 +487,12 @@ export function useNormalizedRows(records, { cfg, mrpCfg, isAr }) {
   return useMemo(
     () =>
       records
-        .map((r) => normalizeRecord(r, { cfg, mrpCfg, isAr }))
+        .map((r) => {
+          const row = normalizeRecord(r, { cfg, mrpCfg, isAr });
+          // بعد البناء لأن الحساب بيقرا review وchangeRequest من الصف نفسه
+          row.lastEdit = lastEditOf(row);
+          return row;
+        })
         .sort((a, b) => `${b.day}${b.time}`.localeCompare(`${a.day}${a.time}`)),
     [records, cfg, mrpCfg, isAr]
   );
@@ -785,6 +945,18 @@ export function SortTh({ label, col, sort, onSort, numeric }) {
 }
 
 /** حالة المراجعة كشريحة ملوّنة. */
+/**
+ * شارة طلب الإلغاء — بتطلع جنب شارة المراجعة بكل جدول.
+ * الغاية إنه الرقم يضل ظاهر ومحسوب بس ما حدا يبني عليه قرار وهو ما بيعرف
+ * إنه في طلب إلغاء عم يستنّى المسؤول.
+ */
+export function CrChip({ row, isAr = true }) {
+  const info = crStatusText(row, isAr);
+  if (!info) return null;
+  const icon = row.crStatus === "open" ? "⏳" : row.crStatus === "approved" ? "🚫" : "↩︎";
+  return <Chip tone={info.tone}>{icon} {info.label}</Chip>;
+}
+
 export function ReviewChip({ status, t }) {
   if (status === "approved") return <Chip tone="green">✓ {t({ en: "Approved", ar: "معتمد" })}</Chip>;
   if (status === "rejected") return <Chip tone="red">✕ {t({ en: "Rejected", ar: "مرفوض" })}</Chip>;

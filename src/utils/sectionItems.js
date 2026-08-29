@@ -230,7 +230,7 @@ export const SECTION_ITEMS = {
 export function isItemAllowed(section, itemId) {
   let user = {};
   try { user = JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { /* ignore */ }
-  if (user.isAdmin) return true;
+  if (user.isAdmin || user.isSuperAdmin) return true;  // الأدمن الشامل متل الأدمن
   if (Array.isArray(user.permissions) && user.permissions.includes("*")) return true;
 
   const ab = user.allowedBranches;

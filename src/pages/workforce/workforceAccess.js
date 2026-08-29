@@ -29,7 +29,7 @@ const key = (u) => String(u || "").trim().toLowerCase();
 /* ══════════════════════════════════════════════ اللقطة */
 
 let snap = null;        // { byUser: Map, resolved: boolean }
-let fetched = false;    // هل جرّبنا نجيبها من السيرفر بهالجلسة
+let fetchedFor = "";    // اسم المستخدم اللي جبنا السجل لأجله (لا true — انظر refresh)
 const listeners = new Set();
 
 function currentUsername() {
@@ -68,7 +68,9 @@ function notify() {
 
 /** اللقطة الحالية — من الذاكرة، فالكاش، وإلا «لسّا ما وصلت». */
 function snapshot() {
-  if (snap) return snap;
+  /* ما دام الجواب مش مؤكّد، منعيد قراءة الكاش كل مرّة: ممكن تكون شاشة تانية
+     (أي شي بيستعمل `useWorkforce`) حدّثته بيناتنا. أول ما يتأكّد، منثبّته. */
+  if (snap?.resolved) return snap;
   snap = readCacheSnapshot() || { byUser: new Map(), resolved: false };
   /* كاش فاضي (جهاز جديد، أو فتح رابط داخلي مباشرةً بلا ما يمرق عالرئيسية):
      منشغّل الجلب هون كمان، فحتى الدوالّ المتزامنة بتصير صحيحة بعد أول
@@ -78,15 +80,17 @@ function snapshot() {
 }
 
 /**
- * تحديث من السيرفر مرّة بالجلسة.
- * الكاش وحده ما بيكفي: أول دخول على جهاز جديد بيكون فاضي، والموظف بينحرم من
- * صلاحياته بلا سبب ظاهر. منجيبها مرّة وبس — الشاشات اللي بدها السجل الكامل
- * عندها `useWorkforce()`.
+ * تحديث من السيرفر — مرّة لكل مستخدم مسجّل دخول.
+ *
+ * ⚠️ العلَم `fetchedFor` بيحمل اسم المستخدم لا `true`. الفرق مهم: لو علّمناها
+ * منجّزة وإحنا لسّا على شاشة الدخول (ما في مستخدم)، ما بينعاد الجلب أبداً بعد
+ * ما يسجّل دخول — فمسؤول المخزون بيضل عالق على شاشة الفحص للأبد.
  */
 async function refresh() {
-  if (fetched) return;
-  fetched = true;
-  if (!currentUsername()) return;   // شاشة الدخول: ما في مين نفحص له
+  const user = currentUsername();
+  if (!user) return;                // شاشة الدخول: ما في مين نفحص له، وما منعلّم
+  if (fetchedFor === user) return;
+  fetchedFor = user;
 
   try {
     const res = await fetch(

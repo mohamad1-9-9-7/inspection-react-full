@@ -21,6 +21,7 @@ import {
   SearchBox, Select, Switch, TextInput, Toast, UomSelect, canEditMrp, canOpenMrp,
 } from "./mrpUi";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
+import MrpImageField from "./MrpImageField";
 
 const PAGE = "mrp.items";
 
@@ -30,6 +31,8 @@ const skuKey = (v) => String(v || "").trim().toUpperCase();
 const blankItem = () => ({
   id: freshId("item"), sku: "", ar: "", en: "", uom: "KG",
   type: "raw", roles: ["raw"], categoryId: "", notes: "", active: true,
+  // 📷 صورة وحدة بس — هي اللي بيشوفها الجزار بالكشك بدل ما يقرأ الاسم
+  imageUrl: "",
 });
 
 /** يبقّي `type` = أول دور، ويضمن دوراً واحداً على الأقل. */
@@ -720,6 +723,17 @@ function ItemFormModal({
             })}
           </span>
         </Field>
+
+        {/* 📷 صورة المنتج — أغلب الجزارين ما بيقروا، فالصورة هي اللي بتعرّفهم
+            على القطعة بشاشة الأوزان. بتظهر هناك تلقائياً أول ما تتحفظ. */}
+        <div style={{ marginTop: 14 }}>
+          <MrpImageField
+            t={t}
+            label={t({ en: "Picture (shown to the butcher)", ar: "الصورة (بتظهر للجزار)" })}
+            value={d.imageUrl || ""}
+            onChange={(url) => onChange({ imageUrl: url })}
+          />
+        </div>
 
         <div style={{ ...S.chipRow, marginTop: 14 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>

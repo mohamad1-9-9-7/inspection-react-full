@@ -16,11 +16,13 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
-  canSeeRow, explainError, kg, shiftDays, totalsOf, useButcherData, useNormalizedRows,
+  canSeeRow, crStatusText, explainError, isCancelled, kg, shiftDays, totalsOf,
+  useButcherData, useNormalizedRows,
 } from "./butcherReportKit";
 import { useRowViewer } from "./butcherViewer";
 import CuttingCard, { CARD_CSS, CuttingCardPrint } from "./ButcherCuttingCard";
 import { useOutbox } from "./butcherOutbox";
+import ButcherPerformance from "./ButcherPerformance";
 // 👥 القوى العاملة — الحساب المربوط (جزار أو مشرف) بيشوف شغله هو وبس.
 import { accountIdentity, useWorkforce } from "../workforce/workforceConfig";
 import { getCurrentUser } from "../../utils/perms";
@@ -61,6 +63,29 @@ const CSS = `
 @keyframes mwRise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
 #root .mw-rise { animation: mwRise .24s ease both; }
 
+/* سطر المادة الخام — أعمدة على الشاشة الواسعة، وبينكسر لسطرين عالضيّقة.
+   كلاس لا نمط سطري: النمط السطري ما بيقبل @media. */
+#root .mw-row {
+  width: 100%; display: grid; gap: 12px; align-items: center; text-align: start;
+  grid-template-columns: 18px minmax(140px, 1.5fr) minmax(300px, 2fr) auto;
+  background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+  color: inherit;
+}
+#root .mw-row-cells {
+  display: grid; grid-template-columns: repeat(5, minmax(54px, 1fr)); gap: 8px;
+}
+#root .mw-cell {
+  background: #f6fafe; border: 1px solid #e6eff8; border-radius: 12px;
+  padding: 6px 8px; text-align: center; min-width: 0; overflow: hidden;
+}
+@media (max-width: 900px) {
+  #root .mw-row { grid-template-columns: 18px minmax(0, 1fr) auto; }
+  #root .mw-row-cells { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  #root .mw-row-cells { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 /* شريط الأيام — تمرير أفقي بلا شريط تمرير مرئي */
 #root .mw-days { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; scrollbar-width: none; }
 #root .mw-days::-webkit-scrollbar { display: none; }
@@ -97,6 +122,56 @@ function dayTag(iso, isAr, t) {
   if (iso === todayIso()) return t({ en: "Today", ar: "اليوم" });
   if (iso === shiftDays(-1)) return t({ en: "Yesterday", ar: "أمس" });
   return weekday(iso, isAr);
+}
+
+/**
+ * تجميع تنفيذات اليوم حسب **المادة الخام**.
+ *
+ * الجزار بيقطّع نفس الرقبة أربع مرّات بنص ساعة، فكانت تطلعله أربع كروت
+ * متطابقة بالعنوان وبيدوّر بينهن على الفرق. صار: كرت واحد للمادة الخام،
+ * أوزانه مجموع كل تنفيذاتها، والتفاصيل بتنفتح بضغطة.
+ *
+ * المفتاح = كود الصنف (وإلا اسمه). الملغى بيدخل بالقائمة بس ما بينحسب
+ * بأي وزن — نفس قاعدة باقي الشاشات.
+ */
+function groupByInput(list) {
+  const map = new Map();
+  (list || []).forEach((r) => {
+    const key = r.inputItemId || r.inputName || "—";
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        name: r.inputName,
+        sku: r.inputSku || "",
+        rows: [],
+      });
+    }
+    map.get(key).rows.push(r);
+  });
+
+  return [...map.values()].map((g) => {
+    const live = g.rows.filter((r) => !isCancelled(r));
+    const cuts = new Map();
+    live.forEach((r) => r.cuts.forEach((c) => {
+      const k = c.itemId || c.name;
+      if (!cuts.has(k)) cuts.set(k, { name: c.name, isWaste: c.isWaste, weightKg: 0 });
+      cuts.get(k).weightKg += c.weightKg;
+    }));
+
+    const t = totalsOf(live);
+    return {
+      ...g,
+      rows: g.rows.slice().sort((a, b) => String(b.time).localeCompare(String(a.time))),
+      live: live.length,
+      cancelled: g.rows.length - live.length,
+      pending: live.filter((r) => (r.reviewStatus || "pending") === "pending").length,
+      approved: live.filter((r) => r.reviewStatus === "approved").length,
+      cutList: [...cuts.values()].sort((a, b) => b.weightKg - a.weightKg),
+      durationMin: live.reduce((sum, r) => sum + (Number(r.durationMin) || 0), 0),
+      pieces: live.reduce((sum, r) => sum + (Number(r.pieceCount) || 0), 0),
+      ...t,
+    };
+  }).sort((a, b) => String(b.rows[0]?.time || "").localeCompare(String(a.rows[0]?.time || "")));
 }
 
 /** حلقة التصافي — الرقم الوحيد اللي لازم الجزار يشوفه من بعيد. */
@@ -155,10 +230,6 @@ function ShareBar({ pct, tone }) {
 export default function ButcherMyWork() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
-  // آخر ٩٠ يوماً — الجزار يهمّه شغله القريب، وسحب كل التاريخ بلا فائدة
-  const { records, loading, error, reload, cfg, mrpCfg } =
-    useButcherData({ from: shiftDays(-89) });
-  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
   // سجلات لسّا بصندوق الصادر لن تظهر هنا — نوضّح ذلك بدل ما يستغرب الجزار
   const outbox = useOutbox();
 
@@ -168,7 +239,7 @@ export default function ButcherMyWork() {
      وتصافي شخص باسمه، فحدا مربوط ما بيجوز يكتب رقم زميله ويتفرّج على شغله.
      (المشرف بيشوف شغل جزارينه من لوحة المشرف، مش من هون.)
      الحساب غير المربوط بيشوف الشاشة القديمة حرفياً. */
-  const { wf: workforce } = useWorkforce();
+  const { wf: workforce, loading: wfLoading } = useWorkforce();
   const account = useMemo(() => getCurrentUser(), []);
   const identity = useMemo(
     () => accountIdentity(workforce, account?.username, isAr),
@@ -180,6 +251,12 @@ export default function ButcherMyWork() {
     try { return localStorage.getItem(LAST_EMP_KEY) || ""; } catch { return ""; }
   });
   const [emp, setEmp] = useState("");          // الرقم المعتمد بعد الضغط
+  /* نافذة السحب — ٣٠ يوم افتراضياً.
+     الشاشة كانت تسحب ٩٠ يوم من **كل الملاحم** (بالـpayload كامل) وتفلتر
+     بالمتصفّح على رقم واحد: أثقل طلب بالنظام لأقل فائدة، وعلى كشك بالملحمة.
+     صار: نافذة أقصر افتراضياً + الرقم بينمرق للسيرفر + ما في سحب قبل ما
+     نعرف الرقم. مين بدّه أبعد بيضغط ٩٠ بنفسه. */
+  const [win, setWin] = useState(30);
   const [selDay, setSelDay] = useState("");    // اليوم المعروض
   const [mode, setMode] = useState("list");    // list = تفاصيل ، card = بطاقة التقطيع
   const [printJob, setPrintJob] = useState(null);
@@ -191,17 +268,33 @@ export default function ButcherMyWork() {
     setEmpInput(identity.empNo);
   }, [identity]);
 
-  /* سجلات هذا الجزار فقط */
-  /* العمليات المحجورة (طلب تعديل مرفوع) والملغاة ما بتبيّن هون ولا بتنحسب —
-     شغلي لازم يعرض الشغل المعتمد، مش عملية موقوفة عم تنتظر قرار. */
-  const viewer = useRowViewer(isAr);
-  const mine = useMemo(
-    () => (emp ? all.filter((r) => r.employeeNoRaw === emp && canSeeRow(r, viewer)) : []),
-    [all, emp, viewer]
+  /* ── السحب ── ما بينطلب إشي قبل ما نعرف الرقم، والرقم بينمرق للسيرفر. */
+  const { records, loading, error, reload, cfg, mrpCfg } = useButcherData({
+    from: shiftDays(-(win - 1)),
+    employeeNo: emp,
+    enabled: !!emp,
+  });
+
+  /* التطبيع بعد الفلترة لا قبلها: كنّا نطبّع سجلات كل الملاحم عشان نعرض
+     واحد. الفلترة هون على السجل الخام (payload.employeeNo) لأنّ الاسم
+     المطبَّع ما بينوجد إلا بعد التطبيع نفسه. */
+  const mineRecords = useMemo(
+    () => (emp
+      ? records.filter((r) => String(r?.payload?.employeeNo ?? "").trim() === emp)
+      : []),
+    [records, emp]
   );
+  const all = useNormalizedRows(mineRecords, { cfg, mrpCfg, isAr });
+
+  /* الجزار بيشوف شغله كلّه — حتى الملغى منه، بشارة «ملغاة» واضحة. إخفاء
+     عملية بلا أثر بيخلّي الواحد يشك بأرقامه؛ الأنضف إنها تبيّن بحالتها.
+     بس **ما بتنحسب**: المجاميع والتصافي من الشغل الحيّ وحده. */
+  const viewer = useRowViewer(isAr);
+  const mine = useMemo(() => all.filter((r) => canSeeRow(r, viewer)), [all, viewer]);
+  const counted = useMemo(() => mine.filter((r) => !isCancelled(r)), [mine]);
 
   const me = mine[0] || null;
-  const totals = useMemo(() => totalsOf(mine), [mine]);
+  const totals = useMemo(() => totalsOf(counted), [counted]);
 
   /* تجميع حسب اليوم — الأحدث أولاً */
   const days = useMemo(() => {
@@ -214,7 +307,8 @@ export default function ButcherMyWork() {
       .map(([day, list]) => ({
         day,
         list: list.slice().sort((a, b) => String(b.time).localeCompare(String(a.time))),
-        ...totalsOf(list),
+        // المجاميع من الحيّ وحده — الملغى بيضل بالقائمة معلّم، برّا الحساب
+        ...totalsOf(list.filter((r) => !isCancelled(r))),
       }))
       .sort((a, b) => b.day.localeCompare(a.day));
   }, [mine]);
@@ -230,7 +324,8 @@ export default function ButcherMyWork() {
 
   /* خصائص البطاقة ليوم واحد — للعرض وللطباعة معاً */
   const cardProps = (d) => ({
-    rows: d.list,
+    // بطاقة التقطيع وثيقة شغل — العملية الملغاة ما إلها مكان عالورق
+    rows: d.list.filter((r) => !isCancelled(r)),
     day: d.day,
     isAr,
     butcherName: me?.butcherName || "",
@@ -247,6 +342,12 @@ export default function ButcherMyWork() {
   };
 
   const KG = t({ en: "kg", ar: "كجم" });
+
+  const WINDOWS = [
+    { d: 7,  ar: "٧ أيام",  en: "7 days" },
+    { d: 30, ar: "٣٠ يوم",  en: "30 days" },
+    { d: 90, ar: "٩٠ يوم",  en: "90 days" },
+  ];
 
   if (!canOpenButcherPage("butcher.mywork")) return <NoAccess page="butcher.mywork" />;
 
@@ -271,13 +372,24 @@ export default function ButcherMyWork() {
               </button>
             )}
             <button className="mw-sm" style={S.smallBtn} onClick={() => navigate("/butcher", { replace: true })}>
-              ← {t({ en: "Back", ar: "رجوع" })}
+              {t({ en: "Back", ar: "رجوع" })}
             </button>
           </div>
         </div>
 
+        {/* ── فحص الحساب ── سجل القوى العاملة بيوصل بعد أول رسمة؛ لولا
+            هالانتظار، الجزار المربوط بيشوف بوابة الرقم تلمع بوجهه ثانية
+            وبعدين تختفي. */}
+        {!emp && wfLoading && (
+          <div style={S.card}>
+            <div className="mw-sm" style={{ textAlign: "center", color: K.mut, fontWeight: 800 }}>
+              {t({ en: "Opening your work…", ar: "جارٍ فتح شغلك…" })}
+            </div>
+          </div>
+        )}
+
         {/* ── بوّابة الرقم الوظيفي ── */}
-        {!emp && !locked && (
+        {!emp && !locked && !wfLoading && (
           <div style={S.gate}>
             <div style={S.gateIcon}>🔪</div>
             <div className="mw-day" style={{ fontWeight: 900, textAlign: "center" }}>
@@ -319,7 +431,7 @@ export default function ButcherMyWork() {
               </span>
               {mine.length > 0 && (
                 <span className="mw-lbl" style={S.periodChip}>
-                  {t({ en: "last 90 days", ar: "آخر ٩٠ يوم" })} · {totals.count}{" "}
+                  {isAr ? `آخر ${win} يوم` : `last ${win} days`} · {totals.count}{" "}
                   {t({ en: "jobs", ar: "تنفيذ" })}
                 </span>
               )}
@@ -341,6 +453,12 @@ export default function ButcherMyWork() {
                 )}
               </div>
             )}
+
+            {/* ── 🏆 أدائي ── كرت مطويّ بأعلى الشاشة: نتيجتي وترتيبي
+                بملحمتي وعلى مستوى كل الملاحم، والتفاصيل بضغطة. أرقام باقي
+                الجزارين بتيجي مجمّعة من السيرفر (butcher-stats)، مش بسحب
+                سجلاتهم على الكشك. */}
+            <ButcherPerformance empNo={emp} t={t} isAr={isAr} KG={KG} />
 
             {loading ? (
               <div style={S.card}>
@@ -369,6 +487,24 @@ export default function ButcherMyWork() {
               </div>
             ) : (
               <>
+                {/* ── مدى السحب ── الافتراضي أقصر، والتوسيع بضغطة واعية */}
+                <div style={S.winBar}>
+                  <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+                    {t({ en: "Period", ar: "الفترة" })}
+                  </span>
+                  {WINDOWS.map((w) => (
+                    <button
+                      key={w.d}
+                      type="button"
+                      className="mw-sm mw-press"
+                      onClick={() => setWin(w.d)}
+                      style={{ ...S.winBtn, ...(win === w.d ? S.winBtnOn : null) }}
+                    >
+                      {t(w)}
+                    </button>
+                  ))}
+                </div>
+
                 {/* ── شريط الأيام ── */}
                 <div className="mw-lbl" style={S.sectionLbl}>
                   {t({ en: "Pick a day", ar: "اختر اليوم" })}
@@ -465,11 +601,12 @@ export default function ButcherMyWork() {
 
                 {day && mode === "list" && (
                   <div className="mw-rise" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {day.list.map((r) => (
-                      <JobCard key={r.id} r={r} t={t} KG={KG} />
+                    {groupByInput(day.list).map((g) => (
+                      <InputGroupCard key={g.key} g={g} t={t} isAr={isAr} KG={KG} />
                     ))}
                   </div>
                 )}
+
               </>
             )}
           </>
@@ -479,21 +616,165 @@ export default function ButcherMyWork() {
   );
 }
 
+/* ══════════════ كرت المادة الخام (شامل) ══════════════
+   عنوان واحد للمادة الخام مهما تكرّر تقطيعها بنفس اليوم: الأوزان مجموعة،
+   وأسطر القطع مدموجة على مستوى المنتج. «تفاصيل التنفيذات» بيفتح الكروت
+   المفردة لمين بدّه يشوف عملية بعينها. */
+
+function InputGroupCard({ g, t, isAr, KG }) {
+  const [open, setOpen] = useState(false);
+  const many = g.rows.length > 1;
+  const base = g.carcassKg > 0 ? g.carcassKg : g.cutsKg + g.wasteKg;
+  const edge = g.cancelled === g.rows.length ? "#dc2626"
+    : g.pending > 0 ? K.waitFg : K.okFg;
+
+  return (
+    <div style={{
+      ...S.groupRow,
+      borderInlineStartColor: edge,
+      /* «مفتوح» لازم يبيّن بلمحة: إطار كحلي وظلّ، مش نفس الكرت الأبيض */
+      ...(open ? S.jobOpen : null),
+    }}>
+      {/* ── السطر: اسم المادة + أعمدة الأرقام + الحالة ── */}
+      <button
+        type="button"
+        className="mw-row mw-press"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="mw-big" style={{ color: K.mut, fontWeight: 900 }}>
+          {open ? "▲" : "▼"}
+        </span>
+
+        <span style={{ minWidth: 0 }}>
+          <span className="mw-day" style={{ fontWeight: 900, display: "block" }}>
+            {g.name}
+          </span>
+          <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+            {many
+              ? `${g.rows.length} ${t({ en: "jobs", ar: "تنفيذ" })}`
+              : `🕒 ${g.rows[0]?.time || "—"}`}
+            {g.durationMin > 0 ? ` · ⏱️ ${g.durationMin} ${t({ en: "min", ar: "دقيقة" })}` : ""}
+            {g.pieces > 0 ? ` · ${t({ en: "pieces", ar: "قطع" })} ${g.pieces}` : ""}
+          </span>
+        </span>
+
+        <span className="mw-row-cells">
+          <Cell label={t({ en: "Jobs", ar: "تنفيذ" })} value={g.rows.length} />
+          <Cell label={t({ en: "Raw", ar: "الخام" })} value={kg(g.carcassKg)} tone={K.raw} />
+          <Cell label={t({ en: "Products", ar: "النواتج" })} value={kg(g.cutsKg)} tone={K.good} />
+          <Cell label={t({ en: "Waste", ar: "الهدر" })} value={kg(g.wasteKg)} tone={K.waste} />
+          <Cell label={t({ en: "Yield", ar: "التصافي" })} value={`${g.yieldPct.toFixed(1)}%`} tone={K.yield} />
+        </span>
+
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {g.approved > 0 && (
+            <span className="mw-lbl" style={S.badgeOk}>
+              ✓{many ? ` ${g.approved}` : ""}
+            </span>
+          )}
+          {g.pending > 0 && (
+            <span className="mw-lbl" style={S.badgeWait}>
+              ⏳{many ? ` ${g.pending}` : ""}
+            </span>
+          )}
+          {g.cancelled > 0 && (
+            <span className="mw-lbl" style={S.badgeCancelled}>
+              🚫{many ? ` ${g.cancelled}` : ""}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {/* ── المطويّ: أسطر القطع، وبعدين التنفيذات ── */}
+      {open && (
+        <div style={S.groupBody}>
+          {g.cutList.length > 0 && (
+            <div style={S.detailPanel}>
+              <div className="mw-lbl" style={S.detailPanelHead}>
+                {t({ en: "Products & waste", ar: "النواتج والهدر" })} · {g.cutList.length}
+              </div>
+              <div style={{ ...S.cuts, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
+                {g.cutList.map((c, i) => {
+                  const share = base > 0 ? (c.weightKg / base) * 100 : 0;
+                  return (
+                    <div key={`${c.name}_${i}`} style={S.cutRow}>
+                      <span className="mw-sm" style={{ fontWeight: 800, minWidth: 0 }}>
+                        {c.isWaste ? "🦴 " : "✅ "}{c.name}
+                      </span>
+                      <span className="mw-sm" style={{ fontWeight: 900, whiteSpace: "nowrap" }}>
+                        {kg(c.weightKg)} <span style={{ color: K.mut, fontWeight: 800 }}>{KG}</span>
+                      </span>
+                      <ShareBar pct={share} tone={c.isWaste ? K.waste : K.good} />
+                      <span className="mw-lbl" style={{ color: K.mut, fontWeight: 900, minWidth: 52, textAlign: "end" }}>
+                        {share.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={S.detailPanel}>
+            <div className="mw-lbl" style={S.detailPanelHead}>
+              {t({ en: "Jobs in this card", ar: "التنفيذات جوّا هالسطر" })} · {g.rows.length}
+            </div>
+            {g.rows.map((r, i) => (
+              <JobCard
+                key={r.id}
+                r={r} t={t} isAr={isAr} KG={KG}
+                nested n={i + 1} total={g.rows.length}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** خانة رقم بالسطر — قيمة فوق وعنوان صغير تحت. */
+function Cell({ label, value, tone }) {
+  return (
+    <span className="mw-cell" style={S.cell}>
+      <span className="mw-sm" style={{ fontWeight: 900, color: tone || K.ink, display: "block" }}>
+        {value}
+      </span>
+      <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>{label}</span>
+    </span>
+  );
+}
+
 /* ══════════════ كرت تنفيذ واحد ══════════════
    ترويسة فيها المادة الخام ورقم العملية والحالة، بعدين جدول القطع بشريط حصّة،
    وبآخره شريط الأرقام. بلا شرائح متراصّة ولا بانرات ملوّنة. */
 
-function JobCard({ r, t, KG }) {
+function JobCard({ r, t, isAr, KG, nested = false, n = 0, total = 0 }) {
   const approved = r.reviewStatus === "approved";
   const rejected = r.reviewStatus === "rejected";   // سجلات قديمة فقط
+  const cancelled = isCancelled(r);
   const base = r.carcassKg > 0 ? r.carcassKg : r.cutsKg + r.wasteKg;
+  // حدّ التنفيذ بلون حالته — أخضر مقبول · كهرماني مستنّي · أحمر ملغى
+  const edge = cancelled ? "#dc2626" : approved ? K.okFg : K.waitFg;
 
   return (
-    <div style={{ ...S.job, borderInlineStartColor: approved ? K.okFg : K.line }}>
+    <div style={{
+      ...S.job,
+      borderInlineStartColor: edge,
+      ...(nested ? S.jobNested : null),
+      ...(cancelled ? { opacity: 0.75 } : null),
+    }}>
       {/* الترويسة */}
       <div style={S.jobHead}>
         <span style={{ minWidth: 0, flex: 1 }}>
           <span className="mw-day" style={{ fontWeight: 900, display: "block" }}>
+            {nested && n > 0 && (
+              <span className="mw-lbl" style={{ ...S.opIndex, background: edge }}>
+                {isAr ? `تنفيذ ${n}${total > 1 ? ` من ${total}` : ""}`
+                      : `Job ${n}${total > 1 ? ` of ${total}` : ""}`}
+              </span>
+            )}
             {r.inputName}
           </span>
           <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
@@ -506,6 +787,17 @@ function JobCard({ r, t, KG }) {
         </span>
         <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {r.opNo && <span className="mw-lbl" style={S.opNoChip}>{r.opNo}</span>}
+          {/* طلب إلغاء مرفوع على هالعملية — شغلك لسّا محسوب، بس في طلب
+              عند مسؤول المخزون. */}
+          {r.crStatus && (
+            <span
+              className="mw-lbl"
+              style={r.crStatus === "approved" ? S.badgeCancelled : S.badgeCr}
+            >
+              {r.crStatus === "approved" ? "🚫 " : r.crStatus === "open" ? "⏳ " : "↩︎ "}
+              {crStatusText(r, isAr)?.label}
+            </span>
+          )}
           <span className="mw-lbl" style={approved ? S.badgeOk : rejected ? S.badgeOld : S.badgeWait}>
             {approved
               ? `✓ ${t({ en: "Approved", ar: "معتمد" })}`
@@ -589,6 +881,14 @@ const S = {
     border: `1px solid ${K.line}`, background: "#fff", color: K.raw, borderRadius: 12,
     padding: "9px 16px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
   },
+  winBar: {
+    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6,
+  },
+  winBtn: {
+    border: `1px solid ${K.line}`, background: "#fff", color: K.ink2,
+    borderRadius: 999, padding: "7px 16px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
+  winBtnOn: { background: K.raw, color: "#fff", border: `1px solid ${K.raw}` },
   linkBtn: {
     border: "none", background: "transparent", color: K.raw,
     fontFamily: FONT, fontWeight: 900, cursor: "pointer", textDecoration: "underline", padding: 0,
@@ -718,6 +1018,62 @@ const S = {
   badgeWait: {
     background: K.waitBg, border: `1px solid ${K.waitBd}`, color: K.waitFg,
     borderRadius: 999, padding: "3px 12px", fontWeight: 900, whiteSpace: "nowrap",
+  },
+  /* الطلب المفتوح: كهرماني قوي — مش خطأ بشغل الجزار، بس لازم ينتبه إله. */
+  badgeCr: {
+    background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa",
+    borderRadius: 999, padding: "5px 12px", fontWeight: 900, whiteSpace: "nowrap",
+  },
+  /* ملغاة — أحمر هادي: خبر مهم، مش إنذار على شغل الجزار */
+  /* سطر المادة الخام — كرت مضغوط: كل شي بسطر، والباقي مطوي تحته */
+  groupRow: {
+    background: "#fff", border: `1px solid ${K.line}`, borderRadius: 16,
+    padding: "12px 14px", borderInlineStartWidth: 6, borderInlineStartStyle: "solid",
+    display: "flex", flexDirection: "column", gap: 10,
+  },
+  groupBody: { display: "flex", flexDirection: "column", gap: 10 },
+  cell: {
+    background: K.soft, border: `1px solid #e6eff8`, borderRadius: 12,
+    padding: "6px 8px", textAlign: "center", minWidth: 0, overflow: "hidden",
+  },
+
+  /* زر التفاصيل — زر حقيقي بحدّ، وبيتلوّن لما يكون مفتوح */
+  detailBtn: {
+    alignSelf: "flex-start", border: `1.5px solid ${K.line}`, background: "#fff",
+    color: K.raw, borderRadius: 999, padding: "8px 18px", marginTop: 4,
+    fontFamily: FONT, fontWeight: 900, cursor: "pointer", textAlign: "start",
+  },
+  detailBtnOn: { background: K.raw, color: "#fff", borderColor: K.raw },
+
+  /* «مفتوح»: إطار كحلي وظلّ — الفرق لازم يبان بلمحة */
+  jobOpen: {
+    border: `2px solid ${K.raw}`,
+    boxShadow: "0 14px 34px rgba(20,80,127,.14)",
+  },
+  /* لوح التفاصيل — أغمق من الكرت الشامل، فالكروت البيضا اللي جوّاه بتنفصل */
+  detailPanel: {
+    display: "flex", flexDirection: "column", gap: 12,
+    background: "#e4edf9", border: "1px solid #c9dcf1", borderRadius: 16,
+    padding: 12, marginTop: 6,
+  },
+  detailPanelHead: {
+    color: "#2c4f70", fontWeight: 900, letterSpacing: ".2px",
+    textTransform: "uppercase", opacity: 0.85,
+  },
+  /* كرت تنفيذ جوّا اللوح — أبيض بظلّ وحدّ جانبي أعرض، ما بيذوب بالخلفية */
+  jobNested: {
+    boxShadow: "0 8px 20px rgba(15,39,64,.12)", borderColor: "#bcd6ef",
+    borderInlineStartWidth: 8,
+  },
+  /* رقم التنفيذ — شارة ملوّنة بحالته قبل اسم المادة */
+  opIndex: {
+    display: "inline-block", color: "#fff", borderRadius: 999,
+    padding: "3px 10px", fontWeight: 900, marginInlineEnd: 8,
+    verticalAlign: "middle",
+  },
+  badgeCancelled: {
+    background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca",
+    borderRadius: 999, padding: "5px 12px", fontWeight: 900, whiteSpace: "nowrap",
   },
   badgeOld: {
     background: "#f3f5f7", border: "1px solid #dfe5ea", color: "#6b7785",
