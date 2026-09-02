@@ -1,7 +1,10 @@
 [
   {
     "item_code": "20170",
-    "description": "KAZAKHSTAN LAMB - KG"
+    "description": "KAZAKHSTAN LAMB - KG",
+    "origin": "KAZ",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "13600",
@@ -9,11 +12,14 @@
   },
   {
     "item_code": "71016",
-    "description": "LAHMANGIYA MARSHMALOW  BOX - "
+    "description": "LAHMANGIYA MARSHMALOW  BOX -"
   },
   {
     "item_code": "21406",
-    "description": "AUS HGT HIND SHANK - KG"
+    "description": "AUS Hogget HIND SHANK - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "27116",
@@ -21,35 +27,57 @@
   },
   {
     "item_code": "27102",
-    "description": "CHICKEN BREAST FILLET - KG"
+    "description": "CHICKEN BREAST FILLET - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "20000",
-    "description": "AUS CHILLED LAMB CARCASS - KG"
+    "description": "AUS CHILLED LAMB CARCASS - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "38000",
-    "description": "PAKISTANI BEEF LEG - LOCAL - KG"
+    "description": "PAKISTANI BEEF LEG - LOCAL - KG",
+    "origin": "PAK",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "22000",
-    "description": "S.A CHILLED LAMB CARCASS - KG"
+    "description": "S.A CHILLED LAMB CARCASS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "20115",
-    "description": "INDIAN MUTTON CARCASS - KG"
+    "description": "INDIAN MUTTON CARCASS - KG",
+    "origin": "IND",
+    "category": "Mutton",
+    "uom": "KG"
   },
   {
     "item_code": "96214KG",
-    "description": "CORIANDER-KG"
+    "description": "CORIANDER-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96164",
-    "description": "FRENCH FRIES - KG"
+    "description": "FRENCH FRIES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "36100",
-    "description": "AUS BEEF WAGYU TOPSIDE WHOLE - KG"
+    "description": "AUS BEEF WAGYU TOPSIDE WHOLE - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "33004",
@@ -57,27 +85,44 @@
   },
   {
     "item_code": "20080",
-    "description": "BRAZILIAN BEEF CUBEROLL - KG"
+    "description": "BRAZILIAN BEEF CUBEROLL - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20055",
-    "description": "BRAZILIAN BEEF KNUCKLE - KG"
+    "description": "BRAZILIAN BEEF KNUCKLE - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "36000",
-    "description": "AUS BEEF ANGUS TOPSIDE - KG"
+    "description": "AUS BEEF ANGUS TOPSIDE - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "96311",
-    "description": "CHICKEN GRILLER - KG"
+    "description": "CHICKEN GRILLER - KG",
+    "origin": "BRZ",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "27101",
-    "description": "FRESH WHOLE CHICKEN 1200gm/KG"
+    "description": "FRESH WHOLE CHICKEN 1200gm/KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "34013",
-    "description": "FROZEN LAMB FEET - KG"
+    "description": "FROZEN LAMB FEET - KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "27111",
@@ -85,7 +130,10 @@
   },
   {
     "item_code": "20095",
-    "description": "BRAZILIAN BEEF CHUCK ROLL - KG"
+    "description": "BRAZILIAN BEEF CHUCK ROLL - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "27100",
@@ -93,23 +141,37 @@
   },
   {
     "item_code": "96449",
-    "description": "Anchor Color Cheddar"
+    "description": "Anchor Color Cheddar",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "96277",
-    "description": "BALADI CHEESE - KG"
+    "description": "BALADI CHEESE - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "34012",
-    "description": "FROZEN BEEF FEET - KG"
+    "description": "FROZEN BEEF FEET - KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "20060",
-    "description": "BRAZILIAN BEEF TOPSIDE - KG"
+    "description": "BRAZILIAN BEEF TOPSIDE - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20065",
-    "description": "BRAZILIAN BEEF TENDERLOIN - KG"
+    "description": "BRAZILIAN BEEF TENDERLOIN - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "37003",
@@ -121,7 +183,10 @@
   },
   {
     "item_code": "37004",
-    "description": "AUS VAC LAMB B/IN HINDSHANK HEEL ON  - KG"
+    "description": "AUS VAC LAMB B/IN HINDSHANK HEEL ON  - KG",
+    "origin": "AUS",
+    "category": "VAC-Lamb",
+    "uom": "KG"
   },
   {
     "item_code": "36115",
@@ -129,23 +194,38 @@
   },
   {
     "item_code": "20098",
-    "description": "BRAZILIAN BEEF BRISKET - KG"
+    "description": "BRAZILIAN BEEF BRISKET - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20187",
-    "description": "CHILLED AUS KNUCKLE - KG"
+    "description": "Chilled AUS Lamb Liver - KG",
+    "origin": "AUS",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "22100",
-    "description": "S.A CHILLED MUTTON CARCASS - KG"
+    "description": "S.A CHILLED MUTTON CARCASS - KG",
+    "origin": "S.A",
+    "category": "Mutton",
+    "uom": "KG"
   },
   {
     "item_code": "11800",
-    "description": "DUTCH VEAL MEAT BONE IN"
+    "description": "LOCAL DUTCH VEAL MEAT BONE IN - KG",
+    "origin": "LOCAL",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "34316",
-    "description": "FRESH WHOLE CHICKEN (1250GM) - KG"
+    "description": "FRESH WHOLE CHICKEN (1250GM) - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "27109",
@@ -153,47 +233,78 @@
   },
   {
     "item_code": "34348",
-    "description": "AUS CHILLED HOGGET CARCASS - KG"
+    "description": "AUS CHILLED HOGGET CARCASS - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "36009",
-    "description": "AUS BEEF ANGUS STRIPLOIN - KG"
+    "description": "AUS BEEF ANGUS STRIPLOIN - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "34330",
-    "description": "FROZEN LAMB LIVER - KG"
+    "description": "FROZEN LAMB LIVER - KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "34333",
-    "description": "FROZEN BEEF LIVER (BRAZILIAN) - KG"
+    "description": "FROZEN BEEF LIVER (BRAZILIAN) - KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "34314",
-    "description": "FROZEN WHOLE CHICKEN (800G) - KG"
+    "description": "FROZEN WHOLE CHICKEN (800G) - KG",
+    "origin": "BRZ",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "20070",
-    "description": "BRAZILIAN BEEF SHOULDER - KG"
+    "description": "BRAZILIAN BEEF SHOULDER - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20186",
-    "description": "CHILLED AUS TENDERLOIN - KG"
+    "description": "CHILLED AUS TENDERLOIN - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "96303",
-    "description": "CHICKEN BREAST - KG"
+    "description": "CHICKEN BREAST - KG",
+    "origin": "BRZ",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "96312",
-    "description": "CHICKEN SHAWARMA B/L - KG"
+    "description": "CHICKEN SHAWARMA B/L - KG",
+    "origin": "BRZ",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "20025",
-    "description": "RACK SADDLE (LAMB AUSTRALIA) - KG"
+    "description": "RACK SADDLE (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "21305",
-    "description": "AUS BEEF ANGUS CUBE ROLL - KG"
+    "description": "AUS BEEF ANGUS CUBE ROLL - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "36001",
@@ -201,7 +312,10 @@
   },
   {
     "item_code": "34006",
-    "description": "FROZEN LAMB FAT - KG"
+    "description": "FROZEN LAMB FAT - KG",
+    "origin": "IRAN",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "20185",
@@ -217,7 +331,10 @@
   },
   {
     "item_code": "96448",
-    "description": "Anchor White Cheddar"
+    "description": "Anchor White Cheddar",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "20093",
@@ -225,7 +342,10 @@
   },
   {
     "item_code": "10211",
-    "description": "FRESH BEEF LIVER LOCAL - KG"
+    "description": "FRESH BEEF LIVER LOCAL - KG",
+    "origin": "LOCAL",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "10035",
@@ -245,11 +365,15 @@
   },
   {
     "item_code": "10375",
-    "description": "FRESH LAMB RACK SPECIAL CUT - KG"
+    "description": "FRESH LAMB RACK SPECIAL CUT - KG",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "10606",
-    "description": "FRESH LAMB SHOULDER B\\IN"
+    "description": "FRESH LAMB SHOULDER B\\IN",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "10607",
@@ -257,7 +381,9 @@
   },
   {
     "item_code": "10608",
-    "description": "FRESH LAMB LEG B\\IN"
+    "description": "FRESH LAMB LEG B\\IN",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "10610",
@@ -269,11 +395,15 @@
   },
   {
     "item_code": "10613",
-    "description": "FRESH LAMB FLAB B\\IN"
+    "description": "FRESH LAMB FLAB B\\IN",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "10614",
-    "description": "FRESH LAMB SHORTLOIN B\\IN"
+    "description": "FRESH LAMB SHORTLOIN B\\IN",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "20009",
@@ -281,59 +411,100 @@
   },
   {
     "item_code": "20015",
-    "description": "LEG-BONE IN (LAMB AUSTRALIA) - KG"
+    "description": "LEG-BONE IN (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20035",
-    "description": "SHOULDER (LAMB AUSTRALIA) - KG"
+    "description": "SHOULDER (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20040",
-    "description": "NECK (LAMB AUSTRALIA) - KG"
+    "description": "NECK (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20045",
-    "description": "FLAB B/IN (LAMB AUSTRALIA) - KG"
+    "description": "FLAB B/IN (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20052",
-    "description": "SHORTLOIN B/IN (LAMB AUTRALIA) - KG"
+    "description": "SHORTLOIN B/IN (LAMB AUTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "22040",
-    "description": "S.A LAMB NECK - KG"
+    "description": "S.A LAMB NECK - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "25000",
-    "description": "NAKANEK - PROCESSED MEAT"
+    "description": "NAKANEK - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25016",
-    "description": "BEEF MERGUEZ - PROCESSED MEAT- KG"
+    "description": "BEEF MERGUEZ - PROCESSED MEAT- KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25030",
-    "description": "SHISH TAWOOK RED - KG"
+    "description": "SHISH TAWOOK RED - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25031",
-    "description": "SHISH TAWOOK WHITE - KG"
+    "description": "SHISH TAWOOK WHITE - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25032",
-    "description": "CHICKEN KABAB - KG"
+    "description": "CHICKEN KABAB - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25046",
-    "description": "HONEY SHISH TAWOOK-KG"
+    "description": "HONEY SHISH TAWOOK-KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30031",
-    "description": "Sausage w Vegt.(Prod.)"
+    "description": "Sausage w Vegt.(Prod.)",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "10370",
-    "description": "FRESH LAMB RACK - KG"
+    "description": "FRESH LAMB RACK - KG",
+    "category": "Lamb-Local",
+    "uom": "KG"
   },
   {
     "item_code": "20053",
@@ -345,11 +516,17 @@
   },
   {
     "item_code": "25007",
-    "description": "KABAB - PROCESSED MEAT"
+    "description": "KABAB - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25017",
-    "description": "LAMB MERGUEZ - PROCESSED MEAT- KG"
+    "description": "LAMB MERGUEZ - PROCESSED MEAT- KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "34346",
@@ -357,11 +534,17 @@
   },
   {
     "item_code": "99241",
-    "description": "Meat SHAWARMA_KG"
+    "description": "Meat SHAWARMA_KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "99253",
-    "description": "CHICKEN SHAWARMA MARINATED_KG"
+    "description": "CHICKEN SHAWARMA MARINATED_KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "10601",
@@ -369,31 +552,50 @@
   },
   {
     "item_code": "27115",
-    "description": "Defrosted Chicken - KG"
+    "description": "Defrosted Chicken - KG",
+    "origin": "BRZ",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99339",
-    "description": "Marinated WHOLE CHICKEN 1000 GM"
+    "description": "Marinated WHOLE CHICKEN 1000 GM",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99340",
-    "description": "Marinated WHOLE CHICKEN  1300 GM"
+    "description": "Marinated WHOLE CHICKEN  1300 GM",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99341",
-    "description": "Marinated WHOLE GRILL CHICKEN 1300 GM"
+    "description": "Marinated WHOLE GRILL CHICKEN 1300 GM",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99342",
-    "description": "SPICE MIX FOR GRILLED CHICKEN"
+    "description": "SPICE MIX FOR GRILLED CHICKEN",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99343",
-    "description": "GRILLED CHICKEN MARINATION"
+    "description": "GRILLED CHICKEN MARINATION",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "20100",
-    "description": "INDIAN VEAL LEG - KG"
+    "description": "INDIAN VEAL LEG - KG",
+    "origin": "IND",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "36125",
@@ -409,7 +611,10 @@
   },
   {
     "item_code": "21404",
-    "description": "aus hgt flab b-less -kg"
+    "description": "AUS Hogget FLAB B/LESS  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "34438",
@@ -433,7 +638,10 @@
   },
   {
     "item_code": "36124",
-    "description": "New Zealand Beef Topside - KG"
+    "description": "New Zealand Beef Topside - KG",
+    "origin": "NEZ",
+    "category": "VAC-NZ",
+    "uom": "KG"
   },
   {
     "item_code": "10210",
@@ -453,7 +661,9 @@
   },
   {
     "item_code": "96271",
-    "description": "GARLIC PEELED_KG"
+    "description": "GARLIC PEELED_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "22053",
@@ -469,35 +679,59 @@
   },
   {
     "item_code": "38001",
-    "description": "PAKISTANI BEEF SHOULDER - LOCAL - KG"
+    "description": "PAKISTANI BEEF SHOULDER - LOCAL - KG",
+    "origin": "PAK",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "25005",
-    "description": "BURGER - PROCESSED MEAT"
+    "description": "BURGER - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25006",
-    "description": "TIKKA - PROCESSED MEAT"
+    "description": "TIKKA - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "25009",
-    "description": "MINCED - PROCESSED MEAT"
+    "description": "MINCED - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "22015",
-    "description": "S.A LAMB LEG-BONE IN - KG"
+    "description": "S.A LAMB LEG-BONE IN - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22035",
-    "description": "S.A LAMB SHOULDER - KG"
+    "description": "S.A LAMB SHOULDER - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22045",
-    "description": "S.A LAMB FLAB B/IN - KG"
+    "description": "S.A LAMB FLAB B/IN - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22052",
-    "description": "S.A LAMB SHORTLOIN B/IN - KG"
+    "description": "S.A LAMB SHORTLOIN B/IN - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "71001",
@@ -505,39 +739,66 @@
   },
   {
     "item_code": "22025",
-    "description": "S.A LAMB RACK SADDELE - KG"
+    "description": "S.A LAMB RACK SADDELE - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "25001",
-    "description": "SIJOUK - PROCESSED MEAT"
+    "description": "SIJOUK - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30020",
-    "description": "Al Mawashi Farmstyle Extra Sausage"
+    "description": "Al Mawashi Farmstyle Extra Sausage",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30021",
-    "description": "Al Mawashi Dhanya Braai Sausage"
+    "description": "Al Mawashi Dhanya Braai Sausage",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30022",
-    "description": "Al Mawashi Roast Chicken Sausage"
+    "description": "Al Mawashi Roast Chicken Sausage",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30023",
-    "description": "Al Mawashi BREAKFAST SAUSAGE"
+    "description": "Al Mawashi BREAKFAST SAUSAGE",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30024",
-    "description": "Al Mawashi Chilli Oriental  Sausage"
+    "description": "Al Mawashi Chilli Oriental  Sausage",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30025",
-    "description": "Al Mawashi Continental Vienna"
+    "description": "Al Mawashi Continental Vienna",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "38003",
-    "description": "PAKISTANI BEEF BONES - KG"
+    "description": "Chilled SA Beef Topside - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
   },
   {
     "item_code": "10220KG",
@@ -545,23 +806,36 @@
   },
   {
     "item_code": "91035",
-    "description": "RED PEPPER POWDER (cayenne) - 95 gm"
+    "description": "RED PEPPER POWDER (cayenne) - 95 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91033",
-    "description": "TURMERIC - 100 gm"
+    "description": "TURMERIC - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "97060 PLATE",
-    "description": "KIBBEH 35 G - PLATE"
+    "description": "KIBBEH 35 G - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "30026",
-    "description": "Al Mawashi French Polony"
+    "description": "Al Mawashi French Polony",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "30027",
-    "description": "Al Mawashi Salami Montona"
+    "description": "Al Mawashi Salami Montona",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "15009-1",
@@ -569,15 +843,24 @@
   },
   {
     "item_code": "20064",
-    "description": "Brazilian Beef Mince"
+    "description": "Brazilian Beef Mince",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20075",
-    "description": "BRAZILIAN BEEF STRIPLOIN - KG"
+    "description": "BRAZILIAN BEEF STRIPLOIN - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "20042",
-    "description": "HIND SHANK - KG"
+    "description": "HIND SHANK - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "10317-1",
@@ -657,23 +940,36 @@
   },
   {
     "item_code": "22026",
-    "description": "S.A LAMB RACK SPECIAL CUTS - KG"
+    "description": "S.A LAMB RACK SPECIAL CUTS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22042",
-    "description": "S.A LAMB HIND SHANK - KG"
+    "description": "S.A LAMB HIND SHANK - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "30029",
-    "description": "Al Mawashi Hunters Biltong"
+    "description": "Al Mawashi Hunters Biltong",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "90096",
-    "description": "SEVEN SPICES - 100 gm"
+    "description": "SEVEN SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91036",
-    "description": "CRUSHED RED PEPPER(cayenne) - 90 gm"
+    "description": "CRUSHED RED PEPPER(cayenne) - 90 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "10270KG",
@@ -681,19 +977,31 @@
   },
   {
     "item_code": "20182",
-    "description": "CHILLED AUS TOPSIDE - KG"
+    "description": "AUS CHILLED Beef TOPSIDE - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20026",
-    "description": "RACK SPECIAL CUTS  - KG"
+    "description": "AUS RACK SPECIAL CUTS  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20054",
-    "description": "SHORTLOIN B/LESS (LAMB AUSTRALIA) - KG"
+    "description": "SHORTLOIN B/LESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "25002",
-    "description": "KUFTA - PROCESSED MEAT"
+    "description": "KUFTA - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "34004",
@@ -705,19 +1013,31 @@
   },
   {
     "item_code": "96470",
-    "description": "Sheep Kashkaval Wheel (3KG) - KG"
+    "description": "Sheep Kashkaval Wheel (3KG) - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "96023",
-    "description": "Fresh Halloumi Cheese"
+    "description": "Fresh Halloumi Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "20020",
-    "description": "LEG-BONELESS (LAMB AUSTRALIA) - KG"
+    "description": "LEG-BONELESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "20050",
-    "description": "FLAB B/LESS (LAMB AUSTRALIA) - KG"
+    "description": "FLAB B/LESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "35",
@@ -753,7 +1073,10 @@
   },
   {
     "item_code": "22020",
-    "description": "S.A LAMB LEG-BONELESS - KG"
+    "description": "S.A LAMB LEG-BONELESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "13602",
@@ -765,75 +1088,129 @@
   },
   {
     "item_code": "97070",
-    "description": "CHEESE ROLL - PIECE"
+    "description": "CHEESE ROLL - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97064",
-    "description": "SAMBOUSAK CHEESE - PIECE"
+    "description": "SAMBOUSAK CHEESE - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97066",
-    "description": "SHISH BARAK - PIECE"
+    "description": "SHISH BARAK - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97069",
-    "description": "SPIINACH FATAYER - PIECE"
+    "description": "SPIINACH FATAYER - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97065",
-    "description": "SAMBOUSAK MEAT - PIECE"
+    "description": "SAMBOUSAK MEAT - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97062",
-    "description": "KIBBEH GRILLED - PIECE"
+    "description": "KIBBEH GRILLED - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97063",
-    "description": "SAMBOUSAK VEGETABLE - PIECE"
+    "description": "SAMBOUSAK VEGETABLE - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97061",
-    "description": "KIBBEH 50 G - PIECE"
+    "description": "KIBBEH 50 G - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97060",
-    "description": "KIBBEH 35 G - PIECE"
+    "description": "KIBBEH 35 G - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97068",
-    "description": "CHEESE FATAYER - PIECE"
+    "description": "CHEESE FATAYER - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "97067",
-    "description": "MEAT FATAYER  - PIECE"
+    "description": "MEAT FATAYER  - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
   },
   {
     "item_code": "38004",
-    "description": "PAKISTANI BEEF Waste- KG"
+    "description": "Chilled SA Beef Knuckle - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22034",
-    "description": "S.A LAMB SHOULDER BONELESS - KG"
+    "description": "S.A LAMB SHOULDER BONELESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "22054",
-    "description": "S.A LAMB SHORTLOIN B/LESS - KG"
+    "description": "S.A LAMB SHORTLOIN B/LESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "27103",
-    "description": "CHICKEN LIVER - KG"
+    "description": "CHICKEN LIVER - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "27107",
-    "description": "CHICKEN HEARTS - KG"
+    "description": "CHICKEN HEARTS - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "20034",
-    "description": "SHOULDER BONELESS (LAMB AUSTRALIA) - KG"
+    "description": "SHOULDER BONELESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "34002",
-    "description": "FROZEN MINCED - KG"
+    "description": "FROZEN MINCED - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "50",
@@ -841,27 +1218,45 @@
   },
   {
     "item_code": "22050",
-    "description": "S.A LAMB FLAB B/LESS - KG"
+    "description": "S.A LAMB FLAB B/LESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
   },
   {
     "item_code": "97102",
-    "description": "HUMMUS - PLATE"
+    "description": "HUMMUS - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "97104",
-    "description": "MUTABAL - PLATE"
+    "description": "MUTABAL - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "97103",
-    "description": "TABBOULEH SALAD - PLATE"
+    "description": "TABBOULEH SALAD - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "97101",
-    "description": "FATTOUSH SALAD -  PLATE"
+    "description": "FATTOUSH SALAD -  PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "36123",
-    "description": "New Zealand Beef Cuberoll - KG"
+    "description": "New Zealand Beef Cuberoll - KG",
+    "origin": "NEZ",
+    "category": "VAC-NZ",
+    "uom": "KG"
   },
   {
     "item_code": "69211",
@@ -877,63 +1272,108 @@
   },
   {
     "item_code": "99228",
-    "description": "MACARONI BECHAMEL_KG"
+    "description": "MACARONI BECHAMEL_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99100",
-    "description": "KOFTA W TOMATO SAUCE _ KG"
+    "description": "KOFTA W TOMATO SAUCE _ KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99168",
-    "description": "CHICKEN SWEET AND SOUR_KG"
+    "description": "CHICKEN SWEET AND SOUR_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99129",
-    "description": "LAMB BIRYANI_KG"
+    "description": "LAMB BIRYANI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99192",
-    "description": "LAMB MAKLOUBA_KG"
+    "description": "LAMB MAKLOUBA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99123",
-    "description": "CHICKEN STEAK W VEGT._KG"
+    "description": "CHICKEN STEAK W VEGT._KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99245",
-    "description": "MANSAF RICE_KG"
+    "description": "MANSAF RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99138",
-    "description": "JORDANIAN MANSAF_KG"
+    "description": "JORDANIAN MANSAF_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "97107- PLATE",
-    "description": "ROCCA SALAD- PLATE"
+    "description": "ROCCA SALAD- PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "97105",
-    "description": "MUHAMMARA - PLATE"
+    "description": "MUHAMMARA - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "99135",
-    "description": "LAMB OUZI_KG"
+    "description": "LAMB OUZI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99130",
-    "description": "CHICKEN BIRYANI_KG"
+    "description": "CHICKEN BIRYANI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99235",
-    "description": "LAMB VEGT. MOUSAKA_KG"
+    "description": "LAMB VEGT. MOUSAKA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99103",
-    "description": "DAWOOD BASHA_KG"
+    "description": "DAWOOD BASHA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99153",
-    "description": "VERMICELLI RICE_KG"
+    "description": "VERMICELLI RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "33003",
@@ -941,7 +1381,10 @@
   },
   {
     "item_code": "20188",
-    "description": "Chilled Aus Beef Waste"
+    "description": "Chilled AUS lamb Kidney - KG",
+    "origin": "AUS",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "13604",
@@ -949,15 +1392,24 @@
   },
   {
     "item_code": "99114",
-    "description": "CUT BEANS STEW W LAMB_KG"
+    "description": "CUT BEANS STEW W LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99106",
-    "description": "LABAN OUMO_KG"
+    "description": "LABAN OUMO_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99226",
-    "description": "BEEF LASAGNA_KG"
+    "description": "BEEF LASAGNA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "60030",
@@ -973,19 +1425,31 @@
   },
   {
     "item_code": "99191",
-    "description": "BEEF steak W BROWN SAUCE_KG"
+    "description": "BEEF steak W BROWN SAUCE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99139",
-    "description": "STUFFED MARROW W MEAT_KG"
+    "description": "STUFFED MARROW W MEAT_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99402",
-    "description": "Bukhari Lamb"
+    "description": "Bukhari Lamb",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99355",
-    "description": "Saute Vegetables"
+    "description": "Saute Vegetables",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "20036",
@@ -993,11 +1457,17 @@
   },
   {
     "item_code": "38002",
-    "description": "PAKISTANI BEEF BONELESS"
+    "description": "PAKISTANI BEEF BONELESS",
+    "origin": "PAK",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "99159",
-    "description": "WHITE RICE_KG"
+    "description": "WHITE RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99351",
@@ -1005,15 +1475,24 @@
   },
   {
     "item_code": "71071",
-    "description": "TABBOULEH FTR - PLATE"
+    "description": "TABBOULEH FTR - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "99136",
-    "description": "LAMB FRIKKI_KG"
+    "description": "LAMB FRIKKI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99107",
-    "description": "OKRA STEW WITH LAMB_KG"
+    "description": "OKRA STEW WITH LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "34347",
@@ -1021,11 +1500,16 @@
   },
   {
     "item_code": "99117",
-    "description": "GREENPEAS STEW W LAMB_KG"
+    "description": "GREENPEAS STEW W LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "96098",
-    "description": "VERMICELLI - KG"
+    "description": "VERMICELLI - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99278",
@@ -1033,7 +1517,10 @@
   },
   {
     "item_code": "20142",
-    "description": "LOCAL CAMEL MEAT BONE-LESS - KG"
+    "description": "LOCAL CAMEL MEAT BONE-LESS - KG",
+    "origin": "LOCAL",
+    "category": "Camel",
+    "uom": "KG"
   },
   {
     "item_code": "45015163-1",
@@ -1041,15 +1528,24 @@
   },
   {
     "item_code": "97103KG",
-    "description": "TABBOULEH SALAD - KG"
+    "description": "TABBOULEH SALAD - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
   },
   {
     "item_code": "99146",
-    "description": "LAMB KABSSA_KG"
+    "description": "LAMB KABSSA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99181",
-    "description": "BUTTER CHICKEN_KG"
+    "description": "BUTTER CHICKEN_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "420",
@@ -1057,11 +1553,17 @@
   },
   {
     "item_code": "34015",
-    "description": "FROZEN LAMB AUS HIND SHANK BONE IN - KG"
+    "description": "FROZEN LAMB AUS HIND SHANK BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34432",
-    "description": "FROZEN LAMB AUS NECK BONE IN SLICE - KG"
+    "description": "FROZEN LAMB AUS NECK BONE IN SLICE - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34433",
@@ -1069,31 +1571,52 @@
   },
   {
     "item_code": "34434",
-    "description": "FROZEN LAMB AUS FLAP BONE IN - KG"
+    "description": "FROZEN LAMB AUS FLAP BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34435",
-    "description": "FROZEN LAMB AUS CHOPS - KG"
+    "description": "FROZEN LAMB AUS CHOPS - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34436",
-    "description": "FROZEN LAMB AUS LOIN CHOPS - KG"
+    "description": "FROZEN LAMB AUS LOIN CHOPS - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34437",
-    "description": "FROZEN LAMB AUS LEG BONE IN SLICE - KG"
+    "description": "FROZEN LAMB AUS LEG BONE IN SLICE - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34452",
-    "description": "FROZEN LAMB AUS FORESHANK BONE IN - KG"
+    "description": "FROZEN LAMB AUS FORESHANK BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34453",
-    "description": "FROZEN LAMB AUS CUBE BONE IN - KG"
+    "description": "FROZEN LAMB AUS CUBE BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
   },
   {
     "item_code": "34454",
-    "description": "FROZEN LAMB MINCE - KG"
+    "description": "FROZEN LAMB MINCE - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "20032",
@@ -1113,7 +1636,10 @@
   },
   {
     "item_code": "99161",
-    "description": "BIRYANI RICE _KG"
+    "description": "BIRYANI RICE _KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "10299",
@@ -1129,15 +1655,22 @@
   },
   {
     "item_code": "34332",
-    "description": "FROZEN LAMB KIDNEY- KG"
+    "description": "FROZEN LAMB KIDNEY- KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "34334",
-    "description": "FROZEN BEEF KIDNEY (BRAZILIAN) - KG"
+    "description": "FROZEN BEEF KIDNEY (BRAZILIAN) - KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "20180",
-    "description": "CHILLED AUS RIB EYE ROLL-KG"
+    "description": "CHILLED AUS RIB EYE ROLL-KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "13606",
@@ -1145,15 +1678,22 @@
   },
   {
     "item_code": "11801",
-    "description": "DUTCH BEEF MEAT BONE LESS"
+    "description": "DUTCH BEEF MEAT BONE LESS",
+    "origin": "LOCAL",
+    "category": "Beef & Veal",
+    "uom": "KG"
   },
   {
     "item_code": "96004",
-    "description": "VEGETABLE OIL - LTR"
+    "description": "VEGETABLE OIL - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96152",
-    "description": "SWEET PEPPER PASTE - KG"
+    "description": "SWEET PEPPER PASTE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99276",
@@ -1161,11 +1701,17 @@
   },
   {
     "item_code": "99218",
-    "description": "LAMB MASHBUS_KG"
+    "description": "LAMB MASHBUS_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "20141",
-    "description": "CAMEL LIVER - KG"
+    "description": "CAMEL LIVER - KG",
+    "origin": "LOCAL",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "34336",
@@ -1177,19 +1723,31 @@
   },
   {
     "item_code": "20011",
-    "description": "LAMB SAUSAGE MEXICAN STYLE - KG"
+    "description": "LAMB SAUSAGE MEXICAN STYLE - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "27104",
-    "description": "CHICKEN LEG - KG"
+    "description": "CHICKEN LEG - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "27106",
-    "description": "CHICKEN WINGS - KG"
+    "description": "CHICKEN WINGS - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "36107",
-    "description": "AUS BEEF WAGYU BEEF MINCED - KG"
+    "description": "AUS BEEF WAGYU BEEF MINCED - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "99469",
@@ -1197,11 +1755,17 @@
   },
   {
     "item_code": "96436",
-    "description": "Fresh Naboulsi Cheese"
+    "description": "Fresh Naboulsi Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "99359",
-    "description": "Stuffed zucchini with red sauce"
+    "description": "Stuffed zucchini with red sauce",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99470",
@@ -1221,7 +1785,9 @@
   },
   {
     "item_code": "91003",
-    "description": "CHICKEN SPICES - 100 gm"
+    "description": "CHICKEN SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "415",
@@ -1229,11 +1795,17 @@
   },
   {
     "item_code": "71084",
-    "description": "MOHAMARA SALAD FTR - BOX"
+    "description": "MOHAMARA SALAD FTR - BOX",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "BOX"
   },
   {
     "item_code": "30055",
-    "description": "Spicy Beef Merguez - KG"
+    "description": "Spicy Beef Merguez - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
   },
   {
     "item_code": "11702",
@@ -1241,23 +1813,38 @@
   },
   {
     "item_code": "97062 PLATE",
-    "description": "KIBBEH GRILLED - PLATE"
+    "description": "KIBBEH GRILLED - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "97063 PLATE",
-    "description": "SAMBUSAK VEGITEBLE - PLATE"
+    "description": "SAMBUSAK VEGITEBLE - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "97064 PLATE",
-    "description": "SAMBOUSAK CHEESE - PLATE"
+    "description": "SAMBOUSAK CHEESE - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "97069 PLATE",
-    "description": "SPIINACH FATAYER - PLATE"
+    "description": "SPIINACH FATAYER - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "97070 PLATE",
-    "description": "CHEESE ROLL - PLATE"
+    "description": "CHEESE ROLL - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
   },
   {
     "item_code": "22036",
@@ -1269,7 +1856,10 @@
   },
   {
     "item_code": "20140",
-    "description": "LOCAL CAMEL MEAT BONE-IN - KG"
+    "description": "LOCAL CAMEL MEAT BONE-IN - KG",
+    "origin": "LOCAL",
+    "category": "Camel",
+    "uom": "KG"
   },
   {
     "item_code": "20144",
@@ -1277,11 +1867,17 @@
   },
   {
     "item_code": "99267",
-    "description": "LAMB CHOPS W VEGT."
+    "description": "LAMB CHOPS W VEGT.",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "99104",
-    "description": "KIBBEH / SHISH BARAK BIL LABAN_KG"
+    "description": "KIBBEH / SHISH BARAK BIL LABAN_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "60060",
@@ -1289,11 +1885,17 @@
   },
   {
     "item_code": "37008",
-    "description": "VAC LAMB AUS LEG 3 BONES - BONE IN SHANK ON CHUMP ON - KG"
+    "description": "VAC LAMB AUS LEG 3 BONES - BONE IN SHANK ON CHUMP ON - KG",
+    "origin": "AUS",
+    "category": "VAC-Lamb",
+    "uom": "KG"
   },
   {
     "item_code": "20081",
-    "description": "BRAZILIAN BEEF STRIPLOIN STEAK - KG"
+    "description": "BRAZILIAN BEEF STRIPLOIN STEAK - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
   },
   {
     "item_code": "25047",
@@ -1309,11 +1911,15 @@
   },
   {
     "item_code": "95090",
-    "description": "AMERICAN DRESSING 1000 ISLAND 3.78 L- Ltr"
+    "description": "AMERICAN DRESSING 1000 ISLAND 3.78 L- Ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96237KG",
-    "description": "BASIL LOOSE-KG"
+    "description": "BASIL LOOSE-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "27014",
@@ -1321,7 +1927,9 @@
   },
   {
     "item_code": "96327",
-    "description": "TOMATO KETCHUP SACHET_PC"
+    "description": "TOMATO KETCHUP SACHET_PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "99272",
@@ -1329,11 +1937,17 @@
   },
   {
     "item_code": "27112",
-    "description": "FRESH CHICKEN DRUMSTICK - KG"
+    "description": "FRESH CHICKEN DRUMSTICK - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99101",
-    "description": "KABAB HINDI_KG"
+    "description": "KABAB HINDI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "125",
@@ -1341,7 +1955,10 @@
   },
   {
     "item_code": "27118",
-    "description": "Fresh Chicken Bones"
+    "description": "Fresh Chicken Bones",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "71075",
@@ -1373,7 +1990,10 @@
   },
   {
     "item_code": "34317",
-    "description": "Fresh Chicken Thighs (1KG) - KG"
+    "description": "Fresh Chicken Thighs (1KG) - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "99449",
@@ -1381,15 +2001,22 @@
   },
   {
     "item_code": "96240",
-    "description": "ORANGE - KG"
+    "description": "ORANGE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96435",
-    "description": "Akawi Cheese Low Salt"
+    "description": "Akawi Cheese Low Salt",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "34331",
-    "description": "FROZEN LAMB HEART- KG"
+    "description": "FROZEN LAMB HEART- KG",
+    "category": "Offals",
+    "uom": "KG"
   },
   {
     "item_code": "23071",
@@ -1397,23 +2024,38 @@
   },
   {
     "item_code": "96439",
-    "description": "Paneer Cheese"
+    "description": "Paneer Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "27117",
-    "description": "Fresh Chicken Gizzard - KG"
+    "description": "Fresh Chicken Gizzard - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
   },
   {
     "item_code": "96438",
-    "description": "Tradtional Shanklish"
+    "description": "Tradtional Shanklish",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "99229",
-    "description": "Spaghetti bolognese"
+    "description": "SPAGHETTI BOLOGNESE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
   },
   {
     "item_code": "71072",
-    "description": "hummus ftr plate"
+    "description": "HUMMOS FTR - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
   },
   {
     "item_code": "71023",
@@ -1425,11 +2067,17 @@
   },
   {
     "item_code": "99254",
-    "description": "Arayes pc"
+    "description": "ARAYES_PC",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "PIECES"
   },
   {
     "item_code": "21407",
-    "description": "aus hgt neck - kg"
+    "description": "AUS Hogget NECK  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "99248",
@@ -1441,1498 +2089,4156 @@
   },
   {
     "item_code": "99442",
-    "description": " Tannourine Water 500 ml bottle"
+    "description": "Tannourine Water 500 ml bottle"
   },
   {
     "item_code": "21405",
-    "description": "aus hgt flab b-in - kg"
+    "description": "AUS Hogget FLAB B/IN  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
   },
   {
     "item_code": "96447",
-    "description": "TekSut Ball Cheese Turkish"
+    "description": "TekSut Ball Cheese Turkish",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "96024",
-    "description": "Mozzarella Block"
+    "description": "Mozzarella Block",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "96453",
-    "description": "Anchor Saudi Feta Cheese"
+    "description": "Anchor Saudi Feta Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "96458",
-    "description": "Barameeli Cheese"
+    "description": "Barameeli Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
   },
   {
     "item_code": "92001",
-    "description": "037 Shish Kebab"
+    "description": "037 Shish Kebab",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93024",
-    "description": "1055 Seasoning Pollo AST (Roast Chicken)"
+    "description": "1055 Seasoning Pollo AST (Roast Chicken)",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93022",
-    "description": "1438-1 Mix Spices Portuguese Chicken"
+    "description": "1438-1 Mix Spices Portuguese Chicken",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52938",
-    "description": "ALL SPICE GROUND - KG"
+    "description": "ALL SPICE GROUND - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96016",
-    "description": "ALMOND SPLIT - KG"
+    "description": "ALMOND SPLIT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96015",
-    "description": "ALMOND STICK - KG"
+    "description": "ALMOND STICK - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "95088",
-    "description": "AMERICAN DRESSING CEASAR 267ML - PCS"
+    "description": "AMERICAN DRESSING CEASAR 267ML - PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "95092",
-    "description": "AMERICAN DRESSING FRENCH 267ML - PCS"
+    "description": "AMERICAN DRESSING FRENCH 267ML - PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "95091",
-    "description": "AMERICAN DRESSING ITALIAN 267ML - PCS"
+    "description": "AMERICAN DRESSING ITALIAN 267ML - PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52949",
-    "description": "ANISE SEED SPICES - KG"
+    "description": "ANISE SEED SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96296",
-    "description": "APPLE GREEN-KG"
+    "description": "APPLE GREEN-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96270",
-    "description": "APPLE RED - KG"
+    "description": "APPLE RED - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96123",
-    "description": "ARABIC BREAD LARGE - PIECE"
+    "description": "ARABIC BREAD LARGE - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96180",
-    "description": "ARABIC BREAD SMALL- PIECE"
+    "description": "ARABIC BREAD SMALL- PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96325",
-    "description": "AVOCADO"
+    "description": "AVOCADO",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93019",
-    "description": "Alghazaleen Pure Ceylon STD405 Tea 500g - PCS"
+    "description": "Alghazaleen Pure Ceylon STD405 Tea 500g - PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96415",
-    "description": "Arabic Bread Medium-pcs"
+    "description": "Arabic Bread Medium-pcs",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96188",
-    "description": "BAKING POWDER FOSTER CLERK_KG"
+    "description": "BAKING POWDER FOSTER CLERK_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96261",
-    "description": "BANANA SHALLOT - KG"
+    "description": "BANANA SHALLOT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96267",
-    "description": "BANANA-KG"
+    "description": "BANANA-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99488",
-    "description": "BARAKAT CORIANDER LEAVES SANITIZED - KG"
+    "description": "BARAKAT CORIANDER LEAVES SANITIZED - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99489",
-    "description": "BARAKAT ROCCA LEAVES SANITIZED - KG"
+    "description": "BARAKAT ROCCA LEAVES SANITIZED - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91059",
-    "description": "BASIL - 400 gm"
+    "description": "BASIL - 400 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96253",
-    "description": "BAY LEAVES - KG"
+    "description": "BAY LEAVES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96324",
-    "description": "BBQ SAUCE ORIGINAL AG 532ML"
+    "description": "BBQ SAUCE ORIGINAL AG 532ML",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "10318",
-    "description": "BEEF SALTED INTESTINE - PIECE"
+    "description": "BEEF SALTED INTESTINE - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96263",
-    "description": "BEETROOT - KG"
+    "description": "BEETROOT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52920",
-    "description": "BERYANI SPICES - KG"
+    "description": "BERYANI SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96069",
-    "description": "BI CARBONATE SODA - KG"
+    "description": "BI CARBONATE SODA - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91056",
-    "description": "BLACK LIME - 350 gm"
+    "description": "BLACK LIME - 350 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52948",
-    "description": "BLACK PEPPER GRAIN SPICES - KG"
+    "description": "BLACK PEPPER GRAIN SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96019",
-    "description": "BLACK RAISIN - KG"
+    "description": "BLACK RAISIN - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96061",
-    "description": "BREAD CRUMBS - KG"
+    "description": "BREAD CRUMBS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93012",
-    "description": "BREAKFAST SAUSAGE CO-EX"
+    "description": "BREAKFAST SAUSAGE CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96233",
-    "description": "BROCOLLI - KG"
+    "description": "BROCOLLI - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96091",
-    "description": "BROWN BULGUR (SOFT) - KG"
+    "description": "BROWN BULGUR (SOFT) - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96275",
-    "description": "BURGER BUN - PC"
+    "description": "BURGER BUN - PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96196",
-    "description": "BUTTER (LURPAK)-KG"
+    "description": "BUTTER (LURPAK)-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96337",
-    "description": "BUTTER (LURPAK)PORTION 10g"
+    "description": "BUTTER (LURPAK)PORTION 10g",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "99316",
-    "description": "Barakat Capsicum Green Cubes - 20 X 20 Mm 1Kg"
+    "description": "Barakat Capsicum Green Cubes - 20 X 20 Mm 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99317",
-    "description": "Barakat Capsicum Red Cube - 20 Mm 1Kg"
+    "description": "Barakat Capsicum Red Cube - 20 Mm 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99318",
-    "description": "Barakat Capsicum Yellow Cube 20Mm 1Kg"
+    "description": "Barakat Capsicum Yellow Cube 20Mm 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99320",
-    "description": "Barakat Cucumber Cubes Fresh(20 X 20) 1Kg"
+    "description": "Barakat Cucumber Cubes Fresh(20 X 20) 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99349",
-    "description": "Barakat Mint Leaves Sanitized 1kg"
+    "description": "Barakat Mint Leaves Sanitized 1kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99322",
-    "description": "Barakat Parsley Chopped Sanitized - Imported"
+    "description": "Barakat Parsley Chopped Sanitized - Imported",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99321",
-    "description": "Barakat Romaine Lettuce Sanitized & Shredded 1Kg"
+    "description": "Barakat Romaine Lettuce Sanitized & Shredded 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99323",
-    "description": "Barakat White Onion Juliene Half Cut-3Mm 1Kg"
+    "description": "Barakat White Onion Juliene Half Cut-3Mm 1Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52265",
-    "description": "Beef Escalope Spices"
+    "description": "Beef Escalope Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "51515",
-    "description": "Black Pepper"
+    "description": "Black Pepper",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96007",
-    "description": "Butter - KG"
+    "description": "Butter - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91057",
-    "description": "CAMOMILLE - 250 gm"
+    "description": "CAMOMILLE - 250 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52950",
-    "description": "CARDAMOM WHOLE SPICES - KG"
+    "description": "CARDAMOM WHOLE SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96238",
-    "description": "CARROT - KG"
+    "description": "CARROT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96017",
-    "description": "CASHEW WHOLE - KG"
+    "description": "CASHEW WHOLE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96224",
-    "description": "CAULIFLOWER - KG"
+    "description": "CAULIFLOWER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96230",
-    "description": "CHERRY TOMATO - KG"
+    "description": "CHERRY TOMATO - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52917",
-    "description": "CHICKEN BURGER SPICES - KG"
+    "description": "CHICKEN BURGER SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52921",
-    "description": "CHICKEN ESCALOPE SPICES - KG"
+    "description": "CHICKEN ESCALOPE SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52919",
-    "description": "CHICKEN SAUSAGES SPICES - KG"
+    "description": "CHICKEN SAUSAGES SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96183",
-    "description": "CHICKEN STOCK CUBE _PC"
+    "description": "CHICKEN STOCK CUBE _PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96063",
-    "description": "CHICKEN STOCK POWDER - KG"
+    "description": "CHICKEN STOCK POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52930",
-    "description": "CHICKEN WINGS SPICES - KG"
+    "description": "CHICKEN WINGS SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96101",
-    "description": "CHICKPEAS - KG"
+    "description": "CHICKPEAS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96081",
-    "description": "CHICKPEAS 14mm - KG"
+    "description": "CHICKPEAS 14mm - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96082",
-    "description": "CHICKPEAS 9mm - KG"
+    "description": "CHICKPEAS 9mm - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52918",
-    "description": "CHIKEN SHAWARMA SPICES - KG"
+    "description": "CHIKEN SHAWARMA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93004",
-    "description": "CHILLI ORIENTAL SAUSAGE CO-EX"
+    "description": "CHILLI ORIENTAL SAUSAGE CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96057",
-    "description": "CIDER VINEGAR APPLE- LTR"
+    "description": "CIDER VINEGAR APPLE- LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "52939",
-    "description": "CINNAMON STICK - 500 gm"
+    "description": "CINNAMON STICK - 500 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96130",
-    "description": "CINNAMON STICK - KG"
+    "description": "CINNAMON STICK - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96131",
-    "description": "CLOVES - KG"
+    "description": "CLOVES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96174",
-    "description": "COCOA POWDER - KG"
+    "description": "COCOA POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96276",
-    "description": "COCONUT MILK_LTR"
+    "description": "COCONUT MILK_LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "93010",
-    "description": "CONTINENTAL VIENNA CO-EX"
+    "description": "CONTINENTAL VIENNA CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96034",
-    "description": "COOKING CREAM - LTR"
+    "description": "COOKING CREAM - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96172",
-    "description": "CORIANDER POWDER - KG"
+    "description": "CORIANDER POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91054",
-    "description": "CORIANDER SEED - 700 gm"
+    "description": "CORIANDER SEED - 700 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96066",
-    "description": "CORN FLOUR - KG"
+    "description": "CORN FLOUR - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96245",
-    "description": "CORN ON COB LOCAL - KG"
+    "description": "CORN ON COB LOCAL - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52943",
-    "description": "CRUSHED RED PEPPER - KG"
+    "description": "CRUSHED RED PEPPER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96219",
-    "description": "CUCUMBER - KG"
+    "description": "CUCUMBER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96110",
-    "description": "CUCUMBER PICKLES - KG"
+    "description": "CUCUMBER PICKLES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96132",
-    "description": "CUMIN SEEDS - KG"
+    "description": "CUMIN SEEDS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52947",
-    "description": "CURRY MEDRASS SPICES KG"
+    "description": "CURRY MEDRASS SPICES KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96278",
-    "description": "CURRY POWDER - KG"
+    "description": "CURRY POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52946",
-    "description": "CURRY POWDER MEDIUM - KG"
+    "description": "CURRY POWDER MEDIUM   - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96146",
-    "description": "CUSTARD POWDER - KG"
+    "description": "CUSTARD POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96318",
-    "description": "CUT GREEN BEANS FRZ_KG"
+    "description": "CUT GREEN BEANS FRZ_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "92002",
-    "description": "Ceylamix 2029 Mix Merguez Gourmet"
+    "description": "Ceylamix 2029 Mix Merguez Gourmet",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93021",
-    "description": "Ceylamix 2029-P Mix Merguez Piquant Gourmet"
+    "description": "Ceylamix 2029-P Mix Merguez Piquant Gourmet",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93023",
-    "description": "Ceylamix 492-AS Chipolata AS"
+    "description": "Ceylamix 492-AS Chipolata AS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "92000",
-    "description": "Ceylamix 501-CV Chorizo Natural"
+    "description": "Ceylamix 501-CV Chorizo Natural",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53050",
-    "description": "Cinnamon Ground"
+    "description": "Cinnamon Ground",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99630",
-    "description": "Coarse semolina - KG"
+    "description": "Coarse semolina - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93017",
-    "description": "Coconut milk powder mix - KG"
+    "description": "Coconut milk powder mix - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53070",
-    "description": "Coriander Ground"
+    "description": "Coriander Ground",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96002",
-    "description": "Corn Oil - 1.8 ltr"
+    "description": "Corn Oil - 1.8 ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "53060",
-    "description": "Cumin Ground"
+    "description": "Cumin Ground",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96250",
-    "description": "Custard-PCS"
+    "description": "Custard-PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96062",
-    "description": "DEMI GLACE POWDER - KG"
+    "description": "DEMI GLACE POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93006",
-    "description": "DHANYA BRAAI CO-EX"
+    "description": "DHANYA BRAAI CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96241kg",
-    "description": "DILL-kg"
+    "description": "DILL-kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96189",
-    "description": "DRY CHILLI WHOLE LONG-KG"
+    "description": "DRY CHILLI WHOLE LONG-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91055",
-    "description": "DRY LIME - 350 gm"
+    "description": "DRY LIME - 350 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96256",
-    "description": "DRY POMEGRANATE - KG"
+    "description": "DRY POMEGRANATE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96041",
-    "description": "EGG - PIECE"
+    "description": "EGG - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96251",
-    "description": "EGGPLANT GRILLED FR - KG"
+    "description": "EGGPLANT GRILLED FR - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99492",
-    "description": "ESPRESSO CLASSICO BEANS - KG"
+    "description": "ESPRESSO CLASSICO BEANS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52923",
-    "description": "FAJITA SPICES - KG"
+    "description": "FAJITA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99275KG",
-    "description": "FALAFEL-KG"
+    "description": "FALAFEL-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93005",
-    "description": "FARMSTYLE EXTRA T CO-EX"
+    "description": "FARMSTYLE EXTRA T CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52941",
-    "description": "FENNEL GROUND - KG"
+    "description": "FENNEL GROUND - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99504",
-    "description": "FH BOMBAY SPECIAL COMPLETE SPICES [1.3KG] - KG"
+    "description": "FH BOMBAY SPECIAL COMPLETE SPICES [1.3KG] - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93000",
-    "description": "FHG CO-EX CASING DRY BLEND HC0676005"
+    "description": "FHG CO-EX CASING DRY BLEND HC0676005",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96067",
-    "description": "FLOUR #1 MAIDA - KG"
+    "description": "FLOUR #1 MAIDA - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96060",
-    "description": "FOOD COLORING POWDER (YELLOW) - KG"
+    "description": "FOOD COLORING POWDER (YELLOW) - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96059",
-    "description": "FOOD COLORING POWEDER (RED) - KG"
+    "description": "FOOD COLORING POWEDER (RED) - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96154",
-    "description": "FOOD COLORING RED NATCO - LTR"
+    "description": "FOOD COLORING RED NATCO - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96104",
-    "description": "FOUL MEDAMES - KG"
+    "description": "FOUL MEDAMES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96088",
-    "description": "FREEKE - KG"
+    "description": "FREEKE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93011",
-    "description": "FRENCH POLONY"
+    "description": "FRENCH POLONY",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96217KG",
-    "description": "FRESH GREEN ZAATAR-KG"
+    "description": "FRESH GREEN ZAATAR-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99446",
-    "description": "FRESH MARJORAM LOOSE KG"
+    "description": "FRESH MARJORAM LOOSE KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99447",
-    "description": "FRESH THYME KG"
+    "description": "FRESH THYME KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52935",
-    "description": "FRIED CHICKEN SPICES - KG"
+    "description": "FRIED CHICKEN SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99499",
-    "description": "FROZEN WHITE ONION SHREDS - KG"
+    "description": "FROZEN WHITE ONION SHREDS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96339",
-    "description": "Frozen Guava (Pulp)-Kg"
+    "description": "Frozen Guava (Pulp)-Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96338",
-    "description": "Frozen Mango Fruit (slices)-Kg"
+    "description": "Frozen Mango Fruit (slices)-Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96340",
-    "description": "Frozen Strawberry Fruit-Kg"
+    "description": "Frozen Strawberry Fruit-Kg",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93026",
-    "description": "G010 Presti-Grill Arizona"
+    "description": "G010 Presti-Grill Arizona",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "92006",
-    "description": "G047 Presti-Grill Miel/Mostaza (Honey/Mustard)"
+    "description": "G047 Presti-Grill Miel/Mostaza (Honey/Mustard)",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93025",
-    "description": "G057 Presti-Grill Thyme and Lemon"
+    "description": "G057 Presti-Grill Thyme and Lemon",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93027",
-    "description": "G070 Presti-Grill Thyme-Rosemary"
+    "description": "G070 Presti-Grill Thyme-Rosemary",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93028",
-    "description": "G203 Presti Grill Pepperoni Rossi"
+    "description": "G203 Presti Grill Pepperoni Rossi",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93029",
-    "description": "G205 Presti Grill Basil and Rosemary"
+    "description": "G205 Presti Grill Basil and Rosemary",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93030",
-    "description": "G222 Presti-Grill Boletus"
+    "description": "G222 Presti-Grill Boletus",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96204",
-    "description": "GINGER - KG"
+    "description": "GINGER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93008",
-    "description": "GM SALAMI MONTANA 120/30 (KOSHER)"
+    "description": "GM SALAMI MONTANA 120/30 (KOSHER)",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96020",
-    "description": "GOLDEN RAISEN - KG"
+    "description": "GOLDEN RAISEN - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96208",
-    "description": "GREEN CAPSICUM - KG"
+    "description": "GREEN CAPSICUM - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96243",
-    "description": "GREEN CHILLI SWEET - KG"
+    "description": "GREEN CHILLI SWEET - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96317",
-    "description": "GREEN PEAS FRZ_KG"
+    "description": "GREEN PEAS FRZ_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53005",
-    "description": "Garlic Powder"
+    "description": "Garlic Powder",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "51645",
-    "description": "Ginger Ground"
+    "description": "Ginger Ground",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96348",
-    "description": "Grapefruit"
+    "description": "Grapefruit",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96187",
-    "description": "HAREES HUB - KG"
+    "description": "HAREES HUB - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99516",
-    "description": "HEINZ KETCHUP JAR [39GRMS] - PIECE"
+    "description": "HEINZ KETCHUP JAR [39GRMS] - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "99515",
-    "description": "HEINZ MAYONNAISE JAR [33ML] - PIECE"
+    "description": "HEINZ MAYONNAISE JAR [33ML] - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96288-1",
-    "description": "HEINZ TOMATO KETCHUP_KG"
+    "description": "HEINZ TOMATO KETCHUP_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52951",
-    "description": "HOT CURRY POWDER - KG"
+    "description": "HOT CURRY POWDER  -  KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96227",
-    "description": "HOT GREEN CHILI - KG"
+    "description": "HOT GREEN CHILI - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96178",
-    "description": "HOT PEPPER PASTE - KG"
+    "description": "HOT PEPPER PASTE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93007",
-    "description": "HUNTERS DRY WORS CO-EX"
+    "description": "HUNTERS DRY WORS CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52055",
-    "description": "Hamburger Spices"
+    "description": "Hamburger Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96335",
-    "description": "Honey Golden"
+    "description": "Honey Golden",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96074",
-    "description": "INDIAN RICE SELLA 1121 - KG"
+    "description": "INDIAN RICE SELLA 1121 - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99631",
-    "description": "Iraqi Crushed Wheat - KG"
+    "description": "Iraqi Crushed Wheat - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96169",
-    "description": "JALLAB SYRUP - LTR"
+    "description": "JALLAB SYRUP - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96315",
-    "description": "JAMEED BALADI BALLS-KG"
+    "description": "JAMEED BALADI BALLS-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96248",
-    "description": "Jelly strawberry-PCS"
+    "description": "Jelly strawberry-PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52916",
-    "description": "KABSSAH SPICES - KG"
+    "description": "KABSSAH SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99493",
-    "description": "KAKAO CHOCLATE - KG"
+    "description": "KAKAO CHOCLATE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52922",
-    "description": "KAWARMA SPICES - KG"
+    "description": "KAWARMA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96049",
-    "description": "KETCHUP - KG"
+    "description": "KETCHUP - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96295",
-    "description": "KIWI -KG"
+    "description": "KIWI -KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93016",
-    "description": "KOLANJAN POWDER - KG"
+    "description": "KOLANJAN POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52065",
-    "description": "Kaftah Spices"
+    "description": "Kaftah Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52075",
-    "description": "Kibbeh Spices"
+    "description": "Kibbeh Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96222",
-    "description": "LARGE EGGPLANT - KG"
+    "description": "LARGE EGGPLANT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52937",
-    "description": "LASAGNA SPICES- KG"
+    "description": "LASAGNA SPICES- KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96092",
-    "description": "LASAGNE - KG"
+    "description": "LASAGNE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96207",
-    "description": "LEEKS - KG"
+    "description": "LEEKS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96226",
-    "description": "LEMON - KG"
+    "description": "LEMON - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96254",
-    "description": "LEMON DRY - KG"
+    "description": "LEMON DRY - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96411",
-    "description": "LEMON JUICE"
+    "description": "LEMON JUICE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96120",
-    "description": "LEMON SALT - KG"
+    "description": "LEMON SALT -  KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96124",
-    "description": "LENTIL RED SPLIT - KG"
+    "description": "LENTIL RED SPLIT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96239",
-    "description": "LETTUCE ROMAINE - KG"
+    "description": "LETTUCE ROMAINE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96223",
-    "description": "LONG EGGPLANT - KG"
+    "description": "LONG EGGPLANT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96246",
-    "description": "Liquid Pasteurized Egg Yolk-KG [4*5 Kg /Box]"
+    "description": "Liquid Pasteurized Egg Yolk-KG [4*5 Kg /Box]",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52931",
-    "description": "MAHASHI SPICES - KG"
+    "description": "MAHASHI SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52934",
-    "description": "MAJBOUS SPICES - KG"
+    "description": "MAJBOUS SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52925",
-    "description": "MAKLOUBA SPICES - KG"
+    "description": "MAKLOUBA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52926",
-    "description": "MANDI SPICES - KG"
+    "description": "MANDI SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96279",
-    "description": "MANGO - KG"
+    "description": "MANGO - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52928",
-    "description": "MANSAF SPICES - KG"
+    "description": "MANSAF SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91058",
-    "description": "MARJORAM - 250 gm"
+    "description": "MARJORAM - 250 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96319",
-    "description": "MARQOOQ BREAD_PC"
+    "description": "MARQOOQ BREAD_PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96269",
-    "description": "MARROW - KG"
+    "description": "MARROW - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96220",
-    "description": "MARROW READY - KG"
+    "description": "MARROW READY - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96404",
-    "description": "MASALA SPICES-PC"
+    "description": "MASALA SPICES-PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96051",
-    "description": "MAYONNAISE - KG"
+    "description": "MAYONNAISE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96148",
-    "description": "MILK LIQUID FULL FAT NADEC - LTR"
+    "description": "MILK LIQUID FULL FAT NADEC - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96037",
-    "description": "MILK POWDER - KG"
+    "description": "MILK POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "95031",
-    "description": "MINNIES BARBEQUE SAUCE - 500 ml"
+    "description": "MINNIES BARBEQUE SAUCE - 500 ml",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96213",
-    "description": "MINT - BDL"
+    "description": "MINT - BDL",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "BDL"
   },
   {
     "item_code": "96273",
-    "description": "MINT DRY-KG"
+    "description": "MINT DRY-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96213KG",
-    "description": "MINT-KG"
+    "description": "MINT-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96143",
-    "description": "MIX VEG FRZ - PIECE"
+    "description": "MIX VEG FRZ - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96111",
-    "description": "MIX VEG PICKLES - KG"
+    "description": "MIX VEG PICKLES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96142",
-    "description": "MOLOKHIYA FRZ - PIECE"
+    "description": "MOLOKHIYA FRZ - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52932",
-    "description": "MUHAMMARA SPICES - KG"
+    "description": "MUHAMMARA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96205",
-    "description": "MUSHROOM - KG"
+    "description": "MUSHROOM - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96105",
-    "description": "MUSHROOM SLICED - KG"
+    "description": "MUSHROOM SLICED - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99495",
-    "description": "MUSHROOM WHOLE [400GRMS] - CAN"
+    "description": "MUSHROOM WHOLE [400GRMS] - CAN",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "CAN"
   },
   {
     "item_code": "96050",
-    "description": "MUSTARD - KG"
+    "description": "MUSTARD - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99350",
-    "description": "Mayonaise sachet-pc"
+    "description": "Mayonaise sachet-pc",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52493-1",
-    "description": "Mexicana Spices"
+    "description": "Mexicana Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96257",
-    "description": "Mistika - KG"
+    "description": "Mistika - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96331",
-    "description": "NESCAFE COFFEE_KG"
+    "description": "NESCAFE COFFEE_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96197",
-    "description": "NUTMEG_KG"
+    "description": "NUTMEG_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96125",
-    "description": "OKRA ZERO FRZ - PIECE"
+    "description": "OKRA ZERO FRZ - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96316",
-    "description": "OKRA ZERO FRZ_KG"
+    "description": "OKRA ZERO FRZ_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "23098",
-    "description": "OMASSUM - PIECES (24)"
+    "description": "OMASSUM - PIECES (24)",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "91060",
-    "description": "OREGANO - 300 gm"
+    "description": "OREGANO - 300 gm",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96129",
-    "description": "OREGANO DRY - KG"
+    "description": "OREGANO DRY - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52933",
-    "description": "OUZI SPICES - KG"
+    "description": "OUZI SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96001",
-    "description": "Olive Oil Pure - 5ltr"
+    "description": "Olive Oil Pure - 5ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "53090",
-    "description": "Onion Powder"
+    "description": "Onion Powder",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96185",
-    "description": "PAPRIKA POWDER -KG"
+    "description": "PAPRIKA POWDER -KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96212KG",
-    "description": "PARSLEY-KG"
+    "description": "PARSLEY-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99240",
-    "description": "PASTA SALAD_KG"
+    "description": "PASTA SALAD_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96048",
-    "description": "PEALED TOMATO - KG"
+    "description": "PEALED TOMATO - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96096",
-    "description": "PENNE - KG"
+    "description": "PENNE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96290-1",
-    "description": "PEPPER PORTION_PC"
+    "description": "PEPPER PORTION_PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96012",
-    "description": "PINE SEEDS - KG"
+    "description": "PINE SEEDS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96266",
-    "description": "PINEAPPLE - KG"
+    "description": "PINEAPPLE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96211",
-    "description": "POMEGRANATE - KG"
+    "description": "POMEGRANATE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96052",
-    "description": "POMEGRANATE SAUCE - LTR"
+    "description": "POMEGRANATE SAUCE - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96225",
-    "description": "POTATO - KG"
+    "description": "POTATO - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96262",
-    "description": "POTATO HOLLAND - KG"
+    "description": "POTATO HOLLAND - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96005",
-    "description": "PURE GHEE - KG"
+    "description": "PURE GHEE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "51775",
-    "description": "Paprika"
+    "description": "Paprika",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96321",
-    "description": "Pineapple Slice In Can"
+    "description": "Pineapple Slice In Can",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96011",
-    "description": "Pistachio Stick - KG"
+    "description": "Pistachio Stick - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96210",
-    "description": "RED CAPSICUM - KG"
+    "description": "RED CAPSICUM - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96228",
-    "description": "RED CHILI - KG"
+    "description": "RED CHILI - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96171",
-    "description": "RED CHILLI POWDER - KG"
+    "description": "RED CHILLI POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96086",
-    "description": "RED KIDNEY BEANS - KG"
+    "description": "RED KIDNEY BEANS - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96201",
-    "description": "RED ONION - KG"
+    "description": "RED ONION - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52942",
-    "description": "RED PEPPER POWDER - KG"
+    "description": "RED PEPPER POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96236KG",
-    "description": "RED RADISH-KG"
+    "description": "RED RADISH-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96058",
-    "description": "RED VINEGAR - LTR"
+    "description": "RED VINEGAR - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "52936",
-    "description": "ROAST BEEF SPICES - KG"
+    "description": "ROAST BEEF SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93013",
-    "description": "ROAST CHICKEN SAUSAGE CO-EX"
+    "description": "ROAST CHICKEN SAUSAGE CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96087",
-    "description": "ROASTED SESAME - KG"
+    "description": "ROASTED SESAME - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96216KG",
-    "description": "ROCCA-KG"
+    "description": "ROCCA-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96072",
-    "description": "ROSE WATER - LTR"
+    "description": "ROSE WATER - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96215KG",
-    "description": "ROSEMARY-KG"
+    "description": "ROSEMARY-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53080",
-    "description": "Red Peper Sweet"
+    "description": "Red Peper Sweet",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93020",
-    "description": "S222 Base Grilled Chicken Sauce"
+    "description": "S222 Base Grilled Chicken Sauce",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "93009",
-    "description": "SALAMI STICK CO-EX"
+    "description": "SALAMI STICK CO-EX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96289-1",
-    "description": "SALT PORTION_PC"
+    "description": "SALT PORTION_PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96119",
-    "description": "SALT SEA - KG"
+    "description": "SALT SEA - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96162",
-    "description": "SEMOLINA WHITE - KG"
+    "description": "SEMOLINA WHITE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99466",
-    "description": "SESAME OIL LEE KUM KEE (1.75L) - LITRE"
+    "description": "SESAME OIL LEE KUM KEE (1.75L) - LITRE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "52914",
-    "description": "SEVEN SPICES - KG"
+    "description": "SEVEN SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91061",
-    "description": "SHAWARMA SPICES - KG"
+    "description": "SHAWARMA SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96117",
-    "description": "SLICE BLACK OLIVES PICKLES - KG"
+    "description": "SLICE BLACK OLIVES PICKLES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96115",
-    "description": "SLICE GREEN OLIVES PICKLES - KG"
+    "description": "SLICE GREEN OLIVES PICKLES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96274",
-    "description": "SLICED BREAD WHITE - PC"
+    "description": "SLICED BREAD WHITE - PC",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96190",
-    "description": "SODA BICARBONATE PARADISE_KG"
+    "description": "SODA BICARBONATE PARADISE_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96055",
-    "description": "SOY SAUCE - LTR"
+    "description": "SOY SAUCE - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96095",
-    "description": "SPAGHETTI - KG"
+    "description": "SPAGHETTI - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99505",
-    "description": "SPICES FH HUNTERS BILTONG SEASONING [1KG] - KG"
+    "description": "SPICES FH HUNTERS BILTONG SEASONING [1KG] - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99501",
-    "description": "SPICES FH JAGVELD BILTONG SEASONING [1KG] - KG"
+    "description": "SPICES FH JAGVELD BILTONG SEASONING [1KG] - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96231KG",
-    "description": "SPINACH LOCAL-KG"
+    "description": "SPINACH LOCAL-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "95093",
-    "description": "SPRAY CAN 700ML - PCS"
+    "description": "SPRAY CAN 700ML - PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96122",
-    "description": "SPRING ROLL SUNBOULA - PIECES"
+    "description": "SPRING ROLL SUNBOULA - PIECES",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96136",
-    "description": "STAR ANISE - KG"
+    "description": "STAR ANISE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52929",
-    "description": "STEAK SPICES - KG"
+    "description": "STEAK SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96326",
-    "description": "STRAWBERRY"
+    "description": "STRAWBERRY",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96147",
-    "description": "STRAWBERRY JELLY FOSTER CLARK 85 G - PIECE"
+    "description": "STRAWBERRY JELLY FOSTER CLARK 85 G - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96071",
-    "description": "SUGAR - KG"
+    "description": "SUGAR - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96405",
-    "description": "SUGAR STICK_BOX"
+    "description": "SUGAR STICK_BOX",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "BOX"
   },
   {
     "item_code": "96285",
-    "description": "SUMAC POWDER_KG"
+    "description": "SUMAC POWDER_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96003",
-    "description": "SUNFLOWER OIL - LTR"
+    "description": "SUNFLOWER OIL - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96077",
-    "description": "SUNWHITE RICE - KG"
+    "description": "SUNWHITE RICE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96100",
-    "description": "SWEET CORN - KG"
+    "description": "SWEET CORN - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99304",
-    "description": "Samoon Bread - PCs"
+    "description": "Samoon Bread - PCs",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "52125",
-    "description": "Sausage Spices"
+    "description": "Sausage Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53010",
-    "description": "Shish Taouk Spices - White"
+    "description": "Shish Taouk Spices - White",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52035",
-    "description": "Sijouk Spices"
+    "description": "Sijouk Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "92005",
-    "description": "Spain Burger Meat Kefta - KG"
+    "description": "Spain Burger Meat Kefta - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "92004",
-    "description": "Spain Saucisse FRAICHE - KG"
+    "description": "Spain Saucisse FRAICHE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96347",
-    "description": "Sweet Melon"
+    "description": "Sweet Melon",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96345",
-    "description": "Syrup Chocolate-Ltr"
+    "description": "Syrup Chocolate-Ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96344",
-    "description": "Syrup Pomegranate-Ltr"
+    "description": "Syrup Pomegranate-Ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96342",
-    "description": "Syrup Salted Caramel-Ltr"
+    "description": "Syrup Salted Caramel-Ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96343",
-    "description": "Syrup Vanilla-Ltr"
+    "description": "Syrup Vanilla-Ltr",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "52924",
-    "description": "TABOOLY SPICES - KG"
+    "description": "TABOOLY SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96008",
-    "description": "TAHINA AL KANATER - KG"
+    "description": "TAHINA AL KANATER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52927",
-    "description": "TANDOORY SPICES - KG"
+    "description": "TANDOORY SPICES - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99500",
-    "description": "TAPIOCA STARCH [25KG] - KG"
+    "description": "TAPIOCA STARCH [25KG] - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96157",
-    "description": "TEA - KG"
+    "description": "TEA - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96070",
-    "description": "TEA - PIECES"
+    "description": "TEA - PIECES",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96229",
-    "description": "TOMATO - KG"
+    "description": "TOMATO - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96046",
-    "description": "TOMATO PASTE - KG"
+    "description": "TOMATO PASTE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99494",
-    "description": "TOPPING MILK - KG"
+    "description": "TOPPING MILK - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96127",
-    "description": "TORTILLA PLAIN 10 Inc - PIECE"
+    "description": "TORTILLA PLAIN 10 Inc - PIECE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96032",
-    "description": "TURKISH LABNEH - KG"
+    "description": "TURKISH LABNEH - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96175",
-    "description": "TURMERIC POWDER - KG"
+    "description": "TURMERIC POWDER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "99239",
-    "description": "Tahina for SHAWARMA SAUCE_KG"
+    "description": "Tahina for SHAWARMA SAUCE_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96336",
-    "description": "Tamarind Paste"
+    "description": "Tamarind Paste",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "53020",
-    "description": "Turkish Sausage Spices"
+    "description": "Turkish Sausage Spices",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96006",
-    "description": "VEG GHEE - KG"
+    "description": "VEG GHEE - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96198",
-    "description": "VINE LEAVES_KG"
+    "description": "VINE LEAVES_KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96258",
-    "description": "Vanilla Essence (28ml)- PCS"
+    "description": "Vanilla Essence (28ml)- PCS",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "PIECES"
   },
   {
     "item_code": "96013",
-    "description": "WALNUT - KG"
+    "description": "WALNUT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96218KG",
-    "description": "WATER GRASS-KG"
+    "description": "WATER GRASS-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96242",
-    "description": "WATER MELON - KG"
+    "description": "WATER MELON - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96090",
-    "description": "WHITE BULGUR (SOFT) - KG"
+    "description": "WHITE BULGUR (SOFT) - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96202",
-    "description": "WHITE ONION - KG"
+    "description": "WHITE ONION - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "52944",
-    "description": "WHITE PEPPER - KG"
+    "description": "WHITE PEPPER - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96194",
-    "description": "WHITE PEPPER WHOLE-KG"
+    "description": "WHITE PEPPER WHOLE-KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96056",
-    "description": "WHITE VINEGAR - LTR"
+    "description": "WHITE VINEGAR - LTR",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "99502",
-    "description": "WORCESTER SAUCE - LITRE"
+    "description": "WORCESTER SAUCE - LITRE",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "LITRE"
   },
   {
     "item_code": "96065",
-    "description": "YEAST - KG"
+    "description": "YEAST - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96209",
-    "description": "YELLOW CAPSICUM - KG"
+    "description": "YELLOW CAPSICUM - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96080",
-    "description": "YELLOW LENTIL (MASOOR)- KG"
+    "description": "YELLOW LENTIL (MASOOR)- KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "96035",
-    "description": "YOGHURT - KG"
+    "description": "YOGHURT - KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
   },
   {
     "item_code": "91021",
-    "description": "ALL SPICE GROND - 100 gm"
+    "description": "ALL SPICE GROND - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91027",
-    "description": "ANISE GROUND - 100 gm"
+    "description": "ANISE GROUND - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91012",
-    "description": "BARBEQUE SPICES - 100 gm"
+    "description": "BARBEQUE SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91010",
-    "description": "BEEF ESCALOPE SPICES - 100 gm"
+    "description": "BEEF ESCALOPE SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91044",
-    "description": "BEEF SHAWARMA SPICES - 100 gm"
+    "description": "BEEF SHAWARMA SPICES  - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91007",
-    "description": "BERYANI SPICES - 100 gm"
+    "description": "BERYANI SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91022",
-    "description": "BLACK PEPPER - 100 gm"
+    "description": "BLACK PEPPER - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91053",
-    "description": "CARDAMOM SPICES - 100 gm"
+    "description": "CARDAMOM SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91009",
-    "description": "CHICKEN ESCALOPE SPICES - 100 gm"
+    "description": "CHICKEN ESCALOPE SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91006",
-    "description": "CHICKEN SHAWARMA SPICES - 100 gm"
+    "description": "CHICKEN SHAWARMA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91023",
-    "description": "CINNAMON GROUND - 95 gm"
+    "description": "CINNAMON GROUND - 95 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91030",
-    "description": "CLOVES GROUND - 100 gm"
+    "description": "CLOVES GROUND - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91052",
-    "description": "CORDON BLEU SPICES - 100 gm"
+    "description": "CORDON BLEU SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "90029",
-    "description": "CORIANDER GROUND - 40 gm"
+    "description": "CORIANDER GROUND - 40 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91025",
-    "description": "CORIANDER GROUND - 75 gm"
+    "description": "CORIANDER GROUND - 75 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91024",
-    "description": "CUMIN GROUND - 100 gm"
+    "description": "CUMIN GROUND - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91038",
-    "description": "CURRY POWDER MEDIUM - 100 gm"
+    "description": "CURRY POWDER MEDIUM - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91015",
-    "description": "FAJITA SPICES - 100 gm"
+    "description": "FAJITA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91039",
-    "description": "FENUGREEK - 100 gm"
+    "description": "FENUGREEK - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91008",
-    "description": "FRIED CHICKEN SPICES - 100 gm"
+    "description": "FRIED CHICKEN SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91042",
-    "description": "GARLIC POWDER - 100 gm"
+    "description": "GARLIC POWDER - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91041",
-    "description": "HOT CURRY POWDER - 100 gm"
+    "description": "HOT CURRY POWDER - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91004",
-    "description": "KABSSAH SPICES - 100 gm"
+    "description": "KABSSAH SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "90098",
-    "description": "KAFTAH SPICES - 100 gm"
+    "description": "KAFTAH SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "90099",
-    "description": "KIBBEH SPICES - 100 gm"
+    "description": "KIBBEH SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91050",
-    "description": "MAHASHI SPICES - 100 gm"
+    "description": "MAHASHI SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91031",
-    "description": "MAHLAB GROUND - 90 gm"
+    "description": "MAHLAB GROUND - 90 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91047",
-    "description": "MAJBOUS SPICES - 100gm"
+    "description": "MAJBOUS SPICES - 100gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91019",
-    "description": "MAKLOUBA SPICES - 100 gm"
+    "description": "MAKLOUBA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91020",
-    "description": "MANDI SPICES - 100 gm"
+    "description": "MANDI SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91046",
-    "description": "MANSAF SPICES - 100 gm"
+    "description": "MANSAF SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91016",
-    "description": "MEXICANA SPICES - 100 gm"
+    "description": "MEXICANA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91029",
-    "description": "NUTMEG GROUND - 90 gm"
+    "description": "NUTMEG GROUND - 90 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91043",
-    "description": "ONION POWDER - 100 gm"
+    "description": "ONION POWDER - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91049",
-    "description": "OUZI SPICES - 100 gm"
+    "description": "OUZI SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91040",
-    "description": "PAPRIKA - 100 gm"
+    "description": "PAPRIKA - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91013",
-    "description": "PHILADELPHIA SPICES - 100 gm"
+    "description": "PHILADELPHIA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91000",
-    "description": "PIZZA SPICES 110 GRMS - PIECE"
+    "description": "PIZZA SPICES 110 GRMS - PIECE",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91051",
-    "description": "RAS EL HANOUT SPICES - 100 gm"
+    "description": "RAS EL HANOUT SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91048",
-    "description": "ROAST BEEF SPICES - 100 gm"
+    "description": "ROAST BEEF SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91001",
-    "description": "SHAWARMA SPICES - 100 gm"
+    "description": "SHAWARMA SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91011",
-    "description": "SHISH TAOUK SPICES RED - 100 gm"
+    "description": "SHISH TAOUK SPICES RED - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "90097",
-    "description": "SHISH TAOUK SPICES WHITE 100 gm"
+    "description": "SHISH TAOUK SPICES WHITE 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91028",
-    "description": "SUMAC - 90 gm"
+    "description": "SUMAC - 90 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91017",
-    "description": "TABOOLY SPICES - 100 gm"
+    "description": "TABOOLY SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91045",
-    "description": "TANDOORY SPICES - 100 gm"
+    "description": "TANDOORY SPICES - 100 gm",
+    "category": "Spices",
+    "uom": "PIECES"
   },
   {
     "item_code": "91037",
-    "description": "WHITE PEPPER - 115 gm"
+    "description": "WHITE PEPPER - 115 gm",
+    "category": "Spices",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "20110",
+    "description": "PAKISTANI BEEF SHOULDER - KG",
+    "origin": "PAK",
+    "category": "Beef & Veal",
+    "uom": "KG"
+  },
+  {
+    "item_code": "32001",
+    "description": "S.A CHILLED BEEF SILVERSIDE - KG",
+    "origin": "S.A",
+    "category": "Beef & Veal",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96025",
+    "description": "Arrish cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96026",
+    "description": "FETA CHEESE - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96027",
+    "description": "PARMESAN CHEESE BLOCK - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96029",
+    "description": "WHITE SLICED CHEESE - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96030",
+    "description": "YELLOW SLICED CHEESE - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96031",
+    "description": "CHEDDAR CHEESE BLOCK - KG",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96423",
+    "description": "KerryGold Red Cheese Slices-Pkt",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "PACKET"
+  },
+  {
+    "item_code": "96432",
+    "description": "Akawi Czech Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96434",
+    "description": "Fresh Halloumi Cheese Roll",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96450",
+    "description": "White Cheddar",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96451",
+    "description": "Color Cheddar",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96457",
+    "description": "Roumy Cheese Young",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96460",
+    "description": "Egyptian Natural Mish",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96461",
+    "description": "Low Salt Soft Cheese",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96463",
+    "description": "Gouda Cumin (KG)",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96467",
+    "description": "President emmental block",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96476",
+    "description": "Cow Kashkaval",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96477",
+    "description": "Cow kashkaval light",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96478",
+    "description": "Cow kashkaval wheel",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96480",
+    "description": "Parmesan grana pedano Hard cheese parmesan",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96481",
+    "description": "EDAM BALL",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96483",
+    "description": "Gouda Mild",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96485",
+    "description": "Gouda Cumin Wheels",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96486",
+    "description": "Hajdu Kashkaval Low Fat",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96487",
+    "description": "Hajdu Kashkaval",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96493",
+    "description": "Cheese Parmesan Block",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96494",
+    "description": "President Emmental Cheese Block",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96496",
+    "description": "President White Cheddar Loaf",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "KG"
+  },
+  {
+    "item_code": "96502",
+    "description": "President Edam Loaf",
+    "origin": "LOCAL",
+    "category": "Cheese",
+    "uom": "CTN"
+  },
+  {
+    "item_code": "27119",
+    "description": "FRESH WHOLE CHICKEN - KG",
+    "origin": "LOCAL",
+    "category": "Chicken",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30086",
+    "description": "DRY MEAT AL MAWASHI BEEF JAGVELD BILTONG - KG",
+    "origin": "LOCAL",
+    "category": "Dry Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "71116",
+    "description": "DRY MEAT AL MAWASHI BEEF HUNTERS BILTONG [40GRMS] - PIECE",
+    "origin": "LOCAL",
+    "category": "Dry Meat",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "71117",
+    "description": "DRY MEAT AL MAWASHI HUNTERS DRYWORS [30GRMS] - PIECE",
+    "origin": "LOCAL",
+    "category": "Dry Meat",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "71118",
+    "description": "DRY MEAT AL MAWASHI SALAMI STICKS [30GRMS] - PIECE",
+    "origin": "LOCAL",
+    "category": "Dry Meat",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "71119",
+    "description": "DRY MEAT AL MAWASHI BEEF JAGVELD BILTONG [40GRMS] - PIECE",
+    "origin": "LOCAL",
+    "category": "Dry Meat",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97061 PLATE",
+    "description": "KIBBEH 50 G - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97065 PLATE",
+    "description": "SAMBOUSAK MEAT - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97066 PLATE",
+    "description": "SHISH BARAK - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97067 PLATE",
+    "description": "MEAT FATAYER  - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97068 PLATE",
+    "description": "CHEESE FATAYER - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97073",
+    "description": "FRZ APP RICE KIBBEH 50 GRMS - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97074",
+    "description": "FRZ APP POTATO KIBBEH 50 GRMS - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97075",
+    "description": "FRZ APP MOSUL PLAIN KIBBEH 580 GRMS - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97076",
+    "description": "FRZ APP MOSUL STUFFED KIBBEH 600 GRMS - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97077",
+    "description": "FRZ APP FRIED KUFTAH 50 GRMS - PIECE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97078",
+    "description": "FRZ APP RICE KIBBEH BBAYTI [50G*9PC] - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97079",
+    "description": "FRZ APP POTATO KIBBEH BBAYTI [50G*6PC] - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97080",
+    "description": "FRZ APP FRIED KUFTAH BBAYTI [50G*4PC] - PLATE",
+    "origin": "LOCAL",
+    "category": "FROZEN APPETIZERS",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "20021",
+    "description": "FORE QUARTER (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20038",
+    "description": "CHILLED CUBES BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20041",
+    "description": "NECK B/LESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20043",
+    "description": "AUS CHIL LAMB SHANK BONELESS - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21400",
+    "description": "Australian Hogget RACK SPECIAL CUTS - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21401",
+    "description": "AUS Hogget SHORTLOIN B/LESS (LAMB AUSTRALIA) - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21403",
+    "description": "AUS Hogget SHORTLOIN B/IN  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21408",
+    "description": "AUSHogget SHOULDER  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21409",
+    "description": "AUS Hogget SHOULDER BONELESS  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21410",
+    "description": "AUS Hogget RACK SADDLE - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21411",
+    "description": "AUSHogget LEG-BONELESS  - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21413",
+    "description": "AUS Hogget LEG-BONE IN- KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21420",
+    "description": "AUS Hogget Rack special cut",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21421",
+    "description": "AUS Hogget Rack french Cut",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "21422",
+    "description": "AUS Hogget Shank B/less",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "23500",
+    "description": "LAMB AUS CUBE BONE IN [7KG] - BOX",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "BOX"
+  },
+  {
+    "item_code": "34349",
+    "description": "Al Mawashi Box - Half carcass",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "BOX"
+  },
+  {
+    "item_code": "SEWR",
+    "description": "SUPPLIER EXCESS WEIGHT RECEIPT - KG",
+    "origin": "AUS",
+    "category": "Lamb-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "34016",
+    "description": "FROZEN LAMB AUS SHORT LEG BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
+  },
+  {
+    "item_code": "34455",
+    "description": "FROZEN LAMB AUS SHOULDER BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
+  },
+  {
+    "item_code": "34457",
+    "description": "FROZEN LAMB AUS NECK BONE IN - KG",
+    "origin": "AUS",
+    "category": "Lamb-Frozen",
+    "uom": "KG"
+  },
+  {
+    "item_code": "10135",
+    "description": "FRESH IRANIAN LAMB - KG",
+    "origin": "IRAN",
+    "category": "Lamb-Local",
+    "uom": "KG"
+  },
+  {
+    "item_code": "22041",
+    "description": "S.A LAMB NECK B/LESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "22043",
+    "description": "SA CHIL LAMB SHANK BONELESS - KG",
+    "origin": "S.A",
+    "category": "Lamb-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "00125",
+    "description": "GOATS - HEAD",
+    "origin": "LOCAL",
+    "category": "LiveStock",
+    "uom": "HEAD"
+  },
+  {
+    "item_code": "20190",
+    "description": "Chilled AUS lamb Hearts - KG",
+    "origin": "AUS",
+    "category": "Offals",
+    "uom": "KG"
+  },
+  {
+    "item_code": "34008",
+    "description": "FROZEN BEEF LIVER (AUS) - KG",
+    "category": "Offals",
+    "uom": "KG"
+  },
+  {
+    "item_code": "34459",
+    "description": "FROZEN LAMB FEET - PIECE",
+    "category": "Offals",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "34460",
+    "description": "FROZEN BEEF FEET - PIECE",
+    "category": "Offals",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "20082",
+    "description": "BRAZILIAN BEEF BURGER - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20189",
+    "description": "Aus Chilled Beef Mince",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "25012",
+    "description": "ARAYESS - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "25015",
+    "description": "BEEF BURGER - PROCESSED MEAT",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "25035",
+    "description": "Lamb Tikka skewers - pc",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "25039",
+    "description": "CHICKEN STROGANOAFF - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "25040",
+    "description": "CHICKEN ESCALOPE - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30030",
+    "description": "Chorizo Sausage",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30032",
+    "description": "Thyme & Lemon Chicken Cubes - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30033",
+    "description": "Arizona Chicken Cubes - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30035",
+    "description": "Peperoni Rossi Chicken Cubes - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30036",
+    "description": "Basil & Rosemary Chicken Cubes - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30042",
+    "description": "Pepperoni Rossi Lamb Chops - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30047",
+    "description": "Arizona Lamb Fondue - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30054",
+    "description": "Spicy Lamb Merguez - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30079",
+    "description": "PROCESSED LAMB TIKKA EXTRA - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30080",
+    "description": "PROCESSED LAMB EGGPLANT KABAB - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30081",
+    "description": "PROCESSED LAMB HALABI KABAB - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30082",
+    "description": "PROCESSED LAMB KHASHKHASH KABAB - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30084",
+    "description": "PROCESSED LAMB IZMIRLI KABAB - KG",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97008",
+    "description": "Kawerma _ JAR",
+    "origin": "LOCAL",
+    "category": "Processed Meat",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "71070",
+    "description": "FATTOUSH FTR - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "71073",
+    "description": "MUTABAL FTR - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "71077",
+    "description": "GARLIC PASTE FTR - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "96107",
+    "description": "VINE LEAVES VEG COOKED (STUFFED) - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "97100",
+    "description": "YOGHURT WITH CUCUMBER - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97100KG",
+    "description": "YOGHURT WITH CUCUMBER - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97101KG",
+    "description": "FATTOUSH SALAD -  KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97102KG",
+    "description": "HUMMOS - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97104KG",
+    "description": "MUTABAL - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97105KG",
+    "description": "MUHAMMARA - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97106KG",
+    "description": "GARLIC PASTE - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97107",
+    "description": "ROCCA SALAD -KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97108",
+    "description": "VINE LEAVES VEGETABLE - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97116",
+    "description": "BABA GANOUJ - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97116 PLATE",
+    "description": "BABA GANOUJ_PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97124",
+    "description": "GREEK SALAD - KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99266",
+    "description": "BIWAZ-KG",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99327",
+    "description": "Barakat Garlic Chilly Dip 50gms",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99329",
+    "description": "Barakat Garlic Dip 1Kg",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99330",
+    "description": "Barakat Garlic Dip 50gms",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99375",
+    "description": "Avocado w Hummus",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99376",
+    "description": "Arabic Salad",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99377",
+    "description": "Ceasar Salad",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99378",
+    "description": "CEASAR SALAD - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99379",
+    "description": "GARLIC PASTE [250GRMS] - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99458",
+    "description": "GARLIC PASTE (35G) - PIECES",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99459",
+    "description": "GARLIC PASTE CHILI (35G) - PIECES",
+    "origin": "LOCAL",
+    "category": "RTE COLD APP",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "71090",
+    "description": "FRENCH FRIES REGULAR-FTR",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "71091",
+    "description": "FRENCH FRIES LARGE-FTR",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "96084",
+    "description": "LIMA BEANS - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97001",
+    "description": "Chicken with Oriental Rice _ PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97007",
+    "description": "Dawood bash with Rice _ PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97011",
+    "description": "Chicken Biryani _ PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97014",
+    "description": "Butter Chicken _ PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97017",
+    "description": "Macaroni Bechamel_Plate",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97018",
+    "description": "White beans with Lamb & Rice _ PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97026",
+    "description": "JORDANIAN MANSAF- 10 PERSONS",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97027",
+    "description": "Lamb Kabssa_PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97028",
+    "description": "Jordanian Mansaf_PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "97033KG",
+    "description": "BEEF STEAK W VEGETABLES",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "97035",
+    "description": "Brazilian Burger Sandwich - Pc",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "98001",
+    "description": "MEAT BERYANI 10 PLATES - RAMADAN 2022 (FOOD BANK)",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "BOX"
+  },
+  {
+    "item_code": "99101-plt",
+    "description": "Kabab Hindi-plate (P/O)",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99102",
+    "description": "KOFTA KESHKASH_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99108",
+    "description": "WHITE BEANS W LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99110",
+    "description": "KOFTA W TAHINA SAUCE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99112",
+    "description": "POTATO IN THE OVEN_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99115",
+    "description": "MIXED VEGETABLES W LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99116",
+    "description": "SPINACH W LAMB_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99120",
+    "description": "CHICKEN W POTATO _KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99121",
+    "description": "BIRYANI RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99123-PLATE",
+    "description": "CHICKEN STEAK W VEGETABLES_PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99132",
+    "description": "VEGETABLE BIRYANI_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99140",
+    "description": "STUFFED VINE LEAVES W MEAT_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99141",
+    "description": "STUFFED CABBAGE W MEAT_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99143",
+    "description": "KOUSA BIL LABAN_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99144",
+    "description": "STUFFED EGGPLANT W TOMATO SAUCE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99145",
+    "description": "CHICKEN KABSSA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99145-PLATE",
+    "description": "CHICKEN KABSSA-PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99151",
+    "description": "LAMB HAREES_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99154",
+    "description": "LENTIL SOUP_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99157",
+    "description": "LAMB SAUSAGE W VEGT _KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99163",
+    "description": "MEXICAN RED RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99165",
+    "description": "CHICKEN CURRY_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99166",
+    "description": "LAMB CURRY_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99167",
+    "description": "BEEF STROGANOFF_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99171",
+    "description": "CHICKEN FAJITA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99172",
+    "description": "PASTA ARABIATA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99173",
+    "description": "ALFREDO PASTA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99180",
+    "description": "CHICKEN ESCALOPE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99194",
+    "description": "LAMB LIVER W GARLIC LEMON SAUCE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99200",
+    "description": "CHICKEN SHAWARMA SANDWICH small_PC",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99201",
+    "description": "BEEF SHAWARMA SANDWICH SMALL_PC",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99210",
+    "description": "Grilled Quarter Chicken",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99221",
+    "description": "CHICKEN CRISPY_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99222",
+    "description": "CHICKEN W ORIENTAL RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99224",
+    "description": "EGGPLANT MOUSSAKA_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99235-PLT",
+    "description": "LAMB MOUSAKKA_PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99236",
+    "description": "LAMB QIDREH_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99238",
+    "description": "OUZI RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99243",
+    "description": "KABSSA RICE_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99251",
+    "description": "CHICKENBALL CURRY_KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99252_kg",
+    "description": "Lamb mahashiya_kg",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99257",
+    "description": "Maklouba plate",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99258",
+    "description": "chicken molokhiya",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99275",
+    "description": "FALAFEL-PIECES",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99287",
+    "description": "MEAT SHAWRMA SALAD",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99288",
+    "description": "CHICKEN SHAWARMA SALAD",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99289",
+    "description": "HUMMUS WITH MEAT SHAWRMA - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99290",
+    "description": "HUMMUS WITH CHICKEN SHAWRMA - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99294",
+    "description": "SANDWICH FRIED FALAFEL - PC",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99307",
+    "description": "BEEF SHAWARMA(UNION)KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99308",
+    "description": "CHICKEN SHAWARMA(UNION) KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99309",
+    "description": "BEEF SHAWARMA SANDWICH LARGE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99310",
+    "description": "CHICKEN SHAWARMA SANDWICH LARGE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99311",
+    "description": "Chicken Shawarma Arabic",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99337",
+    "description": "Musakhan Roll",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99357",
+    "description": "Green Broad Beans Maklouba",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99374",
+    "description": "Koshary Egyptian",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99393",
+    "description": "Lentil Soup 250g_plt",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99397",
+    "description": "Kofta w Tahina P/O",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99398",
+    "description": "Lamb Ouzi P/O",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99399",
+    "description": "Maklouba and Chicken P/O",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99402 plate",
+    "description": "Bukhari Lamb_plate",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99405",
+    "description": "Bukhari Tray(APP)",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99408",
+    "description": "Bukhari Rice_kg",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99418",
+    "description": "Mojaddara - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99420",
+    "description": "Kowaj meat- KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99421",
+    "description": "BOILED MEAT BONE IN - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99422",
+    "description": "maklouba chicken -KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99423",
+    "description": "KABSSA Tray (APP) - Plate",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99453",
+    "description": "Mix vegetable Meal P/O",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99455",
+    "description": "Escalope W Spaghetti P/O",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99457",
+    "description": "Jordanian Mansaf w Rice (union)",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99519",
+    "description": "Mulikhiya Without Chicken - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99520",
+    "description": "Chicken fukhara - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99521",
+    "description": "Napolitnan spaghti - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99522",
+    "description": "Rack cuts W/lemon and sour - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99523",
+    "description": "Rack cuts W/delmages savuce - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99524",
+    "description": "Potato soteh - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99525",
+    "description": "Freeka without meat - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99527",
+    "description": "maklouba rice without meat - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99532",
+    "description": "BOILED MEAT BONELESS - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99537",
+    "description": "MEAT SHAWARMA ARABIC PLATE - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99538",
+    "description": "MIX SHAWARMA ARABIC PLATE - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99540",
+    "description": "MASHBUS RICE - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99543",
+    "description": "Ckicken oven roasted - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99546",
+    "description": "F&B COOKED CHICKEN STROGANOFF - KG",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "KG"
+  },
+  {
+    "item_code": "99547",
+    "description": "F&B COOKED MOJADDARA MEAL - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99549",
+    "description": "F&B COOKED LAMB BIRYANI MEAL - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99600",
+    "description": "BBAYTI MIXED PASTRY PLATTER MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99601",
+    "description": "BBAYTI LAMB OUZI MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99602",
+    "description": "BBAYTI VERMICELLI RICE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99603",
+    "description": "BBAYTI LAMB BERYANI MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99604",
+    "description": "BBAYTI LAMB SHAKRYIA MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99605",
+    "description": "BBAYTI GREEN BEANS WITH LAMB MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99606",
+    "description": "BBAYTI LAMB OKRA MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99607",
+    "description": "BBAYTI DAWOOD BASHA MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99608",
+    "description": "BBAYTI CHICKEN STEAK WITH MUSHROOM SAUCE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99609",
+    "description": "BBAYTI JORDANIAN MANSAF MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99610",
+    "description": "BBAYTI MACARONI BECHAMEL MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99611",
+    "description": "BBAYTI CHICKEN BIRYANI MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99612",
+    "description": "BBAYTI BEEF STEAK WITH MUSHROOM SAUCE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99613",
+    "description": "BBAYTI KOFTA WITH TOMATO SAUCE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99614",
+    "description": "BBAYTI BASHA W ASAKRO MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99615",
+    "description": "BBAYTI ROLL KABAB W EGGPLANT TOMATO SAUCE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99616",
+    "description": "BBAYTI BUKHARI LAMB MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99617",
+    "description": "BBAYTI LAMB MASHBOUS MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99618",
+    "description": "BBAYTI KOFTA WITH TAHINA SAUCE MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99619",
+    "description": "BBAYTI LAMB KABSSAH MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99620",
+    "description": "BBAYTI BEEF STROGANOFF MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99621",
+    "description": "BBAYTI LAMB MAKLOUBA MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99622",
+    "description": "BBAYTI BEEF LASAGNA MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99623",
+    "description": "BBAYTI CHICKEN WITH POTATO MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99624",
+    "description": "BBAYTI GREENPEAS WITH LAMB MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99625",
+    "description": "BBAYTI MEAT BURGER MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99626",
+    "description": "BBAYTI KIBBEH BIL LABAN MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99627",
+    "description": "BBAYTI STUFFED MARROW WITH LABAN MEAL - PIECE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PIECES"
+  },
+  {
+    "item_code": "99628",
+    "description": "BBAYTI FRIED KIBBEH [5PC] - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "99629",
+    "description": "BBAYTI KIBBEH GRILLED - PLATE",
+    "origin": "LOCAL",
+    "category": "RTE HOT Food",
+    "uom": "PLATE"
+  },
+  {
+    "item_code": "96079",
+    "description": "GREEN LENTIL (TOOR)- KG",
+    "category": "Service-Kitchen Ingrediants",
+    "uom": "KG"
+  },
+  {
+    "item_code": "36007",
+    "description": "AUS BEEF ANGUS BEEF MINCED - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "37009",
+    "description": "Chilled AUS Angus Beef Knuckle",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "37010",
+    "description": "Chilled AUS Beef Angus Brisket - KG",
+    "origin": "AUS",
+    "category": "VAC-AUS",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20083",
+    "description": "BRAZILIAN BEEF TOPSIDE THIN STEAK - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20088",
+    "description": "BRAZILIAN BEEF STROGANOFF - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
+  },
+  {
+    "item_code": "20089",
+    "description": "BRAZILIAN BEEF CUBES - KG",
+    "origin": "BRZ",
+    "category": "VAC-BRZ",
+    "uom": "KG"
+  },
+  {
+    "item_code": "36132",
+    "description": "New Zealand Mince",
+    "origin": "NEZ",
+    "category": "VAC-NZ",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30087",
+    "description": "VAC SA BEEF MINCE - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30088",
+    "description": "VAC SA BEEF STROGANOFF - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30089",
+    "description": "VAC SA BEEF THIN STEAK - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "30090",
+    "description": "VAC SA BEEF CUBES - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
+  },
+  {
+    "item_code": "37012",
+    "description": "VAC SA BEEF EYE ROUND - KG",
+    "origin": "S.A",
+    "category": "VAC-SA",
+    "uom": "KG"
   }
 ]

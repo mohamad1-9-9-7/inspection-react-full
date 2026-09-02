@@ -2,6 +2,7 @@
 import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
+import GlobalDatePicker from "./components/GlobalDatePicker";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
@@ -813,6 +814,7 @@ export default function App() {
       }
     >
       <NotificationManager />
+      <GlobalDatePicker />
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />

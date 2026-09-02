@@ -1,8 +1,8 @@
 // src/pages/settings/SettingsPage.jsx
 // Settings & Admin Tools Hub - aligned with the refreshed NamedDashboard design.
 
-import React, { useMemo, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiArchive,
   FiArrowLeft,
@@ -296,7 +296,25 @@ function toolComponent(active) {
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { t, dir, lang, toggle } = useSettingsLang();
-  const [active, setActive] = useState(null);
+  /* الأداة المفتوحة بتعيش بالـURL ('/settings?tool=notifications') مش بالـstate.
+     قبل هيك كانت state، فزرّ رجوع المتصفح كان يطلّعك من الإعدادات كلها
+     ويرجّعك للداشبورد بدل ما يرجّعك لشبكة الأدوات. وكمان صار في رابط مباشر لكل أداة. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const active = searchParams.get("tool") || null;
+  const setActive = useCallback(
+    (id, opts) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set("tool", id);
+          else next.delete("tool");
+          return next;
+        },
+        { replace: !!opts?.replace }
+      );
+    },
+    [setSearchParams]
+  );
   const [hovered, setHovered] = useState(null);
   const [query, setQuery] = useState("");
   const [time, setTime] = useState(new Date());
@@ -349,8 +367,9 @@ export default function SettingsPage() {
   const activeItem = active ? accessibleItems.find((item) => item.id === active) : null;
 
   useEffect(() => {
-    if (active && !activeItem) setActive(null);
-  }, [active, activeItem]);
+    // أداة غير مسموحة أو اسم غلط بالرابط — نظّف الرابط بلا ما تزيد خطوة بالتاريخ.
+    if (active && !activeItem) setActive(null, { replace: true });
+  }, [active, activeItem, setActive]);
 
   const filteredSections = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -395,10 +414,26 @@ export default function SettingsPage() {
     );
   }
 
+  /* زرّ رجوع ثابت. زرّ الـaside بيطلع برّا الشاشة بالأدوات الطويلة (الإشعارات
+     مثلاً) فبتضل عالق جوّا الأداة. position:fixed مش متأثر بالـoverflow
+     تبع #root، فبيضل ظاهر دايمًا. */
+  const backFab = !active ? null : (
+    <button
+      type="button"
+      onClick={() => setActive(null)}
+      style={styles.backFab}
+      title={t("allTools")}
+    >
+      <FiArrowLeft aria-hidden="true" />
+      <span>{t("allTools")}</span>
+    </button>
+  );
+
   if (active === "accounts-mgmt") {
     return (
       <main className="settings-new-page" style={styles.page} dir={dir}>
         <AccountsManagementTab onClose={() => setActive(null)} />
+        {backFab}
       </main>
     );
   }
@@ -596,6 +631,7 @@ export default function SettingsPage() {
 
         <footer style={styles.footer}>Built by Eng. Mohammed Abdullah</footer>
       </div>
+      {backFab}
     </main>
   );
 }
@@ -968,6 +1004,24 @@ const styles = {
     color: "#64748b",
     lineHeight: 1.55,
     fontWeight: 750,
+  },
+  backFab: {
+    position: "fixed",
+    bottom: 22,
+    insetInlineEnd: 22,
+    zIndex: 60,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 9,
+    minHeight: 48,
+    padding: "0 20px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(135deg,#0f172a,#0f766e)",
+    color: "#fff",
+    fontWeight: 950,
+    cursor: "pointer",
+    boxShadow: "0 14px 32px rgba(15,23,42,.28)",
   },
   panelCard: {
     minWidth: 0,

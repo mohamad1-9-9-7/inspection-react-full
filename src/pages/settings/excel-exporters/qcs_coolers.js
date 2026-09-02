@@ -6,20 +6,30 @@ import {
   addDocHeader, addFooter, formatDMY, extractDate,
   pageSetupLandscape,
 } from "./_lib";
+import {
+  defForStorageKey,
+  defsFromPayload,
+  inRange,
+  labelForStorageKey,
+  productLimitFor,
+  rangeLabel,
+} from "../../monitor/branches/qcs/coolerDefs";
 
 const COOLER_TIMES = [
   "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM",
   "2:00 PM","4:00 PM","6:00 PM","8:00 PM",
 ];
 
-function labelForCooler(i) {
-  return i === 7 ? "FREEZER" : (i === 2 || i === 3) ? "Production Room" : `Cooler ${i + 1}`;
-}
-
 export default async function build(wb, record, ctx) {
   const { branchLabel, sheetName } = ctx;
   const p = record?.payload || {};
   const reportDate = formatDMY(extractDate(record));
+
+  /* Names, kinds and limits as they stood on the day of the readings — the
+     record carries them; sheets filed before that fall back to the legacy
+     layout. Same source as CoolersView, so the backup keeps mirroring it. */
+  const { coolerDefs, loadingDef } = defsFromPayload(p);
+  const labelForCooler = (i) => coolerDefs[i]?.label || `Cooler ${i + 1}`;
 
   // 1 (cooler col) + 9 time cols + 1 remarks col = 11 cols
   const NC = COOLER_TIMES.length + 2;
@@ -105,7 +115,8 @@ export default async function build(wb, record, ctx) {
     r++;
   } else {
     coolers.forEach((c, i) => {
-      ws.getCell(r, 1).value = labelForCooler(i);
+      const def = coolerDefs[i];
+      ws.getCell(r, 1).value = `${labelForCooler(i)} (${rangeLabel(def)})`;
       ws.getCell(r, 1).font = { bold: true, size: 10 };
       ws.getCell(r, 1).alignment = left;
       ws.getCell(r, 1).border = BORDER_BLACK;
@@ -119,7 +130,8 @@ export default async function build(wb, record, ctx) {
           cell.value = `${String(raw).trim()}°C`;
           cell.font = { size: 10 };
           const n = parseFloat(raw);
-          if (!isNaN(n) && n >= 5) {
+          // Out of THIS unit's band — a dry store at 20°C is not a breach.
+          if (!isNaN(n) && !inRange(def, n)) {
             cell.font = { bold: true, color: { argb: COLORS.RED }, size: 10 };
             cell.fill = fillSolid(COLORS.RED_BG);
           }
@@ -140,7 +152,7 @@ export default async function build(wb, record, ctx) {
   /* ─── Loading Area row ─── */
   if (p.loadingArea) {
     const la = p.loadingArea;
-    ws.getCell(r, 1).value = "Loading Area";
+    ws.getCell(r, 1).value = `${loadingDef.label} (${rangeLabel(loadingDef)})`;
     ws.getCell(r, 1).font = { bold: true, size: 10 };
     ws.getCell(r, 1).alignment = left;
     ws.getCell(r, 1).fill = fillSolid(COLORS.GRAY_LIGHT);
@@ -155,7 +167,7 @@ export default async function build(wb, record, ctx) {
         cell.value = `${String(raw).trim()}°C`;
         cell.font = { size: 10 };
         const n = parseFloat(raw);
-        if (!isNaN(n) && n >= 16) {
+        if (!isNaN(n) && !inRange(loadingDef, n)) {
           cell.font = { bold: true, color: { argb: COLORS.RED }, size: 10 };
           cell.fill = fillSolid(COLORS.RED_BG);
         }
@@ -212,17 +224,8 @@ export default async function build(wb, record, ctx) {
     ws.getRow(r).height = 22;
     r++;
 
-    const labelForStorage = (key) => {
-      if (key === "loading-area") return "Loading Area";
-      const m = String(key || "").match(/^cooler-(\d+)$/);
-      if (!m) return key || "";
-      const i = Number(m[1]);
-      return i === 7 ? "FREEZER" : (i === 2 || i === 3) ? "Production Room" : `Cooler ${i + 1}`;
-    };
-    const limitFor = (key) =>
-      key === "cooler-7"
-        ? { label: "≤ -18°C", pass: (n) => n <= -18 }
-        : { label: "0 to 5°C", pass: (n) => n >= 0 && n <= 5 };
+    const labelForStorage = (key) => labelForStorageKey(key, coolerDefs, loadingDef);
+    const limitFor = (key) => productLimitFor(defForStorageKey(key, coolerDefs, loadingDef));
     const roomTempFor = (row) => {
       if (row.storageKey === "loading-area") return p?.loadingArea?.temps?.[row.time];
       const m = String(row.storageKey || "").match(/^cooler-(\d+)$/);

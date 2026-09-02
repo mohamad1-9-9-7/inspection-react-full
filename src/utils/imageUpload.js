@@ -26,14 +26,19 @@ export function isDataUri(v) {
 
 /**
  * Upload one file and get back its hosted URL.
- * Compression happens server-side (1280px longest side, quality 80), so
- * callers no longer need their own canvas resize step.
+ *
+ * The file is shrunk on this device first. The server re-encodes to 1280px /
+ * q80 no matter what arrives, so sending a 4 MB phone photo spends 4 MB of the
+ * user's upload bandwidth to produce the exact same stored file. shrinkForUpload
+ * leaves non-images and already-small files alone and falls back to the original
+ * on any failure, so no caller loses anything by it.
  */
 export async function uploadImage(file, purpose = "report_photo") {
   if (!file) throw new Error("No file provided");
 
+  const small = await shrinkForUpload(file);
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", small);
   fd.append("purpose", purpose);
   fd.append("compress", "true");
   fd.append("maxDim", "1280");
@@ -45,6 +50,32 @@ export async function uploadImage(file, purpose = "report_photo") {
     throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
   }
   return data.optimized_url || data.url;
+}
+
+/**
+ * Delete one hosted file. The counterpart of uploadImage: a row that drops a
+ * photo must drop the stored file too, or it is paid for forever.
+ */
+export async function deleteImage(url) {
+  if (!url) return;
+  const res = await fetch(`${IMAGE_API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
+}
+
+/**
+ * A cheap preview of a hosted image. Cloudinary returns the stored 1280px file,
+ * which is 150-250 KB — fine for a lightbox, ruinous for a 120px thumbnail
+ * repeated across a whole report. Asking for the size actually being displayed
+ * (and f_auto, so modern browsers get WebP/AVIF) cuts that by roughly 90%.
+ * Anything that is not a Cloudinary URL is returned untouched.
+ */
+export function thumbUrl(src, w = 240) {
+  const u = imageSrc(src);
+  if (!u || !u.includes("/image/upload/")) return u;
+  return u.replace("/image/upload/", `/image/upload/f_auto,q_auto,w_${w},c_limit/`);
 }
 
 /** Upload several files, preserving order. */
@@ -93,6 +124,57 @@ export function downloadImage(src, filename = "image.jpg") {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+/**
+ * Shrink a photo in the browser before it is uploaded.
+ *
+ * The server already re-encodes to 1280px / q80, so the full-size original
+ * buys nothing: a 4 MB phone photo spends 4 MB of upload bandwidth (and the
+ * user's mobile data) to arrive as a ~200 KB stored file. Downscaling here
+ * cuts that by roughly 10x and makes the upload visibly faster on site wifi.
+ *
+ * Falls back to the original file whenever anything goes wrong (unreadable
+ * image, canvas blocked, or a file that is already small), so a caller can
+ * always upload the result.
+ */
+export function shrinkForUpload(file, { maxSide = 1600, quality = 0.82, skipUnder = 300 * 1024 } = {}) {
+  return new Promise((resolve) => {
+    if (!file || !/^image\//.test(file.type) || file.type === "image/gif") return resolve(file);
+    if (file.size <= skipUnder) return resolve(file);
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        cv.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(url);
+            if (!blob || blob.size >= file.size) return resolve(file);
+            const name = String(file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg";
+            resolve(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
+          },
+          "image/jpeg",
+          quality
+        );
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
 }
 
 /**

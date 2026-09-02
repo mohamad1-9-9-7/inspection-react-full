@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
-import { kg } from "./butcherReportKit";
+import { isCancelled, kg } from "./butcherReportKit";
 
 /* أحجام الخط: globals.css يفرض `#root *{14px}` و`#root table *{12px}`، وصفحة
    «شغلي» تفرض 20px بكلاس `.mw`. نضاعف الكلاس (`.cc.cc`) لتعلو الأخصّية على
@@ -215,6 +215,72 @@ export function orderOperations(rows) {
     .map((x) => ({ ...x.r, __depth: x.d }));
 }
 
+/**
+ * دمج تنفيذات **نفس المادة الخام** بصندوق واحد.
+ *
+ * الجزار بيقطّع نفس الرقبة تلات مرّات باليوم، فكانت البطاقة تطلع تلات صناديق
+ * بنفس العنوان — ورق أكتر وقراءة أصعب. صار: صندوق واحد، أوزانه مجموع
+ * التنفيذات، وأسطر القطع مدموجة على مستوى المنتج، وأرقام العمليات كلها
+ * بترويسة الصندوق حتى ما يضيع أثر أي تنفيذ.
+ *
+ * الدمج ضمن **نفس المستوى** (`__depth`) فقط: ناتج انفكّك بصندوق تاني بيضل
+ * صندوقه لحاله، وإلا انكسرت شجرة «خام → ناتج → تفكيك».
+ */
+function mergeSameInput(ops) {
+  const map = new Map();
+  const order = [];
+
+  ops.forEach((r) => {
+    const key = `${r.__depth || 0}::${r.inputItemId || r.inputName || "—"}`;
+    if (!map.has(key)) {
+      map.set(key, { rows: [] });
+      order.push(key);
+    }
+    map.get(key).rows.push(r);
+  });
+
+  return order.map((key) => {
+    const rows = map.get(key).rows;
+    if (rows.length === 1) return rows[0];
+
+    // القطع مدموجة على مستوى المنتج — سطر واحد لكل صنف مهما تكرّر
+    const cuts = new Map();
+    rows.forEach((r) => (r.cuts || []).forEach((c) => {
+      const k = c.itemId || c.name;
+      if (!cuts.has(k)) cuts.set(k, { ...c });
+      else cuts.get(k).weightKg += c.weightKg;
+    }));
+
+    const sum = (fn) => rows.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
+    const carcassKg = sum((r) => r.carcassKg);
+    const cutsKg = sum((r) => r.cutsKg);
+    const wasteKg = sum((r) => r.wasteKg);
+    const pieces = sum((r) => r.pieceCount);
+    const base = carcassKg > 0 ? carcassKg : cutsKg + wasteKg;
+
+    const uniq = (fn) => [...new Set(rows.map(fn).filter(Boolean))];
+
+    return {
+      ...rows[0],
+      id: `merged_${key}`,
+      carcassKg, cutsKg, wasteKg,
+      cuts: [...cuts.values()].sort((a, b) => Number(a.isWaste) - Number(b.isWaste) || b.weightKg - a.weightKg),
+      unaccountedKg: carcassKg > 0 ? carcassKg - (cutsKg + wasteKg) : 0,
+      yieldPct: base > 0 ? (cutsKg / base) * 100 : 0,
+      pieceCount: pieces > 0 ? pieces : rows[0].pieceCount,
+      durationMin: sum((r) => r.durationMin) || null,
+      partialPiece: rows.some((r) => r.partialPiece),
+      // كل أرقام العمليات وأوقاتها — البطاقة وثيقة، وما بيجوز يضيع رقم عملية
+      __merged: rows.length,
+      __opNos: uniq((r) => r.opNo),
+      __times: uniq((r) => r.time).sort(),
+      __pathways: uniq((r) => r.pathwayCode),
+      __approved: rows.filter((r) => r.reviewStatus === "approved").length,
+      __pending: rows.filter((r) => (r.reviewStatus || "pending") === "pending").length,
+    };
+  });
+}
+
 /** خانة معلومة بالترويسة (الموقع/التاريخ/الجزار). */
 const Fact = ({ lbl, val }) => (
   <span className="cc-fact">
@@ -249,9 +315,21 @@ function OpBox({ row, isAr }) {
             {row.bomOriginName ? <span className="cc-chip">🌍 {row.bomOriginName}</span> : null}
             {row.bomKindName ? <span className="cc-chip">🐑 {row.bomKindName}</span> : null}
             {row.bomCatName ? <span className="cc-chip">🏷️ {row.bomCatName}</span> : null}
-            {row.pathwayCode ? <span className="cc-chip ref">🛤️ {row.pathwayCode}</span> : null}
-            {row.opNo ? <span className="cc-chip ref">{row.opNo}</span> : null}
-            {row.time ? <span className="cc-chip">🕒 {row.time}</span> : null}
+            {(row.__pathways || (row.pathwayCode ? [row.pathwayCode] : [])).map((c) => (
+              <span key={c} className="cc-chip ref">🛤️ {c}</span>
+            ))}
+            {row.__merged > 1 ? (
+              <span className="cc-chip">
+                ×{row.__merged} {isAr ? "تنفيذ" : "jobs"}
+              </span>
+            ) : null}
+            {/* أرقام العمليات كلها — الوثيقة لازم تدلّ على كل تنفيذ دخل فيها */}
+            {(row.__opNos || (row.opNo ? [row.opNo] : [])).map((no) => (
+              <span key={no} className="cc-chip ref">{no}</span>
+            ))}
+            {(row.__times || (row.time ? [row.time] : [])).map((tm) => (
+              <span key={tm} className="cc-chip">🕒 {tm}</span>
+            ))}
             {row.rawExpiry ? (
               <span className="cc-chip">📅 {isAr ? "ينتهي" : "exp"} {row.rawExpiry}</span>
             ) : null}
@@ -260,7 +338,16 @@ function OpBox({ row, isAr }) {
                 ⏱️ {row.durationMin} {isAr ? "دقيقة" : "min"}
               </span>
             ) : null}
-            {row.reviewStatus === "approved" ? (
+            {row.__merged > 1 ? (
+              <>
+                {row.__approved > 0 ? (
+                  <span className="cc-chip ok">✓ {isAr ? "معتمد" : "Approved"} {row.__approved}</span>
+                ) : null}
+                {row.__pending > 0 ? (
+                  <span className="cc-chip">⏳ {isAr ? "بانتظار المراجعة" : "Pending"} {row.__pending}</span>
+                ) : null}
+              </>
+            ) : row.reviewStatus === "approved" ? (
               <span className="cc-chip ok">✓ {isAr ? "معتمد" : "Approved"}</span>
             ) : null}
             {row.reviewStatus === "rejected" ? (
@@ -354,7 +441,12 @@ const CuttingCard = React.forwardRef(function CuttingCard(
   { rows = [], day, isAr = false, butcherName, employeeNo, branchName },
   ref
 ) {
-  const ops = useMemo(() => orderOperations(rows), [rows]);
+  /* الملغى ما بيطلع عالورق مهما كان المنادي — البطاقة وثيقة شغل، والعملية
+     الملغاة مش شغل. وبعدها منّدمج تنفيذات نفس المادة الخام بصندوق واحد. */
+  const ops = useMemo(
+    () => mergeSameInput(orderOperations((rows || []).filter((r) => !isCancelled(r)))),
+    [rows]
+  );
   const sum = useMemo(() => {
     // المادة الخام الحقيقية = مدخلات الصناديق الجذر فقط، فمخرجات صندوق
     // تُعاد كمدخل لصندوق آخر — جمعها كلها يضخّم الخام ويكسر نسبة التصافي.

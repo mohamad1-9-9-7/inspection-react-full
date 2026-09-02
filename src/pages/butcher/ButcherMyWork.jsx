@@ -82,8 +82,10 @@ const CSS = `
   #root .mw-row { grid-template-columns: 18px minmax(0, 1fr) auto; }
   #root .mw-row-cells { grid-column: 1 / -1; }
 }
-@media (max-width: 520px) {
-  #root .mw-row-cells { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 620px) {
+  /* عدد التنفيذات مكتوب بسطر العنوان، فخانته بتنشال هون ليصير ٢×٢ */
+  #root .mw-row-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #root .mw-row-cells > :first-child { display: none; }
 }
 
 /* شريط الأيام — تمرير أفقي بلا شريط تمرير مرئي */

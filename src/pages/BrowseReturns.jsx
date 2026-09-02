@@ -145,9 +145,19 @@ function isPcsType(t) {
   const s = (t || "").toString().toLowerCase();
   return s.includes("pcs") || s.includes("قطعة") || s.includes("حبة") || s.includes("pc");
 }
+function isPlateType(t) {
+  return (t || "").toString().toLowerCase().includes("plate");
+}
+/* The unit as displayed: an "Other" row carries its real unit in customQtyType. */
+function effectiveQtyType(row) {
+  const t = row?.qtyType || "";
+  return t === "أخرى" || t === "أخرى / Other" ? row?.customQtyType || "" : t;
+}
 function qtyKind(row) {
-  if (isKgType(row?.qtyType)) return "kg";
-  if (isPcsType(row?.qtyType)) return "pcs";
+  const t = effectiveQtyType(row);
+  if (isKgType(t)) return "kg";
+  if (isPcsType(t)) return "pcs";
+  if (isPlateType(t)) return "plate";
   return "other";
 }
 function fmtNum(n, digits = 2) {
@@ -813,6 +823,8 @@ const KEY_ALIASES = {
   qtytype: "qtytype", type: "qtytype",
   images: "images",
   ref: "refNo", refno: "refNo", reference: "refNo",
+  trn: "transferNo", transfer: "transferNo", transferno: "transferNo",
+  ord: "qty", ordered: "qty",   // the old ORDERED column is now QUANTITY
 };
 
 function rowMatchesPower(row, parsed) {
@@ -825,7 +837,7 @@ function rowMatchesPower(row, parsed) {
       row.itemCode, row.productName, row.origin, safeButchery(row),
       String(row.quantity ?? ""),
       (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
-      row.expiry, row.remarks, actionText(row),
+      row.expiry, row.remarks, actionText(row), row.transferNo,
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
     if (!hay) return false;
   }
@@ -848,6 +860,11 @@ function rowMatchesPower(row, parsed) {
       if (v === "empty") { if (expiry.trim() !== "") return false; }
       else if (v === "nonempty") { if (expiry.trim() === "") return false; }
       else if (!expiry.includes(v)) return false;
+    } else if (aliased === "transferNo") {
+      const t = String(row.transferNo || "").toLowerCase();
+      if (v === "empty") { if (t.trim() !== "") return false; }
+      else if (v === "nonempty") { if (t.trim() === "") return false; }
+      else if (!t.includes(v)) return false;
     } else if (aliased === "remarks") {
       const r = String(row.remarks || "").toLowerCase();
       if (v === "empty") { if (r.trim() !== "") return false; }
@@ -2135,9 +2152,9 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
   function exportProductCSV() {
     if (!insights || !selected) return;
-    const head = ["DATE", "ITEM CODE", "PRODUCT", "ORIGIN", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT ACTION"];
+    const head = ["DATE", "ITEM CODE", "PRODUCT", "ORIGIN", "POS", "TRANSFER NO", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT ACTION"];
     const rows = insights.occurrences.map((r) => [
-      r.date, r.itemCode || "", r.productName || "", r.origin || "", safeButchery(r) || "",
+      r.date, r.itemCode || "", r.productName || "", r.origin || "", safeButchery(r) || "", r.transferNo || "",
       r.quantity ?? "", (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || ""),
       r.expiry || "", r.remarks || "", r.currentAction || "",
     ]);
@@ -2744,6 +2761,7 @@ const ALL_COLUMNS = [
   { key: "productName", label: "PRODUCT NAME", sortable: true, width: 220 },
   { key: "origin",      label: "ORIGIN", sortable: true, width: 110 },
   { key: "pos",         label: "POS", sortable: true, width: 130 },
+  { key: "transferNo",  label: "TRANSFER NO", sortable: true, width: 120 },
   { key: "quantity",    label: "QTY", sortable: true, width: 80 },
   { key: "qtyType",     label: "QTY TYPE", sortable: true, width: 90 },
   { key: "expiry",      label: "EXPIRY", sortable: true, width: 100 },
@@ -3076,6 +3094,7 @@ export default function BrowseReturns() {
       if (c.key === "productName") return r.productName || "";
       if (c.key === "origin") return r.origin || "";
       if (c.key === "pos") return safeButchery(r) || "";
+      if (c.key === "transferNo") return r.transferNo || "";
       if (c.key === "quantity") return r.quantity ?? "";
       if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
@@ -3109,6 +3128,7 @@ export default function BrowseReturns() {
       if (c.key === "productName") return r.productName || "";
       if (c.key === "origin") return r.origin || "";
       if (c.key === "pos") return safeButchery(r) || "";
+      if (c.key === "transferNo") return r.transferNo || "";
       if (c.key === "quantity") return r.quantity ?? "";
       if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
@@ -3548,7 +3568,16 @@ export default function BrowseReturns() {
       }),
     });
     const json = await res.json().catch(() => null);
-    if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+    if (!res.ok || json?.ok === false) {
+      /* The server answers a failed send with 502 + { error, detail }, where
+         `error` is a fixed code ("smtp_send_failed") and `detail` is the line
+         the mail server actually said — wrong password, TLS refused, relay
+         denied. Reporting the code alone turned every mail problem into the
+         same unactionable message, so the detail leads and the code backs it up. */
+      const code = json?.error || `HTTP ${res.status}`;
+      const detail = String(json?.detail || "").trim();
+      throw new Error(detail ? `${detail} (${code})` : code);
+    }
     return json;
   }
 
@@ -4050,7 +4079,7 @@ export default function BrowseReturns() {
       row.itemCode, row.productName, row.origin, safeButchery(row),
       String(row.quantity ?? ""),
       (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
-      row.expiry, row.remarks, actionText(row),
+      row.expiry, row.remarks, actionText(row), row.transferNo,
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
   }
 
@@ -4067,6 +4096,7 @@ export default function BrowseReturns() {
       case "productName": return row.productName || "";
       case "origin":      return row.origin || "";
       case "pos":         return safeButchery(row) || "";
+      case "transferNo":  return row.transferNo || "";
       case "quantity":    return Number(row.quantity || 0);
       case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
       case "expiry":      return row.expiry || "";
@@ -4641,12 +4671,12 @@ export default function BrowseReturns() {
           const dateTxt = formatChangeDatePDF(ch);
           actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
         }
-        return [String(startIdx + i + 1), row.productName || "", row.origin || "", pos || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
+        return [String(startIdx + i + 1), row.productName || "", row.origin || "", pos || "", row.transferNo || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
       });
-      const frac = [0.05, 0.18, 0.09, 0.08, 0.06, 0.08, 0.08, 0.18, 0.20];
+      const frac = [0.05, 0.16, 0.08, 0.08, 0.07, 0.06, 0.07, 0.07, 0.16, 0.19];
       const columnStyles = {};
       frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
-      columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[6].halign = "center";
+      columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[5].halign = "center"; columnStyles[6].halign = "center"; columnStyles[7].halign = "center";
 
       const baseTableOpts = {
         margin: { top: marginTop, left: marginL, right: marginR },
@@ -4667,10 +4697,10 @@ export default function BrowseReturns() {
             head: [
               [{
                 content: `📂 ${g.label}  (${g.items.length})`,
-                colSpan: 9,
+                colSpan: 10,
                 styles: { fillColor: [49, 46, 129], textColor: 255, halign: "left", fontStyle: "bold", fontSize: 11 },
               }],
-              ["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+              ["SL", "PRODUCT", "ORIGIN", "POS", "TRN NO", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
             ],
             body: buildBody(g.items, runningStart),
             startY: gIdx === 0 ? undefined : (doc.lastAutoTable?.finalY || 0) + 8,
@@ -4680,7 +4710,7 @@ export default function BrowseReturns() {
       } else {
         doc.autoTable({
           ...baseTableOpts,
-          head: [["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
+          head: [["SL", "PRODUCT", "ORIGIN", "POS", "TRN NO", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
           body: buildBody(pdfGroups[0]?.items || rowsForPdf),
         });
       }
@@ -4700,7 +4730,7 @@ export default function BrowseReturns() {
     }
   };
 
-  const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
+  const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "TRANSFER NO", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
 
   function buildRowsForReport(rep, useFiltered = false) {
     const changeMap = changeMapByDate.get(rep?.reportDate || "") || new Map();
@@ -4718,7 +4748,7 @@ export default function BrowseReturns() {
         const dateTxt = formatChangeDatePDF(ch);
         actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
       }
-      return [i + 1, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
+      return [i + 1, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.transferNo || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
     });
   }
 
@@ -4793,12 +4823,12 @@ export default function BrowseReturns() {
   };
   const handleExportSearchCSV = () => {
     if (!globalResults.length) { toast("No results to export", "err"); return; }
-    const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+    const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "TRANSFER NO", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
     const rows = globalResults.map((r, i) => {
       const row = r.row;
       const pos = safeButchery(row);
       const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-      return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+      return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.transferNo || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
     });
     const csv = "﻿" + [head, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
     downloadFile(`returns_search.csv`, csv);
@@ -4811,12 +4841,12 @@ export default function BrowseReturns() {
       try {
         const XLSX = await ensureXLSX();
         const wb = XLSX.utils.book_new();
-        const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+        const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "TRANSFER NO", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
         const rows = globalResults.map((r, i) => {
           const row = r.row;
           const pos = safeButchery(row);
           const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-          return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+          return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.transferNo || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
         });
         const data = [head, ...rows];
         const ws = XLSX.utils.aoa_to_sheet(data);
@@ -6334,6 +6364,7 @@ export default function BrowseReturns() {
               <option value="any">Qty: Any</option>
               <option value="kg">Qty: KG</option>
               <option value="pcs">Qty: PCS</option>
+              <option value="plate">Qty: PLATE</option>
               <option value="other">Qty: Other</option>
             </select>
             <select value={hasImages} onChange={(e) => setHasImages(e.target.value)} style={{ ...sx.input, padding: "8px 10px", fontSize: 13 }}>
@@ -6915,7 +6946,7 @@ export default function BrowseReturns() {
                     </thead>
                     <tbody>
                       {pagedResults.length === 0 ? (
-                        <tr><td colSpan={13} style={{ padding: 30, textAlign: "center", color: T.textM }}>No results.</td></tr>
+                        <tr><td colSpan={12} style={{ padding: 30, textAlign: "center", color: T.textM }}>No results.</td></tr>
                       ) : pagedResults.map((r, i) => {
                         const row = r.row;
                         const pos = safeButchery(row);
@@ -8492,6 +8523,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                 );
                 if (c.key === "origin") return <td key={c.key} style={tdStyle}>{search ? highlight(row.origin || "", search) : row.origin}</td>;
                 if (c.key === "pos") return <td key={c.key} style={tdStyle}>{search ? highlight(safeButchery(row) || "", search) : safeButchery(row)}</td>;
+                if (c.key === "transferNo") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{search ? highlight(row.transferNo || "", search) : row.transferNo}</td>;
                 if (c.key === "quantity") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{row.quantity}</td>;
                 if (c.key === "qtyType") return <td key={c.key} style={tdStyle}>
                   <span style={{ ...sx.pill, fontSize: 11 }}>{(row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType : row.qtyType || ""}</span>

@@ -1,32 +1,12 @@
 // src/pages/ReturnView.js
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-
-/* ========== Server API base (CRA style) ========== */
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
+import { API_BASE } from "../config/api";
 
 /* Left date-tree panel: remember whether the user folded it away (UI preference only). */
 const TREE_HIDDEN_KEY = "returnView.treeHidden";
 
-/* ===== Cloudinary via server (upload + delete) ===== */
-async function uploadViaServer(file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
-    throw new Error(data?.error || "Upload failed");
-  }
-  return data.optimized_url || data.url;
-}
-async function deleteImage(url) {
-  if (!url) return;
-  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
-    method: "DELETE",
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
-}
+/* ===== Cloudinary via server ===== */
 async function deleteImagesMany(urls = []) {
   const unique = [...new Set((urls || []).filter(Boolean))];
   if (!unique.length) return { ok: true, deleted: 0, failed: 0 };
@@ -239,6 +219,7 @@ const MAX_IMAGES_PER_PRODUCT = 5;
 
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, remaining }) {
   const [previewSrc, setPreviewSrc] = useState("");
+  const [busy, setBusy] = useState("");
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -252,14 +233,24 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
 
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = "";
     if (!files.length) return;
     const allowed = files.slice(0, remaining);
     const urls = [];
-    for (const f of allowed) {
-      try { urls.push(await uploadViaServer(f)); } catch (err) { console.error("upload failed:", err); }
+    let failed = 0;
+    for (let i = 0; i < allowed.length; i++) {
+      setBusy(`⏳ Uploading ${i + 1} / ${allowed.length}…`);
+      try {
+        urls.push(await uploadImage(allowed[i], "returns_photo"));
+      } catch (err) {
+        failed += 1;
+        console.error("upload failed:", err);
+      }
     }
-    if (urls.length) onAddImages(urls);
-    e.target.value = "";
+    // A silent console.error used to be the only trace of a failed upload.
+    setBusy(failed ? `❌ ${failed} of ${allowed.length} image(s) failed to upload.` : "");
+    if (failed) setTimeout(() => setBusy(""), 4000);
+    if (urls.length) await onAddImages(urls);
   };
 
   return (
@@ -284,6 +275,11 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
           </button>
           <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
           <div style={{ fontSize: 13, color: "#334155" }}>Max {MAX_IMAGES_PER_PRODUCT} images per product.</div>
+          {busy && (
+            <div style={{ fontSize: 13, fontWeight: 800, color: busy.startsWith("❌") ? "#b91c1c" : "#0f766e" }}>
+              {busy}
+            </div>
+          )}
         </div>
 
         <div style={thumbsWrap}>
@@ -292,7 +288,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
           ) : (
             row.images.map((src, i) => (
               <div key={i} style={thumbTile}>
-                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <img src={thumbUrl(src, 320)} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
                 <button onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
               </div>
             ))
@@ -317,7 +313,6 @@ export default function ReturnView() {
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
   const [opMsg, setOpMsg] = useState("");
-  const importInputRef = useRef(null);
   const [editRowIdx, setEditRowIdx] = useState(null);
   const [editRowData, setEditRowData] = useState(null);
   const [addingRow, setAddingRow] = useState(false);
@@ -432,15 +427,19 @@ export default function ReturnView() {
   // ✅ Summary for selected report
   const selectedSummary = useMemo(() => {
     if (!selectedReport) return null;
-    let kg = 0, pcs = 0, other = 0;
+    let kg = 0, pcs = 0, plate = 0, other = 0;
     (selectedReport.items || []).forEach((it) => {
       const qty = Number(it.quantity || 0);
-      const type = it.qtyType === "أخرى" ? (it.customQtyType || "Other") : it.qtyType;
+      const type =
+        it.qtyType === "أخرى" || it.qtyType === "أخرى / Other"
+          ? it.customQtyType || "Other"
+          : it.qtyType;
       if (type === "KG") kg += qty;
       else if (type === "PCS") pcs += qty;
+      else if (type === "PLATE") plate += qty;
       else other += qty;
     });
-    return { count: (selectedReport.items || []).length, kg, pcs, other };
+    return { count: (selectedReport.items || []).length, kg, pcs, plate, other };
   }, [selectedReport]);
 
   // Hierarchy
@@ -489,7 +488,7 @@ export default function ReturnView() {
 
   /* ========== Row add/edit/delete logic ========== */
   const blankRow = {
-    itemCode: "", productName: "", origin: "", butchery: "", customButchery: "",
+    itemCode: "", productName: "", origin: "", butchery: "", customButchery: "", transferNo: "",
     quantity: "", qtyType: "", customQtyType: "", expiry: "", remarks: "",
     action: ACTIONS[0], customAction: "", images: [],
   };
@@ -512,6 +511,7 @@ export default function ReturnView() {
       origin: row.origin || "",
       butchery: isOtherBranch(row.butchery) ? row.butchery : normalizeBranch(row.butchery),
       customButchery: row.customButchery || "",
+      transferNo: row.transferNo || "",
       quantity: row.quantity ?? "",
       qtyType: row.qtyType || "",
       customQtyType: row.customQtyType || "",
@@ -539,6 +539,7 @@ export default function ReturnView() {
       origin: (row.origin || "").trim(),
       butchery: butcheryLabel,
       customButchery: customB,
+      transferNo: (row.transferNo || "").trim(),
       quantity: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0,
       qtyType: (row.customQtyType || "").trim() ? "أخرى" : (row.qtyType || "").trim(),
       customQtyType: (row.customQtyType || "").trim(),
@@ -698,8 +699,32 @@ export default function ReturnView() {
   const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
   const closeImages = () => setImageModalOpen(false);
 
+  /* The images modal can be opened on a row that is currently being edited.
+     Two things go wrong if that is ignored:
+       - a row being ADDED is not in selectedReport.items yet, so writing the
+         merged list back by index matched nothing and the upload was dropped;
+       - a row being EDITED keeps its own draft copy, so saving the row put the
+         pre-upload image list back over the one we had just stored.
+     So: a new row keeps its images on the draft until the row itself is saved,
+     and an existing row updates the server AND the draft together. */
+  const editingImageRow =
+    editRowIdx !== null && imageRowIndex >= 0 && imageRowIndex === editRowIdx && !!editRowData;
+
   const addImagesToRow = async (urls) => {
-    if (!selectedReport || imageRowIndex < 0) return;
+    if (imageRowIndex < 0) return;
+
+    // A row that is still being added does not exist on the server yet.
+    if (editingImageRow && addingRow) {
+      setEditRowData((s) => ({
+        ...s,
+        images: [...(Array.isArray(s?.images) ? s.images : []), ...urls].slice(0, MAX_IMAGES_PER_PRODUCT),
+      }));
+      setOpMsg("✅ Images attached — press Save to store the row.");
+      setTimeout(() => setOpMsg(""), 3000);
+      return;
+    }
+
+    if (!selectedReport) return;
     try {
       const items = selectedReport.items || [];
       const row = items[imageRowIndex] || {};
@@ -708,6 +733,7 @@ export default function ReturnView() {
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
       setOpMsg("⏳ Updating images…");
       await saveReportToServer(selectedReport.reportDate, newItems);
+      if (editingImageRow) setEditRowData((s) => ({ ...s, images: merged }));
       await reloadFromServer();
       setOpMsg("✅ Images updated.");
     } catch (e) {
@@ -716,7 +742,18 @@ export default function ReturnView() {
   };
 
   const removeImageFromRow = async (imgIndex) => {
-    if (!selectedReport || imageRowIndex < 0) return;
+    if (imageRowIndex < 0) return;
+
+    if (editingImageRow && addingRow) {
+      const cur = Array.isArray(editRowData?.images) ? [...editRowData.images] : [];
+      const url = cur[imgIndex];
+      if (url) { try { await deleteImage(url); } catch (err) { console.warn(err); } }
+      cur.splice(imgIndex, 1);
+      setEditRowData((s) => ({ ...s, images: cur }));
+      return;
+    }
+
+    if (!selectedReport) return;
     try {
       const items = selectedReport.items || [];
       const row = items[imageRowIndex] || {};
@@ -727,6 +764,7 @@ export default function ReturnView() {
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
       setOpMsg("⏳ Updating report…");
       await saveReportToServer(selectedReport.reportDate, newItems);
+      if (editingImageRow) setEditRowData((s) => ({ ...s, images: cur }));
       await reloadFromServer();
       setOpMsg("✅ Image removed.");
     } catch (e) {
@@ -795,8 +833,8 @@ export default function ReturnView() {
       doc.setFontSize(12); doc.setFont("helvetica", "normal");
       doc.text(`Date: ${selectedReport.reportDate}`, marginX, y); y += 20;
 
-      const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
-      const colWidths = [28, 120, 70, 85, 45, 65, 65, 120, 95];
+      const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "TRN NO", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
+      const colWidths = [26, 100, 56, 70, 50, 46, 52, 58, 96, 86];
       const tableX = marginX;
       const rowH = 18;
       doc.setFillColor(219, 234, 254);
@@ -808,7 +846,7 @@ export default function ReturnView() {
       doc.setFont("helvetica", "normal");
       (selectedReport.items || []).forEach((row, i) => {
         if (y > 780) { doc.addPage(); y = 50; }
-        const vals = [String(i + 1), row.productName || "", row.origin || "", safeButchery(row) || "", String(row.quantity ?? ""), row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "", row.expiry || "", row.remarks || "", row.action === "إجراء آخر..." ? row.customAction || "" : row.action || ""];
+        const vals = [String(i + 1), row.productName || "", row.origin || "", safeButchery(row) || "", row.transferNo || "", String(row.quantity ?? ""), row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "", row.expiry || "", row.remarks || "", row.action === "إجراء آخر..." ? row.customAction || "" : row.action || ""];
         doc.setDrawColor(182, 200, 227);
         doc.rect(tableX, y - 0.5, colWidths.reduce((a, b) => a + b, 0), rowH, "S");
         let xx = tableX + 4;
@@ -819,37 +857,6 @@ export default function ReturnView() {
       setOpMsg("✅ PDF created.");
     } catch (e) { console.error(e); setOpMsg("❌ Failed to create PDF."); }
     finally { setTimeout(() => setOpMsg(""), 3000); }
-  };
-
-  const handleExportJSON = () => {
-    try {
-      const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = "returns_all.json";
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      setOpMsg("✅ Exported all reports as JSON.");
-    } catch (e) { console.error(e); setOpMsg("❌ Failed to export JSON."); }
-    finally { setTimeout(() => setOpMsg(""), 3000); }
-  };
-
-  const handleImportJSON = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    try {
-      setOpMsg("⏳ Importing JSON and saving to server…");
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error("Invalid format: expected an array");
-      for (const entry of data) {
-        const d = entry && entry.reportDate;
-        const items = entry && Array.isArray(entry.items) ? entry.items : [];
-        if (!d) continue;
-        await saveReportToServer(d, items);
-      }
-      await reloadFromServer();
-      setOpMsg("✅ Import and save successful.");
-    } catch (err) { console.error(err); setOpMsg("❌ Failed to import JSON. Check format."); }
-    finally { if (importInputRef.current) importInputRef.current.value = ""; setTimeout(() => setOpMsg(""), 4000); }
   };
 
   /* ========== ✅ Filtered rows (search within table) ========== */
@@ -873,7 +880,12 @@ export default function ReturnView() {
   }, [selectedReport, rowSearch]);
 
   /* ======================== UI ======================== */
-  const activeRow = selectedReport && imageRowIndex >= 0 ? selectedReport.items?.[imageRowIndex] : null;
+  const activeRow =
+    imageRowIndex < 0
+      ? null
+      : editingImageRow
+      ? editRowData
+      : (selectedReport?.items?.[imageRowIndex] ?? null);
   const remainingForActive = Math.max(0, MAX_IMAGES_PER_PRODUCT - (activeRow?.images?.length || 0));
 
   return (
@@ -934,9 +946,6 @@ export default function ReturnView() {
             {loadingServer ? "⏳ Loading…" : "🔄 Refresh"}
           </button>
 
-          <button onClick={handleExportJSON} style={jsonExportBtn}>⬇️ Export JSON (all)</button>
-          <button onClick={() => importInputRef.current?.click()} style={jsonImportBtn}>⬆️ Import JSON</button>
-          <input ref={importInputRef} type="file" accept="application/json,.json" onChange={handleImportJSON} style={{ display: "none" }} />
         </div>
       </div>
 
@@ -1046,6 +1055,7 @@ export default function ReturnView() {
                   <div style={summaryChip("#512e5f", "#f5eeff")}>📝 Items: <strong>{selectedSummary.count}</strong></div>
                   {selectedSummary.kg > 0 && <div style={summaryChip("#155e75", "#ecfeff")}>⚖️ KG: <strong>{selectedSummary.kg.toFixed(2)}</strong></div>}
                   {selectedSummary.pcs > 0 && <div style={summaryChip("#065f46", "#ecfdf5")}>📦 PCS: <strong>{selectedSummary.pcs}</strong></div>}
+                  {selectedSummary.plate > 0 && <div style={summaryChip("#5b21b6", "#f5f3ff")}>🍽️ PLATE: <strong>{selectedSummary.plate}</strong></div>}
                   {selectedSummary.other > 0 && <div style={summaryChip("#7c2d12", "#fff7ed")}>🔢 Other: <strong>{selectedSummary.other.toFixed(2)}</strong></div>}
                 </div>
               )}
@@ -1102,6 +1112,7 @@ export default function ReturnView() {
                       <th style={thS}>PRODUCT NAME</th>
                       <th style={thS}>ORIGIN</th>
                       <th style={thS}>BUTCHERY</th>
+                      <th style={thS}>TRANSFER NO</th>
                       <th style={thS}>QUANTITY</th>
                       <th style={thS}>QTY TYPE</th>
                       <th style={thS}>EXPIRY DATE</th>
@@ -1126,7 +1137,7 @@ export default function ReturnView() {
                         return (
                           <tr key={i} style={{ background: rowBg }}>
                             <td style={tdS}>{i + 1}</td>
-                            <td style={{ ...tdS, textAlign: "left", color: "#b91c1c", textDecoration: "line-through" }} colSpan={8}>
+                            <td style={{ ...tdS, textAlign: "left", color: "#b91c1c", textDecoration: "line-through" }} colSpan={7}>
                               {draft.productName || "—"} — will be removed on save
                             </td>
                             <td style={tdS}>
@@ -1176,10 +1187,17 @@ export default function ReturnView() {
                             ) : safeButchery(row)}
                           </td>
 
-                          {/* QUANTITY */}
+                          {/* TRANSFER NO */}
                           <td style={tdS}>
                             {editing ? (
-                              <input style={cellInputStyle} type="number" min="0" value={draft.quantity ?? ""} onChange={(e) => upd({ quantity: e.target.value })} placeholder="QTY" />
+                              <input style={cellInputStyle} value={draft.transferNo || ""} onChange={(e) => upd({ transferNo: e.target.value })} placeholder="TRANSFER NO" />
+                            ) : row.transferNo || ""}
+                          </td>
+
+                          {/* QUANTITY — the weight printed on the branch transfer note */}
+                          <td style={tdS}>
+                            {editing ? (
+                              <input style={cellInputStyle} type="number" min="0" step="0.001" value={draft.quantity ?? ""} onChange={(e) => upd({ quantity: e.target.value })} placeholder="QTY" />
                             ) : row.quantity}
                           </td>
 
@@ -1261,7 +1279,8 @@ export default function ReturnView() {
                             )}
                           </div>
                         </td>
-                        <td style={tdS}><input style={cellInputStyle} type="number" min="0" value={editRowData.quantity} onChange={(e) => setEditRowData((s) => ({ ...s, quantity: e.target.value }))} placeholder="QTY" /></td>
+                        <td style={tdS}><input style={cellInputStyle} value={editRowData.transferNo || ""} onChange={(e) => setEditRowData((s) => ({ ...s, transferNo: e.target.value }))} placeholder="TRANSFER NO" /></td>
+                        <td style={tdS}><input style={cellInputStyle} type="number" min="0" step="0.001" value={editRowData.quantity} onChange={(e) => setEditRowData((s) => ({ ...s, quantity: e.target.value }))} placeholder="QTY" /></td>
                         <td style={tdS}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                             <input style={cellInputStyle} value={editRowData.qtyType} onChange={(e) => setEditRowData((s) => ({ ...s, qtyType: e.target.value }))} placeholder="QTY TYPE" />
@@ -1379,8 +1398,6 @@ const cancelBtn = { background: "#9ca3af", color: "#fff", border: "none", border
 const editBtn = { background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, padding: "4px 10px", cursor: "pointer" };
 const imageBtn = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, padding: "4px 10px", cursor: "pointer" };
 const deleteBtnMain = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" };
-const jsonExportBtn = { background: "#0f766e", color: "#fff", border: "none", borderRadius: 10, padding: "7px 18px", fontWeight: "bold", fontSize: "1em", cursor: "pointer" };
-const jsonImportBtn = { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 10, padding: "7px 18px", fontWeight: "bold", fontSize: "1em", cursor: "pointer" };
 const addRowBtn = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" };
 const rowDeleteBtn = { background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, padding: "4px 8px", cursor: "pointer" };
 

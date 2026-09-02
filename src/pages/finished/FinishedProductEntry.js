@@ -1,12 +1,13 @@
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 import API_BASE from "../../config/api";
+import { fetchFiledDates, rememberFiledDate } from "../../utils/filedDates";
 
 /* ========= API ========= */
 
 
-/* نوع التقرير على السيرفر */
+/* The report type on the server */
 const TYPE = "finished_products_report";
 
 /* ✅ Default names */
@@ -40,7 +41,7 @@ function normalizeServerItem(item) {
   };
 }
 
-/** ابحث عن تقرير بنفس التاريخ (حسب النوع) وأرجع {id, ...} إن وجد */
+/** Find the report already filed for this date, if there is one. */
 async function findReportByDate(reportDate) {
   // Targeted read: the server matches the business date and returns just that
   // record. Fetching the type alone became limit=5000 on the way out, so the
@@ -54,7 +55,7 @@ async function findReportByDate(reportDate) {
   return list.find((r) => String(r.reportDate) === String(reportDate)) || null;
 }
 
-/** إنشاء تقرير جديد (POST) */
+/** Create a new report (POST). */
 async function createReportOnServer(doc) {
   const body = { reporter: "finished_products", type: TYPE, payload: doc };
   const { ok, data, status } = await jsonFetch(`${API_BASE}/api/reports`, {
@@ -69,7 +70,7 @@ async function createReportOnServer(doc) {
   return data;
 }
 
-/** استبدال تقرير موجود (PUT) */
+/** Replace an existing report (PUT). */
 async function replaceReportOnServer(existingId, doc) {
   const { ok, data, status } = await jsonFetch(
     `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`,
@@ -86,7 +87,7 @@ async function replaceReportOnServer(existingId, doc) {
   return data;
 }
 
-/** واجهة موحّدة للحفظ: POST → إن تكرّر التاريخ نعمل PUT لنفس اليوم */
+/** One save entry point: POST, and on a duplicate date PUT that same day. */
 async function saveReportToServerUpsert(doc) {
   try {
     return await createReportOnServer(doc);
@@ -102,6 +103,50 @@ async function saveReportToServerUpsert(doc) {
     const existing = await findReportByDate(doc.reportDate);
     if (!existing || !existing.id) throw err;
     return await replaceReportOnServer(existing.id, doc);
+  }
+}
+
+/** Today as YYYY-MM-DD, in local time - toISOString() would roll the date
+    back a day for anyone east of UTC, which is everyone here. */
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/* ========= Draft =========
+   A day's sheet is often 100+ rows pulled in from Excel, and until this point
+   it lived only in component state: a refresh, a stray back-navigation or an
+   expired session threw the whole thing away with no warning. The draft is a
+   cache of unsaved typing only - the server stays the source of truth, and the
+   draft is dropped the moment a save succeeds. */
+const DRAFT_KEY = "finished_entry_draft_v1";
+
+/** The fields that mean a row was actually filled in - the two defaults
+    (unit of measure, overall condition) are on every blank row, so counting
+    them would make an untouched sheet look like unsaved work. */
+const CONTENT_FIELDS = [
+  "product", "customer", "orderNo", "time",
+  "slaughterDate", "expiryDate", "temp", "quantity", "remarks",
+];
+const rowHasContent = (r) =>
+  CONTENT_FIELDS.some((k) => String(r?.[k] ?? "").trim() !== "");
+
+function readDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    const d = raw ? JSON.parse(raw) : null;
+    if (d && Array.isArray(d.rows) && d.rows.some(rowHasContent)) return d;
+  } catch {
+    /* unreadable draft - start clean */
+  }
+  return null;
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -173,7 +218,7 @@ function autoTempForProduct(product) {
   return randTemp(1.1, 4.8, 1);
 }
 
-/* ===== Date helpers (للتحقق فقط) ===== */
+/* ===== Date helpers (validation only) ===== */
 function pad2(x) {
   return String(x).padStart(2, "0");
 }
@@ -260,7 +305,7 @@ function getExpiryInfo(expiryDMY) {
   return { label: `✅ OK (${dLeft}d)`, bg: "#dcfce7", color: "#166534" };
 }
 
-/* === Utilities لزر Import Dates فقط (as-is) === */
+/* === Helpers for the "Import Dates" button only (as-is) === */
 function getExcelDisplayText(ws, r, c) {
   try {
     const addr = XLSX.utils.encode_cell({ r, c });
@@ -381,10 +426,17 @@ function transformIncoming(record) {
 export default function FinishedProductEntry() {
   const navigate = useNavigate();
 
-  const [reportTitle] = useState("FINISHED PRODUCTS");
-  const [reportDate, setReportDate] = useState("");
+  /* The draft is read once, before the state below is seeded from it. */
+  const draftRef = useRef(undefined);
+  if (draftRef.current === undefined) draftRef.current = readDraft();
+  const draft0 = draftRef.current;
 
-  const [rows, setRows] = useState([{ ...emptyRow }]);
+  const [reportTitle] = useState("FINISHED PRODUCTS");
+  const [reportDate, setReportDate] = useState(() => draft0?.reportDate || todayISO());
+
+  const [rows, setRows] = useState(() =>
+    Array.isArray(draft0?.rows) && draft0.rows.length ? draft0.rows : [{ ...emptyRow }]
+  );
 
   const [savedMsg, setSavedMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -397,16 +449,99 @@ export default function FinishedProductEntry() {
   const [savingStage, setSavingStage] = useState("");
 
   /* ✅ footer defaults */
-  const [checkedBy, setCheckedBy] = useState(DEFAULT_SIGN_NAME);
-  const [verifiedBy, setVerifiedBy] = useState(DEFAULT_SIGN_NAME);
+  const [checkedBy, setCheckedBy] = useState(() => draft0?.checkedBy ?? DEFAULT_SIGN_NAME);
+  const [verifiedBy, setVerifiedBy] = useState(() => draft0?.verifiedBy ?? DEFAULT_SIGN_NAME);
+
+  /* ===== Unsaved work =====
+     Serialised once, on a 400 ms debounce: doing it per keystroke is what makes
+     a long sheet stutter while you type. */
+  const [isDirty, setIsDirty] = useState(!!draft0);
+  const savedSnapRef = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const hasContent = rows.some(rowHasContent);
+      const snap = JSON.stringify({ rows, reportDate, checkedBy, verifiedBy });
+      if (hasContent) {
+        try {
+          localStorage.setItem(DRAFT_KEY, snap);
+        } catch {
+          /* quota full - the form still works, it just is not recoverable */
+        }
+      } else {
+        clearDraft();
+      }
+      /* Dirty from the first edit, not only after the first save: the snapshot
+         starts null, so anything typed differs from it. */
+      setIsDirty(hasContent && snap !== savedSnapRef.current);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [rows, reportDate, checkedBy, verifiedBy]);
+
+  useEffect(() => {
+    const onLeave = (e) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [isDirty]);
+
+  /* ===== Which dates already carry a saved report =====
+       Set   - the index loaded; every date is answered from it, no traffic
+       false - it could not be read, so the save is NOT blocked for it
+       null  - still loading
+     `savedHere` is what this session filed a moment ago, so a correction save
+     does not stop to ask about a day the user just wrote. */
+  const [filedDates, setFiledDates] = useState(null);
+  const [savedHere, setSavedHere] = useState(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFiledDates(TYPE)
+      .then((dates) => { if (!cancelled) setFiledDates(new Set(dates)); })
+      .catch(() => { if (!cancelled) setFiledDates(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const dayKey = String(reportDate || "").slice(0, 10);
+  const dateAlreadyFiled =
+    !!(filedDates && filedDates.has(dayKey)) && !savedHere.has(dayKey);
+
+  /* Two lines with the same product AND the same order number are the same
+     line filed twice - nearly always an import run against rows that were
+     already on the sheet. Flagged rather than blocked: a customer really can
+     order the same product twice on one order, and only the person holding the
+     paperwork knows which it is. */
+  const dupKeyOf = (r) => {
+    const prod = String(r?.product || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const ord = String(r?.orderNo || "").trim().toLowerCase();
+    return prod && ord ? `${prod}|${ord}` : "";
+  };
+
+  const duplicateKeys = useMemo(() => {
+    const counts = new Map();
+    rows.forEach((r) => {
+      const k = dupKeyOf(r);
+      if (k) counts.set(k, (counts.get(k) || 0) + 1);
+    });
+    return new Set(Array.from(counts).filter(([, n]) => n > 1).map(([k]) => k));
+  }, [rows]);
+
+  const duplicateCount = useMemo(
+    () => rows.filter((r) => duplicateKeys.has(dupKeyOf(r))).length,
+    [rows, duplicateKeys]
+  );
 
   const customerOptions = useMemo(() => {
     const set = new Set(rows.map((r) => (r.customer || "").trim()).filter(Boolean));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  function getRowErrors(r) {
+  function getRowErrors(r, duplicate = false) {
     const errs = {};
+    if (duplicate) errs.duplicate = "Same product and order number as another row";
     if (!String(r.product).trim()) errs.product = "Required";
     if (!String(r.customer).trim()) errs.customer = "Required";
     if (!String(r.orderNo).trim()) errs.orderNo = "Required";
@@ -435,19 +570,20 @@ export default function FinishedProductEntry() {
     }
     return errs;
   }
-  function getRowStatus(r) {
-    const e = getRowErrors(r);
+  function getRowStatus(r, duplicate = false) {
+    const e = getRowErrors(r, duplicate);
     const hasRequiredMissing =
       e.product || e.customer || e.orderNo || e.quantity || e.slaughterDate || e.expiryDate;
 
     if (hasRequiredMissing) {
       if (e.slaughterDate || e.expiryDate)
-        return { label: "⏳ تاريخ ناقص", color: "#b45309" };
-      return { label: "⚠️ ناقص", color: "#b91c1c" };
+        return { label: "⏳ Date missing", color: "#b45309" };
+      return { label: "⚠️ Incomplete", color: "#b91c1c" };
     }
-    if (e.dateOrder) return { label: "❌ ترتيب التاريخ خطأ", color: "#b91c1c" };
-    if (e.temp) return { label: "🌡️ تحذير TEMP", color: "#b45309" };
-    return { label: "✅ مكتمل", color: "#065f46" };
+    if (e.dateOrder) return { label: "❌ Date order", color: "#b91c1c" };
+    if (e.temp) return { label: "🌡️ TEMP warning", color: "#b45309" };
+    if (e.duplicate) return { label: "👥 Duplicate", color: "#b45309" };
+    return { label: "✅ Complete", color: "#065f46" };
   }
 
   /* Drag & Drop */
@@ -564,6 +700,31 @@ export default function FinishedProductEntry() {
       if (e.temp) hasTempWarning = true;
     }
 
+    if (duplicateCount > 0) {
+      const proceed = window.confirm(
+        `${duplicateCount} row(s) repeat a product that already appears under the same order number.\n\nSave anyway?`
+      );
+      if (!proceed) {
+        setSavingStage("");
+        return;
+      }
+    }
+
+    /* Saving does not add to a day already on file - it REPLACES it. Asked
+       after the blocking checks, so it never appears for a sheet that was
+       going to fail anyway. */
+    if (dateAlreadyFiled) {
+      const proceed = window.confirm(
+        `${dayKey} already has a saved Finished Products report.\n\n` +
+          "Saving REPLACES it with the rows on this screen - whatever it holds now is gone.\n\n" +
+          "Continue?"
+      );
+      if (!proceed) {
+        setSavingStage("");
+        return;
+      }
+    }
+
     if (hasTempWarning) {
       const proceed = window.confirm(
         "⚠️ Some rows have a TEMP warning (out of expected range).\nSave anyway?"
@@ -590,8 +751,18 @@ export default function FinishedProductEntry() {
     try {
       const res = await saveReportToServerUpsert(doc);
       setSavingStage("done");
+
+      /* On the server now, so the local copy has done its job. The snapshot is
+         taken before the form is reset, so the reset is not read back as fresh
+         unsaved work. */
+      savedSnapRef.current = JSON.stringify({ rows, reportDate, checkedBy, verifiedBy });
+      clearDraft();
+      setIsDirty(false);
+      setFiledDates((prev) => (prev ? new Set(prev).add(ymd) : prev));
+      setSavedHere((prev) => new Set(prev).add(ymd));
+      rememberFiledDate(TYPE, ymd);
       setSavedMsg(
-        `✅ Saved on server (ID: ${res?.id || res?._id || "OK"}) — افتح التقارير من زر "Saved Reports" بالأعلى`
+        `✅ Saved on the server (ID: ${res?.id || res?._id || "OK"}) — open it from "Saved Reports" above.`
       );
       setRows([{ ...emptyRow }]);
       setCheckedBy(DEFAULT_SIGN_NAME);
@@ -775,6 +946,34 @@ export default function FinishedProductEntry() {
         </div>
       </div>
 
+      {dateAlreadyFiled && (
+        <div style={replaceBanner}>
+          🛑 <b>{dayKey}</b> already has a saved Finished Products report — saving
+          will <b>replace</b> it, not add to it. Change the date if that is not what
+          you meant.
+        </div>
+      )}
+
+      {filedDates === false && (
+        <div style={infoBanner}>
+          ⚠️ Could not check which dates are already filed, so this page cannot warn
+          you about replacing one.
+        </div>
+      )}
+
+      {duplicateCount > 0 && (
+        <div style={dupBanner}>
+          👥 <b>{duplicateCount}</b> row(s) repeat a product under the same order
+          number — highlighted below.
+        </div>
+      )}
+
+      {isDirty && (
+        <div style={dirtyBanner}>
+          ⚠️ Unsaved changes — the sheet is being kept on this device until you save.
+        </div>
+      )}
+
       {importSummary && <div style={infoBanner}>{importSummary}</div>}
       {savedMsg && <div style={okBanner}>{savedMsg}</div>}
       {errorMsg && <div style={errBanner}>{errorMsg}</div>}
@@ -819,8 +1018,9 @@ export default function FinishedProductEntry() {
 
           <tbody>
             {viewRows.map(({ r, idx: realIdx }, viewIdx) => {
-              const errs = getRowErrors(r);
-              const rowStatus = getRowStatus(r);
+              const isDup = duplicateKeys.has(dupKeyOf(r));
+              const errs = getRowErrors(r, isDup);
+              const rowStatus = getRowStatus(r, isDup);
               const isZeroQty = r.quantity !== "" && Number(r.quantity) === 0;
 
               const base = inputStyle;
@@ -838,7 +1038,7 @@ export default function FinishedProductEntry() {
               return (
                 <tr
                   key={realIdx}
-                  style={{ background: viewIdx % 2 ? "#fdf6fa" : "#fff" }}
+                  style={{ background: isDup ? "#fff7ed" : viewIdx % 2 ? "#fdf6fa" : "#fff" }}
                   draggable
                   onDragStart={onDragStart(realIdx)}
                   onDragOver={onDragOver(realIdx)}
@@ -1091,7 +1291,7 @@ const tableWrap = {
 /* ✅ table stays inside screen */
 const tableStyle = {
   width: "100%",
-  minWidth: 1200, // كان 1100 — زدناه شوي بسبب العمود الجديد
+  minWidth: 1200, // was 1100 - widened for the added column
   tableLayout: "fixed",
   borderCollapse: "collapse",
   fontSize: "0.95em",
@@ -1168,6 +1368,37 @@ const selectStyle = {
   background: "#f5f8fa",
   fontWeight: "bold",
   color: "#273746",
+};
+
+const replaceBanner = {
+  margin: "10px 0",
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#fee2e2",
+  border: "1.5px solid #f87171",
+  color: "#991b1b",
+  fontWeight: 700,
+};
+
+const dupBanner = {
+  margin: "10px 0",
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#fff7ed",
+  border: "1.5px solid #fdba74",
+  color: "#9a3412",
+  fontWeight: 700,
+};
+
+const dirtyBanner = {
+  margin: "10px 0",
+  padding: "8px 14px",
+  borderRadius: 10,
+  background: "#fef9c3",
+  border: "1.5px solid #fde047",
+  color: "#854d0e",
+  fontWeight: 700,
+  textAlign: "center",
 };
 
 const infoBanner = {

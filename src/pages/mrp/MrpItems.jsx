@@ -28,6 +28,9 @@ const PAGE = "mrp.items";
 /** مفتاح مقارنة الكود — بلا مسافات وبأحرف كبيرة كي يكون الكود ماستر فريد. */
 const skuKey = (v) => String(v || "").trim().toUpperCase();
 
+/** هل للصنف صورة؟ — الرابط لحاله هو الدليل. */
+const hasPhoto = (it) => !!String(it?.imageUrl || "").trim();
+
 const blankItem = () => ({
   id: freshId("item"), sku: "", ar: "", en: "", uom: "KG",
   type: "raw", roles: ["raw"], categoryId: "", notes: "", active: true,
@@ -52,6 +55,7 @@ export default function MrpItems() {
   const [typeFilter, setTypeFilter] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");     // "" | "active" | "off"
+  const [photoFilter, setPhotoFilter] = useState("");       // "" | "with" | "no"
   const [sort, setSort] = useState({ key: "sku", dir: "asc" });
   const [itemForm, setItemForm] = useState(null);  // { mode: "new"|"edit", data }
   const [catForm, setCatForm] = useState(null);    // { mode: "new"|"edit", data }
@@ -214,11 +218,13 @@ export default function MrpItems() {
         if (catFilter && (r.it.categoryId || "") !== catFilter) return false;
         if (statusFilter === "active" && r.it.active === false) return false;
         if (statusFilter === "off" && r.it.active !== false) return false;
+        if (photoFilter === "with" && !hasPhoto(r.it)) return false;
+        if (photoFilter === "no" && hasPhoto(r.it)) return false;
         if (!needle) return true;
         return [r.it.sku, r.it.ar, r.it.en, r.cat, r.display]
           .some((v) => String(v || "").toLowerCase().includes(needle));
       });
-  }, [cfg, q, typeFilter, catFilter, statusFilter, isAr, validation]);
+  }, [cfg, q, typeFilter, catFilter, statusFilter, photoFilter, isAr, validation]);
 
   const rows = useMemo(() => {
     if (!sort.key) return filtered;
@@ -249,19 +255,22 @@ export default function MrpItems() {
       return { key: "", dir: "asc" };                 // النقرة الثالثة تلغي الفرز
     });
 
-  const anyFilter = q || typeFilter || catFilter || statusFilter;
+  const anyFilter = q || typeFilter || catFilter || statusFilter || photoFilter;
   const resetView = () => {
-    setQ(""); setTypeFilter(""); setCatFilter(""); setStatusFilter("");
+    setQ(""); setTypeFilter(""); setCatFilter(""); setStatusFilter(""); setPhotoFilter("");
     setSort({ key: "sku", dir: "asc" });
   };
 
   const totals = useMemo(() => {
     const items = cfg.items || [];
     const off = items.filter((i) => i.active === false).length;
+    const withPhoto = items.filter(hasPhoto).length;
     return {
       count: items.length,
       off,
       active: items.length - off,
+      withPhoto,
+      noPhoto: items.length - withPhoto,
       categories: (cfg.categories || []).length,
       issues: validation.dup.size + validation.blank.size,
     };
@@ -300,6 +309,17 @@ export default function MrpItems() {
             : t({ en: "all active", ar: "الكل مفعّل" })}
         />
         <Kpi label={t({ en: "Categories", ar: "الفئات" })} value={totals.categories} />
+        <Kpi
+          label={t({ en: "Photos", ar: "الصور" })}
+          value={`${totals.withPhoto}/${totals.count}`}
+          foot={totals.noPhoto
+            ? t({
+                en: `${totals.noPhoto} without a photo`,
+                ar: `${totals.noPhoto} بلا صورة`,
+              })
+            : t({ en: "every item has one", ar: "كل صنف إله صورة" })}
+          color={totals.noPhoto ? "#b45309" : "#047857"}
+        />
         <Kpi
           label={t({ en: "Code issues", ar: "مشاكل الأكواد" })}
           value={totals.issues}
@@ -355,6 +375,18 @@ export default function MrpItems() {
               <option value="">{t({ en: "Active & inactive", ar: "المفعّل والمعطّل" })}</option>
               <option value="active">{t({ en: "✓ Active only", ar: "✓ المفعّل فقط" })}</option>
               <option value="off">{t({ en: "⛔ Inactive only", ar: "⛔ المعطّل فقط" })}</option>
+            </select>
+            <select
+              style={{
+                ...S.input, width: 165,
+                ...(photoFilter ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
+              }}
+              value={photoFilter}
+              onChange={(e) => setPhotoFilter(e.target.value)}
+            >
+              <option value="">{t({ en: "Photo: any", ar: "الصورة: الكل" })}</option>
+              <option value="with">{t({ en: "📷 With a photo", ar: "📷 مع صورة" })}</option>
+              <option value="no">{t({ en: "⬜ Without a photo", ar: "⬜ بلا صورة" })}</option>
             </select>
             {anyFilter && (
               <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resetView}
@@ -419,6 +451,7 @@ export default function MrpItems() {
                     </td>
                     <td style={{ ...S.td, ...S.tdStart }}>
                       <div style={{ fontWeight: 800, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <PhotoMark url={it.imageUrl} t={t} />
                         {nameOf(it, isAr) || it.id}
                         {it.active === false && (
                           <Badge color="#a12626" bg="#fff1f1">⛔ {t({ en: "inactive", ar: "معطّل" })}</Badge>
@@ -507,6 +540,33 @@ function SortTh({ col, label, sort, onSort }) {
         <span style={{ fontSize: 11, opacity: active ? 1 : 0.35 }}>{arrow}</span>
       </span>
     </th>
+  );
+}
+
+/**
+ * 📷 علامة الصورة — مربّع صغير جنب اسم الصنف بالليستة.
+ * صورة مصغّرة إذا في صورة، ومربّع متقطّع باهت إذا الصنف بلا صورة —
+ * كي يبين بلمحة مين ناقصه صورة (الجزار بالكشك بيشوف الصورة مش الاسم).
+ */
+function PhotoMark({ url, t }) {
+  const has = !!String(url || "").trim();
+  const box = {
+    width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: "hidden",
+    display: "grid", placeItems: "center",
+    border: "1px " + (has ? "solid #a7d9d3" : "dashed #d6e3ef"),
+    background: has ? "#fff" : "#f7fbff",
+  };
+  return (
+    <span
+      style={box}
+      title={has
+        ? t({ en: "Has a photo", ar: "في صورة" })
+        : t({ en: "No photo yet", ar: "ما في صورة" })}
+    >
+      {has
+        ? <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        : <span style={{ opacity: 0.3, lineHeight: 1 }}>📷</span>}
+    </span>
   );
 }
 

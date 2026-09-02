@@ -7,24 +7,18 @@ import {
   loadCustomItems,
   saveCustomItems,
 } from "./monitor/branches/_shared/ProductPicker";
+import ReturnNoteScanner from "./shared/ReturnNoteScanner";
+import CodeSuggest from "./shared/CodeSuggest";
+import { fetchFiledDates, rememberFiledDate } from "../utils/filedDates";
+import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
+import { API_BASE as SHARED_API_BASE } from "../config/api";
 
-/* ========= API BASE ========= */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-let fromVite;
-try {
-  fromVite =
-    import.meta.env &&
-    (import.meta.env.VITE_API_URL || import.meta.env.RENDER_EXTERNAL_URL);
-} catch {
-  fromVite = undefined;
-}
-const fromCRA = process.env?.REACT_APP_API_URL;
-export const API_BASE = String(fromVite || fromCRA || API_ROOT_DEFAULT).replace(
-  /\/$/,
-  ""
-);
+/* ========= API BASE =========
+   One resolution order for the whole app lives in src/config/api.js. It is
+   re-exported under the old name so nothing that reads it from here changes. */
+export const API_BASE = SHARED_API_BASE;
 
-/* ========= ثوابت ========= */
+/* ========= Constants ========= */
 const BRANCHES = [
   "QCS",
   "POS 6",
@@ -73,8 +67,107 @@ const ACTIONS = [
   "Other...",
 ];
 
-const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
+const QTY_TYPES = ["KG", "PCS", "PLATE", "أخرى / Other"];
+
+/* REMARKS is picked from a list now, but it is still STORED as a plain
+   comma-separated string: BrowseReturns' filters and every Excel/PDF exporter
+   read `remarks` as text, and old records already hold free typing. So the
+   picker only builds that same string - one row can carry several remarks. */
+const REMARK_OPTIONS = ["EXPIRED", "BAD SMELL", "DAMAGE", "NEAR EXP", "CRITICAL"];
+
+const splitRemarks = (v) =>
+  String(v || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+const joinRemarks = (list) => list.join(", ");
+
+const ORIGINS = ["AUS", "S.A", "BRZ", "NEZ", "LOCAL", "IND", "PAK", "IRAN", "KAZ"];
+
+/* The catalog carries the ERP unit of measure. KG, PIECES and PLATE are the
+   three we have as real options; anything else (LITRE, BOX, CTN…) keeps its own
+   name in the custom field. */
+const UOM_TO_QTY = { KG: "KG", PIECES: "PCS", PCS: "PCS", PLATE: "PLATE" };
+function qtyTypeFromUom(uom) {
+  const u = String(uom || "").trim().toUpperCase();
+  if (!u) return null;
+  if (UOM_TO_QTY[u]) return { qtyType: UOM_TO_QTY[u], customQtyType: "" };
+  return { qtyType: OTHER_QTY, customQtyType: u };
+}
+
+/* These two strings are the values stored inside saved reports — never change them.
+   Only the label shown in the dropdown is English. */
+const OTHER_BRANCH = "فرع آخر... / Other branch";
+const OTHER_QTY = "أخرى / Other";
+const enLabel = (v) =>
+  v === OTHER_BRANCH ? "Other branch…" : v === OTHER_QTY ? "Other" : v;
+
+/* Two rows count as the same branch when the branch matches - and, for
+   "Other branch", the typed name too. Used to spread one transfer number
+   across every row of that branch in the day being entered. */
+const branchKeyOf = (r) => {
+  const b = String(r?.butchery || "").trim();
+  if (!b) return "";
+  return b === OTHER_BRANCH
+    ? `other:${String(r?.customButchery || "").trim().toLowerCase()}`
+    : b;
+};
 // Password gate moved to server-side validation — no hardcoded credentials in client
+
+/* ===== Excel paste =====
+   Copying a block of cells puts TSV on the clipboard: cells split by TAB, rows
+   by newline, and any cell that itself contains a tab, a newline or a quote is
+   wrapped in double quotes with "" for a literal quote. Excel, LibreOffice,
+   Google Sheets and Odoo all write that same shape.
+
+   Only the first two columns are read: the item code, and the quantity if a
+   second column is there. That is what a returns paste is - the rest of the row
+   (branch, transfer no, action) is one value repeated down the block, which
+   Ctrl+D fills far faster than a paste could. */
+function parseClipboardTable(text) {
+  const src = String(text || "").replace(/\r\n?/g, "\n");
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = false;
+      } else cell += ch;
+      continue;
+    }
+    if (ch === '"' && cell === "") { quoted = true; continue; }
+    if (ch === "\t") { row.push(cell); cell = ""; continue; }
+    if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; continue; }
+    cell += ch;
+  }
+  row.push(cell);
+  rows.push(row);
+
+  return rows
+    .map((r) => r.map((c) => c.trim()))
+    .filter((r) => r.some(Boolean));
+}
+
+/** The number inside a pasted cell: tolerates "12,5", "3.20 KG", "1 234.5". */
+function numberFromCell(v) {
+  const raw = String(v ?? "").trim();
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(/[\s ]/g, "")
+    .replace(/[^\d.,-]/g, "")
+    // a lone comma is a decimal separator here; with a dot present it is a
+    // thousands separator and goes away
+    .replace(/,(?=[^,]*\.)/g, "")
+    .replace(/,/g, ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? String(n) : "";
+}
 
 /* ========= Draft storage key ========= */
 const DRAFT_KEY = "returns_draft_v1";
@@ -87,10 +180,6 @@ function getToday() {
 function safeArr(v) {
   return Array.isArray(v) ? v : [];
 }
-function getId(r) {
-  return r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-}
-
 /** Returns true if a row has any meaningful data entered */
 function rowHasData(r) {
   return !!(
@@ -98,6 +187,7 @@ function rowHasData(r) {
     r.productName ||
     r.origin ||
     r.butchery ||
+    r.transferNo ||
     r.customButchery ||
     r.expiry ||
     r.remarks ||
@@ -109,89 +199,62 @@ function rowHasData(r) {
 }
 
 /* ===== Helpers: Images API ===== */
-async function uploadViaServer(file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
-    throw new Error(data?.error || "Upload failed");
-  }
-  return data.optimized_url || data.url;
-}
-async function deleteImage(url) {
-  if (!url) return;
-  const res = await fetch(
-    `${API_BASE}/api/images?url=${encodeURIComponent(url)}`,
-    { method: "DELETE" }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
+const MAX_IMAGES_PER_ROW = 8;
+
+/* ===== Server item catalog (session-cached) =====
+   fetchServerItems() is a no-store read of ~18 KB that fired on every mount,
+   for a list that changes a few times a month. Hold it for the session; the
+   cache lives in sessionStorage, which authFetch already wipes on logout, so
+   it can never bleed into another account. */
+const CATALOG_CACHE_KEY = "returns_server_items_v1";
+const CATALOG_TTL_MS = 10 * 60 * 1000;
+
+function dropCatalogCache() {
+  try { sessionStorage.removeItem(CATALOG_CACHE_KEY); } catch { /* ignore */ }
 }
 
-/* ===== Reports API ===== */
-async function tryFetchJSON(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
-  return res.json();
-}
-
-async function findExistingReturnsReportId(reportDate) {
-  const candidates = [
-    `${API_BASE}/api/reports?type=returns`,
-    `${API_BASE}/api/reports?type=returns&limit=500`,
-  ];
-
-  for (const url of candidates) {
-    try {
-      const j = await tryFetchJSON(url);
-      const list = Array.isArray(j)
-        ? j
-        : Array.isArray(j?.items)
-        ? j.items
-        : Array.isArray(j?.reports)
-        ? j.reports
-        : [];
-
-      if (!list.length) continue;
-
-      const hit = list.find((r) => {
-        const d =
-          r?.payload?.reportDate ||
-          r?.payload?.date ||
-          r?.reportDate ||
-          r?.date;
-        return String(d || "").slice(0, 10) === reportDate;
-      });
-
-      if (hit) return getId(hit) || null;
-    } catch {
-      // try next candidate
+async function fetchServerItemsCached() {
+  try {
+    const raw = sessionStorage.getItem(CATALOG_CACHE_KEY);
+    if (raw) {
+      const { at, items } = JSON.parse(raw);
+      if (Array.isArray(items) && Date.now() - at < CATALOG_TTL_MS) return items;
     }
+  } catch { /* unreadable cache - just refetch */ }
+
+  const server = await fetchServerItems();
+  if (Array.isArray(server)) {
+    try {
+      sessionStorage.setItem(
+        CATALOG_CACHE_KEY,
+        JSON.stringify({ at: Date.now(), items: server })
+      );
+    } catch { /* quota full - running without the cache is fine */ }
   }
-  return null;
+  return server;
 }
 
-async function sendOneToServer({ reportDate, items, existingId }) {
-  const body = {
-    reporter: "anonymous",
-    type: "returns",
-    payload: { reportDate, items },
-    id: existingId || undefined,
-    upsert: true,
-    meta: {
-      unique_key: `returns__${reportDate}`,
-    },
-  };
+/* ===== Reports API =====
+   One call does the whole save. `PUT /api/reports/returns?reportDate=…`
+   updates the row for that date or inserts it if there is none, keeps the
+   allocated refNo and writes the audit trail server-side.
 
-  const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "POST",
+   It replaces what used to happen here: a `?type=returns` list read to look
+   up the id of an existing report — measured at 3.96 MB (331 reports, and
+   growing by one a day), downloaded twice when the date was new, on EVERY
+   save. It was also pointless: the save that followed it was always a POST,
+   and POST always INSERTs, so a second save for the same day hit the
+   (type, reportDate) unique index and came back 409 "Save failed". */
+async function saveReturnsReport({ reportDate, items }) {
+  const url = `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`;
+  const res = await fetch(url, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ items, _clientSavedAt: Date.now() }),
   });
 
   if (!res.ok) {
-    const t = await res.text();
+    const t = await res.text().catch(() => "");
     throw new Error(`Server ${res.status}: ${t}`);
   }
   return res.json();
@@ -214,7 +277,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 2000,
-        direction: "rtl",
+        direction: "ltr",
       }}
     >
       <div
@@ -234,7 +297,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
           style={{
             position: "absolute",
             top: 10,
-            left: 15,
+            right: 15,
             fontSize: 22,
             background: "transparent",
             border: "none",
@@ -252,7 +315,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
             marginBottom: 14,
           }}
         >
-          🔒 كلمة سر إنشاء المرتجعات / Password required
+          🔒 Password required
         </div>
         <form
           onSubmit={(e) => {
@@ -267,7 +330,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
             spellCheck={false}
             autoCapitalize="off"
             autoFocus
-            placeholder="أدخل كلمة مرور حسابك / Your login password"
+            placeholder="Your login password"
             style={{
               width: "90%",
               padding: "11px",
@@ -297,7 +360,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
               boxShadow: "0 2px 12px #d2b4de",
             }}
           >
-            دخول / Sign in
+            Sign in
           </button>
           {error && (
             <div style={{ color: "#c0392b", fontWeight: "bold", marginTop: 5 }}>
@@ -313,9 +376,13 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
 /* ===== Images Manager Modal ===== */
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   const [previewSrc, setPreviewSrc] = useState("");
+  const [uploadMsg, setUploadMsg] = useState("");
   const inputRef = useRef(null);
   useEffect(() => {
-    if (!open) setPreviewSrc("");
+    if (!open) {
+      setPreviewSrc("");
+      setUploadMsg("");
+    }
     const onEsc = (e) => {
       if (e.key === "Escape") onClose();
     };
@@ -326,17 +393,36 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   const pick = () => inputRef.current?.click();
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = "";
     if (!files.length) return;
+
+    const already = safeArr(row?.images).length;
+    const room = Math.max(0, MAX_IMAGES_PER_ROW - already);
+    if (room <= 0) {
+      setUploadMsg(`This row already has ${MAX_IMAGES_PER_ROW} photos - remove one first.`);
+      return;
+    }
+    const batch = files.slice(0, room);
+    const skipped = files.length - batch.length;
+
     const urls = [];
-    for (const f of files) {
+    let failed = 0;
+    for (let i = 0; i < batch.length; i++) {
+      setUploadMsg(`Uploading ${i + 1} of ${batch.length}…`);
       try {
-        urls.push(await uploadViaServer(f));
+        urls.push(await uploadImage(batch[i], "returns_photo"));
       } catch (err) {
+        failed++;
         console.error("upload failed:", err);
       }
     }
+
     if (urls.length) onAddImages(urls);
-    e.target.value = "";
+    const notes = [];
+    if (failed) notes.push(`${failed} failed to upload`);
+    if (skipped) notes.push(`${skipped} skipped (max ${MAX_IMAGES_PER_ROW} per row)`);
+    setUploadMsg(notes.length ? `⚠️ ${notes.join(" - ")}` : "");
+    if (!notes.length) setTimeout(() => setUploadMsg(""), 1200);
   };
   return (
     <div style={galleryBack} onClick={onClose}>
@@ -368,7 +454,22 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
             ⬆️ Upload images
           </button>
           <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
-          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per item (server compresses automatically).</div>
+          <div style={{ fontSize: 13, color: "#334155" }}>
+            Up to {MAX_IMAGES_PER_ROW} photos per item. They are shrunk on this
+            device before uploading, then compressed again on the server.
+          </div>
+          {uploadMsg && (
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: "bold",
+                color: uploadMsg.startsWith("⚠️") ? "#b45309" : "#2563eb",
+                width: "100%",
+              }}
+            >
+              {uploadMsg}
+            </div>
+          )}
         </div>
         <div style={thumbsWrap}>
           {(row?.images || []).length === 0 ? (
@@ -376,7 +477,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
           ) : (
             row.images.map((src, i) => (
               <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
-                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <img src={thumbUrl(src, 320)} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
                 <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>
                   ✕
                 </button>
@@ -389,8 +490,125 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   );
 }
 
+/* ===== Remarks picker (multi-select + free text) ===== */
+function RemarksPicker({ value, onChange }) {
+  const [customOpen, setCustomOpen] = useState(false);
+  const [custom, setCustom] = useState("");
+
+  const selected = splitRemarks(value);
+  const taken = selected.map((x) => x.toUpperCase());
+  const available = REMARK_OPTIONS.filter((o) => !taken.includes(o));
+
+  const add = (text) => {
+    const t = String(text || "").trim();
+    if (!t || taken.includes(t.toUpperCase())) return;
+    onChange(joinRemarks([...selected, t]));
+  };
+
+  const removeAt = (i) => onChange(joinRemarks(selected.filter((_, x) => x !== i)));
+
+  const commitCustom = () => {
+    add(custom);
+    setCustom("");
+    setCustomOpen(false);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <select
+        value=""
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) return;
+          if (v === "__other__") setCustomOpen(true);
+          else add(v);
+        }}
+        style={{ ...inputBase, width: "100%", cursor: "pointer" }}
+      >
+        <option value="">+ Add remark…</option>
+        {available.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value="__other__">Other…</option>
+      </select>
+
+      {customOpen && (
+        <input
+          autoFocus
+          style={{ ...inputBase, width: "100%" }}
+          placeholder="Type a remark, then Enter"
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitCustom();
+            } else if (e.key === "Escape") {
+              setCustom("");
+              setCustomOpen(false);
+            }
+          }}
+          onBlur={commitCustom}
+        />
+      )}
+
+      {selected.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {selected.map((r, i) => (
+            <span
+              key={`${r}_${i}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                background: "#f4ecf7",
+                color: "#512e5f",
+                border: "1px solid #d7c6e0",
+                borderRadius: 999,
+                padding: "3px 8px",
+                fontWeight: "bold",
+                maxWidth: "100%",
+              }}
+              title={r}
+            >
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: 150,
+                }}
+              >
+                {r}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeAt(i)}
+                title="Remove this remark"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#c0392b",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ===== Confirm Delete Modal ===== */
-function ConfirmDeleteModal({ show, rowNum, onConfirm, onCancel }) {
+function ConfirmDeleteModal({ show, rowNum, imageCount = 0, onConfirm, onCancel }) {
   if (!show) return null;
   return (
     <div style={{ ...galleryBack, zIndex: 3000 }}>
@@ -408,18 +626,26 @@ function ConfirmDeleteModal({ show, rowNum, onConfirm, onCancel }) {
       >
         <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
         <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
-          حذف الصف {rowNum}؟ / Delete row {rowNum}?
+          Delete row {rowNum}?
         </div>
         <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>
-          هذا الصف يحتوي على بيانات. هل أنت متأكد من الحذف؟
-          <br />This row has data. Are you sure?
+          This row contains data. Are you sure you want to delete it?
+          {imageCount > 0 && (
+            <>
+              <br />
+              <b style={{ color: "#b45309" }}>
+                Its {imageCount} photo{imageCount === 1 ? "" : "s"} will be
+                deleted from storage too.
+              </b>
+            </>
+          )}
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <button
             onClick={onCancel}
             style={{ ...btnGhost, padding: "10px 24px" }}
           >
-            إلغاء / Cancel
+            Cancel
           </button>
           <button
             onClick={onConfirm}
@@ -433,7 +659,7 @@ function ConfirmDeleteModal({ show, rowNum, onConfirm, onCancel }) {
               padding: "10px 24px",
             }}
           >
-            حذف / Delete
+            Delete
           </button>
         </div>
       </div>
@@ -466,16 +692,16 @@ function SendReportPrompt({ show, reportDate, onYes, onNo }) {
       >
         <div style={{ fontSize: 40, marginBottom: 12 }}>📨</div>
         <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
-          هل تريد إرسال التقرير بالإيميل؟
+          Send this report by e-mail?
         </div>
         <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>
-          تقرير المرتجعات بتاريخ <b>{dmy}</b> تم حفظه.
+          The returns report for <b>{dmy}</b> has been saved.
           <br />
-          "نعم" تفتح نافذة الإرسال لتختار المستلمين.
+          "Yes" opens the send window so you can choose the recipients.
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <button onClick={onNo} style={{ ...btnGhost, padding: "10px 24px" }}>
-            لا / No
+            No
           </button>
           <button
             onClick={onYes}
@@ -489,7 +715,72 @@ function SendReportPrompt({ show, reportDate, onYes, onNo }) {
               padding: "10px 24px",
             }}
           >
-            نعم، أرسل / Yes
+            Yes, send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== The chosen day is already on file =====
+   The only screen between a mistyped date and an overwritten day, so it says
+   plainly what will happen and offers to open the day first. Viewing opens in
+   a second tab: this table full of typing must survive the detour. */
+function ReplaceDayModal({ show, reportDate, rowCount, onConfirm, onCancel }) {
+  if (!show) return null;
+  const dmy = /^\d{4}-\d{2}-\d{2}$/.test(String(reportDate || ""))
+    ? String(reportDate).split("-").reverse().join("/")
+    : reportDate;
+  return (
+    <div style={{ ...galleryBack, zIndex: 3000 }}>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          padding: "2rem 2.5rem",
+          minWidth: 340,
+          maxWidth: 470,
+          textAlign: "center",
+          boxShadow: "0 8px 32px rgba(0,0,0,.2)",
+          fontFamily: "Cairo, sans-serif",
+        }}
+      >
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🛑</div>
+        <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
+          {dmy} already has a returns report
+        </div>
+        <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>
+          Saving does not add to that report — it <b>replaces</b> it with the
+          {" "}{rowCount} row{rowCount === 1 ? "" : "s"} on this screen, and whatever
+          it holds now is gone.
+          <br />
+          If the date is wrong, cancel and correct it.
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+          <button onClick={onCancel} style={{ ...btnGhost, padding: "10px 22px" }}>
+            Cancel
+          </button>
+          <button
+            onClick={() => window.open("/returns/view", "_blank", "noopener")}
+            style={{ ...btnGhost, padding: "10px 22px" }}
+            title="Opens in a new tab so nothing typed here is lost"
+          >
+            👁️ View that day first
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              background: "#dc2626",
+              color: "#fff",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: 900,
+              cursor: "pointer",
+              padding: "10px 22px",
+            }}
+          >
+            Replace it
           </button>
         </div>
       </div>
@@ -555,7 +846,7 @@ function AddItemModal({ open, onClose, onAdd, error }) {
           </div>
 
           <div style={{ fontSize: 12, color: "#64748b" }}>
-            * سيتم منع التكرار تلقائياً. الحفظ دائم محلياً، وسيتم محاولة الحفظ على السيرفر إن كان endpoint متوفر.
+            * Duplicates are blocked automatically. The item is stored locally and pushed to the server when the endpoint is available.
           </div>
         </div>
       </div>
@@ -563,7 +854,7 @@ function AddItemModal({ open, onClose, onAdd, error }) {
   );
 }
 
-/* ====================== الصفحة الرئيسية ====================== */
+/* ====================== Main page ====================== */
 export default function Returns() {
   const navigate = useNavigate();
 
@@ -584,16 +875,17 @@ export default function Returns() {
         setModalOpen(false);
         setModalError("");
       } else {
-        setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+        setModalError("❌ Wrong password!");
       }
     } catch {
-      setModalError("❌ تعذر التحقق — تأكد من الاتصال / Verification failed");
+      setModalError("❌ Verification failed — check your connection.");
     }
   };
   const handleCloseModal = () => navigate("/returns/menu", { replace: true });
 
   /* ===== UI ===== */
   const [compact, setCompact] = useState(true);
+  const [scanOpen, setScanOpen] = useState(false);
 
   /* ===== Data ===== */
   const makeEmptyRow = () => ({
@@ -601,6 +893,7 @@ export default function Returns() {
     productName: "",
     origin: "",
     butchery: "",
+    transferNo: "",
     customButchery: "",
     quantity: "",
     qtyType: "KG",
@@ -638,22 +931,50 @@ export default function Returns() {
   /* Holds the just-saved report date while the "send it now?" prompt is up. */
   const [sendPromptDate, setSendPromptDate] = useState("");
 
+  /* Which dates already carry a saved returns report.
+       Set   - the index loaded, every date is answered from it
+       false - the index could not be read; the save is NOT blocked for it
+       null  - still loading
+     `savedHere` is the dates saved by this session: the user wrote them a
+     moment ago, so a correction save must not stop to ask about them. */
+  const [filedDates, setFiledDates] = useState(null);
+  const [savedHere, setSavedHere] = useState(() => new Set());
+  const [replacePrompt, setReplacePrompt] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFiledDates("returns")
+      .then((dates) => { if (!cancelled) setFiledDates(new Set(dates)); })
+      .catch(() => { if (!cancelled) setFiledDates(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const dateAlreadyFiled =
+    !!(filedDates && filedDates.has(reportDate)) && !savedHere.has(reportDate);
+
   // ✅ Track whether there are unsaved changes
   const [isDirty, setIsDirty] = useState(false);
-  const savedRowsRef = useRef(null); // snapshot of last-saved rows
+  const savedRowsRef = useRef(null); // JSON of the last-saved rows
 
-  // ✅ Auto-save draft to localStorage on every rows/date change
+  /* Draft auto-save, debounced.
+     This used to run on every keystroke and serialise the whole table TWICE
+     (once for the draft, once to compare against the saved snapshot), which
+     is what made typing stutter on a report with many rows. Now it waits
+     400 ms after the last edit and serialises once. */
   useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(rows));
-      localStorage.setItem(DRAFT_DATE_KEY, reportDate);
-    } catch {
-      // ignore
-    }
-    // Mark dirty if rows differ from last saved snapshot
-    if (savedRowsRef.current !== null) {
-      setIsDirty(JSON.stringify(rows) !== JSON.stringify(savedRowsRef.current));
-    }
+    const t = setTimeout(() => {
+      const json = JSON.stringify(rows);
+      try {
+        localStorage.setItem(DRAFT_KEY, json);
+        localStorage.setItem(DRAFT_DATE_KEY, reportDate);
+      } catch {
+        // ignore
+      }
+      if (savedRowsRef.current !== null) {
+        setIsDirty(json !== savedRowsRef.current);
+      }
+    }, 400);
+    return () => clearTimeout(t);
   }, [rows, reportDate]);
 
   // ✅ Warn before leaving page if unsaved changes
@@ -668,7 +989,7 @@ export default function Returns() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty]);
 
-  /* ===== تحميل الأصناف من /public/data/items.json ===== */
+  /* ===== Load the item catalog from /public/data/items.json ===== */
   const [itemsAll, setItemsAll] = useState([]);
   const [itemsLoadError, setItemsLoadError] = useState("");
 
@@ -676,7 +997,7 @@ export default function Returns() {
     const tryLoad = async () => {
       setItemsLoadError("");
       try {
-        const r1 = await fetch("/data/items.json", { cache: "no-store" });
+        const r1 = await fetch("/data/items.json", { cache: "no-cache" });
         if (r1.ok) {
           const j = await r1.json();
           if (Array.isArray(j)) {
@@ -690,7 +1011,7 @@ export default function Returns() {
 
       try {
         const base = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
-        const r2 = await fetch(`${base}/data/items.json`, { cache: "no-store" });
+        const r2 = await fetch(`${base}/data/items.json`, { cache: "no-cache" });
         if (r2.ok) {
           const j = await r2.json();
           if (Array.isArray(j)) {
@@ -698,10 +1019,10 @@ export default function Returns() {
             return;
           }
         }
-        setItemsLoadError("⚠️ لم أستطع قراءة /data/items.json. تأكد من وجود الملف في public/data وفتح الرابط مباشرة بالمتصفح.");
+        setItemsLoadError("⚠️ Could not read /data/items.json. Make sure the file exists in public/data.");
       } catch (err) {
         console.error("items load failed:", err);
-        setItemsLoadError("⚠️ فشل تحميل ملف الأصناف.");
+        setItemsLoadError("⚠️ Failed to load the items file.");
       }
     };
     tryLoad();
@@ -716,7 +1037,7 @@ export default function Returns() {
     let cancelled = false;
 
     (async () => {
-      const server = await fetchServerItems();
+      const server = await fetchServerItemsCached();
       if (!cancelled && Array.isArray(server) && server.length > 0) {
         setCustomItems((prev) => {
           const mergedByCode = new Map();
@@ -755,12 +1076,87 @@ export default function Returns() {
       if (!code || !name) return;
       const key = normalize(code);
       if (!key) return;
-      if (!map.has(key)) map.set(key, { item_code: code, description: name, __custom: !!it.__custom });
+      if (!map.has(key))
+        map.set(key, {
+          item_code: code,
+          description: name,
+          origin: String(it?.origin ?? "").trim(),
+          category: String(it?.category ?? "").trim(),
+          uom: String(it?.uom ?? "").trim(),
+          __custom: !!it.__custom,
+        });
     };
     safeArr(itemsAll).forEach(push);
     safeArr(customItems).forEach((x) => push({ ...x, __custom: true }));
     return Array.from(map.values());
   }, [itemsAll, customItems]);
+
+  /* digits-only item code -> catalog item, used by the return-note scanner */
+  const catalogByDigits = useMemo(() => {
+    const m = new Map();
+    allItems.forEach((it) => {
+      const d = String(it.item_code || "").replace(/\D/g, "");
+      if (d && !m.has(d)) m.set(d, it);
+    });
+    return m;
+  }, [allItems]);
+
+  /* Turn the codes read from the scanned notes into report rows.
+     `entries` is [{ code, branch }] in the page order shown in the scanner,
+     so several papers - from different branches - land in one pass and keep
+     their order. The scanner sends codes only: the product name comes from
+     our catalog, exactly as it would if the code had been typed by hand. */
+  const applyScan = ({ entries }) => {
+    if (!Array.isArray(entries) || !entries.length) return;
+
+    setRows((prev) => {
+      const next = prev.slice();
+
+      /* A scan is one or more papers read top to bottom, so its rows have to
+         land as a CONTIGUOUS BLOCK in that order.
+
+         Reusing the first blank row found anywhere - which is what this did -
+         broke that whenever the table had a gap in the middle: the first
+         scanned item dropped into that gap, above rows already entered, and
+         everything after it appended at the bottom. The draft then no longer
+         matched the paper it was read from, which is the one thing a scanned
+         draft has to do.
+
+         Only the blank rows at the END are reused, so the usual trailing empty
+         row is still consumed rather than left stranded. A gap in the middle is
+         left exactly where it is. */
+      let at = next.length;
+      while (at > 0 && !rowHasData(next[at - 1])) at--;
+
+      entries.forEach(({ code, branch, transferNo, ordered }) => {
+        const hit = allItems.find(
+          (it) => normalize(it.item_code) === normalize(code)
+        );
+        const known = !!branch && BRANCHES.includes(branch);
+        next[at] = {
+          ...makeEmptyRow(),
+          itemCode: String(code || ""),
+          ...catalogPatch(hit),
+          butchery: branch ? (known ? branch : OTHER_BRANCH) : "",
+          customButchery: branch && !known ? branch : "",
+          transferNo: String(transferNo || ""),
+          /* the paper still names its column ORDERED - it holds the quantity */
+          quantity: String(ordered ?? ""),
+        };
+        at++;
+      });
+
+      // always leave one empty row to type into
+      if (next.length && rowHasData(next[next.length - 1])) next.push(makeEmptyRow());
+      return next;
+    });
+
+    const pages = new Set(entries.map((e) => e.branch || "?")).size;
+    setSaveMsg(
+      `✅ ${entries.length} row(s) added from ${pages} scanned branch${pages === 1 ? "" : "es"}.`
+    );
+    setTimeout(() => setSaveMsg(""), 2600);
+  };
 
   async function trySaveCustomItemToServer(item) {
     const endpoints = [`${API_BASE}/api/items`, `${API_BASE}/api/catalog/items`];
@@ -784,12 +1180,12 @@ export default function Returns() {
 
     const c = String(code || "").trim();
     const n = String(name || "").trim();
-    if (!c) return setAddItemError("❌ ITEM CODE مطلوب.");
-    if (!n) return setAddItemError("❌ PRODUCT NAME مطلوب.");
+    if (!c) return setAddItemError("❌ ITEM CODE is required.");
+    if (!n) return setAddItemError("❌ PRODUCT NAME is required.");
 
     const key = normalize(c);
     const exists = allItems.some((it) => normalize(it.item_code) === key);
-    if (exists) return setAddItemError("❌ هذا الكود موجود مسبقاً (Duplicate).");
+    if (exists) return setAddItemError("❌ This code already exists (duplicate).");
 
     const newItem = { item_code: c, description: n };
     setCustomItems((prev) => [newItem, ...prev]);
@@ -799,6 +1195,7 @@ export default function Returns() {
 
     try {
       await trySaveCustomItemToServer(newItem);
+      dropCatalogCache();
     } catch {
       // ignore
     }
@@ -813,13 +1210,7 @@ export default function Returns() {
     );
   };
 
-  /* ===== البحث المحلي + التطبيع ===== */
-  const [itemHints, setItemHints] = useState({});
-  const [hintSel, setHintSel] = useState({});
-  const [activeCell, setActiveCell] = useState({ row: null, field: null });
-
-  // ✅ Debounce ref for search
-  const searchTimers = useRef({});
+  /* ===== Local search + normalization ===== */
 
   const localSearch = (q) => {
     const s = normalize(q);
@@ -833,63 +1224,218 @@ export default function Returns() {
       .slice(0, 20);
   };
 
-  // ✅ Debounced hint search (150ms)
-  const showHintsFor = useCallback((idx, q) => {
-    clearTimeout(searchTimers.current[idx]);
-    searchTimers.current[idx] = setTimeout(() => {
-      const results = localSearch(q);
-      setItemHints((h) => ({ ...h, [idx]: results }));
-      setHintSel((h) => ({ ...h, [idx]: results.length ? 0 : -1 }));
-    }, 150);
-  }, [allItems]); // eslint-disable-line
+  /* The product name is owned by the item code: one lookup, one source. */
+  const lookupByCode = useCallback(
+    (code) => {
+      const s = normalize(code);
+      if (!s) return null;
+      return allItems.find((it) => normalize(it.item_code) === s) || null;
+    },
+    [allItems] // eslint-disable-line
+  );
 
-  const tryExactFill = (idx, field, value) => {
-    const s = normalize(value);
-    if (!s) return;
-
-    if (field === "itemCode") {
-      const hit = allItems.find((it) => normalize(it.item_code) === s);
-      if (hit) {
-        setRows((prev) =>
-          prev.map((r, i) =>
-            i === idx
-              ? { ...r, itemCode: String(value ?? ""), productName: hit.description }
-              : r
-          )
-        );
-        setItemHints((h) => ({ ...h, [idx]: [] }));
-        setHintSel((h) => ({ ...h, [idx]: -1 }));
-      }
-    } else if (field === "productName") {
-      const hit = allItems.find((it) => normalize(it.description) === s);
-      if (hit) {
-        setRows((prev) =>
-          prev.map((r, i) =>
-            i === idx
-              ? { ...r, productName: String(value ?? ""), itemCode: hit.item_code }
-              : r
-          )
-        );
-        setItemHints((h) => ({ ...h, [idx]: [] }));
-        setHintSel((h) => ({ ...h, [idx]: -1 }));
-      }
+  /* Everything the item code owns, in one place.
+     productName and origin mirror the code strictly: an item with no origin in
+     the catalog really is "origin unknown", so a stale value must not survive a
+     code change. The unit of measure is different — a blank one only means the
+     item predates the ERP export, so the row keeps whatever it already had. */
+  const catalogPatch = (hit) => {
+    const patch = {
+      productName: hit ? hit.description : "",
+      origin: hit?.origin || "",
+    };
+    const q = hit ? qtyTypeFromUom(hit.uom) : null;
+    if (q) {
+      patch.qtyType = q.qtyType;
+      patch.customQtyType = q.customQtyType;
     }
+    return patch;
   };
 
   const pickItem = (idx, item) => {
     setRows((prev) =>
       prev.map((r, i) =>
         i === idx
-          ? { ...r, itemCode: item.item_code, productName: item.description }
+          ? { ...r, itemCode: item.item_code, ...catalogPatch(item) }
           : r
       )
     );
-    setItemHints((h) => ({ ...h, [idx]: [] }));
-    setHintSel((h) => ({ ...h, [idx]: -1 }));
-    setActiveCell({ row: null, field: null });
+  };
+
+  /* One paper covers one branch, so the transfer number typed on any row
+     belongs to every row of that branch in this report. Runs when the field
+     is left (not on each keystroke - otherwise "0", "02", "023"… would each
+     be spread in turn).
+
+     Rows that already carry a DIFFERENT number are left alone: a branch can
+     send two transfers in the same day, and silently overwriting the second
+     one would be data loss. Those are reported instead. */
+  const propagateTransferNo = (idx) => {
+    const src = rows[idx];
+    const trn = String(src?.transferNo || "").trim();
+    const key = branchKeyOf(src);
+    if (!trn || !key) return;
+
+    const targets = rows
+      .map((r, i) => ({ r, i }))
+      .filter(({ r, i }) => i !== idx && branchKeyOf(r) === key);
+
+    const blanks = targets.filter(({ r }) => !String(r.transferNo || "").trim());
+    const different = targets.filter(({ r }) => {
+      const v = String(r.transferNo || "").trim();
+      return v && v !== trn;
+    });
+
+    if (blanks.length) {
+      const fill = new Set(blanks.map(({ i }) => i));
+      setRows((prev) =>
+        prev.map((r, i) => (fill.has(i) ? { ...r, transferNo: trn } : r))
+      );
+    }
+
+    if (blanks.length || different.length) {
+      const branchName =
+        src.butchery === OTHER_BRANCH ? src.customButchery || "this branch" : src.butchery;
+      const parts = [];
+      if (blanks.length) {
+        parts.push(`✅ Transfer ${trn} applied to ${blanks.length} more ${branchName} row(s).`);
+      }
+      if (different.length) {
+        parts.push(`${different.length} row(s) kept their own number.`);
+      }
+      setSaveMsg(parts.join(" "));
+      setTimeout(() => setSaveMsg(""), 3200);
+    }
   };
 
   const addRow = () => setRows((prev) => [...prev, makeEmptyRow()]);
+
+  /* ===== Table keyboard + clipboard =====
+     Both hang off the table wrapper rather than every cell: one handler, and
+     the cells stay plain inputs. */
+
+  const tableRef = useRef(null);
+
+  /** The row/column the caret is in, read off the DOM markers. */
+  const focusedCell = () => {
+    const el = document.activeElement;
+    if (!el || !tableRef.current?.contains(el)) return null;
+    const col = el.getAttribute?.("data-col") || "";
+    const tr = el.closest?.("tr[data-row]");
+    const row = tr ? Number(tr.getAttribute("data-row")) : -1;
+    return row >= 0 ? { row, col } : null;
+  };
+
+  /** Put the caret in the same column of another row, if that cell exists. */
+  const focusCell = (row, col) => {
+    const host = tableRef.current;
+    if (!host) return false;
+    const sel = col ? `tr[data-row="${row}"] [data-col="${col}"]` : `tr[data-row="${row}"] [data-col]`;
+    const el = host.querySelector(sel);
+    if (!el) return false;
+    el.focus();
+    if (el.select) { try { el.select(); } catch { /* selects are not selectable */ } }
+    return true;
+  };
+
+  /* Enter walks down the column, Ctrl/Cmd+D fills the row from the one above.
+     Both are what a keyboard-only operator expects from a grid, and both are
+     what this form was missing. */
+  const handleTableKeyDown = (e) => {
+    // the item-code suggestion list gets first refusal on Enter and the arrows
+    if (e.defaultPrevented) return;
+
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const at = focusedCell();
+      if (!at) return;
+      e.preventDefault();
+      // no row below: grow the table first, but never after an empty row -
+      // Enter at the bottom of a finished table should not breed blank rows
+      if (!focusCell(at.row + 1, at.col)) {
+        if (!rowHasData(rows[at.row])) return;
+        setRows((prev) => [...prev, makeEmptyRow()]);
+        setTimeout(() => focusCell(at.row + 1, at.col), 0);
+      }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+      const at = focusedCell();
+      if (!at) return;
+      // claimed before the checks below, so a no-op never opens the browser's
+      // own Ctrl+D (add bookmark) behind the table
+      e.preventDefault();
+      const src = at.row >= 1 ? rows[at.row - 1] : null;
+      if (!src || !rowHasData(src)) return;
+
+      setRows((prev) => {
+        const next = prev.slice();
+        // images belong to the row that was photographed, never to a copy
+        next[at.row] = { ...src, images: [] };
+        // a duplicate of the last row needs a fresh empty row under it
+        if (at.row === prev.length - 1) next.push(makeEmptyRow());
+        return next;
+      });
+      setSaveMsg(`✅ Row ${at.row + 1} filled from row ${at.row}.`);
+      setTimeout(() => setSaveMsg(""), 1800);
+    }
+  };
+
+  /* Paste a block copied out of Excel: column 1 is the item code, column 2 the
+     quantity if it is there. A single cell with no tab and no newline is left
+     to the browser - that is an ordinary paste into one field. */
+  const handleTablePaste = (e) => {
+    const text = e.clipboardData?.getData("text/plain") || "";
+    if (!text || !/[\t\n\r]/.test(text.trim())) return;
+
+    const table = parseClipboardTable(text);
+    if (!table.length) return;
+
+    const at = focusedCell();
+    const start = at ? at.row : 0;
+    e.preventDefault();
+
+    /* Resolved BEFORE the state update, for two reasons: React runs an updater
+       twice in development, which would double any counting done inside it, and
+       the message below has to read those counts synchronously. Dropping the
+       code-less lines here also keeps the write positions contiguous, so no row
+       index is skipped. */
+    const entries = [];
+    table.forEach((cells) => {
+      const code = String(cells[0] || "").trim();
+      if (!code) return;
+      entries.push({
+        code,
+        hit: lookupByCode(code),
+        qty: cells.length > 1 ? numberFromCell(cells[1]) : "",
+      });
+    });
+    if (!entries.length) return;
+
+    const matched = entries.filter((x) => x.hit).length;
+    const unknown = entries.length - matched;
+
+    setRows((prev) => {
+      const next = prev.slice();
+      entries.forEach(({ code, hit, qty }, i) => {
+        const idx = start + i;
+        const base = next[idx] || makeEmptyRow();
+        const patched = { ...base, itemCode: code, ...catalogPatch(hit) };
+        if (qty !== "") patched.quantity = qty;
+        next[idx] = patched;
+      });
+      // always leave one empty row to type into
+      if (next.length && rowHasData(next[next.length - 1])) next.push(makeEmptyRow());
+      return next;
+    });
+
+    const notes = [`${entries.length} row(s) pasted`];
+    if (matched) notes.push(`${matched} matched the catalog`);
+    if (unknown) notes.push(`${unknown} unknown code(s)`);
+    setSaveMsg(`${unknown ? "⚠️" : "✅"} ${notes.join(" — ")}.`);
+    setTimeout(() => setSaveMsg(""), 4000);
+  };
+
 
   /* ===== ✅ Confirm Delete Modal ===== */
   const [confirmDelete, setConfirmDelete] = useState({ show: false, idx: -1 });
@@ -908,7 +1454,12 @@ export default function Returns() {
   const confirmRemoveRow = () => {
     const { idx } = confirmDelete;
     setConfirmDelete({ show: false, idx: -1 });
+    const orphans = safeArr(rows?.[idx]?.images);
     setRows((prev) => prev.filter((_, i) => i !== idx));
+    // fire-and-forget: the row is gone from the report either way
+    orphans.forEach((url) => {
+      deleteImage(url).catch(() => {});
+    });
   };
 
   const cancelRemoveRow = () => setConfirmDelete({ show: false, idx: -1 });
@@ -948,7 +1499,11 @@ export default function Returns() {
       const current = { ...updated[idx] };
 
       if (field === "itemCode") {
-        current.itemCode = String(value ?? "");
+        const code = String(value ?? "");
+        const hit = lookupByCode(code);
+        current.itemCode = code;
+        // PRODUCT NAME / ORIGIN / QTY TYPE all come from the code
+        Object.assign(current, catalogPatch(hit));
         updated[idx] = current;
 
         // ✅ Auto-add row when editing the last row
@@ -960,9 +1515,19 @@ export default function Returns() {
 
       current[field] = value;
 
-      if (field === "butchery" && value !== "فرع آخر... / Other branch") current.customButchery = "";
+      if (field === "butchery" && value !== OTHER_BRANCH) current.customButchery = "";
+
+      /* Just picked a branch on an empty-numbered row: take the transfer
+         number the rest of that branch already uses today. */
+      if (field === "butchery" && !String(current.transferNo || "").trim()) {
+        const key = branchKeyOf(current);
+        const donor = key
+          ? updated.find((r, i) => i !== idx && branchKeyOf(r) === key && String(r.transferNo || "").trim())
+          : null;
+        if (donor) current.transferNo = String(donor.transferNo).trim();
+      }
       if (field === "action" && value !== "Other...") current.customAction = "";
-      if (field === "qtyType" && value !== "أخرى / Other") current.customQtyType = "";
+      if (field === "qtyType" && value !== OTHER_QTY) current.customQtyType = "";
 
       updated[idx] = current;
 
@@ -974,17 +1539,8 @@ export default function Returns() {
       return updated;
     });
 
-    if (field === "itemCode") {
-      showHintsFor(idx, value);
-      tryExactFill(idx, "itemCode", value);
-    }
-    if (field === "productName") {
-      showHintsFor(idx, value);
-      tryExactFill(idx, "productName", value);
-    }
   };
-
-  /* ===== الصور ===== */
+  /* ===== Images ===== */
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
   const openImagesFor = (idx) => {
@@ -1035,22 +1591,24 @@ export default function Returns() {
     const filledRows = rows.filter(rowHasData);
     let totalKG = 0;
     let totalPCS = 0;
+    let totalPLATE = 0;
     let totalOther = 0;
 
     filledRows.forEach((r) => {
       const qty = Number(r.quantity);
       if (!Number.isFinite(qty) || qty <= 0) return;
-      const type = r.qtyType === "أخرى / Other" ? (r.customQtyType || "Other") : r.qtyType;
+      const type = r.qtyType === OTHER_QTY ? (r.customQtyType || "Other") : r.qtyType;
       if (type === "KG") totalKG += qty;
       else if (type === "PCS") totalPCS += qty;
+      else if (type === "PLATE") totalPLATE += qty;
       else totalOther += qty;
     });
 
-    return { filledRows: filledRows.length, totalKG, totalPCS, totalOther };
+    return { filledRows: filledRows.length, totalKG, totalPCS, totalPLATE, totalOther };
   }, [rows]);
 
-  /* ===== الحفظ ===== */
-  const handleSave = async () => {
+  /* ===== Save ===== */
+  const handleSave = async (opts = {}) => {
     if (saving) return;
 
     const prepared = rows.map((r) => {
@@ -1062,6 +1620,7 @@ export default function Returns() {
         origin: String(r.origin || "").trim(),
         butchery: String(r.butchery || "").trim(),
         customButchery: String(r.customButchery || "").trim(),
+        transferNo: String(r.transferNo || "").trim(),
         quantity: Number.isFinite(qNum) && qNum > 0 ? qNum : "",
         qtyType: String(r.qtyType || "").trim(),
         customQtyType: String(r.customQtyType || "").trim(),
@@ -1090,6 +1649,7 @@ export default function Returns() {
         r.origin ||
         r.butchery ||
         r.customButchery ||
+        r.transferNo ||
         r.quantity !== "" ||
         r.expiry ||
         r.remarks ||
@@ -1100,25 +1660,35 @@ export default function Returns() {
     });
 
     if (!filtered.length) {
-      setSaveMsg("لا يوجد صف صالح للحفظ. أضف كود الصنف أو اسم المنتج مع بيانات إضافية.");
+      setSaveMsg("Nothing to save. Add an item code or a product name with some data.");
       setTimeout(() => setSaveMsg(""), 2500);
       return;
     }
 
+    /* The day is already on file and this PUT replaces it — make that a
+       decision rather than a side effect. Asked only after validation, so the
+       prompt never appears for a save that was going to fail anyway. */
+    if (dateAlreadyFiled && !opts.replaceConfirmed) {
+      setReplacePrompt(true);
+      return;
+    }
+    setReplacePrompt(false);
+
     try {
       setSaving(true);
-      setSaveMsg("⏳ جاري الحفظ على السيرفر… / Saving to server…");
+      setSaveMsg("⏳ Saving to server…");
 
-      const existingId = await findExistingReturnsReportId(reportDate);
-      if (existingId) {
-        setSaveMsg("⏳ يوجد تقرير بنفس التاريخ — سيتم تحديثه (Update) بدل إنشاء جديد…");
-      }
-
-      const res = await sendOneToServer({ reportDate, items: filtered, existingId });
+      const res = await saveReturnsReport({ reportDate, items: filtered });
 
       // ✅ Mark as saved → clear dirty flag
-      savedRowsRef.current = JSON.parse(JSON.stringify(rows));
+      savedRowsRef.current = JSON.stringify(rows);
       setIsDirty(false);
+
+      /* This date is now on file — and this session is the one that filed it,
+         so a follow-up correction saves without being asked again. */
+      setFiledDates((prev) => (prev ? new Set(prev).add(reportDate) : prev));
+      setSavedHere((prev) => new Set(prev).add(reportDate));
+      rememberFiledDate("returns", reportDate);
 
       // ✅ Clear draft from localStorage after successful server save
       try {
@@ -1126,10 +1696,16 @@ export default function Returns() {
         localStorage.removeItem(DRAFT_DATE_KEY);
       } catch { /* ignore */ }
 
-      setSaveMsg(`✅ تم الحفظ بنجاح. رقم المرجع: ${res?.id || res?._id || existingId || "—"}`);
+      const saved = res?.report || {};
+      const ref = saved?.payload?.refNo || saved?.id || "—";
+      setSaveMsg(
+        res?.method === "update"
+          ? `✅ Updated the report for this date. Reference: ${ref}`
+          : `✅ Saved successfully. Reference: ${ref}`
+      );
       setSendPromptDate(reportDate);
     } catch (err) {
-      setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا. / Save failed. Please try again.");
+      setSaveMsg("❌ Save failed. Please try again.");
       console.error(err);
     } finally {
       setSaving(false);
@@ -1146,7 +1722,7 @@ export default function Returns() {
     textAlign: "center",
     fontSize: compact ? "0.95em" : "1.05em",
     fontWeight: "bold",
-    borderBottom: "2px solid #c7a8dc",
+    borderBottom: "2px solid #d8b4fe",
     width: w,
   });
 
@@ -1154,9 +1730,8 @@ export default function Returns() {
     padding: compact ? "8px 6px" : "10px 6px",
     textAlign: "center",
     verticalAlign: "top",
+    borderBottom: "1px solid #f3e8ff",
   };
-
-  const tdRel = { ...td, position: "relative", overflow: "visible" };
 
   const input = (hasErr) => ({
     ...inputBase,
@@ -1172,17 +1747,86 @@ export default function Returns() {
   });
 
   return (
-    <div style={{ fontFamily: "Cairo, sans-serif", padding: "2rem", background: "#f4f6fa", minHeight: "100vh", direction: "rtl" }}>
-      <h2 style={{ textAlign: "center", color: "#512e5f", marginBottom: "1.7rem", fontWeight: "bold" }}>
-        🛒 سجل المرتجعات (Returns Register)
-      </h2>
+    <div
+      dir="ltr"
+      className="rt"
+      style={{
+        fontFamily: "Cairo, Segoe UI, Roboto, Arial, sans-serif",
+        padding: "2.2rem",
+        background:
+          "radial-gradient(1200px 600px at 100% -10%, #f5d0fe 0%, transparent 60%), linear-gradient(135deg, #f8f5ff 0%, #f0f4ff 50%, #fdf4ff 100%)",
+        minHeight: "100vh",
+        direction: "ltr",
+        textAlign: "left",
+      }}
+    >
+      <style>{RET_CSS}</style>
+
+      {/* Hero header */}
+      <div
+        style={{
+          background: "linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.65))",
+          border: "1px solid rgba(255,255,255,.7)",
+          borderRadius: 20,
+          padding: "18px 24px",
+          marginBottom: 18,
+          boxShadow: "0 12px 28px rgba(81, 46, 95, 0.15)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            className="rt-badge"
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: "linear-gradient(135deg, #884ea0, #c084fc)",
+              color: "#fff",
+              display: "grid",
+              placeItems: "center",
+              fontWeight: 900,
+              boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
+            }}
+          >
+            BR
+          </div>
+          <div>
+            <div
+              className="rt-title"
+              style={{
+                fontWeight: 900,
+                background: "linear-gradient(90deg, #512e5f, #884ea0)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              Returns Register
+            </div>
+            <div className="rt-sub" style={{ color: "#64748b", fontWeight: 600, marginTop: 2 }}>
+              Branch Returns — record returned items received from the branches
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div className="rt-brand" style={{ fontWeight: 800, color: "#b91c1c", letterSpacing: ".5px" }}>AL MAWASHI</div>
+          <div className="rt-brand-sub" style={{ color: "#64748b" }}>Trans Emirates Livestock Trading L.L.C.</div>
+        </div>
+      </div>
 
       {/* ✅ Unsaved changes banner */}
       {isDirty && (
         <div
           style={{
-            background: "#fef9c3",
+            background: "linear-gradient(180deg, #fef9c3, #fef08a)",
             border: "1.5px solid #fde047",
+            boxShadow: "0 4px 14px rgba(250, 204, 21, .25)",
             borderRadius: 10,
             padding: "8px 16px",
             marginBottom: 12,
@@ -1192,11 +1836,11 @@ export default function Returns() {
             fontSize: 14,
           }}
         >
-          ⚠️ يوجد تغييرات غير محفوظة — المسودة محفوظة محلياً تلقائياً / Unsaved changes — draft auto-saved locally
+          ⚠️ Unsaved changes — the draft is auto-saved locally
         </div>
       )}
 
-      {/* حالة تحميل الأصناف + زر إضافة صنف */}
+      {/* Catalog load status + add-item button */}
       <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <span
           style={{
@@ -1230,53 +1874,123 @@ export default function Returns() {
           {compact ? "↔️ Compact: ON" : "↔️ Compact: OFF"}
         </button>
 
+        <span
+          style={{
+            background: "#eef2ff",
+            color: "#3730a3",
+            border: "1px solid #c7d2fe",
+            borderRadius: 10,
+            padding: "6px 10px",
+            fontWeight: 700,
+            fontSize: 12,
+          }}
+          title="Copy a block of cells in Excel (item code in the first column, quantity in the second) and paste it onto any row. Enter moves down the same column; Ctrl+D copies the row above."
+        >
+          ⌨️ Paste from Excel · Enter = next row · Ctrl+D = copy row above
+        </span>
+
         {itemsLoadError && <span style={{ color: "#b71c1c", fontWeight: 800 }}>{itemsLoadError}</span>}
       </div>
 
-      {/* تاريخ */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 18, fontSize: "1.08em", flexWrap: "wrap" }}>
+      {/* Date */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 18, flexWrap: "wrap" }}>
         <span
+          className="rt-datelabel"
           style={{
-            background: "#884ea0",
+            background: "linear-gradient(135deg, #884ea0, #a855f7)",
             color: "#fff",
-            padding: "9px 14px",
+            padding: "9px 16px",
             borderRadius: 14,
-            boxShadow: "0 2px 10px #e8daef44",
+            boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
             display: "flex",
             alignItems: "center",
-            gap: 9,
+            gap: 12,
             fontWeight: "bold",
             flexWrap: "wrap",
           }}
         >
-          <span role="img" aria-label="calendar" style={{ fontSize: 22 }}>📅</span>
-          تاريخ إعداد التقرير / Report Date:
+          <span role="img" aria-label="calendar">📅</span>
+          Report Date:
           <input
             type="date"
             value={reportDate}
             onChange={(e) => setReportDate(e.target.value)}
             style={{
-              marginRight: 10,
-              background: "#fcf6ff",
+              background: "rgba(255,255,255,.97)",
               border: "none",
-              borderRadius: 7,
+              borderRadius: 9,
               padding: "7px 12px",
-              fontWeight: "bold",
-              fontSize: "1em",
+              fontWeight: 800,
               color: "#512e5f",
-              boxShadow: "0 1px 4px #e8daef44",
+              boxShadow: "0 1px 4px rgba(0,0,0,.10)",
             }}
           />
         </span>
+
+        {dateAlreadyFiled && (
+          <span
+            style={{
+              background: "linear-gradient(180deg, #fee2e2, #fecaca)",
+              border: "1.5px solid #f87171",
+              color: "#991b1b",
+              borderRadius: 12,
+              padding: "8px 14px",
+              fontWeight: 800,
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            🛑 This date already has a saved report — saving will replace it.
+            <button
+              onClick={() => window.open("/returns/view", "_blank", "noopener")}
+              style={{
+                background: "#fff",
+                border: "1px solid #fca5a5",
+                color: "#991b1b",
+                borderRadius: 8,
+                fontWeight: 800,
+                cursor: "pointer",
+                padding: "3px 9px",
+              }}
+              title="Opens in a new tab — nothing typed here is lost"
+            >
+              View it
+            </button>
+          </span>
+        )}
+
+        {filedDates === false && (
+          <span
+            style={{
+              background: "#fffbeb",
+              border: "1.5px solid #fcd34d",
+              color: "#92400e",
+              borderRadius: 12,
+              padding: "8px 14px",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+            title="The list of already-filed dates could not be read, so this page cannot warn you about overwriting one."
+          >
+            ⚠️ Could not check which dates are already filed
+          </span>
+        )}
       </div>
 
-      {/* أزرار */}
+      {/* Buttons */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.9rem", marginBottom: 16, flexWrap: "wrap" }}>
         <button
-          onClick={handleSave}
+          onClick={() => handleSave()}
           disabled={saving}
+          title={dateAlreadyFiled ? "This date already has a report — you will be asked to confirm" : "Save this report"}
           style={{
-            background: saving ? "#7fbf9f" : "#229954",
+            background: saving
+              ? "#7fbf9f"
+              : dateAlreadyFiled
+              ? "linear-gradient(135deg, #b45309, #f59e0b)"
+              : "linear-gradient(135deg, #16a34a, #22c55e)",
             color: "#fff",
             border: "none",
             borderRadius: 14,
@@ -1284,16 +1998,34 @@ export default function Returns() {
             fontSize: "1.02em",
             padding: "10px 26px",
             cursor: saving ? "not-allowed" : "pointer",
-            boxShadow: "0 2px 8px #d4efdf",
+            boxShadow: dateAlreadyFiled ? "0 2px 8px #fde68a" : "0 2px 8px #d4efdf",
           }}
         >
-          {saving ? "…Saving" : "💾 حفظ / Save"}
+          {saving ? "Saving…" : dateAlreadyFiled ? "💾 Save (replaces this date)" : "💾 Save"}
+        </button>
+
+        <button
+          onClick={() => setScanOpen(true)}
+          title="Read the item codes and the branch from photos of the return notes"
+          style={{
+            background: "linear-gradient(135deg, #2563eb, #60a5fa)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 14,
+            fontWeight: "bold",
+            fontSize: "1.02em",
+            padding: "10px 26px",
+            cursor: "pointer",
+            boxShadow: "0 2px 8px #aed6f1",
+          }}
+        >
+          📷 Scan Return Notes
         </button>
 
         <button
           onClick={() => navigate("/returns/view")}
           style={{
-            background: "#884ea0",
+            background: "linear-gradient(135deg, #884ea0, #a855f7)",
             color: "#fff",
             border: "none",
             borderRadius: 14,
@@ -1304,13 +2036,13 @@ export default function Returns() {
             boxShadow: "0 2px 8px #d2b4de",
           }}
         >
-          📋 عرض التقارير / View Reports
+          📋 View Reports
         </button>
 
         {saveMsg && (
           <span
             style={{
-              marginRight: 8,
+              marginLeft: 8,
               fontWeight: "bold",
               color: saveMsg.startsWith("✅") ? "#229954" : saveMsg.startsWith("⏳") ? "#512e5f" : "#c0392b",
               fontSize: "1.02em",
@@ -1322,26 +2054,41 @@ export default function Returns() {
         )}
       </div>
 
-      {/* جدول */}
-      <div style={{ overflowX: "auto" }}>
+      {/* Table */}
+      <div
+        style={{
+          background: "rgba(255,255,255,.85)",
+          borderRadius: 18,
+          boxShadow: "0 12px 28px rgba(81, 46, 95, 0.10)",
+          border: "1px solid rgba(255,255,255,.7)",
+          backdropFilter: "blur(6px)",
+          padding: 12,
+          overflowX: "auto",
+        }}
+        ref={tableRef}
+        onKeyDown={handleTableKeyDown}
+        onPaste={handleTablePaste}
+      >
         <table
           style={{
             width: "100%",
             background: "#fff",
-            borderRadius: 16,
-            boxShadow: "0 2px 16px #dcdcdc70",
+            borderRadius: 14,
+            overflow: "hidden",
             borderCollapse: "collapse",
             tableLayout: "fixed",
+            minWidth: 2000,
           }}
         >
           <thead>
-            <tr style={{ background: "#e8daef", color: "#512e5f", position: "sticky", top: 0, zIndex: 5 }}>
+            <tr style={{ background: "linear-gradient(180deg, #f3e8ff, #e9d5ff)", color: "#512e5f", position: "sticky", top: 0, zIndex: 5 }}>
               <th style={th("70px")}>SL.NO</th>
               <th style={th("150px")}>ITEM CODE</th>
               <th style={th("280px")}>PRODUCT NAME</th>
               <th style={th("130px")}>ORIGIN</th>
               <th style={th("170px")}>BUTCHERY</th>
-              <th style={th("120px")}>QUANTITY</th>
+              <th style={th("130px")}>TRANSFER NO</th>
+              <th style={th("130px")}>QUANTITY</th>
               <th style={th("140px")}>QTY TYPE</th>
               <th style={th("150px")}>EXPIRY</th>
               <th style={th("240px")}>REMARKS</th>
@@ -1358,71 +2105,29 @@ export default function Returns() {
               return (
                 <tr
                   key={idx}
+                  data-row={idx}
+                  className={"rt-row" + (Object.keys(err).length ? " rt-err" : "")}
                   style={{
                     background: Object.keys(err).length
-                      ? "#fff1f2"                          // ✅ red tint for error rows
+                      ? "#fff1f2"
                       : idx % 2
-                      ? "#fcf3ff"
+                      ? "#faf5ff"
                       : "#fff",
                   }}
                 >
                   <td style={td}>{idx + 1}</td>
 
-                  {/* ITEM CODE */}
-                  <td style={tdRel}>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      style={input(!!err.itemCode)}
-                      placeholder="Enter code"
+                  {/* ITEM CODE — the list lives in a portal, see CodeSuggest */}
+                  <td style={td}>
+                    <CodeSuggest
                       value={row.itemCode || ""}
-                      onChange={(e) => handleChange(idx, "itemCode", e.target.value)}
-                      onFocus={() => {
-                        setActiveCell({ row: idx, field: "itemCode" });
-                        showHintsFor(idx, row.itemCode || "");
-                      }}
-                      onBlur={() =>
-                        setTimeout(() => {
-                          setActiveCell((c) =>
-                            c.row === idx && c.field === "itemCode" ? { row: null, field: null } : c
-                          );
-                        }, 120)
-                      }
-                      onKeyDown={(e) => {
-                        const list = itemHints[idx] || [];
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (list.length) pickItem(idx, list[hintSel[idx] ?? 0]);
-                        }
-                        if (e.key === "ArrowDown" && list.length) {
-                          e.preventDefault();
-                          setHintSel((h) => ({ ...h, [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1) }));
-                        }
-                        if (e.key === "ArrowUp" && list.length) {
-                          e.preventDefault();
-                          setHintSel((h) => ({ ...h, [idx]: Math.max((h[idx] ?? 0) - 1, 0) }));
-                        }
-                      }}
+                      onChange={(v) => handleChange(idx, "itemCode", v)}
+                      onPick={(item) => pickItem(idx, item)}
+                      search={localSearch}
+                      style={input(!!err.itemCode)}
+                      placeholder="Code or name"
+                      inputProps={{ "data-col": "itemCode" }}
                     />
-
-                    {(activeCell.row === idx && activeCell.field === "itemCode" && itemHints[idx]?.length) ? (
-                      <div style={hintBox}>
-                        {itemHints[idx].map((it, k) => (
-                          <div
-                            key={k}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => pickItem(idx, it)}
-                            style={{
-                              ...hintRow,
-                              background: (hintSel[idx] ?? 0) === k ? "#eef2ff" : "transparent",
-                            }}
-                          >
-                            <div style={{ fontWeight: 800 }}>{it.item_code}</div>
-                            <div style={{ fontSize: 12, color: "#475569", whiteSpace: "normal" }}>{it.description}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
 
                     {row.itemCode && !allItems.some((it) => normalize(it.item_code) === normalize(row.itemCode)) && (
                       <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontWeight: 800 }}>
@@ -1431,80 +2136,64 @@ export default function Returns() {
                     )}
                   </td>
 
-                  {/* PRODUCT NAME */}
-                  <td style={tdRel}>
-                    <input
-                      style={input(false)}
-                      placeholder="Product name"
-                      value={row.productName || ""}
-                      onChange={(e) => handleChange(idx, "productName", e.target.value)}
-                      onFocus={() => {
-                        setActiveCell({ row: idx, field: "productName" });
-                        showHintsFor(idx, row.productName || "");
+                  {/* PRODUCT NAME — filled from the item code, never typed */}
+                  <td style={td}>
+                    <div
+                      title={row.productName || "Enter an item code to fill this in"}
+                      style={{
+                        ...input(false),
+                        width: "100%",
+                        boxSizing: "border-box",
+                        textAlign: "left",
+                        background: "#f8fafc",
+                        borderStyle: "dashed",
+                        color: row.productName ? "#0f172a" : "#94a3b8",
+                        fontWeight: row.productName ? 700 : 500,
+                        cursor: "default",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minHeight: 34,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}
-                      onBlur={() =>
-                        setTimeout(() => {
-                          setActiveCell((c) =>
-                            c.row === idx && c.field === "productName" ? { row: null, field: null } : c
-                          );
-                        }, 120)
-                      }
-                      onKeyDown={(e) => {
-                        const list = itemHints[idx] || [];
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (list.length) pickItem(idx, list[hintSel[idx] ?? 0]);
-                        }
-                        if (e.key === "ArrowDown" && list.length) {
-                          e.preventDefault();
-                          setHintSel((h) => ({ ...h, [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1) }));
-                        }
-                        if (e.key === "ArrowUp" && list.length) {
-                          e.preventDefault();
-                          setHintSel((h) => ({ ...h, [idx]: Math.max((h[idx] ?? 0) - 1, 0) }));
-                        }
-                      }}
-                    />
-
-                    {(activeCell.row === idx && activeCell.field === "productName" && itemHints[idx]?.length && !row.itemCode) ? (
-                      <div style={hintBox}>
-                        {itemHints[idx].map((it, k) => (
-                          <div
-                            key={k}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => pickItem(idx, it)}
-                            style={{
-                              ...hintRow,
-                              background: (hintSel[idx] ?? 0) === k ? "#eef2ff" : "transparent",
-                            }}
-                          >
-                            <div style={{ fontWeight: 800 }}>{it.item_code}</div>
-                            <div style={{ fontSize: 12, color: "#475569", whiteSpace: "normal" }}>{it.description}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    >
+                      <span aria-hidden="true" style={{ opacity: 0.5, flex: "none" }}>🔒</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {row.productName || "Filled from the item code"}
+                      </span>
+                    </div>
                   </td>
 
                   {/* ORIGIN */}
                   <td style={td}>
-                    <input
-                      style={input(false)}
-                      placeholder="Origin"
+                    <select
+                      data-col="origin"
+                      style={selectStyle(false)}
                       value={row.origin || ""}
                       onChange={(e) => handleChange(idx, "origin", e.target.value)}
-                    />
+                    >
+                      <option value="">Select origin</option>
+                      {ORIGINS.map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                      {/* keep any value saved before this dropdown existed */}
+                      {row.origin && !ORIGINS.includes(row.origin) && (
+                        <option value={row.origin}>{row.origin}</option>
+                      )}
+                    </select>
                   </td>
 
                   {/* BUTCHERY */}
                   <td style={td}>
-                    <select style={selectStyle(!!err.butchery)} value={row.butchery || ""} onChange={(e) => handleChange(idx, "butchery", e.target.value)}>
+                    <select data-col="butchery" style={selectStyle(!!err.butchery)} value={row.butchery || ""} onChange={(e) => handleChange(idx, "butchery", e.target.value)}>
                       <option value="">Select branch</option>
                       {BRANCHES.map((b) => (
-                        <option key={b} value={b}>{b}</option>
+                        <option key={b} value={b}>{enLabel(b)}</option>
                       ))}
                     </select>
-                    {row.butchery === "فرع آخر... / Other branch" && (
+                    {row.butchery === OTHER_BRANCH && (
                       <input
                         style={{ ...input(false), marginTop: 6 }}
                         placeholder="Enter branch name"
@@ -1514,13 +2203,30 @@ export default function Returns() {
                     )}
                   </td>
 
-                  {/* QUANTITY */}
+                  {/* TRANSFER NO */}
                   <td style={td}>
                     <input
+                      data-col="transferNo"
+                      style={input(false)}
+                      inputMode="numeric"
+                      placeholder="e.g. 02323"
+                      title="Typed once, it fills every row of the same branch in this report"
+                      value={row.transferNo || ""}
+                      onChange={(e) => handleChange(idx, "transferNo", e.target.value)}
+                      onBlur={() => propagateTransferNo(idx)}
+                    />
+                  </td>
+
+                  {/* QUANTITY — the weight printed on the branch transfer note */}
+                  <td style={td}>
+                    <input
+                      data-col="quantity"
                       type="number"
                       min="0"
+                      step="0.001"
                       style={input(!!err.quantity)}
                       placeholder="Qty"
+                      title="The quantity printed on the branch transfer note"
                       value={row.quantity}
                       onChange={(e) => handleChange(idx, "quantity", e.target.value)}
                     />
@@ -1528,12 +2234,12 @@ export default function Returns() {
 
                   {/* QTY TYPE */}
                   <td style={td}>
-                    <select style={selectStyle(false)} value={row.qtyType} onChange={(e) => handleChange(idx, "qtyType", e.target.value)}>
+                    <select data-col="qtyType" style={selectStyle(false)} value={row.qtyType} onChange={(e) => handleChange(idx, "qtyType", e.target.value)}>
                       {QTY_TYPES.map((q) => (
-                        <option key={q} value={q}>{q}</option>
+                        <option key={q} value={q}>{enLabel(q)}</option>
                       ))}
                     </select>
-                    {row.qtyType === "أخرى / Other" && (
+                    {row.qtyType === OTHER_QTY && (
                       <input
                         style={{ ...input(false), marginTop: 6 }}
                         placeholder="Enter type"
@@ -1546,6 +2252,7 @@ export default function Returns() {
                   {/* EXPIRY */}
                   <td style={td}>
                     <input
+                      data-col="expiry"
                       type="date"
                       style={input(false)}
                       value={row.expiry}
@@ -1555,17 +2262,15 @@ export default function Returns() {
 
                   {/* REMARKS */}
                   <td style={td}>
-                    <input
-                      style={input(false)}
-                      placeholder="Remarks"
+                    <RemarksPicker
                       value={row.remarks || ""}
-                      onChange={(e) => handleChange(idx, "remarks", e.target.value)}
+                      onChange={(v) => handleChange(idx, "remarks", v)}
                     />
                   </td>
 
                   {/* ACTION */}
                   <td style={td}>
-                    <select style={selectStyle(!!err.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
+                    <select data-col="action" style={selectStyle(!!err.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
                       <option value="">Select action</option>
                       {ACTIONS.map((a) => (
                         <option key={a} value={a}>{a}</option>
@@ -1581,14 +2286,14 @@ export default function Returns() {
                     )}
                   </td>
 
-                  {/* صور */}
+                  {/* Images */}
                   <td style={td}>
                     <button onClick={() => openImagesFor(idx)} style={btnImg} title="Manage images">
                       🖼️ Images ({safeArr(row.images).length})
                     </button>
                   </td>
 
-                  {/* ✅ حذف صف مع تأكيد */}
+                  {/* Delete row (with confirmation) */}
                   <td style={td}>
                     {rows.length > 1 && (
                       <button
@@ -1640,6 +2345,11 @@ export default function Returns() {
             📦 Total PCS: <strong>{summary.totalPCS}</strong>
           </div>
         )}
+        {summary.totalPLATE > 0 && (
+          <div style={summaryChip("#5b21b6", "#f5f3ff")}>
+            🍽️ Total PLATE: <strong>{summary.totalPLATE}</strong>
+          </div>
+        )}
         {summary.totalOther > 0 && (
           <div style={summaryChip("#7c2d12", "#fff7ed")}>
             🔢 Other: <strong>{summary.totalOther.toFixed(2)}</strong>
@@ -1651,7 +2361,7 @@ export default function Returns() {
         <button
           onClick={addRow}
           style={{
-            background: "#512e5f",
+            background: "linear-gradient(135deg, #512e5f, #884ea0)",
             color: "#fff",
             border: "none",
             borderRadius: 14,
@@ -1665,6 +2375,14 @@ export default function Returns() {
           ➕ Add new row
         </button>
       </div>
+
+      <ReturnNoteScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        branches={BRANCHES.filter((b) => b !== OTHER_BRANCH)}
+        catalog={catalogByDigits}
+        onApply={applyScan}
+      />
 
       <ImageManagerModal
         open={imageModalOpen}
@@ -1685,8 +2403,21 @@ export default function Returns() {
       <ConfirmDeleteModal
         show={confirmDelete.show}
         rowNum={confirmDelete.idx + 1}
+        imageCount={safeArr(rows?.[confirmDelete.idx]?.images).length}
         onConfirm={confirmRemoveRow}
         onCancel={cancelRemoveRow}
+      />
+
+      {/* The chosen day is already on file — confirm before replacing it */}
+      <ReplaceDayModal
+        show={replacePrompt}
+        reportDate={reportDate}
+        rowCount={summary.filledRows}
+        onCancel={() => setReplacePrompt(false)}
+        onConfirm={() => {
+          setReplacePrompt(false);
+          handleSave({ replaceConfirmed: true });
+        }}
       />
 
       {/* ✅ Offer to email the report right after a successful save */}
@@ -1705,12 +2436,53 @@ export default function Returns() {
 }
 
 /* ====== Styles ====== */
+/* globals.css forces `#root *` to 14px and `#root table *` to 12px with !important,
+   so the sizes below have to be re-stated through a doubled page class. */
+const RET_CSS = `
+#root .rt.rt .rt-title { font-size: 22px !important; }
+#root .rt.rt .rt-sub { font-size: 13px !important; }
+#root .rt.rt .rt-brand { font-size: 14px !important; }
+#root .rt.rt .rt-brand-sub { font-size: 10px !important; }
+#root .rt.rt .rt-badge { font-size: 20px !important; }
+#root .rt.rt .rt-datelabel { font-size: 17px !important; }
+
+/* the row under the mouse (or holding the caret) lights up */
+#root .rt.rt tbody tr.rt-row { transition: background .15s ease, box-shadow .15s ease; }
+#root .rt.rt tbody tr.rt-row:hover,
+#root .rt.rt tbody tr.rt-row:focus-within {
+  background: #f1e4ff !important;
+  box-shadow: inset 4px 0 0 0 #a855f7;
+}
+#root .rt.rt tbody tr.rt-row.rt-err:hover,
+#root .rt.rt tbody tr.rt-row.rt-err:focus-within {
+  background: #ffe4e6 !important;
+  box-shadow: inset 4px 0 0 0 #ef4444;
+}
+#root .rt.rt tbody tr.rt-row:hover td:first-child,
+#root .rt.rt tbody tr.rt-row:focus-within td:first-child {
+  color: #7e22ce;
+  font-weight: 900;
+}
+#root .rt.rt tbody tr.rt-row:hover input,
+#root .rt.rt tbody tr.rt-row:hover select,
+#root .rt.rt tbody tr.rt-row:focus-within input,
+#root .rt.rt tbody tr.rt-row:focus-within select { background: #fff; }
+
+#root .rt.rt input:focus,
+#root .rt.rt select:focus {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, .18);
+}
+`;
+
 const inputBase = {
-  padding: "7px 8px",
-  borderRadius: 9,
-  border: "1.5px solid #c7a8dc",
-  background: "#fcf6ff",
+  padding: "9px 11px",
+  borderRadius: 10,
+  border: "1.5px solid #d8b4fe",
+  background: "#fdfaff",
+  outline: "none",
   fontSize: "0.98em",
+  transition: "border-color .15s, box-shadow .15s, background .15s",
 };
 
 const btnPrimary = {

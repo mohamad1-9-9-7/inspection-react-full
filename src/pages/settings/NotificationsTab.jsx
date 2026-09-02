@@ -125,29 +125,39 @@ export default function NotificationsTab() {
     }
   }
 
+  // الاختبار بيشتغل حتى لو المفتاح الرئيسي لسّه ما انحفظ على السيرفر — هدفه
+  // يثبت إنّ المتصفح قادر يوصّل الإشعار، مش إنّ الإعداد محفوظ.
   function handleTest() {
-    const eff = getEffectiveSettings();
-    if (!eff.enabled) {
-      setMsg({
-        kind: "err",
-        text: admin
-          ? "⚠️ فعّل الإشعارات أولاً واحفظ الإعدادات العامّة"
-          : "⚠️ الإشعارات غير مفعّلة من قبل الأدمن",
-      });
+    if (!isBrowserNotificationsSupported()) {
+      setMsg({ kind: "err", text: "❌ هذا المتصفح لا يدعم الإشعارات" });
       return;
     }
     if (permission !== "granted") {
-      setMsg({ kind: "err", text: "⚠️ امنح الإذن من المتصفح أولاً" });
+      setMsg({ kind: "err", text: "⚠️ امنح الإذن من المتصفح أولاً (زر «طلب الإذن» فوق)" });
       return;
     }
+    const saved = getEffectiveSettings();
     const ok = sendNotification("🔔 اختبار الإشعارات", {
       body: "إذا وصلك هذا الإشعار فالإعداد صحيح ✅",
-      tag: "test-notification",
+      tag: "test-notification-" + Date.now(),
+      force: true,
     });
-    setMsg({
-      kind: ok ? "ok" : "err",
-      text: ok ? "✅ تم إرسال إشعار اختبار" : "❌ فشل إرسال الإشعار",
-    });
+    if (!ok) {
+      setMsg({ kind: "err", text: "❌ المتصفح رفض إنشاء الإشعار (جرّب تبويب عادي، مش وضع التصفّح المتخفّي)" });
+      return;
+    }
+    // انطلق فعلاً — بس نبّه إذا الإعداد المحفوظ لسّه مطفي، لأنه الإشعارات
+    // التلقائية (التذكير اليومي / الانتهاء) رح تضل ساكتة.
+    if (!saved.enabled) {
+      setMsg({
+        kind: "info",
+        text: admin
+          ? "✅ وصل إشعار الاختبار. بس «تفعيل الإشعارات» لسّه غير محفوظ — اضغط «حفظ على السيرفر» ليشتغل التذكير اليومي."
+          : "✅ وصل إشعار الاختبار. لكن الأدمن لسّه ما فعّل الإشعارات، فالتذكير اليومي ما رح يوصل.",
+      });
+      return;
+    }
+    setMsg({ kind: "ok", text: "✅ تم إرسال إشعار اختبار" });
   }
 
   /* ================== UI helpers ================== */
@@ -310,7 +320,7 @@ export default function NotificationsTab() {
 
         <SettingRow
           title="📅 تذكير يومي"
-          description="إشعار يومي لتعبئة التقارير"
+          description="إشعار يومي لتعبئة التقارير — بيوصل عند أول فتح للتطبيق بعد الوقت المحدّد"
           control={
             <Toggle
               checked={!!global.dailyReminderEnabled}
@@ -369,7 +379,7 @@ export default function NotificationsTab() {
 
         <SettingRow
           title="⚠️ تنبيه عند درجة حرارة خارج المجال"
-          description="إشعار فوري عند إدخال قراءة خارج النطاق المسموح"
+          description="إشعار فوري عند إدخال قراءة خارج النطاق المسموح (سجل حرارة التخزين — QCS)"
           control={
             <Toggle
               checked={!!global.outOfRangeAlerts}
@@ -553,7 +563,7 @@ export default function NotificationsTab() {
           3) اختبار
         </div>
         <div style={{ color: "#6b7280", marginBottom: 12, fontSize: "0.9rem" }}>
-          يطلق إشعار اختبار يستخدم نفس الإعدادات العامّة المفعّلة.
+          بيطلق إشعار فورًا لفحص إذن المتصفح — بيشتغل حتى لو المفتاح الرئيسي لسّه مطفي.
         </div>
         <button
           onClick={handleTest}

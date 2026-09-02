@@ -8,6 +8,27 @@ import {
   payloadOf,
   reportId,
 } from "../_shared/reportApi";
+import CoolerSetupPanel from "./CoolerSetupPanel";
+import {
+  COOLER_COUNT,
+  accentOf,
+  emojiOf,
+  fetchCoolerConfig,
+  inRange,
+  loadDefsCache,
+  makeDefaultCoolerDefs,
+  defaultLoadingDef,
+  normalizeCoolerDefs,
+  normalizeLoadingDef,
+  productLimitFor,
+  rangeLabel,
+  rangeOf,
+  saveCoolerConfig,
+  storageOptions,
+  warnBandOf,
+} from "./coolerDefs";
+import { canEdit, getCurrentUser } from "../../../../utils/perms";
+import { notifyOutOfRange } from "../../../../utils/notifications";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "qcs_coolers_draft_v1";
@@ -74,7 +95,7 @@ const defaultTMPHeader = {
 };
 
 const makeDefaultCoolers = () =>
-  Array(8)
+  Array(COOLER_COUNT)
     .fill(null)
     .map(() => ({
       temps: TIMES.reduce((acc, t) => {
@@ -89,22 +110,6 @@ const makeDefaultLoadingArea = () => ({
   temps: TIMES.reduce((acc, t) => { acc[t] = ""; return acc; }, {}),
   remarks: "",
 });
-
-const storageLabel = (index) =>
-  index === 7 ? "FREEZER" : index === 2 || index === 3 ? "Production Room" : `Cooler ${index + 1}`;
-
-const makeStorageOptions = () => [
-  ...Array(8).fill(null).map((_, index) => ({
-    key: `cooler-${index}`,
-    type: index === 7 ? "frozen" : "chilled",
-    coolerIndex: index,
-    label: storageLabel(index),
-  })),
-  { key: "loading-area", type: "chilled", coolerIndex: null, label: "Loading Area" },
-];
-
-const PRODUCT_VERIFICATION_OPTIONS = makeStorageOptions();
-const optionForKey = (key) => PRODUCT_VERIFICATION_OPTIONS.find((x) => x.key === key);
 
 const makeProductVerificationRow = (overrides = {}) => ({
   time: overrides.time || DEFAULT_MATCH_TIME,
@@ -122,32 +127,12 @@ const makeDefaultProductVerifications = () => [
   makeProductVerificationRow({ time: "6:00 PM", storageKey: "cooler-7" }),
 ];
 
-/* ---- Ranges + KPI ---- */
-function coolerRange(index) {
-  if (index === 7) return { min: -19, max: -14 }; // FREEZER (8)
-  if (index === 2 || index === 3) return { min: 8, max: 12 }; // Production Room (3 & 4)
-  return { min: 0, max: 5 }; // Others
-}
-function inCoolerRange(index, t) {
-  const { min, max } = coolerRange(index);
-  return t >= min && t <= max;
-}
-/* Loading Area range (<= 16°C) */
-function loadingAreaRange() {
-  return { min: 0, max: 16 };
-}
-function inLoadingAreaRange(t) {
-  const { min, max } = loadingAreaRange();
-  return t >= min && t <= max;
-}
-
-function productTempLimit(type) {
-  return type === "frozen"
-    ? { label: "≤ -18°C", pass: (n) => n <= -18 }
-    : { label: "0 to 5°C", pass: (n) => n >= 0 && n <= 5 };
-}
-
-function calcCoolersKPI(coolers) {
+/* ---- KPI ----
+   Ranges are no longer a function of the row INDEX: each unit carries its own
+   band (see coolerDefs.js), so the KPI has to be told which definitions the
+   readings are being judged against. */
+function calcCoolersKPI(coolers, coolerDefs) {
+  const defs = normalizeCoolerDefs(coolerDefs);
   const all = [];
   let outOfRange = 0;
   (coolers || []).forEach((c, ci) => {
@@ -156,7 +141,7 @@ function calcCoolersKPI(coolers) {
       const n = Number(v);
       if (v !== "" && !Number.isNaN(n)) {
         all.push(n);
-        if (!inCoolerRange(ci, n)) outOfRange += 1;
+        if (!inRange(defs[ci], n)) outOfRange += 1;
       }
     });
   });
@@ -288,7 +273,9 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
   );
 }
 
-function tempInputStyle(temp, coolerIndex) {
+/* One style function for every unit — the band comes from the unit's own
+   definition, so a dry store no longer paints 20°C red. */
+function tempInputStyle(temp, def) {
   const t = Number(temp);
   const base = {
     width: 80,
@@ -303,39 +290,11 @@ function tempInputStyle(temp, coolerIndex) {
   };
   if (Number.isNaN(t) || temp === "") return base;
 
-  const { min, max } = coolerRange(coolerIndex);
+  const { min, max } = rangeOf(def);
   if (t < min || t > max) {
     return { ...base, background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b", fontWeight: 700 };
   }
-  const warnBand = coolerIndex === 7 ? 1 : coolerIndex === 2 || coolerIndex === 3 ? 1 : 2;
-  if (t >= max - warnBand) {
-    return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
-  }
-  return base;
-}
-
-/* Loading Area input style */
-function tempInputStyleLoading(temp) {
-  const t = Number(temp);
-  const base = {
-    width: 80,
-    padding: "6px 8px",
-    borderRadius: 8,
-    border: "1.7px solid #94a3b8",
-    textAlign: "center",
-    fontWeight: 600,
-    color: "#111827",
-    background: "#ffffff",
-    transition: "all .18s",
-  };
-  if (Number.isNaN(t) || temp === "") return base;
-
-  const { min, max } = loadingAreaRange();
-  if (t < min || t > max) {
-    return { ...base, background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b", fontWeight: 700 };
-  }
-  const warnBand = 1;
-  if (t >= max - warnBand) {
+  if (t >= max - warnBandOf(def)) {
     return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
   }
   return base;
@@ -399,12 +358,58 @@ export default function CoolersTab(props) {
       : makeDefaultProductVerifications();
   });
 
+  /* ---- Storage-unit setup (name · type · limits) ----
+     Served from the localStorage cache for the first paint so the sheet never
+     flashes the wrong limits, then replaced by the server copy. */
+  const [defs, setDefs] = useState(
+    () => loadDefsCache() || { coolerDefs: makeDefaultCoolerDefs(), loadingDef: defaultLoadingDef() }
+  );
+  const { coolerDefs, loadingDef } = defs;
+  const [setupOpen, setSetupOpen] = useState(null); // "cooler-3" | "loading-area" | null
+  const [savingSetup, setSavingSetup] = useState(false);
+  const canEditSetup = canEdit("daily");
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    (async () => {
+      const cfg = await fetchCoolerConfig(ctrl.signal);
+      if (cfg) setDefs(cfg);
+    })();
+    return () => ctrl.abort();
+  }, []);
+
+  /** Applies one edited definition and writes the whole setup back. */
+  async function applySetup(target, def) {
+    const nextCoolers =
+      target === "loading-area"
+        ? coolerDefs
+        : coolerDefs.map((d, i) => (i === Number(String(target).split("-")[1]) ? def : d));
+    const nextLoading = target === "loading-area" ? normalizeLoadingDef(def) : loadingDef;
+
+    setDefs({ coolerDefs: nextCoolers, loadingDef: nextLoading });
+    setSavingSetup(true);
+    try {
+      await saveCoolerConfig(nextCoolers, nextLoading, getCurrentUser()?.username || "");
+      setSetupOpen(null);
+    } catch (e) {
+      alert(`❌ The limits were applied here but could not be saved for next time: ${e.message || e}`);
+    } finally {
+      setSavingSetup(false);
+    }
+  }
+
   const dataCoolers = useExternalCoolers ? coolers : localCoolers;
   const updateCoolers = useExternalCoolers ? setCoolers : setLocalCoolers;
 
   const header = useExternalHeader ? tmpHeader : localHeader;
 
-  const computedKpi = useMemo(() => calcCoolersKPI(dataCoolers), [dataCoolers]);
+  const storageOpts = useMemo(
+    () => storageOptions(coolerDefs, loadingDef),
+    [coolerDefs, loadingDef]
+  );
+  const optionForKey = (key) => storageOpts.find((x) => x.key === key);
+
+  const computedKpi = useMemo(() => calcCoolersKPI(dataCoolers, coolerDefs), [dataCoolers, coolerDefs]);
   const safeKPI = kpi || computedKpi || { avg: "—", min: "—", max: "—", outOfRange: 0 };
 
   /* Auto-save draft to localStorage */
@@ -432,6 +437,18 @@ export default function CoolersTab(props) {
       return next;
     });
   };
+  /* The one producer behind Settings → Notifications → «تنبيه عند درجة حرارة
+     خارج المجال». Fires on blur, not on every keystroke: typing "-18" passes
+     through "-" and "-1" first, and both of those are out of a freezer band.
+     notifyOutOfRange() is itself a no-op unless the admin turned the toggle on. */
+  const alertOutOfRange = (def, raw) => {
+    const n = Number(raw);
+    if (raw === "" || raw === null || !Number.isFinite(n)) return;
+    if (inRange(def, n)) return;
+    const { min, max } = rangeOf(def);
+    notifyOutOfRange({ location: def?.label || "Storage unit", value: n, min, max });
+  };
+
   const handleCoolerRemarksChange = (index, value) => {
     updateCoolers((prev) => {
       const next = [...(prev || [])];
@@ -463,9 +480,9 @@ export default function CoolersTab(props) {
     const opt = optionForKey(row.storageKey);
     const n = Number(row.productTemp);
     if (!opt || row.productTemp === "" || Number.isNaN(n)) {
-      return { text: "Pending", color: "#475569", bg: "#f1f5f9", limit: opt ? productTempLimit(opt.type).label : "" };
+      return { text: "Pending", color: "#475569", bg: "#f1f5f9", limit: opt ? productLimitFor(opt.def).label : "" };
     }
-    const limit = productTempLimit(opt.type);
+    const limit = productLimitFor(opt.def);
     return limit.pass(n)
       ? { text: "PASS", color: "#065f46", bg: "#dcfce7", limit: limit.label }
       : { text: "FAIL", color: "#991b1b", bg: "#fee2e2", limit: limit.label };
@@ -488,10 +505,11 @@ export default function CoolersTab(props) {
       const opt = optionForKey(row.storageKey);
       const n = Number(row.productTemp);
       if (!opt || row.productTemp === "" || Number.isNaN(n)) { pending += 1; return; }
-      if (productTempLimit(opt.type).pass(n)) pass += 1; else fail += 1;
+      if (productLimitFor(opt.def).pass(n)) pass += 1; else fail += 1;
     });
     return { pass, fail, pending, total: pass + fail + pending };
-  }, [productVerifications]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productVerifications, storageOpts]);
 
   const updateProductVerification = (index, key, value) => {
     setProductVerifications((prev) => {
@@ -602,6 +620,10 @@ export default function CoolersTab(props) {
         productVerifications,
         headers: { tmpHeader: header },
         verifiedByManager,
+        /* The limits these readings were judged against, frozen into the
+           record. Retuning a unit tomorrow must not re-score today's sheet. */
+        coolerDefs,
+        loadingDef,
       };
 
       const body = { reporter: "QCS/COOLERS", type: COOLERS_TYPE, payload };
@@ -734,7 +756,29 @@ export default function CoolersTab(props) {
     lineHeight: 1,
   };
 
-  const accentFor = (i) => (i === 7 ? "#0ea5e9" : i === 2 || i === 3 ? "#7c3aed" : "#2563eb");
+  const accentFor = (i) => accentOf(coolerDefs[i]);
+
+  /* The ⚙️ that opens the setup panel for one unit. */
+  const setupBtn = (key, accent) => (
+    <button
+      type="button"
+      onClick={() => setSetupOpen((cur) => (cur === key ? null : key))}
+      title="Change this unit's name, type and temperature limits"
+      style={{
+        padding: "5px 11px",
+        borderRadius: 999,
+        border: `1px solid ${setupOpen === key ? accent : "#cbd5e1"}`,
+        background: setupOpen === key ? `${accent}14` : "#fff",
+        color: setupOpen === key ? accent : "#475569",
+        fontWeight: 800,
+        fontSize: ".78rem",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ⚙️ Limits & type
+    </button>
+  );
 
   /* ---- Inline product-match panel (scoped to one storage area) ---- */
   const renderMatchPanel = (storageKey, accent) => {
@@ -896,7 +940,7 @@ export default function CoolersTab(props) {
   };
 
   /* ---- Temperature time-grid (shared by coolers & loading area) ---- */
-  const renderTempGrid = (temps, onChange, styleFn, color) => (
+  const renderTempGrid = (temps, onChange, styleFn, color, onBlurCheck) => (
     <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap", alignItems: "flex-end" }}>
       {TIMES.map((time) => (
         <label
@@ -908,6 +952,7 @@ export default function CoolersTab(props) {
             type="number"
             value={temps?.[time] ?? ""}
             onChange={(e) => onChange(time, e.target.value)}
+            onBlur={(e) => onBlurCheck && onBlurCheck(e.target.value)}
             style={styleFn(temps?.[time] ?? "")}
             placeholder="°C"
             min="-50"
@@ -974,9 +1019,9 @@ export default function CoolersTab(props) {
 
       {/* Coolers (each with its own inline product matching) */}
       {(dataCoolers || []).map((cooler, i) => {
+        const def = coolerDefs[i] || makeDefaultCoolerDefs()[i];
         const accent = accentFor(i);
-        const r = coolerRange(i);
-        const status = sectionStatus(cooler?.temps, (n) => inCoolerRange(i, n));
+        const status = sectionStatus(cooler?.temps, (n) => inRange(def, n));
         return (
           <div
             key={i}
@@ -992,17 +1037,30 @@ export default function CoolersTab(props) {
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: ".85rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "1.15rem" }}>{i === 7 ? "❄️" : "🧊"}</span>
-                <strong style={{ fontSize: "1.08rem", color: "#0f172a" }}>
-                  {i === 7 ? "FREEZER" : i === 2 || i === 3 ? "Production Room" : `Cooler ${i + 1}`}
-                </strong>
-                <span style={rangeBadge}>{`${r.min}°C to ${r.max}°C`}</span>
+                <span style={{ fontSize: "1.15rem" }}>{emojiOf(def)}</span>
+                <strong style={{ fontSize: "1.08rem", color: "#0f172a" }}>{def.label}</strong>
+                <span style={{ ...rangeBadge, background: `${accent}14`, color: accent, border: `1px solid ${accent}55` }}>
+                  {rangeLabel(def)}
+                </span>
               </div>
-              <span style={statusChip(status)}>{status.text}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={statusChip(status)}>{status.text}</span>
+                {canEditSetup ? setupBtn(`cooler-${i}`, accent) : null}
+              </div>
             </div>
 
+            {setupOpen === `cooler-${i}` ? (
+              <CoolerSetupPanel
+                def={def}
+                accent={accent}
+                busy={savingSetup}
+                onCancel={() => setSetupOpen(null)}
+                onApply={(next) => applySetup(`cooler-${i}`, next)}
+              />
+            ) : null}
+
             <span style={sectionSubLabel}>Temperatures (°C)</span>
-            {renderTempGrid(cooler?.temps, (time, val) => handleCoolerChange(i, time, val), (t) => tempInputStyle(t, i), "#34495e")}
+            {renderTempGrid(cooler?.temps, (time, val) => handleCoolerChange(i, time, val), (t) => tempInputStyle(t, def), "#34495e", (v) => alertOutOfRange(def, v))}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
               <span style={{ fontWeight: 600, color: "#475569" }}>Remarks</span>
@@ -1022,8 +1080,8 @@ export default function CoolersTab(props) {
 
       {/* Loading Area (with its own inline product matching) */}
       {(() => {
-        const accent = "#d97706";
-        const status = sectionStatus(loadingArea?.temps, inLoadingAreaRange);
+        const accent = accentOf(loadingDef);
+        const status = sectionStatus(loadingArea?.temps, (n) => inRange(loadingDef, n));
         return (
           <div
             style={{
@@ -1038,15 +1096,30 @@ export default function CoolersTab(props) {
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: ".85rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "1.15rem" }}>🚚</span>
-                <strong style={{ fontSize: "1.08rem", color: "#b45309" }}>Loading Area</strong>
-                <span style={{ ...rangeBadge, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>≤ 16°C</span>
+                <span style={{ fontSize: "1.15rem" }}>{emojiOf(loadingDef)}</span>
+                <strong style={{ fontSize: "1.08rem", color: "#b45309" }}>{loadingDef.label}</strong>
+                <span style={{ ...rangeBadge, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>
+                  {rangeLabel(loadingDef)}
+                </span>
               </div>
-              <span style={statusChip(status)}>{status.text}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={statusChip(status)}>{status.text}</span>
+                {canEditSetup ? setupBtn("loading-area", accent) : null}
+              </div>
             </div>
 
+            {setupOpen === "loading-area" ? (
+              <CoolerSetupPanel
+                def={loadingDef}
+                accent={accent}
+                busy={savingSetup}
+                onCancel={() => setSetupOpen(null)}
+                onApply={(next) => applySetup("loading-area", next)}
+              />
+            ) : null}
+
             <span style={{ ...sectionSubLabel, color: "#a16207" }}>Temperatures (°C)</span>
-            {renderTempGrid(loadingArea?.temps, handleLoadingChange, tempInputStyleLoading, "#92400e")}
+            {renderTempGrid(loadingArea?.temps, handleLoadingChange, (t) => tempInputStyle(t, loadingDef), "#92400e", (v) => alertOutOfRange(loadingDef, v))}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
               <span style={{ fontWeight: 600, color: "#92400e" }}>Remarks</span>

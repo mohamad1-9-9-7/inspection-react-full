@@ -2,7 +2,7 @@
 // 👥 Account Control Center — full-screen dark admin dashboard
 // Accepts optional onClose prop; when omitted it renders inline.
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
 import { useSettingsLang } from "./_shared/settingsI18n";
@@ -13,6 +13,7 @@ import {
   NO_BRANCH,
   assignMember,
   autoGroupByBranch,
+  branchesOfUser,
   colorOf,
   groupByCustom,
   groupOfUser,
@@ -22,6 +23,44 @@ import {
   upsertGroup,
   useAccountGroups,
 } from "./_shared/accountGroups";
+
+/* ═══════════════════════════════════════════════════════
+   DESIGN TOKENS — one calm light palette for the whole screen
+   ═══════════════════════════════════════════════════════
+   The screen used to be a dark dashboard that was half-converted to light:
+   selects, bucket headers and the whole reset-password modal still carried
+   dark-theme colours (#e2e8f0 text, rgba(255,255,255,.07) fills) and were
+   invisible on white. Everything now reads from these tokens, so a colour
+   never has to be guessed at a call site again. */
+const TK = {
+  ink:      "#12324c",   // headings and numbers
+  inkSoft:  "#546f88",   // body
+  inkFaint: "#8aa2b8",   // captions, placeholders
+  line:     "#e3edf6",   // hairlines
+  lineHi:   "#cfe0f0",   // hover / focus hairline
+  surface:  "#ffffff",
+  tint:     "#f6fafd",   // page-level fills, toolbars
+  tint2:    "#edf4fb",   // pressed / selected fills
+  brand:    "#1f6fd0",
+  brandSoft:"#e9f2fd",
+  teal:     "#0f766e",
+  tealSoft: "#e6f4f2",
+  green:    "#0f7a45",
+  greenSoft:"#e9f7ef",
+  amber:    "#b45309",
+  amberSoft:"#fdf3e3",
+  rose:     "#be123c",
+  roseSoft: "#fdeef1",
+  violet:   "#6d28d9",
+  violetSoft:"#f3edfd",
+  r:   16,
+  rMd: 12,
+  rSm: 10,
+  shadow:   "0 1px 2px rgba(16,42,67,.04), 0 8px 22px rgba(16,42,67,.05)",
+  shadowHi: "0 2px 6px rgba(16,42,67,.07), 0 18px 40px rgba(16,42,67,.10)",
+  font: "Cairo,'Segoe UI',system-ui,sans-serif",
+};
+
 
 /* ═══════════════════════════════════════════════════════ CONSTANTS */
 
@@ -621,7 +660,7 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
 
   return (
     <form onSubmit={handleSubmit} style={fs.formWrap}>
-      <h3 style={fs.title}>{isEdit ? `✏️ ${t("amEditAccount")}` : `➕ ${t("amAddAccount")}`}</h3>
+      <h3 className="acm-h" style={fs.title}>{isEdit ? `✏️ ${t("amEditAccount")}` : `➕ ${t("amAddAccount")}`}</h3>
 
       <div style={fs.row}>
         <label style={fs.field}>
@@ -768,24 +807,28 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
   /* Login freshness colour: green<7d, yellow<30d, red>=30d, gray=never */
   const dSince = daysSince(user.last_login);
   const freshness =
-    dSince === null  ? { color:"#94a3b8", label:t("amNeverLoggedIn") } :
-    dSince === 0     ? { color:"#34d399", label:t("amToday") } :
-    dSince <  7      ? { color:"#34d399", label:`${dSince} ${t("amDaysAgo")}` } :
-    dSince < 30      ? { color:"#fbbf24", label:`${dSince} ${t("amDaysAgo")}` } :
-                       { color:"#f87171", label:`${dSince} ${t("amDaysAgo")}` };
+    dSince === null  ? { color:TK.inkFaint, bg:TK.tint,     label:t("amNeverLoggedIn") } :
+    dSince === 0     ? { color:TK.green,    bg:TK.greenSoft, label:t("amToday") } :
+    dSince <  7      ? { color:TK.green, bg:TK.greenSoft, label:`${dSince} ${t("amDaysAgo")}` } :
+    dSince < 30      ? { color:TK.amber, bg:TK.amberSoft, label:`${dSince} ${t("amDaysAgo")}` } :
+                       { color:TK.rose,  bg:TK.roseSoft,  label:`${dSince} ${t("amDaysAgo")}` };
 
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      className="acm-card"
       style={{
-        background:   "#fff",
-        border:       `1px solid ${hover ? "rgba(15,118,110,.45)" : "rgba(15,23,42,.12)"}`,
-        borderRadius: 8,
-        padding:      "14px 16px",
-        transition:   "all .15s ease",
-        boxShadow:    hover ? "0 12px 28px rgba(15,23,42,.10)" : "0 8px 22px rgba(15,23,42,.05)",
-        opacity:      user.is_active ? 1 : 0.55,
+        background:   TK.surface,
+        border:       `1px solid ${hover ? TK.lineHi : TK.line}`,
+        borderRadius: TK.r,
+        padding:      "13px 16px",
+        transition:   "border-color .16s ease, box-shadow .16s ease, transform .16s ease",
+        boxShadow:    hover ? TK.shadowHi : TK.shadow,
+        transform:    hover ? "translateY(-1px)" : "none",
+        /* A disabled account is dimmed, not erased: at 0.55 its own name was
+           the hardest thing on the row to read. */
+        opacity:      user.is_active ? 1 : 0.8,
         display:      "grid",
         gridTemplateColumns: "auto minmax(0,1fr) auto auto",
         alignItems:   "center",
@@ -793,12 +836,12 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       }}
     >
       {/* Avatar */}
-      <div style={{
-        width:48, height:48, borderRadius:8, background:grad,
+      <div className="acm-avatar" style={{
+        width:46, height:46, borderRadius:15, background:grad,
         display:"grid", placeItems:"center",
-        fontSize:20, fontWeight:1000, color:"#fff", flexShrink:0,
-        boxShadow:"0 8px 18px rgba(15,23,42,.14)",
-        border:"1px solid rgba(255,255,255,.7)",
+        fontWeight:900, color:"#fff", flexShrink:0,
+        boxShadow:"0 6px 14px rgba(16,42,67,.16)",
+        filter: user.is_active ? "none" : "grayscale(.5)",
       }}>
         {initial}
       </div>
@@ -806,70 +849,60 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       {/* Main info column: name + meta row */}
       <div style={{ minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
-          <span style={{ fontWeight:1000, fontSize:17, color:"#0f172a",
+          <span className="acm-name" style={{ fontWeight:900, color:TK.ink,
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
             {user.display_name || user.username}
           </span>
-          <span style={{ fontSize:13, color:"#64748b", fontWeight:700 }}>
+          <span className="acm-sm" style={{ color:TK.inkFaint, fontWeight:700 }}>
             @{user.username}
           </span>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:7, alignItems:"center" }}>
           {user.is_admin && (
-            <span style={ac.chip("#92400e","#fffbeb")}>{t("adminTag")}</span>
+            <span className="acm-chip" style={ac.chip(TK.amber, TK.amberSoft)}>👑 {t("adminTag")}</span>
           )}
           {isFullAcc ? (
-            <span style={ac.chip("#5b21b6","#f5f3ff")}>{t("amFullAccessShort")}</span>
+            <span className="acm-chip" style={ac.chip(TK.violet, TK.violetSoft)}>{t("amFullAccessShort")}</span>
           ) : (
-            <span style={ac.chip("#1d4ed8","#eff6ff")}>
+            <span className="acm-chip" style={ac.chip(TK.brand, TK.brandSoft)}>
               {sections.length} {sections.length !== 1 ? t("amSectionsWord") : t("amSectionWord")}
             </span>
           )}
           {Array.isArray(user.employees) && user.employees.length > 0 && (
-            <span style={ac.chip("#0f766e","#ecfdf5")}>
-              {user.employees.length}
+            <span className="acm-chip" style={ac.chip(TK.teal, TK.tealSoft)}>
+              🧑 {user.employees.length}
             </span>
           )}
-          <span style={{ fontSize:12, fontWeight:800, color:freshness.color,
-            padding:"3px 9px", borderRadius:999,
-            background:`${freshness.color}1f`, border:`1px solid ${freshness.color}55`,
-            whiteSpace:"nowrap" }}
+          <span className="acm-chip" style={{ ...ac.chip(freshness.color, freshness.bg) }}
             title={`${t("amLastLogin")}: ${fmt(user.last_login)}`}>
-            {freshness.label}
+            🕒 {freshness.label}
           </span>
         </div>
       </div>
 
       {/* Status pill */}
-      <div style={{
-        padding:"5px 12px", borderRadius:999, fontSize:12, fontWeight:900, flexShrink:0,
-        background: user.is_active ? "#f0fdf4" : "#fef2f2",
-        color:      user.is_active ? "#166534" : "#991b1b",
-        border:    `1px solid ${user.is_active ? "#bbf7d0" : "#fecaca"}`,
+      <div className="acm-chip" style={{
+        display:"inline-flex", alignItems:"center", gap:7,
+        padding:"6px 13px", borderRadius:999, fontWeight:800, flexShrink:0,
+        background: user.is_active ? TK.greenSoft : TK.roseSoft,
+        color:      user.is_active ? TK.green : TK.rose,
+        border:    `1px solid ${user.is_active ? TK.green : TK.rose}26`,
       }}>
-        {user.is_active ? `● ${t("amActive")}` : `● ${t("amOff")}`}
+        <span style={{ width:7, height:7, borderRadius:999, background:"currentColor", flexShrink:0 }} />
+        {user.is_active ? t("amActive") : t("amOff")}
       </div>
 
       {/* Action buttons */}
       <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-        <button className="acm-actbtn" onClick={onEdit} style={{
-          ...ac.actBtn,
-            background:"#eff6ff", color:"#1d4ed8",
-            border:"1px solid #bfdbfe",
-        }} title={t("amEditAccountTip")}>✏️</button>
+        <button className="acm-actbtn acm-act-blue" onClick={onEdit} style={ac.actBtn}
+          title={t("amEditAccountTip")} aria-label={t("amEditAccountTip")}>✏️</button>
         {onResetPw && (
-          <button className="acm-actbtn" onClick={onResetPw} style={{
-            ...ac.actBtn,
-            background:"#f5f3ff", color:"#6d28d9",
-            border:"1px solid #ddd6fe",
-          }} title={t("amResetPwTip")}>🔑</button>
+          <button className="acm-actbtn acm-act-violet" onClick={onResetPw} style={ac.actBtn}
+            title={t("amResetPwTip")} aria-label={t("amResetPwTip")}>🔑</button>
         )}
-        <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
+        <button className={canToggle ? "acm-actbtn acm-act-amber" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
           ...ac.actBtn,
-          background: user.is_active ? "#fffbeb" : "#f0fdf4",
-          color:      user.is_active ? "#92400e" : "#166534",
-          border:    `1px solid ${user.is_active ? "#fde68a" : "#bbf7d0"}`,
-          opacity:    canToggle ? 1 : 0.45,
+          opacity:    canToggle ? 1 : 0.4,
           cursor:     canToggle ? "pointer" : "not-allowed",
         }} title={
           isSelf ? t("amCantDisableSelf")
@@ -879,11 +912,9 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
           {user.is_active ? "🔒" : "🔓"}
         </button>
         {canDelete && (
-          <button className="acm-actbtn" onClick={onDelete} style={{
-            ...ac.actBtn,
-            background:"#fef2f2", color:"#991b1b",
-            border:"1px solid #fecaca",
-          }} title={t("amDeleteAccountTip")} data-delete-action="true">🗑️</button>
+          <button className="acm-actbtn acm-act-rose" onClick={onDelete} style={ac.actBtn}
+            title={t("amDeleteAccountTip")} aria-label={t("amDeleteAccountTip")}
+            data-delete-action="true">🗑️</button>
         )}
       </div>
     </div>
@@ -892,19 +923,21 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
 
 const ac = {
   chip: (color, bg) => ({
-    padding:"4px 9px", borderRadius:999,
-    fontSize:12, fontWeight:900, color, background:bg,
-    border:`1px solid ${color}33`, whiteSpace:"nowrap",
+    padding:"4px 10px", borderRadius:999,
+    fontWeight:800, color, background:bg,
+    border:`1px solid ${color}22`, whiteSpace:"nowrap",
   }),
+  /* Neutral circles that take their colour on hover: four coloured buttons on
+     every row turned a list of people into a paint chart. */
   actBtn: {
-    width:36, height:36, padding:0, borderRadius:8,
-    fontSize:15, fontWeight:900, cursor:"pointer",
-    fontFamily:"Cairo,'Segoe UI',sans-serif",
-    transition:"filter .15s, transform .12s",
+    width:36, height:36, padding:0, borderRadius:11,
+    fontWeight:800, cursor:"pointer",
+    fontFamily:TK.font,
+    background:TK.tint, color:TK.inkSoft,
+    border:`1px solid ${TK.line}`,
+    transition:"background .15s, border-color .15s, transform .12s",
     textAlign:"center",
-    display:"inline-flex",
-    alignItems:"center",
-    justifyContent:"center",
+    display:"inline-flex", alignItems:"center", justifyContent:"center",
   },
 };
 
@@ -958,17 +991,17 @@ function ResetPasswordModal({ user, onClose, onSave, saving }) {
 
   return (
     <div style={p.overlay}>
-      <form onSubmit={submit} style={{ ...p.modal, width:"min(460px,93vw)" }}>
-        <div style={{ fontWeight:1000, fontSize:20, marginBottom:6, color:"#f1f5f9" }}>
+      <form className="acm" onSubmit={submit} style={{ ...p.modal, width:"min(460px,93vw)" }}>
+        <div className="acm-h" style={{ fontWeight:900, marginBottom:6, color:TK.ink }}>
           🔑 {t("amResetPwTitle")}
         </div>
-        <p style={{ color:"rgba(255,255,255,.7)", marginBottom:16, fontSize:15, lineHeight:1.6 }}>
-          {t("amResetPwFor")} <strong style={{ color:"#c4b5fd" }}>{user.display_name || user.username}</strong>
-          <span style={{ color:"rgba(255,255,255,.5)" }}> (@{user.username})</span>
+        <p style={{ color:TK.inkSoft, marginBottom:16, lineHeight:1.7, fontWeight:700 }}>
+          {t("amResetPwFor")} <strong style={{ color:TK.violet }}>{user.display_name || user.username}</strong>
+          <span style={{ color:TK.inkFaint }}> (@{user.username})</span>
         </p>
 
-        <label style={{ fontSize:13, fontWeight:900, color:"rgba(255,255,255,.6)",
-          textTransform:"uppercase", letterSpacing:".05em", display:"block", marginBottom:7 }}>
+        <label className="acm-xs" style={{ fontWeight:800, color:TK.inkFaint,
+          letterSpacing:".04em", display:"block", marginBottom:7 }}>
           {t("amResetPwNew")}
         </label>
         <div style={{ display:"flex", gap:8, marginBottom:10 }}>
@@ -978,11 +1011,12 @@ function ResetPasswordModal({ user, onClose, onSave, saving }) {
             onChange={e => setPw(e.target.value)}
             autoComplete="new-password"
             autoFocus
+            className="acm-mono"
             style={{
-              flex:1, padding:"12px 14px", borderRadius:10, fontSize:16,
-              fontFamily:"'Courier New',monospace", letterSpacing:".04em",
-              background:"rgba(255,255,255,.07)", border:"1.5px solid rgba(255,255,255,.16)",
-              color:"#f1f5f9", outline:"none",
+              flex:1, padding:"12px 14px", borderRadius:TK.rMd,
+              fontFamily:"'Courier New',monospace", letterSpacing:".06em",
+              background:TK.tint, border:`1px solid ${TK.line}`,
+              color:TK.ink, outline:"none", minWidth:0,
             }}
           />
           <button type="button" onClick={() => setShow(s => !s)} style={p.pwIconBtn}
@@ -991,7 +1025,7 @@ function ResetPasswordModal({ user, onClose, onSave, saving }) {
           </button>
           <button type="button" onClick={copy} disabled={!pw} style={{
             ...p.pwIconBtn, opacity: pw ? 1 : 0.4,
-            color: copied ? "#34d399" : "#e2e8f0",
+            color: copied ? TK.green : TK.inkSoft,
           }} title={t("amResetPwCopy")}>
             {copied ? "✅" : "📋"}
           </button>
@@ -1004,40 +1038,41 @@ function ResetPasswordModal({ user, onClose, onSave, saving }) {
         )}
 
         <button type="button" onClick={() => { setPw(generateStrongPassword()); setShow(true); setCopied(false); }}
+          className="acm-actbtn"
           style={{
-            width:"100%", padding:"11px", marginBottom:14, borderRadius:10,
-            background:"rgba(167,139,250,.18)", color:"#c4b5fd",
-            border:"1px solid rgba(167,139,250,.35)", cursor:"pointer",
-            fontWeight:900, fontSize:15, fontFamily:"inherit",
+            width:"100%", padding:"12px", marginBottom:14, borderRadius:TK.rMd,
+            background:TK.violetSoft, color:TK.violet,
+            border:`1px solid ${TK.violet}26`, cursor:"pointer",
+            fontWeight:800, fontFamily:"inherit",
           }}>
           🎲 {t("amResetPwGenerate")}
         </button>
 
-        <div style={{ fontSize:12.5, color:"rgba(255,255,255,.5)", lineHeight:1.6, marginBottom:16, fontWeight:700 }}>
+        <div className="acm-sm" style={{ color:TK.inkFaint, lineHeight:1.7, marginBottom:16, fontWeight:700 }}>
           ℹ️ {t("amResetPwHint")}
         </div>
 
         {err && (
-          <div style={{ color:"#fca5a5", background:"rgba(248,113,113,.14)",
-            border:"1px solid rgba(248,113,113,.3)", padding:"9px 13px", borderRadius:9,
-            fontSize:14, fontWeight:800, marginBottom:14 }}>⚠️ {err}</div>
+          <div style={{ color:TK.rose, background:TK.roseSoft,
+            border:`1px solid ${TK.rose}2e`, padding:"10px 13px", borderRadius:TK.rSm,
+            fontWeight:800, marginBottom:14 }}>⚠️ {err}</div>
         )}
 
         <div style={{ display:"flex", gap:10 }}>
-          <button type="submit" disabled={saving || !pw} style={{
+          <button type="submit" disabled={saving || !pw} className="acm-actbtn" style={{
             flex:1, padding:"13px",
-            background: (saving || !pw) ? "rgba(124,58,237,.4)" : "linear-gradient(135deg,#7c3aed,#2563eb)",
-            color:"#fff", border:"none", borderRadius:10,
-            fontWeight:900, fontSize:15, cursor: (saving || !pw) ? "not-allowed" : "pointer",
+            background: (saving || !pw) ? "#c3d6ea" : TK.violet,
+            color:"#fff", border:"none", borderRadius:TK.rMd,
+            fontWeight:800, cursor: (saving || !pw) ? "not-allowed" : "pointer",
             fontFamily:"inherit",
           }}>
             {saving ? t("saving") : `💾 ${t("amResetPwSave")}`}
           </button>
-          <button type="button" onClick={onClose} style={{
+          <button type="button" onClick={onClose} className="acm-actbtn" style={{
             flex:1, padding:"13px",
-            background:"rgba(255,255,255,.1)", color:"#e2e8f0",
-            border:"1px solid rgba(255,255,255,.18)", borderRadius:10,
-            fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
+            background:TK.tint, color:TK.inkSoft,
+            border:`1px solid ${TK.line}`, borderRadius:TK.rMd,
+            fontWeight:800, cursor:"pointer", fontFamily:"inherit",
           }}>{t("cancel")}</button>
         </div>
       </form>
@@ -1062,10 +1097,10 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
   });
 
   const groups = [
-    { key:"never", icon:"🚫", label:t("amNeverLoggedIn"), color:"#94a3b8", help:t("amNeverHelp"),     list:buckets.never },
-    { key:"d90",   icon:"🔴", label:t("amDormant90"),     color:"#f87171", help:t("amDormant90Help"), list:buckets.d90 },
-    { key:"d60",   icon:"🟠", label:t("amDormant60"),     color:"#fb923c", help:t("amDormant60Help"), list:buckets.d60 },
-    { key:"d30",   icon:"🟡", label:t("amDormant30"),     color:"#fbbf24", help:t("amDormant30Help"), list:buckets.d30 },
+    { key:"never", icon:"🚫", label:t("amNeverLoggedIn"), color:"#64809a", help:t("amNeverHelp"),     list:buckets.never },
+    { key:"d90",   icon:"🔴", label:t("amDormant90"),     color:TK.rose,   help:t("amDormant90Help"), list:buckets.d90 },
+    { key:"d60",   icon:"🟠", label:t("amDormant60"),     color:"#c2410c", help:t("amDormant60Help"), list:buckets.d60 },
+    { key:"d30",   icon:"🟡", label:t("amDormant30"),     color:TK.amber,  help:t("amDormant30Help"), list:buckets.d30 },
   ];
   const totalDormant = buckets.never.length + buckets.d90.length + buckets.d60.length + buckets.d30.length;
 
@@ -1073,13 +1108,13 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
     <div>
       {/* Summary banner */}
       <div style={{
-        padding:"16px 20px", borderRadius:14, marginBottom:18,
-        background: totalDormant === 0 ? "rgba(52,211,153,.12)" : "rgba(251,191,36,.12)",
-        border: `1px solid ${totalDormant === 0 ? "rgba(52,211,153,.4)" : "rgba(251,191,36,.4)"}`,
-        color: totalDormant === 0 ? "#34d399" : "#fcd34d",
-        fontWeight:800, fontSize:15, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
+        padding:"16px 20px", borderRadius:TK.r, marginBottom:18,
+        background: totalDormant === 0 ? TK.greenSoft : TK.amberSoft,
+        border: `1px solid ${totalDormant === 0 ? TK.green : TK.amber}2e`,
+        color: totalDormant === 0 ? TK.green : TK.amber,
+        fontWeight:800, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
       }}>
-        <span style={{ fontSize:24 }}>{totalDormant === 0 ? "✅" : "⚠️"}</span>
+        <span className="acm-emoji-lg">{totalDormant === 0 ? "✅" : "⚠️"}</span>
         <div style={{ flex:1, minWidth:200 }}>
           {totalDormant === 0
             ? t("amDormantAllGood")
@@ -1091,18 +1126,19 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
         <section key={g.key} style={{ marginBottom:22 }}>
           <div style={{
             display:"flex", alignItems:"center", gap:10, marginBottom:10, flexWrap:"wrap",
-            padding:"8px 12px", borderRadius:10,
-            background:`${g.color}11`, border:`1px solid ${g.color}44`,
+            padding:"10px 14px", borderRadius:TK.rMd,
+            background:TK.surface, border:`1px solid ${TK.line}`,
+            borderInlineStart:`4px solid ${g.color}`,
           }}>
-            <span style={{ fontSize:20 }}>{g.icon}</span>
-            <span style={{ fontWeight:1000, fontSize:16, color:g.color }}>
+            <span>{g.icon}</span>
+            <span className="acm-h" style={{ fontWeight:900, color:g.color }}>
               {g.label}
             </span>
-            <span style={{ fontSize:13, color:`${g.color}cc`, fontWeight:800,
-              background:`${g.color}22`, padding:"2px 9px", borderRadius:999 }}>
+            <span className="acm-sm" style={{ color:g.color, fontWeight:800,
+              background:`${g.color}14`, padding:"3px 10px", borderRadius:999 }}>
               {g.list.length}
             </span>
-            <span style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,255,255,.5)", fontWeight:700 }}>
+            <span className="acm-sm" style={{ marginInlineStart:"auto", color:TK.inkFaint, fontWeight:700 }}>
               {g.help}
             </span>
           </div>
@@ -1358,9 +1394,9 @@ function ActivityLogTab() {
 
       {/* Summary line */}
       {!loading && groups.length > 0 && (
-        <div style={{ fontSize:14, color:"#334155", fontWeight:800, marginBottom:12 }}>
-          📊 {t("amShowing")} <strong style={{ color:"#111827" }}>{groups.length}</strong> {t("amAccountsWord")}
-          {" · "}<strong style={{ color:"#111827" }}>{logs.length}</strong> {t("amTotalEvents")}
+        <div style={{ color:TK.inkSoft, fontWeight:700, marginBottom:12 }}>
+          📊 {t("amShowing")} <strong style={{ color:TK.ink }}>{groups.length}</strong> {t("amAccountsWord")}
+          {" · "}<strong style={{ color:TK.ink }}>{logs.length}</strong> {t("amTotalEvents")}
           {filter && <> · {t("amFilteredBy")} "{filter}"</>}
         </div>
       )}
@@ -1380,15 +1416,15 @@ function ActivityLogTab() {
             const lastColor =
               lastAction === "login"        ? "#166534" :
               lastAction === "logout"       ? "#991b1b" :
-              lastAction === "login_failed" ? "#92400e" : "#334155";
+              lastAction === "login_failed" ? TK.amber : TK.inkSoft;
             return (
               <div key={g.username} style={{
-                background:"#fff",
-                border:`1px solid ${isOpen ? "rgba(15,118,110,.35)" : "rgba(15,23,42,.12)"}`,
-                borderRadius:8,
+                background:TK.surface,
+                border:`1px solid ${isOpen ? TK.lineHi : TK.line}`,
+                borderRadius:TK.r,
                 overflow:"hidden",
-                transition:"border-color .15s",
-                boxShadow:"0 8px 22px rgba(15,23,42,.05)",
+                transition:"border-color .15s, box-shadow .15s",
+                boxShadow:TK.shadow,
               }}>
                 {/* ─── Group header (clickable to toggle) ─── */}
                 <button onClick={() => toggle(g.username)} style={{
@@ -1396,28 +1432,27 @@ function ActivityLogTab() {
                   display:"grid",
                   gridTemplateColumns:"auto 1fr auto auto",
                   alignItems:"center", gap:14,
-                  padding:"12px 16px",
-                  background: isOpen ? "#f0fdfa" : "#fff",
-                  color:"#111827", textAlign:"left",
+                  padding:"13px 16px",
+                  background: isOpen ? TK.tealSoft : TK.surface,
+                  color:TK.ink, textAlign:"start",
                   transition:"background .15s",
                 }}>
                   {/* Avatar */}
                   <div style={{
-                    width:44, height:44, borderRadius:12, background:avatarGrad(g.username),
+                    width:44, height:44, borderRadius:14, background:avatarGrad(g.username),
                     display:"grid", placeItems:"center",
-                    fontSize:20, fontWeight:1000, color:"#fff",
-                    boxShadow:"0 8px 18px rgba(15,23,42,.14)",
-                    border:"1px solid rgba(255,255,255,.7)",
-                  }}>
+                    fontWeight:900, color:"#fff",
+                    boxShadow:"0 6px 14px rgba(16,42,67,.16)",
+                  }} className="acm-avatar">
                     {g.username[0]?.toUpperCase() || "?"}
                   </div>
 
                   {/* Name + meta */}
                   <div style={{ minWidth:0 }}>
-                    <div style={{ fontWeight:1000, fontSize:18, color:"#111827", lineHeight:1.2 }}>
+                    <div className="acm-h" style={{ fontWeight:900, color:TK.ink, lineHeight:1.25 }}>
                       {g.username}
                     </div>
-                    <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:4, fontSize:13, color:"#475569", fontWeight:800 }}>
+                    <div className="acm-sm" style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:5, color:TK.inkSoft, fontWeight:700 }}>
                       <span>🕐 {t("amLast")}: <span style={{ color:lastColor, fontWeight:900 }}>{fmt(g.last?.created_at)}</span></span>
                       {g.uniqueIps > 1 && <span>🌐 {g.uniqueIps} IPs</span>}
                     </div>
@@ -1508,18 +1543,18 @@ function ActivityLogTab() {
 }
 
 const al = {
-  td: { padding:"11px 14px", fontSize:15, color:"#111827", verticalAlign:"middle" },
+  td: { padding:"12px 14px", color:TK.ink, verticalAlign:"middle" },
   subTh: {
-    padding:"10px 14px", fontSize:12, fontWeight:900,
-    color:"#111827", textAlign:"left",
-    background:"#f8fafc",
-    borderBottom:"1px solid rgba(15,23,42,.10)",
-    whiteSpace:"nowrap", letterSpacing:".06em", textTransform:"uppercase",
+    padding:"11px 14px", fontWeight:800,
+    color:TK.inkSoft, textAlign:"start",
+    background:TK.tint,
+    borderBottom:`1px solid ${TK.line}`,
+    whiteSpace:"nowrap",
   },
   miniChip: (color, bg) => ({
-    padding:"3px 9px", borderRadius:999,
-    fontSize:12, fontWeight:900, color, background:bg,
-    border:`1px solid ${color}55`, whiteSpace:"nowrap",
+    padding:"3px 10px", borderRadius:999,
+    fontWeight:800, color, background:bg,
+    border:`1px solid ${color}26`, whiteSpace:"nowrap",
   }),
 };
 
@@ -1541,39 +1576,158 @@ function GroupManager({ open, groups, users, saving, onSave, onClose }) {
   const [icon, setIcon] = useState("🏬");
   const [color, setColor] = useState("teal");
   const [active, setActive] = useState(null);
+  const [editing, setEditing] = useState(null);   // group id being renamed
+  const [pendingDel, setPendingDel] = useState(null);
+  const [warn, setWarn] = useState("");           // in-modal notice
+  /* member column filters */
+  const [mq, setMq] = useState("");
+  const [mScope, setMScope] = useState("all");    // all | free | mine
+  const [mBranch, setMBranch] = useState("");
+  const [confirmClose, setConfirmClose] = useState(false);
 
-  useEffect(() => { if (open) setDraft(groups); }, [open, groups]);
+  /* Unsaved work is the draft, so it decides what a close does. Comparing the
+     serialised lists is cheap here (a handful of groups) and beats threading a
+     flag through every mutation. */
+  const dirty = JSON.stringify(draft) !== JSON.stringify(groups);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+
+  /* Reseed the draft when the modal opens — but NEVER while it is open with
+     unsaved edits: `groups` changes identity whenever the hook refetches or
+     another tab writes, and silently swallowing half-typed work is worse than
+     showing a slightly stale list. */
+  const openRef = useRef(false);
+  useEffect(() => {
+    if (open && !openRef.current) {
+      setDraft(groups);
+      setEditing(null); setPendingDel(null); setConfirmClose(false); setWarn("");
+      setMq(""); setMScope("all"); setMBranch("");
+    }
+    openRef.current = open;
+  }, [open, groups]);
+  useEffect(() => {
+    if (open && !dirtyRef.current) setDraft(groups);
+  }, [open, groups]);
+
   useEffect(() => {
     if (!active && draft.length) setActive(draft[0].id);
     if (active && !draft.some(g => g.id === active)) setActive(draft[0]?.id || null);
   }, [draft, active]);
 
+  /* Escape closes — and asks first when there is something to lose. */
+  const tryClose = useCallback(() => {
+    if (dirtyRef.current) { setConfirmClose(true); return; }
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); tryClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, tryClose]);
+
+  const byUsername = React.useMemo(
+    () => new Map((users || []).map(u => [String(u.username || "").trim(), u])),
+    [users]
+  );
+
+  /* Every branch that appears on any account — the bulk-add filter reads from
+     the accounts themselves, so a new branch never needs registering here. */
+  const allBranches = React.useMemo(() => {
+    const set = new Set();
+    (users || []).forEach(u => branchesOfUser(u).forEach(b => set.add(b)));
+    return Array.from(set).sort();
+  }, [users]);
+
   if (!open) return null;
 
   const addGroup = () => {
     const n = name.trim();
-    if (!n && !nameAr.trim()) return;
-    const g = normalizeGroup({ name: n, nameAr: nameAr.trim(), icon, color, order: draft.length });
+    const na = nameAr.trim();
+    if (!n && !na) return;
+    const twin = draft.find(g =>
+      (n && g.name.toLowerCase() === n.toLowerCase()) || (na && g.nameAr && g.nameAr === na));
+    if (twin) { setWarn(t("amGroupDupName")); return; }
+    const g = normalizeGroup({ name: n, nameAr: na, icon, color, order: draft.length });
     setDraft(upsertGroup(draft, g));
     setActive(g.id);
-    setName(""); setNameAr("");
+    setName(""); setNameAr(""); setWarn("");
+  };
+
+  /* Patch a group in place. Deliberately NOT upsertGroup: that normalises, and
+     normalisation throws the moment both name fields are empty — which is
+     exactly what happens mid-keystroke while the admin retypes a name. */
+  const patchGroup = (g, patch) =>
+    setDraft(draft.map(x => (x.id === g.id ? { ...x, ...patch } : x)));
+
+  const nameless = (g) => !String(g.name || "").trim() && !String(g.nameAr || "").trim();
+
+  const closeEditor = (g) => {
+    if (nameless(g)) { setWarn(t("amGroupNeedsName")); return; }
+    setWarn(""); setEditing(null);
   };
 
   const activeGroup = draft.find(g => g.id === active) || null;
 
+  /* Members whose account no longer exists: the list is keyed by username on
+     purpose, so a deleted account leaves its name behind and the stored count
+     drifts away from what the admin can actually see. */
+  const ghosts = activeGroup ? activeGroup.members.filter(m => !byUsername.has(m)) : [];
+  const dropGhosts = () => {
+    setDraft(draft.map(g => (g.id !== activeGroup.id
+      ? g
+      : { ...g, members: g.members.filter(m => byUsername.has(m)) })));
+  };
+
+  const shown = !activeGroup ? [] : (users || []).filter(u => {
+    const owner = groupOfUser(draft, u.username);
+    const mine = owner?.id === activeGroup.id;
+    if (mScope === "mine" && !mine) return false;
+    if (mScope === "free" && owner) return false;
+    if (mBranch && !branchesOfUser(u).includes(mBranch)) return false;
+    const q = mq.trim().toLowerCase();
+    if (!q) return true;
+    return (u.username || "").toLowerCase().includes(q)
+      || (u.display_name || "").toLowerCase().includes(q);
+  });
+
+  /* Bulk add respects the one-group rule: an account already sitting in
+     another group is moved, and the admin is told how many moved. */
+  const addShown = () => {
+    const targets = shown.filter(u => groupOfUser(draft, u.username)?.id !== activeGroup.id);
+    if (!targets.length) return;
+    const moved = targets.filter(u => !!groupOfUser(draft, u.username)).length;
+    let next = draft;
+    targets.forEach(u => { next = assignMember(next, u.username, activeGroup.id); });
+    setDraft(next);
+    setWarn(moved ? `${t("amGroupMoved")}: ${moved}` : "");
+  };
+  const removeShown = () => {
+    const targets = shown.filter(u => groupOfUser(draft, u.username)?.id === activeGroup.id);
+    if (!targets.length) return;
+    let next = draft;
+    targets.forEach(u => { next = unassignMember(next, u.username); });
+    setDraft(next);
+    setWarn("");
+  };
+
   return (
-    <div style={gmS.overlay} onClick={onClose}>
-      <div style={gmS.modal} onClick={e => e.stopPropagation()}>
+    <div style={gmS.overlay} onClick={tryClose}>
+      <div className="acm" style={gmS.modal} onClick={e => e.stopPropagation()}>
         <div style={gmS.head}>
-          <span style={{ fontWeight:1000, fontSize:19, color:"#0f172a" }}>🏷️ {t("amGroupsTitle")}</span>
-          <button onClick={onClose} style={gmS.x}>✕</button>
+          <span className="acm-h" style={{ fontWeight:900, color:TK.ink }}>
+            🏷️ {t("amGroupsTitle")}
+            {dirty && <span style={gmX.dirty}>● {t("amGroupUnsaved")}</span>}
+          </span>
+          <button onClick={tryClose} style={gmS.x}>✕</button>
         </div>
         <div style={gmS.hint}>{t("amGroupsHint")}</div>
 
         {/* new group */}
         <div style={gmS.newRow}>
           <select value={icon} onChange={e => setIcon(e.target.value)} style={{ ...gmS.input, width:64, textAlign:"center" }}>
-            {["🏬","🔪","🏭","🚚","🛡️","👨‍🍳","📍","⭐"].map(x => <option key={x} value={x}>{x}</option>)}
+            {GROUP_ICONS.map(x => <option key={x} value={x}>{x}</option>)}
           </select>
           <input value={name} onChange={e => setName(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") addGroup(); }}
@@ -1594,7 +1748,9 @@ function GroupManager({ open, groups, users, saving, onSave, onClose }) {
           <button type="button" onClick={addGroup} style={gmS.addBtn}>➕ {t("amGroupAdd")}</button>
         </div>
 
-        <div style={gmS.body}>
+        {warn && <div style={gmX.warn}>⚠️ {warn}</div>}
+
+        <div style={gmS.body} className="acm-gmbody">
           {/* the groups */}
           <div style={gmS.col}>
             {draft.length === 0 ? (
@@ -1602,15 +1758,67 @@ function GroupManager({ open, groups, users, saving, onSave, onClose }) {
             ) : draft.map(g => {
               const c = colorOf(g.color);
               const on = g.id === active;
+              const live = g.members.filter(m => byUsername.has(m)).length;
+
+              /* Rename in place — deleting a group to fix a typo would throw
+                 away every membership inside it. */
+              if (editing === g.id) {
+                return (
+                  <div key={g.id} style={{ ...gmS.groupRow, display:"block", padding:"9px 10px", borderColor:c.dot }}>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                      <select value={g.icon} style={{ ...gmS.input, width:58, textAlign:"center", padding:"6px 4px" }}
+                        onChange={e => patchGroup(g, { icon: e.target.value })}>
+                        {GROUP_ICONS.map(x => <option key={x} value={x}>{x}</option>)}
+                      </select>
+                      <input value={g.name} placeholder={t("amGroupName")}
+                        style={{ ...gmS.input, flex:"1 1 110px", padding:"6px 9px" }}
+                        onChange={e => patchGroup(g, { name: e.target.value })} />
+                      <input value={g.nameAr} placeholder={t("amGroupNameAr")}
+                        style={{ ...gmS.input, flex:"1 1 100px", padding:"6px 9px" }}
+                        onChange={e => patchGroup(g, { nameAr: e.target.value })} />
+                    </div>
+                    <div style={{ display:"flex", gap:5, alignItems:"center", marginTop:8, flexWrap:"wrap" }}>
+                      {GROUP_COLORS.map(cc => (
+                        <button key={cc.id} type="button" title={cc.id}
+                          onClick={() => patchGroup(g, { color: cc.id })}
+                          style={{
+                            width:19, height:19, borderRadius:6, background:cc.dot, cursor:"pointer",
+                            border: g.color === cc.id ? "3px solid #0f172a" : "1px solid rgba(0,0,0,.15)",
+                          }} />
+                      ))}
+                      <button type="button" onClick={() => closeEditor(g)}
+                        style={{ ...gmX.miniOk, marginInlineStart:"auto" }}>✓ {t("amGroupRenameDone")}</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              /* Asking before a delete: the group carries its memberships with
+                 it, and there is no undo inside the modal. */
+              if (pendingDel === g.id) {
+                return (
+                  <div key={g.id} style={{ ...gmS.groupRow, borderColor:"#fca5a5", background:"#fef2f2", gap:8 }}>
+                    <span style={{ fontWeight:900, color:"#991b1b", flex:1, minWidth:0 }}>
+                      {t("amGroupDelete")} «{g.name}»{live ? ` · ${live} ${t("amGroupMembers")}` : ""}
+                    </span>
+                    <button type="button" style={gmX.miniDanger}
+                      onClick={() => { setDraft(removeGroup(draft, g.id)); setPendingDel(null); }}>
+                      ✓
+                    </button>
+                    <button type="button" style={gmX.miniGhost} onClick={() => setPendingDel(null)}>✕</button>
+                  </div>
+                );
+              }
+
               return (
-                /* Two sibling buttons in a row, not a delete nested inside the
+                /* Sibling buttons in a row, not a delete nested inside the
                    select button: an interactive element inside another one is
                    unreachable by keyboard and ambiguous to a screen reader. */
                 <div key={g.id} style={{
                   ...gmS.groupRow,
                   background: on ? c.bg : "#fff",
                   borderColor: on ? c.dot : "#e2e8f0",
-                  color: on ? c.text : "#334155",
+                  color: on ? c.text : TK.inkSoft,
                 }}>
                   <button type="button" onClick={() => setActive(g.id)} style={gmS.groupPick}>
                     <span style={{ fontSize:17 }}>{g.icon}</span>
@@ -1618,14 +1826,21 @@ function GroupManager({ open, groups, users, saving, onSave, onClose }) {
                       {g.name}{g.nameAr ? ` — ${g.nameAr}` : ""}
                     </span>
                     <span style={{ marginInlineStart:"auto", fontWeight:900, fontSize:12, background:c.dot, color:"#fff", borderRadius:999, padding:"1px 8px" }}>
-                      {g.members.length}
+                      {live}
                     </span>
                   </button>
                   <button
                     type="button"
+                    title={t("amGroupRename")}
+                    aria-label={`${t("amGroupRename")} — ${g.name}`}
+                    onClick={() => { setActive(g.id); setEditing(g.id); }}
+                    style={gmX.rowEdit}
+                  >✎</button>
+                  <button
+                    type="button"
                     title={t("amGroupDelete")}
                     aria-label={`${t("amGroupDelete")} — ${g.name}`}
-                    onClick={() => setDraft(removeGroup(draft, g.id))}
+                    onClick={() => setPendingDel(g.id)}
                     style={gmS.groupDel}
                   >✕</button>
                 </div>
@@ -1637,60 +1852,155 @@ function GroupManager({ open, groups, users, saving, onSave, onClose }) {
           <div style={gmS.col}>
             {!activeGroup ? (
               <div style={gmS.empty}>{t("amGroupsHint")}</div>
-            ) : users.map(u => {
-              const owner = groupOfUser(draft, u.username);
-              const mine = owner?.id === activeGroup.id;
-              const elsewhere = owner && !mine;
-              return (
-                <label key={u.id} style={{ ...gmS.memberRow, opacity: elsewhere ? 0.6 : 1 }}>
-                  <input type="checkbox" checked={!!mine}
-                    onChange={() => setDraft(mine
-                      ? unassignMember(draft, u.username)
-                      : assignMember(draft, u.username, activeGroup.id))}
-                    style={{ width:20, height:20, accentColor: colorOf(activeGroup.color).dot, cursor:"pointer" }} />
-                  <span style={{ fontWeight:800, color:"#0f172a" }}>{u.display_name || u.username}</span>
-                  <span style={{ color:"#64748b", fontSize:12 }}>@{u.username}</span>
-                  {elsewhere && (
-                    <span style={{ marginInlineStart:"auto", fontSize:11, fontWeight:800, background:colorOf(owner.color).bg, color:colorOf(owner.color).text, borderRadius:999, padding:"2px 8px" }}>
-                      {owner.icon} {owner.name}
-                    </span>
+            ) : (
+              <>
+                {/* Finding one account among two hundred by scrolling is not a
+                    workflow — filter first, then tick, or take the whole
+                    filtered set in one click. */}
+                <div style={gmX.filterBar}>
+                  <input value={mq} onChange={e => setMq(e.target.value)}
+                    placeholder={t("amGroupFindPerson")}
+                    style={{ ...gmS.input, flex:"2 1 150px", padding:"7px 10px" }} />
+                  <select value={mScope} onChange={e => setMScope(e.target.value)}
+                    style={{ ...gmS.input, flex:"1 1 120px", padding:"7px 8px" }}>
+                    <option value="all">{t("amGroupScopeAll")}</option>
+                    <option value="free">{t("amGroupScopeFree")}</option>
+                    <option value="mine">{t("amGroupScopeMine")}</option>
+                  </select>
+                  {allBranches.length > 0 && (
+                    <select value={mBranch} onChange={e => setMBranch(e.target.value)}
+                      style={{ ...gmS.input, flex:"1 1 120px", padding:"7px 8px" }}>
+                      <option value="">{t("amGroupAnyBranch")}</option>
+                      {allBranches.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
                   )}
-                </label>
-              );
-            })}
+                </div>
+                <div style={gmX.bulkBar}>
+                  <span style={{ fontWeight:800, color:"#475569", fontSize:12 }}>
+                    {shown.length} / {(users || []).length}
+                  </span>
+                  <button type="button" style={gmX.miniOk} disabled={!shown.length}
+                    onClick={addShown}>➕ {t("amGroupAddShown")}</button>
+                  <button type="button" style={gmX.miniGhost} disabled={!shown.length}
+                    onClick={removeShown}>➖ {t("amGroupRemoveShown")}</button>
+                </div>
+
+                {ghosts.length > 0 && (
+                  <div style={gmX.ghostBar}>
+                    <span style={{ flex:1, minWidth:0 }}>
+                      👻 {t("amGroupGhosts")}: {ghosts.join("، ")}
+                    </span>
+                    <button type="button" style={gmX.miniDanger} onClick={dropGhosts}>
+                      🧹 {t("amGroupGhostsClean")}
+                    </button>
+                  </div>
+                )}
+
+                {shown.length === 0 ? (
+                  <div style={gmS.empty}>{t("amNoMatchAccounts")}</div>
+                ) : shown.map(u => {
+                  const owner = groupOfUser(draft, u.username);
+                  const mine = owner?.id === activeGroup.id;
+                  const elsewhere = owner && !mine;
+                  return (
+                    <label key={u.id} style={{
+                      ...gmS.memberRow,
+                      opacity: elsewhere ? 0.6 : 1,
+                      borderColor: mine ? colorOf(activeGroup.color).dot : "#e2e8f0",
+                      background: mine ? colorOf(activeGroup.color).bg : "#fff",
+                    }}>
+                      <input type="checkbox" checked={!!mine}
+                        onChange={() => setDraft(mine
+                          ? unassignMember(draft, u.username)
+                          : assignMember(draft, u.username, activeGroup.id))}
+                        style={{ width:20, height:20, accentColor: colorOf(activeGroup.color).dot, cursor:"pointer" }} />
+                      <span style={{ fontWeight:800, color:"#0f172a" }}>{u.display_name || u.username}</span>
+                      <span style={{ color:"#64748b", fontSize:12 }}>@{u.username}</span>
+                      {u.is_active === false && <span style={gmX.offTag}>⛔</span>}
+                      {elsewhere && (
+                        <span style={{ marginInlineStart:"auto", fontSize:11, fontWeight:800, background:colorOf(owner.color).bg, color:colorOf(owner.color).text, borderRadius:999, padding:"2px 8px" }}>
+                          {owner.icon} {owner.name}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </>
+            )}
           </div>
         </div>
 
-        <div style={gmS.foot}>
-          <button type="button" onClick={onClose} style={gmS.cancel}>✕</button>
-          <button type="button" disabled={saving} onClick={() => onSave(draft)} style={gmS.save}>
-            {saving ? "⏳" : "💾"} {t("amSaveChanges")}
-          </button>
-        </div>
+        {confirmClose ? (
+          <div style={gmX.closeBar}>
+            <span style={{ fontWeight:900, color:"#991b1b", flex:1, minWidth:0 }}>
+              ⚠️ {t("amGroupDiscardAsk")}
+            </span>
+            <button type="button" style={gmS.cancel} onClick={() => setConfirmClose(false)}>
+              ↩ {t("amGroupKeepEditing")}
+            </button>
+            <button type="button" style={gmX.discard} onClick={onClose}>
+              🗑 {t("amGroupDiscard")}
+            </button>
+          </div>
+        ) : (
+          <div style={gmS.foot}>
+            <button type="button" onClick={tryClose} style={gmS.cancel}>✕</button>
+            <button type="button" disabled={saving || !dirty}
+              onClick={() => {
+                const bad = draft.find(nameless);
+                if (bad) { setWarn(t("amGroupNeedsName")); setEditing(bad.id); setActive(bad.id); return; }
+                onSave(draft);
+              }}
+              style={{ ...gmS.save, ...(saving || !dirty ? gmX.saveOff : null) }}>
+              {saving ? "⏳" : "💾"} {t("amSaveChanges")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+const GROUP_ICONS = ["🏬", "🔪", "🏭", "🚚", "🛡️", "👨‍🍳", "📍", "⭐", "🧊", "🧪", "📦", "🧑‍💼"];
+
 const gmS = {
-  overlay: { position:"fixed", inset:0, background:"rgba(15,23,42,.62)", zIndex:9000, display:"grid", placeItems:"center", padding:16 },
-  modal:   { background:"#fff", borderRadius:18, width:"min(1000px,96vw)", maxHeight:"92vh", display:"flex", flexDirection:"column", padding:"20px 22px", boxShadow:"0 30px 70px rgba(0,0,0,.4)" },
+  overlay: { position:"fixed", inset:0, background:"rgba(18,50,76,.4)", backdropFilter:"blur(5px)", zIndex:9000, display:"grid", placeItems:"center", padding:16 },
+  modal:   { background:TK.surface, borderRadius:22, width:"min(1000px,96vw)", maxHeight:"92vh", display:"flex", flexDirection:"column", padding:"22px 24px", boxShadow:"0 30px 70px rgba(16,42,67,.3)", color:TK.ink },
   head:    { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 },
-  x:       { background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#64748b", fontWeight:900 },
-  hint:    { color:"#64748b", fontSize:13, fontWeight:600, marginBottom:14, lineHeight:1.7 },
-  newRow:  { display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", padding:"12px", background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:12, marginBottom:14 },
-  input:   { padding:"9px 11px", border:"1.5px solid #e2e8f0", borderRadius:9, fontSize:14, fontFamily:"inherit", background:"#fff", outline:"none", minWidth:0 },
-  addBtn:  { padding:"9px 16px", background:"#0f766e", color:"#fff", border:"none", borderRadius:9, fontWeight:900, fontSize:14, cursor:"pointer", fontFamily:"inherit" },
+  x:       { background:TK.tint, border:`1px solid ${TK.line}`, width:34, height:34, borderRadius:11, cursor:"pointer", color:TK.inkSoft, fontWeight:900 },
+  hint:    { color:TK.inkFaint, fontWeight:700, marginBottom:14, lineHeight:1.8 },
+  newRow:  { display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", padding:"13px", background:TK.tint, border:`1px solid ${TK.line}`, borderRadius:TK.r, marginBottom:14 },
+  input:   { padding:"10px 12px", border:`1px solid ${TK.line}`, borderRadius:TK.rSm, fontFamily:"inherit", background:TK.surface, color:TK.ink, outline:"none", minWidth:0 },
+  addBtn:  { padding:"10px 17px", background:TK.teal, color:"#fff", border:"none", borderRadius:TK.rSm, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
   body:    { display:"grid", gridTemplateColumns:"minmax(240px,1fr) minmax(260px,1.2fr)", gap:14, overflow:"hidden", flex:1, minHeight:0 },
   col:     { overflowY:"auto", display:"flex", flexDirection:"column", gap:6, padding:2, minHeight:120 },
-  groupRow:{ display:"flex", alignItems:"center", gap:4, width:"100%", padding:"4px 6px 4px 10px", borderRadius:11, border:"1.5px solid #e2e8f0", fontSize:14 },
+  groupRow:{ display:"flex", alignItems:"center", gap:4, width:"100%", padding:"4px 8px", borderRadius:TK.rMd, border:`1px solid ${TK.line}` },
   groupPick:{ display:"flex", alignItems:"center", gap:9, flex:1, minWidth:0, textAlign:"start", background:"none", border:"none", color:"inherit", font:"inherit", cursor:"pointer", padding:"7px 2px" },
   groupDel: { background:"none", border:"none", color:"#dc2626", fontWeight:900, fontSize:15, cursor:"pointer", padding:"6px 8px", borderRadius:8, lineHeight:1, flexShrink:0 },
-  memberRow:{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:10, border:"1px solid #e2e8f0", cursor:"pointer", fontSize:14, background:"#fff" },
-  empty:   { color:"#94a3b8", fontStyle:"italic", fontSize:13, padding:14, lineHeight:1.7 },
-  foot:    { display:"flex", gap:10, justifyContent:"flex-end", marginTop:16, paddingTop:14, borderTop:"1px solid #e2e8f0" },
-  cancel:  { padding:"11px 20px", background:"#f1f5f9", color:"#374151", border:"1px solid #e2e8f0", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
-  save:    { padding:"11px 26px", background:"linear-gradient(135deg,#0f766e,#0891b2)", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+  memberRow:{ display:"flex", alignItems:"center", gap:10, padding:"10px 13px", borderRadius:TK.rMd, border:`1px solid ${TK.line}`, cursor:"pointer", background:TK.surface, transition:"border-color .14s, background .14s" },
+  empty:   { color:TK.inkFaint, fontStyle:"italic", padding:16, lineHeight:1.8 },
+  foot:    { display:"flex", gap:10, justifyContent:"flex-end", marginTop:16, paddingTop:14, borderTop:`1px solid ${TK.line}` },
+  cancel:  { padding:"12px 20px", background:TK.tint, color:TK.inkSoft, border:`1px solid ${TK.line}`, borderRadius:TK.rMd, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
+  save:    { padding:"12px 26px", background:TK.teal, color:"#fff", border:"none", borderRadius:TK.rMd, fontWeight:800, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 8px 20px rgba(15,118,110,.22)" },
+};
+
+/* Extras the group manager grew: rename, guarded delete, member filtering and
+   the unsaved-work guard. Kept beside gmS rather than merged into it so the
+   original modal shell stays readable. */
+const gmX = {
+  dirty:    { marginInlineStart:10, fontWeight:800, color:TK.amber, background:TK.amberSoft, borderRadius:999, padding:"3px 11px" },
+  warn:     { background:TK.amberSoft, border:`1px solid ${TK.amber}2e`, color:TK.amber, fontWeight:800, borderRadius:TK.rSm, padding:"9px 13px", marginBottom:10 },
+  rowEdit:  { background:"none", border:"none", color:"#0f766e", fontWeight:900, fontSize:15, cursor:"pointer", padding:"6px 6px", borderRadius:8, lineHeight:1, flexShrink:0 },
+  miniOk:   { padding:"7px 12px", background:TK.teal, color:"#fff", border:"none", borderRadius:TK.rSm, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
+  miniGhost:{ padding:"7px 12px", background:TK.surface, color:TK.inkSoft, border:`1px solid ${TK.line}`, borderRadius:TK.rSm, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
+  miniDanger:{ padding:"7px 12px", background:TK.rose, color:"#fff", border:"none", borderRadius:TK.rSm, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
+  filterBar:{ display:"flex", gap:6, flexWrap:"wrap", position:"sticky", top:0, zIndex:2, background:"#fff", paddingBottom:6 },
+  bulkBar:  { display:"flex", gap:7, alignItems:"center", flexWrap:"wrap", padding:"2px 2px 6px" },
+  ghostBar: { display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", background:"#f8fafc", border:"1px dashed #cbd5e1", borderRadius:10, padding:"8px 11px", fontSize:12.5, fontWeight:800, color:"#475569" },
+  offTag:   { fontSize:11, fontWeight:900, color:"#b91c1c", background:"#fee2e2", borderRadius:999, padding:"1px 7px" },
+  closeBar: { display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", justifyContent:"flex-end", marginTop:16, paddingTop:14, borderTop:"1px solid #fecaca", background:"#fef2f2", borderRadius:12, padding:"12px 14px" },
+  discard:  { padding:"11px 20px", background:"#dc2626", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+  saveOff:  { opacity:.5, cursor:"not-allowed", filter:"grayscale(.4)" },
 };
 
 export default function AccountsManagementTab({ onClose }) {
@@ -1943,14 +2253,16 @@ export default function AccountsManagementTab({ onClose }) {
   }, [filteredUsers, sortBy]);
 
   const buckets = React.useMemo(() => {
+    let list = null;
     if (groupBy === "branch") {
-      return autoGroupByBranch(sortedUsers, { fullAccessLabel: t("amGroupAllAccess") });
+      list = autoGroupByBranch(sortedUsers, { fullAccessLabel: t("amGroupAllAccess") });
+    } else if (groupBy === "custom") {
+      list = groupByCustom(sortedUsers, groups, { ungroupedLabel: t("amGroupUngrouped") });
     }
-    if (groupBy === "custom") {
-      return groupByCustom(sortedUsers, groups, { ungroupedLabel: t("amGroupUngrouped") });
-    }
-    return null;
-  }, [groupBy, sortedUsers, groups, t]);
+    // While searching, a wall of empty buckets buries the two matches that are
+    // the whole reason the admin typed anything.
+    return list && search ? list.filter(b => b.users.length) : list;
+  }, [groupBy, sortedUsers, groups, search, t]);
 
   const toggleBucket = (key) =>
     setCollapsed((prev) => {
@@ -2019,20 +2331,72 @@ export default function AccountsManagementTab({ onClose }) {
   ];
 
   return (
-    <div style={p.shell} dir={dir}>
+    <div className="acm" style={p.shell} dir={dir}>
+      {/* ── Type scale ────────────────────────────────────────────────
+          globals.css sets `#root * { font-size:14px !important }`, which
+          flattens every inline fontSize on this page — that is why the screen
+          read as one grey wall with no hierarchy. An !important rule with a
+          doubled class (`.acm.acm`) outranks it, so the scale below is the
+          only place sizes are set from now on: never write fontSize inline
+          here again, it will be ignored. */}
       <style>{`
-        .acm-tab:hover{background:#f1f5f9 !important; color:#0f172a !important;}
-        .acm-actbtn:hover{filter:brightness(1.02); transform:translateY(-1px);}
-        .acm-actbtn{transition:all .15s;}
-        .acm-searchinput:focus{border-color:#14b8a6 !important; box-shadow:0 0 0 3px rgba(20,184,166,.12); outline:none;}
-        .acm-searchinput::placeholder{color:#94a3b8;}
+        #root .acm.acm{ color:${TK.ink}; }
+        #root .acm.acm .acm-kpi{ font-size:29px !important; letter-spacing:-.02em; }
+        #root .acm.acm .acm-h{ font-size:17px !important; }
+        #root .acm.acm .acm-name{ font-size:16px !important; }
+        #root .acm.acm .acm-sm{ font-size:12.5px !important; }
+        #root .acm.acm .acm-xs{ font-size:11.5px !important; }
+        #root .acm.acm .acm-chip{ font-size:12px !important; }
+        #root .acm.acm .acm-avatar{ font-size:18px !important; }
+        #root .acm.acm .acm-emoji-lg{ font-size:22px !important; }
+        #root .acm.acm .acm-mono{ font-size:15px !important; }
+        #root .acm.acm input, #root .acm.acm select, #root .acm.acm textarea{ font-size:14px !important; }
+
+        /* ── Motion & states ─────────────────────────────────────── */
+        .acm-card{ transition:border-color .16s, box-shadow .16s, transform .16s; }
+        .acm-tab{ transition:background .16s, color .16s, box-shadow .16s; }
+        .acm-tab:hover{ background:${TK.surface} !important; color:${TK.ink} !important; }
+        .acm-actbtn{ transition:background .15s, border-color .15s, color .15s, transform .12s; }
+        .acm-actbtn:hover{ transform:translateY(-1px); }
+        .acm-actbtn:active{ transform:translateY(0); }
+        .acm-actbtn:disabled{ transform:none; }
+
+        /* Row actions stay neutral until you reach for them, so a list of
+           twenty accounts is not eighty coloured squares. */
+        .acm-act-blue:hover{   background:${TK.brandSoft}  !important; border-color:${TK.brand}33  !important; color:${TK.brand}  !important; }
+        .acm-act-violet:hover{ background:${TK.violetSoft} !important; border-color:${TK.violet}33 !important; color:${TK.violet} !important; }
+        .acm-act-amber:hover{  background:${TK.amberSoft}  !important; border-color:${TK.amber}33  !important; color:${TK.amber}  !important; }
+        .acm-act-rose:hover{   background:${TK.roseSoft}   !important; border-color:${TK.rose}33   !important; color:${TK.rose}   !important; }
+
+        .acm-searchinput:focus, .acm select:focus, .acm input:focus, .acm textarea:focus{
+          border-color:${TK.brand} !important;
+          box-shadow:0 0 0 3px rgba(31,111,208,.13);
+          background:${TK.surface};
+          outline:none;
+        }
+        .acm-searchinput::placeholder, .acm input::placeholder{ color:${TK.inkFaint}; }
+        .acm select:hover, .acm-refresh:hover{ border-color:${TK.lineHi} !important; }
+
+        /* Scrollbars inside the modal columns — thin and quiet. */
+        .acm-gmbody ::-webkit-scrollbar, .acm ::-webkit-scrollbar{ width:9px; height:9px; }
+        .acm-gmbody ::-webkit-scrollbar-thumb, .acm ::-webkit-scrollbar-thumb{
+          background:${TK.lineHi}; border-radius:999px; border:2px solid #fff;
+        }
+
+        @media (max-width: 640px){
+          .acm-gmbody{ grid-template-columns:1fr !important; overflow-y:auto !important; }
+          #root .acm.acm .acm-kpi{ font-size:24px !important; }
+        }
       `}</style>
 
       <div style={p.kpiGrid}>
         {stats.map(s => (
-          <div key={s.label} style={{ ...p.kpiCard, borderTop:`4px solid ${s.tone}` }}>
-            <div style={p.kpiLabel}>{s.label}</div>
-            <div style={{ ...p.kpiValue, color:s.tone }}>{s.val}</div>
+          <div key={s.label} className="acm-card" style={p.kpiCard}>
+            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+              <span style={{ ...p.kpiDot, background:s.tone }} />
+              <span className="acm-xs" style={p.kpiLabel}>{s.label}</span>
+            </div>
+            <div className="acm-kpi" style={{ ...p.kpiValue, color:s.tone }}>{s.val}</div>
           </div>
         ))}
       </div>
@@ -2049,21 +2413,19 @@ export default function AccountsManagementTab({ onClose }) {
               }}
               style={{
                 ...p.tab,
-                background: isActive ? "#fff" : "transparent",
-                color:      isActive ? "#0f766e" : "#64748b",
-                border:     `1px solid ${isActive ? "#0f766e" : "transparent"}`,
-                boxShadow:  isActive ? "0 8px 18px rgba(15,23,42,.08)" : "none",
+                background: isActive ? TK.surface : "transparent",
+                color:      isActive ? TK.teal : TK.inkSoft,
+                boxShadow:  isActive ? "0 2px 6px rgba(16,42,67,.10)" : "none",
               }}
             >
-              <span style={{ fontSize:16 }}>{n.icon}</span>
+              <span>{n.icon}</span>
               <span>{n.label}</span>
               {n.badge !== undefined && (
-                <span style={{
-                  fontSize:13, fontWeight:900,
-                  background: n.badgeColor === "warn" ? "rgba(251,191,36,.25)" : "rgba(96,165,250,.2)",
-                  color:      n.badgeColor === "warn" ? "#92400e" : "#1d4ed8",
+                <span className="acm-xs" style={{
+                  fontWeight:800,
+                  background: n.badgeColor === "warn" ? TK.amberSoft : TK.brandSoft,
+                  color:      n.badgeColor === "warn" ? TK.amber : TK.brand,
                   padding:"2px 9px", borderRadius:999,
-                  border: `1px solid ${n.badgeColor === "warn" ? "rgba(251,191,36,.4)" : "rgba(96,165,250,.3)"}`,
                 }}>{n.badge}</span>
               )}
             </button>
@@ -2071,10 +2433,10 @@ export default function AccountsManagementTab({ onClose }) {
         })}
         {view === "form" && editUser && (
           <div style={{
-            marginLeft:"auto", display:"flex", alignItems:"center", gap:8,
-            padding:"6px 12px", borderRadius:9,
-            background:"#f5f3ff", border:"1px solid #ddd6fe",
-            fontSize:15, fontWeight:800, color:"#6d28d9",
+            marginInlineStart:"auto", display:"flex", alignItems:"center", gap:8,
+            padding:"7px 14px", borderRadius:999,
+            background:TK.violetSoft, border:`1px solid ${TK.violet}26`,
+            fontWeight:800, color:TK.violet,
           }}>
             ✏️ {t("amEditing")} <strong>{editUser.username}</strong>
             <button onClick={() => { setView("list"); setEditUser(null); }}
@@ -2089,15 +2451,7 @@ export default function AccountsManagementTab({ onClose }) {
 
           {/* Toast notification */}
           {msg && (
-            <div style={{
-              padding:"12px 18px", borderRadius:12, marginBottom:18,
-              fontWeight:800, fontSize:15,
-              background: msg.type === "ok" ? "rgba(52,211,153,.18)" : "rgba(248,113,113,.18)",
-              color:      msg.type === "ok" ? "#34d399" : "#f87171",
-              border:    `1px solid ${msg.type === "ok" ? "rgba(52,211,153,.4)" : "rgba(248,113,113,.4)"}`,
-              backdropFilter:"blur(8px)",
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
+            <div style={p.notice(msg.type === "ok" ? "ok" : "err")}>
               <span>{msg.text}</span>
               <button onClick={() => setMsg(null)} style={{
                 background:"transparent", border:"none", cursor:"pointer",
@@ -2109,12 +2463,8 @@ export default function AccountsManagementTab({ onClose }) {
 
           {/* Server not ready warning */}
           {!serverReady && (
-            <div style={{
-              padding:"14px 18px", borderRadius:12, marginBottom:18,
-              background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.35)",
-              color:"#fbbf24", fontWeight:800, fontSize:14,
-            }}>
-              ⚠️ {t("amServerNotFound")}
+            <div style={p.notice("warn")}>
+              <span>⚠️ {t("amServerNotFound")}</span>
             </div>
           )}
 
@@ -2124,10 +2474,10 @@ export default function AccountsManagementTab({ onClose }) {
               {/* Search + refresh */}
               <div style={p.listToolbar}>
                 <div style={{ flex:1, minWidth:240, position:"relative" }}>
-                  <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔍</span>
+                  <span style={{ position:"absolute", insetInlineStart:14, top:"50%", transform:"translateY(-50%)", pointerEvents:"none", opacity:.55 }}>🔍</span>
                   <input
                     className="acm-searchinput"
-                    style={{ ...p.searchInput, paddingLeft:40, width:"100%", boxSizing:"border-box" }}
+                    style={{ ...p.searchInput, paddingInlineStart:42, width:"100%", boxSizing:"border-box" }}
                     placeholder={t("amSearchPlaceholder")}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
@@ -2155,9 +2505,8 @@ export default function AccountsManagementTab({ onClose }) {
                 <button className="acm-actbtn" onClick={exportCSV} style={p.btnRefresh} title={t("amExportCsvTip")}>
                   CSV
                 </button>
-                <button className="acm-actbtn"
-                  onClick={() => { setEditUser(null); setView("form"); }}
-                  style={{ ...p.btnRefresh, background:"#0f766e", color:"#fff", border:"1px solid #0f766e" }}>
+                <button className="acm-actbtn" style={p.btnPrimary}
+                  onClick={() => { setEditUser(null); setView("form"); }}>
                   ➕ {t("amNavAdd")}
                 </button>
                 {onClose && (
@@ -2192,7 +2541,7 @@ export default function AccountsManagementTab({ onClose }) {
                       </span>
                     )}
                     {groupsError === "offline" && groupBy === "custom" && (
-                      <span style={{ ...p.bucketNote, color:"#fbbf24" }}>⚠️ {t("amGroupsOffline")}</span>
+                      <span style={{ ...p.bucketNote, color:TK.amber }}>⚠️ {t("amGroupsOffline")}</span>
                     )}
                   </div>
 
@@ -2207,15 +2556,15 @@ export default function AccountsManagementTab({ onClose }) {
                       <div key={b.key} style={p.bucket}>
                         <button onClick={() => toggleBucket(b.key)} style={{
                           ...p.bucketHead,
-                          borderInlineStartColor: c ? c.dot : "#334155",
+                          borderInlineStartColor: c ? c.dot : TK.lineHi,
                         }}>
                           <span style={{ width:14, fontWeight:900, opacity:.75 }}>{isOpen ? "▾" : "▸"}</span>
                           {b.group ? <span style={{ fontSize:17 }}>{b.group.icon}</span> : null}
                           <span style={{ fontWeight:900 }}>{label}</span>
                           <span style={{
                             marginInlineStart:"auto", fontWeight:900, fontSize:12,
-                            background: c ? c.dot : "rgba(148,163,184,.28)",
-                            color:"#fff", borderRadius:999, padding:"2px 10px",
+                            background: c ? c.dot : "#8aa2b8",
+                            color:"#fff", borderRadius:999, padding:"3px 11px",
                           }}>
                             {b.users.length} {t("amGroupMembers")}
                           </span>
@@ -2347,139 +2696,172 @@ const p = {
   shell: {
     background:"transparent",
     display:"flex", flexDirection:"column",
-    fontFamily:"Cairo,'Segoe UI',system-ui,sans-serif",
-    borderRadius:0,
-    border:"none",
-    overflow:"visible",
-    position:"relative",
-    boxShadow:"none",
+    fontFamily:TK.font,
+    color:TK.ink,
+    border:"none", borderRadius:0, boxShadow:"none",
+    overflow:"visible", position:"relative",
   },
+
+  /* ── stat strip ─────────────────────────────────────────
+     One quiet card per number. The old version shouted with a 4px coloured
+     top border on every card; the colour now lives in a small dot, so five
+     cards side by side read as one strip instead of five posters. */
   kpiGrid: {
     display:"grid",
-    gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",
-    gap:12,
-    marginBottom:14,
+    gridTemplateColumns:"repeat(auto-fit, minmax(148px, 1fr))",
+    gap:10,
+    marginBottom:16,
   },
   kpiCard: {
-    background:"#fff",
-    border:"1px solid rgba(15,23,42,.12)",
-    borderRadius:8,
-    padding:"13px 15px",
-    boxShadow:"0 10px 24px rgba(15,23,42,.06)",
-    minHeight:72,
+    background:TK.surface,
+    border:`1px solid ${TK.line}`,
+    borderRadius:TK.r,
+    padding:"14px 16px",
+    boxShadow:TK.shadow,
+    display:"flex", flexDirection:"column", gap:6,
   },
-  kpiLabel: {
-    color:"#64748b",
-    fontSize:12,
-    fontWeight:950,
-    textTransform:"uppercase",
-    letterSpacing:"0.04em",
-  },
-  kpiValue: {
-    marginTop:5,
-    fontSize:27,
-    fontWeight:1000,
-    lineHeight:1,
-  },
-  btnToolbar: {
-    padding:"10px 18px", borderRadius:8,
-    fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
-    whiteSpace:"nowrap",
-  },
-  /* Horizontal tab strip */
+  kpiLabel: { color:TK.inkFaint, fontWeight:800, letterSpacing:".01em" },
+  kpiValue: { color:TK.ink, fontWeight:900, lineHeight:1 },
+  kpiDot:   { width:8, height:8, borderRadius:999, flexShrink:0 },
+
+  /* ── segmented tab strip ───────────────────────────────
+     A pill rail: the active tab is a raised white pill, the rest are plain
+     text. Reads as one control, not five competing buttons. */
   tabsBar: {
     display:"flex", alignItems:"center", gap:4, flexWrap:"wrap",
-    padding:6,
+    padding:5,
     marginBottom:16,
-    background:"#f8fafc",
-    border:"1px solid rgba(15,23,42,.10)",
-    borderRadius:8,
+    background:TK.tint,
+    border:`1px solid ${TK.line}`,
+    borderRadius:999,
   },
   tab: {
     display:"inline-flex", alignItems:"center", gap:8,
     minHeight:42,
-    padding:"9px 14px",
-    border:"1px solid transparent", borderRadius:8,
+    padding:"9px 16px",
+    border:"1px solid transparent", borderRadius:999,
     cursor:"pointer", fontFamily:"inherit",
-    fontWeight:950, fontSize:15,
-    transition:"all .15s",
+    fontWeight:800,
+    transition:"background .16s, color .16s, box-shadow .16s",
     whiteSpace:"nowrap",
   },
-  /* Content area: auto-sized, padding only */
+
   mainContent: { padding:0 },
+
+  /* ── control bar ───────────────────────────────────────── */
   listToolbar: {
-    display:"flex",
-    alignItems:"center",
-    gap:10,
+    display:"flex", alignItems:"center", gap:9, flexWrap:"wrap",
     marginBottom:14,
-    flexWrap:"wrap",
-    padding:14,
-    background:"#fff",
-    border:"1px solid rgba(15,23,42,.12)",
-    borderRadius:8,
-    boxShadow:"0 10px 24px rgba(15,23,42,.05)",
+    padding:12,
+    background:TK.surface,
+    border:`1px solid ${TK.line}`,
+    borderRadius:TK.r,
+    boxShadow:TK.shadow,
   },
   searchInput: {
-    minHeight:42,
-    padding:"10px 14px", borderRadius:8,
-    background:"#fff",
-    border:"1px solid rgba(15,23,42,.16)",
-    color:"#0f172a", fontSize:16,
-    fontFamily:"Cairo,'Segoe UI',sans-serif",
-    fontWeight:800,
+    minHeight:44,
+    padding:"11px 15px", borderRadius:TK.rMd,
+    background:TK.tint,
+    border:`1px solid ${TK.line}`,
+    color:TK.ink,
+    fontFamily:TK.font, fontWeight:700,
+    transition:"border-color .15s, box-shadow .15s, background .15s",
+  },
+  /* Was dark-theme: light grey text on a transparent fill — invisible on the
+     white toolbar it actually sits in. */
+  toolSelect: {
+    minHeight:44,
+    padding:"10px 13px", borderRadius:TK.rMd,
+    background:TK.surface, color:TK.ink,
+    border:`1px solid ${TK.line}`,
+    fontWeight:800, fontFamily:"inherit", cursor:"pointer", outline:"none",
+    transition:"border-color .15s, box-shadow .15s",
   },
   btnRefresh: {
-    minHeight:42,
-    padding:"9px 15px", borderRadius:8,
-    background:"#f8fafc", color:"#334155",
-    border:"1px solid rgba(15,23,42,.14)",
-    fontWeight:950, fontSize:14, cursor:"pointer",
-    fontFamily:"Cairo,'Segoe UI',sans-serif",
+    minHeight:44,
+    padding:"10px 16px", borderRadius:TK.rMd,
+    background:TK.surface, color:TK.inkSoft,
+    border:`1px solid ${TK.line}`,
+    fontWeight:800, cursor:"pointer",
+    fontFamily:TK.font, whiteSpace:"nowrap",
+    transition:"background .15s, border-color .15s, color .15s",
+  },
+  btnPrimary: {
+    minHeight:44,
+    padding:"10px 18px", borderRadius:TK.rMd,
+    background:TK.teal, color:"#fff",
+    border:`1px solid ${TK.teal}`,
+    fontWeight:800, cursor:"pointer",
+    fontFamily:TK.font, whiteSpace:"nowrap",
+    boxShadow:"0 6px 16px rgba(15,118,110,.22)",
+  },
+  btnToolbar: {
+    padding:"10px 18px", borderRadius:TK.rMd,
+    fontWeight:800, cursor:"pointer", fontFamily:"inherit",
     whiteSpace:"nowrap",
   },
-  cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
-  toolSelect: {
-    padding:"10px 12px", borderRadius:10, fontSize:14, fontWeight:800,
-    fontFamily:"inherit", cursor:"pointer", outline:"none",
-    background:"rgba(255,255,255,.06)", color:"#e2e8f0",
-    border:"1px solid rgba(148,163,184,.3)",
-  },
   btnMini: {
-    padding:"6px 13px", borderRadius:999, fontSize:12.5, fontWeight:900,
-    fontFamily:"inherit", cursor:"pointer",
-    background:"rgba(255,255,255,.06)", color:"#cbd5e1",
-    border:"1px solid rgba(148,163,184,.28)",
+    padding:"7px 14px", borderRadius:999,
+    fontWeight:800, fontFamily:"inherit", cursor:"pointer",
+    background:TK.surface, color:TK.inkSoft,
+    border:`1px solid ${TK.line}`,
+    transition:"background .15s, color .15s",
   },
-  bucketNote: { fontSize:12.5, fontWeight:700, color:"#94a3b8", alignSelf:"center" },
-  bucket: { marginBottom:14 },
+
+  cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
+
+  /* ── grouped list ──────────────────────────────────────
+     Also dark-theme leftovers: #e2e8f0 text on a 5%-white fill. */
+  bucketNote: { fontWeight:700, color:TK.inkFaint, alignSelf:"center" },
+  bucket: { marginBottom:16 },
   bucketHead: {
-    display:"flex", alignItems:"center", gap:9, width:"100%", textAlign:"start",
-    padding:"11px 14px", borderRadius:12, cursor:"pointer", font:"inherit", fontSize:15,
-    background:"rgba(255,255,255,.05)", color:"#e2e8f0",
-    border:"1px solid rgba(148,163,184,.22)", borderInlineStartWidth:4,
-    borderInlineStartStyle:"solid",
+    display:"flex", alignItems:"center", gap:10, width:"100%", textAlign:"start",
+    padding:"12px 16px", borderRadius:TK.rMd, cursor:"pointer", font:"inherit",
+    fontWeight:800,
+    background:TK.tint, color:TK.ink,
+    border:`1px solid ${TK.line}`,
+    borderInlineStartWidth:4, borderInlineStartStyle:"solid",
+    transition:"background .15s",
   },
-  bucketEmpty: { color:"#64748b", fontStyle:"italic", fontSize:13, padding:"12px 16px" },
-  empty: { background:"#fff", border:"1px solid rgba(15,23,42,.12)", borderRadius:8, textAlign:"center", padding:"30px 20px", color:"#64748b", fontWeight:800, fontSize:16 },
+  bucketEmpty: { color:TK.inkFaint, fontStyle:"italic", padding:"12px 16px" },
+
+  empty: {
+    background:TK.surface, border:`1px dashed ${TK.lineHi}`,
+    borderRadius:TK.r, textAlign:"center", padding:"38px 22px",
+    color:TK.inkSoft, fontWeight:800,
+  },
+
+  /* ── dialogs ───────────────────────────────────────────── */
   overlay: {
     position:"fixed", inset:0,
-    background:"rgba(15,23,42,.45)",
+    background:"rgba(18,50,76,.38)",
     display:"flex", alignItems:"center", justifyContent:"center",
-    zIndex:9999, backdropFilter:"blur(6px)",
+    zIndex:9999, backdropFilter:"blur(5px)", padding:16,
   },
   modal: {
-    background:"#fff",
-    border:"1px solid rgba(15,23,42,.12)",
-    borderRadius:8, padding:"24px 28px",
-    width:"min(420px,92vw)",
-    boxShadow:"0 24px 64px rgba(15,23,42,.24)",
+    background:TK.surface,
+    border:`1px solid ${TK.line}`,
+    borderRadius:20, padding:"26px 28px",
+    width:"min(430px,94vw)",
+    boxShadow:"0 30px 70px rgba(16,42,67,.28)",
+    color:TK.ink,
   },
   pwIconBtn: {
-    padding:"0 13px", borderRadius:8,
-    background:"#f8fafc", color:"#334155",
-    border:"1px solid #cbd5e1",
-    fontSize:17, cursor:"pointer", fontFamily:"inherit", flexShrink:0,
+    padding:"0 14px", borderRadius:TK.rMd,
+    background:TK.tint, color:TK.inkSoft,
+    border:`1px solid ${TK.line}`,
+    cursor:"pointer", fontFamily:"inherit", flexShrink:0,
   },
+
+  /* ── notices ───────────────────────────────────────────── */
+  notice: (tone) => ({
+    display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+    padding:"13px 17px", borderRadius:TK.rMd, marginBottom:16,
+    fontWeight:800,
+    background: tone === "ok" ? TK.greenSoft : tone === "warn" ? TK.amberSoft : TK.roseSoft,
+    color:      tone === "ok" ? TK.green    : tone === "warn" ? TK.amber     : TK.rose,
+    border: `1px solid ${(tone === "ok" ? TK.green : tone === "warn" ? TK.amber : TK.rose)}2e`,
+  }),
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -2487,42 +2869,46 @@ const p = {
 ═══════════════════════════════════════════════════════ */
 const fs = {
   formWrap: {
-    background:"#fff", border:"1px solid #e2e8f0",
-    borderRadius:18, padding:"28px 32px",
+    background:TK.surface, border:`1px solid ${TK.line}`,
+    borderRadius:20, padding:"28px 30px",
+    boxShadow:TK.shadow,
     maxWidth:"100%",
   },
-  title:  { margin:"0 0 22px", fontWeight:1000, fontSize:22, color:"#0f172a" },
+  title:  { margin:"0 0 22px", fontWeight:900, color:TK.ink },
   row:    { display:"flex", gap:16, marginBottom:16, flexWrap:"wrap" },
-  field:  { flex:1, minWidth:220, display:"flex", flexDirection:"column", gap:6 },
-  label:  { fontSize:13, fontWeight:900, color:"#475569", textTransform:"uppercase", letterSpacing:".05em" },
+  field:  { flex:1, minWidth:220, display:"flex", flexDirection:"column", gap:7 },
+  /* Sentence case, not SHOUTING CAPS — a form of twenty fields set in
+     uppercase micro-type is the least readable thing on the screen. */
+  label:  { fontWeight:800, color:TK.inkSoft, letterSpacing:0 },
   input:  {
-    padding:"12px 14px", border:"1.5px solid #e2e8f0", borderRadius:10,
-    fontSize:16, fontFamily:"inherit", color:"#0f172a",
-    background:"#f8fafc", outline:"none", width:"100%", boxSizing:"border-box",
+    padding:"12px 14px", border:`1px solid ${TK.line}`, borderRadius:TK.rMd,
+    fontFamily:"inherit", color:TK.ink,
+    background:TK.tint, outline:"none", width:"100%", boxSizing:"border-box",
+    transition:"border-color .15s, box-shadow .15s, background .15s",
   },
   checkRow: { display:"flex", alignItems:"center", gap:10, cursor:"pointer", padding:"6px 8px", borderRadius:8 },
-  err: { color:"#991b1b", background:"#fee2e2", padding:"10px 14px", borderRadius:8, fontSize:15, fontWeight:800, marginTop:10 },
+  err: { color:TK.rose, background:TK.roseSoft, padding:"11px 14px", borderRadius:TK.rSm, fontWeight:800, marginTop:10 },
   /* permissions table */
-  permBox:    { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fff" },
+  permBox:    { border:`1px solid ${TK.line}`, borderRadius:TK.r, padding:"18px 20px", marginBottom:18, background:TK.surface },
   permHeader: { display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, marginBottom:14 },
-  permTitle:  { fontWeight:900, fontSize:17, color:"#0f172a" },
-  fullAccessBanner: { background:"#f3e8ff", border:"1px solid #d8b4fe", borderRadius:10, padding:"12px 16px", color:"#7c3aed", fontWeight:800, fontSize:15 },
+  permTitle:  { fontWeight:900, color:TK.ink },
+  fullAccessBanner: { background:TK.violetSoft, border:`1px solid ${TK.violet}26`, borderRadius:TK.rMd, padding:"13px 16px", color:TK.violet, fontWeight:800 },
   permTable:  { width:"100%", borderCollapse:"separate", borderSpacing:0, fontSize:14 },
-  permTh:     { padding:"9px 10px", background:"#f1f5f9", fontSize:12, fontWeight:900, color:"#475569", textAlign:"center", whiteSpace:"nowrap", borderBottom:"2px solid #e2e8f0", position:"sticky", top:0, zIndex:1 },
-  permTd:     { padding:"7px 10px", verticalAlign:"middle", borderBottom:"1px solid #f1f5f9" },
+  permTh:     { padding:"10px", background:TK.tint, fontWeight:800, color:TK.inkSoft, textAlign:"center", whiteSpace:"nowrap", borderBottom:`1px solid ${TK.line}`, position:"sticky", top:0, zIndex:1 },
+  permTd:     { padding:"8px 10px", verticalAlign:"middle", borderBottom:`1px solid ${TK.line}` },
   /* 22px, not 16 — these are the switches the whole screen exists to flip, and
      at 16px they were smaller than the text beside them and awkward to hit. */
   cbBig:      { width:22, height:22, cursor:"pointer", flexShrink:0, margin:0 },
   permSecLabel: { display:"flex", alignItems:"center", gap:10, cursor:"pointer", userSelect:"none" },
   cbCell:     { display:"inline-flex", alignItems:"center", justifyContent:"center", width:38, height:34, borderRadius:9, border:"1.5px solid transparent", transition:"background .12s, border-color .12s" },
-  btnSelectAll: { fontSize:13, fontWeight:900, color:"#2563eb", background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:8, cursor:"pointer", padding:"7px 14px", fontFamily:"inherit" },
+  btnSelectAll: { fontWeight:800, color:TK.brand, background:TK.brandSoft, border:`1px solid ${TK.brand}26`, borderRadius:999, cursor:"pointer", padding:"8px 15px", fontFamily:"inherit" },
   btnAllOps:  { background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px 6px", borderRadius:6 },
   /* employees */
-  empBox:      { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fafafa" },
-  empChip:     { display:"flex", alignItems:"center", gap:6, background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:999, padding:"4px 12px", fontSize:14 },
+  empBox:      { border:`1px solid ${TK.line}`, borderRadius:TK.r, padding:"18px 20px", marginBottom:18, background:TK.tint },
+  empChip:     { display:"flex", alignItems:"center", gap:6, background:TK.brandSoft, color:TK.brand, border:`1px solid ${TK.brand}22`, borderRadius:999, padding:"5px 13px", fontWeight:800 },
   empRemoveBtn:{ background:"none", border:"none", cursor:"pointer", color:"#dc2626", fontWeight:900, fontSize:17, lineHeight:1, padding:"0 2px" },
-  btnAdd2:     { padding:"10px 18px", background:"#2563eb", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+  btnAdd2:     { padding:"11px 18px", background:TK.brand, color:"#fff", border:"none", borderRadius:TK.rMd, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
   /* form action buttons */
-  btnSave:     { padding:"12px 26px", background:"linear-gradient(135deg,#2563eb,#7c3aed)", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:16, cursor:"pointer", fontFamily:"inherit" },
-  btnCancel:   { padding:"12px 22px", background:"#f1f5f9", color:"#374151", border:"1px solid #e2e8f0", borderRadius:10, fontWeight:900, fontSize:16, cursor:"pointer", fontFamily:"inherit" },
+  btnSave:     { padding:"13px 28px", background:TK.teal, color:"#fff", border:"none", borderRadius:TK.rMd, fontWeight:800, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 8px 20px rgba(15,118,110,.22)" },
+  btnCancel:   { padding:"13px 24px", background:TK.tint, color:TK.inkSoft, border:`1px solid ${TK.line}`, borderRadius:TK.rMd, fontWeight:800, cursor:"pointer", fontFamily:"inherit" },
 };

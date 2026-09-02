@@ -21,6 +21,17 @@ import {
 } from "../_shared/reportApi";
 import ProductPicker from "../_shared/ProductPicker";
 import { canEdit } from "../../../../utils/perms";
+import {
+  accentOf,
+  defForStorageKey,
+  defsFromPayload,
+  emojiOf,
+  inRange,
+  productLimitFor,
+  rangeLabel,
+  rangeOf,
+  warnBandOf,
+} from "./coolerDefs";
 
 const TYPE_COOLERS = "qcs-coolers";
 
@@ -30,48 +41,19 @@ const COOLER_TIMES = [
   "4:00 AM", "6:00 AM", "8:00 AM", "10:00 AM", "12:00 PM", "2:00 PM", "4:00 PM", "6:00 PM", "8:00 PM",
 ];
 
-function labelForCooler(i) {
-  return i === 7 ? "FREEZER" : (i === 2 || i === 3) ? "Production Room" : `Cooler ${i + 1}`;
-}
-function coolerRange(index) {
-  if (index === 7) return { min: -19, max: -14 };
-  if (index === 2 || index === 3) return { min: 8, max: 12 };
-  return { min: 0, max: 5 };
-}
-function inCoolerRange(index, t) {
-  const { min, max } = coolerRange(index);
-  return t >= min && t <= max;
-}
-function loadingAreaRange() { return { min: 0, max: 16 }; }
-function inLoadingAreaRange(t) {
-  const { min, max } = loadingAreaRange();
-  return t >= min && t <= max;
-}
-function storageTypeOf(storageKey) {
-  return storageKey === "cooler-7" ? "frozen" : "chilled";
-}
-function productTempLimit(type) {
-  return type === "frozen"
-    ? { label: "≤ -18°C", pass: (n) => n <= -18 }
-    : { label: "0 to 5°C", pass: (n) => n >= 0 && n <= 5 };
-}
-function storageLabel(storageKey) {
-  if (storageKey === "loading-area") return "Loading Area";
-  const m = String(storageKey || "").match(/^cooler-(\d+)$/);
-  return m ? labelForCooler(Number(m[1])) : storageKey;
-}
-
-function tempInputStyle(temp, idx, isLoading) {
+/* Names, kinds and limits come from the record itself (payload.coolerDefs),
+   falling back to the legacy layout for every sheet filed before storage units
+   became configurable. See coolerDefs.js. */
+function tempInputStyle(temp, def) {
   const t = Number(temp);
   const base = {
     width: 80, padding: "6px 8px", borderRadius: 8, border: "1.7px solid #94a3b8",
     textAlign: "center", fontWeight: 600, color: "#111827", background: "#fff",
   };
   if (Number.isNaN(t) || temp === "") return base;
-  const { min, max } = isLoading ? loadingAreaRange() : coolerRange(idx);
+  const { min, max } = rangeOf(def);
   if (t < min || t > max) return { ...base, background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b", fontWeight: 700 };
-  const warnBand = isLoading ? 1 : idx === 7 ? 1 : idx === 2 || idx === 3 ? 1 : 2;
-  if (t >= max - warnBand) return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
+  if (t >= max - warnBandOf(def)) return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
   return base;
 }
 
@@ -364,6 +346,9 @@ export default function CoolersView() {
   const loadingArea = editing ? editLoadingArea : (report?.loadingArea || null);
   const pvList = editing ? editPV : (Array.isArray(report?.productVerifications) ? report.productVerifications : []);
 
+  /* The setup this sheet was recorded against — never today's setup. */
+  const { coolerDefs, loadingDef } = useMemo(() => defsFromPayload(report), [report]);
+
   const pvByStorage = useMemo(() => {
     const map = {};
     (pvList || []).forEach((row, idx) => {
@@ -381,7 +366,7 @@ export default function CoolersView() {
   };
   const pvStatus = (row) => {
     const n = Number(row.productTemp);
-    const limit = productTempLimit(storageTypeOf(row.storageKey));
+    const limit = productLimitFor(defForStorageKey(row.storageKey, coolerDefs, loadingDef));
     if (row.productTemp === "" || Number.isNaN(n)) return { text: "Pending", color: "#475569", bg: "#f1f5f9", limit: limit.label };
     return limit.pass(n)
       ? { text: "PASS", color: "#065f46", bg: "#dcfce7", limit: limit.label }
@@ -407,7 +392,7 @@ export default function CoolersView() {
   const mLabel = { fontSize: ".7rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: ".3px" };
   const mReadOnly = { padding: "7px 9px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontWeight: 800, textAlign: "center", boxSizing: "border-box", minWidth: 70 };
   const mInput = { padding: "7px 9px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", color: "#0f172a", fontWeight: 700, boxSizing: "border-box" };
-  const accentFor = (i) => (i === 7 ? "#0ea5e9" : i === 2 || i === 3 ? "#7c3aed" : "#2563eb");
+  const accentFor = (i) => accentOf(coolerDefs[i]);
   const addMatchBtn = (accent) => ({ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${accent}`, background: "#fff", color: accent, fontWeight: 800, cursor: "pointer", fontSize: ".85rem" });
   const delBtn = { alignSelf: "flex-end", border: "1px solid #fecaca", background: "#fff", color: "#dc2626", borderRadius: 8, width: 36, height: 36, fontWeight: 900, cursor: "pointer", lineHeight: 1 };
 
@@ -510,7 +495,7 @@ export default function CoolersView() {
     );
   };
 
-  const renderTempGrid = (temps, onChange, idx, isLoading, color) => (
+  const renderTempGrid = (temps, onChange, def, color) => (
     <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap", alignItems: "flex-end" }}>
       {COOLER_TIMES.map((time) => {
         const raw = temps?.[time];
@@ -522,10 +507,10 @@ export default function CoolersView() {
                 type="number" step="0.1" min="-50" max="50" placeholder="°C"
                 value={raw ?? ""}
                 onChange={(e) => onChange(time, e.target.value)}
-                style={tempInputStyle(raw ?? "", idx, isLoading)}
+                style={tempInputStyle(raw ?? "", def)}
               />
             ) : (
-              <div style={tempInputStyle(raw ?? "", idx, isLoading)}>
+              <div style={tempInputStyle(raw ?? "", def)}>
                 {raw === undefined || raw === "" || raw === null ? "—" : `${String(raw).trim()}°C`}
               </div>
             )}
@@ -588,22 +573,24 @@ export default function CoolersView() {
           ) : (
             <>
               {coolers.map((cooler, i) => {
+                const def = coolerDefs[i];
                 const accent = accentFor(i);
-                const r = coolerRange(i);
-                const status = sectionStatus(cooler?.temps, (n) => inCoolerRange(i, n));
+                const status = sectionStatus(cooler?.temps, (n) => inRange(def, n));
                 return (
                   <div key={i} style={{ marginBottom: "1.1rem", padding: "1rem 1.1rem", background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", borderLeft: `5px solid ${accent}`, boxShadow: "0 4px 16px rgba(2,132,199,.06)", breakInside: "avoid" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: ".85rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "1.15rem" }}>{i === 7 ? "❄️" : "🧊"}</span>
-                        <strong style={{ fontSize: "1.08rem", color: "#0f172a" }}>{labelForCooler(i)}</strong>
-                        <span style={rangeBadge}>{`${r.min}°C to ${r.max}°C`}</span>
+                        <span style={{ fontSize: "1.15rem" }}>{emojiOf(def)}</span>
+                        <strong style={{ fontSize: "1.08rem", color: "#0f172a" }}>{def.label}</strong>
+                        <span style={{ ...rangeBadge, background: `${accent}14`, color: accent, border: `1px solid ${accent}55` }}>
+                          {rangeLabel(def)}
+                        </span>
                       </div>
                       <span style={statusChip(status)}>{status.text}</span>
                     </div>
 
                     <span style={subLabel}>Temperatures (°C)</span>
-                    {renderTempGrid(cooler?.temps, (time, val) => setTemp(i, time, val), i, false, "#34495e")}
+                    {renderTempGrid(cooler?.temps, (time, val) => setTemp(i, time, val), def, "#34495e")}
 
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
                       <span style={{ fontWeight: 600, color: "#475569" }}>Remarks</span>
@@ -619,20 +606,22 @@ export default function CoolersView() {
 
               {(loadingArea || editing) && (() => {
                 const accent = "#d97706";
-                const status = sectionStatus(loadingArea?.temps, inLoadingAreaRange);
+                const status = sectionStatus(loadingArea?.temps, (n) => inRange(loadingDef, n));
                 return (
                   <div style={{ marginBottom: "1.1rem", padding: "1rem 1.1rem", background: "#fffbeb", borderRadius: 14, border: "1px solid #fde68a", borderLeft: `5px solid ${accent}`, boxShadow: "0 4px 16px rgba(217,119,6,.07)", breakInside: "avoid" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: ".85rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "1.15rem" }}>🚚</span>
-                        <strong style={{ fontSize: "1.08rem", color: "#b45309" }}>Loading Area</strong>
-                        <span style={{ ...rangeBadge, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>≤ 16°C</span>
+                        <span style={{ fontSize: "1.15rem" }}>{emojiOf(loadingDef)}</span>
+                        <strong style={{ fontSize: "1.08rem", color: "#b45309" }}>{loadingDef.label}</strong>
+                        <span style={{ ...rangeBadge, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>
+                          {rangeLabel(loadingDef)}
+                        </span>
                       </div>
                       <span style={statusChip(status)}>{status.text}</span>
                     </div>
 
                     <span style={{ ...subLabel, color: "#a16207" }}>Temperatures (°C)</span>
-                    {renderTempGrid(loadingArea?.temps, (time, val) => setLoadingTemp(time, val), 0, true, "#92400e")}
+                    {renderTempGrid(loadingArea?.temps, (time, val) => setLoadingTemp(time, val), loadingDef, "#92400e")}
 
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
                       <span style={{ fontWeight: 600, color: "#92400e" }}>Remarks</span>

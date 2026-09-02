@@ -1,18 +1,12 @@
 // src/utils/notifications.js
 // إدارة إعدادات الإشعارات (شخصية + عامّة من الأدمن) + إذن المتصفح + إرسال
 
+import API_BASE from "../config/api";
+
 const SETTINGS_KEY = "app_notification_settings_v1";    // شخصية لكل متصفح
 const GLOBAL_CACHE_KEY = "app_notification_global_v1";  // كاش الإعدادات العامّة من السيرفر
 const GLOBAL_TYPE = "admin_notification_config";        // نوع التقرير على السيرفر
-
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env?.REACT_APP_API_URL ||
-     process.env?.VITE_API_URL ||
-     process.env?.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+const GLOBAL_KEY = "config";                            // reportDate ثابت → صف واحد فقط على السيرفر
 
 const DEFAULTS = {
   enabled: false,
@@ -107,11 +101,13 @@ export async function fetchGlobalSettings() {
     const json = await res.json().catch(() => null);
     const arr = Array.isArray(json) ? json : json?.data || [];
     if (!arr.length) return null;
-    // أخذ الأحدث حسب savedAt
+    // صف الإعدادات هو reportDate = "config". الصفوف القديمة (قبل ما نثبّت المفتاح)
+    // ما إلها reportDate، فمنرجع للأحدث حسب savedAt.
+    const pinned = arr.find((r) => (r?.reportDate || r?.payload?.reportDate) === GLOBAL_KEY);
     arr.sort(
       (a, b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0)
     );
-    const settings = arr[0]?.payload || null;
+    const settings = (pinned || arr[0])?.payload || null;
     if (settings) {
       try { localStorage.setItem(GLOBAL_CACHE_KEY, JSON.stringify(settings)); } catch {}
       try { window.dispatchEvent(new CustomEvent("app:notification-global-changed", { detail: settings })); } catch {}
@@ -139,12 +135,27 @@ export async function saveGlobalSettings(partial) {
   delete payload.lastCCPDeviationCheckAt;
   delete payload.notifiedCCPDeviationIds;
 
+  // PUT بيعمل upsert على (type, reportDate) → صف واحد ثابت بدل صف جديد كل حفظة.
+  payload.reportDate = GLOBAL_KEY;
   const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "POST",
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reporter: "admin", type: GLOBAL_TYPE, payload }),
+    body: JSON.stringify({
+      reporter: "admin",
+      type: GLOBAL_TYPE,
+      reportDate: GLOBAL_KEY,
+      payload,
+    }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // لو السيرفر ما بيقبل PUT لهذا النوع، ارجع لـPOST بدل ما يضيع الحفظ.
+  if (!res.ok) {
+    const fallback = await fetch(`${API_BASE}/api/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reporter: "admin", type: GLOBAL_TYPE, reportDate: GLOBAL_KEY, payload }),
+    });
+    if (!fallback.ok) throw new Error(`HTTP ${res.status}`);
+  }
 
   try { localStorage.setItem(GLOBAL_CACHE_KEY, JSON.stringify(payload)); } catch {}
   try { window.dispatchEvent(new CustomEvent("app:notification-global-changed", { detail: payload })); } catch {}
@@ -196,7 +207,8 @@ export async function requestNotificationPermission() {
 /* ================== إرسال إشعار ================== */
 export function sendNotification(title, options = {}) {
   const settings = getEffectiveSettings();
-  if (!settings.enabled) return false;
+  // options.force = إشعار اختبار من صفحة الإعدادات — يتجاوز المفتاح الرئيسي
+  if (!settings.enabled && !options.force) return false;
   if (!isBrowserNotificationsSupported()) return false;
   if (Notification.permission !== "granted") return false;
   try {
@@ -245,7 +257,10 @@ export function shouldFireDailyReminderNow() {
   if (!settings.enabled || !settings.dailyReminderEnabled) return false;
   const target = todayAt(settings.dailyReminderTime).getTime();
   const now = Date.now();
-  if (now < target || now > target + 60_000) return false;
+  // ملاحظة: ما في نافذة 60 ثانية. الفحص بيدور كل بضع دقائق، وقبل هيك كان
+  // لازم الـtick يصادف الدقيقة نفسها تمامًا فكان التذكير يضيع أغلب الأيام.
+  // القاعدة الآن: مرّ وقت التذكير + ما انطلق اليوم = أطلقه.
+  if (now < target) return false;
   const last = settings.lastReminderAt || 0;
   const sameDay =
     new Date(last).toDateString() === new Date(now).toDateString();
@@ -263,7 +278,7 @@ export function shouldFireExpiryAlertNow() {
   if (!settings.enabled || !settings.expiryAlertsEnabled) return false;
   const target = todayAt(settings.expiryAlertTime || "08:00").getTime();
   const now = Date.now();
-  if (now < target || now > target + 60_000) return false;
+  if (now < target) return false;   // نفس القاعدة: بعد الوقت، مرّة وحدة باليوم
   const last = settings.lastExpiryAlertAt || 0;
   const sameDay =
     new Date(last).toDateString() === new Date(now).toDateString();
