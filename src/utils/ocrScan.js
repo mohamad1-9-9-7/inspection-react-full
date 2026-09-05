@@ -136,7 +136,7 @@ function toGray(px, dropInk) {
  * otherwise the threshold follows the strokes themselves and eats thin marks
  * such as a decimal point.
  */
-function binarise(px, gray, w, h, windowDiv) {
+function binarise(px, gray, w, h, windowDiv, T = 0.14) {
   const iw = w + 1;
   const integral = new Float64Array(iw * (h + 1));
   for (let y = 0; y < h; y++) {
@@ -147,7 +147,6 @@ function binarise(px, gray, w, h, windowDiv) {
     }
   }
   const half = Math.max(6, Math.round(w / windowDiv));
-  const T = 0.14;
   for (let y = 0; y < h; y++) {
     const y1 = Math.max(0, y - half);
     const y2 = Math.min(h - 1, y + half);
@@ -167,6 +166,135 @@ function binarise(px, gray, w, h, windowDiv) {
       px[i + 3] = 255;
     }
   }
+}
+
+/**
+ * Flat-field correction: take the uneven lighting out of a photographed page.
+ *
+ * A phone photo of paper is never lit evenly - the hand holding the phone
+ * shades one corner, the ceiling light burns another, and the fold of the page
+ * runs a soft grey band down the middle. The threshold that follows has to pick
+ * ONE local answer per pixel, and where the paper itself is darker than the
+ * print elsewhere on the page it either eats faint text or turns shadow into
+ * ink. Correcting the light first is what a flatbed scanner does with its lamp.
+ *
+ * Method: estimate the PAPER (not the text) with a coarse max-pooled grid -
+ * ink is dark, so the brightest pixel in a cell larger than a character is
+ * paper - smooth that grid, then divide the page by it. Paper goes to a flat
+ * 255 everywhere and the print keeps its relative darkness.
+ *
+ * Cheap on purpose: the grid is ~1/60th of the page on a side, so the whole
+ * correction is one pass over the pixels plus arithmetic on a tiny array.
+ *
+ * @param {Uint8ClampedArray} gray  modified in place
+ */
+function flattenLight(gray, w, h) {
+  const cell = Math.max(8, Math.round(Math.min(w, h) / 24));
+  const gw = Math.max(1, Math.ceil(w / cell));
+  const gh = Math.max(1, Math.ceil(h / cell));
+  let grid = new Float32Array(gw * gh);
+
+  for (let gy = 0; gy < gh; gy++) {
+    const y0 = gy * cell;
+    const y1 = Math.min(h, y0 + cell);
+    for (let gx = 0; gx < gw; gx++) {
+      const x0 = gx * cell;
+      const x1 = Math.min(w, x0 + cell);
+      let m = 0;
+      for (let y = y0; y < y1; y++) {
+        const row = y * w;
+        for (let x = x0; x < x1; x++) if (gray[row + x] > m) m = gray[row + x];
+      }
+      grid[gy * gw + gx] = m;
+    }
+  }
+
+  /* Two 3x3 box passes. A cell that happened to land entirely inside a black
+     block (a stamp, the dark desk beyond the paper edge) reports no paper at
+     all; smoothing lets its neighbours speak for it instead of punching a
+     bright hole through that part of the page. */
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Float32Array(gw * gh);
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        let s = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= gh) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= gw) continue;
+            s += grid[yy * gw + xx];
+            n++;
+          }
+        }
+        next[y * gw + x] = s / n;
+      }
+    }
+    grid = next;
+  }
+
+  /* Never divide by a near-black estimate: a page that is genuinely dark all
+     over would be amplified into noise. The floor is tied to the brightest
+     paper found anywhere, so it scales with the exposure of the photo. */
+  let peak = 1;
+  for (let i = 0; i < grid.length; i++) if (grid[i] > peak) peak = grid[i];
+  const floor = Math.max(24, peak * 0.35);
+
+  // bilinear sampling of the coarse grid, so no cell edge shows as a seam
+  for (let y = 0; y < h; y++) {
+    const fy = Math.min(gh - 1, Math.max(0, y / cell - 0.5));
+    const y0 = fy | 0;
+    const y1 = Math.min(gh - 1, y0 + 1);
+    const wy = fy - y0;
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const fx = Math.min(gw - 1, Math.max(0, x / cell - 0.5));
+      const x0 = fx | 0;
+      const x1 = Math.min(gw - 1, x0 + 1);
+      const wx = fx - x0;
+      const bg =
+        grid[y0 * gw + x0] * (1 - wx) * (1 - wy) +
+        grid[y0 * gw + x1] * wx * (1 - wy) +
+        grid[y1 * gw + x0] * (1 - wx) * wy +
+        grid[y1 * gw + x1] * wx * wy;
+      const v = (gray[row + x] * 255) / Math.max(floor, bg);
+      gray[row + x] = v > 255 ? 255 : v;
+    }
+  }
+  return gray;
+}
+
+/**
+ * The two knobs a human reaches for when a scan comes out badly: make the page
+ * brighter, and make the print harder. Both are plain per-pixel maths applied
+ * BEFORE the threshold, which is the only place they can still change what the
+ * recogniser sees.
+ *
+ * @param {number} brightness -100..100
+ * @param {number} contrast   -100..100
+ */
+function applyTone(gray, brightness, contrast) {
+  if (!brightness && !contrast) return gray;
+  const b = (brightness / 100) * 128;
+  const c = Math.max(-100, Math.min(100, contrast));
+  const k = (259 * (c + 255)) / (255 * (259 - c));
+  for (let i = 0; i < gray.length; i++) {
+    gray[i] = k * (gray[i] - 128) + 128 + b;
+  }
+  return gray;
+}
+
+/** Darkest and brightest value present - recomputed after any tone change. */
+function rangeOf(gray) {
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] < min) min = gray[i];
+    if (gray[i] > max) max = gray[i];
+  }
+  return { min, max };
 }
 
 /** Plain contrast stretch - keeps grey edges, so small marks survive. */
@@ -194,7 +322,18 @@ function stretch(px, gray, min, max) {
  *          `scale` maps ORIGINAL pixels -> canvas pixels.
  */
 function renderFor(img, opts = {}) {
-  const { maxSide = 2600, minSide = 1800, zoom = 0, binary = true, dropInk = true, windowDiv = 40 } = opts;
+  const {
+    maxSide = 2600,
+    minSide = 1800,
+    zoom = 0,
+    binary = true,
+    dropInk = true,
+    windowDiv = 40,
+    flatten = true,
+    brightness = 0,
+    contrast = 0,
+    threshold = 0.14,
+  } = opts;
   const rect = opts.rect || { x0: 0, y0: 0, x1: img.width, y1: img.height };
   const rw = Math.max(1, rect.x1 - rect.x0);
   const rh = Math.max(1, rect.y1 - rect.y0);
@@ -226,8 +365,28 @@ function renderFor(img, opts = {}) {
   const image = ctx.getImageData(0, 0, w, h);
   const px = image.data;
   const { gray, min, max } = toGray(px, dropInk);
-  if (binary) binarise(px, gray, w, h, windowDiv);
-  else stretch(px, gray, min, max);
+  /* Order matters: even out the lighting FIRST, so the user's brightness and
+     contrast act on a page that is already uniformly lit - otherwise both
+     knobs are spent fighting the shadow instead of the print. */
+  let lo = min;
+  let hi = max;
+  if (flatten) {
+    flattenLight(gray, w, h);
+    lo = 0;
+    hi = 255;
+  }
+  if (brightness || contrast) {
+    applyTone(gray, brightness, contrast);
+    const r = rangeOf(gray);
+    lo = r.min;
+    hi = r.max;
+  } else if (flatten) {
+    const r = rangeOf(gray);
+    lo = r.min;
+    hi = r.max;
+  }
+  if (binary) binarise(px, gray, w, h, windowDiv, threshold);
+  else stretch(px, gray, lo, hi);
   ctx.putImageData(image, 0, 0);
 
   return { url: cv.toDataURL("image/png"), w, h, scale, rect };
@@ -254,7 +413,19 @@ function snipOf(img, rect, zoom = 2) {
 export async function prepareImage(file, opts = {}) {
   const { img, release } = await loadBitmap(file);
   try {
-    return renderFor(img, opts).url;
+    /* The preview has to be the page the RECOGNISER gets, not a prettier
+       cousin of it - its whole job is to let someone see why a read failed.
+       So it walks the same quarter-turn and deskew the real pass walks. */
+    const { rotate = 0, deskew = true, ...rest } = opts;
+    let bmp = rotateBitmap(img, rotate);
+    let angle = 0;
+    if (deskew) {
+      const straight = deskewBitmap(bmp);
+      bmp = straight.img;
+      angle = straight.angle;
+    }
+    const shot = renderFor(bmp, rest);
+    return opts.withMeta ? { url: shot.url, angle } : shot.url;
   } finally {
     release();
   }
@@ -329,6 +500,108 @@ async function makeReader(Tesseract, onLog) {
 
 /* ================= table geometry ================= */
 
+/**
+ * The slope of the printed lines, measured from the WORDS rather than the
+ * pixels, as dy/dx.
+ *
+ * These notes are photographed by hand off a phone, so there is no fixed angle
+ * and there never will be. The pixel-level deskew earlier in the file corrects
+ * what it can, but it is measuring a photograph - it sees the desk, the
+ * shadow, the edges of the sheets underneath - and it has to commit to
+ * resampling the image on what it decides. By the time the recogniser has run,
+ * something far better is available: the words themselves, with their boxes.
+ * Nothing but text is in that list, so the same projection-profile idea that
+ * is fragile on pixels becomes reliable here.
+ *
+ * Correcting COORDINATES rather than pixels is the point. The recogniser reads
+ * a tilted line perfectly well - on the POS 47 note every code and every
+ * weight came back correct - what fails is OUR grouping of words into rows,
+ * because it assumes lines run flat. Shearing the boxes fixes that for nothing:
+ * no second OCR pass, no resampling, no loss of detail in the decimal points.
+ *
+ * @returns {number} dy/dx; 0 when the page gives no confident answer
+ */
+function fitTextShear(words, cx) {
+  const pts = [];
+  for (const w of words) {
+    if (!String(w.text || "").trim()) continue;
+    pts.push({
+      x: (w.x0 + w.x1) / 2,
+      y: (w.y0 + w.y1) / 2,
+      h: Math.max(1, w.y1 - w.y0),
+    });
+  }
+  if (pts.length < 25) return 0;
+
+  const hs = pts.map((p) => p.h).sort((a, b) => a - b);
+  const bin = Math.max(2, hs[hs.length >> 1] * 0.5);
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const rows = Math.ceil((maxY - minY) / bin) + 1;
+  if (rows < 4) return 0;
+
+  const MAX = 0.14; // ~8 degrees, the same ceiling the pixel deskew uses
+  // padded, for the same reason as estimateSkewFromGray: clamping stray
+  // entries into the end bins makes a sum of squares reward steep slopes
+  const score = (m) => {
+    const pad = Math.ceil((Math.abs(m) * 2000) / bin) + 2;
+    const hist = new Float64Array(rows + 2 * pad + 1);
+    for (const p of pts) {
+      const k = ((p.y - m * (p.x - cx) - minY) / bin + pad) | 0;
+      if (k >= 0 && k < hist.length) hist[k]++;
+    }
+    let s = 0;
+    for (let i = 0; i < hist.length; i++) s += hist[i] * hist[i];
+    return s;
+  };
+
+  let best = 0;
+  let bestScore = -1;
+  for (let m = -MAX; m <= MAX + 1e-9; m += 0.002) {
+    const s = score(m);
+    if (s > bestScore) {
+      bestScore = s;
+      best = m;
+    }
+  }
+  for (let m = best - 0.002; m <= best + 0.002 + 1e-9; m += 0.0002) {
+    if (m < -MAX || m > MAX) continue;
+    const s = score(m);
+    if (s > bestScore) {
+      bestScore = s;
+      best = m;
+    }
+  }
+
+  // a winner on the edge of the sweep is the sweep running out of room, not a
+  // peak - the same trap the pixel deskew fell into
+  if (Math.abs(best) > MAX - 0.004) return 0;
+  // below this the drift across a whole page is under a couple of pixels
+  return Math.abs(best) < 0.0015 ? 0 : best;
+}
+
+/**
+ * Word boxes with the page's tilt taken out of their coordinates.
+ *
+ * `y0/y1` become the straightened values - so every stage that groups, bands
+ * or matches by height works on a square page - while `iy0/iy1` keep where the
+ * word really is in the photo, which is what the magnified crops need.
+ */
+function shearWords(words, m, cx) {
+  if (!m) return words.map((w) => ({ ...w, iy0: w.y0, iy1: w.y1 }));
+  return words.map((w) => {
+    const d = m * ((w.x0 + w.x1) / 2 - cx);
+    return { ...w, iy0: w.y0, iy1: w.y1, y0: w.y0 - d, y1: w.y1 - d };
+  });
+}
+
+/** Where a straightened height sits in the real photo, at a given x. */
+const imageY = (y, x, m, cx) => y + m * (x - cx);
+
 /** Group words into printed rows by vertical overlap. */
 function groupRows(words) {
   const ws = words.slice().sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1) || a.x0 - b.x0);
@@ -356,6 +629,16 @@ function groupRows(words) {
     r.words.sort((a, b) => a.x0 - b.x0);
     r.text = r.words.map((w) => w.text).join(" ");
   });
+  /* The printed order of the note is the order of these rows - the parser
+     takes each row's INDEX as its position on the paper - so it is stated
+     here rather than left to fall out of how the rows happened to be built.
+     A row is created the first time a word cannot join an existing one, and
+     its box then GROWS as more words arrive; a tall row created early can end
+     up centred below one created after it, which would quietly hand the draft
+     two products in the wrong order. Sorting on the finished boxes costs
+     nothing and makes the guarantee real. */
+  const leftmost = (r) => (r.words.length ? r.words[0].x0 : 0);
+  rows.sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1) || leftmost(a) - leftmost(b));
   return rows;
 }
 
@@ -413,6 +696,124 @@ function findColumns(rows, pageW) {
 
 const NUM_RE = /\d{1,6}(?:[.,]\d{1,3})?/;
 
+/**
+ * Fill the rows whose weight went missing, by WHERE the number sits on the
+ * page rather than by which line the recogniser filed it under.
+ *
+ * Everything upstream keys a weight to its product by asking the OCR row
+ * group for it, and that group is built from vertical overlap alone. On a
+ * photographed page that is a fragile thing to rest on: a product name sits at
+ * the far left and its weight 800px away at the far right, so half a degree of
+ * residual tilt, or the gentle curl of a sheet that will not lie flat, is
+ * enough to push the number out of its own line's box. The row then reports no
+ * weight at all - which is exactly the "6 codes, 3 weights" shape - while the
+ * number is sitting there in the column, read correctly, belonging to nobody.
+ *
+ * So: take every number printed in the ordered column, drop the ones already
+ * claimed by a row that got its weight, and give each still-empty row the
+ * nearest unclaimed one within about a row's height. Order is preserved
+ * because both lists run down the page, and nothing already read is touched -
+ * this can only fill blanks, never overwrite a value.
+ *
+ * @param {Array} rows      the page's row groups, top to bottom
+ * @param {Array} out       geo rows being built, parallel to `rows`
+ * @param {object} band     the ordered column's x-range
+ * @param {Array} points    numeric sightings in that column: {y, text, conf}
+ */
+function rescueByPosition(rows, out, band, points, isProduct = () => true) {
+  if (!band || !points.length) return 0;
+
+  /* ONLY the lines that name a product take part.
+     When the offset below grows past half a line, the weights stop overlapping
+     their product line at all and the grouper files them as rows OF THEIR OWN
+     - rows that carry a weight and no item code, which reach the report as
+     nothing. Letting those orphans claim a weight (they sit right on top of
+     it) is what defeated the first version of this rescue: the product line
+     stayed empty and its number was already spoken for. */
+  const idx = [];
+  for (let i = 0; i < rows.length; i++) if (isProduct(rows[i], i)) idx.push(i);
+  if (!idx.length) return 0;
+
+  const cyOf = (r) => (r.y0 + r.y1) / 2;
+  /* Line pitch, not row height: the gap between one product and the next is
+     what says whether a number belongs to this line or the one above. Taken as
+     a median so a double-height line or a missed row cannot set it. */
+  const gaps = [];
+  for (let k = 1; k < idx.length; k++) gaps.push(cyOf(rows[idx[k]]) - cyOf(rows[idx[k - 1]]));
+  gaps.sort((a, b) => a - b);
+  const pitch = gaps.length ? gaps[gaps.length >> 1] : 0;
+  const span = pitch > 4 ? pitch : Math.max(18, (rows[idx[0]].y1 - rows[idx[0]].y0) * 1.4);
+
+  const pts = points.map((p, j) => ({ ...p, j })).sort((a, b) => a.y - b.y);
+
+  /* The offset is SYSTEMATIC, so measure it instead of tolerating it.
+     A page photographed at a slight angle - or one that will not lie flat -
+     carries the right-hand column a fixed distance above (or below) the names
+     on the left, and that distance is the same for every line. Taking the
+     median of "nearest number minus this line" recovers it from the page
+     itself, and matching around the corrected position afterwards is far
+     tighter than simply widening the tolerance, which is what would start
+     stealing the row above's weight. */
+  const deltas = [];
+  for (const i of idx) {
+    const cy = cyOf(rows[i]);
+    let best = Infinity;
+    for (const p of pts) {
+      const d = p.y - cy;
+      if (Math.abs(d) < Math.abs(best)) best = d;
+    }
+    if (Math.abs(best) < span * 1.5) deltas.push(best);
+  }
+  deltas.sort((a, b) => a - b);
+  const shift = deltas.length ? deltas[deltas.length >> 1] : 0;
+
+  // a weight already read on its own line speaks for the number under it
+  const claimed = new Set();
+  for (const i of idx) {
+    if (!out[i].qty) continue;
+    for (const p of pts) {
+      if (p.y >= rows[i].y0 - 2 && p.y <= rows[i].y1 + 2) claimed.add(p.j);
+    }
+  }
+
+  /* Assignment runs down the page and never goes back up: both lists are in
+     printed order, so a pairing that crosses an earlier one is wrong however
+     close it looks. Without that rule a single missing weight lets every line
+     below it take its neighbour's, and a shifted column of plausible numbers
+     is far worse than a blank one. */
+  let filled = 0;
+  let floor = -Infinity;
+  for (const i of idx) {
+    if (out[i].qty) {
+      // advance past THIS row's own number only - taking the lowest claimed
+      // point anywhere would push the floor below rows still to be filled
+      for (const p of pts) {
+        if (p.y >= rows[i].y0 - 2 && p.y <= rows[i].y1 + 2 && p.y > floor) floor = p.y;
+      }
+      continue;
+    }
+    const want = cyOf(rows[i]) + shift;
+    let pick = null;
+    let best = Infinity;
+    for (const p of pts) {
+      if (claimed.has(p.j) || p.y <= floor) continue;
+      const d = Math.abs(p.y - want);
+      if (d < span * 0.6 && d < best) {
+        best = d;
+        pick = p;
+      }
+    }
+    if (!pick) continue;
+    claimed.add(pick.j);
+    floor = pick.y;
+    out[i].qty = pick.text;
+    out[i].qtySrc = "near";
+    out[i].qtyConf = pick.conf;
+    filled++;
+  }
+  return filled;
+}
+
 /** Read one column band on one row: the first number printed inside it. */
 function bandValue(row, band) {
   if (!band) return null;
@@ -438,14 +839,36 @@ function separatorEvidence(source) {
  * magnified, with a digits-only whitelist. This is the pass that actually
  * recovers decimal points: at 3x a printed dot is ~8px instead of ~2px.
  */
-async function zoomQuantities(reader, img, cols, rows, pageScale) {
-  if (!cols || !rows.length) return { values: new Map(), evidence: [] };
+/**
+ * The image settings that a render honours, taken off a page's tune.
+ *
+ * `threshold` is deliberately NOT included by callers that render in grey:
+ * there is no threshold to move there, and passing one would read as if the
+ * knob had been applied when it had not.
+ */
+export function toneOf(tune = {}) {
+  const out = {};
+  if (tune.flatten === false) out.flatten = false;
+  if (tune.brightness) out.brightness = tune.brightness;
+  if (tune.contrast) out.contrast = tune.contrast;
+  if (tune.threshold) out.threshold = tune.threshold;
+  return out;
+}
+
+async function zoomQuantities(reader, img, cols, rows, pageScale, tune, shear = 0, cx = 0) {
+  if (!cols || !rows.length) return { values: new Map(), points: [], evidence: [] };
 
   const bands = [cols.ordered, cols.delivered].filter(Boolean);
   const left = Math.min(...bands.map((b) => b.x0));
   const right = Math.max(...bands.map((b) => b.x1));
-  const top = Math.min(...rows.map((r) => r.y0));
-  const bottom = Math.max(...rows.map((r) => r.y1));
+  /* The rows arrive STRAIGHTENED; the crop has to come out of the real photo.
+     Both ends of the strip are checked because a tilted line enters the strip
+     at one height and leaves it at another - taking only one would slice the
+     top or the bottom off the digits. */
+  const edges = [left, right].map((x) => imageY(0, x, shear, cx));
+  const lift = [Math.min(...edges), Math.max(...edges)];
+  const top = Math.min(...rows.map((r) => r.y0)) + lift[0];
+  const bottom = Math.max(...rows.map((r) => r.y1)) + lift[1];
   const padX = (right - left) * 0.06;
   const padY = Math.max(6, (bottom - top) * 0.03);
 
@@ -458,15 +881,21 @@ async function zoomQuantities(reader, img, cols, rows, pageScale) {
     y1: Math.min(img.height, Math.ceil(toOrig(bottom + padY))),
   };
   if (rect.x1 - rect.x0 < 20 || rect.y1 - rect.y0 < 20) {
-    return { values: new Map(), evidence: [] };
+    return { values: new Map(), points: [], evidence: [] };
   }
 
   // 3x, and only mildly cleaned: an aggressive threshold is what erases dots
   const zoom = Math.min(4, Math.max(2, 2600 / Math.max(1, rect.x1 - rect.x0)));
-  const shot = renderFor(img, { rect, zoom, binary: false, dropInk: true });
+  const { threshold, ...tone } = toneOf(tune);
+  const shot = renderFor(img, { rect, zoom, binary: false, dropInk: true, ...tone });
   const { text, words } = await reader.read(shot.url, 6, "0123456789.,");
 
   const values = new Map();
+  /* Every number this pass found in the ordered column, with where it sits.
+     `values` can only reach rows the page pass had already grouped correctly;
+     a note whose lines the grouper split loses its weight there and nowhere
+     else, so the raw sightings are kept for the positional rescue below. */
+  const points = [];
   const evidence = separatorEvidence(text);
 
   // strip coordinates -> prepared-canvas coordinates
@@ -479,15 +908,19 @@ async function zoomQuantities(reader, img, cols, rows, pageScale) {
     const m = String(w.text).match(NUM_RE);
     if (!m) continue;
     const p = back((w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2);
-    const row = rows.find((r) => p.y >= r.y0 - 2 && p.y <= r.y1 + 2);
-    if (!row) continue;
     const inOrdered =
       cols.ordered && p.x >= cols.ordered.x0 && p.x <= cols.ordered.x1;
     if (!inOrdered) continue;
+    // back into the straightened frame the rows live in
+    const sy = p.y - shear * (p.x - cx);
+    const value = { text: m[0].replace(",", "."), conf: w.conf };
+    points.push({ y: sy, ...value });
+    const row = rows.find((r) => sy >= r.y0 - 2 && sy <= r.y1 + 2);
+    if (!row) continue;
     if (values.has(row)) continue; // leftmost wins: the column's own number
-    values.set(row, { text: m[0].replace(",", "."), conf: w.conf });
+    values.set(row, value);
   }
-  return { values, evidence };
+  return { values, points, evidence };
 }
 
 /* ================= deskew ================= */
@@ -549,17 +982,27 @@ function estimateSkewFromGray(gray, w, h, threshold = 128) {
   if (xs.length < 200) return 0;
 
   const cx = w / 2;
+  /* The histogram is PADDED by the largest shift this angle can produce, so
+     every candidate angle is scored over the exact same ink.
+
+     Clamping stray ink into the first and last bin instead (what this did
+     until 3 Sep 2026) is not a rounding detail: the score is a sum of
+     SQUARES, so those two bins grow quadratically as the shear pushes more
+     ink off the page, and the sweep then rewards the steepest angle it is
+     allowed. One dark corner - a desk edge, a shadow, the black strip under a
+     photographed page - was enough to pin the answer at MAX_SKEW_DEG and
+     rotate a square page by 8 degrees, which slides the lower half of the
+     table out of its own column and empties most of the note. */
   const score = (deg) => {
     const t = Math.tan((deg * Math.PI) / 180);
-    const hist = new Float64Array(h + 1);
+    const pad = Math.ceil((w / 2) * Math.abs(t)) + 1;
+    const hist = new Float64Array(h + 2 * pad + 1);
     for (let i = 0; i < xs.length; i++) {
-      let y = ys[i] - (xs[i] - cx) * t;
-      if (y < 0) y = 0;
-      else if (y > h) y = h;
+      const y = ys[i] - (xs[i] - cx) * t + pad;
       hist[y | 0]++;
     }
     let s = 0;
-    for (let i = 0; i <= h; i++) s += hist[i] * hist[i];
+    for (let i = 0; i < hist.length; i++) s += hist[i] * hist[i];
     return s;
   };
 
@@ -582,6 +1025,14 @@ function estimateSkewFromGray(gray, w, h, threshold = 128) {
       best = d;
     }
   }
+
+  /* A real tilt is a PEAK: the lines stack at one angle and the score falls
+     away on both sides. A winner sitting on the edge of the sweep is not a
+     peak, it is the sweep running out of room - the page is either past
+     MAX_SKEW_DEG (not tilt, a misfiled page) or something other than text
+     lines is driving the profile. Rotating on that reading damages a page
+     that reads fine untouched, so it is refused rather than trusted. */
+  if (Math.abs(best) > MAX_SKEW_DEG - 0.5) return 0;
 
   return Math.abs(best) < MIN_SKEW_DEG ? 0 : Number(best.toFixed(2));
 }
@@ -663,6 +1114,36 @@ function deskewBitmap(img) {
   }
 }
 
+/**
+ * Turn a page by a quarter turn before anything reads it.
+ *
+ * Deskew only ever corrects a few degrees - by design, because beyond that it
+ * is not tilt. A note photographed sideways or upside down is therefore not a
+ * hard page, it is an unreadable one: every line runs the wrong way and the
+ * recogniser returns nothing at all. There is no reliable way to guess the
+ * intended orientation of a form from its pixels, so this is a control the
+ * user turns, not something the pipeline decides.
+ *
+ * @param {number} deg  0, 90, 180 or 270, clockwise
+ */
+function rotateBitmap(img, deg) {
+  const d = ((Math.round(deg / 90) * 90) % 360 + 360) % 360;
+  if (!d) return img;
+  const w = img.width;
+  const h = img.height;
+  const swap = d === 90 || d === 270;
+  const cv = document.createElement("canvas");
+  cv.width = swap ? h : w;
+  cv.height = swap ? w : h;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.translate(cv.width / 2, cv.height / 2);
+  ctx.rotate((d * Math.PI) / 180);
+  ctx.drawImage(img, -w / 2, -h / 2);
+  return cv;
+}
+
 /* ================= page pipeline ================= */
 
 /**
@@ -678,7 +1159,12 @@ function deskewBitmap(img) {
  * the order the files were given: { text, geo }.
  */
 export async function ocrImages(files, onProgress, opts = {}) {
-  const { deep = true } = opts;
+  const { deep = true, tune = null } = opts;
+  /* `tune` is per PAGE, not per stack: one bad photo in a batch gets its own
+     brightness without dragging the others off a setting that already worked.
+     A single object still applies to everything, which is what a plain
+     "read them all again" wants. */
+  const tuneAt = (i) => (Array.isArray(tune) ? tune[i] || {} : tune || {});
   const Tesseract = await loadOcrEngine();
 
   const passes = deep
@@ -716,7 +1202,7 @@ export async function ocrImages(files, onProgress, opts = {}) {
     for (current = 0; current < list.length; current++) {
       // `texts` keeps the passes apart: a line only the second pass caught has
       // to be placed by its own line number, not after the whole first pass
-      const page = { text: "", texts: [], geo: null, skew: 0 };
+      const page = { text: "", texts: [], geo: null, skew: 0, shear: 0 };
       let bitmap = null;
       try {
         bitmap = await loadBitmap(list[current]);
@@ -733,7 +1219,11 @@ export async function ocrImages(files, onProgress, opts = {}) {
          later stage - including the quantity crops shown to the user - works on
          one already-square page. */
       const { img: rawImg, release } = bitmap;
-      const straight = deskewBitmap(rawImg);
+      const tuning = tuneAt(current);
+      // a quarter turn is the user's call, and it has to happen before the
+      // skew is measured - lines running down the page have no tilt to find
+      const upright = rotateBitmap(rawImg, tuning.rotate || 0);
+      const straight = deskewBitmap(upright);
       const img = straight.img;
       page.skew = straight.angle;
       try {
@@ -744,7 +1234,7 @@ export async function ocrImages(files, onProgress, opts = {}) {
 
         for (let i = 0; i < passes.length; i++) {
           const { prep, psm } = passes[i];
-          const shot = renderFor(img, prep);
+          const shot = renderFor(img, { ...prep, ...toneOf(tuning) });
           const res = await reader.read(shot.url, psm);
           texts.push(res.text);
           if (i === 0) {
@@ -760,17 +1250,36 @@ export async function ocrImages(files, onProgress, opts = {}) {
 
         /* --- geometry: rows, columns, per-row quantities --- */
         if (words.length) {
+          /* Straighten the COORDINATES before anything is grouped by height.
+             The photo is taken freehand off a phone - there is no fixed angle
+             to rely on - and every stage below this line assumes lines run
+             flat: groupRows collects by vertical overlap, findColumns hands
+             out fixed x-bands, the zoom pass matches numbers to rows by y. */
+          const shearCx = pageW / 2;
+          const shear = fitTextShear(words, shearCx);
+          page.shear = shear;
+          words = shearWords(words, shear, shearCx);
+          const atX = (y, x) => imageY(y, x, shear, shearCx);
           const allRows = groupRows(words);
           const cols = findColumns(allRows, pageW);
           const bodyRows = cols ? allRows.filter((r) => r.y0 >= cols.headerY - 2) : allRows;
 
-          let zoomed = { values: new Map(), evidence: [] };
+          let zoomed = { values: new Map(), points: [], evidence: [] };
           if (cols && deep) {
             const qtyRows = bodyRows.filter(
               (r) => bandValue(r, cols.ordered) || bandValue(r, cols.delivered)
             );
             try {
-              zoomed = await zoomQuantities(reader, img, cols, qtyRows, pageScale);
+              zoomed = await zoomQuantities(
+                reader,
+                img,
+                cols,
+                qtyRows,
+                pageScale,
+                tuning,
+                shear,
+                shearCx
+              );
             } catch {
               /* the zoom pass is an improvement, never a requirement */
             }
@@ -781,40 +1290,89 @@ export async function ocrImages(files, onProgress, opts = {}) {
           }
 
           const toOrig = (v) => v / pageScale;
+          /* Weights first, crops after. The rescue below can hand a row the
+             weight its own line lost, and that row has to end up with the
+             magnified crop of the cell like any other - a value nobody can
+             check against the paper is the one kind this dialog refuses to
+             produce. Building the crop in the same pass would have given the
+             rescued rows a blank. */
           const geoRows = bodyRows.map((r) => {
             const col = cols ? bandValue(r, cols.ordered) : null;
             const del = cols ? bandValue(r, cols.delivered) : null;
             const zoom = zoomed.values.get(r) || null;
             const chosen = zoom || col;
-            let snip = "";
-            const band = cols ? cols.ordered || cols.delivered : null;
-            if (band && chosen) {
-              try {
-                const padX = (band.x1 - band.x0) * 0.15;
-                const padY = (r.y1 - r.y0) * 0.4;
-                snip = snipOf(
-                  img,
-                  {
-                    x0: Math.max(0, Math.floor(toOrig(band.x0 - padX))),
-                    y0: Math.max(0, Math.floor(toOrig(r.y0 - padY))),
-                    x1: Math.min(img.width, Math.ceil(toOrig(band.x1 + padX))),
-                    y1: Math.min(img.height, Math.ceil(toOrig(r.y1 + padY))),
-                  },
-                  2
-                );
-              } catch {
-                snip = "";
-              }
-            }
             return {
               text: r.text,
               qty: chosen ? chosen.text : "",
               qtySrc: zoom ? "zoom" : col ? "column" : "",
               qtyConf: chosen ? chosen.conf : 0,
               delivered: del ? del.text : "",
-              snip,
+              snip: "",
             };
           });
+
+          if (cols) {
+            /* The page pass sees the whole sheet, the zoom pass sees only the
+               quantity strip but reads it far better. Both are offered to the
+               rescue, the sharper one first. */
+            const pagePoints = words
+              .filter((w) => {
+                const c = (w.x0 + w.x1) / 2;
+                return (
+                  cols.ordered &&
+                  c >= cols.ordered.x0 &&
+                  c <= cols.ordered.x1 &&
+                  (w.y0 + w.y1) / 2 >= cols.headerY &&
+                  NUM_RE.test(String(w.text))
+                );
+              })
+              .map((w) => ({
+                y: (w.y0 + w.y1) / 2,
+                text: String(w.text).match(NUM_RE)[0].replace(",", "."),
+                conf: Number.isFinite(w.conf) ? w.conf : 0,
+              }));
+            /* A line is a product line if it names a product. Non-global on
+               purpose: BRACKETED carries /g, and .test() on a /g regex keeps
+               lastIndex between calls, so every other row would come back
+               false. */
+            const CODE_ON_LINE = new RegExp(BRACKETED.source);
+            rescueByPosition(
+              bodyRows,
+              geoRows,
+              cols.ordered,
+              [...(zoomed.points || []), ...pagePoints],
+              (r) => CODE_ON_LINE.test(r.text || "")
+            );
+          }
+
+          const band = cols ? cols.ordered || cols.delivered : null;
+          if (band) {
+            const padX = (band.x1 - band.x0) * 0.15;
+            /* The row's height is straightened; the cell to cut out is not.
+               Lifting it back by the tilt at the COLUMN's own x is what keeps
+               a crop on the digits instead of half a line above them - and a
+               weight nobody can check against the paper is the one thing this
+               dialog will not produce. */
+            const bandCx = (band.x0 + band.x1) / 2;
+            bodyRows.forEach((r, i) => {
+              if (!geoRows[i].qty) return;
+              try {
+                const padY = (r.y1 - r.y0) * 0.4;
+                geoRows[i].snip = snipOf(
+                  img,
+                  {
+                    x0: Math.max(0, Math.floor(toOrig(band.x0 - padX))),
+                    y0: Math.max(0, Math.floor(toOrig(atX(r.y0 - padY, bandCx)))),
+                    x1: Math.min(img.width, Math.ceil(toOrig(band.x1 + padX))),
+                    y1: Math.min(img.height, Math.ceil(toOrig(atX(r.y1 + padY, bandCx)))),
+                  },
+                  2
+                );
+              } catch {
+                geoRows[i].snip = "";
+              }
+            });
+          }
 
           page.geo = { rows: geoRows, hasColumns: !!cols, evidence: zoomed.evidence };
         } else if (deep) {
@@ -1090,7 +1648,10 @@ function tokenScore(a, b) {
  */
 const QTY_NUM = String.raw`\d{1,6}(?:[.,]\d{1,3})?`;
 // the unit may follow EVERY number, not just the last one ("15.20 KG 0.00 KG")
-const QTY_UNIT = String.raw`(?:\s*(?:KGS?|PCS|PC|PIECES|UNITS?|LTRS?|LITRES?|BOX|CTN))?`;
+// PLATE and TRAY come off the prepared-food notes (POS 47 sends both, mixed
+// with KG on the same sheet); without them the fallback text pass reads
+// "1.00 PLATE" as a bare number followed by a word and drops the line.
+const QTY_UNIT = String.raw`(?:\s*(?:KGS?|PCS|PC|PIECES|UNITS?|LTRS?|LITRES?|BOX|CTN|PLATES?|TRAYS?|PKTS?))?`;
 const QTY_TAIL = new RegExp(
   // capture a longer run than we are willing to accept, so that a line which is
   // really a row of loose numbers gets REJECTED below instead of trimmed to fit
@@ -1114,7 +1675,7 @@ function orderedQty(line) {
 /** How trustworthy a reading is; only the weakest are ever discarded. */
 const VIA_RANK = { code: 3, corrected: 2, name: 1, ocr: 0 };
 /** Where a weight came from - a better source always wins. */
-const QTY_RANK = { zoom: 3, column: 2, text: 1, "": 0 };
+const QTY_RANK = { zoom: 3, column: 2, near: 2, text: 1, "": 0 };
 
 /**
  * Drop the phantom rows the extra OCR passes invent.
@@ -1147,7 +1708,8 @@ function dropPassDuplicates(entries) {
   /* A weight the geometry pulled out of the table is a line that was SEEN on
      the paper at a measured height. Whatever its code resolution looks like,
      it is a real printed row and never a phantom. */
-  const located = (e) => e.qtySrc === "zoom" || e.qtySrc === "column";
+  const located = (e) =>
+    e.qtySrc === "zoom" || e.qtySrc === "column" || e.qtySrc === "near";
   const strong = (e) => (VIA_RANK[e.via] ?? 0) >= VIA_RANK.code;
 
   /* Where each weight was read confidently — positions, not just the value.
@@ -1447,7 +2009,7 @@ export function parseReturnNote(input, { branches = [], catalog = new Map() } = 
        told apart by where the weight came from: two rows that the GEOMETRY
        located at different heights with different weights are two printed
        lines, and both are kept. Anything else is the same line read twice. */
-    const fromTable = (s) => s === "zoom" || s === "column";
+    const fromTable = (s) => s === "zoom" || s === "column" || s === "near";
     const twin = seen.get(key);
     const printedTwice =
       twin &&

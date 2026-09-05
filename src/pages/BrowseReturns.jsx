@@ -4129,14 +4129,23 @@ export default function BrowseReturns() {
   const selectedSummary = useMemo(() => {
     if (!selectedReport) return null;
     const rows = sortedRows;
-    let kg = 0, pcs = 0, other = 0;
+    /* Through qtyKind(), not the raw qtyType. Two things were wrong here:
+       PLATE had no bucket, so a day of salad plates reported "54 other" and
+       left the reader guessing at the unit; and a row whose type is "Other"
+       carries its real unit in customQtyType, which the raw field never shows,
+       so an Other/KG row was counted as neither kg nor plate. qtyKind reads
+       both, and it is the same helper the Qty filter already uses - so the
+       pills and the filter can no longer disagree about what a row is. */
+    let kg = 0, pcs = 0, plate = 0, other = 0;
     rows.forEach((it) => {
       const qty = Number(it.quantity || 0);
-      if (isKgType(it.qtyType)) kg += qty;
-      else if (isPcsType(it.qtyType)) pcs += qty;
+      const kind = qtyKind(it);
+      if (kind === "kg") kg += qty;
+      else if (kind === "pcs") pcs += qty;
+      else if (kind === "plate") plate += qty;
       else other += qty;
     });
-    return { count: rows.length, total: (selectedReport.items || []).length, kg, pcs, other };
+    return { count: rows.length, total: (selectedReport.items || []).length, kg, pcs, plate, other };
   }, [selectedReport, sortedRows]);
 
   /* ============================================================
@@ -4157,13 +4166,16 @@ export default function BrowseReturns() {
     return Array.from(groups.entries())
       .sort((a, b) => b[1].length - a[1].length)
       .map(([k, rows]) => {
-        let kg = 0, pcs = 0;
+        let kg = 0, pcs = 0, plate = 0;
         rows.forEach((r) => {
           const q = Number(r.quantity || 0);
-          if (isKgType(r.qtyType)) kg += q;
-          else if (isPcsType(r.qtyType)) pcs += q;
+          const kind = qtyKind(r);
+          if (kind === "kg") kg += q;
+          else if (kind === "pcs") pcs += q;
+          else if (kind === "plate") plate += q;
         });
-        return { key: k, rows, kg: Math.round(kg * 100) / 100, pcs };
+        // a group that is all plates used to show no total at all
+        return { key: k, rows, kg: Math.round(kg * 100) / 100, pcs, plate };
       });
   }, [groupBy, sortedRows, selectedReport]);
 
@@ -7167,6 +7179,11 @@ export default function BrowseReturns() {
                                 {fmtNum(selectedSummary.pcs, 0)} pcs
                               </span>
                             )}
+                            {selectedSummary.plate > 0 && (
+                              <span style={{ ...sx.pill, background: "#f5f3ff", color: "#5b21b6", borderColor: "#ddd6fe" }}>
+                                {fmtNum(selectedSummary.plate, 0)} plate
+                              </span>
+                            )}
                             {selectedSummary.other > 0 && (
                               <span style={{ ...sx.pill, background: T.warningS, color: T.warning, borderColor: "#fde68a" }}>
                                 {fmtNum(selectedSummary.other)} other
@@ -7243,6 +7260,7 @@ export default function BrowseReturns() {
                                 <span style={{ ...sx.pill, background: T.primaryS, color: T.primaryD, borderColor: "#c7d2fe" }}>{g.rows.length} items</span>
                                 {g.kg > 0 && <span style={{ ...sx.pill, background: T.infoS, color: T.info, borderColor: "#a5f3fc" }}>{fmtNum(g.kg)} kg</span>}
                                 {g.pcs > 0 && <span style={{ ...sx.pill, background: T.successS, color: T.success, borderColor: "#a7f3d0" }}>{g.pcs} pcs</span>}
+                                {g.plate > 0 && <span style={{ ...sx.pill, background: "#f5f3ff", color: "#5b21b6", borderColor: "#ddd6fe" }}>{g.plate} plate</span>}
                               </div>
                             </div>
                             <DataTable

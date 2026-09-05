@@ -2,6 +2,10 @@
 import React, { useEffect, useMemo, useRef, useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
+import MultiDateField from "../_shared/MultiDateField";
+import ShelfLifeModal from "../_shared/ShelfLifeModal";
+import { useShelfLife, expiryFromProduction } from "../_shared/shelfLife";
+import { useSupplierEvaluations } from "../_shared/supplierEvaluation";
 import {
   sendToServer,
   listReportsByType,
@@ -14,6 +18,7 @@ import {
   uploadImageToServer,
   makeClientId,
   deleteImage,
+  getReporter,
 } from "./qcsRawApi";
 
 /* ===== Helpers & Constants ===== */
@@ -25,8 +30,8 @@ const makeStableId = () =>
 const ATTRIBUTES = [
   { key: "temperature", label: "Product Temperature", default: "" },
   { key: "ph", label: "Product PH", default: "" },
-  { key: "slaughterDate", label: "Slaughter Date", default: "" },
-  { key: "expiryDate", label: "Expiry Date", default: "" },
+  { key: "slaughterDate", label: "Slaughter Date", default: "", type: "dates" },
+  { key: "expiryDate", label: "Expiry Date", default: "", type: "dates" },
   { key: "broken", label: "Broken / Cut Pieces", default: "NIL" },
   { key: "appearance", label: "Appearance", default: "OK" },
   { key: "bloodClots", label: "Blood Clots", default: "NIL" },
@@ -277,13 +282,21 @@ function Loader({ show, text="جار التنفيذ..." }) {
 /* ===== Main ===== */
 export default function QCSRawMaterialForm() {
   const navigate = useNavigate();
-  const certInputRef = useRef(null);
   const imagesInputRef = useRef(null);
 
   const [generalInfo, dispatchGeneralInfo] = useReducer(generalInfoReducer, initialGeneralInfo);
   const [docMeta, dispatchDocMeta] = useReducer(docMetaReducer, initialDocMeta);
 
   const [samples, setSamples] = useState([makeNewSample()]);
+
+  // ⏳ Shelf life: most products keep for a fixed number of days, so the expiry
+  //    date is calculated from the slaughter/production date instead of typed.
+  const shelf = useShelfLife();
+  const resolveShelf = shelf.resolve;
+  const [shelfOpen, setShelfOpen] = useState(false);
+  // sample id → the expiry WE wrote. If the cell still holds it, it is ours to
+  //   recalculate; the moment the inspector types something else it is theirs.
+  const autoExpiryRef = useRef(new Map());
 
   // ✅ Shipment type + search + add with disable
   const [shipmentType, setShipmentType] = useState("");
@@ -294,6 +307,8 @@ export default function QCSRawMaterialForm() {
   // ✅ Suppliers dropdown + search + add with disable
   const [supplierOptions, setSupplierOptions] = useState(DEFAULT_SUPPLIERS);
   const [supplierSearch, setSupplierSearch] = useState("");
+  // ✅ which suppliers the HACCP/ISO evaluation pages have actually judged
+  const { statusOf: supplierStatusOf } = useSupplierEvaluations();
   const [newSupplier, setNewSupplier] = useState("");
 
   const [shipmentStatus, setShipmentStatus] = useState("Acceptable");
@@ -312,7 +327,6 @@ export default function QCSRawMaterialForm() {
   const [entrySequence, setEntrySequence] = useState(1);
   const [entryKey, setEntryKey] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingCert, setIsUploadingCert] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [toast, setToast] = useState({ type: null, msg: "" });
   const [saveMsg, setSaveMsg] = useState("");
@@ -532,29 +546,70 @@ export default function QCSRawMaterialForm() {
       prev.map((s, i) => (i === index ? { ...s, productCode: code, productName: name } : s))
     );
   }
+  /* ⏳ Expiry = production date + the product's shelf life.
+     Only a cell that is empty, or that still holds exactly what we last wrote,
+     is touched — an expiry typed by hand is never overwritten. */
+  useEffect(() => {
+    setSamples((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        const info = resolveShelf({ code: s.productCode, name: s.productName });
+        if (!info || !(info.days > 0)) return s;
+        const want = expiryFromProduction(s.slaughterDate, info.days);
+        if (!want) return s;
+        const current = String(s.expiryDate || "").trim();
+        if (current && current !== autoExpiryRef.current.get(s.id)) return s;
+        if (current === want) return s;
+        autoExpiryRef.current.set(s.id, want);
+        changed = true;
+        return { ...s, expiryDate: want };
+      });
+      return changed ? next : prev;
+    });
+  }, [samples, resolveShelf]);
+
+  /** Force the calculated expiry onto one sample, replacing what is there. */
+  function applyShelfLife(index) {
+    setSamples((prev) => prev.map((s, i) => {
+      if (i !== index) return s;
+      const info = resolveShelf({ code: s.productCode, name: s.productName });
+      const want = info && info.days > 0 ? expiryFromProduction(s.slaughterDate, info.days) : "";
+      if (!want) return s;
+      autoExpiryRef.current.set(s.id, want);
+      return { ...s, expiryDate: want };
+    }));
+  }
+
+  /** The line under an expiry cell: what the shelf life has to say about it. */
+  function expiryHint(i) {
+    const s = samples[i];
+    const info = resolveShelf({ code: s.productCode, name: s.productName });
+    if (!info || !(info.days > 0)) return null;
+    const want = expiryFromProduction(s.slaughterDate, info.days);
+    if (!want) {
+      return <span style={{ color: "#64748b", fontWeight: 700 }}>⏳ {info.days}d — needs a slaughter date</span>;
+    }
+    if (String(s.expiryDate || "").trim() === want) {
+      return <span style={{ color: "#15803d", fontWeight: 800 }} title={`Shelf life ${info.days} days (${info.source})`}>⏳ auto +{info.days}d</span>;
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => applyShelfLife(i)}
+        title={`Overwrite with production date + ${info.days} days`}
+        style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #fcd34d", background: "#fffbeb", color: "#b45309", fontWeight: 800, cursor: "pointer" }}
+      >
+        ↻ +{info.days}d
+      </button>
+    );
+  }
+
   function addSample() { setSamples((prev) => [...prev, makeNewSample()]); }
   function removeSample() { if (samples.length > 1) setSamples((prev) => prev.slice(0, -1)); }
 
   function handleGeneralChange(field, value) {
     dispatchGeneralInfo({ type: "UPDATE", field, value });
   }
-
-  function handleCertificateUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCertificateName(file.name);
-    setIsUploadingCert(true);
-    uploadImageToServer(file, "qcs_certificate").then(url => {
-      setCertificateUrl(url);
-      showToast("success", "تم رفع الشهادة.");
-    }).catch(() => {
-      showToast("error", "فشل رفع الشهادة.");
-    }).finally(() => {
-      setIsUploadingCert(false);
-      if (certInputRef.current) certInputRef.current.value = "";
-    });
-  }
-  function triggerCertSelect() { certInputRef.current?.click(); }
 
   function handleImagesUpload(e) {
     const files = Array.from(e.target.files || []);
@@ -727,7 +782,7 @@ export default function QCSRawMaterialForm() {
       return false;
     }
 
-    if (isUploadingCert || isUploadingImages) {
+    if (isUploadingImages) {
       showToast("error", "يرجى انتظار انتهاء رفع الملفات قبل الحفظ.");
       return false;
     }
@@ -740,6 +795,38 @@ export default function QCSRawMaterialForm() {
       return false;
     }
     return true;
+  }
+
+  /* A save always POSTs a NEW record (the payload carries no _id), so a screen
+     that still holds the shipment it just stored is one click away from saving
+     it twice. After a successful save the entry is therefore cleared and a fresh
+     one starts.
+
+     What stays: the document header, the report date, and the two signature
+     names — those are the same for every shipment of the day. Everything that
+     describes the shipment itself goes. Uploaded pictures are only dropped from
+     the screen, never deleted: they belong to the report that was just saved. */
+  function startNewEntry() {
+    dispatchGeneralInfo({ type: "RESET" });
+    setSamples([makeNewSample()]);
+    setProductLines([makeEmptyLine()]);
+    setShipmentType("");
+    setShipmentStatus("Acceptable");
+    setNotes("");
+    setImages([]);
+    setCertificateUrl("");
+    setCertificateName("");
+    setTotalQuantity("");
+    setTotalWeight("");
+    setAverageWeight("");
+    setSupplierSearch("");
+    setNewSupplier("");
+    setTypeSearch("");
+    setNewType("");
+    setEntryKey("");
+    setEntrySequence(1);
+    autoExpiryRef.current = new Map();
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* older browsers */ }
   }
 
   function handleSave() {
@@ -769,11 +856,10 @@ export default function QCSRawMaterialForm() {
         await sendToServer(
           buildReportPayload({ createdAt, createdDate: userDate, uniqueKey, sequence })
         );
-        setSaveMsg("تم الحفظ بنجاح!");
-        showToast("success", `تم الحفظ ✅ (${ymdToDMY(userDate)} · #${sequence})`);
-        setEntrySequence(sequence);
-        setEntryKey(uniqueKey);
+        setSaveMsg("تم الحفظ — تقرير جديد جاهز");
+        showToast("success", `تم الحفظ ✅ (${ymdToDMY(userDate)} · #${sequence}) — تقرير جديد جاهز`);
         lastSaveTsRef.current = Date.now();
+        startNewEntry();
       } catch (e) {
         const msg = `فشل الحفظ: ${e?.message || e}`;
         setSaveMsg(msg);
@@ -790,7 +876,14 @@ export default function QCSRawMaterialForm() {
   /* === Render === */
   return (
     <div style={styles.page}>
-      <Loader show={isSaving || isUploadingCert || isUploadingImages} text="جار التنفيذ..." />
+      <Loader show={isSaving || isUploadingImages} text="جار التنفيذ..." />
+      <ShelfLifeModal
+        open={shelfOpen}
+        config={shelf.config}
+        onSave={shelf.save}
+        onClose={() => setShelfOpen(false)}
+        user={getReporter()}
+      />
       <ConfirmDialog
         open={confirmDialog.open}
         message={confirmDialog.message}
@@ -1047,9 +1140,16 @@ export default function QCSRawMaterialForm() {
                   >
                     <option value="">-- Select Supplier --</option>
                     {filteredSuppliers.length ? (
-                      filteredSuppliers.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))
+                      filteredSuppliers.map((s) => {
+                        // the tick comes from the Supplier Evaluation pages, so the
+                        // inspector can see at a glance who has been assessed
+                        const ev = supplierStatusOf(s);
+                        return (
+                          <option key={s} value={s} title={ev ? `Self-assessment received — ${ev.matched}${ev.date ? " · " + ev.date : ""}` : "No self-assessment received"}>
+                            {ev ? `${ev.mark} ${s}` : s}
+                          </option>
+                        );
+                      })
                     ) : (
                       <option value="" disabled>No matches</option>
                     )}
@@ -1082,6 +1182,20 @@ export default function QCSRawMaterialForm() {
                     ➕ Add
                   </button>
                 </div>
+
+                {generalInfo.supplierName && (() => {
+                  const ev = supplierStatusOf(generalInfo.supplierName);
+                  const tone = ev
+                    ? { bg: "#f0fdf4", bd: "#bbf7d0", fg: "#15803d" }
+                    : { bg: "#f8fafc", bd: "#e2e8f0", fg: "#64748b" };
+                  return (
+                    <div style={{ marginTop: 8, alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 999, background: tone.bg, border: `1px solid ${tone.bd}`, color: tone.fg, fontWeight: 800 }}>
+                      <span>{ev ? ev.mark : "◻"}</span>
+                      <span>{ev ? ev.label : "No evaluation received"}</span>
+                      {ev?.detail && <span style={{ fontWeight: 600, opacity: .85 }}>· {ev.detail}</span>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1111,9 +1225,21 @@ export default function QCSRawMaterialForm() {
           </fieldset>
 
           {/* Samples Table */}
-          <h4 style={styles.section}>Test Samples</h4>
+          <div style={{ ...styles.section, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <h4 style={{ margin: 0 }}>Test Samples</h4>
+            {/* the expiry column is calculated from these days, so the rule book
+                sits next to the table it fills */}
+            <button
+              type="button"
+              onClick={() => setShelfOpen(true)}
+              title="Shelf life per product / category — مدة الصلاحية"
+              style={{ padding: "7px 14px", borderRadius: 999, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 800, cursor: "pointer" }}
+            >
+              ⏳ Shelf Life{shelf.config.rules.length || shelf.config.defaultDays ? ` (${shelf.config.rules.length + (shelf.config.defaultDays ? 1 : 0)})` : ""}
+            </button>
+          </div>
           <div style={styles.tableWrap}>
-            <table style={{ ...styles.table, minWidth: 240 + samples.length * 160 }}>
+            <table style={{ ...styles.table, minWidth: 240 + samples.length * 190 }}>
               <thead>
                 <tr>
                   <th style={{ ...styles.th, minWidth: 200, textAlign: "left" }}>Attribute</th>
@@ -1154,7 +1280,18 @@ export default function QCSRawMaterialForm() {
                     <td style={styles.firstColCell}>{attr.label}</td>
                     {samples.map((s, i) => (
                       <td key={`${attr.key}-${s.id}`} style={styles.td}>
-                        <input value={s[attr.key]} onChange={(e) => setSampleValue(i, attr.key, e.target.value)} style={styles.tdInput} />
+                        {attr.type === "dates" ? (
+                          /* one shipment can carry several lots, so the cell
+                             holds as many dates as the inspector needs */
+                          <MultiDateField
+                            value={s[attr.key]}
+                            onChange={(v) => setSampleValue(i, attr.key, v)}
+                            style={styles.tdInput}
+                            hint={attr.key === "expiryDate" ? expiryHint(i) : null}
+                          />
+                        ) : (
+                          <input value={s[attr.key]} onChange={(e) => setSampleValue(i, attr.key, e.target.value)} style={styles.tdInput} />
+                        )}
                       </td>
                     ))}
                   </tr>
@@ -1252,11 +1389,6 @@ export default function QCSRawMaterialForm() {
           {/* Uploads */}
           <div style={styles.section}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" onClick={triggerCertSelect} style={{ ...styles.uploadButton, opacity: isUploadingCert ? .6 : 1 }} disabled={isUploadingCert}>
-                {isUploadingCert ? "⏳ Uploading…" : "📤 Upload Halal Certificate"}
-              </button>
-              <input type="file" accept="image/*,.pdf" ref={certInputRef} onChange={handleCertificateUpload} style={{ display: "none" }} />
-
               <button type="button" onClick={triggerImagesSelect} style={{ ...styles.uploadButton, opacity: isUploadingImages ? .6 : 1 }} disabled={isUploadingImages}>
                 {isUploadingImages ? "⏳ Uploading…" : "📸 Upload Images"}
               </button>
@@ -1317,9 +1449,9 @@ export default function QCSRawMaterialForm() {
           <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button
               onClick={handleSave}
-              style={{ ...styles.saveButton, ...(isSaving || isUploadingCert || isUploadingImages ? styles.saveButtonDisabled : {}) }}
-              disabled={isSaving || isUploadingCert || isUploadingImages}
-              title={isUploadingCert || isUploadingImages ? "انتظر انتهاء الرفع" : "حفظ التقرير"}
+              style={{ ...styles.saveButton, ...(isSaving || isUploadingImages ? styles.saveButtonDisabled : {}) }}
+              disabled={isSaving || isUploadingImages}
+              title={isUploadingImages ? "انتظر انتهاء الرفع" : "حفظ التقرير"}
             >
               {isSaving ? "⏳ Saving..." : "💾 Save Report"}
             </button>

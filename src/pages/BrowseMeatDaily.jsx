@@ -2344,7 +2344,11 @@ export default function BrowseMeatDaily() {
     return lines.join("\n");
   }, []);
 
-  const emailConfig = useMemo(() => ({
+  /* NOT memoized on purpose — generatePdf must see the latest handleExportPDF
+     (which closes over the current selectedReport). Memoizing this object
+     froze it to the first render where selectedReport was null, so
+     generatePdf returned undefined and EmailSendModal crashed on destructure. */
+  const emailConfig = {
     reportTitle: "Meat Daily Report",
     /* Report type drives auto-routing (Settings → per-type To/CC + template)
        and tags the row written to the email history log. */
@@ -2355,7 +2359,13 @@ export default function BrowseMeatDaily() {
     getSubject: (rep) => `[Meat Daily] Status Report — ${rep?.reportDate || "—"}`,
     /* Editable in the modal's Content tab; {date} fills itself in on send. */
     getDefaultIntro: () => DEFAULT_INTRO,
-    generatePdf: async (_rep) => handleExportPDF({ returnBlob: true }),
+    generatePdf: async (rep) => {
+      const target = rep || selectedReport;
+      if (!target) throw new Error("No report selected to email");
+      const result = await handleExportPDF({ returnBlob: true });
+      if (!result || !result.blob) throw new Error("PDF generation produced no blob");
+      return result;
+    },
     buildHtml: buildMeatDailyHtml,
     buildText: buildMeatDailyText,
     getImages: collectReportImages,
@@ -2373,8 +2383,7 @@ export default function BrowseMeatDaily() {
         ],
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [buildMeatDailyHtml, buildMeatDailyText, collectReportImages]);
+  };
 
   const handleExportPDF = async (opts = {}) => {
     if (!selectedReport) return;
@@ -2888,7 +2897,12 @@ export default function BrowseMeatDaily() {
             visibleColumns={visibleColumns}
             handlePrint={handlePrint}
             handleExportPDF={handleExportPDF}
-            onEmail={() => setEmailOpen(true)}
+            onEmail={() => {
+              /* Opening the modal without a report gives an empty payload and
+                 a PDF that can never be built - stop it at the button. */
+              if (!selectedReport) { toast("Select a date first", "err"); return; }
+              setEmailOpen(true);
+            }}
             handleExportXLSXSelected={handleExportXLSXSelected}
             handleExportCSV={handleExportCSV}
             handleExportXLSXAllLocked={handleExportXLSXAllLocked}

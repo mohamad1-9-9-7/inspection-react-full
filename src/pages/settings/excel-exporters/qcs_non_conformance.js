@@ -6,6 +6,7 @@ import {
   addDocHeader, addFooter, formatDMY, extractDate,
   pageSetupPortrait,
 } from "./_lib";
+import { getInspectionBranchLabel } from "../../inspection/inspectionBranches";
 
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
@@ -96,8 +97,11 @@ export default async function build(wb, record, ctx) {
   }
 
   section("Identification");
-  wide("Location", p.location);
-  pair("Date", formatDMY(p?.headRow?.reportDate), "NC No.", p?.headRow?.ncNo);
+  // Location is a canonical branch code now, and the NC number is the
+  // server-allocated payload.refNo — legacy records fall back to the old
+  // free-text location and the hand-typed headRow.ncNo.
+  wide("Location", p.location ? getInspectionBranchLabel(p.location) : "");
+  pair("Date", formatDMY(p?.headRow?.reportDate), "NC No.", p?.refNo || p?.headRow?.ncNo);
   pair("Issued to", p?.headRow?.issuedTo, "Issued by", p?.headRow?.issuedBy);
 
   const refTxt = [

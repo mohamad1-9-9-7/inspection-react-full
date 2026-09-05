@@ -14,6 +14,7 @@ import {
   useProductCatalog,
   normalizeCode,
 } from "../monitor/branches/_shared/ProductPicker";
+import CodeSuggest from "../shared/CodeSuggest";
 import {
   TYPE,
   BRANCHES,
@@ -36,6 +37,31 @@ import {
 } from "./destructionOptions";
 
 const DRAFT_KEY = "destruction_draft_v1";
+
+/* The catalog carries the ERP unit of measure; this register offers KG / PCS /
+   CTN / LTR. Anything else keeps its own name in the "Other..." field. */
+const UOM_TO_QTY = {
+  KG: "KG",
+  KGS: "KG",
+  PIECES: "PCS",
+  PIECE: "PCS",
+  PCS: "PCS",
+  PC: "PCS",
+  CTN: "CTN",
+  CARTON: "CTN",
+  BOX: "CTN",
+  LTR: "LTR",
+  LITRE: "LTR",
+  LITER: "LTR",
+  L: "LTR",
+};
+
+function qtyTypeFromUom(uom) {
+  const u = String(uom || "").trim().toUpperCase();
+  if (!u) return null;
+  if (UOM_TO_QTY[u]) return { qtyType: UOM_TO_QTY[u], customQtyType: "" };
+  return { qtyType: OTHER, customQtyType: u };
+}
 
 /* ================= server helpers ================= */
 async function uploadViaServer(file) {
@@ -112,7 +138,7 @@ async function updateReportById(id, payload) {
 }
 
 /* ================= images modal ================= */
-function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
+function ImageManagerModal({ open, title, hint, images, onClose, onAddImages, onRemoveImage }) {
   const [previewSrc, setPreviewSrc] = useState("");
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
@@ -149,9 +175,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
     <div style={galleryBack} onClick={onClose}>
       <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
         <div style={galleryTop}>
-          <div style={galleryTitle}>
-            📷 Destruction Evidence {row?.productName ? `— ${row.productName}` : ""}
-          </div>
+          <div style={galleryTitle}>{title || "📷 Destruction Evidence"}</div>
           <button onClick={onClose} style={galleryClose}>
             ✕
           </button>
@@ -180,15 +204,15 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
             style={{ display: "none" }}
           />
           <div style={{ fontSize: 13, color: "#334155", fontWeight: 700 }}>
-            Attach before / after destruction photos as evidence.
+            {hint || "Attach before / after destruction photos as evidence."}
           </div>
         </div>
 
         <div style={thumbsWrap}>
-          {safeArr(row?.images).length === 0 ? (
+          {safeArr(images).length === 0 ? (
             <div style={{ color: "#64748b", fontWeight: 800 }}>No photos yet.</div>
           ) : (
-            row.images.map((src, i) => (
+            safeArr(images).map((src, i) => (
               <div key={i} style={thumbTile}>
                 <img
                   src={src}
@@ -289,11 +313,47 @@ export default function DestructionInput() {
     return m;
   }, [allItems]);
 
-  const byName = useMemo(() => {
-    const m = new Map();
-    for (const it of allItems) m.set(normalizeCode(it.description), it);
-    return m;
-  }, [allItems]);
+  /* Suggestion source for CodeSuggest — same ranking as Returns: a code that
+     starts with what was typed first, then any code or name containing it. */
+  const localSearch = (q) => {
+    const s = normalizeCode(q);
+    if (!s) return allItems.slice(0, 20);
+    const starts = [];
+    const rest = [];
+    for (const it of allItems) {
+      const code = normalizeCode(it.item_code);
+      const name = normalizeCode(it.description);
+      if (code.startsWith(s)) starts.push(it);
+      else if (code.includes(s) || name.includes(s)) rest.push(it);
+      if (starts.length >= 20) break;
+    }
+    return starts.concat(rest).slice(0, 20);
+  };
+
+  /* Everything the item code owns, in one place. The product name mirrors the
+     code strictly (blank when the code matches nothing); the unit only changes
+     when the catalog actually states one. */
+  const catalogPatch = (hit) => {
+    const patch = { productName: hit ? hit.description : "" };
+    const q = hit ? qtyTypeFromUom(hit.uom) : null;
+    if (q) {
+      patch.qtyType = q.qtyType;
+      patch.customQtyType = q.customQtyType;
+    }
+    return patch;
+  };
+
+  const pickItem = (idx, item) =>
+    setRows((prev) =>
+      prev.map((r, i) =>
+        i === idx ? { ...r, itemCode: item.item_code, ...catalogPatch(item) } : r
+      )
+    );
+
+  const isKnownCode = (code) => {
+    const s = normalizeCode(code);
+    return !!s && byCode.has(s);
+  };
 
   /* ===== row editing ===== */
   const setHeaderField = (field, value) =>
@@ -312,14 +372,11 @@ export default function DestructionInput() {
       if (field === "qtyType" && value !== OTHER) cur.customQtyType = "";
       if (field === "method" && value !== OTHER) cur.customMethod = "";
 
-      /* Catalog auto-fill, exactly like the Returns register */
+      /* Catalog auto-fill: the item code is the only thing that writes the
+         product name — the name cell is read-only, so a code with no catalog
+         match clears it instead of leaving the previous product behind. */
       if (field === "itemCode") {
-        const hit = byCode.get(normalizeCode(value));
-        if (hit) cur.productName = hit.description;
-      }
-      if (field === "productName") {
-        const hit = byName.get(normalizeCode(value));
-        if (hit && !String(cur.itemCode || "").trim()) cur.itemCode = hit.item_code;
+        Object.assign(cur, catalogPatch(byCode.get(normalizeCode(value))));
       }
 
       next[idx] = cur;
@@ -381,9 +438,39 @@ export default function DestructionInput() {
       return next.length ? next : [blankItem()];
     });
 
-  /* ===== images ===== */
+  /* ===== images =====
+     Two targets share one modal: a single item line, or the record as a whole
+     (header.images — general photos of the destruction event, no maximum). */
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageTarget, setImageTarget] = useState("row"); // "row" | "report"
   const [imageRowIndex, setImageRowIndex] = useState(-1);
+
+  const openRowImages = (idx) => {
+    setImageTarget("row");
+    setImageRowIndex(idx);
+    setImageModalOpen(true);
+  };
+
+  const openReportImages = () => {
+    setImageTarget("report");
+    setImageModalOpen(true);
+  };
+
+  const addImagesToReport = (urls) => {
+    setHeader((prev) => ({ ...prev, images: [...safeArr(prev.images), ...urls] }));
+    flash("Photos added to the report.", 1500);
+  };
+
+  const removeImageFromReport = async (imgIndex) => {
+    const url = safeArr(header.images)[imgIndex];
+    setHeader((prev) => {
+      const next = safeArr(prev.images).slice();
+      next.splice(imgIndex, 1);
+      return { ...prev, images: next };
+    });
+    await deleteImage(url);
+    flash("Photo removed.", 1500);
+  };
 
   const addImagesToRow = (urls) => {
     if (imageRowIndex < 0) return;
@@ -442,7 +529,7 @@ export default function DestructionInput() {
       rErr,
       msg: ok
         ? ""
-        : "Please complete the highlighted fields: Branch, Destruction Date, Destroyed By, Approved By, and for every line Product, Quantity (> 0) and at least one Reason.",
+        : "Please complete the highlighted fields: Branch, Destruction Date, Destroyed By, Approved By, and for every line a catalog Item Code (it fills the product), Quantity (> 0) and at least one Reason.",
     };
   };
 
@@ -508,7 +595,13 @@ export default function DestructionInput() {
         await updateReportById(id, {
           ...(existing.payload || {}),
           reportDate,
-          header: existing?.payload?.header || payload.header,
+          header: {
+            ...(existing?.payload?.header || payload.header),
+            images: [
+              ...safeArr(existing?.payload?.header?.images),
+              ...safeArr(header.images),
+            ],
+          },
           items: merged,
           totals: {
             lines: merged.length,
@@ -556,19 +649,6 @@ export default function DestructionInput() {
 
   return (
     <div style={pageWrap}>
-      <datalist id="destr-item-codes">
-        {allItems.slice(0, 4000).map((it) => (
-          <option key={`c-${it.item_code}-${it.description}`} value={it.item_code}>
-            {it.description}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="destr-item-names">
-        {allItems.slice(0, 4000).map((it) => (
-          <option key={`n-${it.item_code}-${it.description}`} value={it.description} />
-        ))}
-      </datalist>
-
       <h2 style={pageTitle}>🗑️ Condemnation &amp; Disposal Record — سجل الإعدام والتخلص</h2>
 
       <div style={topBar}>
@@ -722,6 +802,35 @@ export default function DestructionInput() {
             />
           </label>
 
+          <div style={{ ...fieldLbl, gridColumn: "1 / -1" }}>
+            <span>Report Photos — صور عامة للتقرير</span>
+            <div style={reportPhotosBar}>
+              <button type="button" onClick={openReportImages} style={btnBlue}>
+                📷 Upload report photos
+              </button>
+              <span style={reportPhotosCount}>
+                {safeArr(header.images).length} photo(s) — no limit
+              </span>
+              <div style={reportPhotosStrip}>
+                {safeArr(header.images).slice(0, 12).map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt={`report-${i}`}
+                    style={reportPhotoThumb}
+                    onClick={openReportImages}
+                    title="Open the photo manager"
+                  />
+                ))}
+                {safeArr(header.images).length > 12 && (
+                  <span style={reportPhotosCount}>
+                    +{safeArr(header.images).length - 12}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
           <label style={{ ...fieldLbl, gridColumn: "1 / -1" }}>
             <span>General Notes</span>
             <input
@@ -740,8 +849,8 @@ export default function DestructionInput() {
           <thead>
             <tr>
               <th style={{ ...th, width: 52 }}>SL</th>
-              <th style={{ ...th, width: 108 }}>ITEM CODE</th>
-              <th style={th}>PRODUCT *</th>
+              <th style={{ ...th, width: 138 }}>ITEM CODE</th>
+              <th style={{ ...th, width: 230 }}>PRODUCT *</th>
               <th style={{ ...th, width: 110 }}>BATCH / LOT</th>
               <th style={{ ...th, width: 130 }}>PROD. DATE</th>
               <th style={{ ...th, width: 130 }}>EXPIRY</th>
@@ -764,23 +873,30 @@ export default function DestructionInput() {
                   <div style={slPill}>{idx + 1}</div>
                 </td>
 
+                {/* ITEM CODE — the suggestion list lives in a portal, see CodeSuggest */}
                 <td style={td}>
-                  <input
+                  <CodeSuggest
+                    value={row.itemCode || ""}
+                    onChange={(v) => handleChange(idx, "itemCode", v)}
+                    onPick={(item) => pickItem(idx, item)}
+                    search={localSearch}
                     style={inp(idx)}
-                    list="destr-item-codes"
-                    placeholder="Code"
-                    value={row.itemCode}
-                    onChange={(e) => handleChange(idx, "itemCode", e.target.value)}
+                    placeholder="Code or name"
+                    inputProps={{ "data-col": "itemCode" }}
                   />
+                  {row.itemCode && !isKnownCode(row.itemCode) && (
+                    <div style={codeMissNote}>Code not in the catalog</div>
+                  )}
                 </td>
 
                 <td style={td}>
                   <input
-                    style={inp(idx)}
-                    list="destr-item-names"
-                    placeholder="Product / material"
+                    style={{ ...inp(idx), ...lockedInput }}
+                    readOnly
+                    tabIndex={-1}
+                    placeholder="From item code"
+                    title="Filled from the item code"
                     value={row.productName}
-                    onChange={(e) => handleChange(idx, "productName", e.target.value)}
                   />
                 </td>
 
@@ -961,10 +1077,7 @@ export default function DestructionInput() {
 
                 <td style={td}>
                   <button
-                    onClick={() => {
-                      setImageRowIndex(idx);
-                      setImageModalOpen(true);
-                    }}
+                    onClick={() => openRowImages(idx)}
                     style={btnImg}
                     title="Manage evidence photos"
                   >
@@ -1021,11 +1134,25 @@ export default function DestructionInput() {
       </div>
 
       <ImageManagerModal
-        open={imageModalOpen}
-        row={imageRowIndex >= 0 ? rows?.[imageRowIndex] || {} : null}
+        open={imageModalOpen && (imageTarget === "report" || imageRowIndex >= 0)}
+        title={
+          imageTarget === "report"
+            ? "📷 Report Photos — صور عامة للتقرير"
+            : `📷 Destruction Evidence${
+                rows?.[imageRowIndex]?.productName
+                  ? ` — ${rows[imageRowIndex].productName}`
+                  : ""
+              }`
+        }
+        hint={
+          imageTarget === "report"
+            ? "General photos of the whole destruction event — as many as you need."
+            : "Attach before / after destruction photos as evidence."
+        }
+        images={imageTarget === "report" ? header.images : rows?.[imageRowIndex]?.images}
         onClose={() => setImageModalOpen(false)}
-        onAddImages={addImagesToRow}
-        onRemoveImage={removeImageFromRow}
+        onAddImages={imageTarget === "report" ? addImagesToReport : addImagesToRow}
+        onRemoveImage={imageTarget === "report" ? removeImageFromReport : removeImageFromRow}
       />
     </div>
   );
@@ -1184,6 +1311,49 @@ const input = {
   fontSize: 13,
   fontWeight: 700,
   fontFamily: "inherit",
+};
+
+const codeMissNote = {
+  marginTop: 5,
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#b45309",
+  lineHeight: 1.25,
+};
+
+const reportPhotosBar = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const reportPhotosCount = {
+  fontSize: 12.5,
+  fontWeight: 800,
+  color: "#7f1d1d",
+};
+
+const reportPhotosStrip = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const reportPhotoThumb = {
+  width: 44,
+  height: 44,
+  objectFit: "cover",
+  borderRadius: 8,
+  border: "1.5px solid #e5b8b8",
+  cursor: "pointer",
+};
+
+/* Read-only cells (the product name) — clearly not typeable. */
+const lockedInput = {
+  background: "#f6f1f1",
+  color: "#4b5563",
+  cursor: "default",
 };
 
 const totalsBar = {

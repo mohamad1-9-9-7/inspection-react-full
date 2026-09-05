@@ -6,6 +6,15 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { getInspectionBranchLabel } from "../../../inspection/inspectionBranches";
+
+/* The NC number is allocated by the server as `payload.refNo` ("AM-NCR-000042").
+   Reports written before that still only carry the hand-typed headRow.ncNo, so
+   both are read here — the server-owned one first. */
+const ncNumberOf = (p) => p?.refNo || p?.headRow?.ncNo || "";
+/* Location is a canonical branch code now ("POS 15"); show its full name, and
+   fall back to whatever free text a legacy record holds. */
+const locationOf = (p) => (p?.location ? getInspectionBranchLabel(p.location) : "");
 
 /* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -174,8 +183,8 @@ export default function NonConformanceReportsView(props) {
       ["Area", p?.headerTop?.area || "", "Controlling Officer", p?.headerTop?.controllingOfficer || ""],
       ["Issued By", p?.headerTop?.issuedBy || "", "Approved By", p?.headerTop?.approvedBy || ""],
       [],
-      ["Location", p?.location || ""],
-      ["Date", p?.headRow?.reportDate || "", "NC No.", p?.headRow?.ncNo || ""],
+      ["Location", locationOf(p)],
+      ["Date", p?.headRow?.reportDate || "", "NC No.", ncNumberOf(p)],
       ["Issued to", p?.headRow?.issuedTo || "", "Issued by", p?.headRow?.issuedBy || ""],
       [],
       ["Reference", `${p?.reference?.inhouseQC ? "In-house QC; " : ""}${p?.reference?.customerComplaint ? "Customer Complaint; " : ""}${p?.reference?.internalAudit ? "Internal Audit; " : ""}${p?.reference?.externalAudit ? "External Audit" : ""}`],
@@ -234,7 +243,7 @@ export default function NonConformanceReportsView(props) {
       dateISO: r?.payload?.headRow?.reportDate || "",
       label: (() => {
         const d = r?.payload?.headRow?.reportDate || "";
-        if (!d) return r?.payload?.headRow?.ncNo || "NC";
+        if (!d) return ncNumberOf(r?.payload) || "NC";
         const [y, m, day] = d.split("-");
         return day ? `${day}/${m}/${y}` : d;
       })(),
@@ -303,11 +312,11 @@ export default function NonConformanceReportsView(props) {
                   <NCSection color="#3b82f6" title="Report Information">
                     <NCRow items={[
                       { label: "Report Date", value: view?.headRow?.reportDate },
-                      { label: "NC No.", value: view?.headRow?.ncNo },
+                      { label: "NC No.", value: ncNumberOf(view) },
                       { label: "Issued to", value: view?.headRow?.issuedTo },
                       { label: "Issued by", value: view?.headRow?.issuedBy },
                     ]} />
-                    <NCRow items={[{ label: "Location", value: view?.location, colSpan: 4 }]} />
+                    <NCRow items={[{ label: "Location", value: locationOf(view), colSpan: 4 }]} />
                   </NCSection>
 
                   <NCSection color="#8b5cf6" title="Reference">

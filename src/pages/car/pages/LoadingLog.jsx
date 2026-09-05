@@ -1,5 +1,6 @@
 // src/pages/car/pages/LoadingLog.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
 
 /**
  * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
@@ -217,6 +218,8 @@ export default function LoadingLog() {
   const [vehicleOptions, setVehicleOptions] = useState([]);
   const [driverOptions, setDriverOptions] = useState([]);
   const [lookupBusy, setLookupBusy] = useState(false);
+  // the eight locked document boxes are folded away by default
+  const [docOpen, setDocOpen] = useState(false);
 
   const setRow = (i, k, v) =>
     setRows((rs) => {
@@ -275,8 +278,12 @@ export default function LoadingLog() {
     };
   }, []);
 
-  async function addLookupAndSelect(kind, rowIndex) {
-    // Buttons exist only on first row, but keep it safe:
+  /* Adding a vehicle number or a driver name is a CATALOG action: the value is
+     saved on the server and appears in every row's dropdown. The buttons sit in
+     the document strip above the sheet, not in a row, so the new value is only
+     dropped into the first row when that cell is still empty — it must never
+     overwrite something already entered. */
+  async function addLookupAndSelect(kind, rowIndex = 0) {
     if (rowIndex !== 0) return;
 
     const isVehicle = kind === "vehicle";
@@ -294,7 +301,8 @@ export default function LoadingLog() {
       setMsg(`${label} already exists.`);
       setTimeout(() => setMsg(""), 2200);
       const match = currentList.find((x) => normKey(x) === normKey(value));
-      if (match) setRow(rowIndex, isVehicle ? "vehicleNo" : "driverName", match);
+      const field = isVehicle ? "vehicleNo" : "driverName";
+      if (match && !String(rows[rowIndex]?.[field] || "").trim()) setRow(rowIndex, field, match);
       return;
     }
 
@@ -308,8 +316,9 @@ export default function LoadingLog() {
       if (isVehicle) setVehicleOptions(next);
       else setDriverOptions(next);
 
-      // select it in first row (where you added)
-      setRow(rowIndex, isVehicle ? "vehicleNo" : "driverName", value);
+      // fill the first row only if it is still waiting for one
+      const field = isVehicle ? "vehicleNo" : "driverName";
+      if (!String(rows[rowIndex]?.[field] || "").trim()) setRow(rowIndex, field, value);
 
       setMsg(`${label} saved.`);
       setTimeout(() => setMsg(""), 1800);
@@ -417,534 +426,460 @@ export default function LoadingLog() {
     }
   };
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     Presentation — the sheet stays a TABLE (one row per vehicle, the way the
+     paper form and the crew's habit both work), wearing the ISO / HACCP colours
+     from branchViewKit.
+
+     What the old table got wrong was not the table: it was squeezing 17 columns
+     into the page width with `tableLayout: auto` and no horizontal scroll, so
+     every column collapsed to a few pixels. Here the columns keep a real
+     minimum width and the sheet scrolls sideways inside its own frame, with the
+     head row and the vehicle column pinned so nothing is ever lost.
+
+     The saved payload is untouched, so the reports page and the backups read
+     exactly what they always did.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /* Column headings for the eleven checks, in the sheet's own order. */
+  const CHECK_GROUPS = [
+    {
+      title: "Loading safety",
+      items: [
+        ["trafficControlSpotter", "TRAFFIC CONTROL /\nSPOTTER USED"],
+        ["vehicleSecured", "VEHICLE SECURED\n(HANDBRAKE + CHOCKS)"],
+        ["loadSecured", "LOAD SECURED\n(STRAPS + INSPECTION)"],
+        ["areaSafe", "AREA SAFE\n(LIGHT / ANTI-SLIP / WALKWAY)"],
+        ["manualHandlingControls", "MANUAL HANDLING\nCONTROLS APPLIED"],
+      ],
+    },
+    {
+      title: "Vehicle hygiene",
+      items: [
+        ["floorSealingIntact", "FLOOR SEALING\nINTACT"],
+        ["floorCleaning", "FLOOR\nCLEANING"],
+        ["pestActivites", "PEST\nACTIVITES"],
+        ["plasticCurtain", "PLASTIC CURTAIN\nAVAILABLE / CLEAN"],
+        ["badOdour", "BAD\nODOUR"],
+        ["ppeAvailable", "PPE\nAVAILABLE"],
+      ],
+    },
+  ];
+  const CHECK_COLUMNS = CHECK_GROUPS.flatMap((g) => g.items);
+
+  /* The compliant answer is not always YES — "Pest activities" and "Bad odour"
+     are compliant at NO. newRow() already encodes that, so the defaults are the
+     single source for it instead of a second list that could drift. */
+  const COMPLIANT = useMemo(() => {
+    const d = newRow();
+    const out = {};
+    YESNO_FIELDS.forEach((k) => { out[k] = d[k]; });
+    return out;
+  }, []);
+
+  const setAllCompliant = (i) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...COMPLIANT } : r)));
+
+  /* Ten trucks a day carry the same checks and destination; only the plate, the
+     driver and the clock change. Duplicating a row keeps the answers and clears
+     what must be entered fresh. */
+  const duplicateRow = (i) =>
+    setRows((rs) => {
+      const src = rs[i] || newRow();
+      const copy = { ...src, vehicleNo: "", driverName: "", timeStart: "", timeEnd: "", tempCheck: "" };
+      const n = rs.slice();
+      n.splice(i + 1, 0, copy);
+      return n;
+    });
+
+  const deviations = (r) => YESNO_FIELDS.filter((k) => r[k] !== COMPLIANT[k]).length;
+
   /* ===== Styles ===== */
-  const wrapStyle = {
-    padding: "32px",
-    fontFamily: "Arial, sans-serif",
-    backgroundColor: "#f7f9fc",
-    color: "#333333",
-    minHeight: "100vh",
-    boxSizing: "border-box",
-    direction: "ltr",
-  };
-
   const cardStyle = {
-    backgroundColor: "#ffffff",
-    borderRadius: "12px",
-    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.08)",
-    overflow: "hidden",
+    background: "#fff",
+    border: "1px solid rgba(15,23,42,0.14)",
+    borderRadius: 16,
+    boxShadow: "0 12px 32px rgba(2,132,199,0.08)",
+    marginBottom: 14,
   };
 
-  const sectionStyle = {
-    padding: "16px 24px",
-    borderBottom: "1px solid #e0e6ed",
-  };
+  const label = { fontSize: 12, fontWeight: 800, color: "#0c4a6e", marginBottom: 5, display: "block" };
 
-  const grid4Style = {
-    display: "grid",
-    gridTemplateColumns: "repeat(1, 1fr)",
-    gap: "16px",
-  };
-
-  const grid2Style = {
-    display: "grid",
-    gridTemplateColumns: "repeat(1, 1fr)",
-    gap: "24px",
-  };
-
-  const labelStyle = {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: "#1a202c",
-    marginBottom: "4px",
-  };
-
-  const inputStyle = {
+  const field = {
     width: "100%",
-    padding: "6px 8px",
-    fontSize: "12.5px",
-    border: "1px solid #c0d0e0",
-    borderRadius: "6px",
-    backgroundColor: "#fefefe",
-    transition: "border-color 0.2s",
+    padding: "9px 10px",
+    minHeight: 40,
+    fontSize: 13,
+    border: "1.5px solid #cbd5e1",
+    borderRadius: 9,
+    background: "#fff",
+    color: "#0f172a",
     boxSizing: "border-box",
-    minWidth: 0,
+    fontFamily: "inherit",
+  };
+  const fieldBad = { ...field, border: "1.5px solid #ef4444", boxShadow: "0 0 0 3px rgba(239,68,68,.15)" };
+  const fieldOf = (i, k) => (isInvalid(i, k) ? fieldBad : field);
+
+  const miniBtn = { ...ISO_UI.btn("secondary"), padding: "6px 12px", fontSize: 12, fontFamily: "inherit" };
+
+  const iconBtn = (extra) => ({
+    ...ISO_UI.btn("secondary"),
+    width: 34, height: 34, padding: 0,
+    borderRadius: 10, fontSize: 14, fontFamily: "inherit",
+    ...extra,
+  });
+
+  /* the sheet frame: its own scrollport, so the pinned head and first column
+     do not depend on the page (globals.css hides overflow-x on #root, which
+     would otherwise kill position: sticky) */
+  const sheetWrap = {
+    overflow: "auto",
+    maxHeight: "72vh",
+    border: "1px solid rgba(15,23,42,0.14)",
+    borderRadius: 14,
+    background: "#fff",
   };
 
-  const inputInvalid = {
-    ...inputStyle,
-    border: "1px solid #ef4444",
-    boxShadow: "0 0 0 2px rgba(239, 68, 68, 0.15)",
-  };
+  const table = { borderCollapse: "separate", borderSpacing: 0, width: "max-content", minWidth: "100%" };
 
-  // Read-only controlled-document fields (header)
-  const lockedInputStyle = {
-    ...inputStyle,
-    backgroundColor: "#eef1f5",
-    color: "#1a202c",
-    fontWeight: "600",
-    cursor: "not-allowed",
-    opacity: 1,            // keep text fully readable even when disabled
-    WebkitTextFillColor: "#1a202c", // Safari/Chrome disabled-text override
-  };
-
-  const titleStyle = {
-    fontSize: "22px",
-    fontWeight: "700",
-    color: "#1a202c",
-    textAlign: "left",
-    padding: "8px 0",
-    textTransform: "uppercase",
-  };
-
-  const tableWrapperStyle = {
-    overflowX: "visible",
-    padding: "0",
-    width: "100%",
-  };
-
-  const tableStyle = {
-    width: "100%",
-    borderCollapse: "collapse",
-    tableLayout: "auto",   // auto-size to fit viewport (no horizontal scroll)
-  };
-
-  const thStyle = {
-    backgroundColor: "#f0f2f5",
-    padding: "8px 4px",
-    fontSize: "10.5px",
-    fontWeight: "700",
-    color: "#4a5568",
-    textAlign: "center",
-    textTransform: "uppercase",
-    border: "1px solid #c0d0e0",
-    wordBreak: "normal",
-    overflowWrap: "break-word",
+  const th = (extra) => ({
+    ...ISO_UI.thCell,
+    position: "sticky",
+    top: 34,
+    zIndex: 3,
+    background: "#0ea5e9",
+    padding: "8px 6px",
+    fontSize: 10.5,
     lineHeight: 1.25,
+    ...extra,
+  });
+
+  const thGroup = (bg) => ({
+    ...ISO_UI.thCell,
+    position: "sticky",
+    top: 0,
+    zIndex: 4,
+    background: bg,
+    padding: "6px",
+    fontSize: 11,
+    letterSpacing: ".5px",
+  });
+
+  const td = (extra) => ({
+    border: "1px solid #e2e8f0",
+    padding: "8px 6px",
     verticalAlign: "middle",
-  };
+    height: 58,
+    background: "#fff",
+    ...extra,
+  });
 
-  const tdStyle = {
-    padding: "6px 4px",
-    border: "1px solid #c0d0e0",
-    textAlign: "left",
-    verticalAlign: "middle",
-    boxSizing: "border-box",
-    wordBreak: "normal",
-    fontSize: "12px",
-  };
+  /* the vehicle column stays visible while the checks scroll past it */
+  const stickyCol = { position: "sticky", left: 0, zIndex: 2, boxShadow: "2px 0 0 rgba(15,23,42,.06)" };
 
-  const tdInvalid = {
-    ...tdStyle,
-    backgroundColor: "#fff1f2",
-    border: "1px solid #ef4444",
-  };
-
-  const radioGroupStyle = {
-    display: "flex",
-    flexDirection: "column",   // YES on top, NO below — fits narrow columns
-    justifyContent: "center",
-    alignItems: "flex-start",
-    gap: "4px",
-  };
-
-  const radioLabelStyle = {
-    fontSize: "11px",
-    color: "#4a5568",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "3px",
-    whiteSpace: "nowrap",   // ← prevents "YES" / "NO" from breaking character-by-character
-    flexShrink: 0,
-  };
-
-  const buttonStyle = {
-    padding: "10px 20px",
-    fontSize: "14px",
-    fontWeight: "600",
-    borderRadius: "8px",
+  const toggle = (on, kind) => ({
+    minWidth: 40,
+    padding: "6px 9px",
+    borderRadius: 999,
     cursor: "pointer",
-    border: "none",
-    transition: "background-color 0.2s, box-shadow 0.2s",
-  };
-
-  const addButton = {
-    ...buttonStyle,
-    backgroundColor: "#e2e8f0",
-    color: "#4a5568",
-    border: "1px solid #cbd5e1",
-  };
-
-  const saveButton = {
-    ...buttonStyle,
-    backgroundColor: busy ? "#87b6f5" : "#4a90e2",
-    color: "#ffffff",
-    border: "1px solid #4a90e2",
-    cursor: busy ? "not-allowed" : "pointer",
-  };
-
-  const removeBtnStyle = {
-    backgroundColor: "transparent",
-    border: "none",
-    cursor: "pointer",
-    color: "#e53e3e",
-    fontSize: "16px",
-    padding: "0 6px",
-  };
-
-  const toolbarStyle = {
-    display: "flex",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: "12px",
-    padding: "16px 24px",
-  };
-
-  const responsiveGrid4 =
-    typeof window !== "undefined" && window.innerWidth <= 768
-      ? grid4Style
-      : { ...grid4Style, gridTemplateColumns: "repeat(4, 1fr)" };
-
-  const responsiveGrid2 =
-    typeof window !== "undefined" && window.innerWidth <= 768
-      ? grid2Style
-      : { ...grid2Style, gridTemplateColumns: "repeat(2, 1fr)" };
-
-  const miniAddBtn = useMemo(
-    () => ({
-      ...buttonStyle,
-      padding: "8px 10px",
-      fontSize: "12px",
-      backgroundColor: lookupBusy ? "#cbd5e1" : "#edf2f7",
-      color: "#2d3748",
-      border: "1px solid #cbd5e1",
-      cursor: lookupBusy ? "not-allowed" : "pointer",
-      width: "100%",
-    }),
-    [lookupBusy]
-  );
-
-  // For headers: custom order (new fields first, then old YESNO_FIELDS)
-  const NEW_YESNO_ORDER = [
-    "trafficControlSpotter",
-    "vehicleSecured",
-    "loadSecured",
-    "areaSafe",
-    "manualHandlingControls",
-  ];
-
-  const OLD_YESNO_ORDER = [
-    "floorSealingIntact",
-    "floorCleaning",
-    "pestActivites",
-    "plasticCurtain",
-    "badOdour",
-    "ppeAvailable",
-  ];
-
-  const YESNO_RENDER_ORDER = [...NEW_YESNO_ORDER, ...OLD_YESNO_ORDER];
+    fontWeight: 900,
+    fontSize: 11.5,
+    fontFamily: "inherit",
+    border: on ? "1.5px solid transparent" : "1.5px solid #cbd5e1",
+    background: on
+      ? kind === "yes"
+        ? "linear-gradient(180deg,#0ea5e9,#0284c7)"
+        : "linear-gradient(180deg,#64748b,#475569)"
+      : "#fff",
+    color: on ? "#fff" : "#64748b",
+  });
 
   return (
-    <form onSubmit={handleSave} style={wrapStyle}>
-      <div style={cardStyle}>
-        {/* Header row 1 & 2 — controlled document fields (read-only) */}
-        <div style={{ ...sectionStyle, backgroundColor: "#f0f2f5" }}>
-          <div style={responsiveGrid4}>
-            <div>
-              <label style={labelStyle}>Document Title:</label>
-              <input style={lockedInputStyle} value={header.documentTitle} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Document No.:</label>
-              <input style={lockedInputStyle} value={header.documentNo} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Issue Date:</label>
-              <input style={lockedInputStyle} value={header.issueDate} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Revision No.:</label>
-              <input style={lockedInputStyle} value={header.revisionNo} readOnly disabled tabIndex={-1} />
-            </div>
+    <form onSubmit={handleSave}>
+      <IsoShell
+        icon="🚚"
+        title="Visual Inspection — Outbound Checklist"
+        subtitle={`${header.documentNo} · Rev ${header.revisionNo} · ${header.area}`}
+        actions={
+          <>
+            <label style={{ ...ISO_UI.metaBadge, marginBottom: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Report date
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+                style={{ ...field, minHeight: 34, padding: "6px 10px", width: 168 }}
+              />
+            </label>
+            <button type="button" onClick={addRow} style={ISO_UI.btn("secondary")}>+ Vehicle</button>
+            <button type="submit" disabled={busy} style={ISO_UI.btn("success", busy)}>
+              {busy ? "Saving…" : "💾 Save report"}
+            </button>
+          </>
+        }
+      >
+        {/* ── Document control: one strip of badges, expandable.
+              It used to be eight locked boxes eating the top third of the page. ── */}
+        <div style={{ ...cardStyle, padding: "10px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={ISO_UI.metaBadge}>📄 {header.documentTitle}</span>
+            <span style={ISO_UI.metaBadge}>No. {header.documentNo}</span>
+            <span style={ISO_UI.metaBadge}>Rev {header.revisionNo}</span>
+            <span style={ISO_UI.metaBadge}>Issued {header.issueDate}</span>
+            <button type="button" onClick={() => setDocOpen((v) => !v)} style={miniBtn}>
+              {docOpen ? "▴ Hide document control" : "▾ Document control"}
+            </button>
+
+            {/* catalog actions — they belong to the sheet, not to one row */}
+            <span style={{ width: 1, alignSelf: "stretch", background: "#e2e8f0", margin: "0 2px" }} />
+            <button type="button" style={miniBtn} disabled={lookupBusy} onClick={() => addLookupAndSelect("vehicle")}>
+              + Add vehicle no.
+            </button>
+            <button type="button" style={miniBtn} disabled={lookupBusy} onClick={() => addLookupAndSelect("driver")}>
+              + Add driver name
+            </button>
           </div>
-          <div style={{ ...responsiveGrid4, marginTop: "16px" }}>
-            <div>
-              <label style={labelStyle}>Area:</label>
-              <input style={lockedInputStyle} value={header.area} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Issued By:</label>
-              <input style={lockedInputStyle} value={header.issuedBy} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Controlling Officer:</label>
-              <input style={lockedInputStyle} value={header.controllingOfficer} readOnly disabled tabIndex={-1} />
-            </div>
-            <div>
-              <label style={labelStyle}>Approved By:</label>
-              <input style={lockedInputStyle} value={header.approvedBy} readOnly disabled tabIndex={-1} />
-            </div>
-          </div>
-        </div>
 
-        {/* Title + Report date */}
-        <div
-          style={{
-            ...sectionStyle,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "16px",
-          }}
-        >
-          <div style={titleStyle}>VISUAL INSPECTION (OUTBOUND CHECKLIST)</div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <label style={labelStyle}>Report Date:</label>
-            <input
-              type="date"
-              style={{ ...inputStyle, width: "auto" }}
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div style={tableWrapperStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                {[
-                  "VEHICLE NO",
-                  "DRIVER NAME",
-                  "TIME START",
-                  "TIME END",
-                  "TRUCK TEMPERATURE",
-
-                  // NEW columns
-                  "TRAFFIC CONTROL / SPOTTER USED",
-                  "VEHICLE SECURED (HANDBRAKE + CHOCKS)",
-                  "LOAD SECURED (STRAPS + INSPECTION)",
-                  "AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR)",
-                  "MANUAL HANDLING CONTROLS APPLIED",
-
-                  // Existing
-                  "FLOOR SEALING INTACT",
-                  "FLOOR CLEANING",
-                  "PEST ACTIVITES",
-                  "PLASTIC CURTAIN AVAILABLE/ CLEANING",
-                  "BAD ODOUR",
-                  "PPE AVAILABLE",
-
-                  "DESTINATION",
-                  "INFORMED TO (OPTIONAL)",
-                  "REMARKS",
-                ].map((h) => (
-                  <th key={h} style={thStyle}>
-                    {h}
-                  </th>
-                ))}
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  {/* VEHICLE NO (dropdown + add only on first row) */}
-                  <td style={isInvalid(i, "vehicleNo") ? tdInvalid : tdStyle}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <select
-                        style={isInvalid(i, "vehicleNo") ? inputInvalid : inputStyle}
-                        value={r.vehicleNo}
-                        onChange={(e) => setRow(i, "vehicleNo", e.target.value)}
-                      >
-                        <option value="">Select...</option>
-                        {vehicleOptions.map((v) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-
-                      {i === 0 && (
-                        <button
-                          type="button"
-                          style={miniAddBtn}
-                          disabled={lookupBusy}
-                          onClick={() => addLookupAndSelect("vehicle", 0)}
-                          title="Add new vehicle number"
-                        >
-                          + Add Vehicle No
-                        </button>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* DRIVER NAME (dropdown + add only on first row) */}
-                  <td style={isInvalid(i, "driverName") ? tdInvalid : tdStyle}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <select
-                        style={isInvalid(i, "driverName") ? inputInvalid : inputStyle}
-                        value={r.driverName}
-                        onChange={(e) => setRow(i, "driverName", e.target.value)}
-                      >
-                        <option value="">Select...</option>
-                        {driverOptions.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-
-                      {i === 0 && (
-                        <button
-                          type="button"
-                          style={miniAddBtn}
-                          disabled={lookupBusy}
-                          onClick={() => addLookupAndSelect("driver", 0)}
-                          title="Add new driver name"
-                        >
-                          + Add Driver Name
-                        </button>
-                      )}
-                    </div>
-                  </td>
-
-                  <td style={isInvalid(i, "timeStart") ? tdInvalid : tdStyle}>
-                    <input
-                      type="time"
-                      style={isInvalid(i, "timeStart") ? inputInvalid : inputStyle}
-                      value={r.timeStart}
-                      onChange={(e) => setRow(i, "timeStart", e.target.value)}
-                    />
-                  </td>
-
-                  <td style={isInvalid(i, "timeEnd") ? tdInvalid : tdStyle}>
-                    <input
-                      type="time"
-                      style={isInvalid(i, "timeEnd") ? inputInvalid : inputStyle}
-                      value={r.timeEnd}
-                      onChange={(e) => setRow(i, "timeEnd", e.target.value)}
-                    />
-                  </td>
-
-                  <td style={isInvalid(i, "tempCheck") ? tdInvalid : tdStyle}>
-                    <input
-                      type="number"
-                      step="0.1"
-                      style={isInvalid(i, "tempCheck") ? inputInvalid : inputStyle}
-                      value={r.tempCheck}
-                      onChange={(e) => setRow(i, "tempCheck", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Yes/No fields in chosen order */}
-                  {YESNO_RENDER_ORDER.map((k) => (
-                    <td key={k} style={isInvalid(i, k) ? tdInvalid : tdStyle}>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input
-                            type="radio"
-                            name={k + "-" + i}
-                            checked={r[k] === "yes"}
-                            onChange={() => setRow(i, k, "yes")}
-                            style={{ outline: "none" }}
-                          />
-                          YES
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input
-                            type="radio"
-                            name={k + "-" + i}
-                            checked={r[k] === "no"}
-                            onChange={() => setRow(i, k, "no")}
-                            style={{ outline: "none" }}
-                          />
-                          NO
-                        </label>
-                      </div>
-                    </td>
-                  ))}
-
-                  {/* DESTINATION - required */}
-                  <td style={isInvalid(i, "destination") ? tdInvalid : tdStyle}>
-                    <select
-                      style={isInvalid(i, "destination") ? inputInvalid : inputStyle}
-                      value={r.destination}
-                      onChange={(e) => setRow(i, "destination", e.target.value)}
-                      aria-required="true"
-                    >
-                      <option value="">Select...</option>
-                      {DESTINATIONS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-
-                  {/* INFORMED TO (optional) */}
-                  <td style={tdStyle}>
-                    <input
-                      style={inputStyle}
-                      value={r.informedTo}
-                      onChange={(e) => setRow(i, "informedTo", e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </td>
-
-                  <td style={tdStyle}>
-                    <input
-                      style={inputStyle}
-                      value={r.remarks}
-                      onChange={(e) => setRow(i, "remarks", e.target.value)}
-                    />
-                  </td>
-
-                  <td style={tdStyle}>
-                    {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle} title="Remove row">
-                        X
-                      </button>
-                    )}
-                  </td>
-                </tr>
+          {docOpen && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+                gap: 10,
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: "1px dashed #cbd5e1",
+              }}
+            >
+              {[
+                ["Area", header.area],
+                ["Issued by", header.issuedBy],
+                ["Controlling officer", header.controllingOfficer],
+                ["Approved by", header.approvedBy],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <span style={label}>{k}</span>
+                  <div style={{ ...field, background: "#f1f5f9", fontWeight: 700, display: "flex", alignItems: "center" }}>
+                    {v}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Signatures */}
-        <div style={sectionStyle}>
-          <div style={responsiveGrid2}>
-            <div>
-              <label style={labelStyle}>INSPECTED BY:</label>
-              <input style={inputStyle} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
             </div>
-            <div>
-              <label style={labelStyle}>VERIFIED BY:</label>
-              <input style={inputStyle} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* Toolbar */}
-        <div style={toolbarStyle}>
-          <button type="button" onClick={addRow} style={addButton}>
-            + Add Vehicle
-          </button>
-          <button type="submit" disabled={busy} style={saveButton}>
-            {busy ? "Saving..." : "Save Report"}
-          </button>
-          {msg && (
-            <strong style={{ marginLeft: "12px", color: "#4a5568", fontSize: "14px", whiteSpace: "pre-wrap" }}>
-              {msg}
-            </strong>
           )}
         </div>
-      </div>
+
+        {/* ── The sheet ── */}
+        <div style={{ ...cardStyle, padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <span style={{ ...ISO_UI.band, margin: 0, flex: 1, minWidth: 220 }}>
+              VISUAL INSPECTION (OUTBOUND CHECKLIST)
+            </span>
+            <span style={{ ...ISO_UI.metaBadge, marginBottom: 0 }}>
+              {rows.length} vehicle{rows.length === 1 ? "" : "s"}
+            </span>
+            <span style={{ ...ISO_UI.metaBadge, marginBottom: 0, color: "#64748b" }}>
+              ⇄ scroll sideways for the checks
+            </span>
+          </div>
+
+          <div style={sheetWrap}>
+            <table style={table}>
+              <thead>
+                {/* grouped band, so eleven look-alike columns read as two families */}
+                <tr>
+                  <th style={thGroup("#0284c7")} colSpan={3}>VEHICLE</th>
+                  <th style={thGroup("#0369a1")} colSpan={3}>TIMES &amp; TEMPERATURE</th>
+                  <th style={thGroup("#0891b2")} colSpan={CHECK_GROUPS[0].items.length}>
+                    {CHECK_GROUPS[0].title.toUpperCase()}
+                  </th>
+                  <th style={thGroup("#16a34a")} colSpan={CHECK_GROUPS[1].items.length}>
+                    {CHECK_GROUPS[1].title.toUpperCase()}
+                  </th>
+                  <th style={thGroup("#475569")} colSpan={3}>NOTES</th>
+                </tr>
+                <tr>
+                  <th style={th({ minWidth: 234, left: 0, zIndex: 5 })}>VEHICLE NO</th>
+                  <th style={th({ minWidth: 150 })}>DRIVER NAME</th>
+                  <th style={th({ minWidth: 140 })}>DESTINATION</th>
+                  <th style={th({ minWidth: 110 })}>TIME START</th>
+                  <th style={th({ minWidth: 110 })}>TIME END</th>
+                  <th style={th({ minWidth: 105 })}>TRUCK{"\n"}TEMPERATURE</th>
+                  {CHECK_COLUMNS.map(([k, text]) => (
+                    <th key={k} style={th({ minWidth: 104 })}>{text}</th>
+                  ))}
+                  <th style={th({ minWidth: 130 })}>INFORMED TO{"\n"}(OPTIONAL)</th>
+                  <th style={th({ minWidth: 160 })}>REMARKS</th>
+                  <th style={th({ minWidth: 132 })}>ROW</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((r, i) => {
+                  const dev = deviations(r);
+                  const zebra = i % 2 ? "#f8fafc" : "#fff";
+                  return (
+                    <tr key={i}>
+                      <td style={td({ ...stickyCol, background: zebra })}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span
+                            style={{
+                              width: 24, height: 24, flex: "0 0 auto", display: "grid", placeItems: "center",
+                              borderRadius: 8, background: "linear-gradient(180deg,#0ea5e9,#0284c7)",
+                              color: "#fff", fontWeight: 900, fontSize: 11,
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <select style={fieldOf(i, "vehicleNo")} value={r.vehicleNo} onChange={(e) => setRow(i, "vehicleNo", e.target.value)}>
+                            <option value="">Select…</option>
+                            {vehicleOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                          {dev > 0 && (
+                            <span
+                              title={`${dev} answer${dev === 1 ? "" : "s"} away from the compliant one`}
+                              style={{
+                                flex: "0 0 auto",
+                                fontSize: 11, fontWeight: 900, color: "#9a3412",
+                                background: "#fff7ed", border: "1px solid #fdba74",
+                                borderRadius: 999, padding: "3px 7px",
+                              }}
+                            >
+                              ⚠ {dev}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <select style={fieldOf(i, "driverName")} value={r.driverName} onChange={(e) => setRow(i, "driverName", e.target.value)}>
+                          <option value="">Select…</option>
+                          {driverOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <select style={fieldOf(i, "destination")} value={r.destination} onChange={(e) => setRow(i, "destination", e.target.value)}>
+                          <option value="">Select…</option>
+                          {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <input type="time" style={fieldOf(i, "timeStart")} value={r.timeStart} onChange={(e) => setRow(i, "timeStart", e.target.value)} />
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <input type="time" style={fieldOf(i, "timeEnd")} value={r.timeEnd} onChange={(e) => setRow(i, "timeEnd", e.target.value)} />
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <input
+                          type="number"
+                          step="0.1"
+                          style={fieldOf(i, "tempCheck")}
+                          value={r.tempCheck}
+                          onChange={(e) => setRow(i, "tempCheck", e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                        />
+                      </td>
+
+                      {CHECK_COLUMNS.map(([k]) => {
+                        const bad = r[k] !== COMPLIANT[k];
+                        return (
+                          <td
+                            key={k}
+                            style={td({
+                              background: isInvalid(i, k) ? "#fff1f2" : bad ? "#fff7ed" : zebra,
+                              textAlign: "center",
+                            })}
+                          >
+                            <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                              <button type="button" style={toggle(r[k] === "yes", "yes")} onClick={() => setRow(i, k, "yes")}>YES</button>
+                              <button type="button" style={toggle(r[k] === "no", "no")} onClick={() => setRow(i, k, "no")}>NO</button>
+                            </div>
+                          </td>
+                        );
+                      })}
+
+                      <td style={td({ background: zebra })}>
+                        <input style={field} value={r.informedTo} onChange={(e) => setRow(i, "informedTo", e.target.value)} placeholder="Optional" />
+                      </td>
+
+                      <td style={td({ background: zebra })}>
+                        <input style={field} value={r.remarks} onChange={(e) => setRow(i, "remarks", e.target.value)} />
+                      </td>
+
+                      <td style={td({ background: zebra, textAlign: "center" })}>
+                        <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                          <button type="button" style={iconBtn()} onClick={() => setAllCompliant(i)} title="Set every check to its compliant answer">
+                            ✓
+                          </button>
+                          <button type="button" style={iconBtn()} onClick={() => duplicateRow(i)} title="Copy this vehicle's checks to a new row">
+                            ⧉
+                          </button>
+                          {rows.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeRow(i)}
+                              style={iconBtn({ color: "#b91c1c", borderColor: "#fecaca", background: "#fef2f2" })}
+                              title="Remove this vehicle"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <button type="button" onClick={addRow} style={{ ...ISO_UI.btn("primary"), width: "100%", padding: "11px", marginTop: 10 }}>
+            + Add vehicle
+          </button>
+        </div>
+
+        {/* ── Signatures ── */}
+        <div style={{ ...cardStyle, padding: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
+            <div>
+              <span style={label}>Inspected by</span>
+              <input style={field} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
+            </div>
+            <div>
+              <span style={label}>Verified by</span>
+              <input style={field} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Save bar: stays in reach however long the sheet gets ── */}
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            padding: "10px 14px",
+            marginTop: 4,
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.94)",
+            border: "1px solid rgba(15,23,42,0.14)",
+            boxShadow: "0 -6px 22px rgba(2,132,199,0.10)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          {msg && <strong style={{ marginRight: "auto", color: "#0c4a6e", fontSize: 13, whiteSpace: "pre-wrap" }}>{msg}</strong>}
+          <button type="submit" disabled={busy} style={ISO_UI.btn("success", busy)}>
+            {busy ? "Saving…" : "💾 Save report"}
+          </button>
+        </div>
+      </IsoShell>
     </form>
   );
 }

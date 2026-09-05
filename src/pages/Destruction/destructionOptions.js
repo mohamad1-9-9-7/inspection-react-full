@@ -182,6 +182,8 @@ export function blankHeader() {
     witnessedBy: "",
     approvedBy: "",
     notes: "",
+    /* General photos for the whole record — no per-line link, no maximum. */
+    images: [],
   };
 }
 

@@ -239,6 +239,15 @@ export function toNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Read one report family.
+ *
+ * Returns `{ rows, failed }`. A failed read is NOT the same as an empty one:
+ * when the network drops, every family comes back empty and a traceability
+ * screen that cannot tell the two apart will state, in writing, that a product
+ * was never shipped anywhere — which is the worst thing this system can say.
+ * The failure is carried up so the UI can say "لم أستطع القراءة" instead.
+ */
 async function fetchType(type, { from, to, signal } = {}) {
   const qs = new URLSearchParams({ type, limit: "5000" });
   if (isYMD(from)) qs.set("from", from);
@@ -249,15 +258,19 @@ async function fetchType(type, { from, to, signal } = {}) {
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`trace: ${type} read failed — HTTP ${res.status}`);
+      return { rows: [], failed: true };
+    }
     const json = await res.json().catch(() => null);
     const list = Array.isArray(json)
       ? json
       : json?.data || json?.items || json?.reports || json?.rows || [];
-    return Array.isArray(list) ? list : [];
+    return { rows: Array.isArray(list) ? list : [], failed: false };
   } catch (e) {
-    if (e?.name !== "AbortError") console.error(`trace: ${type} read failed`, e);
-    return [];
+    if (e?.name === "AbortError") return { rows: [], failed: false };
+    console.error(`trace: ${type} read failed`, e);
+    return { rows: [], failed: true };
   }
 }
 
@@ -591,6 +604,9 @@ const EMPTY_TRACE = {
   conditions: [],
   returns: [],
   scanned: 0,
+  // Families that could not be read at all (network down, server error). An
+  // empty trace with failures is "unknown", not "nothing happened".
+  failed: [],
 };
 
 /** Read one set of report families and sort the hits into the four buckets. */
@@ -602,10 +618,10 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
   let done = 0;
   const results = await Promise.all(
     jobs.map(async (job) => {
-      const rows = await fetchType(job.type, { from, to, signal });
+      const { rows, failed } = await fetchType(job.type, { from, to, signal });
       done += 1;
       if (typeof onProgress === "function") onProgress(done, jobs.length);
-      return { job, rows };
+      return { job, rows, failed };
     })
   );
 
@@ -616,8 +632,10 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
   const conditions = [];
   const returns = [];
   let scanned = 0;
+  const failed = [];
 
-  results.forEach(({ job, rows }) => {
+  results.forEach(({ job, rows, failed: bad }) => {
+    if (bad) failed.push(job.type);
     scanned += rows.length;
     if (job.key === "shipment") shipments.push(...fromShipments(rows, match));
     else if (job.key === "receiving") receiving.push(...fromReceiving(rows, match, job.branch));
@@ -634,7 +652,7 @@ async function runFamilies(jobs, { code, name, from, to, signal, onProgress }) {
   conditions.sort(byDateDesc);
   returns.sort(byDateDesc);
 
-  return { shipments, receiving, batches, dispatch, conditions, returns, scanned };
+  return { shipments, receiving, batches, dispatch, conditions, returns, scanned, failed };
 }
 
 const ARRIVAL_JOBS = [
@@ -680,6 +698,7 @@ export function mergeTrace(a, b) {
     conditions: [...(a?.conditions || []), ...(b?.conditions || [])],
     returns: [...(a?.returns || []), ...(b?.returns || [])],
     scanned: (a?.scanned || 0) + (b?.scanned || 0),
+    failed: [...(a?.failed || []), ...(b?.failed || [])],
   };
 }
 

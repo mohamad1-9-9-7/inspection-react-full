@@ -23,7 +23,7 @@ import {
   FiCheck, FiInfo, FiActivity, FiPieChart, FiSave, FiTrash2,
   FiArrowRight, FiCopy, FiLayers, FiAlertTriangle, FiFileText,
   FiFilter, FiColumns, FiZap, FiHelpCircle, FiPackage, FiClock,
-  FiTarget, FiFilePlus, FiArrowLeft,
+  FiTarget, FiFilePlus, FiArrowLeft, FiImage,
 } from "react-icons/fi";
 import { Link } from "react-router-dom";
 import EmailSendModal from "../shared/EmailSendModal";
@@ -307,6 +307,9 @@ const KEY_ALIASES = {
   action: "action", reason: "action",
   ref: "refNo", refno: "refNo", reference: "refNo",
   expiry: "expiry",
+  proddate: "proddate", production: "proddate", productiondate: "proddate",
+  method: "method",
+  cost: "cost", unitcost: "cost",
   remarks: "remarks",
   qty: "qty", quantity: "qty",
   qtytype: "qtytype", type: "qtytype",
@@ -324,6 +327,7 @@ function rowMatchesPower(row, parsed) {
       String(row.quantity ?? ""),
       (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
+      row.productionDate, row.destructionMethod, String(row.unitCost ?? ""),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
     if (!hay) return false;
   }
@@ -346,6 +350,12 @@ function rowMatchesPower(row, parsed) {
       if (v === "empty") { if (expiry.trim() !== "") return false; }
       else if (v === "nonempty") { if (expiry.trim() === "") return false; }
       else if (!expiry.includes(v)) return false;
+    } else if (aliased === "proddate") {
+      if (!String(row.productionDate || "").toLowerCase().includes(v)) return false;
+    } else if (aliased === "method") {
+      if (!String(row.destructionMethod || "").toLowerCase().includes(v)) return false;
+    } else if (aliased === "cost") {
+      if (!String(row.unitCost ?? "").toLowerCase().includes(v)) return false;
     } else if (aliased === "remarks") {
       const r = String(row.remarks || "").toLowerCase();
       if (v === "empty") { if (r.trim() !== "") return false; }
@@ -495,6 +505,112 @@ function IconBtn({ icon: Icon, onClick, title, active = false, danger = false, d
       {Icon ? <Icon size={14} /> : null}
       {children}
     </button>
+  );
+}
+
+/* ============================================================
+   Selected record header.
+   The row table only carries the per-line fields; everything the input form
+   collects once per record — where it happened, by what method, the
+   contractor, the municipality reference, who destroyed / witnessed /
+   approved it, the general notes and the general photos — had nowhere to
+   appear until this strip.
+   ============================================================ */
+function RecordSummary({ report, photos = [], onPhotos, totals }) {
+  if (!report) return null;
+  const h = report.header || {};
+  const branch = isOtherBranch(h.branch)
+    ? h.customBranch || ""
+    : normalizeBranch(h.branch);
+  const method = h.method === "Other..." ? h.customMethod || "Other" : h.method || "";
+
+  const fields = [
+    ["Branch / POS", branch],
+    ["Destruction date", h.destructionDate || ""],
+    ["Location", h.location || ""],
+    ["Method", method],
+    ["Disposal company", h.disposalCompany || ""],
+    ["Municipality / receipt ref.", h.municipalityRef || ""],
+    ["Destroyed by", h.performedBy || ""],
+    ["Witnessed by", h.witnessedBy || ""],
+    ["Approved by (QA)", h.approvedBy || ""],
+  ];
+
+  return (
+    <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 10, flexWrap: "wrap", marginBottom: 12,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <h2 style={sx.h2}>Record · {report.reportDate}</h2>
+          {report.refNo && (
+            <span style={{ ...sx.pill, background: T.primaryS, color: T.primaryD, borderColor: "#c7d2fe" }}>
+              {report.refNo}
+            </span>
+          )}
+        </div>
+        <div className="br-noprint" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {totals && (
+            <>
+              <span style={sx.pill}>{totals.count} / {totals.total} lines</span>
+              {totals.kg > 0 && (
+                <span style={{ ...sx.pill, background: T.infoS, color: T.info, borderColor: "#a5f3fc" }}>
+                  {fmtNum(totals.kg)} kg
+                </span>
+              )}
+              {totals.pcs > 0 && (
+                <span style={{ ...sx.pill, background: T.successS, color: T.success, borderColor: "#a7f3d0" }}>
+                  {totals.pcs} pcs
+                </span>
+              )}
+              {totals.value > 0 && (
+                <span style={{ ...sx.pill, background: T.warningS, color: T.warning, borderColor: "#fde68a" }}>
+                  AED {fmtMoney(totals.value)}
+                </span>
+              )}
+            </>
+          )}
+          <IconBtn
+            icon={FiImage}
+            onClick={onPhotos}
+            disabled={!photos.length}
+            title={
+              photos.length
+                ? `View the ${photos.length} general photo(s) of this record`
+                : "This record has no general photos"
+            }
+          >
+            Photos{photos.length ? ` (${photos.length})` : ""}
+          </IconBtn>
+        </div>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+        gap: 12,
+      }}>
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            <div style={{ ...sx.h3, fontSize: 11, marginBottom: 3 }}>{label}</div>
+            <div style={{
+              fontSize: 13, fontWeight: 600,
+              color: value ? T.text : T.textS,
+            }}>
+              {value || "—"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {h.notes ? (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${T.border}` }}>
+          <div style={{ ...sx.h3, fontSize: 11, marginBottom: 3 }}>General notes</div>
+          <div style={{ fontSize: 13, color: T.text }}>{h.notes}</div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -2237,17 +2353,35 @@ function useToast() {
    MAIN PAGE
    ============================================================ */
 const ALL_COLUMNS = [
-  { key: "sl",          label: "SL", sortable: false, always: true, width: 50 },
-  { key: "itemCode",    label: "ITEM CODE", sortable: true,  width: 110 },
-  { key: "productName", label: "PRODUCT NAME", sortable: true, width: 220 },
-  { key: "origin",      label: "BATCH / LOT", sortable: true, width: 120 },
-  { key: "pos",         label: "POS", sortable: true, width: 130 },
-  { key: "quantity",    label: "QTY", sortable: true, width: 80 },
-  { key: "qtyType",     label: "QTY TYPE", sortable: true, width: 90 },
-  { key: "expiry",      label: "EXPIRY", sortable: true, width: 100 },
-  { key: "remarks",     label: "REMARKS", sortable: true, width: 160 },
-  { key: "action",      label: "REASON", sortable: true, width: 220 },
+  { key: "sl",             label: "SL", sortable: false, always: true, width: 50 },
+  { key: "itemCode",       label: "ITEM CODE", sortable: true,  width: 110 },
+  { key: "productName",    label: "PRODUCT NAME", sortable: true, width: 220 },
+  { key: "origin",         label: "BATCH / LOT", sortable: true, width: 120 },
+  { key: "pos",            label: "POS", sortable: true, width: 130 },
+  { key: "productionDate", label: "PROD. DATE", sortable: true, width: 105 },
+  { key: "quantity",       label: "QTY", sortable: true, width: 80 },
+  { key: "qtyType",        label: "QTY TYPE", sortable: true, width: 90 },
+  { key: "unitCost",       label: "UNIT COST", sortable: true, width: 95 },
+  { key: "value",          label: "VALUE (AED)", sortable: true, width: 105 },
+  { key: "expiry",         label: "EXPIRY", sortable: true, width: 100 },
+  { key: "remarks",        label: "REMARKS", sortable: true, width: 160 },
+  { key: "action",         label: "REASON", sortable: true, width: 220 },
+  { key: "method",         label: "METHOD", sortable: true, width: 170 },
 ];
+
+/* Line value = quantity × unit cost, the figure the input form footers up. */
+function lineValueOf(row) {
+  const q = Number(row?.quantity);
+  const c = Number(row?.unitCost);
+  if (!Number.isFinite(q) || !Number.isFinite(c)) return 0;
+  return q * c;
+}
+
+function fmtMoney(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return "";
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 const SEARCH_QUICK_ACTIONS = [
   { label: "Expired", query: "reason:expired" },
@@ -2543,18 +2677,7 @@ export default function DestructionBrowse() {
     const cols = visibleColumns.filter((c) => c.key !== "sl");
     const rows = buildSelectedRows();
     const head = cols.map((c) => c.label);
-    const body = rows.map((r, i) => cols.map((c) => {
-      if (c.key === "itemCode") return r.itemCode || "";
-      if (c.key === "productName") return r.productName || "";
-      if (c.key === "origin") return r.origin || "";
-      if (c.key === "pos") return safeButchery(r) || "";
-      if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
-      if (c.key === "expiry") return r.expiry || "";
-      if (c.key === "remarks") return r.remarks || "";
-      if (c.key === "action") return actionText(r) || "";
-      return "";
-    }));
+    const body = rows.map((r) => cols.map((c) => cellText(r, c.key)));
     return [head, ...body].map((row) => row.map((v) => String(v ?? "").replace(/\t/g, " ").replace(/\n/g, " ")).join("\t")).join("\n");
   }
   async function copySelectionTSV() {
@@ -2576,18 +2699,7 @@ export default function DestructionBrowse() {
     const cols = visibleColumns.filter((c) => c.key !== "sl");
     const rows = buildSelectedRows();
     const head = cols.map((c) => c.label);
-    const body = rows.map((r) => cols.map((c) => {
-      if (c.key === "itemCode") return r.itemCode || "";
-      if (c.key === "productName") return r.productName || "";
-      if (c.key === "origin") return r.origin || "";
-      if (c.key === "pos") return safeButchery(r) || "";
-      if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
-      if (c.key === "expiry") return r.expiry || "";
-      if (c.key === "remarks") return r.remarks || "";
-      if (c.key === "action") return actionText(r) || "";
-      return "";
-    }));
+    const body = rows.map((r) => cols.map((c) => cellText(r, c.key)));
     const csv = "﻿" + [head, ...body].map((row) => row.map(csvEscape).join(",")).join("\r\n");
     downloadFile(`condemnation_${selectedReport.reportDate}_selection.csv`, csv);
     toast(`${rows.length} rows exported`, "ok");
@@ -2747,6 +2859,24 @@ export default function DestructionBrowse() {
   }, [filteredReportsAsc, selectedDate]);
 
   const selectedReport = filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
+
+  /* Photos attached to the record as a whole (header.images), as opposed to
+     the per-line evidence that hangs off each item row. */
+  const reportPhotos = useMemo(() => {
+    const list = selectedReport?.header?.images;
+    return Array.isArray(list) ? list.filter((u) => u && typeof u === "string") : [];
+  }, [selectedReport]);
+
+  const openReportPhotos = () => {
+    if (!reportPhotos.length) return;
+    setViewerData({
+      title: `Report photos — ${selectedReport?.reportDate || ""}${
+        selectedReport?.refNo ? " · " + selectedReport.refNo : ""
+      }`,
+      images: reportPhotos,
+    });
+    setViewerOpen(true);
+  };
 
   /* Fire the deferred ?email=1 open — but only once the *requested* report is
      the selected one, so we never open the composer on the wrong day. */
@@ -3163,6 +3293,7 @@ export default function DestructionBrowse() {
       String(row.quantity ?? ""),
       (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
+      row.productionDate, row.destructionMethod, String(row.unitCost ?? ""),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
   }
 
@@ -3181,10 +3312,25 @@ export default function DestructionBrowse() {
       case "pos":         return safeButchery(row) || "";
       case "quantity":    return Number(row.quantity || 0);
       case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      case "productionDate": return row.productionDate || "";
+      case "unitCost":    return Number(row.unitCost || 0);
+      case "value":       return lineValueOf(row);
+      case "method":      return row.destructionMethod || "";
       case "expiry":      return row.expiry || "";
       case "remarks":     return row.remarks || "";
       case "action":      return actionText(row) || "";
       default:            return "";
+    }
+  }
+
+  /* One place both exporters read, so a column added to the table is a column
+     that lands in the clipboard and the CSV without a third edit. */
+  function cellText(r, key) {
+    switch (key) {
+      case "quantity": return r.quantity ?? "";
+      case "unitCost": return r.unitCost ?? "";
+      case "value": { const v = lineValueOf(r); return v ? v.toFixed(2) : ""; }
+      default: return String(getCellValue(r, key) ?? "");
     }
   }
 
@@ -3197,7 +3343,8 @@ export default function DestructionBrowse() {
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
     rows.sort((a, b) => {
       const va = getCellValue(a, sort.key), vb = getCellValue(b, sort.key);
-      let cmp = sort.key === "quantity" ? (va ?? 0) - (vb ?? 0) : collator.compare(String(va ?? ""), String(vb ?? ""));
+      const numericSort = sort.key === "quantity" || sort.key === "unitCost" || sort.key === "value";
+      let cmp = numericSort ? (va ?? 0) - (vb ?? 0) : collator.compare(String(va ?? ""), String(vb ?? ""));
       if (cmp === 0) cmp = a.__i - b.__i;
       return sort.dir === "desc" ? -cmp : cmp;
     });
@@ -3211,14 +3358,15 @@ export default function DestructionBrowse() {
   const selectedSummary = useMemo(() => {
     if (!selectedReport) return null;
     const rows = sortedRows;
-    let kg = 0, pcs = 0, other = 0;
+    let kg = 0, pcs = 0, other = 0, value = 0;
     rows.forEach((it) => {
       const qty = Number(it.quantity || 0);
       if (isKgType(it.qtyType)) kg += qty;
       else if (isPcsType(it.qtyType)) pcs += qty;
       else other += qty;
+      value += lineValueOf(it);
     });
-    return { count: rows.length, total: (selectedReport.items || []).length, kg, pcs, other };
+    return { count: rows.length, total: (selectedReport.items || []).length, kg, pcs, other, value };
   }, [selectedReport, sortedRows]);
 
   /* ============================================================
@@ -3381,6 +3529,10 @@ export default function DestructionBrowse() {
   const collectReportImages = useCallback((rep) => {
     const items = rep?.items || [];
     const urls = [];
+    /* General report photos first, then the per-line evidence. */
+    if (Array.isArray(rep?.header?.images)) {
+      for (const u of rep.header.images) if (u && typeof u === "string") urls.push(u);
+    }
     for (const it of items) {
       if (Array.isArray(it.images)) {
         for (const u of it.images) if (u && typeof u === "string") urls.push(u);
@@ -4610,6 +4762,20 @@ export default function DestructionBrowse() {
             >
               <FiFileText size={14} /> Reports
             </button>
+            <IconBtn
+              icon={FiImage}
+              onClick={openReportPhotos}
+              disabled={!reportPhotos.length}
+              title={
+                reportPhotos.length
+                  ? `View the ${reportPhotos.length} general photo(s) of the ${selectedReport?.reportDate || ""} record`
+                  : selectedReport
+                    ? `No general photos on the ${selectedReport.reportDate} record`
+                    : "No record selected"
+              }
+            >
+              Photos{reportPhotos.length ? ` (${reportPhotos.length})` : ""}
+            </IconBtn>
             <IconBtn icon={FiPackage} onClick={() => { setProductInit({ code: "", name: "" }); setProductOpen(true); }} title="Open product insights">
               Product
             </IconBtn>
@@ -5087,6 +5253,13 @@ export default function DestructionBrowse() {
         {/* ====== BROWSE TAB ====== */}
         {tab === "browse" && (
           <>
+            <RecordSummary
+              report={selectedReport}
+              photos={reportPhotos}
+              onPhotos={openReportPhotos}
+              totals={selectedSummary}
+            />
+
             {/* Search bar */}
             <div className="br-noprint" style={{ ...sx.card, padding: 12, marginBottom: 12 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -6025,7 +6198,10 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
               {columns.map((c) => {
                 const tdStyle = {
                   padding: rowPad, borderBottom: `1px solid ${T.borderS}`,
-                  textAlign: c.key === "quantity" ? "right" : "left",
+                  textAlign:
+                    c.key === "quantity" || c.key === "unitCost" || c.key === "value"
+                      ? "right"
+                      : "left",
                   color: T.text, verticalAlign: "top",
                 };
                 if (c.key === "sl") return <td key={c.key} style={{ ...tdStyle, color: T.textS, fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>;
@@ -6052,6 +6228,10 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                   </td>
                 );
                 if (c.key === "origin") return <td key={c.key} style={tdStyle}>{search ? highlight(row.origin || "", search) : row.origin}</td>;
+                if (c.key === "productionDate") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: T.textM }}>{row.productionDate || ""}</td>;
+                if (c.key === "unitCost") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: T.textM }}>{fmtMoney(row.unitCost)}</td>;
+                if (c.key === "value") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{fmtMoney(lineValueOf(row))}</td>;
+                if (c.key === "method") return <td key={c.key} style={{ ...tdStyle, color: T.textM, fontSize: 12 }}>{row.destructionMethod || ""}</td>;
                 if (c.key === "pos") return <td key={c.key} style={tdStyle}>{search ? highlight(safeButchery(row) || "", search) : safeButchery(row)}</td>;
                 if (c.key === "quantity") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{row.quantity}</td>;
                 if (c.key === "qtyType") return <td key={c.key} style={tdStyle}>

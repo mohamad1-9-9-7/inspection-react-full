@@ -184,25 +184,45 @@ export function useProductCatalog() {
 
   const allItems = useMemo(() => {
     const map = new Map();
+    /* A later layer wins on code and name, but only fills origin / category /
+       uom when it actually carries one: the server catalog stores just a code
+       and a name, so overriding an items.json row with it used to erase the
+       origin tag and the unit. */
+    const entry = (r, prev) => ({
+      item_code: r.item_code,
+      description: r.description,
+      origin: r.origin || prev?.origin || "",
+      category: r.category || prev?.category || "",
+      uom: r.uom || prev?.uom || "",
+    });
     const norm = (it) => {
       const code = String(it?.item_code ?? it?.itemCode ?? "").trim();
       const name = String(it?.description ?? it?.productName ?? it?.name ?? "").trim();
       if (!name) return null;
       const key = normalizeCode(code) || normalizeCode(name);
-      return key ? { key, item_code: code, description: name } : null;
+      return key
+        ? {
+            key,
+            item_code: code,
+            description: name,
+            origin: String(it?.origin ?? "").trim(),
+            category: String(it?.category ?? "").trim(),
+            uom: String(it?.uom ?? "").trim(),
+          }
+        : null;
     };
     // Base first (keep first occurrence), then custom entries override by code.
     (Array.isArray(itemsAll) ? itemsAll : []).forEach((it) => {
       const r = norm(it);
-      if (r && !map.has(r.key)) map.set(r.key, { item_code: r.item_code, description: r.description });
+      if (r && !map.has(r.key)) map.set(r.key, entry(r));
     });
     (Array.isArray(customItems) ? customItems : []).forEach((it) => {
       const r = norm(it);
-      if (r) map.set(r.key, { item_code: r.item_code, description: r.description });
+      if (r) map.set(r.key, entry(r, map.get(r.key)));
     });
     (Array.isArray(serverItems) ? serverItems : []).forEach((it) => {
       const r = norm(it);
-      if (r) map.set(r.key, { item_code: r.item_code, description: r.description });
+      if (r) map.set(r.key, entry(r, map.get(r.key)));
     });
     return Array.from(map.values());
   }, [itemsAll, customItems, serverItems]);

@@ -8,6 +8,7 @@ import {
   saveCustomItems,
 } from "./monitor/branches/_shared/ProductPicker";
 import ReturnNoteScanner from "./shared/ReturnNoteScanner";
+import ReturnNoteImport from "./shared/ReturnNoteImport";
 import CodeSuggest from "./shared/CodeSuggest";
 import { fetchFiledDates, rememberFiledDate } from "../utils/filedDates";
 import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
@@ -67,6 +68,23 @@ const ACTIONS = [
   "Other...",
 ];
 
+/* An action that ends in the bin has to say WHY - a condemned return with no
+   reason on it is the one row an auditor always stops at, and the reason is
+   never recoverable later. "Condemnation / Cooking" counts too: the meat is
+   still condemned, cooking is only how it leaves. */
+const CONDEMN_ACTIONS = ["Condemnation", "Condemnation / Cooking"];
+const isCondemnation = (action) =>
+  CONDEMN_ACTIONS.some((a) => a.toLowerCase() === String(action || "").trim().toLowerCase());
+
+/* What each save error is called when it is read back to someone. */
+const SAVE_FIELD_LABEL = {
+  itemCode: "Code",
+  butchery: "Branch",
+  quantity: "Qty",
+  action: "Action",
+  remarks: "Remarks (required for condemnation)",
+};
+
 const QTY_TYPES = ["KG", "PCS", "PLATE", "أخرى / Other"];
 
 /* REMARKS is picked from a list now, but it is still STORED as a plain
@@ -94,6 +112,58 @@ function qtyTypeFromUom(uom) {
   if (!u) return null;
   if (UOM_TO_QTY[u]) return { qtyType: UOM_TO_QTY[u], customQtyType: "" };
   return { qtyType: OTHER_QTY, customQtyType: u };
+}
+
+/* The optional half of an imported line: everything past the item code, the
+   branch and the weight. Each field is mapped onto the value the matching
+   dropdown actually offers, and a field that maps to nothing is LEFT OUT of
+   the patch entirely rather than written as an empty string - the catalog has
+   already filled some of these, and an import must not blank them.
+
+   `hit` is the catalog item the code matched, so the unit it carries can be
+   overridden by a unit stated on the paper without losing the rest. */
+function extraFromEntry(entry = {}, hit = null) {
+  const out = {};
+
+  const unit = String(entry.unit || "").trim();
+  if (unit) {
+    const q = qtyTypeFromUom(unit);
+    if (q) {
+      out.qtyType = q.qtyType;
+      out.customQtyType = q.customQtyType;
+    }
+  }
+
+  // the expiry cell is <input type="date"> - anything else it cannot show
+  const expiry = String(entry.expiry || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiry)) out.expiry = expiry;
+
+  /* REMARKS stays a comma-separated string (see REMARK_OPTIONS above). Known
+     remarks are snapped to the exact spelling the picker uses so the chips
+     light up; anything else is kept as typed, which the field has always
+     allowed. */
+  const remarks = splitRemarks(entry.remarks).map((r) => {
+    const m = REMARK_OPTIONS.find((o) => o.toLowerCase() === r.toLowerCase());
+    return m || r;
+  });
+  if (remarks.length) out.remarks = joinRemarks(remarks);
+
+  const action = String(entry.action || "").trim();
+  if (action) {
+    const known = ACTIONS.find((a) => a.toLowerCase() === action.toLowerCase());
+    if (known) out.action = known;
+    else {
+      out.action = "Other...";
+      out.customAction = action;
+    }
+  }
+
+  /* ORIGIN is a closed list. A value outside it would be written into a select
+     that cannot display it, so the catalog's own origin is left standing. */
+  const origin = String(entry.origin || "").trim().toUpperCase();
+  if (origin && ORIGINS.includes(origin) && (!hit || !hit.origin)) out.origin = origin;
+
+  return out;
 }
 
 /* These two strings are the values stored inside saved reports — never change them.
@@ -196,6 +266,45 @@ function rowHasData(r) {
     (r.images?.length || 0) > 0 ||
     r.quantity !== ""
   );
+}
+
+/* Every box on a row that is meant to carry a value, and how to tell whether
+   it has one. IMAGES and REMARKS are deliberately absent - most returns need
+   no photo and most need no remark, and a row that is otherwise complete must
+   not be held open, or painted as unfinished, by an optional box.
+
+   This is a COMPLETENESS check, not the save rule: `validateBeforeSave` still
+   decides what blocks a save (code, branch, quantity, action). This paints the
+   table so a full row can be seen at a glance and a half-typed one says which
+   box it is waiting for - the two are kept apart on purpose, so tightening the
+   colouring can never quietly start rejecting reports. */
+const ROW_FIELDS = {
+  itemCode: (r) => !!String(r.itemCode || "").trim(),
+  productName: (r) => !!String(r.productName || "").trim(),
+  origin: (r) => !!String(r.origin || "").trim(),
+  // "Other branch" is only answered once the name beside it is typed
+  butchery: (r) =>
+    r.butchery === OTHER_BRANCH
+      ? !!String(r.customButchery || "").trim()
+      : !!String(r.butchery || "").trim(),
+  transferNo: (r) => !!String(r.transferNo || "").trim(),
+  quantity: (r) => Number.isFinite(Number(r.quantity)) && String(r.quantity).trim() !== "" && Number(r.quantity) > 0,
+  qtyType: (r) =>
+    r.qtyType === OTHER_QTY ? !!String(r.customQtyType || "").trim() : !!String(r.qtyType || "").trim(),
+  expiry: (r) => !!String(r.expiry || "").trim(),
+  // free on any other action, required the moment the row says "condemned"
+  remarks: (r) => !isCondemnation(r.action) || !!String(r.remarks || "").trim(),
+  action: (r) =>
+    r.action === "Other..." ? !!String(r.customAction || "").trim() : !!String(r.action || "").trim(),
+};
+
+/** Which boxes on this row are still empty, as {field: true}. */
+function missingIn(row) {
+  const out = {};
+  Object.keys(ROW_FIELDS).forEach((f) => {
+    if (!ROW_FIELDS[f](row)) out[f] = true;
+  });
+  return out;
 }
 
 /* ===== Helpers: Images API ===== */
@@ -491,7 +600,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
 }
 
 /* ===== Remarks picker (multi-select + free text) ===== */
-function RemarksPicker({ value, onChange }) {
+function RemarksPicker({ value, onChange, invalid = false }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [custom, setCustom] = useState("");
 
@@ -523,7 +632,14 @@ function RemarksPicker({ value, onChange }) {
           if (v === "__other__") setCustomOpen(true);
           else add(v);
         }}
-        style={{ ...inputBase, width: "100%", cursor: "pointer" }}
+        style={{
+          ...inputBase,
+          width: "100%",
+          cursor: "pointer",
+          // this cell is a picker, not an input, so it marks itself
+          border: invalid ? "2px solid #ef4444" : inputBase.border,
+          background: invalid ? "#fff1f2" : inputBase.background,
+        }}
       >
         <option value="">+ Add remark…</option>
         {available.map((o) => (
@@ -555,7 +671,7 @@ function RemarksPicker({ value, onChange }) {
       )}
 
       {selected.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div className="rt-note" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
           {selected.map((r, i) => (
             <span
               key={`${r}_${i}`}
@@ -886,6 +1002,10 @@ export default function Returns() {
   /* ===== UI ===== */
   const [compact, setCompact] = useState(true);
   const [scanOpen, setScanOpen] = useState(false);
+  /* The second way in: a note that was read somewhere else and arrives as a
+     file of plain values. Same landing path as the scanner (`applyScan`), so
+     rows behave identically however they were read. */
+  const [importOpen, setImportOpen] = useState(false);
 
   /* ===== Data ===== */
   const makeEmptyRow = () => ({
@@ -1105,7 +1225,16 @@ export default function Returns() {
      `entries` is [{ code, branch }] in the page order shown in the scanner,
      so several papers - from different branches - land in one pass and keep
      their order. The scanner sends codes only: the product name comes from
-     our catalog, exactly as it would if the code had been typed by hand. */
+     our catalog, exactly as it would if the code had been typed by hand.
+
+     The IMPORT dialog sends the same payload with more of the line filled in
+     (weight, expiry, remarks, action), because a note read away from the app
+     arrives as text and has nothing left to guess at. Every one of those
+     fields is OPTIONAL and every one is checked against the same lists the
+     dropdowns offer - an action we do not have becomes "Other...", an origin
+     we do not have is ignored rather than written into a select that cannot
+     show it - so a file cannot put a value in a row that a person could not
+     have typed there. */
   const applyScan = ({ entries }) => {
     if (!Array.isArray(entries) || !entries.length) return;
 
@@ -1128,7 +1257,8 @@ export default function Returns() {
       let at = next.length;
       while (at > 0 && !rowHasData(next[at - 1])) at--;
 
-      entries.forEach(({ code, branch, transferNo, ordered }) => {
+      entries.forEach((entry) => {
+        const { code, branch, transferNo, ordered } = entry;
         const hit = allItems.find(
           (it) => normalize(it.item_code) === normalize(code)
         );
@@ -1141,7 +1271,8 @@ export default function Returns() {
           customButchery: branch && !known ? branch : "",
           transferNo: String(transferNo || ""),
           /* the paper still names its column ORDERED - it holds the quantity */
-          quantity: String(ordered ?? ""),
+          quantity: String(entry.quantity ?? ordered ?? ""),
+          ...extraFromEntry(entry, hit),
         };
         at++;
       });
@@ -1153,7 +1284,8 @@ export default function Returns() {
 
     const pages = new Set(entries.map((e) => e.branch || "?")).size;
     setSaveMsg(
-      `✅ ${entries.length} row(s) added from ${pages} scanned branch${pages === 1 ? "" : "es"}.`
+      // reads the same whether the notes were photographed or imported
+      `✅ ${entries.length} row(s) added from ${pages} branch${pages === 1 ? "" : "es"}.`
     );
     setTimeout(() => setSaveMsg(""), 2600);
   };
@@ -1478,6 +1610,7 @@ export default function Returns() {
       if (!String(r.butchery || "").trim()) e.butchery = true;
       if (!(Number.isFinite(Number(r.quantity)) && Number(r.quantity) > 0)) e.quantity = true;
       if (!String(r.action || "").trim()) e.action = true;
+      if (isCondemnation(r.action) && !String(r.remarks || "").trim()) e.remarks = true;
       if (Object.keys(e).length) errors[idx] = e;
     });
 
@@ -1638,7 +1771,10 @@ export default function Returns() {
       const badRows = Object.keys(errors)
         .map((k) => Number(k) + 1)
         .sort((a, b) => a - b);
-      setSaveMsg(`❌ Missing required fields in rows: ${badRows.join(", ")} (Code/Branch/Qty/Action).`);
+      const badFields = [...new Set(Object.values(errors).flatMap((e) => Object.keys(e)))]
+        .map((f) => SAVE_FIELD_LABEL[f] || f)
+        .join("/");
+      setSaveMsg(`❌ Missing required fields in rows: ${badRows.join(", ")} (${badFields}).`);
       setTimeout(() => setSaveMsg(""), 4500);
       return;
     }
@@ -1717,8 +1853,12 @@ export default function Returns() {
   const currentRowForImages = imageRowIndex >= 0 ? rows?.[imageRowIndex] || {} : null;
 
 
+  /* Roomier than it was: the row heights below and the type sizes in RET_CSS
+     were raised together, because raising one without the other only makes the
+     table look cramped in the other direction. Compact mode is still the
+     tighter of the two - it just no longer means small. */
   const th = (w) => ({
-    padding: compact ? "10px 6px" : "13px 7px",
+    padding: compact ? "13px 8px" : "17px 10px",
     textAlign: "center",
     fontSize: compact ? "0.95em" : "1.05em",
     fontWeight: "bold",
@@ -1727,7 +1867,7 @@ export default function Returns() {
   });
 
   const td = {
-    padding: compact ? "8px 6px" : "10px 6px",
+    padding: compact ? "11px 8px" : "15px 10px",
     textAlign: "center",
     verticalAlign: "top",
     borderBottom: "1px solid #f3e8ff",
@@ -2023,6 +2163,24 @@ export default function Returns() {
         </button>
 
         <button
+          onClick={() => setImportOpen(true)}
+          title="Load a note that was already read - as a file, or pasted in"
+          style={{
+            background: "linear-gradient(135deg, #0e7490, #22d3ee)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 14,
+            fontWeight: "bold",
+            fontSize: "1.02em",
+            padding: "10px 26px",
+            cursor: "pointer",
+            boxShadow: "0 2px 8px #a5f3fc",
+          }}
+        >
+          📥 Import Read Note
+        </button>
+
+        <button
           onClick={() => navigate("/returns/view")}
           style={{
             background: "linear-gradient(135deg, #884ea0, #a855f7)",
@@ -2102,13 +2260,26 @@ export default function Returns() {
             {rows.map((row, idx) => {
               const err = rowErrors[idx] || {};
               const hasData = rowHasData(row);
+              /* An untouched row is not "incomplete" - it is the empty line
+                 waiting to be typed into, and painting it red would make every
+                 report open shouting. Only a row someone has started counts. */
+              const missing = hasData ? missingIn(row) : {};
+              const done = hasData && !Object.keys(missing).length;
+              // a box is marked when it is empty OR when a save complained
+              const bad = { ...missing, ...err };
               return (
                 <tr
                   key={idx}
                   data-row={idx}
-                  className={"rt-row" + (Object.keys(err).length ? " rt-err" : "")}
+                  className={
+                    "rt-row" +
+                    (Object.keys(err).length ? " rt-err" : "") +
+                    (done ? " rt-done" : "")
+                  }
                   style={{
-                    background: Object.keys(err).length
+                    background: done
+                      ? "#22c55e"
+                      : Object.keys(err).length
                       ? "#fff1f2"
                       : idx % 2
                       ? "#faf5ff"
@@ -2124,13 +2295,13 @@ export default function Returns() {
                       onChange={(v) => handleChange(idx, "itemCode", v)}
                       onPick={(item) => pickItem(idx, item)}
                       search={localSearch}
-                      style={input(!!err.itemCode)}
+                      style={input(!!bad.itemCode)}
                       placeholder="Code or name"
                       inputProps={{ "data-col": "itemCode" }}
                     />
 
                     {row.itemCode && !allItems.some((it) => normalize(it.item_code) === normalize(row.itemCode)) && (
-                      <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontWeight: 800 }}>
+                      <div className="rt-note" style={{ marginTop: 6, color: "#b45309", fontWeight: 800 }}>
                         Code not found — you can add it via "Add item".
                       </div>
                     )}
@@ -2141,12 +2312,15 @@ export default function Returns() {
                     <div
                       title={row.productName || "Enter an item code to fill this in"}
                       style={{
-                        ...input(false),
+                        ...input(!!bad.productName),
                         width: "100%",
                         boxSizing: "border-box",
                         textAlign: "left",
-                        background: "#f8fafc",
-                        borderStyle: "dashed",
+                        // the red wash from input() has to survive this cell's
+                        // own grey, or the one box nobody can type into would
+                        // be the only one that never says it is empty
+                        background: bad.productName ? "#fff1f2" : "#f8fafc",
+                        borderStyle: bad.productName ? "solid" : "dashed",
                         color: row.productName ? "#0f172a" : "#94a3b8",
                         fontWeight: row.productName ? 700 : 500,
                         cursor: "default",
@@ -2170,7 +2344,7 @@ export default function Returns() {
                   <td style={td}>
                     <select
                       data-col="origin"
-                      style={selectStyle(false)}
+                      style={selectStyle(!!bad.origin)}
                       value={row.origin || ""}
                       onChange={(e) => handleChange(idx, "origin", e.target.value)}
                     >
@@ -2187,7 +2361,7 @@ export default function Returns() {
 
                   {/* BUTCHERY */}
                   <td style={td}>
-                    <select data-col="butchery" style={selectStyle(!!err.butchery)} value={row.butchery || ""} onChange={(e) => handleChange(idx, "butchery", e.target.value)}>
+                    <select data-col="butchery" style={selectStyle(!!bad.butchery)} value={row.butchery || ""} onChange={(e) => handleChange(idx, "butchery", e.target.value)}>
                       <option value="">Select branch</option>
                       {BRANCHES.map((b) => (
                         <option key={b} value={b}>{enLabel(b)}</option>
@@ -2195,7 +2369,7 @@ export default function Returns() {
                     </select>
                     {row.butchery === OTHER_BRANCH && (
                       <input
-                        style={{ ...input(false), marginTop: 6 }}
+                        style={{ ...input(!!bad.butchery), marginTop: 6 }}
                         placeholder="Enter branch name"
                         value={row.customButchery || ""}
                         onChange={(e) => handleChange(idx, "customButchery", e.target.value)}
@@ -2207,7 +2381,7 @@ export default function Returns() {
                   <td style={td}>
                     <input
                       data-col="transferNo"
-                      style={input(false)}
+                      style={input(!!bad.transferNo)}
                       inputMode="numeric"
                       placeholder="e.g. 02323"
                       title="Typed once, it fills every row of the same branch in this report"
@@ -2224,7 +2398,7 @@ export default function Returns() {
                       type="number"
                       min="0"
                       step="0.001"
-                      style={input(!!err.quantity)}
+                      style={input(!!bad.quantity)}
                       placeholder="Qty"
                       title="The quantity printed on the branch transfer note"
                       value={row.quantity}
@@ -2234,14 +2408,14 @@ export default function Returns() {
 
                   {/* QTY TYPE */}
                   <td style={td}>
-                    <select data-col="qtyType" style={selectStyle(false)} value={row.qtyType} onChange={(e) => handleChange(idx, "qtyType", e.target.value)}>
+                    <select data-col="qtyType" style={selectStyle(!!bad.qtyType)} value={row.qtyType} onChange={(e) => handleChange(idx, "qtyType", e.target.value)}>
                       {QTY_TYPES.map((q) => (
                         <option key={q} value={q}>{enLabel(q)}</option>
                       ))}
                     </select>
                     {row.qtyType === OTHER_QTY && (
                       <input
-                        style={{ ...input(false), marginTop: 6 }}
+                        style={{ ...input(!!bad.qtyType), marginTop: 6 }}
                         placeholder="Enter type"
                         value={row.customQtyType}
                         onChange={(e) => handleChange(idx, "customQtyType", e.target.value)}
@@ -2254,7 +2428,7 @@ export default function Returns() {
                     <input
                       data-col="expiry"
                       type="date"
-                      style={input(false)}
+                      style={input(!!bad.expiry)}
                       value={row.expiry}
                       onChange={(e) => handleChange(idx, "expiry", e.target.value)}
                     />
@@ -2265,12 +2439,13 @@ export default function Returns() {
                     <RemarksPicker
                       value={row.remarks || ""}
                       onChange={(v) => handleChange(idx, "remarks", v)}
+                      invalid={!!bad.remarks}
                     />
                   </td>
 
                   {/* ACTION */}
                   <td style={td}>
-                    <select data-col="action" style={selectStyle(!!err.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
+                    <select data-col="action" style={selectStyle(!!bad.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
                       <option value="">Select action</option>
                       {ACTIONS.map((a) => (
                         <option key={a} value={a}>{a}</option>
@@ -2278,7 +2453,7 @@ export default function Returns() {
                     </select>
                     {row.action === "Other..." && (
                       <input
-                        style={{ ...input(false), marginTop: 6 }}
+                        style={{ ...input(!!bad.action), marginTop: 6 }}
                         placeholder="Enter custom action"
                         value={row.customAction}
                         onChange={(e) => handleChange(idx, "customAction", e.target.value)}
@@ -2384,6 +2559,14 @@ export default function Returns() {
         onApply={applyScan}
       />
 
+      <ReturnNoteImport
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        branches={BRANCHES.filter((b) => b !== OTHER_BRANCH)}
+        catalog={catalogByDigits}
+        onApply={applyScan}
+      />
+
       <ImageManagerModal
         open={imageModalOpen}
         row={currentRowForImages}
@@ -2446,6 +2629,25 @@ const RET_CSS = `
 #root .rt.rt .rt-badge { font-size: 20px !important; }
 #root .rt.rt .rt-datelabel { font-size: 17px !important; }
 
+/* ===== Bigger, bolder table type =====
+   globals.css pins EVERYTHING inside a table to 12px !important, and an inline
+   style cannot beat an !important rule - so the readable size has to be won
+   back here, through the doubled .rt.rt class, which out-specifies it. The
+   row heights that go with these sizes are the td/th padding in the component;
+   raising one without the other only makes the table cramped the other way. */
+#root .rt.rt table th,
+#root .rt.rt table th * { font-size: 16px !important; font-weight: 900 !important; }
+/* "td *" and not just "td": almost nothing in these cells is text sitting
+   directly in the cell - it is an input, a select, or the locked product-name
+   div - and globals.css reaches every one of them by descendant selector. */
+#root .rt.rt table td,
+#root .rt.rt table td * { font-size: 16px !important; font-weight: 700 !important; }
+/* the picked-remark chips and the notes under a cell stay a step down, or a
+   row carrying three remarks grows taller than the screen. One class more
+   than the rule above, so it wins without another !important war. */
+#root .rt.rt table td .rt-note,
+#root .rt.rt table td .rt-note * { font-size: 13px !important; }
+
 /* the row under the mouse (or holding the caret) lights up */
 #root .rt.rt tbody tr.rt-row { transition: background .15s ease, box-shadow .15s ease; }
 #root .rt.rt tbody tr.rt-row:hover,
@@ -2473,10 +2675,35 @@ const RET_CSS = `
   border-color: #a855f7;
   box-shadow: 0 0 0 3px rgba(168, 85, 247, .18);
 }
+
+/* A finished row - every box answered - goes BRIGHT green, and stays green
+   under the mouse: the colour exists to be found while scrolling a long
+   report, so the generic hover wash (which comes first in this sheet and
+   carries !important) has to be beaten here, or a finished row would turn
+   ordinary the moment it is pointed at. Hover goes brighter still rather than
+   darker, so pointing at a row never reads as dimming it. The row number is
+   darkened instead of lightened - on a vivid green a near-black green is what
+   stays legible - and the inputs keep their own white ground. */
+#root .rt.rt tbody tr.rt-row.rt-done { box-shadow: inset 4px 0 0 0 #15803d; }
+#root .rt.rt tbody tr.rt-row.rt-done:hover,
+#root .rt.rt tbody tr.rt-row.rt-done:focus-within {
+  background: #4ade80 !important;
+  box-shadow: inset 4px 0 0 0 #15803d;
+}
+#root .rt.rt tbody tr.rt-row.rt-done td { color: #052e16; }
+#root .rt.rt tbody tr.rt-row.rt-done:hover td:first-child,
+#root .rt.rt tbody tr.rt-row.rt-done:focus-within td:first-child {
+  color: #052e16;
+  font-weight: 900;
+}
 `;
 
 const inputBase = {
-  padding: "9px 11px",
+  /* Taller boxes. The fontSize below is decorative only - globals.css pins
+     everything inside a table to 12px !important and an inline size cannot
+     beat an !important rule, so the real type size is set in RET_CSS through
+     the doubled page class. */
+  padding: "12px 12px",
   borderRadius: 10,
   border: "1.5px solid #d8b4fe",
   background: "#fdfaff",

@@ -23,7 +23,7 @@
 // until they have been typed over or explicitly confirmed.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ocrImages, parseReturnNote, STD_DECIMALS } from "../../utils/ocrScan";
+import { ocrImages, parseReturnNote, prepareImage, STD_DECIMALS } from "../../utils/ocrScan";
 
 const PURPLE = "#512e5f";
 const ACCENT = "#884ea0";
@@ -33,6 +33,22 @@ const LOW_CONFIDENCE = 70;
 
 let uid = 0;
 const nextId = (p = "pg") => `${p}_${Date.now()}_${uid++}`;
+
+/* The image settings a page is read with. Everything here is a knob a human
+   would reach for looking at a bad photocopy: turn it the right way up, put
+   more light on it, make the print harder. They exist because the automatic
+   pass cannot win every page - a note photographed sideways, one shot against
+   a window, one printed on a cartridge that was nearly out - and without them
+   a page that reads badly has no remedy except walking back to the branch for
+   another photo. */
+const DEFAULT_TUNE = { rotate: 0, brightness: 0, contrast: 0, threshold: 0.14, flatten: true };
+const tuneOfPage = (p) => ({ ...DEFAULT_TUNE, ...(p.tune || {}) });
+const isTuned = (t) =>
+  t.rotate !== 0 ||
+  t.brightness !== 0 ||
+  t.contrast !== 0 ||
+  t.threshold !== DEFAULT_TUNE.threshold ||
+  t.flatten !== true;
 
 const digitsOf = (s) => String(s || "").replace(/\D/g, "");
 
@@ -175,7 +191,12 @@ export default function ReturnNoteScanner({
     setProgress({ index: 0, count: todo.length, overall: 0 });
     try {
       // one engine start-up for the whole stack
-      const read = await ocrImages(todo.map((p) => p.file), setProgress, { deep });
+      const read = await ocrImages(todo.map((p) => p.file), setProgress, {
+        deep,
+        // per page, so one retuned photo does not drag the rest off settings
+        // that already worked for them
+        tune: todo.map(tuneOfPage),
+      });
       let empty = 0;
       setPages((prev) =>
         prev.map((p) => {
@@ -184,9 +205,13 @@ export default function ReturnNoteScanner({
           const parsed = parseReturnNote(read[at] || "", { branches, catalog });
           parsed.raw = read[at]?.text || "";
           parsed.skew = read[at]?.skew || 0;
+          parsed.shear = read[at]?.shear || 0;
           if (!parsed.codes.length) empty++;
           return {
             ...p,
+            // what the shown result was actually produced with, so a knob
+            // moved afterwards can be flagged as not-yet-applied
+            tuneApplied: tuneOfPage(p),
             result: parsed,
             branch: parsed.branch || "",
             transferNo: parsed.transferNo || "",
@@ -576,6 +601,186 @@ export default function ReturnNoteScanner({
 
 /* ================= one page ================= */
 
+/**
+ * The darkroom for one page.
+ *
+ * The preview is the point of the whole panel: it is rendered through the SAME
+ * pipeline the recogniser is fed, so what is on screen is literally what the
+ * OCR is looking at. Someone can then see the reason a page failed - the print
+ * has dissolved, the shadow has become ink, the page is on its side - instead
+ * of guessing at it, and turn the knob that fixes that specific thing.
+ */
+function ImagePanel({ page, busy, onPatch, onRescan }) {
+  const tune = tuneOfPage(page);
+  const [preview, setPreview] = useState("");
+  const [rendering, setRendering] = useState(true);
+
+  const { rotate, brightness, contrast, threshold, flatten } = tune;
+
+  useEffect(() => {
+    let alive = true;
+    setRendering(true);
+    /* Debounced: a slider fires on every pixel of travel and each render is a
+       full pass over a multi-megapixel photo. */
+    const t = setTimeout(async () => {
+      try {
+        const url = await prepareImage(page.file, {
+          rotate,
+          brightness,
+          contrast,
+          threshold,
+          flatten,
+          // small enough to stay responsive; the window that drives the
+          // threshold is a fraction of the width, so it scales with it and
+          // the preview still represents the full-size read
+          maxSide: 620,
+          minSide: 0,
+        });
+        if (alive) setPreview(url);
+      } catch {
+        if (alive) setPreview("");
+      } finally {
+        if (alive) setRendering(false);
+      }
+    }, 220);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [page.file, rotate, brightness, contrast, threshold, flatten]);
+
+  const set = (patch) => onPatch({ tune: { ...tune, ...patch } });
+  const stale =
+    !!page.result && JSON.stringify(page.tuneApplied || DEFAULT_TUNE) !== JSON.stringify(tune);
+
+  return (
+    <div style={{ padding: 10, borderTop: "1px dashed #d9c7e4", background: "#fcfaff" }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: "0 0 auto" }}>
+          <div
+            style={{
+              width: 250,
+              minHeight: 150,
+              border: "1px solid #e2d5ea",
+              borderRadius: 10,
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+              opacity: rendering ? 0.45 : 1,
+              transition: "opacity .15s",
+            }}
+          >
+            {preview ? (
+              <img src={preview} alt="what the scanner sees" style={{ width: "100%", display: "block" }} />
+            ) : (
+              <span style={{ color: "#999", fontSize: ".85em", padding: 20 }}>preparing…</span>
+            )}
+          </div>
+          <div style={{ fontSize: ".78em", color: "#777", marginTop: 4, textAlign: "center" }}>
+            this is exactly what the scanner reads
+          </div>
+        </div>
+
+        <div style={{ flex: "1 1 300px", minWidth: 280, display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: "bold", color: PURPLE, minWidth: 92 }}>Turn the page</span>
+            <button style={miniBtn} onClick={() => set({ rotate: (rotate + 270) % 360 })} title="Rotate left">
+              ⟲
+            </button>
+            <button style={miniBtn} onClick={() => set({ rotate: (rotate + 90) % 360 })} title="Rotate right">
+              ⟳
+            </button>
+            <span style={{ color: "#777", fontSize: ".85em" }}>{rotate}°</span>
+          </div>
+
+          <Knob
+            label="Brightness"
+            value={brightness}
+            min={-100}
+            max={100}
+            step={5}
+            onChange={(v) => set({ brightness: v })}
+            hint="lift a photo taken in a dark store room"
+          />
+          <Knob
+            label="Contrast"
+            value={contrast}
+            min={-100}
+            max={100}
+            step={5}
+            onChange={(v) => set({ contrast: v })}
+            hint="separate faint print from the paper"
+          />
+          <Knob
+            label="Ink weight"
+            value={Math.round(threshold * 100)}
+            min={4}
+            max={30}
+            step={1}
+            onChange={(v) => set({ threshold: v / 100 })}
+            hint="higher = thicker letters; too high floods the page black"
+          />
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <input type="checkbox" checked={flatten} onChange={(e) => set({ flatten: e.target.checked })} />
+            <span>
+              <b>Even out the lighting</b>{" "}
+              <span style={{ color: "#777", fontSize: ".85em" }}>
+                — removes the shadow of the hand holding the phone. Leave on unless it hurts.
+              </span>
+            </span>
+          </label>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              style={{ ...miniBtn, background: stale ? "#1e8449" : "#f4ecf7", color: stale ? "#fff" : PURPLE }}
+              onClick={onRescan}
+              disabled={busy}
+            >
+              Read this page with these settings
+            </button>
+            <button style={miniBtn} onClick={() => onPatch({ tune: { ...DEFAULT_TUNE } })} disabled={busy}>
+              Reset
+            </button>
+          </div>
+
+          {stale && (
+            <div style={{ color: "#8a5a00", fontSize: ".85em" }}>
+              The rows below still come from the previous settings — read the page again to use these.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One labelled slider with its number, kept identical across the panel. */
+function Knob({ label, value, min, max, step, onChange, hint }) {
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span style={{ fontWeight: "bold", color: PURPLE, minWidth: 92 }}>{label}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ flex: 1, minWidth: 110, accentColor: ACCENT }}
+        />
+        <span style={{ minWidth: 34, textAlign: "right", color: "#555", fontVariantNumeric: "tabular-nums" }}>
+          {value}
+        </span>
+      </div>
+      {hint && <div style={{ fontSize: ".78em", color: "#888", marginLeft: 100 }}>{hint}</div>}
+    </div>
+  );
+}
+
 function PageCard({
   page,
   index,
@@ -596,6 +801,9 @@ function PageCard({
 }) {
   const r = page.result;
   const rows = page.rows || [];
+  // deliberately available BEFORE a page has been read: a page that came back
+  // empty is exactly the one whose image needs looking at
+  const [tools, setTools] = useState(false);
 
   const setRows = (next) => onPatch({ rows: next });
   const patchRow = (key, patch) =>
@@ -736,6 +944,18 @@ function PageCard({
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button
+            onClick={() => setTools((v) => !v)}
+            style={{
+              ...miniBtn,
+              background: tools ? ACCENT : "#f4ecf7",
+              color: tools ? "#fff" : PURPLE,
+            }}
+            disabled={busy}
+            title="Brightness, contrast, rotation - and see exactly what the scanner sees"
+          >
+            🎛{isTuned(tuneOfPage(page)) ? " •" : ""}
+          </button>
           {r && (
             <button onClick={() => onPatch({ open: !page.open })} style={miniBtn} disabled={busy}>
               {page.open ? "Hide rows" : "Show rows"}
@@ -774,6 +994,8 @@ function PageCard({
           </button>
         </div>
       </div>
+
+      {tools && <ImagePanel page={page} busy={busy} onPatch={onPatch} onRescan={onRescan} />}
 
       {/* rows */}
       {r && page.open && (
@@ -855,10 +1077,20 @@ function PageCard({
             </div>
           )}
 
-          {!!r.skew && (
+          {(!!r.skew || !!r.shear) && (
             <Notice tone="ok">
-              Page was tilted <b>{Math.abs(r.skew).toFixed(1)}°</b> and has been
-              straightened before reading — the table columns line up now.
+              {/* The two corrections are different things and are reported as one
+                  number on purpose: what the reader needs to know is how far off
+                  square this photo was, not which stage fixed it. */}
+              Page was tilted{" "}
+              <b>
+                {(
+                  Math.abs(r.skew || 0) +
+                  Math.abs((Math.atan(r.shear || 0) * 180) / Math.PI)
+                ).toFixed(1)}
+                °
+              </b>{" "}
+              and has been straightened before reading — the table columns line up now.
             </Notice>
           )}
 
@@ -1027,7 +1259,13 @@ function DraftRow({ row, n, catalog, onPatch, onDropRow }) {
             value={row.qty}
             onChange={(e) => onPatch({ qty: e.target.value })}
             inputMode="decimal"
-            placeholder={(0).toFixed(STD_DECIMALS)}
+            /* NOT "0.00". An empty cell used to be hinted with a formatted
+               zero, and on this very form 0.00 is a real printed weight - it
+               is what the DELIVERED column says on every line - so a row that
+               had read nothing looked exactly like a row that had read zero
+               off the paper. The placeholder has to be something the form can
+               never contain. */
+            placeholder="— — —"
             title={tone.tip}
             style={{
               width: 82,
@@ -1141,6 +1379,22 @@ function qtyTone(row, edited) {
       tip: `${asRead}The engine was only ${Math.round(
         m.qtyConf
       )}% sure of these digits - check them against the crop.`,
+    };
+  /* Weaker provenance than the two below, and said so: the number was read
+     cleanly out of the ORDERED column, but its own product line had drifted
+     far enough that the two had to be paired by height rather than by sitting
+     on one line together. The pairing is almost always right; the crop beside
+     it is there so it does not have to be taken on trust. */
+  if (m.qtySrc === "near")
+    return {
+      bg: "#fdf9ee",
+      border: "#e0c07a",
+      fg: "#7d5a1e",
+      note: "matched by row",
+      tip:
+        `${asRead}This weight was printed slightly out of line with its product - ` +
+        `common on a photo of a page that will not lie flat - so it was paired with ` +
+        `this row by its position in the column. Check it against the crop.`,
     };
   if (m.qtySrc === "zoom")
     return {

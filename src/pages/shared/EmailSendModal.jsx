@@ -155,6 +155,8 @@ const L = {
                   ar: "يوجد إيميل غير صحيح في حقل «نسخة»." },
   errNoSubject: { en: "Subject is empty.",   ar: "الموضوع فارغ." },
   errFailed:    { en: "Failed: {x}",         ar: "فشل: {x}" },
+  errNoPdf:     { en: "Could not build the PDF for this report. Reopen the report and try again.",
+                  ar: "تعذّر إنشاء ملف PDF لهذا التقرير. أعد فتح التقرير ثم حاول مجدداً." },
 
   progPdf:      { en: "⏳ Generating PDF...", ar: "⏳ جارٍ إنشاء ملف PDF..." },
   progImg:      { en: "🖼️ Fetching image {n} / {total}...", ar: "🖼️ جلب الصورة {n} / {total}..." },
@@ -675,8 +677,12 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
      produce byte-identical content. */
   async function buildMessage() {
     setProgress(t(L.progPdf));
-    const { blob: pdfBlob, base64: pdfBase64Raw, filename: pdfFilename } =
-      await config.generatePdf(payload, { sortBy, groupBy, classification });
+    /* A config whose generatePdf bails out (no report selected, or a stale
+       closure that never saw one) used to blow up on the destructure with an
+       unreadable "Cannot destructure property blob" message. */
+    const pdf = await config.generatePdf(payload, { sortBy, groupBy, classification });
+    if (!pdf?.blob) throw new Error(t(L.errNoPdf));
+    const { blob: pdfBlob, base64: pdfBase64Raw, filename: pdfFilename } = pdf;
 
     const pdfBase64 = pdfBase64Raw || (await (async () => {
       const { blobToBase64 } = await import("./emailReportUtils");
@@ -856,7 +862,9 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
 
   async function generateAndUploadPdf() {
     setProgress(t(L.progPdf));
-    const { blob, filename } = await config.generatePdf(payload, { sortBy, groupBy, classification });
+    const pdf = await config.generatePdf(payload, { sortBy, groupBy, classification });
+    if (!pdf?.blob) throw new Error(t(L.errNoPdf));
+    const { blob, filename } = pdf;
     setProgress(t(L.progUpload));
     const pdfUrl = await uploadPdfBlob(blob, filename);
     return { blob, pdfUrl, filename };

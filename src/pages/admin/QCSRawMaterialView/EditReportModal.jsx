@@ -8,6 +8,7 @@ import {
   defaultDocMeta,
 } from "./viewUtils";
 import { ItemCodeInput, ItemNameInput } from "../../monitor/branches/_shared/CodedProductField";
+import MultiDateField from "../../monitor/branches/_shared/MultiDateField";
 
 /* ── numeric helper (same behaviour as ReportDetails) ── */
 const toNum = (v) => {
@@ -17,6 +18,8 @@ const toNum = (v) => {
 
 /* fields that make sense as <input type="date"> */
 const DATE_FIELDS = new Set(["reportOn", "receivedOn", "inspectionDate"]);
+/* sample attributes that hold one or more dates */
+const SAMPLE_DATE_FIELDS = new Set(["slaughterDate", "expiryDate"]);
 /* YES / NO dropdowns */
 const YESNO_FIELDS = new Set(["localLogger", "internationalLogger"]);
 
@@ -338,7 +341,15 @@ export default function EditReportModal({ report, onClose, onSave }) {
                     <td style={{ ...thTd, textAlign: "left", fontWeight: 800, color: "#334155" }}>{attr.label}</td>
                     {samples.map((s, idx) => (
                       <td key={`${attr.key}-${idx}`} style={thTd}>
-                        <input style={inp} value={s[attr.key] ?? ""} onChange={(e) => setSampleField(idx, attr.key, e.target.value)} />
+                        {SAMPLE_DATE_FIELDS.has(attr.key) ? (
+                          <MultiDateField
+                            value={s[attr.key] ?? ""}
+                            onChange={(v) => setSampleField(idx, attr.key, v)}
+                            style={inp}
+                          />
+                        ) : (
+                          <input style={inp} value={s[attr.key] ?? ""} onChange={(e) => setSampleField(idx, attr.key, e.target.value)} />
+                        )}
                       </td>
                     ))}
                   </tr>
