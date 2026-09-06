@@ -240,6 +240,23 @@ export function expiryFromProduction(productionValue, days) {
   return [...new Set(out)].join(DATE_SEP);
 }
 
+/**
+ * Expiry cell + shelf life → production cell.
+ * The mirror of expiryFromProduction: when the inspector reads the expiry off
+ * the carton and the product keeps for a fixed number of days, the slaughter /
+ * production date is that expiry minus those days. Same one-date-per-token
+ * rule, so a cell holding three expiry dates yields three production dates.
+ */
+export function productionFromExpiry(expiryValue, days) {
+  const n = Number(days);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const out = splitDateTokens(expiryValue)
+    .filter((t) => t.iso)
+    .map((t) => isoToDMY(addDaysIso(t.iso, -n)))
+    .filter(Boolean);
+  return [...new Set(out)].join(DATE_SEP);
+}
+
 /* ══════════════════════════════════════ React hook */
 
 export function useShelfLife() {

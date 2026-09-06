@@ -362,6 +362,12 @@ function navBadge(active) {
  *     getImages(payload) -> string[],                         // image URLs to attach
  *     getCertificate(payload) -> {url, name} | null,          // optional single doc
  *     getSummary(payload) -> { status?, statusKind?, fields: [{label,value}] }
+ *     getDefaultTo(payload) -> string[],                      // optional: the record's own
+ *     getDefaultCc(payload) -> string[],                      //   addressee (a supplier, a
+ *                                                             //   branch) merged into To/CC
+ *     onSent({ method, attachmentCount, to, cc, bcc, subject }) // optional: fired after a
+ *                                                             //   successful send, for pages
+ *                                                             //   that stamp their own record
  *   }
  */
 export default function EmailSendModal({ open, onClose, payload, config }) {
@@ -422,9 +428,11 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
        auto-routing, which needs the fresh templates anyway. */
     setTemplates(loadTemplates());
 
-    /* Pre-fill from the shared defaults; auto-routing merges into these below. */
-    setTo(splitToArr(s.defaultTo));
-    setCc(splitToArr(s.defaultCc));
+    /* Pre-fill from the shared defaults, plus the record's own addressee when
+       the config knows one (a supplier's e-mail, a branch mailbox); auto-routing
+       merges into these below. */
+    setTo(mergeUniqueCI(splitToArr(s.defaultTo), config?.getDefaultTo?.(payload) || []));
+    setCc(mergeUniqueCI(splitToArr(s.defaultCc), config?.getDefaultCc?.(payload) || []));
     setBcc(splitToArr(s.defaultBcc));
 
     setPriority(s.priority || "normal");
@@ -652,6 +660,10 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
           report_type:      config?.reportType || "",
           report_title:     config?.reportTitle || "",
           report_date:      reportDate,
+          /* The reference of the exact record mailed ("AM-NCR-000042"). A date
+             no longer identifies a report on its own — several NCRs share one
+             day — so a per-report send history is keyed on this. */
+          report_ref:       config?.getReportRef?.(payload) || payload?.refNo || null,
           subject:          resolvedSubject,
           to_emails:        to,
           cc_emails:        cc,
@@ -667,6 +679,18 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     } catch (err) {
       /* Audit log is best-effort — never block the user on it */
       console.warn("[EmailHistory] log failed (non-blocking):", err);
+    }
+    /* Let the page stamp its own record too (a link tracker's activity log, for
+       instance). Same best-effort contract as the audit row above. */
+    try {
+      await config?.onSent?.({
+        method: methodUsed,
+        attachmentCount: attachmentCount || 0,
+        to, cc, bcc,
+        subject: resolvedSubject,
+      });
+    } catch (err) {
+      console.warn("[EmailSendModal] onSent failed (non-blocking):", err);
     }
   }
 

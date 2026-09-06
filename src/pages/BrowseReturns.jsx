@@ -99,6 +99,19 @@ function safeButchery(row) {
     ? row?.customButchery || ""
     : normalizeBranch(row?.butchery);
 }
+/* A line whose quantity was split in the view page keeps the quantity it came
+   from (splitOf) and a shared splitGroup. The two halves normally end on two
+   different actions — 3 of 6 KG condemned, the rest still used — so both halves
+   are marked here; otherwise a partial condemnation reads like a whole one. */
+function splitInfo(row) {
+  const from = Number(row?.splitOf) || 0;
+  if (!(from > 0)) return null;
+  const part = Number(row?.quantity) || 0;
+  const act = row?.action === "إجراء آخر..." || row?.action === "Other..."
+    ? (row?.customAction || "")
+    : (row?.action || "");
+  return { from, part, condemned: /condemn|dispos|إعدام/i.test(act) };
+}
 function actionText(row) {
   return row?.action === "إجراء آخر..." || row?.action === "Other..."
     ? row?.customAction || ""
@@ -790,6 +803,7 @@ function latestReportDate(reports) {
      qty / quantity             numeric — supports >N, <N, >=N, <=N, =N
      qtytype / type             "kg" | "pcs"
      images                     "yes" | "no"
+     split (partial)            "yes" | "no" — lines whose quantity was split
    Plain words are matched as substrings across all fields.
    ============================================================ */
 function parseSearchQuery(q) {
@@ -822,6 +836,7 @@ const KEY_ALIASES = {
   qty: "qty", quantity: "qty",
   qtytype: "qtytype", type: "qtytype",
   images: "images",
+  split: "split", partial: "split", splitted: "split",
   ref: "refNo", refno: "refNo", reference: "refNo",
   trn: "transferNo", transfer: "transferNo", transferno: "transferNo",
   ord: "qty", ordered: "qty",   // the old ORDERED column is now QUANTITY
@@ -888,6 +903,10 @@ function rowMatchesPower(row, parsed) {
       const has = Array.isArray(row.images) && row.images.length > 0;
       if (v === "yes" && !has) return false;
       if (v === "no" && has) return false;
+    } else if (aliased === "split") {
+      const isSplit = !!splitInfo(row);
+      if (v === "yes" && !isSplit) return false;
+      if (v === "no" && isSplit) return false;
     } else {
       return false; // unknown key
     }
@@ -2771,6 +2790,7 @@ const ALL_COLUMNS = [
 
 const SEARCH_QUICK_ACTIONS = [
   { label: "Condemnation", query: "action:condemnation" },
+  { label: "✂️ Partly condemned", query: "split:yes" },
   { label: "Missing expiry", query: "expiry:empty" },
   { label: "With images", query: "images:yes" },
   { label: "Qty > 10", query: "qty:>10" },
@@ -6861,6 +6881,7 @@ export default function BrowseReturns() {
                           ["expiry:empty", "Missing expiry (also: nonempty or 2026)"],
                           ["remarks:nonempty", "empty | nonempty | text"],
                           ["images:yes", "yes | no"],
+                          ["split:yes", "Lines split into two actions"],
                           [`name:"ground beef"`, "Use quotes for spaces"],
                         ].map(([k, v], i) => (
                           <React.Fragment key={i}>
@@ -8488,8 +8509,22 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
           const trail = auditTrailByKey?.get(k) || [];
           const hasTrail = trail.length > 0;
           const isChecked = selectedRows?.has(row.__i);
+          const sp = splitInfo(row);
           return (
-            <tr key={row.__i ?? i} className="br-tbl-row" style={{ background: isChecked ? T.primaryS : undefined }}>
+            <tr
+              key={row.__i ?? i}
+              className="br-tbl-row"
+              style={{
+                // A split line gets a faint tint so it is findable while
+                // scrolling, without shouting over the table. (A left edge via
+                // box-shadow is not painted on <tr> under border-collapse.)
+                background: isChecked
+                  ? T.primaryS
+                  : sp
+                  ? (sp.condemned ? "#fff6f6" : "#fffdf3")
+                  : undefined,
+              }}
+            >
               {selectedRows && (
                 <td style={{
                   padding: rowPad, borderBottom: `1px solid ${T.borderS}`, textAlign: "center", verticalAlign: "top",
@@ -8530,6 +8565,20 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                       </button>
                     ) : (
                       <span style={{ fontWeight: 600 }}>{search ? highlight(row.productName || "", search) : row.productName}</span>
+                    )}
+                    {sp && (
+                      <span
+                        title={`Split line — ${fmtNum(sp.part)} of an original ${fmtNum(sp.from)} went to “${curr || "—"}”`}
+                        style={{
+                          marginLeft: 6, padding: "1px 7px", borderRadius: 999,
+                          fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap",
+                          background: sp.condemned ? T.dangerS : T.warningS,
+                          color: sp.condemned ? T.danger : T.warning,
+                          border: `1px solid ${sp.condemned ? "#fecaca" : "#fde68a"}`,
+                        }}
+                      >
+                        ✂️ {fmtNum(sp.part)}/{fmtNum(sp.from)}
+                      </span>
                     )}
                     {Array.isArray(row.images) && row.images.length > 0 && (
                       <button onClick={() => openViewer(row)} style={{

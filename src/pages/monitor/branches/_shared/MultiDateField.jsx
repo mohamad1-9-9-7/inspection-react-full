@@ -156,9 +156,9 @@ export default function MultiDateField({
             justifySelf: "start",
             padding: "3px 10px",
             borderRadius: 999,
-            border: "1px dashed #a5b4fc",
-            background: "#eef2ff",
-            color: "#4338ca",
+            border: "1px dashed #7dd3fc",
+            background: "#e0f2fe",
+            color: "#0c4a6e",
             fontWeight: 800,
             cursor: "pointer",
           }}

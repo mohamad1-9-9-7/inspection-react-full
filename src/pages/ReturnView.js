@@ -149,6 +149,16 @@ function safeButchery(row) {
 function actionText(row) {
   return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
 }
+function round3(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 1000) / 1000 : 0;
+}
+function qtyUnit(row) {
+  const t = row?.qtyType;
+  return t === "أخرى" || t === "أخرى / Other"
+    ? (row?.customQtyType || "")
+    : (t || "");
+}
 function itemKey(row) {
   return [
     (row?.itemCode || "").trim().toLowerCase(),
@@ -299,6 +309,128 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
   );
 }
 
+/* ========= ✂️ Split-quantity modal =========
+   A returned product often needs two different fates: part of a 6 KG line is
+   condemned and the rest still goes to production. Rather than deleting the row
+   and retyping two, this splits the line in place and keeps the total intact. */
+function SplitQtyModal({ open, row, draft, onChange, onCancel, onConfirm, busy }) {
+  if (!open || !row) return null;
+
+  const total = round3(row.quantity || 0);
+  const unit = qtyUnit(row);
+  const part = Number(draft.qty);
+  const partOk = Number.isFinite(part) && part > 0 && part < total;
+  const actionOk = draft.action !== "إجراء آخر..." || !!(draft.customAction || "").trim();
+  const valid = partOk && actionOk;
+  const remaining = partOk ? round3(total - part) : null;
+  const newActionTxt =
+    draft.action === "إجراء آخر..." ? (draft.customAction || "").trim() || "—" : draft.action;
+
+  return (
+    <div style={galleryBack} onClick={onCancel}>
+      <div style={splitCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            ✂️ Split quantity {row.productName ? `— ${row.productName}` : ""}
+          </div>
+          <button onClick={onCancel} style={galleryClose}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: "#475569", marginTop: 6, lineHeight: 1.6 }}>
+          Give part of this line a different action — the rest keeps the current one.
+          The line becomes two lines, so the report's total quantity never changes.
+        </div>
+
+        <div style={splitFactsRow}>
+          <div style={splitFact}><span style={splitFactLbl}>Total quantity</span><b>{total} {unit}</b></div>
+          <div style={splitFact}><span style={splitFactLbl}>Current action</span><b>{actionText(row) || "—"}</b></div>
+          <div style={splitFact}><span style={splitFactLbl}>Item code</span><b>{row.itemCode || "—"}</b></div>
+          <div style={splitFact}><span style={splitFactLbl}>Branch</span><b>{safeButchery(row) || "—"}</b></div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <label style={splitLbl}>Quantity to move {unit ? `(${unit})` : ""}</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number" min="0" step="0.001" autoFocus
+              value={draft.qty}
+              onChange={(e) => onChange({ qty: e.target.value })}
+              placeholder={`e.g. ${round3(total / 2)}`}
+              style={{ ...cellInputStyle, maxWidth: 180, fontWeight: 800 }}
+            />
+            <button type="button" style={splitChipBtn} onClick={() => onChange({ qty: String(round3(total / 2)) })}>½ Half</button>
+          </div>
+          {draft.qty !== "" && !partOk && (
+            <div style={splitWarn}>
+              Enter a number greater than 0 and less than {total}. To change the whole line, use ✏️ Edit instead.
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <label style={splitLbl}>New action for that part</label>
+          <select value={draft.action} onChange={(e) => onChange({ action: e.target.value })} style={{ ...cellInputStyle, fontWeight: 700 }}>
+            {ACTIONS.map((act) => (
+              <option value={act} key={act}>{act === "إجراء آخر..." ? "Other action..." : act}</option>
+            ))}
+          </select>
+          {draft.action === "إجراء آخر..." && (
+            <input
+              value={draft.customAction}
+              onChange={(e) => onChange({ customAction: e.target.value })}
+              placeholder="Specify action…"
+              style={{ ...cellInputStyle, marginTop: 8 }}
+            />
+          )}
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <label style={splitLbl}>Remarks for that part (optional)</label>
+          <input
+            value={draft.remarks}
+            onChange={(e) => onChange({ remarks: e.target.value })}
+            placeholder={row.remarks ? `Leave empty to keep: ${row.remarks}` : "Why is this part treated differently?"}
+            style={cellInputStyle}
+          />
+        </div>
+
+        {partOk && (
+          <div style={splitPreview}>
+            <div style={splitPreviewRow}>
+              <span style={splitKeep}>✅ Stays</span>
+              <b>{remaining} {unit}</b>
+              <span style={{ color: "#64748b" }}>→</span>
+              <span>{actionText(row) || "—"}</span>
+            </div>
+            <div style={splitPreviewRow}>
+              <span style={splitMove}>✂️ Moves</span>
+              <b>{round3(part)} {unit}</b>
+              <span style={{ color: "#64748b" }}>→</span>
+              <span style={{ fontWeight: 800, color: "#b45309" }}>{newActionTxt}</span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 10 }}>
+          Photos stay on the original line — the new line starts with none, so deleting
+          one of the two can never remove images the other still shows.
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+          <button onClick={onCancel} style={bulkCancelBtn} disabled={busy}>✖ Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={!valid || busy}
+            style={{ ...bulkSaveBtn, background: valid ? "#f59e0b" : "#cbd5e1", cursor: valid && !busy ? "pointer" : "not-allowed", boxShadow: "none" }}
+          >
+            {busy ? "⏳ Splitting…" : "✂️ Split line"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== Main Component ====================== */
 export default function ReturnView() {
   const [reports, setReports] = useState([]);
@@ -326,6 +458,15 @@ export default function ReturnView() {
 
   // ✅ Table row search filter
   const [rowSearch, setRowSearch] = useState("");
+
+  // ✅ Search by number (item code / transfer no) across every loaded date
+  const [numSearch, setNumSearch] = useState("");
+
+  // ✂️ Split part of a line's quantity onto a different action
+  const [splitState, setSplitState] = useState({
+    open: false, idx: -1, qty: "", action: "Condemnation", customAction: "", remarks: "",
+  });
+  const [splitBusy, setSplitBusy] = useState(false);
 
   // ✅ Confirm modal state
   const [confirmState, setConfirmState] = useState({ show: false, title: "", message: "", confirmLabel: "Confirm", confirmColor: "#dc2626", onConfirm: null });
@@ -548,6 +689,10 @@ export default function ReturnView() {
       action: row.action || "",
       customAction: row.action === "إجراء آخر..." ? (row.customAction || "").trim() : "",
       images: Array.isArray(row.images) ? row.images : existingImages,
+      // Split lineage has to survive later edits: anything not listed in this
+      // shape is dropped the next time the row is saved.
+      ...(row.splitGroup ? { splitGroup: row.splitGroup } : {}),
+      ...(row.splitOf ? { splitOf: Number(row.splitOf) || 0 } : {}),
     };
   };
 
@@ -695,6 +840,89 @@ export default function ReturnView() {
     });
   };
 
+  /* ========== ✂️ Split part of a quantity onto another action ========== */
+  const openSplit = (i) => {
+    const row = (selectedReport?.items || [])[i];
+    if (!row) return;
+    const total = Number(row.quantity || 0);
+    if (!Number.isFinite(total) || total <= 0) {
+      setOpMsg("❌ This line has no quantity to split.");
+      setTimeout(() => setOpMsg(""), 3000);
+      return;
+    }
+    setAddingRow(false); setEditRowIdx(null); setEditRowData(null);
+    setSplitState({
+      open: true, idx: i, qty: "",
+      action: ACTIONS.includes("Condemnation") ? "Condemnation" : ACTIONS[0],
+      customAction: "", remarks: "",
+    });
+  };
+
+  const closeSplit = () => setSplitState((s) => ({ ...s, open: false, idx: -1 }));
+
+  const confirmSplit = async () => {
+    if (!selectedReport || splitState.idx < 0) return;
+    const items = selectedReport.items || [];
+    const idx = splitState.idx;
+    const row = items[idx];
+    if (!row) return;
+
+    const total = round3(row.quantity || 0);
+    const part = round3(splitState.qty);
+    if (!(part > 0) || part >= total) {
+      setOpMsg("❌ The split quantity must be greater than 0 and less than the line total.");
+      setTimeout(() => setOpMsg(""), 3500);
+      return;
+    }
+    if (splitState.action === "إجراء آخر..." && !splitState.customAction.trim()) {
+      setOpMsg("❌ Specify the other action.");
+      setTimeout(() => setOpMsg(""), 3000);
+      return;
+    }
+
+    // Both halves carry the same group id and the quantity they came from, so a
+    // reader can still tell that "3 + 3" used to be one 6 KG line.
+    const group = row.splitGroup || `sp-${Date.now().toString(36)}`;
+    const cameFrom = Number(row.splitOf) > 0 ? Number(row.splitOf) : total;
+    const stays = { ...row, quantity: round3(total - part), splitGroup: group, splitOf: cameFrom };
+    const moves = {
+      ...row,
+      quantity: part,
+      action: splitState.action,
+      customAction: splitState.action === "إجراء آخر..." ? splitState.customAction.trim() : "",
+      remarks: splitState.remarks.trim() || row.remarks || "",
+      images: [],           // photos stay on the original line (shared Cloudinary URLs)
+      splitGroup: group,
+      splitOf: cameFrom,
+    };
+    const newItems = [...items.slice(0, idx), stays, moves, ...items.slice(idx + 1)];
+
+    try {
+      setSplitBusy(true);
+      setOpMsg("⏳ Splitting the line…");
+      await saveReportToServer(selectedReport.reportDate, newItems);
+      await appendActionChange(selectedReport.reportDate, {
+        key: itemKey(row),
+        from: actionText(row),
+        to: actionText(moves),
+        partial: true,
+        qty: part,
+        of: total,
+        unit: qtyUnit(row),
+        at: new Date().toISOString(),
+      });
+      await reloadFromServer();
+      closeSplit();
+      setOpMsg(`✅ ${part} ${qtyUnit(row)} moved to “${actionText(moves)}”.`);
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ Failed to split the line.");
+    } finally {
+      setSplitBusy(false);
+      setTimeout(() => setOpMsg(""), 3500);
+    }
+  };
+
   /* ======= Images actions ======= */
   const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
   const closeImages = () => setImageModalOpen(false);
@@ -820,39 +1048,180 @@ export default function ReturnView() {
     return window.jspdf.jsPDF;
   }
 
+  /* The PDF prints what the table shows. Three things had to change: the old
+     portrait layout was 640pt wide inside 515pt of usable page (the last two
+     columns fell off the paper), ITEM CODE was missing entirely, and a split
+     line printed as two unrelated rows. */
+  const PDF_COLS = [
+    { key: "sl",       label: "SL",         w: 24, align: "center" },
+    { key: "itemCode", label: "ITEM CODE",  w: 68 },
+    { key: "product",  label: "PRODUCT",    w: 150 },
+    { key: "origin",   label: "ORIGIN",     w: 66 },
+    { key: "butchery", label: "BUTCHERY",   w: 72 },
+    { key: "trn",      label: "TRN NO",     w: 58 },
+    { key: "qty",      label: "QTY",        w: 60, align: "right" },
+    { key: "qtyType",  label: "QTY TYPE",   w: 50 },
+    { key: "expiry",   label: "EXPIRY",     w: 60 },
+    { key: "remarks",  label: "REMARKS",    w: 78 },
+    { key: "action",   label: "ACTION",     w: 92 },
+  ];
+
+  /* jsPDF's built-in fonts are WinAnsi — Arabic would come out as mojibake and
+     also breaks line wrapping, so it is dropped and flagged rather than faked. */
+  const pdfSafe = (v) => {
+    const raw = String(v ?? "").trim();
+    if (!raw) return "";
+    const kept = raw
+      // Curly quotes, dashes and ellipsis are typed by people and would other-
+      // wise be stripped as "not Latin-1"; fold them to their ASCII twin first.
+      .replace(/[‘’‛]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/[–—]/g, "-")
+      .replace(/…/g, "...")
+      .replace(/[^\x20-\xFF]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return kept || "[AR]";
+  };
+
   const handleExportPDF = async () => {
     if (!selectedReport) return;
     try {
       setOpMsg("⏳ Creating PDF…");
       const JsPDF = await ensureJsPDF();
-      const doc = new JsPDF({ unit: "pt", format: "a4" });
-      const marginX = 40;
-      let y = 50;
-      doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-      doc.text("Returns Report", marginX, y); y += 18;
-      doc.setFontSize(12); doc.setFont("helvetica", "normal");
-      doc.text(`Date: ${selectedReport.reportDate}`, marginX, y); y += 20;
+      const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
 
-      const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "TRN NO", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
-      const colWidths = [26, 100, 56, 70, 50, 46, 52, 58, 96, 86];
+      const pageW = doc.internal.pageSize.getWidth();   // 842
+      const pageH = doc.internal.pageSize.getHeight();  // 595
+      const marginX = 32;
+      const tableW = PDF_COLS.reduce((a, c) => a + c.w, 0); // 778
       const tableX = marginX;
-      const rowH = 18;
-      doc.setFillColor(219, 234, 254);
-      doc.rect(tableX, y, colWidths.reduce((a, b) => a + b, 0), rowH, "F");
-      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-      let x = tableX + 4;
-      headers.forEach((h, idx) => { doc.text(h, x, y + 12); x += colWidths[idx]; });
-      y += rowH;
-      doc.setFont("helvetica", "normal");
-      (selectedReport.items || []).forEach((row, i) => {
-        if (y > 780) { doc.addPage(); y = 50; }
-        const vals = [String(i + 1), row.productName || "", row.origin || "", safeButchery(row) || "", row.transferNo || "", String(row.quantity ?? ""), row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "", row.expiry || "", row.remarks || "", row.action === "إجراء آخر..." ? row.customAction || "" : row.action || ""];
-        doc.setDrawColor(182, 200, 227);
-        doc.rect(tableX, y - 0.5, colWidths.reduce((a, b) => a + b, 0), rowH, "S");
-        let xx = tableX + 4;
-        vals.forEach((v, idx) => { doc.text(doc.splitTextToSize(String(v), colWidths[idx] - 8), xx, y + 12); xx += colWidths[idx]; });
+      const bottomLimit = pageH - 42;
+
+      const rows = filteredRows;
+      const anySplit = rows.some((r) => Number(r.splitOf) > 0);
+
+      const drawTableHead = (top) => {
+        doc.setFillColor(219, 234, 254);
+        doc.setDrawColor(148, 178, 214);
+        doc.rect(tableX, top, tableW, 20, "FD");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(12, 74, 110);
+        let x = tableX;
+        PDF_COLS.forEach((c) => {
+          const tx = c.align === "right" ? x + c.w - 4 : c.align === "center" ? x + c.w / 2 : x + 4;
+          doc.text(c.label, tx, top + 13, { align: c.align === "right" ? "right" : c.align === "center" ? "center" : "left" });
+          x += c.w;
+        });
+        doc.setTextColor(17, 24, 39);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        return top + 20;
+      };
+
+      const drawPageHead = () => {
+        let top = 42;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(17, 24, 39);
+        doc.text("Branch Returns Report", tableX, top);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(71, 85, 105);
+        doc.text(`Date: ${selectedReport.reportDate}`, tableX + tableW, top, { align: "right" });
+        top += 16;
+
+        const sum = selectedSummary || { count: rows.length, kg: 0, pcs: 0, plate: 0, other: 0 };
+        const bits = [`Lines: ${rows.length}`];
+        if (sum.kg > 0) bits.push(`Total KG: ${sum.kg.toFixed(2)}`);
+        if (sum.pcs > 0) bits.push(`PCS: ${sum.pcs}`);
+        if (sum.plate > 0) bits.push(`PLATE: ${sum.plate}`);
+        doc.setFontSize(9);
+        doc.text(bits.join("   |   "), tableX, top);
+        top += 13;
+
+        if (rowSearch.trim()) {
+          doc.setTextColor(180, 83, 9);
+          doc.text(`Filtered by "${pdfSafe(rowSearch)}" - ${rows.length} of ${(selectedReport.items || []).length} lines`, tableX, top);
+          doc.setTextColor(71, 85, 105);
+          top += 13;
+        }
+        doc.setTextColor(17, 24, 39);
+        return drawTableHead(top + 4);
+      };
+
+      let y = drawPageHead();
+
+      rows.forEach((row, i) => {
+        const split = Number(row.splitOf) > 0 ? round3(row.splitOf) : 0;
+        const qty = round3(row.quantity || 0);
+        const cells = {
+          sl: String(i + 1),
+          itemCode: pdfSafe(row.itemCode),
+          product: pdfSafe(row.productName),
+          origin: pdfSafe(row.origin),
+          butchery: pdfSafe(safeButchery(row)),
+          trn: pdfSafe(row.transferNo),
+          // A split line prints the part AND what it was cut from, so "3 (of 6)"
+          // can never be mistaken for a whole 3 kg return.
+          qty: split ? `${qty} (of ${split})` : String(row.quantity ?? ""),
+          qtyType: pdfSafe(qtyUnit(row)),
+          expiry: pdfSafe(row.expiry),
+          remarks: pdfSafe(row.remarks),
+          action: pdfSafe(actionText(row)),
+        };
+
+        const wrapped = PDF_COLS.map((c) => doc.splitTextToSize(cells[c.key] || "", c.w - 8));
+        const lines = Math.max(1, ...wrapped.map((w) => w.length));
+        const rowH = Math.max(18, lines * 9.5 + 8);
+
+        if (y + rowH > bottomLimit) { doc.addPage(); y = drawPageHead(); }
+
+        const condemned = /condemn|dispos/i.test(actionText(row) || "");
+        if (split) {
+          // Shading is the only marker that survives a black-and-white print run
+          // as well as it does on screen.
+          doc.setFillColor(...(condemned ? [254, 236, 236] : [255, 250, 235]));
+          doc.rect(tableX, y, tableW, rowH, "F");
+        }
+        doc.setDrawColor(198, 214, 235);
+        doc.rect(tableX, y, tableW, rowH, "S");
+
+        let x = tableX;
+        PDF_COLS.forEach((c, ci) => {
+          const isSplitQty = split && c.key === "qty";
+          if (isSplitQty) doc.setFont("helvetica", "bold");
+          const tx = c.align === "right" ? x + c.w - 4 : c.align === "center" ? x + c.w / 2 : x + 4;
+          doc.text(wrapped[ci], tx, y + 12, { align: c.align === "right" ? "right" : c.align === "center" ? "center" : "left" });
+          if (isSplitQty) doc.setFont("helvetica", "normal");
+          if (ci > 0) doc.line(x, y, x, y + rowH);
+          x += c.w;
+        });
         y += rowH;
       });
+
+      if (anySplit) {
+        y += 12;
+        if (y > bottomLimit) { doc.addPage(); y = drawPageHead(); }
+        doc.setFillColor(255, 250, 235);
+        doc.rect(tableX, y - 9, 14, 10, "F");
+        doc.setDrawColor(198, 214, 235);
+        doc.rect(tableX, y - 9, 14, 10, "S");
+        doc.setFontSize(8); doc.setTextColor(120, 53, 15);
+        doc.text(
+          'Shaded line = one returned quantity split between two actions. QTY shows the part and the original total, e.g. "3 (of 6)". A red tint marks the condemned part.',
+          tableX + 20, y - 1
+        );
+        doc.setTextColor(17, 24, 39);
+        y += 8;
+      }
+
+      // Page numbers + the Arabic-text caveat, once every page exists.
+      const pages = doc.internal.getNumberOfPages();
+      for (let pg = 1; pg <= pages; pg++) {
+        doc.setPage(pg);
+        doc.setFontSize(7.5); doc.setTextColor(148, 163, 184);
+        doc.text(`Generated ${new Date().toLocaleString()}  |  Arabic text is not printable in this PDF and shows as [AR]`, tableX, pageH - 20);
+        doc.text(`Page ${pg} of ${pages}`, pageW - marginX, pageH - 20, { align: "right" });
+      }
+
       doc.save(`returns_${selectedReport.reportDate}.pdf`);
       setOpMsg("✅ PDF created.");
     } catch (e) { console.error(e); setOpMsg("❌ Failed to create PDF."); }
@@ -871,6 +1240,7 @@ export default function ReturnView() {
           (r.itemCode || "").toLowerCase().includes(s) ||
           (r.productName || "").toLowerCase().includes(s) ||
           (r.origin || "").toLowerCase().includes(s) ||
+          (r.transferNo || "").toLowerCase().includes(s) ||
           safeButchery(r).toLowerCase().includes(s) ||
           (r.expiry || "").includes(s) ||
           (r.remarks || "").toLowerCase().includes(s) ||
@@ -878,6 +1248,36 @@ export default function ReturnView() {
         );
       });
   }, [selectedReport, rowSearch]);
+
+  /* ========== ✅ Search by number across every date ========== */
+  const numberMatches = useMemo(() => {
+    const s = numSearch.trim().toLowerCase();
+    if (!s) return [];
+    const out = [];
+    for (const report of filteredReports) {
+      (report.items || []).forEach((r, i) => {
+        if (
+          (r.itemCode || "").toLowerCase().includes(s) ||
+          (r.transferNo || "").toLowerCase().includes(s)
+        ) {
+          out.push({ ...r, _origIdx: i, _date: report.reportDate });
+        }
+      });
+    }
+    return out;
+  }, [filteredReports, numSearch]);
+
+  const numberMatchDays = useMemo(
+    () => new Set(numberMatches.map((m) => m._date)).size,
+    [numberMatches]
+  );
+
+  const jumpToMatch = (m) => {
+    cancelBulkEdit();
+    cancelEditRow();
+    setSelectedDate(m._date);
+    setRowSearch(numSearch.trim());
+  };
 
   /* ======================== UI ======================== */
   const activeRow =
@@ -947,6 +1347,74 @@ export default function ReturnView() {
           </button>
 
         </div>
+
+        {/* ✅ Search by number — item code or transfer no, across every date */}
+        <div style={numBar}>
+          <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>🔢 Search by number:</span>
+          <input
+            value={numSearch}
+            onChange={(e) => setNumSearch(e.target.value)}
+            placeholder="Item code or transfer no — searched in every date…"
+            style={numInput}
+          />
+          {numSearch && (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 700, color: numberMatches.length ? "#065f46" : "#b91c1c", whiteSpace: "nowrap" }}>
+                {numberMatches.length} line(s) in {numberMatchDays} day(s)
+              </span>
+              <button onClick={() => setNumSearch("")} style={clearBtn}>✕ Clear</button>
+            </>
+          )}
+        </div>
+
+        {numSearch.trim() !== "" && (
+          <div style={numResultsWrap}>
+            {numberMatches.length === 0 ? (
+              <div style={{ padding: "14px 10px", textAlign: "center", color: "#64748b" }}>
+                No item code or transfer number matches “{numSearch.trim()}” in the selected period.
+              </div>
+            ) : (
+              <table style={{ ...detailTable, minWidth: 820, fontSize: "0.9em" }}>
+                <thead>
+                  <tr>
+                    <th style={thS}>DATE</th>
+                    <th style={thS}>ITEM CODE</th>
+                    <th style={thS}>TRANSFER NO</th>
+                    <th style={thS}>PRODUCT</th>
+                    <th style={thS}>BUTCHERY</th>
+                    <th style={thS}>QTY</th>
+                    <th style={thS}>ACTION</th>
+                    <th style={thS}>GO</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {numberMatches.slice(0, 200).map((m, n) => (
+                    <tr
+                      key={`${m._date}-${m._origIdx}-${n}`}
+                      className="rv-row"
+                      style={{ background: m._date === selectedDate ? "#ecfeff" : n % 2 ? "#f8fbff" : "#fff", cursor: "pointer" }}
+                      onClick={() => jumpToMatch(m)}
+                    >
+                      <td style={{ ...tdS, fontWeight: 800, color: "#0369a1" }}>{m._date}</td>
+                      <td style={tdS}>{m.itemCode || "—"}</td>
+                      <td style={tdS}>{m.transferNo || "—"}</td>
+                      <td style={{ ...tdS, textAlign: "left" }}>{m.productName || "—"}</td>
+                      <td style={tdS}>{safeButchery(m) || "—"}</td>
+                      <td style={{ ...tdS, fontWeight: 800 }}>{m.quantity} {qtyUnit(m)}</td>
+                      <td style={tdS}>{actionText(m) || "—"}</td>
+                      <td style={tdS}><button onClick={(e) => { e.stopPropagation(); jumpToMatch(m); }} style={editBtn}>↗ Open</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {numberMatches.length > 200 && (
+              <div style={{ padding: "8px 10px", fontSize: 12, color: "#64748b" }}>
+                Showing the first 200 of {numberMatches.length} matches — narrow the number or the date range.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tree + Details */}
@@ -1066,7 +1534,7 @@ export default function ReturnView() {
                   <input
                     value={rowSearch}
                     onChange={(e) => setRowSearch(e.target.value)}
-                    placeholder="🔍 Search within table rows (product, branch, action, expiry…)"
+                    placeholder="🔍 Search within table rows (item code, transfer no, product, branch, action, expiry…)"
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", fontSize: "0.97em", color: "#111" }}
                   />
                   {rowSearch && (
@@ -1198,7 +1666,16 @@ export default function ReturnView() {
                           <td style={tdS}>
                             {editing ? (
                               <input style={cellInputStyle} type="number" min="0" step="0.001" value={draft.quantity ?? ""} onChange={(e) => upd({ quantity: e.target.value })} placeholder="QTY" />
-                            ) : row.quantity}
+                            ) : (
+                              <span>
+                                <span style={{ fontWeight: 700 }}>{row.quantity}</span>
+                                {Number(row.splitOf) > 0 && (
+                                  <span style={splitLineageChip} title={`Part of an original ${row.splitOf} ${qtyUnit(row)} line that was split`}>
+                                    ✂️ of {row.splitOf}
+                                  </span>
+                                )}
+                              </span>
+                            )}
                           </td>
 
                           {/* QTY TYPE */}
@@ -1252,6 +1729,13 @@ export default function ReturnView() {
                             ) : (
                               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                                 <button onClick={() => startEditRow(i)} style={editBtn}>✏️ Edit</button>
+                                <button
+                                  onClick={() => openSplit(i)}
+                                  style={splitBtn}
+                                  title="Give part of this quantity a different action (condemn 3 of 6 KG, …)"
+                                >
+                                  ✂️ Split
+                                </button>
                                 <button onClick={() => deleteRow(i)} style={rowDeleteBtn}>🗑️</button>
                                 <button onClick={() => openImagesFor(i)} style={imageBtn}>🖼️ {row.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT}</button>
                               </div>
@@ -1327,6 +1811,17 @@ export default function ReturnView() {
         onAddImages={addImagesToRow}
         onRemoveImage={removeImageFromRow}
         remaining={remainingForActive}
+      />
+
+      {/* ✂️ Split-quantity Modal */}
+      <SplitQtyModal
+        open={splitState.open}
+        row={splitState.idx >= 0 ? (selectedReport?.items?.[splitState.idx] ?? null) : null}
+        draft={splitState}
+        busy={splitBusy}
+        onChange={(patch) => setSplitState((st) => ({ ...st, ...patch }))}
+        onCancel={() => { if (!splitBusy) closeSplit(); }}
+        onConfirm={confirmSplit}
       />
 
       {/* ✅ Confirm Modal */}
@@ -1415,4 +1910,24 @@ const btnBlue = { background: "#2563eb", color: "#fff", border: "none", borderRa
 const thumbsWrap = { marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 };
 const thumbTile = { position: "relative", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", background: "#f8fafc" };
 const thumbImg = { width: "100%", height: 150, objectFit: "cover", display: "block" };
+
+/* ===== Search by number ===== */
+const numBar = { display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", alignItems: "center", marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e2e8f0" };
+const numInput = { flex: "1 1 320px", maxWidth: 520, boxSizing: "border-box", padding: "8px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", fontSize: "0.97em", color: "#111" };
+const numResultsWrap = { marginTop: 10, maxHeight: 300, overflow: "auto", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" };
+
+/* ===== Split quantity ===== */
+const splitBtn = { background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 800, padding: "4px 10px", cursor: "pointer" };
+const splitLineageChip = { display: "inline-block", marginLeft: 6, padding: "1px 7px", borderRadius: 999, background: "#fffbeb", border: "1px solid #fde68a", color: "#b45309", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" };
+const splitCard = { width: "min(620px, 96vw)", maxHeight: "88vh", overflow: "auto", background: "#fff", color: "#0f172a", borderRadius: 16, border: "1px solid #e5e7eb", padding: "18px 20px", boxShadow: "0 12px 34px rgba(0,0,0,.25)", fontFamily: "Cairo, sans-serif" };
+const splitFactsRow = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginTop: 12 };
+const splitFact = { display: "flex", flexDirection: "column", gap: 2, padding: "8px 10px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 13 };
+const splitFactLbl = { fontSize: 11, fontWeight: 800, letterSpacing: ".4px", textTransform: "uppercase", color: "#64748b" };
+const splitLbl = { display: "block", fontWeight: 800, fontSize: 13, color: "#334155", marginBottom: 6 };
+const splitChipBtn = { background: "#eff6ff", color: "#1d4ed8", border: "1.5px solid #bfdbfe", borderRadius: 9, padding: "6px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" };
+const splitWarn = { marginTop: 6, fontSize: 12, fontWeight: 700, color: "#b91c1c" };
+const splitPreview = { marginTop: 14, padding: "10px 12px", borderRadius: 12, background: "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1.5px solid #fcd34d", display: "flex", flexDirection: "column", gap: 6 };
+const splitPreviewRow = { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 14 };
+const splitKeep = { padding: "2px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", fontWeight: 800, fontSize: 12 };
+const splitMove = { padding: "2px 8px", borderRadius: 999, background: "#fee2e2", color: "#b91c1c", fontWeight: 800, fontSize: 12 };
 const thumbRemove = { position: "absolute", top: 6, right: 6, background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, padding: "2px 8px", fontWeight: 800, cursor: "pointer" };

@@ -41,6 +41,9 @@ export const CARD_CSS = `
 .cc-portal .cc-lbl   { font-size: 9px !important; }
 .cc-portal .cc-chip  { font-size: 9.5px !important; }
 .cc-portal .cc-share em { font-size: 8.5px !important; }
+.cc-portal .cc-doc   { font-size: 9px !important; }
+.cc-portal .cc-path  { font-size: 9.5px !important; }
+.cc-portal .cc-foot, .cc-portal .cc-foot * { font-size: 8px !important; }
 
 .cc {
   --cc-ink: #0f2740; --cc-ink2: #3c5a75; --cc-mut: #7b93a8;
@@ -161,14 +164,95 @@ export const CARD_CSS = `
   .cc-facts { justify-content: flex-start; }
 }
 
-/* ── الطباعة: نسخة البوّابة وحدها، A4 أفقي ── */
+/* ══════════ الطباعة ══════════
+   ورقة **وحدة** مهما كثرت التنفيذات: البطاقة بتتقاس قبل الطباعة، وبينختار
+   عدد الأعمدة ونسبة التصغير اللي بتخلّيها تدخل بصفحة A4 أفقية وحدة
+   (fitToOnePage تحت). وشكلها بالورق على طراز تقارير Odoo: مسطّح، حدود
+   رفيعة، بلا تدرّجات ولا زوايا كبيرة ولا فراغات واسعة — الحبر للمعلومة. */
 .cc-portal { display: none; }
+
+/* القياس: بتنعرض برّا الشاشة بعرض محسوب، بلا ما يشوفها المستخدم */
+.cc-portal.cc-measure {
+  display: block !important; position: fixed !important;
+  inset-inline-start: -20000px !important; top: 0 !important;
+  z-index: -1 !important; pointer-events: none !important;
+}
+
+/* ══ شكل الورقة ══ طراز تقارير Odoo: مسطّح، خطوط شعرة، ولا حبر على الزينة.
+   كل هالقواعد جوّا .cc-portal — يعني نسخة الطباعة وحدها، والشاشة ما بتتغيّر. */
+.cc-portal .cc { border: 0; border-radius: 0; padding: 0; }
+
+/* ترويسة: شريط بخط سميك تحته — أول ما تمسك الورقة بتعرف شو هي */
+.cc-portal .cc-top { padding-bottom: 7px; border-bottom: 2px solid var(--cc-ink); }
+.cc-portal .cc-h1 { text-transform: uppercase; letter-spacing: 1.1px; }
+.cc-portal .cc-doc {
+  display: inline-block; margin-top: 3px; padding: 1px 7px;
+  border: 1px solid var(--cc-line2); border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .8px; color: var(--cc-ink2); font-weight: 700;
+}
+.cc-portal .cc-fact { border-radius: 3px; padding: 4px 10px; background: #fff; }
+
+/* سطر المسار — تحت اسم المادة مباشرة، بلون المستوى: الجدول تبعه وحده */
+.cc-portal .cc-path {
+  display: block; margin-top: 2px; font-weight: 800; letter-spacing: .3px;
+  color: var(--cc-accent, var(--cc-blue));
+}
+/* رقم الصندوق — مربّع صغير بلون مستواه، بيخلّي التسلسل مقروء بلمحة */
+.cc-portal .cc-idx {
+  display: inline-block; min-width: 15px; margin-inline-end: 6px; padding: 0 3px;
+  background: var(--cc-accent, var(--cc-blue)); color: #fff; border-radius: 3px;
+  text-align: center; font-weight: 900;
+}
+/* الهدر: بلا خلفية صفرا — العلامة ◆ والعمود الملوّن بيكفّوا */
+.cc-portal .cc-w td { background: #fbfcfd; }
+/* سطر المجاميع بخط مزدوج — عُرف المحاسبة، ما بينلخبط مع سطر عادي */
+.cc-portal .cc-bfoot { background: #fff; border-top: 3px double var(--cc-ink2); }
+/* التواقيع: سطر منقّط للإمضاء بدل صندوق مقصوص */
+.cc-portal .cc-sign { grid-template-columns: repeat(3, 1fr); }
+.cc-portal .cc-sig {
+  border: 0; border-radius: 0; padding: 0; border-top: 1px solid var(--cc-line2); padding-top: 5px;
+}
+.cc-portal .cc-sig b { border-bottom: 1px dotted var(--cc-mut); min-height: 16px; margin-top: 10px; }
+/* ذيل الوثيقة */
+.cc-portal .cc-foot {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 5px;
+  border-top: 1px solid var(--cc-line); color: var(--cc-mut); font-weight: 700;
+  letter-spacing: .3px;
+}
+.cc-portal .cc-foot .cc-spacer { flex: 1; }
+.cc-portal .cc-box, .cc-portal .cc-kpi { border-radius: 4px; }
+.cc-portal .cc-kpi {
+  background: #fff; border-top-width: 2px; padding: 4px 8px;
+}
+/* نسخة الورق ما بتتبع استجابة الشاشة — قياسها من مقاس الورقة لا مقاس النافذة */
+.cc-portal .cc-kpis { grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 8px 0 9px; }
+.cc-portal .cc-sign { grid-template-columns: repeat(3, 1fr); }
+.cc-portal .cc-facts { justify-content: flex-end; }
+.cc-portal .cc-bhead { background: #fff; padding: 5px 8px 4px; border-inline-start-width: 3px; }
+/* بلا شريط مؤشّرات بالورق — الصناديق بتبلّش بعد خط الترويسة مباشرة */
+.cc-portal .cc-grid { column-gap: 9px; margin-top: 9px; }
+.cc-portal .cc-box { margin-bottom: 8px; }
+.cc-portal .cc-tbl th { padding: 3px 8px; }
+.cc-portal .cc-tbl td { padding: 3px 8px; }
+.cc-portal .cc-bfoot { padding: 4px 8px; }
+.cc-portal .cc-sign { gap: 9px; margin-top: 9px; }
+.cc-portal .cc-sig { border-radius: 4px; padding: 5px 9px 7px; }
+.cc-portal .cc-sig b { margin-top: 6px; min-height: 14px; }
+.cc-portal .cc-tags { margin-top: 3px; }
+
 @media print {
-  @page { size: A4 landscape; margin: 9mm; }
+  /* لو غيّرت الهوامش هون غيّر PAGE_MM بالجافاسكربت — الاتنين لازم يتطابقوا */
+  @page { size: A4 landscape; margin: 8mm; }
   body.cc-printing #root { display: none !important; }
   body.cc-printing .cc-portal { display: block !important; }
+  /* التصغير المحسوب: البطاقة بتتبني بعرض أوسع وبتنضغط لعرض الصفحة، فالنصّ
+     بيضل مرتّب بأعمدة بدل ما ينقص محتوى أو تطلع صفحة تانية */
+  body.cc-printing .cc-portal { position: relative; }
   body.cc-printing .cc-portal .cc {
-    border: 0 !important; border-radius: 0 !important; padding: 0 !important;
+    position: absolute; top: 0; left: 0;    /* فيزيائي: التصغير لازم يثبت بالعربي كمان */
+    transform: scale(var(--cc-scale, 1));
+    transform-origin: top left;
   }
   .cc-box, .cc-kpi, .cc-chip, .cc-pill, .cc-bhead, .cc-tbl th, .cc-w td, .cc-bfoot {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -216,14 +300,18 @@ export function orderOperations(rows) {
 }
 
 /**
- * دمج تنفيذات **نفس المادة الخام** بصندوق واحد.
+ * دمج تنفيذات **نفس المادة الخام بنفس المسار** بصندوق واحد.
  *
  * الجزار بيقطّع نفس الرقبة تلات مرّات باليوم، فكانت البطاقة تطلع تلات صناديق
  * بنفس العنوان — ورق أكتر وقراءة أصعب. صار: صندوق واحد، أوزانه مجموع
  * التنفيذات، وأسطر القطع مدموجة على مستوى المنتج، وأرقام العمليات كلها
  * بترويسة الصندوق حتى ما يضيع أثر أي تنفيذ.
  *
- * الدمج ضمن **نفس المستوى** (`__depth`) فقط: ناتج انفكّك بصندوق تاني بيضل
+ * ⚠️ **المسار جزء من المفتاح**: نفس المادة ممكن تنفكّ بأكثر من مسار
+ * (pathway) وكل مسار إله نواتج ونِسب مختلفة — دمجهم بجدول واحد بيخلط
+ * تفكيكين ما إلهم علاقة ببعض. فكل مسار = جدول/كرت مستقلّ.
+ *
+ * والدمج ضمن **نفس المستوى** (`__depth`) فقط: ناتج انفكّك بصندوق تاني بيضل
  * صندوقه لحاله، وإلا انكسرت شجرة «خام → ناتج → تفكيك».
  */
 function mergeSameInput(ops) {
@@ -231,7 +319,8 @@ function mergeSameInput(ops) {
   const order = [];
 
   ops.forEach((r) => {
-    const key = `${r.__depth || 0}::${r.inputItemId || r.inputName || "—"}`;
+    const path = r.pathwayId || r.pathwayCode || r.bomRef || "—";
+    const key = `${r.__depth || 0}::${r.inputItemId || r.inputName || "—"}::${path}`;
     if (!map.has(key)) {
       map.set(key, { rows: [] });
       order.push(key);
@@ -297,12 +386,15 @@ const Kpi = ({ lbl, val, unit, color }) => (
   </span>
 );
 
-/** صندوق واحد = تنفيذ وصفة واحد (مادة خام → قطعها). */
-function OpBox({ row, isAr }) {
+/** صندوق واحد = تنفيذ وصفة واحد (مادة خام → قطعها).
+    `paper` = نسخة الطباعة: إنجليزي بالكامل، وبلا نِسب ولا منشأ/نوع/وقت —
+    الورقة بدها الأسماء والأوزان وبس. الشاشة بتضل متل ما هي. */
+function OpBox({ row, isAr, paper = false, n = 0 }) {
   const cuts = row.cuts && row.cuts.length ? row.cuts : [];
   const accent = ACCENTS[Math.min(row.__depth || 0, ACCENTS.length - 1)];
   const base = row.carcassKg > 0 ? row.carcassKg : row.cutsKg + row.wasteKg;
   const diff = Number(row.unaccountedKg) || 0;
+  const inputName = paper ? (row.inputNameEn || row.inputName) : row.inputName;
   const yieldTone = row.yieldPct >= 75 ? "" : row.yieldPct >= 60 ? " warn" : " bad";
 
   return (
@@ -310,15 +402,23 @@ function OpBox({ row, isAr }) {
       <div className="cc-bhead">
         <span className="cc-bname">
           <span className="cc-lbl">{isAr ? "المادة الخام" : "Raw material"}</span>
-          <span className="cc-h2" dir="auto">{row.inputName}</span>
+          <span className="cc-h2" dir="auto">
+            {paper && n > 0 ? <span className="cc-idx">{n}</span> : null}
+            {inputName}
+          </span>
+          {/* كل صندوق = مسار واحد، فاسم المسار سطر بالترويسة لا شريحة ضايعة
+              بين باقي الشرائح — هيك بيبان إنّ الجدول تحته يخصّ هالمسار وحده */}
+          {paper && (row.pathwayLabel || row.bomRef) ? (
+            <span className="cc-path">🛤️ {row.pathwayLabel || row.bomRef}</span>
+          ) : null}
           <span className="cc-tags">
-            {row.bomOriginName ? <span className="cc-chip">🌍 {row.bomOriginName}</span> : null}
-            {row.bomKindName ? <span className="cc-chip">🐑 {row.bomKindName}</span> : null}
+            {!paper && row.bomOriginName ? <span className="cc-chip">🌍 {row.bomOriginName}</span> : null}
+            {!paper && row.bomKindName ? <span className="cc-chip">🐑 {row.bomKindName}</span> : null}
             {row.bomCatName ? <span className="cc-chip">🏷️ {row.bomCatName}</span> : null}
-            {(row.__pathways || (row.pathwayCode ? [row.pathwayCode] : [])).map((c) => (
+            {!paper && (row.__pathways || (row.pathwayCode ? [row.pathwayCode] : [])).map((c) => (
               <span key={c} className="cc-chip ref">🛤️ {c}</span>
             ))}
-            {row.__merged > 1 ? (
+            {!paper && row.__merged > 1 ? (
               <span className="cc-chip">
                 ×{row.__merged} {isAr ? "تنفيذ" : "jobs"}
               </span>
@@ -327,13 +427,13 @@ function OpBox({ row, isAr }) {
             {(row.__opNos || (row.opNo ? [row.opNo] : [])).map((no) => (
               <span key={no} className="cc-chip ref">{no}</span>
             ))}
-            {(row.__times || (row.time ? [row.time] : [])).map((tm) => (
+            {!paper && (row.__times || (row.time ? [row.time] : [])).map((tm) => (
               <span key={tm} className="cc-chip">🕒 {tm}</span>
             ))}
             {row.rawExpiry ? (
               <span className="cc-chip">📅 {isAr ? "ينتهي" : "exp"} {row.rawExpiry}</span>
             ) : null}
-            {row.durationMin > 0 ? (
+            {!paper && row.durationMin > 0 ? (
               <span className="cc-chip">
                 ⏱️ {row.durationMin} {isAr ? "دقيقة" : "min"}
               </span>
@@ -367,26 +467,40 @@ function OpBox({ row, isAr }) {
         </span>
       </div>
 
+      {/* الورقة: ثلاثة أعمدة وبس — رقم · اسم القطعة · الوزن.
+          الشاشة بتضل بأعمدتها الخمسة مع شريط النسبة. */}
       <table className="cc-tbl">
         <colgroup>
-          <col style={{ width: "8%" }} />
-          <col style={{ width: "42%" }} />
-          <col style={{ width: "17%" }} />
-          <col style={{ width: "10%" }} />
-          <col style={{ width: "23%" }} />
+          {paper ? (
+            <>
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "64%" }} />
+              <col style={{ width: "27%" }} />
+            </>
+          ) : (
+            <>
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "42%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "23%" }} />
+            </>
+          )}
         </colgroup>
         <thead>
           <tr>
             <th className="cc-n">#</th>
             <th>{isAr ? "اسم القطعة" : "Cut name"}</th>
             <th style={{ textAlign: "end" }}>{isAr ? "الوزن كجم" : "Weight kg"}</th>
-            <th style={{ textAlign: "center" }}>{isAr ? "قطع" : "Pc"}</th>
-            <th>{isAr ? "النسبة" : "Share"}</th>
+            {!paper && <th style={{ textAlign: "center" }}>{isAr ? "قطع" : "Pc"}</th>}
+            {!paper && <th>{isAr ? "النسبة" : "Share"}</th>}
           </tr>
         </thead>
         <tbody>
           {cuts.length === 0 ? (
-            <tr><td colSpan={5} className="cc-pc">{isAr ? "بلا قطع" : "No cuts"}</td></tr>
+            <tr>
+              <td colSpan={paper ? 3 : 5} className="cc-pc">{isAr ? "بلا قطع" : "No cuts"}</td>
+            </tr>
           ) : (
             cuts.map((c, i) => {
               const share = base > 0 ? (c.weightKg / base) * 100 : 0;
@@ -395,15 +509,17 @@ function OpBox({ row, isAr }) {
                   <td className="cc-n">{i + 1}</td>
                   <td className="cc-nm" dir="auto">
                     {c.isWaste ? <b>◆</b> : null}
-                    {c.name}
-                    {c.nameAlt ? <i> · {c.nameAlt}</i> : null}
+                    {paper ? (c.nameEn || c.name) : c.name}
+                    {!paper && c.nameAlt ? <i> · {c.nameAlt}</i> : null}
                   </td>
                   <td className="cc-kgc">{kg(c.weightKg)}</td>
-                  <td className="cc-pc">—</td>
-                  <td className="cc-share">
-                    <span className="cc-bar"><i style={{ width: `${Math.min(share, 100)}%` }} /></span>
-                    <em>{share.toFixed(1)}%</em>
-                  </td>
+                  {!paper && <td className="cc-pc">—</td>}
+                  {!paper && (
+                    <td className="cc-share">
+                      <span className="cc-bar"><i style={{ width: `${Math.min(share, 100)}%` }} /></span>
+                      <em>{share.toFixed(1)}%</em>
+                    </td>
+                  )}
                 </tr>
               );
             })
@@ -438,7 +554,7 @@ function OpBox({ row, isAr }) {
  * `rows` = تنفيذات ذلك اليوم (صفوف مُطبَّعة من butcherReportKit).
  */
 const CuttingCard = React.forwardRef(function CuttingCard(
-  { rows = [], day, isAr = false, butcherName, employeeNo, branchName },
+  { rows = [], day, isAr = false, butcherName, employeeNo, branchName, paper = false },
   ref
 ) {
   /* الملغى ما بيطلع عالورق مهما كان المنادي — البطاقة وثيقة شغل، والعملية
@@ -473,8 +589,16 @@ const CuttingCard = React.forwardRef(function CuttingCard(
         <img className="cc-logo" src={mawashiLogo} alt="AL MAWASHI" />
         <span className="cc-titles">
           <span className="cc-h1">
-            {isAr ? "بطاقة التقطيع" : "Cutting card"} <span>{isAr ? "Cutting card" : "بطاقة التقطيع"}</span>
+            {paper
+              ? "Cutting card"
+              : <>{isAr ? "بطاقة التقطيع" : "Cutting card"} <span>{isAr ? "Cutting card" : "بطاقة التقطيع"}</span></>}
           </span>
+          {/* رقم الوثيقة — ما بيتكرّر: جزار + يوم. بيربط الورقة بسجلّها */}
+          {paper && (
+            <span className="cc-doc">
+              CC-{employeeNo || "0000"}-{String(day || "").replace(/-/g, "")}
+            </span>
+          )}
         </span>
         <span className="cc-facts">
           <Fact lbl={isAr ? "الموقع" : "Location"} val={branchName} />
@@ -487,17 +611,23 @@ const CuttingCard = React.forwardRef(function CuttingCard(
         </span>
       </div>
 
-      <div className="cc-kpis">
-        <Kpi lbl={isAr ? "التنفيذات" : "Operations"} val={ops.length} color="#1f6fd0" />
-        <Kpi lbl={isAr ? "المادة الخام" : "Raw material"} val={kg(sum.raw)} unit={isAr ? "كجم" : "kg"} color="#14507f" />
-        <Kpi lbl={isAr ? "النواتج النهائية" : "Final products"} val={kg(sum.products)} unit={isAr ? "كجم" : "kg"} color="#0f766e" />
-        <Kpi lbl={isAr ? "الهدر والعظم" : "Waste & bones"} val={kg(sum.waste)} unit={isAr ? "كجم" : "kg"} color="#b45309" />
-        <Kpi lbl={isAr ? "نسبة التصافي" : "Net yield"} val={`${sum.yieldPct.toFixed(1)}%`} color="#047857" />
-      </div>
+      {/* شريط المؤشّرات على الشاشة وحدها — الورقة بدها التفاصيل، والمجاميع
+          موجودة بذيل كل صندوق */}
+      {!paper && (
+        <div className="cc-kpis">
+          <Kpi lbl={isAr ? "التنفيذات" : "Operations"} val={ops.length} color="#1f6fd0" />
+          <Kpi lbl={isAr ? "المادة الخام" : "Raw material"} val={kg(sum.raw)} unit={isAr ? "كجم" : "kg"} color="#14507f" />
+          <Kpi lbl={isAr ? "النواتج النهائية" : "Final products"} val={kg(sum.products)} unit={isAr ? "كجم" : "kg"} color="#0f766e" />
+          <Kpi lbl={isAr ? "الهدر والعظم" : "Waste & bones"} val={kg(sum.waste)} unit={isAr ? "كجم" : "kg"} color="#b45309" />
+          <Kpi lbl={isAr ? "نسبة التصافي" : "Net yield"} val={`${sum.yieldPct.toFixed(1)}%`} color="#047857" />
+        </div>
+      )}
 
       {ops.length ? (
         <div className="cc-grid">
-          {ops.map((r) => <OpBox key={r.id} row={r} isAr={isAr} />)}
+          {ops.map((r, i) => (
+            <OpBox key={r.id} row={r} isAr={isAr} paper={paper} n={i + 1} />
+          ))}
         </div>
       ) : (
         <div className="cc-empty">
@@ -519,6 +649,22 @@ const CuttingCard = React.forwardRef(function CuttingCard(
           <b />
         </span>
       </div>
+
+      {/* ذيل الوثيقة — بالورق وحده: مين طبعها وإيمتى، ورقمها مرّة تانية */}
+      {paper && (
+        <div className="cc-foot">
+          <span>AL MAWASHI · Butchery cutting record</span>
+          <span className="cc-spacer" />
+          <span>
+            CC-{employeeNo || "0000"}-{String(day || "").replace(/-/g, "")}
+            {" · "}
+            {new Date().toLocaleString("en-GB", {
+              day: "2-digit", month: "2-digit", year: "numeric",
+              hour: "2-digit", minute: "2-digit",
+            })}
+          </span>
+        </div>
+      )}
     </div>
   );
 });
@@ -530,31 +676,114 @@ export default CuttingCard;
  * الطباعة ثم تُنظّف. `job` = خصائص CuttingCard، وnull = لا شيء يُطبع.
  * الفصل عن الشاشة مقصود: الورقة تطلع بمقاسها الخاص بلا أنماط الصفحة.
  */
+/* مقاس الورقة — لازم يطابق `@page` بالـCSS فوق (A4 أفقي بهامش ٨ مم) */
+const PAGE_MM = { w: 297, h: 210, margin: 8 };
+const PX_PER_MM = 96 / 25.4;               // الطباعة بتحسب البكسل ١/٩٦ إنش
+const MIN_SCALE = 0.34;                    // أصغر من هيك ما بينقرا
+const COL_TRIES = [2, 3, 4];               // عدد أعمدة الصناديق المسموح تجريبها
+
+/**
+ * تجهيز البطاقة لصفحة **وحدة**: بتجرّب عدّة توزيعات أعمدة، وبكل توزيع
+ * بتدوّر بالتنصيف على أكبر تصغير بيخلّي الارتفاع يدخل بالورقة، وبتاخد
+ * الأحسن. بترجّع دالة تنظيف بترجّع الأنماط لأصلها.
+ */
+function fitToOnePage(portal) {
+  const card = portal?.querySelector(".cc");
+  const grid = portal?.querySelector(".cc-grid");
+  if (!card) return () => {};
+
+  const pw = (PAGE_MM.w - PAGE_MM.margin * 2) * PX_PER_MM;
+  const ph = (PAGE_MM.h - PAGE_MM.margin * 2) * PX_PER_MM;
+
+  portal.classList.add("cc-measure");
+  const fits = (k, cols) => {
+    if (grid) grid.style.columns = String(cols);
+    card.style.width = `${pw / k}px`;
+    return card.getBoundingClientRect().height * k <= ph;
+  };
+
+  let best = { k: MIN_SCALE, cols: COL_TRIES[0] };
+  COL_TRIES.forEach((cols) => {
+    if (fits(1, cols)) {                      // بتدخل بحجمها الطبيعي
+      if (1 > best.k) best = { k: 1, cols };
+      return;
+    }
+    let lo = MIN_SCALE;
+    let hi = 1;
+    for (let i = 0; i < 7; i += 1) {          // ٧ تنصيفات = دقّة ~٠.٥٪
+      const mid = (lo + hi) / 2;
+      if (fits(mid, cols)) lo = mid; else hi = mid;
+    }
+    if (lo > best.k) best = { k: lo, cols };
+  });
+
+  if (grid) grid.style.columns = String(best.cols);
+  card.style.width = `${pw / best.k}px`;
+  document.documentElement.style.setProperty("--cc-scale", String(best.k));
+  /* البوّابة بمقاس الورقة وبتقصّ الزايد — الصندوق المكبّر ما بيولّد صفحة تانية */
+  portal.style.width = `${pw}px`;
+  portal.style.height = `${ph}px`;
+  portal.style.overflow = "hidden";
+  portal.classList.remove("cc-measure");
+
+  return () => {
+    portal.classList.remove("cc-measure");
+    portal.removeAttribute("style");
+    card.style.width = "";
+    if (grid) grid.style.columns = "";
+    document.documentElement.style.removeProperty("--cc-scale");
+  };
+}
+
 export function CuttingCardPrint({ job, onDone }) {
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
+  const portalRef = useRef(null);
 
   useEffect(() => {
     if (!job) return undefined;
     document.body.classList.add("cc-printing");
+
+    /* اسم ملف الـPDF = عنوان الصفحة عند المتصفّح. بلا هالسطر بيطلع اسم
+       التطبيق («نظام التفتيش») على كل بطاقة، فبتضيع الملفات ببعضها.
+       الشكل المطلوب: «875- 05-09-2026» — الرقم الوظيفي وتاريخ التقطيع. */
+    const prevTitle = document.title;
+    const [yy = "", mm = "", dd = ""] = String(job.day || "").split("-");
+    const stamp = dd && mm && yy ? `${dd}-${mm}-${yy}` : String(job.day || "");
+    const fileName = [job.employeeNo, stamp].filter(Boolean).join("- ");
+    if (fileName) document.title = fileName;
+
+    let undoFit = () => {};
     const finish = () => {
       window.removeEventListener("afterprint", finish);
       document.body.classList.remove("cc-printing");
+      document.title = prevTitle;
+      undoFit();
       if (doneRef.current) doneRef.current();
     };
     window.addEventListener("afterprint", finish);
-    // مهلة قصيرة حتى يرسم المتصفّح النسخة (والشعار) قبل فتح نافذة الطباعة
-    const timer = setTimeout(() => window.print(), 120);
+
+    /* القياس بعد ما يرسم المتصفّح النسخة (والشعار والخط)، وبعده الطباعة */
+    const fitTimer = setTimeout(() => { undoFit = fitToOnePage(portalRef.current); }, 60);
+    const timer = setTimeout(() => window.print(), 220);
+
     return () => {
+      clearTimeout(fitTimer);
       clearTimeout(timer);
       window.removeEventListener("afterprint", finish);
       document.body.classList.remove("cc-printing");
+      document.title = prevTitle;
+      undoFit();
     };
   }, [job]);
 
   if (!job || typeof document === "undefined") return null;
   return createPortal(
-    <div className="cc-portal"><CuttingCard {...job} /></div>,
+    /* الورقة إنجليزية دايماً ومختصرة — `paper` بيشيل النِسب والمنشأ والنوع
+       والوقت، و`isAr={false}` بيخلّي كل عنوان إنجليزي مهما كانت لغة الشاشة */
+    <div className="cc-portal" ref={portalRef}>
+      <CuttingCard {...job} isAr={false} paper />
+    </div>,
     document.body
   );
 }

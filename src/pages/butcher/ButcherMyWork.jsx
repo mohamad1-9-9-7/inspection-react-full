@@ -11,7 +11,7 @@
 // • تفاصيل التنفيذ = جدول قطع نظيف بشريط حصّة لكل قطعة، مش «شرائح» متراصّة.
 // • بطاقة التقطيع الرسمية (CuttingCard) تبقى العرض البديل + الطباعة.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
@@ -20,6 +20,8 @@ import {
   useButcherData, useNormalizedRows,
 } from "./butcherReportKit";
 import { useRowViewer } from "./butcherViewer";
+// 🎯 سكور التنفيذ — بينحسب مرّة بأعلى الشاشة، والكروت بتقرا `r.score` جاهز
+import { attachScores, avgScore, scoreTone } from "./butcherScore";
 import CuttingCard, { CARD_CSS, CuttingCardPrint } from "./ButcherCuttingCard";
 import { useOutbox } from "./butcherOutbox";
 import ButcherPerformance from "./ButcherPerformance";
@@ -63,29 +65,74 @@ const CSS = `
 @keyframes mwRise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
 #root .mw-rise { animation: mwRise .24s ease both; }
 
-/* سطر المادة الخام — أعمدة على الشاشة الواسعة، وبينكسر لسطرين عالضيّقة.
-   كلاس لا نمط سطري: النمط السطري ما بيقبل @media. */
-#root .mw-row {
-  width: 100%; display: grid; gap: 12px; align-items: center; text-align: start;
-  grid-template-columns: 18px minmax(140px, 1.5fr) minmax(300px, 2fr) auto;
-  background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
-  color: inherit;
+/* ── اللوح الثلاثي ── المادة الخام بعمود على طرف الشاشة، وبضغطة بتفتح
+   **جنبها** مساراتها، والمسار بيفتح جنبه تفاصيله. ما في شي بينفتح تحت
+   السطر: كل مستوى عمود لحاله، فالعين بتقرا المسار من الطرف للداخل.
+   الأعمدة بتنقلب لحالها بالعربي (grid بيتبع dir). */
+#root .mw-board {
+  display: grid; gap: 14px; align-items: start;
+  grid-template-columns: minmax(270px, 360px) minmax(250px, 330px) minmax(300px, 1fr);
 }
-#root .mw-row-cells {
-  display: grid; grid-template-columns: repeat(5, minmax(54px, 1fr)); gap: 8px;
+/* مسار واحد = عمود المسارات نسخة مكرّرة عن كرت المادة، فبينشال ويصير اللوح
+   عمودين: المادة الخام ← تفاصيلها. */
+#root .mw-board-2 { grid-template-columns: minmax(270px, 380px) minmax(320px, 1fr); }
+#root .mw-pane { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+#root .mw-paneHead {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  padding: 0 4px 2px;
 }
-#root .mw-cell {
-  background: #f6fafe; border: 1px solid #e6eff8; border-radius: 12px;
-  padding: 6px 8px; text-align: center; min-width: 0; overflow: hidden;
+/* ── 🔒 القفل البلوري ── الشغل اللي لسّا بانتظار المشرف بيضل مكانه، بس
+   وراء طبقة غباش: بتشوف إنّه موجود وما بتقدر تقرا رقم منه ولا تفتحه.
+   بيوافق المشرف → بينزاح الغباش وبيصير كرت عادي بأرقامه. */
+#root .mw-lock { position: relative; border-radius: 16px; }
+#root .mw-lock > .mw-lockBody {
+  filter: blur(7px); opacity: .5; pointer-events: none; user-select: none;
 }
-@media (max-width: 900px) {
-  #root .mw-row { grid-template-columns: 18px minmax(0, 1fr) auto; }
-  #root .mw-row-cells { grid-column: 1 / -1; }
+#root .mw-lockGlass {
+  position: absolute; inset: 0; z-index: 1; border-radius: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; text-align: center; padding: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,.66), rgba(255,247,232,.72));
+  backdrop-filter: blur(7px) saturate(120%);
+  -webkit-backdrop-filter: blur(7px) saturate(120%);
+  border: 1px dashed #e0bd80; color: #8a5a12; font-weight: 900; line-height: 1.6;
 }
-@media (max-width: 620px) {
-  /* عدد التنفيذات مكتوب بسطر العنوان، فخانته بتنشال هون ليصير ٢×٢ */
-  #root .mw-row-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #root .mw-row-cells > :first-child { display: none; }
+/* ضغطة على شي مقفول: هزّة خفيفة — رسالة «ما بينفتح» بلا نافذة منبثقة */
+@keyframes mwShake {
+  10%, 90% { transform: translateX(-2px) } 30%, 70% { transform: translateX(3px) }
+  50% { transform: translateX(-3px) }
+}
+#root .mw-shake { animation: mwShake .38s ease; }
+/* غباش جوّا كرت عقدة — مساحته أصغر، فبدّه ارتفاع أدنى ليسع السطرين */
+#root .mw-lock-sm { min-height: 84px; }
+#root .mw-lock-sm > .mw-lockGlass { padding: 6px 8px; gap: 2px; }
+
+/* سطر ناتج جوّا كرت العقدة — اسم · وزن · حصّة */
+#root .mw-nodeCut {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 42px;
+  gap: 8px; align-items: center; padding: 4px 0;
+}
+
+/* أرقام مصغّرة جوّا كرت العقدة — عمودين، وبتنكسر لعمود واحد بالضيّق جداً */
+#root .mw-mini { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 380px) { #root .mw-mini { grid-template-columns: minmax(0, 1fr); } }
+/* ≤1180: عمودين — المادة الخام على الطرف، والمسارات وتفاصيلها فوق بعض */
+@media (max-width: 1180px) {
+  #root .mw-board { grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); }
+  #root .mw-pane-master { grid-column: 1; grid-row: 1 / span 2; }
+  #root .mw-pane-paths  { grid-column: 2; grid-row: 1; }
+  #root .mw-pane-detail { grid-column: 2; grid-row: 2; }
+  /* بلا عمود مسارات: صفّين ما إلهم لزوم */
+  #root .mw-board-2 .mw-pane-master { grid-row: 1; }
+  #root .mw-board-2 .mw-pane-detail { grid-column: 2; grid-row: 1; }
+}
+/* ≤820 (كشك/جوّال): عمود واحد بالترتيب نفسه */
+@media (max-width: 820px) {
+  #root .mw-board, #root .mw-board-2 { grid-template-columns: minmax(0, 1fr); }
+  #root .mw-pane-master, #root .mw-pane-paths, #root .mw-pane-detail,
+  #root .mw-board-2 .mw-pane-master, #root .mw-board-2 .mw-pane-detail {
+    grid-column: 1; grid-row: auto;
+  }
 }
 
 /* شريط الأيام — تمرير أفقي بلا شريط تمرير مرئي */
@@ -126,54 +173,92 @@ function dayTag(iso, isAr, t) {
   return weekday(iso, isAr);
 }
 
+/* ── ✅ المعتمد وحده بينحسب ──
+   التنفيذ لسّا «بانتظار المشرف» ممكن يترفض، فلو حسبناه بالتصافي والمجاميع
+   بيطلع الجزار برقم بيتغيّر تحت إيده. القاعدة هون: **ما بينحسب ولا بتبيّن
+   أوزانه** — بيضل ظاهر كسطر مقفول مكتوب عليه إنّه بانتظار الاعتماد، حتى
+   ما يظن إنّ شغله ضاع. الملغى نفس الشي: ظاهر معلّم، برّا الحساب. */
+const isApproved = (r) => r.reviewStatus === "approved";
+const isWaiting = (r) => !isCancelled(r) && !isApproved(r);
+
+/** مجاميع مجموعة صفوف + قائمة القطع المدموجة — من المعتمد وحده. */
+function summarize(rows) {
+  const list = (rows || []).slice()
+    .sort((a, b) => String(b.time).localeCompare(String(a.time)));
+  const counted = list.filter((r) => isApproved(r));
+
+  const cuts = new Map();
+  counted.forEach((r) => r.cuts.forEach((c) => {
+    const k = c.itemId || c.name;
+    if (!cuts.has(k)) cuts.set(k, { name: c.name, isWaste: c.isWaste, weightKg: 0 });
+    cuts.get(k).weightKg += c.weightKg;
+  }));
+
+  return {
+    rows: list,
+    counted,
+    approved: counted.length,
+    waiting: list.filter((r) => isWaiting(r)).length,
+    cancelled: list.filter((r) => isCancelled(r)).length,
+    cutList: [...cuts.values()].sort((a, b) => b.weightKg - a.weightKg),
+    // سكور العقدة = متوسّط موزون بالكيلو لتنفيذاتها المعتمدة
+    score: avgScore(counted),
+    durationMin: counted.reduce((sum, r) => sum + (Number(r.durationMin) || 0), 0),
+    pieces: counted.reduce((sum, r) => sum + (Number(r.pieceCount) || 0), 0),
+    ...totalsOf(counted),
+    count: counted.length,
+  };
+}
+
 /**
- * تجميع تنفيذات اليوم حسب **المادة الخام**.
+ * تجميع تنفيذات اليوم حسب **المادة الخام** — المستوى الأول باللوح.
  *
  * الجزار بيقطّع نفس الرقبة أربع مرّات بنص ساعة، فكانت تطلعله أربع كروت
  * متطابقة بالعنوان وبيدوّر بينهن على الفرق. صار: كرت واحد للمادة الخام،
- * أوزانه مجموع كل تنفيذاتها، والتفاصيل بتنفتح بضغطة.
+ * أوزانه مجموع تنفيذاتها المعتمدة، والباقي بيتفرّع جنبه.
  *
- * المفتاح = كود الصنف (وإلا اسمه). الملغى بيدخل بالقائمة بس ما بينحسب
- * بأي وزن — نفس قاعدة باقي الشاشات.
+ * المفتاح = كود الصنف (وإلا اسمه).
  */
 function groupByInput(list) {
   const map = new Map();
   (list || []).forEach((r) => {
     const key = r.inputItemId || r.inputName || "—";
     if (!map.has(key)) {
+      map.set(key, { key, name: r.inputName, sku: r.inputSku || "", rows: [] });
+    }
+    map.get(key).rows.push(r);
+  });
+
+  return [...map.values()]
+    .map((g) => ({ ...g, ...summarize(g.rows) }))
+    .sort((a, b) => String(b.rows[0]?.time || "").localeCompare(String(a.rows[0]?.time || "")));
+}
+
+/**
+ * المستوى الثاني — **المسارات**: نفس المادة الخام ممكن تتقطّع بأكثر من
+ * تفكيك (pathway). كل مسار عقدة لحالها بأوزانها وقطعها.
+ * بوضع المسار الواحد (المسطّح) بيطلع مسار واحد اسمه «التقطيع القياسي».
+ */
+function pathwaysOf(rows, isAr) {
+  const map = new Map();
+  (rows || []).forEach((r) => {
+    const key = r.pathwayId || r.pathwayCode || r.bomRef || "—";
+    if (!map.has(key)) {
       map.set(key, {
         key,
-        name: r.inputName,
-        sku: r.inputSku || "",
+        label: r.pathwayLabel || r.bomRef
+          || (isAr ? "التقطيع القياسي" : "Standard breakdown"),
+        code: r.pathwayCode || r.bomRef || "",
+        name: r.pathwayName || "",
         rows: [],
       });
     }
     map.get(key).rows.push(r);
   });
 
-  return [...map.values()].map((g) => {
-    const live = g.rows.filter((r) => !isCancelled(r));
-    const cuts = new Map();
-    live.forEach((r) => r.cuts.forEach((c) => {
-      const k = c.itemId || c.name;
-      if (!cuts.has(k)) cuts.set(k, { name: c.name, isWaste: c.isWaste, weightKg: 0 });
-      cuts.get(k).weightKg += c.weightKg;
-    }));
-
-    const t = totalsOf(live);
-    return {
-      ...g,
-      rows: g.rows.slice().sort((a, b) => String(b.time).localeCompare(String(a.time))),
-      live: live.length,
-      cancelled: g.rows.length - live.length,
-      pending: live.filter((r) => (r.reviewStatus || "pending") === "pending").length,
-      approved: live.filter((r) => r.reviewStatus === "approved").length,
-      cutList: [...cuts.values()].sort((a, b) => b.weightKg - a.weightKg),
-      durationMin: live.reduce((sum, r) => sum + (Number(r.durationMin) || 0), 0),
-      pieces: live.reduce((sum, r) => sum + (Number(r.pieceCount) || 0), 0),
-      ...t,
-    };
-  }).sort((a, b) => String(b.rows[0]?.time || "").localeCompare(String(a.rows[0]?.time || "")));
+  return [...map.values()]
+    .map((p) => ({ ...p, ...summarize(p.rows) }))
+    .sort((a, b) => b.carcassKg - a.carcassKg);
 }
 
 /** حلقة التصافي — الرقم الوحيد اللي لازم الجزار يشوفه من بعيد. */
@@ -292,10 +377,28 @@ export default function ButcherMyWork() {
      عملية بلا أثر بيخلّي الواحد يشك بأرقامه؛ الأنضف إنها تبيّن بحالتها.
      بس **ما بتنحسب**: المجاميع والتصافي من الشغل الحيّ وحده. */
   const viewer = useRowViewer(isAr);
-  const mine = useMemo(() => all.filter((r) => canSeeRow(r, viewer)), [all, viewer]);
-  const counted = useMemo(() => mine.filter((r) => !isCancelled(r)), [mine]);
+  /* السكور بينحسب على كل الصفوف المرئية مرّة وحدة — مراجع السرعة بدها
+     المجموعة كاملة (وسيط الدقائق/كجم لكل مسار)، فما بينحسب جوّا الكرت. */
+  const mine = useMemo(
+    () => attachScores(all.filter((r) => canSeeRow(r, viewer))),
+    [all, viewer],
+  );
+  /* المعتمد وحده بينحسب — الملغى والمنتظر ظاهرين، برّا كل رقم */
+  const counted = useMemo(() => mine.filter((r) => isApproved(r)), [mine]);
+  const waiting = useMemo(() => mine.filter((r) => isWaiting(r)).length, [mine]);
 
-  const me = mine[0] || null;
+  const meRow = mine[0] || null;
+  /* الاسم والفرع بيجوا من السجلات نفسها — فلو الفترة المختارة طلعت فاضية
+     بيرجع الكرت يكتب «#934» بلا اسم ولا فرع. نحتفظ بآخر هويّة عرفناها
+     لنفس الرقم، فيضل الجزار شايف اسمه وهو بيبدّل الفترات. */
+  const lastMe = useRef({ emp: "", me: null });
+  useEffect(() => {
+    if (!emp) { lastMe.current = { emp: "", me: null }; return; }
+    if (lastMe.current.emp !== emp) lastMe.current = { emp, me: null };
+    if (meRow) lastMe.current = { emp, me: meRow };
+  }, [emp, meRow]);
+  const me = meRow || (lastMe.current.emp === emp ? lastMe.current.me : null);
+
   const totals = useMemo(() => totalsOf(counted), [counted]);
 
   /* تجميع حسب اليوم — الأحدث أولاً */
@@ -309,8 +412,8 @@ export default function ButcherMyWork() {
       .map(([day, list]) => ({
         day,
         list: list.slice().sort((a, b) => String(b.time).localeCompare(String(a.time))),
-        // المجاميع من الحيّ وحده — الملغى بيضل بالقائمة معلّم، برّا الحساب
-        ...totalsOf(list.filter((r) => !isCancelled(r))),
+        // المجاميع من المعتمد وحده — المنتظر والملغى ظاهرين، برّا الحساب
+        ...summarize(list),
       }))
       .sort((a, b) => b.day.localeCompare(a.day));
   }, [mine]);
@@ -326,8 +429,9 @@ export default function ButcherMyWork() {
 
   /* خصائص البطاقة ليوم واحد — للعرض وللطباعة معاً */
   const cardProps = (d) => ({
-    // بطاقة التقطيع وثيقة شغل — العملية الملغاة ما إلها مكان عالورق
-    rows: d.list.filter((r) => !isCancelled(r)),
+    // بطاقة التقطيع وثيقة شغل — الملغى والمنتظر ما إلهن مكان عالورق:
+    // ما ينطبع إلا اللي اعتمده المشرف
+    rows: d.list.filter((r) => isApproved(r)),
     day: d.day,
     isAr,
     butcherName: me?.butcherName || "",
@@ -358,8 +462,10 @@ export default function ButcherMyWork() {
       <style>{CSS + CARD_CSS}</style>
       <CuttingCardPrint job={printJob} onDone={() => setPrintJob(null)} />
 
-      {/* بطاقة التقطيع ورقة عريضة — نوسّع الحاوية لما تكون هي المعروضة */}
-      <div style={{ ...S.wrap, maxWidth: mode === "card" ? 1280 : 1040 }}>
+      {/* الشاشة كلها بعرض الجهاز — اللوح وبطاقة التقطيع سوا. مقاس الورقة
+          بالطباعة محكوم بنسخة `.cc-portal` وحدها، فتوسيع العرض هون ما
+          بيأثّر على الـPDF. */}
+      <div style={{ ...S.wrap, maxWidth: "none" }}>
 
         {/* ── الترويسة ── */}
         <div style={S.header}>
@@ -431,7 +537,7 @@ export default function ButcherMyWork() {
                   #{emp}{me?.branchName ? ` · ${me.branchName}` : ""}
                 </span>
               </span>
-              {mine.length > 0 && (
+              {!loading && !error && (
                 <span className="mw-lbl" style={S.periodChip}>
                   {isAr ? `آخر ${win} يوم` : `last ${win} days`} · {totals.count}{" "}
                   {t({ en: "jobs", ar: "تنفيذ" })}
@@ -462,6 +568,36 @@ export default function ButcherMyWork() {
                 سجلاتهم على الكشك. */}
             <ButcherPerformance empNo={emp} t={t} isAr={isAr} KG={KG} />
 
+            {/* ── مدى السحب ── فوق كل شي: هالفلاتر ما بتختفي لو الفترة طلعت
+                فاضية، وإلا بيعلق الجزار بشاشة بلا أي طريقة يرجع فيها. */}
+            <div style={S.winBar}>
+              <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+                {t({ en: "Period", ar: "الفترة" })}
+              </span>
+              {WINDOWS.map((w) => (
+                <button
+                  key={w.d}
+                  type="button"
+                  className="mw-sm mw-press"
+                  onClick={() => setWin(w.d)}
+                  style={{ ...S.winBtn, ...(win === w.d ? S.winBtnOn : null) }}
+                >
+                  {t(w)}
+                </button>
+              ))}
+            </div>
+
+            {/* ⏳ شغل لسّا بانتظار المشرف — ظاهر ومقفول، وما بينحسب */}
+            {!loading && !error && waiting > 0 && (
+              <div className="mw-sm" style={S.waitNote}>
+                🔒 {waiting}{" "}
+                {t({
+                  en: "job(s) are still waiting for the supervisor's approval — their weights and yield are hidden and are NOT counted in any total until they are approved.",
+                  ar: "تنفيذ لسّا بانتظار موافقة المشرف — أوزانه وتصافيه مخفيّة و**ما بتنحسب** بأي مجموع لحدّ ما تنعتمد.",
+                })}
+              </div>
+            )}
+
             {loading ? (
               <div style={S.card}>
                 <div className="mw-sm" style={{ textAlign: "center", color: K.mut, fontWeight: 800 }}>
@@ -480,33 +616,28 @@ export default function ButcherMyWork() {
                 </button>
               </div>
             ) : !mine.length ? (
+              /* فترة فاضية غير «ما في سجلات أبداً» — نسمّي الفترة بالرسالة
+                 ونعطي طريق أوسع بضغطة، والفلاتر فوق ضلّت مكانها. */
               <div style={S.empty}>
                 <div style={{ fontSize: "2.2em", marginBottom: 8 }}>🗒️</div>
-                {t({
-                  en: "No cutting records found for this number yet.",
-                  ar: "ما في سجلات تقطيع لهذا الرقم بعد.",
-                })}
+                {isAr
+                  ? `ما في سجلات تقطيع لهذا الرقم بآخر ${win} يوم.`
+                  : `No cutting records for this number in the last ${win} days.`}
+                {win < 90 && (
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      type="button"
+                      className="mw-sm mw-press"
+                      style={S.smallBtn}
+                      onClick={() => setWin(90)}
+                    >
+                      {t({ en: "Search the last 90 days", ar: "ابحث بآخر ٩٠ يوم" })}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <>
-                {/* ── مدى السحب ── الافتراضي أقصر، والتوسيع بضغطة واعية */}
-                <div style={S.winBar}>
-                  <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
-                    {t({ en: "Period", ar: "الفترة" })}
-                  </span>
-                  {WINDOWS.map((w) => (
-                    <button
-                      key={w.d}
-                      type="button"
-                      className="mw-sm mw-press"
-                      onClick={() => setWin(w.d)}
-                      style={{ ...S.winBtn, ...(win === w.d ? S.winBtnOn : null) }}
-                    >
-                      {t(w)}
-                    </button>
-                  ))}
-                </div>
-
                 {/* ── شريط الأيام ── */}
                 <div className="mw-lbl" style={S.sectionLbl}>
                   {t({ en: "Pick a day", ar: "اختر اليوم" })}
@@ -530,6 +661,7 @@ export default function ButcherMyWork() {
                         </span>
                         <span className="mw-lbl" style={{ fontWeight: 900 }}>
                           {d.count} {t({ en: "jobs", ar: "تنفيذ" })} · {kg(d.carcassKg)} {KG}
+                          {d.waiting > 0 ? ` · 🔒 ${d.waiting}` : ""}
                         </span>
                       </button>
                     );
@@ -545,8 +677,10 @@ export default function ButcherMyWork() {
                         label={t({ en: "Net yield", ar: "نسبة التصافي" })}
                       />
                       <div style={{ minWidth: 0 }}>
-                        <div className="mw-day" style={{ fontWeight: 900 }}>
-                          {dayTag(day.day, isAr, t)} · {day.day}
+                        <div className="mw-day" style={{ fontWeight: 900, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <span>{dayTag(day.day, isAr, t)} · {day.day}</span>
+                          {/* سكور اليوم — متوسّط موزون بالكيلو لتنفيذاته المعتمدة */}
+                          {day.count > 0 && <ScoreChip value={day.score} t={t} big />}
                         </div>
                         <div className="mw-lbl" style={{ color: K.mut, fontWeight: 800, marginBottom: 12 }}>
                           {weekday(day.day, isAr)} · {day.count} {t({ en: "jobs", ar: "تنفيذ" })}
@@ -602,11 +736,7 @@ export default function ButcherMyWork() {
                 )}
 
                 {day && mode === "list" && (
-                  <div className="mw-rise" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {groupByInput(day.list).map((g) => (
-                      <InputGroupCard key={g.key} g={g} t={t} isAr={isAr} KG={KG} />
-                    ))}
-                  </div>
+                  <CascadeBoard day={day} t={t} isAr={isAr} KG={KG} />
                 )}
 
               </>
@@ -618,135 +748,387 @@ export default function ButcherMyWork() {
   );
 }
 
-/* ══════════════ كرت المادة الخام (شامل) ══════════════
-   عنوان واحد للمادة الخام مهما تكرّر تقطيعها بنفس اليوم: الأوزان مجموعة،
-   وأسطر القطع مدموجة على مستوى المنتج. «تفاصيل التنفيذات» بيفتح الكروت
-   المفردة لمين بدّه يشوف عملية بعينها. */
+/* ══════════════ اللوح الثلاثي (المادة → المسار → التفاصيل) ══════════════
+   المستوى الأول عمود على طرف الشاشة: المادة الخام. بضغطة بيفتح **جنبه**
+   عمود مساراتها (طرق التفكيك)، والمسار بيفتح جنبه قطعه وتنفيذاته.
+   ما في شي بينفتح تحت السطر: كل مستوى عمود، والعين بتمشي من الطرف للداخل.
+   المعتمد وحده بيعطي أرقام؛ المنتظر بيطلع سطر مقفول، والملغى معلّم. */
 
-function InputGroupCard({ g, t, isAr, KG }) {
-  const [open, setOpen] = useState(false);
-  const many = g.rows.length > 1;
-  const base = g.carcassKg > 0 ? g.carcassKg : g.cutsKg + g.wasteKg;
-  const edge = g.cancelled === g.rows.length ? "#dc2626"
-    : g.pending > 0 ? K.waitFg : K.okFg;
+function CascadeBoard({ day, t, isAr, KG }) {
+  const groups = useMemo(() => groupByInput(day.list), [day.list]);
+  const [gKey, setGKey] = useState("");
+  const [pKey, setPKey] = useState("");
+
+  /* يوم جديد: لو نفس المادة موجودة بتضل مختارة، وإلا بيرجع الاختيار فاضي.
+     ومادة وحدة باليوم = ما في قرار: بتنفتح لحالها. */
+  useEffect(() => {
+    setGKey((cur) => {
+      if (groups.length === 1) return groups[0].key;
+      return groups.some((x) => x.key === cur) ? cur : "";
+    });
+  }, [groups]);
+
+  const g = groups.find((x) => x.key === gKey) || null;
+  const paths = useMemo(() => (g ? pathwaysOf(g.rows, isAr) : []), [g, isAr]);
+
+  /* مسار واحد معتمد = ما في قرار يتاخد: بينفتح لحاله بدل ضغطة بلا معنى.
+     المسار المقفول (بلا اعتماد) ما بينفتح لا بالضغط ولا لحاله. */
+  useEffect(() => {
+    setPKey((cur) => {
+      if (paths.length === 1 && paths[0].approved > 0) return paths[0].key;
+      return paths.some((x) => x.key === cur && x.approved > 0) ? cur : "";
+    });
+  }, [paths]);
+
+  const p = paths.find((x) => x.key === pKey) || null;
+  const arrow = isAr ? "‹" : "›";
+
+  /* ── ما بنكرّر نفس الأرقام بعمودين ──
+     مسار واحد = أرقامه هي أرقام المادة حرفياً، فعمود المسارات بيصير نسخة
+     ثانية من الكرت اللي قبله. بهالحالة بينشال العمود، واللوح بيصير
+     عمودين، واسم المسار بيتذكر بترويسة التفاصيل. عمود المسارات بيرجع
+     يطلع بس لمّا يكون في **أكثر من مسار** — وقتها هو قرار حقيقي. */
+  const manyPaths = paths.length > 1;
+  const showPaths = !g || manyPaths;
 
   return (
-    <div style={{
-      ...S.groupRow,
-      borderInlineStartColor: edge,
-      /* «مفتوح» لازم يبيّن بلمحة: إطار كحلي وظلّ، مش نفس الكرت الأبيض */
-      ...(open ? S.jobOpen : null),
-    }}>
-      {/* ── السطر: اسم المادة + أعمدة الأرقام + الحالة ── */}
-      <button
-        type="button"
-        className="mw-row mw-press"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="mw-big" style={{ color: K.mut, fontWeight: 900 }}>
-          {open ? "▲" : "▼"}
-        </span>
+    <div className={`mw-board mw-rise${showPaths ? "" : " mw-board-2"}`}>
+      {/* ① المادة الخام */}
+      <div className="mw-pane mw-pane-master">
+        <PaneHead n="①" label={t({ en: "Raw material", ar: "المادة الخام" })} count={groups.length} />
+        {groups.map((x) => (
+          <NodeCard
+            key={x.key}
+            on={x.key === gKey}
+            arrow={arrow}
+            title={x.name}
+            sub={[
+              `${x.rows.length} ${t({ en: "jobs", ar: "تنفيذ" })}`,
+              x.durationMin > 0 ? `⏱️ ${x.durationMin} ${t({ en: "min", ar: "دقيقة" })}` : "",
+              x.pieces > 0 ? `${t({ en: "pieces", ar: "قطع" })} ${x.pieces}` : "",
+            ].filter(Boolean).join(" · ")}
+            node={x}
+            t={t}
+            KG={KG}
+            /* مادة بمسار وحيد = هي آخر مستوى، فنواتجها بتنكتب جوّاها */
+            showCuts={x.key === gKey && !manyPaths}
+            stats={[
+              { label: t({ en: "Raw", ar: "الخام" }), value: `${kg(x.carcassKg)} ${KG}`, tone: K.raw },
+              { label: t({ en: "Yield", ar: "التصافي" }), value: `${x.yieldPct.toFixed(1)}%`, tone: K.yield },
+              { label: t({ en: "Products", ar: "النواتج" }), value: `${kg(x.cutsKg)} ${KG}`, tone: K.good },
+              { label: t({ en: "Waste", ar: "الهدر" }), value: `${kg(x.wasteKg)} ${KG}`, tone: K.waste },
+            ]}
+            onClick={() => setGKey((cur) => (cur === x.key ? "" : x.key))}
+          />
+        ))}
+      </div>
 
-        <span style={{ minWidth: 0 }}>
-          <span className="mw-day" style={{ fontWeight: 900, display: "block" }}>
-            {g.name}
-          </span>
-          <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
-            {many
-              ? `${g.rows.length} ${t({ en: "jobs", ar: "تنفيذ" })}`
-              : `🕒 ${g.rows[0]?.time || "—"}`}
-            {g.durationMin > 0 ? ` · ⏱️ ${g.durationMin} ${t({ en: "min", ar: "دقيقة" })}` : ""}
-            {g.pieces > 0 ? ` · ${t({ en: "pieces", ar: "قطع" })} ${g.pieces}` : ""}
-          </span>
-        </span>
-
-        <span className="mw-row-cells">
-          <Cell label={t({ en: "Jobs", ar: "تنفيذ" })} value={g.rows.length} />
-          <Cell label={t({ en: "Raw", ar: "الخام" })} value={kg(g.carcassKg)} tone={K.raw} />
-          <Cell label={t({ en: "Products", ar: "النواتج" })} value={kg(g.cutsKg)} tone={K.good} />
-          <Cell label={t({ en: "Waste", ar: "الهدر" })} value={kg(g.wasteKg)} tone={K.waste} />
-          <Cell label={t({ en: "Yield", ar: "التصافي" })} value={`${g.yieldPct.toFixed(1)}%`} tone={K.yield} />
-        </span>
-
-        <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          {g.approved > 0 && (
-            <span className="mw-lbl" style={S.badgeOk}>
-              ✓{many ? ` ${g.approved}` : ""}
-            </span>
+      {/* ② المسارات — بس لمّا يكون فيه أكثر من مسار */}
+      {showPaths && (
+        <div className="mw-pane mw-pane-paths">
+          <PaneHead
+            n="②"
+            label={t({ en: "Breakdown pathway", ar: "مسار التفكيك" })}
+            count={g ? paths.length : null}
+          />
+          {!g ? (
+            <div style={S.hintBox}>
+              {t({
+                en: "Pick a raw material to see how it was broken down.",
+                ar: "اضغط مادة خام ليطلعوا مساراتها هون.",
+              })}
+            </div>
+          ) : (
+            paths.map((x) => {
+              /* الأرقام هون **مقارنة**: قدّيش أخد هالمسار من خام المادة،
+                 وشو تصافيه — مش تكرار لمجاميع الكرت اللي قبله. */
+              const share = g.carcassKg > 0 ? (x.carcassKg / g.carcassKg) * 100 : 0;
+              return (
+                <NodeCard
+                  key={x.key}
+                  on={x.key === pKey}
+                  arrow={arrow}
+                  title={x.label}
+                  sub={[
+                    `${x.rows.length} ${t({ en: "jobs", ar: "تنفيذ" })}`,
+                    `${kg(x.carcassKg)} ${KG}`,
+                  ].join(" · ")}
+                  node={x}
+                  t={t}
+                  KG={KG}
+                  showCuts={x.key === pKey}
+                  stats={[
+                    {
+                      label: t({ en: "Share of raw", ar: "من خام المادة" }),
+                      value: `${share.toFixed(0)}%`,
+                      tone: K.raw,
+                    },
+                    { label: t({ en: "Yield", ar: "التصافي" }), value: `${x.yieldPct.toFixed(1)}%`, tone: K.yield },
+                  ]}
+                  onClick={() => setPKey((cur) => (cur === x.key ? "" : x.key))}
+                />
+              );
+            })
           )}
-          {g.pending > 0 && (
-            <span className="mw-lbl" style={S.badgeWait}>
-              ⏳{many ? ` ${g.pending}` : ""}
-            </span>
-          )}
-          {g.cancelled > 0 && (
-            <span className="mw-lbl" style={S.badgeCancelled}>
-              🚫{many ? ` ${g.cancelled}` : ""}
-            </span>
-          )}
-        </span>
-      </button>
+        </div>
+      )}
 
-      {/* ── المطويّ: أسطر القطع، وبعدين التنفيذات ── */}
-      {open && (
-        <div style={S.groupBody}>
-          {g.cutList.length > 0 && (
-            <div style={S.detailPanel}>
-              <div className="mw-lbl" style={S.detailPanelHead}>
-                {t({ en: "Products & waste", ar: "النواتج والهدر" })} · {g.cutList.length}
-              </div>
-              <div style={{ ...S.cuts, background: "#fff", borderRadius: 12, padding: "4px 10px" }}>
-                {g.cutList.map((c, i) => {
-                  const share = base > 0 ? (c.weightKg / base) * 100 : 0;
-                  return (
-                    <div key={`${c.name}_${i}`} style={S.cutRow}>
-                      <span className="mw-sm" style={{ fontWeight: 800, minWidth: 0 }}>
-                        {c.isWaste ? "🦴 " : "✅ "}{c.name}
-                      </span>
-                      <span className="mw-sm" style={{ fontWeight: 900, whiteSpace: "nowrap" }}>
-                        {kg(c.weightKg)} <span style={{ color: K.mut, fontWeight: 800 }}>{KG}</span>
-                      </span>
-                      <ShareBar pct={share} tone={c.isWaste ? K.waste : K.good} />
-                      <span className="mw-lbl" style={{ color: K.mut, fontWeight: 900, minWidth: 52, textAlign: "end" }}>
-                        {share.toFixed(0)}%
-                      </span>
-                    </div>
-                  );
+      {/* ③ التفاصيل */}
+      <div className="mw-pane mw-pane-detail">
+        <PaneHead
+          n={showPaths ? "③" : "②"}
+          label={t({ en: "Details", ar: "التفاصيل" })}
+          count={p ? p.rows.length : null}
+        />
+        {!p ? (
+          <div style={S.hintBox}>
+            {manyPaths
+              ? t({
+                  en: "Pick a pathway to see its products, waste and jobs.",
+                  ar: "اضغط مسار لتطلع نواتجه وهدره وتنفيذاته.",
+                })
+              : t({
+                  en: "Pick a raw material to see its products, waste and jobs.",
+                  ar: "اضغط مادة خام لتطلع نواتجها وهدرها وتنفيذاتها.",
                 })}
-              </div>
-            </div>
-          )}
-
-          <div style={S.detailPanel}>
-            <div className="mw-lbl" style={S.detailPanelHead}>
-              {t({ en: "Jobs in this card", ar: "التنفيذات جوّا هالسطر" })} · {g.rows.length}
-            </div>
-            {g.rows.map((r, i) => (
-              <JobCard
-                key={r.id}
-                r={r} t={t} isAr={isAr} KG={KG}
-                nested n={i + 1} total={g.rows.length}
-              />
-            ))}
           </div>
+        ) : (
+          <PathDetail g={g} p={p} t={t} isAr={isAr} KG={KG} single={!manyPaths} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** عنوان عمود — رقم المستوى واسمه وعدد عناصره. */
+function PaneHead({ n, label, count }) {
+  return (
+    <div className="mw-paneHead">
+      <span className="mw-lbl" style={S.paneTitle}>{n} {label}</span>
+      {count !== null && count !== undefined && (
+        <span className="mw-lbl" style={S.paneCount}>{count}</span>
+      )}
+    </div>
+  );
+}
+
+/** كرت عقدة — نفس الشكل للمادة الخام وللمسار: عنوان وأرقام مصغّرة وحالة.
+    ما فيه ولا تنفيذ معتمد = **مقفول**: ما بينفتح، وأرقامه وراء غباش بلوري
+    مكتوب عليه راجع المشرف. أول ما يوافق المشرف بيصير كرت عادي بينفتح. */
+function NodeCard({ on, arrow, title, sub, node, stats, t, KG, showCuts = false, onClick }) {
+  const shut = node.approved === 0 && node.waiting > 0;   // مقفول لحدّ الاعتماد
+  const [bump, setBump] = useState(false);                // هزّة عند الضغط عليه
+  const edge = node.approved > 0 ? K.okFg : node.waiting > 0 ? K.waitFg : "#dc2626";
+
+  const press = () => {
+    if (!shut) { onClick(); return; }
+    setBump(true);
+    window.setTimeout(() => setBump(false), 420);
+  };
+
+  return (
+    <button
+      type="button"
+      className={`mw-press${bump ? " mw-shake" : ""}`}
+      onClick={press}
+      aria-expanded={shut ? undefined : on}
+      aria-disabled={shut || undefined}
+      style={{
+        ...S.node,
+        borderInlineStartColor: edge,
+        ...(on ? S.nodeOn : null),
+        ...(shut ? S.nodeShut : null),
+      }}
+    >
+      <span style={S.nodeTop}>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span className="mw-day" style={{ fontWeight: 900, display: "block", lineHeight: 1.25 }}>
+            {title}
+          </span>
+          {sub ? (
+            <span className="mw-lbl" style={{ color: on ? "#cfe3f7" : K.mut, fontWeight: 800 }}>
+              {sub}
+            </span>
+          ) : null}
+        </span>
+        <span className="mw-big" style={{ color: on ? "#fff" : K.mut, fontWeight: 900 }}>
+          {shut ? "🔒" : arrow}
+        </span>
+      </span>
+
+      {/* الأرقام — من المعتمد وحده، ووراء الغباش لو ما في معتمد */}
+      <span className={shut ? "mw-lock mw-lock-sm" : undefined} style={{ display: "block" }}>
+        <span className={shut ? "mw-lockBody" : undefined} style={{ display: "block" }}>
+          <span className="mw-mini">
+            {stats.map((s) => (
+              <Mini key={s.label} label={s.label} value={s.value} tone={s.tone} on={on} />
+            ))}
+          </span>
+        </span>
+        {shut && (
+          <span className="mw-lockGlass">
+            <span className="mw-sm" style={{ fontWeight: 900 }}>
+              🔒 {t({ en: "Waiting for the supervisor", ar: "بانتظار موافقة المشرف" })}
+            </span>
+            <span className="mw-lbl" style={{ fontWeight: 800 }}>
+              {t({ en: "It opens once he approves it", ar: "يرجى مراجعة المشرف — بينفتح بعد موافقته" })}
+            </span>
+          </span>
+        )}
+      </span>
+
+      {/* ── النواتج والهدر جوّا الكرت ──
+          هاي الأرقام تبع هالعقدة بالذات، فمحلّها جوّاها لا بعمود التفاصيل:
+          عمود التفاصيل للتنفيذات المفردة. بتطلع لمّا يكون الكرت مفتوح
+          وهو **آخر مستوى** (مسار مختار، أو مادة بمسار وحيد). */}
+      {showCuts && node.cutList.length > 0 && (
+        <span style={{ ...S.nodeCuts, ...(on ? S.nodeCutsOn : null) }}>
+          <span className="mw-lbl" style={{ color: on ? "#cfe3f7" : K.mut, fontWeight: 900 }}>
+            {t({ en: "Products & waste", ar: "النواتج والهدر" })} · {node.cutList.length}
+          </span>
+          {node.cutList.map((c, i) => {
+            const cutBase = node.carcassKg > 0 ? node.carcassKg : node.cutsKg + node.wasteKg;
+            const share = cutBase > 0 ? (c.weightKg / cutBase) * 100 : 0;
+            return (
+              <span key={`${c.name}_${i}`} className="mw-nodeCut">
+                <span className="mw-sm" style={{ fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {c.isWaste ? "🦴 " : "✅ "}{c.name}
+                </span>
+                <span className="mw-sm" style={{ fontWeight: 900, whiteSpace: "nowrap", color: on ? "#fff" : (c.isWaste ? K.waste : K.good) }}>
+                  {kg(c.weightKg)} {KG}
+                </span>
+                <span className="mw-lbl" style={{ color: on ? "#cfe3f7" : K.mut, fontWeight: 900, textAlign: "end" }}>
+                  {share.toFixed(0)}%
+                </span>
+              </span>
+            );
+          })}
+        </span>
+      )}
+
+      <span style={S.nodeBadges}>
+        {node.approved > 0 && <ScoreChip value={node.score} t={t} />}
+        {node.approved > 0 && (
+          <span className="mw-lbl" style={S.badgeOk}>✓ {node.approved}</span>
+        )}
+        {node.waiting > 0 && (
+          <span className="mw-lbl" style={S.badgeWait}>🔒 {node.waiting}</span>
+        )}
+        {node.cancelled > 0 && (
+          <span className="mw-lbl" style={S.badgeCancelled}>🚫 {node.cancelled}</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** 🎯 شارة السكور — رقم من ١٠٠ بلون نطاقه. بلا نسب معيارية بتطلع «—». */
+function ScoreChip({ value, t, big = false }) {
+  const c = scoreTone(value);
+  return (
+    <span
+      className={big ? "mw-sm" : "mw-lbl"}
+      style={{
+        background: c.bg, border: `1px solid ${c.bd}`, color: c.fg,
+        borderRadius: 999, padding: big ? "4px 14px" : "3px 12px",
+        fontWeight: 900, whiteSpace: "nowrap",
+      }}
+      title={value === null
+        ? t({ en: "This recipe has no standard percentages", ar: "هالوصفة ما إلها نسب معيارية" })
+        : t({ en: "Cutting score out of 100", ar: "سكور التقطيع من ١٠٠" })}
+    >
+      🎯 {value === null ? "—" : value}
+      {value === null ? "" : <span style={{ opacity: 0.7 }}>/100</span>}
+    </span>
+  );
+}
+
+/** رقم مصغّر جوّا كرت العقدة. */
+function Mini({ label, value, tone, on }) {
+  return (
+    <span style={{ ...S.mini, ...(on ? S.miniOn : null) }}>
+      <span className="mw-lbl" style={{ color: on ? "#cfe3f7" : K.mut, fontWeight: 800, display: "block" }}>
+        {label}
+      </span>
+      <span className="mw-sm" style={{ color: on ? "#fff" : tone, fontWeight: 900 }}>{value}</span>
+    </span>
+  );
+}
+
+/** المستوى الأخير — **التنفيذات المفردة** للمسار المختار.
+    مجموع نواتجه وهدره مكتوب جوّا كرت المسار نفسه، فما بينعاد هون. */
+function PathDetail({ g, p, t, isAr, KG, single = false }) {
+  const approvedRows = p.rows.filter((r) => isApproved(r));
+  const waitingRows = p.rows.filter((r) => isWaiting(r));
+  const cancelledRows = p.rows.filter((r) => isCancelled(r));
+  const shown = [...approvedRows, ...cancelledRows];
+
+  return (
+    <div style={S.detailWrap}>
+      <div style={S.detailTop}>
+        <span className="mw-day" style={{ fontWeight: 900 }}>{g.name}</span>
+        <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+          {/* مسار واحد = ما إله عمود، فاسمه بينذكر هون */}
+          🛤️ {p.label}
+          {single ? ` · ${t({ en: "single pathway", ar: "مسار وحيد" })}` : ""}
+          {" · "}{p.approved} {t({ en: "approved job(s)", ar: "تنفيذ معتمد" })}
+        </span>
+      </div>
+      {/* 🔒 المنتظر — ظاهر بلا أرقام، وواضح ليش */}
+      {waitingRows.length > 0 && (
+        <div style={S.detailPanel}>
+          <div className="mw-lbl" style={S.detailPanelHead}>
+            {t({ en: "Waiting for approval", ar: "بانتظار الاعتماد" })} · {waitingRows.length}
+          </div>
+          {waitingRows.map((r) => (
+            <GlassLock key={r.id} t={t}>
+              <JobCard r={r} t={t} isAr={isAr} KG={KG} nested />
+            </GlassLock>
+          ))}
+        </div>
+      )}
+
+      {shown.length > 0 && (
+        <div style={S.detailPanel}>
+          <div className="mw-lbl" style={S.detailPanelHead}>
+            {t({ en: "Jobs", ar: "التنفيذات" })} · {shown.length}
+          </div>
+          {shown.map((r, i) => (
+            <JobCard
+              key={r.id}
+              r={r} t={t} isAr={isAr} KG={KG}
+              nested n={i + 1} total={shown.length}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-/** خانة رقم بالسطر — قيمة فوق وعنوان صغير تحت. */
-function Cell({ label, value, tone }) {
+/** القفل البلوري — الكرت الحقيقي وراء طبقة غباش.
+    إخفاء التنفيذ بالكامل بيخلّي الجزار يظن إنّ شغله ضاع، وإظهار أرقامه
+    بيعطيه رقم ممكن يترفض بكرة. فبيضل ظاهر وراء الغباش: بتعرف إنّه موجود
+    وما بتقرا منه رقم، ولمّا يوافق المشرف بينزاح الغباش لحاله. */
+function GlassLock({ t, children }) {
   return (
-    <span className="mw-cell" style={S.cell}>
-      <span className="mw-sm" style={{ fontWeight: 900, color: tone || K.ink, display: "block" }}>
-        {value}
-      </span>
-      <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>{label}</span>
-    </span>
+    <div className="mw-lock">
+      <div className="mw-lockBody">{children}</div>
+      <div className="mw-lockGlass">
+        <span className="mw-day" style={{ fontWeight: 900 }}>
+          🔒 {t({ en: "Waiting for the supervisor's approval", ar: "بانتظار موافقة المشرف" })}
+        </span>
+        <span className="mw-sm" style={{ fontWeight: 800 }}>
+          {t({
+            en: "Please ask your supervisor to review it — it opens with its numbers once he approves.",
+            ar: "يرجى مراجعة المشرف للموافقة عليه — بينفتح بأرقامه بعد الاعتماد.",
+          })}
+        </span>
+      </div>
+    </div>
   );
 }
+
 
 /* ══════════════ كرت تنفيذ واحد ══════════════
    ترويسة فيها المادة الخام ورقم العملية والحالة، بعدين جدول القطع بشريط حصّة،
@@ -767,10 +1149,11 @@ function JobCard({ r, t, isAr, KG, nested = false, n = 0, total = 0 }) {
       ...(nested ? S.jobNested : null),
       ...(cancelled ? { opacity: 0.75 } : null),
     }}>
-      {/* الترويسة */}
+      {/* الترويسة — الاسم فوق، وتحته سطر واحد: معلومات التنفيذ على أوّله،
+          ورقم العملية وحالته على آخره. الاتنين فوق، ما بينزلوا. */}
       <div style={S.jobHead}>
-        <span style={{ minWidth: 0, flex: 1 }}>
-          <span className="mw-day" style={{ fontWeight: 900, display: "block" }}>
+        <div style={S.jobTitleRow}>
+          <span className="mw-day" style={{ fontWeight: 900, minWidth: 0, flex: 1 }}>
             {nested && n > 0 && (
               <span className="mw-lbl" style={{ ...S.opIndex, background: edge }}>
                 {isAr ? `تنفيذ ${n}${total > 1 ? ` من ${total}` : ""}`
@@ -779,55 +1162,65 @@ function JobCard({ r, t, isAr, KG, nested = false, n = 0, total = 0 }) {
             )}
             {r.inputName}
           </span>
-          <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+
+          {/* خانتين بأعلى طرف الكرت — الوزن والقطع: أوّل شي بتلمحه العين
+              قبل ما تقرا التفاصيل، وفوق رقم العملية وحالته. */}
+          <span style={S.jobBoxes}>
+            <span style={S.jobBox}>
+              <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+                {t({ en: "Weight", ar: "الوزن" })}
+              </span>
+              <span className="mw-sm" style={{ color: K.raw, fontWeight: 900 }}>
+                {kg(r.carcassKg)} {KG}
+              </span>
+            </span>
+            <span style={S.jobBox}>
+              <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800 }}>
+                {t({ en: "Pieces", ar: "القطع" })}
+              </span>
+              <span className="mw-sm" style={{ color: K.ink, fontWeight: 900 }}>
+                {r.pieceCount !== null
+                  ? r.pieceCount
+                  : r.partialPiece
+                    ? t({ en: "part", ar: "جزء" })
+                    : "—"}
+              </span>
+            </span>
+          </span>
+        </div>
+
+        <div style={S.jobMeta}>
+          <span className="mw-lbl" style={{ color: K.mut, fontWeight: 800, minWidth: 0 }}>
             🕒 {r.time || "—"}
             {r.bomRef ? ` · ${r.bomRef}` : ""}
             {r.pathwayCode ? ` · 🛤️ ${r.pathwayCode}` : ""}
             {r.durationMin > 0 ? ` · ⏱️ ${r.durationMin} ${t({ en: "min", ar: "دقيقة" })}` : ""}
             {r.rawExpiry ? ` · 📅 ${t({ en: "exp", ar: "ينتهي" })} ${r.rawExpiry}` : ""}
           </span>
-        </span>
-        <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {r.opNo && <span className="mw-lbl" style={S.opNoChip}>{r.opNo}</span>}
-          {/* طلب إلغاء مرفوع على هالعملية — شغلك لسّا محسوب، بس في طلب
-              عند مسؤول المخزون. */}
-          {r.crStatus && (
-            <span
-              className="mw-lbl"
-              style={r.crStatus === "approved" ? S.badgeCancelled : S.badgeCr}
-            >
-              {r.crStatus === "approved" ? "🚫 " : r.crStatus === "open" ? "⏳ " : "↩︎ "}
-              {crStatusText(r, isAr)?.label}
+          <span style={S.jobChips}>
+            {/* السكور بيطلع للمعتمد وحده — المنتظر مقفول أصلاً */}
+            {approved && <ScoreChip value={r.score} t={t} />}
+            {r.opNo && <span className="mw-lbl" style={S.opNoChip}>{r.opNo}</span>}
+            {/* طلب إلغاء مرفوع على هالعملية — شغلك لسّا محسوب، بس في طلب
+                عند مسؤول المخزون. */}
+            {r.crStatus && (
+              <span
+                className="mw-lbl"
+                style={r.crStatus === "approved" ? S.badgeCancelled : S.badgeCr}
+              >
+                {r.crStatus === "approved" ? "🚫 " : r.crStatus === "open" ? "⏳ " : "↩︎ "}
+                {crStatusText(r, isAr)?.label}
+              </span>
+            )}
+            <span className="mw-lbl" style={approved ? S.badgeOk : rejected ? S.badgeOld : S.badgeWait}>
+              {approved
+                ? `✓ ${t({ en: "Approved", ar: "معتمد" })}`
+                : rejected
+                  ? `✕ ${t({ en: "Rejected", ar: "مرفوض" })}`
+                  : `⏳ ${t({ en: "Waiting", ar: "بانتظار المشرف" })}`}
             </span>
-          )}
-          <span className="mw-lbl" style={approved ? S.badgeOk : rejected ? S.badgeOld : S.badgeWait}>
-            {approved
-              ? `✓ ${t({ en: "Approved", ar: "معتمد" })}`
-              : rejected
-                ? `✕ ${t({ en: "Rejected", ar: "مرفوض" })}`
-                : `⏳ ${t({ en: "Waiting", ar: "بانتظار المشرف" })}`}
           </span>
-        </span>
-      </div>
-
-      {/* أرقام التنفيذ */}
-      <div style={S.jobNums}>
-        <span><span style={S.numLbl}>{t({ en: "Raw", ar: "الخام" })}</span>
-          <b style={{ color: K.raw }}>{kg(r.carcassKg)}</b> {KG}</span>
-        <span><span style={S.numLbl}>{t({ en: "Products", ar: "النواتج" })}</span>
-          <b style={{ color: K.good }}>{kg(r.cutsKg)}</b> {KG}</span>
-        <span><span style={S.numLbl}>{t({ en: "Waste", ar: "الهدر" })}</span>
-          <b style={{ color: K.waste }}>{kg(r.wasteKg)}</b> {KG}</span>
-        <span><span style={S.numLbl}>{t({ en: "Yield", ar: "التصافي" })}</span>
-          <b style={{ color: K.yield }}>{r.yieldPct.toFixed(1)}%</b></span>
-        {r.pieceCount !== null && (
-          <span><span style={S.numLbl}>{t({ en: "Pieces", ar: "القطع" })}</span>
-            <b>{r.pieceCount}</b></span>
-        )}
-        {r.partialPiece && (
-          <span><span style={S.numLbl}>{t({ en: "Pieces", ar: "القطع" })}</span>
-            <b>{t({ en: "not a whole piece", ar: "ليست قطعة كاملة" })}</b></span>
-        )}
+        </div>
       </div>
 
       {/* القطع */}
@@ -850,6 +1243,39 @@ function JobCard({ r, t, isAr, KG, nested = false, n = 0, total = 0 }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── خلاصة التنفيذ ── بأسفل الكرت: بتقرا القطع فوق، وبتطلع بالمجموع */}
+      <div style={S.jobNums}>
+        <span><span style={S.numLbl}>{t({ en: "Raw", ar: "الخام" })}</span>
+          <b style={{ color: K.raw }}>{kg(r.carcassKg)}</b> {KG}</span>
+        <span><span style={S.numLbl}>{t({ en: "Products", ar: "النواتج" })}</span>
+          <b style={{ color: K.good }}>{kg(r.cutsKg)}</b> {KG}</span>
+        <span><span style={S.numLbl}>{t({ en: "Waste", ar: "الهدر" })}</span>
+          <b style={{ color: K.waste }}>{kg(r.wasteKg)}</b> {KG}</span>
+        <span><span style={S.numLbl}>{t({ en: "Yield", ar: "التصافي" })}</span>
+          <b style={{ color: K.yield }}>{r.yieldPct.toFixed(1)}%</b></span>
+        {r.pieceCount !== null && (
+          <span><span style={S.numLbl}>{t({ en: "Pieces", ar: "القطع" })}</span>
+            <b>{r.pieceCount}</b></span>
+        )}
+        {r.partialPiece && (
+          <span><span style={S.numLbl}>{t({ en: "Pieces", ar: "القطع" })}</span>
+            <b>{t({ en: "not a whole piece", ar: "ليست قطعة كاملة" })}</b></span>
+        )}
+      </div>
+
+      {/* ── ليش السكور هيك؟ ── رقم بلا سبب بيصير ضغط، مش تدريب: بنكتب
+          أبعد سطر عن معياره حتى يعرف الجزار من وين يبلّش يحسّن. */}
+      {approved && r.score !== null && r.scoreWorst && (
+        <div className="mw-sm" style={S.scoreWhy}>
+          🔎 {r.scoreWorst.name}{" "}
+          {r.scoreWorst.deltaPts > 0
+            ? t({ en: "is above standard by", ar: "أعلى من المعياري بـ" })
+            : t({ en: "is below standard by", ar: "أقل من المعياري بـ" })}{" "}
+          <b>{Math.abs(r.scoreWorst.deltaPts).toFixed(1)}</b>{" "}
+          {t({ en: "pts", ar: "نقطة" })}
         </div>
       )}
 
@@ -988,9 +1414,32 @@ const S = {
     padding: "14px 16px", borderInlineStartWidth: 5, borderInlineStartStyle: "solid",
     display: "flex", flexDirection: "column", gap: 10,
   },
-  jobHead: {
-    display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
-    alignItems: "flex-start",
+  /* الترويسة عمود: اسم المادة، وتحته سطر المعلومات والشارات */
+  jobHead: { display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
+  /* سبب السكور — سطر هادي تحت الأرقام */
+  scoreWhy: {
+    background: K.soft, border: `1px solid ${K.line}`, borderRadius: 12,
+    padding: "8px 12px", color: K.ink2, fontWeight: 800,
+  },
+  /* سطر الاسم: الاسم على أوّله، وخانتَي الوزن والقطع على آخره */
+  jobTitleRow: {
+    display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", minWidth: 0,
+  },
+  jobBoxes: { display: "flex", gap: 6, marginInlineStart: "auto", flexShrink: 0 },
+  /* العنوان والقيمة بنفس السطر: «الوزن 10.00 kg» */
+  jobBox: {
+    display: "inline-flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap",
+    background: K.soft, border: "1px solid #e6eff8", borderRadius: 12,
+    padding: "5px 12px",
+  },
+  /* سطر واحد: معلومات التنفيذ على أوّله، والشارات مدفوعة لآخره */
+  jobMeta: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, flexWrap: "wrap", minWidth: 0,
+  },
+  jobChips: {
+    display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
+    marginInlineStart: "auto",
   },
   jobNums: {
     display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center",
@@ -1026,32 +1475,61 @@ const S = {
     background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa",
     borderRadius: 999, padding: "5px 12px", fontWeight: 900, whiteSpace: "nowrap",
   },
-  /* ملغاة — أحمر هادي: خبر مهم، مش إنذار على شغل الجزار */
-  /* سطر المادة الخام — كرت مضغوط: كل شي بسطر، والباقي مطوي تحته */
-  groupRow: {
+  /* ── اللوح الثلاثي ── */
+  paneTitle: {
+    color: K.ink2, fontWeight: 900, letterSpacing: ".3px", textTransform: "uppercase",
+  },
+  paneCount: {
+    background: "#dfeaf6", color: K.ink2, borderRadius: 999,
+    padding: "2px 10px", fontWeight: 900,
+  },
+  /* كرت عقدة — سطر بعمود: عنوان، أرقام مصغّرة، شارات حالة */
+  node: {
+    width: "100%", textAlign: "start", display: "flex", flexDirection: "column", gap: 8,
     background: "#fff", border: `1px solid ${K.line}`, borderRadius: 16,
-    padding: "12px 14px", borderInlineStartWidth: 6, borderInlineStartStyle: "solid",
-    display: "flex", flexDirection: "column", gap: 10,
+    borderInlineStartWidth: 6, borderInlineStartStyle: "solid",
+    padding: "12px 14px", cursor: "pointer", fontFamily: FONT, color: K.ink,
   },
-  groupBody: { display: "flex", flexDirection: "column", gap: 10 },
-  cell: {
-    background: K.soft, border: `1px solid #e6eff8`, borderRadius: 12,
-    padding: "6px 8px", textAlign: "center", minWidth: 0, overflow: "hidden",
+  /* المختار — كحلي مليان: بيربط العمود بالّي فتحه جنبه */
+  nodeOn: {
+    background: K.raw, color: "#fff", borderColor: K.raw,
+    boxShadow: "0 14px 34px rgba(20,80,127,.22)",
+  },
+  nodeTop: { display: "flex", alignItems: "flex-start", gap: 8 },
+  nodeBadges: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" },
+  mini: {
+    background: K.soft, border: "1px solid #e6eff8", borderRadius: 12,
+    padding: "5px 8px", minWidth: 0, overflow: "hidden",
+  },
+  miniOn: { background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)" },
+  /* النواتج والهدر جوّا الكرت — لوح داخلي، بيتحوّل شفّاف لما يكون مختار */
+  nodeCuts: {
+    display: "flex", flexDirection: "column", gap: 2,
+    background: K.soft, border: "1px solid #e6eff8", borderRadius: 12,
+    padding: "8px 10px",
+  },
+  nodeCutsOn: {
+    background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.22)",
+  },
+  /* عمود لسّا ما انفتح — بنقول شو الخطوة، ما بنسيبه فاضي */
+  hintBox: {
+    background: "#fff", border: `2px dashed ${K.line}`, borderRadius: 16,
+    padding: "22px 16px", textAlign: "center", color: K.mut, fontWeight: 800,
+  },
+  detailWrap: { display: "flex", flexDirection: "column", gap: 10, minWidth: 0 },
+  detailTop: {
+    display: "flex", flexDirection: "column", gap: 2, padding: "0 4px",
+  },
+  /* 🔒 عقدة مقفولة — ما بتنفتح: خلفية كهرمانية هادية ومؤشّر ممنوع */
+  nodeShut: {
+    background: "#fffdf7", borderColor: "#f0d9ac", cursor: "not-allowed",
+  },
+  waitNote: {
+    background: "#fffaf0", border: "1px solid #f0d9ac", color: "#8a5a12",
+    borderRadius: 16, padding: "12px 16px", fontWeight: 800, lineHeight: 1.7,
+    marginBottom: 10,
   },
 
-  /* زر التفاصيل — زر حقيقي بحدّ، وبيتلوّن لما يكون مفتوح */
-  detailBtn: {
-    alignSelf: "flex-start", border: `1.5px solid ${K.line}`, background: "#fff",
-    color: K.raw, borderRadius: 999, padding: "8px 18px", marginTop: 4,
-    fontFamily: FONT, fontWeight: 900, cursor: "pointer", textAlign: "start",
-  },
-  detailBtnOn: { background: K.raw, color: "#fff", borderColor: K.raw },
-
-  /* «مفتوح»: إطار كحلي وظلّ — الفرق لازم يبان بلمحة */
-  jobOpen: {
-    border: `2px solid ${K.raw}`,
-    boxShadow: "0 14px 34px rgba(20,80,127,.14)",
-  },
   /* لوح التفاصيل — أغمق من الكرت الشامل، فالكروت البيضا اللي جوّاه بتنفصل */
   detailPanel: {
     display: "flex", flexDirection: "column", gap: 12,

@@ -3,6 +3,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import EmailSendModal from "../../shared/EmailSendModal";
+import {
+  CLICHE_LIST,
+  makeSupplierEmailConfig,
+  suggestCliche,
+} from "./supplierEmailConfig";
 
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 
@@ -111,6 +117,7 @@ const S = {
       copy:      { bg: "linear-gradient(180deg,#22c55e,#16a34a)", color: "#fff", border: "#15803d" },
       open:      { bg: "linear-gradient(180deg,#6366f1,#4f46e5)", color: "#fff", border: "#4338ca" },
       whats:     { bg: "linear-gradient(180deg,#22c55e,#15803d)", color: "#fff", border: "#166534" },
+      mail:      { bg: "linear-gradient(180deg,#3b82f6,#2563eb)", color: "#fff", border: "#1d4ed8" },
       warn:      { bg: "linear-gradient(180deg,#f59e0b,#d97706)", color: "#fff", border: "#b45309" },
       danger:    { bg: "linear-gradient(180deg,#ef4444,#dc2626)", color: "#fff", border: "#b91c1c" },
     };
@@ -165,6 +172,23 @@ const S = {
   activity: {
     fontSize: 11, color: "#64748b", fontWeight: 700, lineHeight: 1.5, marginTop: 4,
   },
+  /* Cliché chooser — the step between "📧 إيميل" and the composer. */
+  overlay: {
+    position: "fixed", inset: 0, background: "rgba(2,6,23,0.55)", zIndex: 9000,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+  },
+  sheet: {
+    background: "#fff", borderRadius: 18, width: "min(760px, 100%)",
+    maxHeight: "88vh", overflowY: "auto", padding: 18,
+    boxShadow: "0 24px 60px rgba(2,6,23,0.35)",
+  },
+  clicheCard: (active, accent) => ({
+    display: "flex", gap: 12, alignItems: "flex-start", width: "100%", textAlign: "start",
+    padding: "12px 14px", borderRadius: 14, cursor: "pointer", marginBottom: 8,
+    background: active ? `${accent}12` : "#fff",
+    border: `2px solid ${active ? accent : "#e2e8f0"}`,
+    fontFamily: "inherit",
+  }),
 };
 
 export default function SupplierSentLinks() {
@@ -180,6 +204,19 @@ export default function SupplierSentLinks() {
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const seenIdsRef = useRef(null);
+
+  /* ===== E-mail composer =====
+     Two steps on purpose: first pick the cliché (كليشية) that matches the
+     moment — invitation, reminder, final notice, expired, thank-you, missing
+     documents — then the shared composer opens with that letter ready.
+     `emailQueue` holds the records still to be mailed, so a bulk send walks
+     them one at a time: each supplier gets their own recipient and their own
+     PDF, never one mail with everybody in the To line. */
+  const [clicheFor, setClicheFor] = useState(null); // { records: [], suggested: id }
+  const [clichePick, setClichePick] = useState("");
+  const [emailCliche, setEmailCliche] = useState("");
+  const [emailQueue, setEmailQueue] = useState([]);
+  const emailRec = emailQueue[0] || null;
 
   /* ===== Load seen-submitted IDs (for browser-notification dedupe) ===== */
   useEffect(() => {
@@ -385,6 +422,61 @@ export default function SupplierSentLinks() {
     window.open(wa, "_blank", "noopener,noreferrer");
   }
 
+  /* ===== E-mail ===== */
+  function openEmail(records) {
+    const list = (Array.isArray(records) ? records : [records]).filter(Boolean);
+    if (!list.length) return;
+    /* The suggestion follows the first record's status; a mixed batch still
+       gets one cliché, which is what a "send a reminder to these five" means. */
+    const suggested = suggestCliche(list[0]?.payload);
+    setClicheFor({ records: list, suggested });
+    setClichePick(suggested);
+  }
+
+  function startEmail() {
+    const list = clicheFor?.records || [];
+    if (!list.length || !clichePick) return;
+    setEmailCliche(clichePick);
+    setClicheFor(null);
+    setEmailQueue(list);
+  }
+
+  /* Write the send into the record's own activity log, so the tracker shows
+     "📧 أُرسل" beside "📤 أُرسل / 👁 فُتح / ✅ رد" instead of only the audit
+     table knowing about it. */
+  async function stampSent(rec, info) {
+    if (!rec) return;
+    const prev = Array.isArray(rec?.payload?.public?.emails) ? rec.payload.public.emails : [];
+    const entry = {
+      at: new Date().toISOString(),
+      cliche: emailCliche,
+      method: info?.method || "",
+      to: info?.to || [],
+      subject: info?.subject || "",
+    };
+    try {
+      await putRecord(rec, {
+        public: { emails: [...prev, entry].slice(-20), lastEmailAt: entry.at },
+      });
+    } catch {
+      /* The mail is already gone; a failed stamp must not look like a failed send. */
+    }
+    load(true);
+  }
+
+  const emailPayload = useMemo(() => {
+    const p = emailRec?.payload;
+    if (!p) return null;
+    /* The audit row stores a real date; this type keeps `YYYY-MM-DD__token`. */
+    return { ...p, reportDate: String(p.reportDate || "").slice(0, 10) };
+  }, [emailRec]);
+
+  const emailConfig = useMemo(
+    () => (emailCliche ? makeSupplierEmailConfig(emailCliche, (info) => stampSent(emailRec, info)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [emailCliche, emailRec]
+  );
+
   async function putRecord(rec, payloadPatch) {
     const id = rec?.id || rec?._id;
     if (!id) throw new Error("Missing ID");
@@ -487,6 +579,8 @@ export default function SupplierSentLinks() {
     const disabledAt = p?.public?.disabledAt || "";
     const expiresAt = p?.public?.expiresAt || "";
     const supplierType = p?.fields?.supplier_type || p?.public?.supplierType || "";
+    const emailCount = Array.isArray(p?.public?.emails) ? p.public.emails.length : 0;
+    const lastEmailAt = p?.public?.lastEmailAt || "";
     const isSel = selected.has(id);
 
     let statusPill;
@@ -521,6 +615,12 @@ export default function SupplierSentLinks() {
             {openedAt && <div>👁 فُتح: {fmtDateTime(openedAt)}</div>}
             {submittedAt && <div>✅ رد: {fmtDateTime(submittedAt)}</div>}
             {disabledAt && <div>🚫 عُطّل: {fmtDateTime(disabledAt)}</div>}
+            {lastEmailAt && (
+              <div>
+                📧 إيميل: {fmtDateTime(lastEmailAt)}
+                {emailCount > 1 ? ` (${emailCount} مرات)` : ""}
+              </div>
+            )}
           </div>
         </td>
         <td style={S.td}>
@@ -566,6 +666,15 @@ export default function SupplierSentLinks() {
                 </button>
               </>
             )}
+            {/* Always available: a revoked or expired link still has a letter
+                worth sending (thank-you, or "your link expired"). */}
+            <button
+              style={S.btn("mail")}
+              onClick={() => openEmail(rec)}
+              title="إرسال بريد إلكتروني بكليشية جاهزة"
+            >
+              📧 إيميل
+            </button>
             {submitted && !disabled && (
               <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/supplier-evaluation/results")}>
                 👁 الردود
@@ -695,6 +804,14 @@ export default function SupplierSentLinks() {
               ✓ مُحدد: {selected.size}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                style={S.btn("mail")}
+                onClick={() => openEmail(items.filter((r) => selected.has(r.id || r._id)))}
+                disabled={bulkBusy}
+                title="رسالة منفصلة لكل مورد بنفس الكليشية"
+              >
+                📧 إيميل للمحدد
+              </button>
               <button style={S.btn("warn")} onClick={bulkRevoke} disabled={bulkBusy}>
                 🚫 تعطيل المحدد
               </button>
@@ -754,11 +871,78 @@ export default function SupplierSentLinks() {
           </div>
         )}
 
-        {/* Email reminder note */}
+        {/* Email note */}
         <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#eff6ff", border: "1px dashed #93c5fd", fontSize: 12, color: "#1e40af", fontWeight: 700 }}>
-          💌 <b>تذكيرات الإيميل التلقائية</b> تحتاج إعداد على السيرفر (SMTP). أخبرني إذا تريد أعدّ نقطة API على السيرفر.
+          💌 زر <b>📧 إيميل</b> يفتح كليشية جاهزة تناسب حالة الرابط (دعوة، تذكير، تنبيه أخير،
+          رابط منتهي، شكر، مستندات ناقصة) — مع رسالة ثنائية اللغة، قائمة المستندات المطلوبة
+          حسب نوع المورد، ورسالة PDF فيها الرابط و QR. الإرسال المباشر يعتمد على إعداد SMTP على
+          السيرفر؛ وإلا يُنزَّل ملف ‎.eml‎ يفتح في Outlook.
         </div>
       </div>
+
+      {/* ===== Step 1: pick the cliché ===== */}
+      {clicheFor && (
+        <div style={S.overlay} onClick={() => setClicheFor(null)}>
+          <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 980 }}>✍️ اختر كليشية الرسالة</h2>
+              <button style={S.btn("secondary")} onClick={() => setClicheFor(null)}>✖ إغلاق</button>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 14 }}>
+              {clicheFor.records.length === 1
+                ? `المورد: ${clicheFor.records[0]?.payload?.fields?.company_name || "—"}`
+                : `${clicheFor.records.length} موردين — رسالة منفصلة لكل واحد بنفس الكليشية`}
+            </div>
+
+            {CLICHE_LIST.map((cl) => {
+              const active = clichePick === cl.id;
+              const recommended = clicheFor.suggested === cl.id;
+              return (
+                <button
+                  key={cl.id}
+                  type="button"
+                  style={S.clicheCard(active, cl.accent)}
+                  onClick={() => setClichePick(cl.id)}
+                >
+                  <span style={{ fontSize: 22, lineHeight: 1.1 }}>{cl.icon}</span>
+                  <span style={{ flex: 1 }}>
+                    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <b style={{ fontSize: 14.5, color: "#0f172a" }}>{cl.name.ar}</b>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{cl.name.en}</span>
+                      {recommended && (
+                        <span style={S.pill("#15803d", "#dcfce7")}>مقترحة لهذه الحالة</span>
+                      )}
+                    </span>
+                    <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#475569", marginTop: 4 }}>
+                      {cl.hint.ar}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+              <button style={S.btn("secondary")} onClick={() => setClicheFor(null)}>إلغاء</button>
+              <button style={S.btn("primary")} onClick={startEmail} disabled={!clichePick}>
+                ✉️ متابعة للمُنشئ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Step 2: the shared composer, one supplier at a time =====
+          `key` forces a fresh modal per record so the next supplier in a bulk
+          queue starts from their own recipient, subject and letter. */}
+      {emailRec && emailConfig && (
+        <EmailSendModal
+          key={emailRec.id || emailRec._id}
+          open
+          onClose={() => setEmailQueue((q) => q.slice(1))}
+          payload={emailPayload}
+          config={emailConfig}
+        />
+      )}
     </main>
   );
 }

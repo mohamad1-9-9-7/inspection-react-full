@@ -7,6 +7,9 @@ import jsPDF from "jspdf";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
 import { getInspectionBranchLabel } from "../../../inspection/inspectionBranches";
+import EmailSendModal from "../../../shared/EmailSendModal";
+import EmailSendHistory from "../../../shared/EmailSendHistory";
+import { makeNcrEmailConfig } from "./ncrEmailConfig";
 
 /* The NC number is allocated by the server as `payload.refNo` ("AM-NCR-000042").
    Reports written before that still only carry the hand-typed headRow.ncNo, so
@@ -14,7 +17,19 @@ import { getInspectionBranchLabel } from "../../../inspection/inspectionBranches
 const ncNumberOf = (p) => p?.refNo || p?.headRow?.ncNo || "";
 /* Location is a canonical branch code now ("POS 15"); show its full name, and
    fall back to whatever free text a legacy record holds. */
-const locationOf = (p) => (p?.location ? getInspectionBranchLabel(p.location) : "");
+const locationOf = (p) => {
+  const code = p?.branch || p?.location || "";
+  return code ? getInspectionBranchLabel(code) : "";
+};
+
+/* Workflow state, with the colour it is shown in everywhere on this screen. */
+const STATUS_TONE = {
+  Open:          { bg: "#fef2f2", fg: "#991b1b", bd: "#fca5a5", dot: "🔴" },
+  "In Progress": { bg: "#fffbeb", fg: "#92400e", bd: "#fcd34d", dot: "🟠" },
+  Closed:        { bg: "#ecfdf5", fg: "#065f46", bd: "#6ee7b7", dot: "🟢" },
+};
+const statusOf = (p) => p?.correctiveActionExtras?.status || "Open";
+const toneOf = (p) => STATUS_TONE[statusOf(p)] || STATUS_TONE.Open;
 
 /* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -68,8 +83,10 @@ function NCText({ label, value }) {
 
 /* ===== Server helpers ===== */
 async function listReports(type) {
+  /* Without an explicit limit the server caps the answer at 200 rows, which
+     silently hides the oldest NCRs from the archive tree. */
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}&limit=5000`,
     { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
   );
   if (!res.ok) return [];
@@ -130,8 +147,22 @@ export default function NonConformanceReportsView(props) {
   const [data, setData] = useState([]);
   const [activeId, setActiveId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  /* Bumped when the modal closes so the send history re-reads the log — a send
+     that just happened should show without a page refresh. */
+  const [historyKey, setHistoryKey] = useState(0);
   const sheetRef = useRef(null);
   const { openImage, lightbox } = useLightbox();
+
+  /* POS 19 mounts this same view under its own report type; the e-mail log has
+     to stay separated the same way the reports are. */
+  const emailConfig = useMemo(
+    () => makeNcrEmailConfig({
+      reportType: TYPE,
+      reportTitle: TYPE.startsWith("pos19") ? "POS 19 Non-Conformance Report" : "Non-Conformance Report",
+    }),
+    [TYPE]
+  );
 
   const current = useMemo(
     () => data.find((r) => r.id === activeId) || null,
@@ -237,20 +268,39 @@ export default function NonConformanceReportsView(props) {
     pdf.save(`${view?.headRow?.reportDate || "NC_Report"}.pdf`);
   }
 
+  /* Several NCRs can share one day — one per branch, or two on the same branch
+     — so a leaf labelled with the date alone is ambiguous. Each leaf carries
+     its status colour, its NC number and its branch code. */
   const treeItems = useMemo(() =>
-    data.map((r) => ({
-      key: r.id,
-      dateISO: r?.payload?.headRow?.reportDate || "",
-      label: (() => {
-        const d = r?.payload?.headRow?.reportDate || "";
-        if (!d) return ncNumberOf(r?.payload) || "NC";
-        const [y, m, day] = d.split("-");
-        return day ? `${day}/${m}/${y}` : d;
-      })(),
-    })),
+    data.map((r) => {
+      const p = r?.payload;
+      const d = String(p?.headRow?.reportDate || "");
+      const [y, m, day] = d.split("-");
+      const dmy = day ? `${day}/${m}/${y}` : d;
+      const ref = ncNumberOf(p);
+      const shortRef = ref ? `#${ref.split("-").pop()}` : "";
+      const branch = p?.branch || p?.location || "";
+      return {
+        key: r.id,
+        dateISO: d,
+        label: [toneOf(p).dot, dmy || "NC", shortRef, branch]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    }),
   [data]);
 
   const evidenceImgs = view?.correctiveActionExtras?.evidence?.images || [];
+  const tone = toneOf(view);
+
+  /* EmailSendModal reads `payload.reportDate` for the audit row; this report
+     keeps its date one level down, so lift it rather than teach the modal
+     about every report shape. */
+  const emailPayload = useMemo(
+    () => (view ? { ...view, reportDate: view?.headRow?.reportDate || "" } : null),
+    [view]
+  );
+  const currentRef = ncNumberOf(view);
 
   return (
     <GlassShell icon="⚠️" title="Non-Conformance Reports">
@@ -274,12 +324,24 @@ export default function NonConformanceReportsView(props) {
                 {canEdit("daily") && (
                   <button disabled={busy} onClick={onEdit} style={btn("#0ea5e9")}>✏️ Edit</button>
                 )}
+                <button disabled={busy} onClick={() => setEmailOpen(true)} style={btn("#2563eb")}>📧 Send by Email</button>
                 <button disabled={busy} onClick={exportXlsx} style={btn("#059669")}>📄 Export XLSX</button>
                 <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>🖨️ Export PDF</button>
                 {canDelete("daily") && (
                   <button disabled={busy} onClick={onDelete} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
                 )}
               </div>
+
+              {/* Send log for THIS report. Deliberately outside sheetRef so it
+                  never lands in the exported PDF — the PDF is the report, not
+                  the record of who received it. */}
+              <EmailSendHistory
+                reportType={TYPE}
+                reportRef={currentRef}
+                reportDate={view?.headRow?.reportDate}
+                refreshKey={historyKey}
+                onSendClick={() => setEmailOpen(true)}
+              />
 
               {/* Modern full-width document */}
               <div ref={sheetRef} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
@@ -290,6 +352,19 @@ export default function NonConformanceReportsView(props) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 3 }}>{HEADER_LINE}</div>
                     <div style={{ fontSize: 18, fontWeight: 900 }}>NON-CONFORMANCE REPORT</div>
+                    {/* The number and the workflow state are what a reader looks
+                        for first; they used to be buried three sections down. */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+                      <span style={{ padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.3)", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
+                        {ncNumberOf(view) || "No NC number"}
+                      </span>
+                      <span style={{ padding: "3px 10px", borderRadius: 999, background: tone.bg, color: tone.fg, border: `1px solid ${tone.bd}`, fontSize: 12, fontWeight: 800 }}>
+                        {statusOf(view).toUpperCase()}
+                      </span>
+                      {locationOf(view) ? (
+                        <span style={{ fontSize: 12, opacity: 0.8 }}>📍 {locationOf(view)}</span>
+                      ) : null}
+                    </div>
                   </div>
                   <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "auto auto", gap: "2px 10px", textAlign: "right", flexShrink: 0 }}>
                     {[
@@ -384,19 +459,33 @@ export default function NonConformanceReportsView(props) {
                       { label: "Result", value: view?.qaVerification?.result },
                       { label: "Closure Date", value: view?.qaVerification?.closureDateISO },
                     ]} />
-                    <NCRow items={[
-                      { label: "Follow-up Actions Required", value: view?.qaVerification?.followupActionsRequired, colSpan: 2 },
-                      { label: "Follow-up Responsible", value: view?.qaVerification?.followupResponsible },
-                      { label: "Target Date", value: view?.qaVerification?.followupTargetDateISO },
-                    ]} />
+                    {/* Follow-up exists only because the result was not
+                        satisfactory — four empty cells on every other report
+                        just read as missing data. */}
+                    {view?.qaVerification?.result === "Not Satisfactory" ? (
+                      <NCRow items={[
+                        { label: "Follow-up Actions Required", value: view?.qaVerification?.followupActionsRequired, colSpan: 2 },
+                        { label: "Follow-up Responsible", value: view?.qaVerification?.followupResponsible },
+                        { label: "Target Date", value: view?.qaVerification?.followupTargetDateISO },
+                      ]} />
+                    ) : null}
                   </NCSection>
 
-                  <NCSection color="#059669" title="Final QA Closure">
-                    <NCRow items={[
-                      { label: "Name", value: view?.finalQaClosure?.name },
-                      { label: "Date", value: view?.finalQaClosure?.dateISO },
-                      { label: "Approved", value: view?.finalQaClosure?.approved ? "✅ YES" : "NO" },
-                    ]} />
+                  <NCSection color={statusOf(view) === "Closed" ? "#059669" : "#94a3b8"} title="Final QA Closure">
+                    {statusOf(view) === "Closed" ? (
+                      <NCRow items={[
+                        { label: "Name", value: view?.finalQaClosure?.name },
+                        { label: "Date", value: view?.finalQaClosure?.dateISO },
+                        { label: "Approved", value: view?.finalQaClosure?.approved ? "✅ YES" : "NO" },
+                      ]} />
+                    ) : (
+                      <div style={{ padding: "12px 16px", color: "#64748b", fontSize: 15, borderBottom: "1px solid #e2e8f0" }}>
+                        Not closed yet — this NCR is <b>{statusOf(view)}</b>.
+                        <span style={{ direction: "rtl", display: "block", marginTop: 4 }}>
+                          لم يُغلق بعد — حالة التقرير <b>{statusOf(view)}</b>.
+                        </span>
+                      </div>
+                    )}
                   </NCSection>
 
                   <NCSection color="#dc2626" title="Signature">
@@ -413,6 +502,15 @@ export default function NonConformanceReportsView(props) {
           )}
         </div>
       </div>
+      <EmailSendModal
+        open={emailOpen}
+        onClose={() => {
+          setEmailOpen(false);
+          setHistoryKey((k) => k + 1);
+        }}
+        payload={emailPayload}
+        config={emailConfig}
+      />
       {lightbox}
     </GlassShell>
   );

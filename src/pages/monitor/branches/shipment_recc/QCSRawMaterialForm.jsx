@@ -1,10 +1,13 @@
 // QCSRawMaterialForm.jsx
 import React, { useEffect, useMemo, useRef, useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 import MultiDateField from "../_shared/MultiDateField";
 import ShelfLifeModal from "../_shared/ShelfLifeModal";
-import { useShelfLife, expiryFromProduction } from "../_shared/shelfLife";
+import { useShelfLife, expiryFromProduction, productionFromExpiry } from "../_shared/shelfLife";
+import { isoDatesIn } from "../_shared/dateTokens";
+import { fetchBaseItems } from "../_shared/ProductPicker";
 import { useSupplierEvaluations } from "../_shared/supplierEvaluation";
 import {
   sendToServer,
@@ -30,8 +33,8 @@ const makeStableId = () =>
 const ATTRIBUTES = [
   { key: "temperature", label: "Product Temperature", default: "" },
   { key: "ph", label: "Product PH", default: "" },
-  { key: "slaughterDate", label: "Slaughter Date", default: "", type: "dates" },
-  { key: "expiryDate", label: "Expiry Date", default: "", type: "dates" },
+  { key: "slaughterDate", label: "Slaughter Date", default: "", type: "dates", required: true },
+  { key: "expiryDate", label: "Expiry Date", default: "", type: "dates", required: true },
   { key: "broken", label: "Broken / Cut Pieces", default: "NIL" },
   { key: "appearance", label: "Appearance", default: "OK" },
   { key: "bloodClots", label: "Blood Clots", default: "NIL" },
@@ -51,6 +54,7 @@ const REQUIRED_FIELDS = new Set([
   "inspectionDate",
   "brand",
   "origin",
+  "invoiceNo",
   "receivingAddress",
   "inspectedBy",
   "verifiedBy",
@@ -61,10 +65,26 @@ const REQUIRED_LABELS = {
   inspectionDate: "Inspection Date",
   brand: "Brand",
   origin: "Origin",
+  invoiceNo: "Invoice No",
   receivingAddress: "Receiving Address",
   inspectedBy: "Inspected By",
   verifiedBy: "Verified By",
+  shipmentType: "Shipment Type",
+  createdDate: "Entry Date",
+  // these three live in the sample columns, not in the header
+  sampleProduct: "Product Name (العينات)",
+  slaughterDate: "Slaughter Date (العينات)",
+  expiryDate: "Expiry Date (العينات)",
+  lineProduct: "Product Lines",
 };
+
+// 🏷️ Brand and 🌍 Origin used to be free text, so one shipment could be filed
+//    under "AUS", "Aus." and "australia" at once. Both are lists now: the origin
+//    seeded from the product catalog's own origin column, the brand kept on the
+//    server exactly the way suppliers and shipment types already are.
+const BRANDS_LS_KEY = "qcs_brands_v1";
+const ORIGINS_LS_KEY = "qcs_origins_v1";
+const FALLBACK_ORIGINS = ["AUS", "BRZ", "IND", "IRAN", "KAZ", "LOCAL", "NEZ", "PAK", "S.A"];
 
 const TYPES_LS_KEY = "qcs_shipment_types_v1";
 const DEFAULT_TYPES = [
@@ -82,87 +102,210 @@ const BRANCHES = [
 
 const SAVE_COOLDOWN_MS = 1200;
 
-/* ===== Styles ===== */
+/* ═════════════════════════════════════════════════════════ Styles
+
+   Two layers, because globals.css forces "#root * { font-size: 14px }" with
+   !important and an inline style cannot beat it: the inline styles object below
+   for everything else, and one scoped stylesheet whose doubled class outranks
+   the global rule so the sheet keeps a real type hierarchy.
+
+   The same sheet also lifts overflow-x:hidden off the scroll ancestors while
+   this page is mounted — that rule silently disables every position:sticky, and
+   this form has a sticky table header and a sticky action bar. */
+
+const SCOPED_CSS = `
+#root .qcsShip.qcsShip .qs-title { font-size: 25px !important; letter-spacing: .2px; }
+#root .qcsShip.qcsShip .qs-legend { font-size: 16px !important; }
+#root .qcsShip.qcsShip .qs-label { font-size: 12px !important; letter-spacing: .4px; text-transform: uppercase; }
+#root .qcsShip.qcsShip .qs-chip { font-size: 12px !important; }
+#root .qcsShip.qcsShip .qs-hint { font-size: 11.5px !important; }
+#root .qcsShip.qcsShip input,
+#root .qcsShip.qcsShip select,
+#root .qcsShip.qcsShip textarea { font-size: 14px !important; }
+#root .qcsShip.qcsShip table input,
+#root .qcsShip.qcsShip table select { font-size: 13px !important; }
+
+/* position:sticky needs a scroll ancestor that is not overflow:hidden */
+html:has(.qcsShip), body:has(.qcsShip), #root:has(.qcsShip) { overflow-x: clip; }
+
+#root .qcsShip.qcsShip input:focus,
+#root .qcsShip.qcsShip select:focus,
+#root .qcsShip.qcsShip textarea:focus { border-color: #0284c7 !important; }
+`;
+
 const styles = {
+  // 🎨 The palette is the ISO & HACCP one: the dashboard card's cyan
+  //    (#0891b2 → #0e7490) over the same washed-white shell the ISO view pages
+  //    use, so the form and the module it belongs to read as one system.
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%)",
+    background:
+      "radial-gradient(circle at 12% 6%, rgba(34,211,238,0.18) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
+      "radial-gradient(circle at 88% 8%, rgba(34,197,94,0.14) 0, rgba(255,255,255,0) 55%)",
+    backgroundColor: "#ffffff",
     fontFamily: "Inter,Roboto,Cairo,sans-serif",
+    color: "#071b2d",
   },
   hero: {
     position: "relative",
-    height: 120,
-    background: "linear-gradient(135deg,#4f46e5 0%,#7c3aed 35%,#0ea5e9 100%)",
-    boxShadow: "0 8px 20px rgba(60,30,230,0.10)",
+    background:
+      "radial-gradient(1200px 260px at 15% 130%, rgba(255,255,255,.22), transparent 62%)," +
+      "linear-gradient(135deg,#0891b2 0%,#0e7490 55%,#0c4a6e 100%)",
+    boxShadow: "0 12px 32px rgba(8,145,178,.28)",
+    padding: "18px clamp(12px,1.8vw,28px) 74px",
     zIndex: 0,
   },
-  containerWrap: { padding: "0 16px 32px" },
+  heroInner: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    flexWrap: "wrap",
+  },
+  heroIdentity: { display: "flex", alignItems: "center", gap: 14, minWidth: 0 },
+  heroLogo: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+    objectFit: "cover",
+    background: "#fff",
+    padding: 4,
+    boxShadow: "0 4px 12px rgba(2,6,23,.22)",
+    flex: "0 0 auto",
+  },
+  heroEyebrow: { color: "rgba(255,255,255,.78)", fontWeight: 800, letterSpacing: ".6px" },
+  heroSub: { color: "rgba(255,255,255,.80)", fontWeight: 700, marginTop: 2 },
+  heroChips: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
+  heroChip: {
+    padding: "6px 13px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,.15)",
+    border: "1px solid rgba(255,255,255,.32)",
+    color: "#fff",
+    fontWeight: 800,
+    backdropFilter: "blur(4px)",
+  },
+
+  // 📄 document control — the four ISO fields, laid out as a block instead of a
+  //    five-column table with two empty cells in it
+  docCard: {
+    border: "1px solid rgba(15,23,42,.14)",
+    borderRadius: 14,
+    background: "linear-gradient(180deg,#ffffff,#f0f9ff)",
+    padding: "12px 14px 14px",
+    marginBottom: 16,
+    borderLeft: "4px solid #0891b2",
+    boxShadow: "0 4px 12px rgba(2,132,199,.06)",
+  },
+  docTitleRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    paddingBottom: 10,
+    marginBottom: 12,
+    borderBottom: "1px dashed rgba(15,23,42,.16)",
+  },
+  docTitleLabel: { color: "#0c4a6e", fontWeight: 800, opacity: .8 },
+  docGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 },
+  docCell: { display: "flex", flexDirection: "column", gap: 4 },
+  docCellLabel: { color: "#0c4a6e", fontWeight: 800, opacity: .8 },
+  // 📐 The card fills the page instead of sitting in a 1200px column. Its width
+  //    is 100% of the flow, never 100vw, so a side menu keeps its own space.
+  containerWrap: { padding: "0 clamp(10px,1.6vw,26px) 28px" },
   container: {
     margin: "0 auto",
-    marginTop: -60,
-    padding: "1.5rem 2rem",
+    marginTop: -56,
+    padding: "clamp(14px,1.8vw,26px)",
     background: "#fff",
-    borderRadius: 18,
-    width: "min(1200px,96vw)",
+    borderRadius: 20,
+    width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
     direction: "ltr",
-    boxShadow: "0 10px 24px rgba(60,30,230,.10), 0 1px 2px rgba(2,6,23,.04)",
-    border: "1px solid #e5e7eb",
+    boxShadow: "0 12px 32px rgba(2,132,199,.12), 0 1px 2px rgba(2,6,23,.05)",
+    border: "1px solid rgba(15,23,42,.14)",
     position: "relative",
     zIndex: 1,
   },
-  titleWrap: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 },
-  title: { color: "#1e293b", margin: 0, fontSize: "1.7rem", fontWeight: 900, letterSpacing: ".5px" },
-  badge: { fontSize: ".9rem", background: "#e0e7ff", color: "#3730a3", padding: "7px 16px", borderRadius: 999, border: "1px solid #c7d2fe", fontWeight: 700 },
+  titleWrap: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14, flexWrap: "wrap" },
+  title: { color: "#fff", margin: 0, fontWeight: 900, textShadow: "0 1px 10px rgba(2,6,23,.28)" },
+  badge: { background: "#e0f2fe", color: "#0c4a6e", padding: "7px 15px", borderRadius: 999, border: "1px solid rgba(15,23,42,.14)", fontWeight: 800 },
   section: { marginBottom: 16 },
-  label: { fontWeight: 800, color: "#334155", fontSize: "1rem" },
+  label: { fontWeight: 800, color: "#0c4a6e" },
 
   input: {
     width: "100%",
-    padding: "11px 13px",
-    border: "1px solid #94a3b8",
+    padding: "10px 12px",
+    border: "1px solid #cbd5e1",
     borderRadius: 10,
     outline: "none",
     background: "#ffffff",
-    color: "#111827",
+    color: "#071b2d",
     minHeight: 42,
     boxSizing: "border-box",
-    fontSize: "1rem",
+    transition: "border-color .15s, box-shadow .15s, background .15s",
   },
   select: {
     width: "100%",
-    padding: "11px 13px",
-    border: "1px solid #94a3b8",
+    padding: "10px 12px",
+    border: "1px solid #cbd5e1",
     borderRadius: 10,
     outline: "none",
     background: "#ffffff",
-    color: "#111827",
+    color: "#071b2d",
     minHeight: 42,
     boxSizing: "border-box",
-    fontSize: "1rem",
+    transition: "border-color .15s, box-shadow .15s, background .15s",
   },
 
-  focused: { boxShadow: "0 0 0 4px rgba(59,130,246,.20)", border: "1px solid #6366f1" },
-  fieldset: { marginBottom: 18, padding: 14, border: "1px solid #e5e7eb", borderRadius: 14, background: "#f8fafc" },
-  legend: { fontWeight: 900, fontSize: "1.09rem", color: "#1e293b" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 12, marginTop: 10 },
-  row: { display: "flex", flexDirection: "column", gap: 7 },
-  tableWrap: { overflowX: "auto", background: "#fff", border: "1px solid #ddd", borderRadius: 12, marginTop: 8 },
-  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: ".97rem", border: "1px solid #ddd" },
-  th: { backgroundColor: "#f3f4f6", color: "#1e293b", textAlign: "center", position: "sticky", top: 0, zIndex: 1, padding: "9px 7px", whiteSpace: "nowrap", border: "1px solid #ddd" },
-  td: { border: "1px solid #ddd", padding: "7px 7px", verticalAlign: "top", background: "#fff" },
-  firstColCell: { border: "1px solid #ddd", padding: "7px 8px", fontWeight: 700, background: "#f3f4f6", minWidth: 200, whiteSpace: "nowrap" },
-  tdInput: { width: "100%", minWidth: 140, display: "block", padding: "9px 12px", border: "1px solid #bbb", borderRadius: 10, outline: "none", background: "#fff", boxSizing: "border-box" },
-  addButton: { padding: "9px 16px", background: "#6366f1", color: "#fff", border: "1px solid #6366f1", borderRadius: 10, cursor: "pointer", fontWeight: 700, transition: "all .2s" },
-  dangerButton: { padding: "9px 16px", background: "#ef4444", color: "#fff", border: "1px solid #ef4444", borderRadius: 10, cursor: "pointer", fontWeight: 700, transition: "all .2s" },
-  uploadButton: { padding: "9px 16px", background: "#f59e0b", color: "#fff", border: "1px solid #f59e0b", borderRadius: 10, cursor: "pointer", marginBottom: 8, fontWeight: 700 },
-  formRow3: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12, marginTop: 10 },
-  saveButton: { padding: "12px 22px", background: "#16a34a", color: "#fff", border: "1px solid #16a34a", borderRadius: 12, cursor: "pointer", fontWeight: 900, fontSize: "1rem", transition: "all .18s" },
-  saveButtonDisabled: { opacity: .6, cursor: "not-allowed" },
-  viewButton: { padding: "12px 22px", background: "#2563eb", color: "#fff", border: "1px solid #2563eb", borderRadius: 12, cursor: "pointer", fontWeight: 900, fontSize: "1rem", transition: "all .18s" },
+  focused: { boxShadow: "0 0 0 4px rgba(14,165,233,.20)", border: "1px solid #0284c7" },
+  // 🔴 a mandatory box nobody has filled — the border says so before the save does
+  invalid: { border: "1px solid #ef4444", background: "#fff7f7", boxShadow: "0 0 0 3px rgba(239,68,68,.12)" },
+
+  fieldset: {
+    marginBottom: 18,
+    padding: "16px 16px 18px",
+    border: "1px solid rgba(15,23,42,.14)",
+    borderRadius: 16,
+    background: "linear-gradient(180deg,#ffffff 0%,#f0f9ff 100%)",
+    boxShadow: "0 4px 12px rgba(2,132,199,.05)",
+  },
+  legend: { fontWeight: 900, color: "#0c4a6e", padding: "0 8px" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14, marginTop: 10 },
+  row: { display: "flex", flexDirection: "column", gap: 6 },
+  tableWrap: { overflowX: "auto", background: "#fff", border: "1px solid rgba(15,23,42,.14)", borderRadius: 14, marginTop: 8 },
+  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", border: "1px solid #e2e8f0" },
+  th: { background: "#0ea5e9", color: "#fff", textAlign: "center", position: "sticky", top: 0, zIndex: 1, padding: "10px 8px", whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,.30)", fontWeight: 900 },
+  td: { border: "1px solid #e2e8f0", padding: "7px", verticalAlign: "top", background: "#fff" },
+  firstColCell: { border: "1px solid #e2e8f0", padding: "8px 10px", fontWeight: 800, background: "#f0f9ff", color: "#0c4a6e", minWidth: 200, whiteSpace: "nowrap" },
+  tdInput: { width: "100%", minWidth: 130, display: "block", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 9, outline: "none", background: "#fff", boxSizing: "border-box" },
+  addButton: { padding: "9px 16px", background: "linear-gradient(180deg,#0ea5e9,#06b6d4)", color: "#fff", border: "1.5px solid #0284c7", borderRadius: 10, cursor: "pointer", fontWeight: 800, transition: "filter .18s" },
+  dangerButton: { padding: "9px 16px", background: "linear-gradient(180deg,#ef4444,#dc2626)", color: "#fff", border: "1.5px solid #b91c1c", borderRadius: 10, cursor: "pointer", fontWeight: 800, transition: "filter .18s" },
+  uploadButton: { padding: "9px 16px", background: "linear-gradient(180deg,#f59e0b,#d97706)", color: "#fff", border: "1.5px solid #b45309", borderRadius: 10, cursor: "pointer", marginBottom: 8, fontWeight: 800 },
+  formRow3: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginTop: 12 },
+  saveButton: { padding: "12px 22px", background: "linear-gradient(180deg,#22c55e,#16a34a)", color: "#fff", border: "1.5px solid #15803d", borderRadius: 12, cursor: "pointer", fontWeight: 900, transition: "filter .18s" },
+  saveButtonDisabled: { opacity: .5, cursor: "not-allowed" },
+  viewButton: { padding: "12px 22px", background: "linear-gradient(180deg,#0ea5e9,#06b6d4)", color: "#fff", border: "1.5px solid #0284c7", borderRadius: 12, cursor: "pointer", fontWeight: 900, transition: "filter .18s" },
+  // the save button follows the inspector down a very long form
+  actionBar: {
+    position: "sticky",
+    bottom: 0,
+    zIndex: 5,
+    marginTop: 18,
+    padding: "12px clamp(6px,1vw,14px)",
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+    background: "rgba(255,255,255,.94)",
+    backdropFilter: "blur(6px)",
+    borderTop: "1px solid rgba(15,23,42,.14)",
+    borderRadius: "0 0 14px 14px",
+  },
   toastWrap: { position: "fixed", left: 16, bottom: 16, zIndex: 1000, maxWidth: "92vw" },
-  toast: { padding: "11px 17px", borderRadius: 13, boxShadow: "0 6px 18px rgba(0,0,0,.10)", fontWeight: 900, borderWidth: 2, borderStyle: "solid", fontSize: "1rem" },
-  dialogOverlay: { position: "fixed", top:0, left:0, width:"100vw",height:"100vh",background:"rgba(30,41,59,0.15)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center" },
-  dialogBox: { background:"#fff",padding:"2rem",borderRadius:18,boxShadow:"0 8px 24px rgba(60,30,230,0.18)",width:"min(95vw,350px)",textAlign:"center" }
+  toast: { padding: "11px 17px", borderRadius: 13, boxShadow: "0 6px 18px rgba(0,0,0,.10)", fontWeight: 900, borderWidth: 2, borderStyle: "solid" },
+  dialogOverlay: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(7,27,45,.24)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" },
+  dialogBox: { background: "#fff", padding: "2rem", borderRadius: 18, boxShadow: "0 12px 32px rgba(2,132,199,.20)", width: "min(95vw,350px)", textAlign: "center" },
 };
 
 /* ===== Reducers ===== */
@@ -243,6 +386,197 @@ const saveLocalSupplier = (name) => {
   } catch {}
 };
 
+// ✅ Brands + Origins — cached the same way suppliers and types are: the server
+//    record is the truth, localStorage only keeps the last known list.
+const getLocalList = (key) => {
+  try {
+    const arr = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+};
+const saveLocalListItem = (key, name) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(uniq([...getLocalList(key), name])));
+  } catch {}
+};
+
+/* ═════════════════════════════════════════ Searchable dropdown
+
+   The lists here used to be a "Search…" box sitting ABOVE a native <select>.
+   Typing narrowed a list that was collapsed, so nothing visibly happened — and
+   a search that excluded the chosen value removed its <option>, which made the
+   select render blank as though the value had been cleared.
+
+   This is one control instead of two: type to filter, see the matches while you
+   type, click (or Enter) to pick. The chosen value is shown when it is closed
+   and is never dropped by a search. */
+function SearchableSelect({
+  value = "",
+  options,
+  onPick,
+  placeholder = "-- Select --",
+  emptyText = "No matches",
+  invalid = false,
+  decorate,
+  disabled = false,
+  baseStyle,
+  focusStyle,
+  invalidStyle,
+  maxRendered = 300,
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
+  const [focused, setFocused] = useState(false);
+  const boxRef = useRef(null);
+  const listRef = useRef(null);
+
+  // clicking anywhere else puts the list away
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const list = useMemo(() => {
+    const needle = normCI(q);
+    const arr = Array.isArray(options) ? options : [];
+    return needle ? arr.filter((o) => normCI(o).includes(needle)) : arr;
+  }, [options, q]);
+
+  useEffect(() => { setActive(0); }, [q, open]);
+
+  // keep the highlighted row in view while arrowing through a long list
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const row = listRef.current.children[active];
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
+
+  const commit = (opt) => {
+    onPick(opt);
+    setQ("");
+    setOpen(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) { setOpen(true); return; }
+      setActive((i) => Math.min(i + 1, Math.max(list.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      if (open && list[active] !== undefined) {
+        e.preventDefault();
+        commit(list[active]);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  const shown = list.slice(0, maxRendered);
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", width: "100%" }}>
+      <input
+        value={open ? q : value}
+        disabled={disabled}
+        placeholder={value && !open ? value : placeholder}
+        onFocus={() => { setFocused(true); setQ(""); setOpen(true); }}
+        onBlur={() => setFocused(false)}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onKeyDown={onKeyDown}
+        onClick={() => setOpen(true)}
+        title={value || placeholder}
+        style={{
+          ...baseStyle,
+          ...(focused ? focusStyle : {}),
+          ...(invalid ? invalidStyle : {}),
+          paddingInlineEnd: value ? 60 : 34,
+          cursor: disabled ? "not-allowed" : "text",
+        }}
+      />
+
+      {/* clear + open affordances */}
+      <div style={{ position: "absolute", insetInlineEnd: 8, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 4, alignItems: "center", pointerEvents: disabled ? "none" : "auto" }}>
+        {value ? (
+          <button
+            type="button"
+            title="Clear"
+            aria-label="Clear"
+            onClick={() => { onPick(""); setQ(""); setOpen(false); }}
+            style={{ border: "none", background: "transparent", color: "#94a3b8", fontWeight: 900, cursor: "pointer", padding: "0 2px", lineHeight: 1 }}
+          >
+            ✕
+          </button>
+        ) : null}
+        <span onClick={() => !disabled && setOpen((v) => !v)} style={{ color: "#0c4a6e", opacity: .65, cursor: "pointer", lineHeight: 1 }}>▾</span>
+      </div>
+
+      {open && !disabled ? (
+        <div
+          ref={listRef}
+          style={{
+            position: "absolute",
+            zIndex: 40,
+            top: "calc(100% + 4px)",
+            insetInlineStart: 0,
+            width: "100%",
+            maxHeight: 260,
+            overflowY: "auto",
+            background: "#fff",
+            border: "1px solid rgba(15,23,42,.16)",
+            borderRadius: 10,
+            boxShadow: "0 12px 32px rgba(2,132,199,.16)",
+          }}
+        >
+          {shown.length ? (
+            shown.map((opt, i) => {
+              const d = decorate ? decorate(opt) : null;
+              return (
+                <div
+                  key={opt}
+                  role="option"
+                  aria-selected={opt === value}
+                  title={d?.title || opt}
+                  onMouseEnter={() => setActive(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => commit(opt)}
+                  style={{
+                    padding: "8px 11px",
+                    cursor: "pointer",
+                    fontWeight: opt === value ? 900 : 700,
+                    color: "#0c4a6e",
+                    background: i === active ? "#e0f2fe" : "transparent",
+                    borderBottom: "1px solid #f1f5f9",
+                  }}
+                >
+                  {d?.label ?? opt}
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ padding: "10px 12px", color: "#94a3b8", fontWeight: 700 }}>{emptyText}</div>
+          )}
+          {list.length > shown.length ? (
+            <div style={{ padding: "8px 12px", color: "#94a3b8", fontWeight: 700 }}>
+              … {list.length - shown.length} أكثر — تابع الكتابة للتصفية
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ===== Confirm Dialog ===== */
 function ConfirmDialog({ open, message, onConfirm, onCancel }) {
   if (!open) return null;
@@ -252,7 +586,10 @@ function ConfirmDialog({ open, message, onConfirm, onCancel }) {
         <div style={{marginBottom:20,fontWeight:800,fontSize:"1.12rem"}}>{message}</div>
         <div style={{display:"flex",justifyContent:"center",gap:18}}>
           <button style={styles.saveButton} onClick={onConfirm}>نعم</button>
-          <button style={styles.dangerButton} onClick={onCancel} data-delete-action="true">لا</button>
+          {/* NOT a delete action: globals.css hides [data-delete-action], which
+              was hiding the only way to cancel a confirmation — including the
+              save confirmation. */}
+          <button style={styles.dangerButton} onClick={onCancel}>لا</button>
         </div>
       </div>
     </div>
@@ -267,8 +604,8 @@ function Loader({ show, text="جار التنفيذ..." }) {
       <div style={{...styles.dialogBox, width:200}}>
         <div className="loader" style={{marginBottom:14}}>
           <svg width="38" height="38" viewBox="0 0 38 38">
-            <circle cx="19" cy="19" r="16" fill="none" stroke="#6366f1" strokeWidth="5" opacity=".2"/>
-            <circle cx="19" cy="19" r="16" fill="none" stroke="#6366f1" strokeWidth="5" strokeDasharray="80" strokeDashoffset="60">
+            <circle cx="19" cy="19" r="16" fill="none" stroke="#0ea5e9" strokeWidth="5" opacity=".2"/>
+            <circle cx="19" cy="19" r="16" fill="none" stroke="#0ea5e9" strokeWidth="5" strokeDasharray="80" strokeDashoffset="60">
               <animateTransform attributeName="transform" type="rotate" from="0 19 19" to="360 19 19" dur="1s" repeatCount="indefinite"/>
             </circle>
           </svg>
@@ -283,6 +620,7 @@ function Loader({ show, text="جار التنفيذ..." }) {
 export default function QCSRawMaterialForm() {
   const navigate = useNavigate();
   const imagesInputRef = useRef(null);
+  const certificateInputRef = useRef(null);
 
   const [generalInfo, dispatchGeneralInfo] = useReducer(generalInfoReducer, initialGeneralInfo);
   const [docMeta, dispatchDocMeta] = useReducer(docMetaReducer, initialDocMeta);
@@ -297,19 +635,28 @@ export default function QCSRawMaterialForm() {
   // sample id → the expiry WE wrote. If the cell still holds it, it is ours to
   //   recalculate; the moment the inspector types something else it is theirs.
   const autoExpiryRef = useRef(new Map());
+  // …and the mirror of it: a production date WE derived from an expiry date.
+  const autoProductionRef = useRef(new Map());
 
   // ✅ Shipment type + search + add with disable
   const [shipmentType, setShipmentType] = useState("");
   const [shipmentTypes, setShipmentTypes] = useState(DEFAULT_TYPES);
-  const [typeSearch, setTypeSearch] = useState("");     // ✅ Search
   const [newType, setNewType] = useState("");           // Add input
 
   // ✅ Suppliers dropdown + search + add with disable
   const [supplierOptions, setSupplierOptions] = useState(DEFAULT_SUPPLIERS);
-  const [supplierSearch, setSupplierSearch] = useState("");
   // ✅ which suppliers the HACCP/ISO evaluation pages have actually judged
   const { statusOf: supplierStatusOf } = useSupplierEvaluations();
   const [newSupplier, setNewSupplier] = useState("");
+
+  // 🏷️ Brand list (server meta + local cache)
+  const [brandOptions, setBrandOptions] = useState([]);
+  const [newBrand, setNewBrand] = useState("");
+
+  // 🌍 Origin list — seeded from the product catalog's own origin column, then
+  //    whatever QC has added on top of it.
+  const [originOptions, setOriginOptions] = useState(FALLBACK_ORIGINS);
+  const [newOrigin, setNewOrigin] = useState("");
 
   const [shipmentStatus, setShipmentStatus] = useState("Acceptable");
   const [inspectedBy, setInspectedBy] = useState("");
@@ -328,6 +675,7 @@ export default function QCSRawMaterialForm() {
   const [entryKey, setEntryKey] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isUploadingCert, setIsUploadingCert] = useState(false);
   const [toast, setToast] = useState({ type: null, msg: "" });
   const [saveMsg, setSaveMsg] = useState("");
   const [confirmDialog, setConfirmDialog] = useState({open:false,type:"",onOk:null});
@@ -434,14 +782,6 @@ export default function QCSRawMaterialForm() {
     })();
   }, []);
 
-  // ✅ Filter shipment types by search
-  const filteredShipmentTypes = useMemo(() => {
-    const q = normCI(typeSearch);
-    const arr = Array.isArray(shipmentTypes) ? shipmentTypes : [];
-    if (!q) return arr;
-    return arr.filter((t) => normCI(t).includes(q));
-  }, [shipmentTypes, typeSearch]);
-
   // ✅ Disable Add Type if empty OR exists
   const newTypeNorm = normStr(newType);
   const typeExists = useMemo(() => {
@@ -466,12 +806,48 @@ export default function QCSRawMaterialForm() {
     })();
   }, []);
 
-  const filteredSuppliers = useMemo(() => {
-    const q = normCI(supplierSearch);
-    const arr = Array.isArray(supplierOptions) ? supplierOptions : [];
-    if (!q) return arr;
-    return arr.filter((s) => normCI(s).includes(q));
-  }, [supplierOptions, supplierSearch]);
+  // Brands: one meta record per brand, exactly like qcs_supplier.
+  useEffect(() => {
+    (async () => {
+      let server = [];
+      try {
+        server = (await listReportsByType("qcs_brand"))
+          .map((r) => normStr(r?.payload?.name))
+          .filter(Boolean);
+      } catch {
+        /* offline — the local cache below still answers */
+      }
+      setBrandOptions(uniq([...server, ...getLocalList(BRANDS_LS_KEY)]));
+    })();
+  }, []);
+
+  // Origins: the catalog already knows every origin the company buys from, so
+  // the list starts there instead of asking QC to type them in again.
+  useEffect(() => {
+    (async () => {
+      let fromCatalog = [];
+      try {
+        const rows = await fetchBaseItems();
+        fromCatalog = (Array.isArray(rows) ? rows : [])
+          .map((it) => normStr(it?.origin))
+          .filter(Boolean);
+      } catch {
+        /* items.json missing — FALLBACK_ORIGINS still covers the usual list */
+      }
+      let server = [];
+      try {
+        server = (await listReportsByType("qcs_origin"))
+          .map((r) => normStr(r?.payload?.name))
+          .filter(Boolean);
+      } catch {
+        /* offline */
+      }
+      setOriginOptions(
+        uniq([...FALLBACK_ORIGINS, ...fromCatalog, ...server, ...getLocalList(ORIGINS_LS_KEY)])
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      );
+    })();
+  }, []);
 
   const newSupplierNorm = normStr(newSupplier);
   const supplierExists = useMemo(() => {
@@ -480,6 +856,22 @@ export default function QCSRawMaterialForm() {
     return supplierOptions.some((s) => normCI(s) === k);
   }, [supplierOptions, newSupplierNorm]);
   const disableAddSupplier = !newSupplierNorm || supplierExists;
+
+  const newBrandNorm = normStr(newBrand);
+  const brandExists = useMemo(() => {
+    if (!newBrandNorm) return false;
+    const k = normCI(newBrandNorm);
+    return brandOptions.some((b) => normCI(b) === k);
+  }, [brandOptions, newBrandNorm]);
+  const disableAddBrand = !newBrandNorm || brandExists;
+
+  const newOriginNorm = normStr(newOrigin);
+  const originExists = useMemo(() => {
+    if (!newOriginNorm) return false;
+    const k = normCI(newOriginNorm);
+    return originOptions.some((o) => normCI(o) === k);
+  }, [originOptions, newOriginNorm]);
+  const disableAddOrigin = !newOriginNorm || originExists;
 
   useEffect(() => {
     let stop = false;
@@ -502,19 +894,60 @@ export default function QCSRawMaterialForm() {
         if (!stop) { setEntrySequence(1); setEntryKey(""); }
       }
     };
-    recalc();
-    return () => { stop = true; };
+    // ⏱️ every keystroke in Invoice No used to pull the whole qcs_raw_material
+    //    table down to count the day's entries — a few hundred keystrokes a
+    //    shift, and a fast route to a 429. One lookup once typing settles.
+    const t = window.setTimeout(recalc, 500);
+    return () => { stop = true; window.clearTimeout(t); };
   }, [shipmentType, generalInfo.invoiceNo, createdDate]);
 
-  const inputProps = (name) => ({
+  /* 🔴 Mandatory-but-empty boxes carry a red border from the start, so the
+     inspector sees what is still owed before pressing Save instead of after. */
+  const missing = useMemo(() => {
+    const out = new Set();
+    REQUIRED_FIELDS.forEach((f) => {
+      const v =
+        f === "inspectedBy" ? inspectedBy :
+        f === "verifiedBy" ? verifiedBy :
+        generalInfo[f];
+      if (!String(v ?? "").trim()) out.add(f);
+    });
+    if (!String(shipmentType ?? "").trim()) out.add("shipmentType");
+    if (!String(createdDate ?? "").trim()) out.add("createdDate");
+
+    // the sample columns carry mandatory cells of their own
+    if (samples.some((s) => !String(s.productName || "").trim())) out.add("sampleProduct");
+    if (samples.some((s) => !isoDatesIn(s.slaughterDate).length)) out.add("slaughterDate");
+    if (samples.some((s) => !isoDatesIn(s.expiryDate).length)) out.add("expiryDate");
+    if (productLines.some((l) => !String(l.name || "").trim())) out.add("lineProduct");
+
+    return out;
+  }, [generalInfo, inspectedBy, verifiedBy, shipmentType, createdDate, samples, productLines]);
+
+  /* every SearchableSelect on the page wears the same skin */
+  const pickerSkin = {
+    baseStyle: styles.select,
+    focusStyle: styles.focused,
+    invalidStyle: styles.invalid,
+  };
+
+  const inputProps = (name, bad = false) => ({
     onFocus: () => setIsFocusedName(name),
     onBlur: () => setIsFocusedName(null),
-    style: { ...styles.input, ...(isFocusedName === name ? styles.focused : {}) },
+    style: {
+      ...styles.input,
+      ...(isFocusedName === name ? styles.focused : {}),
+      ...(bad ? styles.invalid : {}),
+    },
   });
-  const selectProps = (name) => ({
+  const selectProps = (name, bad = false) => ({
     onFocus: () => setIsFocusedName(name),
     onBlur: () => setIsFocusedName(null),
-    style: { ...styles.select, ...(isFocusedName === name ? styles.focused : {}) },
+    style: {
+      ...styles.select,
+      ...(isFocusedName === name ? styles.focused : {}),
+      ...(bad ? styles.invalid : {}),
+    },
   });
 
   function showToast(type, msg) {
@@ -527,7 +960,7 @@ export default function QCSRawMaterialForm() {
       ? { bg: "#ecfdf5", fg: "#065f46", bd: "#34d399" }
       : type === "error"
         ? { bg: "#fef2f2", fg: "#991b1b", bd: "#fca5a5" }
-        : { bg: "#eff6ff", fg: "#1e3a8a", bd: "#93c5fd" };
+        : { bg: "#e0f2fe", fg: "#0c4a6e", bd: "#7dd3fc" };
   }
 
   function openConfirm(type, message, onOk) {
@@ -546,23 +979,54 @@ export default function QCSRawMaterialForm() {
       prev.map((s, i) => (i === index ? { ...s, productCode: code, productName: name } : s))
     );
   }
-  /* ⏳ Expiry = production date + the product's shelf life.
-     Only a cell that is empty, or that still holds exactly what we last wrote,
-     is touched — an expiry typed by hand is never overwritten. */
+  /* ⏳ The two dates and the shelf life are three sides of one sum, so the sheet
+     fills in whichever side is missing — in either direction:
+
+        production + shelf life = expiry     (the carton carries a slaughter date)
+        expiry − shelf life = production     (the carton carries only an expiry)
+
+     A cell is written only when it is empty or still holds exactly what we last
+     wrote there, so a date typed by hand is never overwritten. Clearing the
+     expiry also clears a production date that was derived from it. */
   useEffect(() => {
     setSamples((prev) => {
       let changed = false;
       const next = prev.map((s) => {
         const info = resolveShelf({ code: s.productCode, name: s.productName });
         if (!info || !(info.days > 0)) return s;
-        const want = expiryFromProduction(s.slaughterDate, info.days);
-        if (!want) return s;
-        const current = String(s.expiryDate || "").trim();
-        if (current && current !== autoExpiryRef.current.get(s.id)) return s;
-        if (current === want) return s;
-        autoExpiryRef.current.set(s.id, want);
-        changed = true;
-        return { ...s, expiryDate: want };
+
+        const production = String(s.slaughterDate || "").trim();
+        const expiry = String(s.expiryDate || "").trim();
+        const hasProduction = isoDatesIn(production).length > 0;
+        const hasExpiry = isoDatesIn(expiry).length > 0;
+        const ourProduction = autoProductionRef.current.get(s.id);
+        const ourExpiry = autoExpiryRef.current.get(s.id);
+
+        if (hasProduction) {
+          // the production date is one we derived, and its expiry is gone
+          if (production === ourProduction && !hasExpiry) {
+            autoProductionRef.current.delete(s.id);
+            changed = true;
+            return { ...s, slaughterDate: "" };
+          }
+          const want = expiryFromProduction(production, info.days);
+          if (!want || want === expiry) return s;
+          if (expiry && expiry !== ourExpiry) return s; // typed by hand
+          autoExpiryRef.current.set(s.id, want);
+          changed = true;
+          return { ...s, expiryDate: want };
+        }
+
+        if (hasExpiry) {
+          const want = productionFromExpiry(expiry, info.days);
+          if (!want || want === production) return s;
+          if (production && production !== ourProduction) return s; // typed by hand
+          autoProductionRef.current.set(s.id, want);
+          changed = true;
+          return { ...s, slaughterDate: want };
+        }
+
+        return s;
       });
       return changed ? next : prev;
     });
@@ -580,6 +1044,18 @@ export default function QCSRawMaterialForm() {
     }));
   }
 
+  /** The other direction: back-date the production cell from the expiry. */
+  function applyReverseShelfLife(index) {
+    setSamples((prev) => prev.map((s, i) => {
+      if (i !== index) return s;
+      const info = resolveShelf({ code: s.productCode, name: s.productName });
+      const want = info && info.days > 0 ? productionFromExpiry(s.expiryDate, info.days) : "";
+      if (!want) return s;
+      autoProductionRef.current.set(s.id, want);
+      return { ...s, slaughterDate: want };
+    }));
+  }
+
   /** The line under an expiry cell: what the shelf life has to say about it. */
   function expiryHint(i) {
     const s = samples[i];
@@ -587,19 +1063,48 @@ export default function QCSRawMaterialForm() {
     if (!info || !(info.days > 0)) return null;
     const want = expiryFromProduction(s.slaughterDate, info.days);
     if (!want) {
-      return <span style={{ color: "#64748b", fontWeight: 700 }}>⏳ {info.days}d — needs a slaughter date</span>;
+      return <span className="qs-hint" style={{ color: "#64748b", fontWeight: 700 }}>⏳ {info.days}d — needs a production or expiry date</span>;
     }
     if (String(s.expiryDate || "").trim() === want) {
-      return <span style={{ color: "#15803d", fontWeight: 800 }} title={`Shelf life ${info.days} days (${info.source})`}>⏳ auto +{info.days}d</span>;
+      return <span className="qs-hint" style={{ color: "#15803d", fontWeight: 800 }} title={`Shelf life ${info.days} days (${info.source})`}>⏳ auto +{info.days}d</span>;
     }
     return (
       <button
         type="button"
         onClick={() => applyShelfLife(i)}
         title={`Overwrite with production date + ${info.days} days`}
+        className="qs-hint"
         style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #fcd34d", background: "#fffbeb", color: "#b45309", fontWeight: 800, cursor: "pointer" }}
       >
         ↻ +{info.days}d
+      </button>
+    );
+  }
+
+  /** The line under a production cell: what the expiry date implies about it. */
+  function productionHint(i) {
+    const s = samples[i];
+    const info = resolveShelf({ code: s.productCode, name: s.productName });
+    if (!info || !(info.days > 0)) return null;
+    if (!isoDatesIn(s.expiryDate).length) return null;
+    const want = productionFromExpiry(s.expiryDate, info.days);
+    if (!want) return null;
+    if (String(s.slaughterDate || "").trim() === want) {
+      return (
+        <span className="qs-hint" style={{ color: "#15803d", fontWeight: 800 }} title={`Expiry − shelf life ${info.days} days (${info.source})`}>
+          ⏳ auto −{info.days}d
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => applyReverseShelfLife(i)}
+        title={`Overwrite with expiry date − ${info.days} days`}
+        className="qs-hint"
+        style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #fcd34d", background: "#fffbeb", color: "#b45309", fontWeight: 800, cursor: "pointer" }}
+      >
+        ↻ −{info.days}d
       </button>
     );
   }
@@ -634,6 +1139,40 @@ export default function QCSRawMaterialForm() {
       });
   }
   function triggerImagesSelect() { imagesInputRef.current?.click(); }
+
+  /* 📜 Halal certificate. The View page can already show, replace and delete it,
+     and the payload has carried certificateUrl/certificateName all along — the
+     input form simply had no control to attach one, so it could only ever be
+     added after the fact from the admin screen. Images and PDFs, same upload
+     route the View page uses. */
+  function triggerCertificateSelect() { certificateInputRef.current?.click(); }
+
+  function handleCertificateUpload(e) {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = "";
+    if (!file) return;
+
+    const ok = file.type.startsWith("image/") || file.type === "application/pdf";
+    if (!ok) {
+      showToast("error", "الشهادة يجب أن تكون صورة أو ملف PDF.");
+      return;
+    }
+
+    const previous = certificateUrl;
+    setIsUploadingCert(true);
+    uploadImageToServer(file, "qcs_certificate")
+      .then(async (url) => {
+        setCertificateUrl(url);
+        setCertificateName(file.name);
+        // the replaced file is nobody's now — drop it instead of orphaning it
+        if (previous && previous !== url) {
+          try { await deleteImage(previous); } catch { /* keep the new one anyway */ }
+        }
+        showToast("success", "تم رفع شهادة الحلال.");
+      })
+      .catch((err) => showToast("error", `فشل رفع الشهادة: ${err?.message || err}`))
+      .finally(() => setIsUploadingCert(false));
+  }
 
   function handleDeleteCertificate() {
     openConfirm("deleteCert", "هل تريد حذف شهادة الحلال؟", async () => {
@@ -763,35 +1302,73 @@ export default function QCSRawMaterialForm() {
       });
   }
 
+  /* Brand and Origin behave exactly like the supplier list: pick the entry when
+     it already exists, otherwise store it on the server and keep a local copy
+     so the dropdown still has it when the server cannot be reached. */
+  function addListValue({ metaType, cacheKey, options, setOptions, value, clear, field, label }) {
+    const name = normStr(value);
+    if (!name) return;
+
+    const existing = options.find((o) => normCI(o) === normCI(name));
+    if (existing) {
+      handleGeneralChange(field, existing);
+      clear();
+      return;
+    }
+
+    postMeta(metaType, { name })
+      .then(() => {
+        setOptions((prev) => uniq([...prev, name]));
+        handleGeneralChange(field, name);
+        clear();
+        saveLocalListItem(cacheKey, name);
+        showToast("success", `تم حفظ ${label} على السيرفر.`);
+      })
+      .catch(() => {
+        saveLocalListItem(cacheKey, name);
+        setOptions((prev) => uniq([...prev, name]));
+        handleGeneralChange(field, name);
+        clear();
+        showToast("error", "تعذر الوصول للسيرفر، تم الحفظ محلياً.");
+      });
+  }
+
+  const handleAddBrand = () =>
+    addListValue({
+      metaType: "qcs_brand",
+      cacheKey: BRANDS_LS_KEY,
+      options: brandOptions,
+      setOptions: setBrandOptions,
+      value: newBrand,
+      clear: () => setNewBrand(""),
+      field: "brand",
+      label: "الماركة",
+    });
+
+  const handleAddOrigin = () =>
+    addListValue({
+      metaType: "qcs_origin",
+      cacheKey: ORIGINS_LS_KEY,
+      options: originOptions,
+      setOptions: setOriginOptions,
+      value: newOrigin,
+      clear: () => setNewOrigin(""),
+      field: "origin",
+      label: "بلد المنشأ",
+    });
+
   function validateBeforeSave() {
-    if (!shipmentType.trim() || !generalInfo.invoiceNo.trim() || !createdDate) {
-      showToast("error", "يرجى إدخال نوع الشحنة + رقم الفاتورة + تاريخ الإدخال.");
+    // the red borders and this check read the same set, so nothing can be
+    // rejected on a field the form never marked
+    if (missing.size) {
+      const names = [...missing].map((f) => REQUIRED_LABELS[f] || f);
+      showToast("error", `حقول إلزامية ناقصة (${names.length}): ${names.slice(0, 3).join("، ")}${names.length > 3 ? " …" : ""}`);
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* older browsers */ }
       return false;
     }
 
-    const missing = [];
-    for (const f of REQUIRED_FIELDS) {
-      if (f === "inspectedBy" && !inspectedBy.trim()) missing.push(REQUIRED_LABELS[f]);
-      else if (f === "verifiedBy" && !verifiedBy.trim()) missing.push(REQUIRED_LABELS[f]);
-      else if (!["inspectedBy","verifiedBy"].includes(f) && !String(generalInfo[f] ?? "").trim()) {
-        missing.push(REQUIRED_LABELS[f]);
-      }
-    }
-    if (missing.length) {
-      showToast("error", `حقول إلزامية ناقصة: ${missing[0]}${missing.length>1?" …":""}`);
-      return false;
-    }
-
-    if (isUploadingImages) {
+    if (isUploadingImages || isUploadingCert) {
       showToast("error", "يرجى انتظار انتهاء رفع الملفات قبل الحفظ.");
-      return false;
-    }
-    if (samples.some(s => !s.productName.trim())) {
-      showToast("error", "يرجى إدخال اسم المنتج في جميع العينات.");
-      return false;
-    }
-    if (productLines.some(l => !l.name.trim())) {
-      showToast("error", "يرجى إدخال اسم المنتج في جميع خطوط الإنتاج.");
       return false;
     }
     return true;
@@ -819,13 +1396,14 @@ export default function QCSRawMaterialForm() {
     setTotalQuantity("");
     setTotalWeight("");
     setAverageWeight("");
-    setSupplierSearch("");
     setNewSupplier("");
-    setTypeSearch("");
     setNewType("");
+    setNewBrand("");
+    setNewOrigin("");
     setEntryKey("");
     setEntrySequence(1);
     autoExpiryRef.current = new Map();
+    autoProductionRef.current = new Map();
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* older browsers */ }
   }
 
@@ -875,8 +1453,9 @@ export default function QCSRawMaterialForm() {
 
   /* === Render === */
   return (
-    <div style={styles.page}>
-      <Loader show={isSaving || isUploadingImages} text="جار التنفيذ..." />
+    <div style={styles.page} className="qcsShip">
+      <style>{SCOPED_CSS}</style>
+      <Loader show={isSaving || isUploadingImages || isUploadingCert} text="جار التنفيذ..." />
       <ShelfLifeModal
         open={shelfOpen}
         config={shelf.config}
@@ -891,70 +1470,101 @@ export default function QCSRawMaterialForm() {
         onCancel={closeConfirm}
       />
 
-      <div style={styles.hero} />
-      <div style={styles.containerWrap}>
-        <div style={styles.container}>
-          <div style={styles.titleWrap}>
-            <h2 style={styles.title}>📦 QCS Incoming Shipments Report</h2>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={styles.badge}>
-                Manual Save Only{saveMsg ? <b> · {saveMsg}</b> : null}
-              </span>
-              <span style={{ ...styles.badge, background: "#e0f2fe", border: "1px solid #7dd3fc", color: "#075985" }}>
-                {ymdToDMY(createdDate)} · #{entrySequence}
-              </span>
-              {entryKey ? (
-                <code style={{ fontSize: 13, color: "#334155", fontWeight:700 }}>Key: {entryKey}</code>
-              ) : (
-                <span style={{ fontSize: 13, color: "#64748b" }}>
-                  سيظهر الرقم بعد إدخال Shipment Type و <b>Invoice</b>.
-                </span>
-              )}
+      {/* ═════════ Report header ═════════
+          A document-control header instead of a naked gradient bar: who the
+          document belongs to, what it is called, and the four control fields
+          (No / Issue / Revision / Area) that every ISO form carries — all still
+          editable and still saved under docMeta, so the View page, the Excel
+          backup and the PDF read exactly what they always did. */}
+      <div style={styles.hero}>
+        <div style={styles.heroInner}>
+          <div style={styles.heroIdentity}>
+            <img src={mawashiLogo} alt="Al Mawashi" style={styles.heroLogo} />
+            <div>
+              <div className="qs-chip" style={styles.heroEyebrow}>
+                AL MAWASHI · TRANS EMIRATES LIVESTOCK TRADING L.L.C
+              </div>
+              <h2 style={styles.title} className="qs-title">📦 QCS Incoming Shipments Report</h2>
+              <div className="qs-chip" style={styles.heroSub}>
+                تقرير فحص الشحنات الواردة — Quality Control Section
+              </div>
             </div>
           </div>
 
-          {/* Header meta */}
-          <div style={{ marginBottom: 12 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12 }}>
-              <tbody>
-                <tr>
-                  <th style={{ border: "1px solid #e5e7eb", background: "#f8fafc", textAlign: "right", padding: "10px 12px", width: 220, color: "#111827", fontWeight: 800 }}>Document Title</th>
-                  <td style={{ border: "1px solid #e5e7eb", padding: "10px 12px" }} colSpan={2}>
-                    <input {...inputProps("documentTitle")} value={docMeta.documentTitle} onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "documentTitle", value: e.target.value })} />
-                  </td>
-                  <th style={{ border: "1px solid #e5e7eb", background: "#f8fafc", textAlign: "right", padding: "10px 12px", width: 220, color: "#111827", fontWeight: 800 }}>Document No</th>
-                  <td style={{ border: "1px solid #e5e7eb", padding: "10px 12px" }}>
-                    <input {...inputProps("documentNo")} value={docMeta.documentNo} onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "documentNo", value: e.target.value })} />
-                  </td>
-                </tr>
-                <tr>
-                  <th style={{ border: "1px solid #e5e7eb", background: "#f8fafc", textAlign: "right", padding: "10px 12px", width: 220, color: "#111827", fontWeight: 800 }}>Issue Date</th>
-                  <td style={{ border: "1px solid #e5e7eb", padding: "10px 12px" }}>
-                    <input type="date" {...inputProps("issueDate")} value={docMeta.issueDate} onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "issueDate", value: e.target.value })} />
-                  </td>
-                  <th style={{ border: "1px solid #e5e7eb", background: "#f8fafc", textAlign: "right", padding: "10px 12px", width: 220, color: "#111827", fontWeight: 800 }}>Revision No</th>
-                  <td style={{ border: "1px solid #e5e7eb", padding: "10px 12px" }}>
-                    <input {...inputProps("revisionNo")} value={docMeta.revisionNo} onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "revisionNo", value: e.target.value })} />
-                  </td>
-                  <td />
-                </tr>
-                <tr>
-                  <th style={{ border: "1px solid #e5e7eb", background: "#f8fafc", textAlign: "right", padding: "10px 12px", width: 220, color: "#111827", fontWeight: 800 }}>Area</th>
-                  <td style={{ border: "1px solid #e5e7eb", padding: "10px 12px" }} colSpan={3}>
-                    <input {...inputProps("area")} value={docMeta.area} onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "area", value: e.target.value })} />
-                  </td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
+          <div style={styles.heroChips}>
+            <span style={styles.heroChip} className="qs-chip">
+              💾 Manual Save{saveMsg ? <b> · {saveMsg}</b> : null}
+            </span>
+            <span
+              className="qs-chip"
+              title={missing.size ? [...missing].map((f) => REQUIRED_LABELS[f] || f).join("، ") : "كل الحقول الإلزامية مكتملة"}
+              style={{
+                ...styles.heroChip,
+                background: missing.size ? "rgba(239,68,68,.92)" : "rgba(22,163,74,.92)",
+                borderColor: missing.size ? "rgba(254,202,202,.7)" : "rgba(187,247,208,.7)",
+              }}
+            >
+              {missing.size ? `🔴 ${missing.size} حقل إلزامي ناقص` : "✅ الحقول الإلزامية مكتملة"}
+            </span>
+            <span style={styles.heroChip} className="qs-chip">
+              📅 {ymdToDMY(createdDate)} · #{entrySequence}
+            </span>
+            <span style={styles.heroChip} className="qs-chip" title={entryKey || "سيظهر الرقم بعد إدخال Shipment Type و Invoice"}>
+              {entryKey ? `🔑 ${entryKey}` : "🔑 بانتظار Shipment Type + Invoice"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.containerWrap}>
+        <div style={styles.container}>
+
+          {/* Document control */}
+          <div style={styles.docCard}>
+            <div style={styles.docTitleRow}>
+              <span style={styles.docTitleLabel} className="qs-label">Document Title</span>
+              <input
+                {...inputProps("documentTitle")}
+                style={{ ...inputProps("documentTitle").style, fontWeight: 800, border: "none", background: "transparent", boxShadow: "none", padding: "4px 0", minHeight: 32 }}
+                value={docMeta.documentTitle}
+                onChange={(e) => dispatchDocMeta({ type: "UPDATE", field: "documentTitle", value: e.target.value })}
+              />
+            </div>
+
+            <div style={styles.docGrid}>
+              {[
+                ["Document No", "documentNo", "text"],
+                ["Issue Date", "issueDate", "date"],
+                ["Revision No", "revisionNo", "text"],
+                ["Area", "area", "text"],
+              ].map(([label, field, type]) => (
+                <div key={field} style={styles.docCell}>
+                  <span style={styles.docCellLabel} className="qs-label">{label}</span>
+                  <input
+                    type={type === "date" ? "date" : "text"}
+                    {...inputProps(field)}
+                    style={{ ...inputProps(field).style, minHeight: 38, background: "#fff" }}
+                    value={docMeta[field]}
+                    onChange={(e) => dispatchDocMeta({ type: "UPDATE", field, value: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Entry Date + Sequence */}
           <div style={styles.section}>
-            <label style={styles.label}>Entry Date & Daily No.:</label>
+            <label style={styles.label} className="qs-label">Entry Date &amp; Daily No. *</label>
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
-              <input type="date" value={createdDate} onChange={(e) => setCreatedDate(e.target.value)} {...inputProps("createdDate")} required />
-              <div title="Daily auto-number" style={{ padding: "10px 12px", border: "1px solid #000", borderRadius: 10, fontWeight: 800, background: "#f8fafc" }}>
+              <input
+                type="date"
+                value={createdDate}
+                onChange={(e) => setCreatedDate(e.target.value)}
+                {...inputProps("createdDate", missing.has("createdDate"))}
+                style={{ ...inputProps("createdDate", missing.has("createdDate")).style, maxWidth: 240 }}
+                required
+              />
+              <div title="Daily auto-number" style={{ padding: "10px 14px", border: "1px solid rgba(15,23,42,.14)", borderRadius: 999, fontWeight: 800, background: "#e0f2fe", color: "#0c4a6e" }}>
                 {ymdToDMY(createdDate)} <span style={{ opacity: .7 }}>#</span>{entrySequence}
               </div>
             </div>
@@ -962,25 +1572,17 @@ export default function QCSRawMaterialForm() {
 
           {/* ✅ Shipment Type (Search + Disable Add if empty/exists) */}
           <div style={styles.section}>
-            <label style={styles.label}>Shipment Type:</label>
+            <label style={styles.label} className="qs-label">Shipment Type *</label>
 
-            <input
-              value={typeSearch}
-              onChange={(e) => setTypeSearch(e.target.value)}
-              placeholder="Search shipment type..."
-              {...inputProps("typeSearch")}
-              style={{ ...inputProps("typeSearch").style, marginTop: 6, marginBottom: 8 }}
-            />
-
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
-              <select value={shipmentType} onChange={(e) => setShipmentType(e.target.value)} {...selectProps("shipmentType")}>
-                <option value="">-- Select --</option>
-                {filteredShipmentTypes.length ? (
-                  filteredShipmentTypes.map((t) => <option key={t} value={t}>{t}</option>)
-                ) : (
-                  <option value="" disabled>No matches</option>
-                )}
-              </select>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8, marginTop: 6 }}>
+              <SearchableSelect
+                {...pickerSkin}
+                value={shipmentType}
+                options={shipmentTypes}
+                onPick={setShipmentType}
+                placeholder="🔎 اكتب للبحث أو اختر نوع الشحنة…"
+                invalid={missing.has("shipmentType")}
+              />
 
               <input
                 placeholder="Add new type…"
@@ -1013,7 +1615,7 @@ export default function QCSRawMaterialForm() {
 
           {/* General Information */}
           <fieldset style={styles.fieldset}>
-            <legend style={styles.legend}>General Information</legend>
+            <legend style={styles.legend} className="qs-legend">📋 General Information</legend>
 
             <div style={styles.grid}>
               {[
@@ -1022,17 +1624,15 @@ export default function QCSRawMaterialForm() {
                 ["Inspection Date","inspectionDate","date"],
                 ["Temperature","temperature","text"],
                 ["Vehicle Temperature (°C) — قبل التفريغ","vehicleTemperature","text"],
-                ["Brand","brand","text"],
                 ["Invoice No","invoiceNo","text"],
                 ["PH","ph","text"],
-                ["Origin","origin","text"],
                 ["Receiving Address (عنوان الاستلام)","receivingAddress","branch"],
                 ["Air Way Bill No","airwayBill","text"],
               ].map(([label, field, type]) => {
                 const isReq = REQUIRED_FIELDS.has(field);
                 return (
                   <div key={field} style={styles.row}>
-                    <label style={styles.label}>
+                    <label style={styles.label} className="qs-label">
                       {label}{isReq ? " *" : ""}
                     </label>
 
@@ -1040,7 +1640,7 @@ export default function QCSRawMaterialForm() {
                       <select
                         value={generalInfo[field]}
                         onChange={(e) => handleGeneralChange(field, e.target.value)}
-                        {...selectProps(field)}
+                        {...selectProps(field, isReq && missing.has(field))}
                         required={isReq}
                       >
                         <option value="">-- اختر الفرع --</option>
@@ -1053,7 +1653,7 @@ export default function QCSRawMaterialForm() {
                         type="date"
                         value={generalInfo[field]}
                         onChange={(e) => handleGeneralChange(field, e.target.value)}
-                        {...inputProps(field)}
+                        {...inputProps(field, isReq && missing.has(field))}
                         required={isReq}
                       />
                     ) : (
@@ -1065,7 +1665,7 @@ export default function QCSRawMaterialForm() {
                           generalInfo[field];
 
                         const style = {
-                          ...inputProps(field).style,
+                          ...inputProps(field, isReq && missing.has(field)).style,
                           ...(isAvg ? { background: "#f8fafc", fontWeight: 700 } : {})
                         };
 
@@ -1086,6 +1686,82 @@ export default function QCSRawMaterialForm() {
               })}
             </div>
 
+            {/* 🏷️ Brand + 🌍 Origin — lists, not free text. Both keep the same
+                "pick one, or add one that sticks" shape the supplier field has. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(330px,1fr))", gap: 14, marginTop: 14 }}>
+              {[
+                {
+                  field: "brand",
+                  label: "Brand",
+                  icon: "🏷️",
+                  options: brandOptions,
+                  placeholder: "🔎 اكتب للبحث أو اختر الماركة…",
+                  empty: "لا توجد ماركات بعد — أضف واحدة",
+                  addValue: newBrand,
+                  setAddValue: setNewBrand,
+                  onAdd: handleAddBrand,
+                  disabled: disableAddBrand,
+                  exists: brandExists,
+                  addPlaceholder: "Add new brand…",
+                  title: (bad) => (bad ? "Enter brand name" : "Add brand"),
+                },
+                {
+                  field: "origin",
+                  label: "Origin",
+                  icon: "🌍",
+                  options: originOptions,
+                  placeholder: "🔎 اكتب للبحث أو اختر بلد المنشأ…",
+                  empty: "لا توجد بلدان منشأ بعد — أضف واحدة",
+                  addValue: newOrigin,
+                  setAddValue: setNewOrigin,
+                  onAdd: handleAddOrigin,
+                  disabled: disableAddOrigin,
+                  exists: originExists,
+                  addPlaceholder: "Add new origin…",
+                  title: (bad) => (bad ? "Enter origin" : "Add origin"),
+                },
+              ].map((f) => {
+                const bad = missing.has(f.field);
+                return (
+                  <div key={f.field} style={styles.row}>
+                    <label style={styles.label} className="qs-label">{f.icon} {f.label} *</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
+                      <SearchableSelect
+                        {...pickerSkin}
+                        value={String(generalInfo[f.field] || "")}
+                        options={f.options}
+                        onPick={(v) => handleGeneralChange(f.field, v)}
+                        placeholder={f.placeholder}
+                        emptyText={f.empty}
+                        invalid={bad}
+                      />
+
+                      <input
+                        placeholder={f.addPlaceholder}
+                        value={f.addValue}
+                        onChange={(e) => f.setAddValue(e.target.value)}
+                        {...inputProps(`new_${f.field}`)}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={f.onAdd}
+                        disabled={f.disabled}
+                        style={{
+                          ...styles.addButton,
+                          opacity: f.disabled ? 0.55 : 1,
+                          cursor: f.disabled ? "not-allowed" : "pointer",
+                        }}
+                        title={f.exists ? "Already in the list" : f.title(!String(f.addValue || "").trim())}
+                      >
+                        ➕ Add
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             {/* Loggers + Supplier wide */}
             <div
               style={{
@@ -1096,7 +1772,7 @@ export default function QCSRawMaterialForm() {
               }}
             >
               <div style={styles.row}>
-                <label style={styles.label}>Local Logger</label>
+                <label style={styles.label} className="qs-label">Local Logger</label>
                 <select
                   value={generalInfo.localLogger}
                   onChange={(e) => handleGeneralChange("localLogger", e.target.value)}
@@ -1109,7 +1785,7 @@ export default function QCSRawMaterialForm() {
               </div>
 
               <div style={styles.row}>
-                <label style={styles.label}>International Logger</label>
+                <label style={styles.label} className="qs-label">International Logger</label>
                 <select
                   value={generalInfo.internationalLogger}
                   onChange={(e) => handleGeneralChange("internationalLogger", e.target.value)}
@@ -1122,38 +1798,27 @@ export default function QCSRawMaterialForm() {
               </div>
 
               <div style={{ ...styles.row, gridColumn: "1 / -1" }}>
-                <label style={styles.label}>Supplier Name</label>
-
-                <input
-                  value={supplierSearch}
-                  onChange={(e) => setSupplierSearch(e.target.value)}
-                  placeholder="Search supplier..."
-                  {...inputProps("supplierSearch")}
-                  style={{ ...inputProps("supplierSearch").style, marginBottom: 8 }}
-                />
+                <label style={styles.label} className="qs-label">Supplier Name</label>
 
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
-                  <select
+                  <SearchableSelect
+                    {...pickerSkin}
                     value={generalInfo.supplierName}
-                    onChange={(e) => handleGeneralChange("supplierName", e.target.value)}
-                    {...selectProps("supplierName")}
-                  >
-                    <option value="">-- Select Supplier --</option>
-                    {filteredSuppliers.length ? (
-                      filteredSuppliers.map((s) => {
-                        // the tick comes from the Supplier Evaluation pages, so the
-                        // inspector can see at a glance who has been assessed
-                        const ev = supplierStatusOf(s);
-                        return (
-                          <option key={s} value={s} title={ev ? `Self-assessment received — ${ev.matched}${ev.date ? " · " + ev.date : ""}` : "No self-assessment received"}>
-                            {ev ? `${ev.mark} ${s}` : s}
-                          </option>
-                        );
-                      })
-                    ) : (
-                      <option value="" disabled>No matches</option>
-                    )}
-                  </select>
+                    options={supplierOptions}
+                    onPick={(v) => handleGeneralChange("supplierName", v)}
+                    placeholder="🔎 اكتب للبحث أو اختر المورّد…"
+                    /* the tick comes from the Supplier Evaluation pages, so the
+                       inspector sees at a glance who has been assessed */
+                    decorate={(name) => {
+                      const ev = supplierStatusOf(name);
+                      return {
+                        label: ev ? `${ev.mark} ${name}` : name,
+                        title: ev
+                          ? `Self-assessment received — ${ev.matched}${ev.date ? " · " + ev.date : ""}`
+                          : "No self-assessment received",
+                      };
+                    }}
+                  />
 
                   <input
                     placeholder="Add new supplier…"
@@ -1201,7 +1866,7 @@ export default function QCSRawMaterialForm() {
 
             {/* Status */}
             <div style={{ marginTop: 10 }}>
-              <label style={styles.label}>Shipment Status:</label>
+              <label style={styles.label} className="qs-label">Shipment Status</label>
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
                 <select
                   value={shipmentStatus}
@@ -1226,14 +1891,14 @@ export default function QCSRawMaterialForm() {
 
           {/* Samples Table */}
           <div style={{ ...styles.section, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <h4 style={{ margin: 0 }}>Test Samples</h4>
+            <h4 style={{ margin: 0, fontWeight: 900, color: "#0c4a6e" }} className="qs-legend">🧪 Test Samples</h4>
             {/* the expiry column is calculated from these days, so the rule book
                 sits next to the table it fills */}
             <button
               type="button"
               onClick={() => setShelfOpen(true)}
-              title="Shelf life per product / category — مدة الصلاحية"
-              style={{ padding: "7px 14px", borderRadius: 999, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3", fontWeight: 800, cursor: "pointer" }}
+              title="Shelf life per product / category — مدة الصلاحية (تحسب تاريخ الانتهاء من الإنتاج، وتاريخ الإنتاج عكسياً من الانتهاء)"
+              style={{ padding: "7px 14px", borderRadius: 999, border: "1px solid rgba(15,23,42,.14)", background: "#e0f2fe", color: "#0c4a6e", fontWeight: 800, cursor: "pointer" }}
             >
               ⏳ Shelf Life{shelf.config.rules.length || shelf.config.defaultDays ? ` (${shelf.config.rules.length + (shelf.config.defaultDays ? 1 : 0)})` : ""}
             </button>
@@ -1255,7 +1920,7 @@ export default function QCSRawMaterialForm() {
                         code={s.productCode || ""}
                         name={s.productName || ""}
                         onChange={(pair) => setSampleProduct(i, pair)}
-                        style={styles.tdInput}
+                        style={{ ...styles.tdInput, ...(String(s.productName || "").trim() ? {} : styles.invalid) }}
                         placeholder="e.g., 22000"
                       />
                     </td>
@@ -1269,7 +1934,7 @@ export default function QCSRawMaterialForm() {
                         code={s.productCode || ""}
                         name={s.productName || ""}
                         onChange={(pair) => setSampleProduct(i, pair)}
-                        style={styles.tdInput}
+                        style={{ ...styles.tdInput, ...(String(s.productName || "").trim() ? {} : styles.invalid) }}
                         placeholder="Search code or product…"
                       />
                     </td>
@@ -1277,7 +1942,9 @@ export default function QCSRawMaterialForm() {
                 </tr>
                 {ATTRIBUTES.map((attr) => (
                   <tr key={attr.key} style={["temperature","ph","slaughterDate","expiryDate"].includes(attr.key) ? { background: "#f8fafc" } : undefined}>
-                    <td style={styles.firstColCell}>{attr.label}</td>
+                    <td style={styles.firstColCell}>
+                      {attr.label}{attr.required ? <span style={{ color: "#dc2626" }}> *</span> : null}
+                    </td>
                     {samples.map((s, i) => (
                       <td key={`${attr.key}-${s.id}`} style={styles.td}>
                         {attr.type === "dates" ? (
@@ -1286,8 +1953,15 @@ export default function QCSRawMaterialForm() {
                           <MultiDateField
                             value={s[attr.key]}
                             onChange={(v) => setSampleValue(i, attr.key, v)}
-                            style={styles.tdInput}
-                            hint={attr.key === "expiryDate" ? expiryHint(i) : null}
+                            style={{
+                              ...styles.tdInput,
+                              ...(attr.required && !isoDatesIn(s[attr.key]).length ? styles.invalid : {}),
+                            }}
+                            hint={
+                              attr.key === "expiryDate" ? expiryHint(i)
+                                : attr.key === "slaughterDate" ? productionHint(i)
+                                  : null
+                            }
                           />
                         ) : (
                           <input value={s[attr.key]} onChange={(e) => setSampleValue(i, attr.key, e.target.value)} style={styles.tdInput} />
@@ -1300,7 +1974,9 @@ export default function QCSRawMaterialForm() {
                   <td colSpan={1 + samples.length} style={{ padding: "0.7rem" }}>
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                       <button onClick={addSample} style={styles.addButton}>➕ Add Sample (column)</button>
-                      <button onClick={removeSample} style={styles.dangerButton} disabled={samples.length <= 1} data-delete-action="true">🗑 Remove Sample (column)</button>
+                      {/* row removal, so it must not carry data-delete-action —
+                          that attribute was hiding the button completely */}
+                      <button onClick={removeSample} style={styles.dangerButton} disabled={samples.length <= 1}>🗑 Remove Sample (column)</button>
                     </div>
                   </td>
                 </tr>
@@ -1310,7 +1986,7 @@ export default function QCSRawMaterialForm() {
 
           {/* Product Lines */}
           <div style={{ marginTop: 14 }}>
-            <label style={styles.label}>Product Lines:</label>
+            <label style={styles.label} className="qs-label">Product Lines</label>
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "grid", gridTemplateColumns: "0.9fr 2fr 1fr 1fr auto", gap: 8, marginBottom: 4, fontWeight: 800, color: "#475569", fontSize: ".85rem" }}>
                 <span>Item Code</span><span>Product Name</span><span>Qty (pcs)</span><span>Weight (kg)</span><span />
@@ -1328,7 +2004,7 @@ export default function QCSRawMaterialForm() {
                   <select
                     value={lineKeyOf(row)}
                     onChange={(e) => pickLineProduct(row.id, e.target.value)}
-                    {...selectProps(`pl_code_${row.id}`)}
+                    {...selectProps(`pl_code_${row.id}`, !String(row.name || "").trim())}
                   >
                     <option value="">— اختر —</option>
                     {sampleProducts.map((sp) => (
@@ -1361,22 +2037,22 @@ export default function QCSRawMaterialForm() {
           {/* Totals */}
           <div style={styles.formRow3}>
             <div>
-              <label style={styles.label}>Total Quantity (pcs):</label>
+              <label style={styles.label} className="qs-label">Total Quantity (pcs)</label>
               <input type="text" value={totalQuantity} readOnly style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 900 }} />
             </div>
             <div>
-              <label style={styles.label}>Total Weight (kg):</label>
+              <label style={styles.label} className="qs-label">Total Weight (kg)</label>
               <input type="text" value={totalWeight} readOnly style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 900 }} />
             </div>
             <div>
-              <label style={styles.label}>Average Weight (kg/pc):</label>
+              <label style={styles.label} className="qs-label">Average Weight (kg/pc)</label>
               <input type="text" value={averageWeight} readOnly style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 900 }} />
             </div>
           </div>
 
           {/* Notes */}
           <div style={{ marginTop: 10 }}>
-            <label style={styles.label}>Notes:</label>
+            <label style={styles.label} className="qs-label">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -1393,9 +2069,28 @@ export default function QCSRawMaterialForm() {
                 {isUploadingImages ? "⏳ Uploading…" : "📸 Upload Images"}
               </button>
               <input type="file" accept="image/*" multiple ref={imagesInputRef} onChange={handleImagesUpload} style={{ display: "none" }} />
+
+              <button
+                type="button"
+                onClick={triggerCertificateSelect}
+                style={{ ...styles.uploadButton, background: "linear-gradient(180deg,#8b5cf6,#7c3aed)", border: "1.5px solid #6d28d9", opacity: isUploadingCert ? .6 : 1 }}
+                disabled={isUploadingCert}
+                title="Halal certificate — image or PDF"
+              >
+                {isUploadingCert ? "⏳ Uploading…" : certificateUrl ? "📜 Replace Halal Certificate" : "📜 Upload Halal Certificate"}
+              </button>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                ref={certificateInputRef}
+                onChange={handleCertificateUpload}
+                style={{ display: "none" }}
+              />
             </div>
 
-            {certificateName && <div>{certificateName}</div>}
+            {certificateName && (
+              <div style={{ marginTop: 6, fontWeight: 700, color: "#0c4a6e" }}>📎 {certificateName}</div>
+            )}
             {certificateUrl && (
               <div style={{ marginTop: 6, fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}>
                 <a href={certificateUrl} target="_blank" rel="noreferrer" style={{ fontWeight:700 }}>🔗 Open Halal Certificate</a>
@@ -1436,22 +2131,22 @@ export default function QCSRawMaterialForm() {
           {/* Signatures */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 10, marginTop: 10 }}>
             <div>
-              <label style={styles.label}>Inspected By *</label>
-              <input value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} placeholder="Inspector name" {...inputProps("inspectedBy")} required />
+              <label style={styles.label} className="qs-label">Inspected By *</label>
+              <input value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} placeholder="Inspector name" {...inputProps("inspectedBy", missing.has("inspectedBy"))} required />
             </div>
             <div>
-              <label style={styles.label}>Verified By *</label>
-              <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} placeholder="Verifier name" {...inputProps("verifiedBy")} required />
+              <label style={styles.label} className="qs-label">Verified By *</label>
+              <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} placeholder="Verifier name" {...inputProps("verifiedBy", missing.has("verifiedBy"))} required />
             </div>
           </div>
 
           {/* Actions */}
-          <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={styles.actionBar}>
             <button
               onClick={handleSave}
-              style={{ ...styles.saveButton, ...(isSaving || isUploadingImages ? styles.saveButtonDisabled : {}) }}
-              disabled={isSaving || isUploadingImages}
-              title={isUploadingImages ? "انتظر انتهاء الرفع" : "حفظ التقرير"}
+              style={{ ...styles.saveButton, ...(isSaving || isUploadingImages || isUploadingCert ? styles.saveButtonDisabled : {}) }}
+              disabled={isSaving || isUploadingImages || isUploadingCert}
+              title={isUploadingImages || isUploadingCert ? "انتظر انتهاء الرفع" : "حفظ التقرير"}
             >
               {isSaving ? "⏳ Saving..." : "💾 Save Report"}
             </button>
@@ -1463,6 +2158,12 @@ export default function QCSRawMaterialForm() {
             <button onClick={() => navigate("/admin/all-reports-view")} style={styles.viewButton}>
               📊 All Reports (Summary)
             </button>
+
+            {missing.size ? (
+              <span className="qs-chip" style={{ color: "#b91c1c", fontWeight: 800 }}>
+                🔴 لا يمكن الحفظ — {missing.size} حقل إلزامي ناقص
+              </span>
+            ) : null}
           </div>
         </div>
       </div>

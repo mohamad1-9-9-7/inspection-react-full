@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./SupplierApproval.css";
+/* Same checklist the invitation e-mail promises, so the page cannot list
+   different paperwork than the letter the supplier is holding. */
+import { docsFor } from "./supplierEmailConfig";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -733,6 +736,35 @@ const UI = {
     clear: "Clear",
     remove: "Remove",
     saving: "Saving...",
+    /* Wizard chrome */
+    startTitle: "Supplier Self-Assessment",
+    startLead: "Before we can list you as an approved supplier, we need to know how you work. Please answer the questions and attach the documents.",
+    minutes: "About {n} minutes",
+    stepsCount: "{n} short steps",
+    autosaveNote: "Your answers are saved automatically. You can close this page and come back to the same link later.",
+    prepareTitle: "Have these ready (you can attach them as you go)",
+    optionalNote: "Only a few fields are required — they are marked with *. Everything else helps us, but will not block you.",
+    start: "Start",
+    resume: "Continue where you stopped",
+    back: "Back",
+    next: "Next",
+    stepOf: "Step {a} of {b}",
+    progressDone: "{n}% complete",
+    unansweredHere: "{n} not answered on this step",
+    allAnsweredHere: "Everything on this step is answered",
+    notAnswered: "Not answered",
+    reviewTitle: "Review & send",
+    reviewLead: "A quick look before it reaches our Quality team. Nothing here is a blocker unless it is marked required.",
+    reviewGo: "Open",
+    reviewMissing: "Required — please complete",
+    reviewOk: "Ready to send",
+    otherDocs: "Any other document you would like to add",
+    draftRestored: "We restored your unfinished answers.",
+    draftSaved: "Saved {t}",
+    draftSaving: "Saving…",
+    justNow: "just now",
+    submitFinal: "✅ Send to Al Mawashi",
+    answered: "answered",
   },
   ar: {
     title: "نموذج تقييم المورد",
@@ -757,6 +789,35 @@ const UI = {
     clear: "مسح",
     remove: "إزالة",
     saving: "جاري الحفظ...",
+    /* Wizard chrome */
+    startTitle: "التقييم الذاتي للمورد",
+    startLead: "قبل اعتمادكم كمورد لدينا، نحتاج أن نتعرّف على طريقة عملكم. يرجى الإجابة على الأسئلة وإرفاق المستندات.",
+    minutes: "حوالي {n} دقيقة",
+    stepsCount: "{n} خطوات قصيرة",
+    autosaveNote: "إجاباتكم تُحفظ تلقائياً. يمكنكم إغلاق الصفحة والعودة لنفس الرابط لاحقاً.",
+    prepareTitle: "جهّزوا هذه المستندات (يمكن إرفاقها أثناء التعبئة)",
+    optionalNote: "الحقول الإلزامية قليلة ومعلَّمة بـ *. الباقي يساعدنا لكنه لا يمنعكم من الإرسال.",
+    start: "ابدأ",
+    resume: "أكمل من حيث توقفت",
+    back: "السابق",
+    next: "التالي",
+    stepOf: "الخطوة {a} من {b}",
+    progressDone: "اكتمل {n}%",
+    unansweredHere: "{n} سؤال بدون إجابة في هذه الخطوة",
+    allAnsweredHere: "تمت الإجابة على كل ما في هذه الخطوة",
+    notAnswered: "بدون إجابة",
+    reviewTitle: "مراجعة وإرسال",
+    reviewLead: "نظرة سريعة قبل وصول النموذج لفريق الجودة. لا شيء هنا يمنع الإرسال إلا ما كان إلزامياً.",
+    reviewGo: "فتح",
+    reviewMissing: "إلزامي — يرجى الإكمال",
+    reviewOk: "جاهز للإرسال",
+    otherDocs: "أي مستند آخر تودّون إضافته",
+    draftRestored: "تمت استعادة إجاباتكم غير المكتملة.",
+    draftSaved: "حُفظ {t}",
+    draftSaving: "جارٍ الحفظ…",
+    justNow: "الآن",
+    submitFinal: "✅ إرسال إلى المواشي",
+    answered: "تمت الإجابة",
   },
 };
 
@@ -1105,11 +1166,57 @@ const AR_TRANSLATIONS = {
     "شهادة المطابقة — لمواد التعبئة والتغليف (الملامسة للغذاء)",
 };
 
+/* The handful of fields that actually block a submission. Kept beside the
+   validator so the highlight and the error list can never disagree. */
+const REQUIRED_FIELD_KEYS = [
+  "company_name",
+  "company_address",
+  "tqm_contact_name",
+  "tqm_position_held",
+  "tqm_telephone",
+];
+
 /* ===== translate helper ===== */
 function tr(lang, text) {
   if (lang !== "ar") return text;
   const s = String(text ?? "");
   return AR_TRANSLATIONS[s] || s;
+}
+
+/* Fill {placeholders} in a UI string after translation, so the number lands in
+   the right place in both languages. */
+function fill(str, vars) {
+  return Object.entries(vars || {}).reduce(
+    (s, [k, v]) => s.split(`{${k}}`).join(String(v)),
+    String(str || "")
+  );
+}
+
+/* "Page 3 — Pest Control, Lab" → "Pest Control, Lab". The step rail already
+   says which number this is; repeating it wastes the chip's width. */
+function shortPageTitle(title) {
+  return String(title || "")
+    .replace(/^\s*Page\s*\d+\s*[—–-]\s*/i, "")
+    .replace(/^\s*الصفحة\s*\d+\s*[—–-]\s*/, "")
+    .replace(/^\s*Final\s*[—–-]\s*/i, "")
+    .replace(/^\s*الخاتمة\s*[—–-]\s*/, "")
+    .trim();
+}
+
+/* Relative "saved …" stamp for the autosave line. */
+function sinceText(iso, lang, t) {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 45000) return t.justNow;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return lang === "ar" ? `قبل ${mins} دقيقة` : `${mins} min ago`;
+  try {
+    return new Date(iso).toLocaleTimeString(lang === "ar" ? "ar-AE" : "en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return t.justNow;
+  }
 }
 
 /* ===================== Component ===================== */
@@ -1120,6 +1227,10 @@ export default function SupplierEvaluationPublic() {
     try {
       const saved = localStorage.getItem("qcs_public_lang");
       if (saved === "ar" || saved === "en") return saved;
+    } catch {}
+    /* An Arabic-speaking supplier should not have to find the toggle first. */
+    try {
+      if (String(navigator?.language || "").toLowerCase().startsWith("ar")) return "ar";
     } catch {}
     return "en";
   });
@@ -1184,6 +1295,28 @@ export default function SupplierEvaluationPublic() {
 
   // ✅ dynamic products list: [{id, name, files:[{name,url}]}]
   const [productsList, setProductsList] = useState([{ id: "p1", name: "", files: [] }]);
+
+  /* ===== Wizard =====
+     78 controls on one endless scroll is what a food supplier used to face.
+     `step` is an index into `steps` below: 0 is the welcome card, then one
+     card per form page, and the last one is review & send. */
+  const [step, setStep] = useState(0);
+
+  /* Which yes/no questions the supplier actually touched. The stored answer
+     model stays exactly as it was (true / false / null = N/A) so nothing
+     downstream changes — this set only separates "chose N/A" from "never
+     looked at it", which the UI could not show before. */
+  const [answeredKeys, setAnsweredKeys] = useState(() => new Set());
+
+  /* Draft: localStorage is the instant copy, the server the durable one. */
+  const draftKey = useMemo(() => `supplier_public_draft_${String(token || "")}`, [token]);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  /* Set once the first load has populated state, so the autosave effect does
+     not immediately overwrite the server draft with the empty initial state. */
+  const hydratedRef = useRef(false);
+  const lastServerSaveRef = useRef(0);
 
   const addProduct = () => {
     if (done) return;
@@ -1362,6 +1495,8 @@ export default function SupplierEvaluationPublic() {
         });
         return out;
       });
+      /* A key that came back from the server was answered by someone. */
+      setAnsweredKeys(new Set(Object.keys(preAnswers)));
 
       setFieldAttachments(preFieldAttachments);
       setAttachments(preAttachments);
@@ -1397,6 +1532,61 @@ export default function SupplierEvaluationPublic() {
             : [{ id: "p0", name: "", files: [] }]
         );
       }
+
+      /* ===== Draft — whichever copy is newer wins =====
+         The server draft survives a new device or a cleared browser; the local
+         one survives a server that has not been redeployed with the draft
+         route yet. Both are unsent work, never a submission. */
+      let local = null;
+      try {
+        const raw = localStorage.getItem(draftKey);
+        if (raw) local = JSON.parse(raw);
+      } catch {}
+      const remote = p?.draft && typeof p.draft === "object" ? p.draft : null;
+      const stamp = (d) => (d?.savedAt ? new Date(d.savedAt).getTime() || 0 : 0);
+      const draft = stamp(remote) >= stamp(local) ? remote || local : local;
+
+      const draftIsWorth =
+        !!draft &&
+        typeof draft === "object" &&
+        ((draft.answeredKeys || []).length > 0 ||
+          Object.values(draft.fields || {}).some((v) => String(v ?? "").trim()) ||
+          (draft.attachments || []).length > 0 ||
+          (draft.productsList || []).some((x) => String(x?.name || "").trim()) ||
+          !!draft.declaration?.agreed);
+
+      if (draftIsWorth) {
+        if (draft.fields && typeof draft.fields === "object") {
+          setFields((prev) => ({ ...prev, ...draft.fields }));
+        }
+        if (draft.answers && typeof draft.answers === "object") {
+          setAnswers((prev) => ({ ...prev, ...draft.answers }));
+        }
+        if (Array.isArray(draft.answeredKeys)) {
+          setAnsweredKeys((prev) => new Set([...prev, ...draft.answeredKeys]));
+        }
+        if (draft.fieldAttachments && typeof draft.fieldAttachments === "object") {
+          setFieldAttachments((prev) => ({ ...prev, ...draft.fieldAttachments }));
+        }
+        if (Array.isArray(draft.attachments) && draft.attachments.length) {
+          setAttachments(draft.attachments);
+        }
+        if (Array.isArray(draft.productsList) && draft.productsList.length) {
+          setProductsList(draft.productsList);
+        }
+        if (draft.declaration && typeof draft.declaration === "object") {
+          setDeclaration({
+            agreed: !!draft.declaration.agreed,
+            name: draft.declaration.name || "",
+            position: draft.declaration.position || "",
+            agreedAt: draft.declaration.agreedAt || null,
+          });
+        }
+        if (Number.isInteger(draft.step) && draft.step > 0) setStep(draft.step);
+        if (draft.savedAt) setDraftSavedAt(draft.savedAt);
+        setDraftRestored(true);
+      }
+      hydratedRef.current = true;
     } catch (e) {
       const errMsg = `${e?.message || "Failed to load"} (token: ${token})`;
       setMsg(`❌ ${errMsg}`);
@@ -1413,7 +1603,96 @@ export default function SupplierEvaluationPublic() {
   }, [token, done]);
 
   const onField = (key, value) => setFields((p) => ({ ...p, [key]: value }));
-  const onToggle = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
+  const onToggle = (key, value) => {
+    setAnswers((p) => ({ ...p, [key]: value }));
+    /* Even "N/A" is an answer once the supplier picks it deliberately. */
+    setAnsweredKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  };
+
+  /* ===== Autosave =====
+     The old page kept everything in memory until Submit: one closed tab after
+     forty minutes of typing and the whole thing was gone. */
+  const draftSnapshot = useMemo(
+    () => ({
+      v: 1,
+      fields,
+      answers,
+      answeredKeys: [...answeredKeys],
+      fieldAttachments,
+      attachments,
+      productsList,
+      declaration,
+      step,
+    }),
+    [fields, answers, answeredKeys, fieldAttachments, attachments, productsList, declaration, step]
+  );
+
+  /* An untouched form is not work worth restoring — saving it would make the
+     next visit announce "continue where you stopped" over an empty draft. */
+  const draftHasContent = useMemo(() => {
+    const d = draftSnapshot;
+    if (d.answeredKeys.length) return true;
+    if (Object.values(d.fields || {}).some((v) => String(v ?? "").trim())) return true;
+    if ((d.attachments || []).length) return true;
+    if (Object.values(d.fieldAttachments || {}).some((a) => (a || []).length)) return true;
+    if ((d.productsList || []).some((x) => String(x?.name || "").trim() || (x?.files || []).length)) return true;
+    if (d.declaration?.agreed || String(d.declaration?.name || "").trim()) return true;
+    return false;
+  }, [draftSnapshot]);
+
+  const saveDraft = useCallback(
+    async (toServer) => {
+      if (!hydratedRef.current || done || !token || !draftHasContent) return;
+      const body = { ...draftSnapshot, savedAt: new Date().toISOString() };
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(body));
+        setDraftSavedAt(body.savedAt);
+      } catch {
+        /* Private mode / quota — the server copy below is then the only one. */
+      }
+      if (!toServer) return;
+      lastServerSaveRef.current = Date.now();
+      setDraftSaving(true);
+      try {
+        await fetch(`${API_BASE}/api/reports/public/${encodeURIComponent(token)}/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft: body }),
+        });
+      } catch {
+        /* Offline, or a server without the draft route yet — the local copy
+           already holds the work, so this stays silent on purpose. */
+      } finally {
+        setDraftSaving(false);
+      }
+    },
+    [draftSnapshot, draftKey, done, token, draftHasContent]
+  );
+
+  useEffect(() => {
+    if (!hydratedRef.current || done) return;
+    const id = setTimeout(() => {
+      /* Local on every pause, server at most every 20s — a public endpoint
+         should not take a write per keystroke. */
+      saveDraft(Date.now() - lastServerSaveRef.current > 20000);
+    }, 900);
+    return () => clearTimeout(id);
+  }, [saveDraft, done]);
+
+  /* Leaving the page (tab switch, phone lock, closing) flushes to the server
+     so the last minute of work is not left only in this browser. */
+  useEffect(() => {
+    if (done) return;
+    const flush = () => {
+      if (document.visibilityState === "hidden") saveDraft(true);
+    };
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", flush);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [saveDraft, done]);
 
   const pickFilesGlobal = async (fileList) => {
     const files = Array.from(fileList || []);
@@ -1502,61 +1781,38 @@ export default function SupplierEvaluationPublic() {
     setFieldAttachments((prev) => ({ ...prev, [fieldKey]: [] }));
   };
 
-  /* ===== Required-field validation ===== */
-  const validateBeforeSubmit = () => {
-    const errs = [];
+  /* ===== Required-field validation =====
+     Each problem carries the field it belongs to, so the review card can offer
+     "take me there" instead of leaving the supplier to hunt through the form
+     for the one empty box. */
+  const requiredProblems = () => {
     const L = isRTL;
+    const out = [];
+    const need = (key, ok, msgEn, msgAr) => {
+      if (!ok) out.push({ key, text: L ? msgAr : msgEn });
+    };
+    const txt = (k) => String(fields[k] || "").trim();
 
-    const companyName = String(fields.company_name || "").trim();
-    if (!companyName || !/\S/.test(companyName) || companyName.length < 2) {
-      errs.push(L ? "اسم الشركة مطلوب (حرفان على الأقل)" : "Company name is required (at least 2 characters)");
+    need("company_name", txt("company_name").length >= 2,
+      "Company name is required (at least 2 characters)", "اسم الشركة مطلوب (حرفان على الأقل)");
+    need("company_address", !!txt("company_address"),
+      "Company address is required", "عنوان الشركة مطلوب");
+    need("tqm_contact_name", !!txt("tqm_contact_name"),
+      "Contact person (Technical / Quality Manager) name is required", "اسم جهة الاتصال (مسؤول الجودة/الفني) مطلوب");
+    need("tqm_position_held", !!txt("tqm_position_held"),
+      "Position Held is required", "المنصب الوظيفي لجهة الاتصال مطلوب");
+    need("tqm_telephone", !!txt("tqm_telephone"),
+      "Contact telephone number is required", "رقم هاتف جهة الاتصال مطلوب");
+    need("__products",
+      Array.isArray(productsList) && productsList.some((p) => String(p?.name || "").trim()),
+      "At least one product/service must be added (with a name)", "يجب إضافة منتج/خدمة واحدة على الأقل (الاسم)");
+    need("__declaration", !!declaration?.agreed,
+      "Declaration must be confirmed before submission", "يجب تأكيد الإقرار قبل الإرسال");
+    if (declaration?.agreed) {
+      need("__declaration", !!String(declaration?.name || "").trim(),
+        "Declaration signer name is required", "اسم الموقِّع على الإقرار مطلوب");
     }
-
-    const address = String(fields.company_address || "").trim();
-    if (!address) {
-      errs.push(L ? "عنوان الشركة مطلوب" : "Company address is required");
-    }
-
-    const contactName = String(fields.tqm_contact_name || "").trim();
-    if (!contactName) {
-      errs.push(L ? "اسم جهة الاتصال (مسؤول الجودة/الفني) مطلوب" : "Contact person (Technical / Quality Manager) name is required");
-    }
-
-    const position = String(fields.tqm_position_held || "").trim();
-    if (!position) {
-      errs.push(L ? "المنصب الوظيفي لجهة الاتصال مطلوب" : "Position Held is required");
-    }
-
-    const tel = String(fields.tqm_telephone || "").trim();
-    if (!tel) {
-      errs.push(L ? "رقم هاتف جهة الاتصال مطلوب" : "Contact telephone number is required");
-    }
-
-    // At least one product/service with a name
-    const hasProduct = Array.isArray(productsList) && productsList.some((p) => String(p?.name || "").trim().length > 0);
-    if (!hasProduct) {
-      errs.push(L ? "يجب إضافة منتج/خدمة واحدة على الأقل (الاسم)" : "At least one product/service must be added (with a name)");
-    }
-
-    // Vehicle DM Card — required attachment
-    const dmFiles = Array.isArray(fieldAttachments?.att_vehicle_dm_card) ? fieldAttachments.att_vehicle_dm_card : [];
-    if (false && dmFiles.length === 0) {
-      errs.push(
-        L
-          ? "إرفاق تسجيل المركبة / بطاقة بلدية دبي (DM Card) مطلوب"
-          : "Vehicle Registration / Dubai Municipality (DM) Card attachment is required"
-      );
-    }
-
-    // Declaration must be signed
-    if (!declaration?.agreed) {
-      errs.push(L ? "يجب تأكيد الإقرار قبل الإرسال" : "Declaration must be confirmed before submission");
-    }
-    if (declaration?.agreed && !String(declaration?.name || "").trim()) {
-      errs.push(L ? "اسم الموقِّع على الإقرار مطلوب" : "Declaration signer name is required");
-    }
-
-    return errs;
+    return out;
   };
 
   const submit = async () => {
@@ -1565,11 +1821,10 @@ export default function SupplierEvaluationPublic() {
     setValidationErrors([]);
 
     // ✅ required-field validation
-    const errs = validateBeforeSubmit();
-    if (errs.length) {
-      setValidationErrors(errs);
-      setMsg(`❌ ${isRTL ? "يوجد " + errs.length + " خطأ في النموذج" : `${errs.length} validation error(s)`}`);
-      // scroll to top so user sees errors banner
+    const problems = requiredProblems();
+    if (problems.length) {
+      setValidationErrors(problems.map((x) => x.text));
+      setMsg(`❌ ${isRTL ? "يوجد " + problems.length + " خطأ في النموذج" : `${problems.length} validation error(s)`}`);
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
       return;
     }
@@ -1639,6 +1894,9 @@ export default function SupplierEvaluationPublic() {
 
       try {
         localStorage.setItem(submittedKey, "1");
+        /* The draft has served its purpose — leaving it behind would restore
+           stale answers if the supplier reopens the link. */
+        localStorage.removeItem(draftKey);
       } catch {}
       setDone(true);
       setMsg(isRTL ? "✅ تم الإرسال بنجاح" : "✅ Submitted successfully");
@@ -1647,6 +1905,117 @@ export default function SupplierEvaluationPublic() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /* ===================== Wizard model =====================
+     One card at a time: a welcome card, then the form pages this supplier type
+     actually needs, then review & send. */
+  const steps = useMemo(
+    () => [
+      { kind: "intro" },
+      ...visiblePages.map((p) => ({ kind: "page", page: p })),
+      { kind: "review" },
+    ],
+    [visiblePages]
+  );
+  const lastStep = steps.length - 1;
+  const current = steps[Math.min(step, lastStep)] || steps[0];
+
+  /* Which step each field lives on — lets the review card jump straight to a
+     missing answer instead of describing where it is. */
+  const stepOfKey = useMemo(() => {
+    const map = {};
+    visiblePages.forEach((p, i) => {
+      const stepIdx = i + 1; // step 0 is the intro
+      p.blocks.forEach((b) => {
+        (b.items || []).forEach((it) => {
+          if (it.key) map[it.key] = stepIdx;
+        });
+        if (b.type === "products_list") map.__products = stepIdx;
+        if (b.type === "declaration") map.__declaration = stepIdx;
+      });
+    });
+    return map;
+  }, [visiblePages]);
+
+  /* Progress, per page and overall. Attachments stay out of the count: they are
+     genuinely optional, and a progress bar that can never reach 100% is worse
+     than no progress bar. */
+  const pageStats = useMemo(
+    () =>
+      visiblePages.map((p) => {
+        let total = 0;
+        let filled = 0;
+        p.blocks.forEach((b) => {
+          if (b.type === "fields") {
+            (b.items || []).forEach((it) => {
+              if (it.kind === "readonly" || it.kind === "attachment") return;
+              total += 1;
+              if (String(fields[it.key] ?? "").trim()) filled += 1;
+            });
+          } else if (b.type === "yesno") {
+            (b.items || []).forEach((it) => {
+              total += 1;
+              if (answeredKeys.has(it.key)) filled += 1;
+            });
+          } else if (b.type === "products_list") {
+            total += 1;
+            if (productsList.some((x) => String(x?.name || "").trim())) filled += 1;
+          } else if (b.type === "declaration") {
+            total += 1;
+            if (declaration?.agreed && String(declaration?.name || "").trim()) filled += 1;
+          }
+        });
+        return { total, filled, left: Math.max(0, total - filled) };
+      }),
+    [visiblePages, fields, answeredKeys, productsList, declaration]
+  );
+
+  const overall = useMemo(() => {
+    const total = pageStats.reduce((s, x) => s + x.total, 0);
+    const filled = pageStats.reduce((s, x) => s + x.filled, 0);
+    return { total, filled, pct: total ? Math.round((filled / total) * 100) : 0 };
+  }, [pageStats]);
+
+  /* An honest estimate beats a made-up one: a yes/no tap is seconds, a typed
+     field is slower. Rounded up to the nearest 5 so it reads as a guide. */
+  const estMinutes = useMemo(() => {
+    const mins = overall.total * 0.18;
+    return Math.max(5, Math.ceil(mins / 5) * 5);
+  }, [overall.total]);
+
+  const problems = requiredProblems();
+  const problemSteps = useMemo(() => {
+    const s = new Set();
+    problems.forEach((x) => {
+      const i = stepOfKey[x.key];
+      if (i != null) s.add(i);
+    });
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(problems.map((x) => x.key)), stepOfKey]);
+
+  const goStep = (i) => {
+    const next = Math.max(0, Math.min(lastStep, i));
+    setStep(next);
+    setValidationErrors([]);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+  };
+
+  /* Jump to the step holding a field and put the cursor in it. */
+  const goToField = (key) => {
+    const target = stepOfKey[key];
+    if (target == null) return;
+    goStep(target);
+    setTimeout(() => {
+      try {
+        const el = document.querySelector(`[data-fk="${key}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        const focusable = el.querySelector("input, textarea, button");
+        if (focusable) focusable.focus({ preventScroll: true });
+      } catch {}
+    }, 260);
   };
 
   /* ===================== Declaration helpers ===================== */
@@ -1809,6 +2178,26 @@ export default function SupplierEvaluationPublic() {
   const btnSoft = {
     ...btn,
     background: "rgba(2,6,23,0.03)",
+  };
+
+  /* Step navigation, pinned to the bottom of the viewport so it is one thumb
+     away no matter how long the current step is. */
+  const navBar = {
+    position: "sticky",
+    bottom: 0,
+    zIndex: 50,
+    marginTop: 18,
+    marginInline: -22,
+    marginBottom: -22,
+    padding: "12px 22px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    background: "rgba(255,255,255,0.96)",
+    borderTop: `1px solid ${THEME.border}`,
+    borderRadius: "0 0 18px 18px",
+    backdropFilter: "blur(8px)",
   };
 
   const btnPrimary = (disabled) => ({
@@ -1976,7 +2365,7 @@ export default function SupplierEvaluationPublic() {
 
   if (loading) {
     return (
-      <div style={page}>
+      <div className="sep" style={page}>
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
@@ -2000,7 +2389,7 @@ export default function SupplierEvaluationPublic() {
   // ✅ Load error → show Retry button (not stuck)
   if (!loading && loadError && !info) {
     return (
-      <div style={page}>
+      <div className="sep" style={page}>
         <div style={card}>
           <div style={{ fontWeight: 900, fontSize: 18, color: "#991b1b", marginBottom: 8 }}>
             {isRTL ? "⚠ تعذّر تحميل النموذج" : "⚠ Failed to load the form"}
@@ -2045,7 +2434,7 @@ export default function SupplierEvaluationPublic() {
 
   if (done) {
     return (
-      <div style={page}>
+      <div className="sep" style={page}>
         <div style={card}>
           <div style={topbar}>
             <div style={{ fontWeight: 900, fontSize: 28 }}>{t.thankTitle}</div>
@@ -2093,122 +2482,35 @@ export default function SupplierEvaluationPublic() {
     return "gray";
   };
 
-  return (
-    <div style={page}>
-      <div style={card}>
-        <div style={topbar}>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 26, color: THEME.text }}>{t.title}</div>
-            <div style={{ marginTop: 6, color: THEME.muted, fontSize: 14, fontWeight: 900 }}>
-              {t.token}: <b>{token}</b> • {t.link}: <span style={{ wordBreak: "break-word" }}>{shareUrl}</span>
-            </div>
-          </div>
-
-          <span style={pill}>
-            {t.lang}:
-            <button
-              onClick={() => setLang("en")}
-              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "en" ? 1 : 0.55 }}
-            >
-              EN
-            </button>
-            <span style={{ opacity: 0.35 }}>•</span>
-            <button
-              onClick={() => setLang("ar")}
-              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "ar" ? 1 : 0.55 }}
-            >
-              AR
-            </button>
-          </span>
-        </div>
-
-        {msg ? (
-          <div style={{ marginTop: 12, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
-        ) : null}
-
-        {/* ===== Validation errors banner ===== */}
-        {validationErrors.length > 0 ? (
-          <div
-            style={{
-              marginTop: 12,
-              padding: 14,
-              borderRadius: 14,
-              border: "1px solid rgba(239,68,68,0.35)",
-              background: "rgba(239,68,68,0.05)",
-            }}
-          >
-            <div style={{ fontWeight: 900, color: "#991b1b", marginBottom: 6 }}>
-              {isRTL ? "يرجى تصحيح الأخطاء التالية قبل الإرسال:" : "Please fix the following before submission:"}
-            </div>
-            <ul style={{ margin: 0, paddingInlineStart: 20, color: "#7f1d1d", fontWeight: 700, fontSize: 13, lineHeight: 1.7 }}>
-              {validationErrors.map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {/* ===== Document header — once only ===== */}
-        <div style={{
-          marginTop: 16,
-          padding: "12px 16px",
-          borderRadius: 14,
-          border: `1px solid ${THEME.border}`,
-          background: "rgba(248,250,252,1)",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "6px 24px",
-          alignItems: "center",
-        }}>
-          {[
-            isRTL ? "مرجع الوثيقة: نموذج التقييم الذاتي للمورد" : "Document Reference: Supplier Self-Assessment Form",
-            isRTL ? "الجهة المالكة: QA" : "Owned by: QA",
-            isRTL ? "المعتمد من: المدير" : "Authorised By: Director",
-          ].map((item, i) => (
-            <span key={i} style={{ fontSize: 14, fontWeight: 700, color: "#475569" }}>
-              {i > 0 && <span style={{ marginInlineEnd: 24, color: "#cbd5e1" }}>|</span>}
-              {item}
-            </span>
-          ))}
-        </div>
-
-        {/* ===== Supplier Type (READ-ONLY — set by admin only) ===== */}
-        <div
-          style={{
-            marginTop: 14,
-            padding: 14,
-            borderRadius: 14,
-            border: "1px solid rgba(34,197,94,0.30)",
-            background: "rgba(34,197,94,0.05)",
-          }}
-        >
-          <div style={{ fontWeight: 900, fontSize: 17, color: THEME.text, marginBottom: 8 }}>
-            {isRTL ? "نوع المورد" : "Supplier Type"}
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#14532d" }}>
-            ✅ {SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType)
-              ? (isRTL
-                  ? SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelAr
-                  : SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelEn)
-              : activeType}
-            <span style={{ marginInlineStart: 8, fontSize: 13, color: "#64748b", fontWeight: 700 }}>
-              ({isRTL ? "محدَّد من قِبل الجهة المُصدِرة — غير قابل للتعديل" : "set by issuer — not editable"})
-            </span>
-          </div>
-        </div>
-
-        <div style={section}>
-          {visiblePages.map((p, pIdx) => (
+  /* One form page, rendered on its own card. Extracted from the old
+     endless-scroll map so the wizard can show exactly one at a time. */
+  const renderPage = (p, pIdx) => (
             <div key={pIdx} style={{ marginTop: 16, ...box("#fff") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>{tr(lang, p.pageTitle)}</div>
-                <div style={badge("Page")}>{String(pIdx + 1)}/{visiblePages.length}</div>
+                <div data-sep="h2" style={{ fontWeight: 900, color: THEME.text, fontSize: 19 }}>
+                  {shortPageTitle(tr(lang, p.pageTitle))}
+                </div>
+                {/* How much of THIS step is left — the whole-form bar above
+                    cannot answer "am I nearly out of this section". */}
+                {pageStats[pIdx] ? (
+                  <span
+                    style={{
+                      ...badge(""),
+                      color: pageStats[pIdx].left === 0 ? "#14532d" : "#92400e",
+                      background: pageStats[pIdx].left === 0 ? "rgba(34,197,94,0.10)" : "rgba(245,158,11,0.10)",
+                    }}
+                  >
+                    {pageStats[pIdx].left === 0
+                      ? `✅ ${t.allAnsweredHere}`
+                      : fill(t.unansweredHere, { n: pageStats[pIdx].left })}
+                  </span>
+                ) : null}
               </div>
 
               <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
                 {p.blocks.filter((b) => b.type !== "info").map((b, bIdx) => (
                   <div key={bIdx} style={panel(toneByTitle(b.title))}>
-                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>
+                    <div data-sep="h3" style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>
                       {tr(lang, b.title)}
                       {b.required ? (
                         <span style={{ color: "#dc2626", marginInlineStart: 6, fontSize: 18 }}>*</span>
@@ -2216,25 +2518,48 @@ export default function SupplierEvaluationPublic() {
                     </div>
 
                     {b.type === "fields" ? (
-                      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
+                      <div data-field-grid style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(360px, 100%), 1fr))", gap: 12 }}>
                         {(b.items || [])
                           .filter((it) => it.kind !== "readonly" || String(it.label || "").trim() !== "-----------")
-                          .map((it) => (
-                            <div key={it.key} style={fieldWrap}>
-                              <div style={labelStyle}>
-                                {tr(lang, it.label)}
-                                {it.required ? (
-                                  <span style={{ color: "#dc2626", marginInlineStart: 6, fontSize: 16 }}>*</span>
-                                ) : null}
+                          .map((it) => {
+                            /* Flagged only once the supplier has tried to send:
+                               a red box on an untouched form is just nagging. */
+                            const missing =
+                              validationErrors.length > 0 &&
+                              REQUIRED_FIELD_KEYS.includes(it.key) &&
+                              !String(fields[it.key] || "").trim();
+                            return (
+                              <div
+                                key={it.key}
+                                data-fk={it.key}
+                                style={{
+                                  ...fieldWrap,
+                                  ...(missing
+                                    ? {
+                                        padding: 10,
+                                        margin: -10,
+                                        borderRadius: 14,
+                                        background: "rgba(239,68,68,0.05)",
+                                        boxShadow: "0 0 0 2px rgba(239,68,68,0.35)",
+                                      }
+                                    : null),
+                                }}
+                              >
+                                <div data-sep="label" style={labelStyle}>
+                                  {tr(lang, it.label)}
+                                  {it.required ? (
+                                    <span style={{ color: "#dc2626", marginInlineStart: 6, fontSize: 16 }}>*</span>
+                                  ) : null}
+                                </div>
+                                {renderField(it)}
                               </div>
-                              {renderField(it)}
-                            </div>
-                          ))}
+                            );
+                          })}
                       </div>
                     ) : null}
 
                     {b.type === "products_list" ? (
-                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div data-fk="__products" style={{ marginTop: 12, display: "grid", gap: 10 }}>
                         <div style={{ fontSize: 12, color: THEME.muted, fontWeight: 700, lineHeight: 1.5 }}>
                           {isRTL
                             ? "أضف كل منتج في سطر مستقل مع إرفاق ورقة مواصفاته."
@@ -2405,7 +2730,7 @@ export default function SupplierEvaluationPublic() {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
                             gap: 12,
                           }}
                         >
@@ -2520,7 +2845,7 @@ export default function SupplierEvaluationPublic() {
                     ) : null}
 
                     {b.type === "declaration" ? (
-                      <div style={{ marginTop: 14 }}>
+                      <div data-fk="__declaration" style={{ marginTop: 14 }}>
                         {/* Status banner when agreed */}
                         {declaration.agreed ? (
                           <div style={{
@@ -2598,24 +2923,30 @@ export default function SupplierEvaluationPublic() {
                       <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                         {(b.items || []).map((it) => {
                           const v = answers[it.key];
+                          /* The old page pre-selected N/A for every untouched
+                             question, so the supplier could not see what they
+                             had actually skipped. Stored values are unchanged —
+                             this only stops N/A from *looking* chosen. */
+                          const touched = answeredKeys.has(it.key);
                           return (
                             <div
                               key={it.key}
+                              data-fk={it.key}
                               style={{
                                 paddingTop: 12,
                                 borderTop: `1px dashed ${THEME.border}`,
                               }}
                             >
-                              <div style={{ fontWeight: 900, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 17, lineHeight: 1.55 }}>{tr(lang, it.q)}</div>
+                              <div data-sep="q" style={{ fontWeight: 900, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 17, lineHeight: 1.55 }}>{tr(lang, it.q)}</div>
 
                               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                                <button type="button" style={toggleBtn(v === true, "yes")} onClick={() => onToggle(it.key, true)}>
+                                <button type="button" style={toggleBtn(touched && v === true, "yes")} onClick={() => onToggle(it.key, true)}>
                                   {t.yes}
                                 </button>
-                                <button type="button" style={toggleBtn(v === false, "no")} onClick={() => onToggle(it.key, false)}>
+                                <button type="button" style={toggleBtn(touched && v === false, "no")} onClick={() => onToggle(it.key, false)}>
                                   {t.no}
                                 </button>
-                                <button type="button" style={toggleBtn(v === null, "na")} onClick={() => onToggle(it.key, null)}>
+                                <button type="button" style={toggleBtn(touched && v === null, "na")} onClick={() => onToggle(it.key, null)}>
                                   {t.na}
                                 </button>
 
@@ -2625,13 +2956,19 @@ export default function SupplierEvaluationPublic() {
                                     marginRight: isRTL ? 6 : 0,
                                     fontSize: 14,
                                     fontWeight: 900,
-                                    color: THEME.muted,
+                                    color: touched ? THEME.muted : "#b45309",
                                   }}
                                 >
-                                  {t.selected}:{" "}
-                                  <b style={{ color: v === true ? "#065f46" : v === false ? "#991b1b" : THEME.muted }}>
-                                    {v === true ? (lang === "ar" ? "نعم" : "YES") : v === false ? (lang === "ar" ? "لا" : "NO") : lang === "ar" ? "غير متاح" : "N/A"}
-                                  </b>
+                                  {touched ? (
+                                    <>
+                                      {t.selected}:{" "}
+                                      <b style={{ color: v === true ? "#065f46" : v === false ? "#991b1b" : THEME.muted }}>
+                                        {v === true ? (lang === "ar" ? "نعم" : "YES") : v === false ? (lang === "ar" ? "لا" : "NO") : lang === "ar" ? "غير متاح" : "N/A"}
+                                      </b>
+                                    </>
+                                  ) : (
+                                    <>⚪ {t.notAnswered}</>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2643,106 +2980,392 @@ export default function SupplierEvaluationPublic() {
                 ))}
               </div>
             </div>
-          ))}
+  );
+
+  return (
+    <div className="sep" style={page}>
+      <div style={card}>
+        <div style={topbar}>
+          <div style={{ minWidth: 0 }}>
+            <div data-sep="title" style={{ fontWeight: 900, fontSize: 26, color: THEME.text }}>{t.title}</div>
+            {/* The supplier's own name, not the token — they never needed to
+                read a 30-character link back to us. */}
+            <div style={{ marginTop: 6, color: THEME.muted, fontSize: 15, fontWeight: 900 }}>
+              {fields.company_name || info?.payload?.fields?.company_name || ""}
+            </div>
+          </div>
+
+          <span style={pill}>
+            {t.lang}:
+            <button
+              onClick={() => setLang("en")}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "en" ? 1 : 0.55 }}
+            >
+              EN
+            </button>
+            <span style={{ opacity: 0.35 }}>•</span>
+            <button
+              onClick={() => setLang("ar")}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "ar" ? 1 : 0.55 }}
+            >
+              AR
+            </button>
+          </span>
         </div>
 
-        {/* Global Attachments (kept) */}
-        <div style={section}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ fontWeight: 900, color: THEME.text, marginBottom: 2 }}>{t.attach}</div>
-            <span style={badge("General")}>{isRTL ? "مرفقات عامة" : "General files"}</span>
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <label htmlFor="global_files" style={{ ...btn, margin: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
-              📎 {t.addFiles}
-            </label>
-            <input id="global_files" type="file" multiple onChange={(e) => pickFilesGlobal(e.target.files)} disabled={saving || done} style={{ display: "none" }} />
-            <span style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>{saving ? t.saving : ""}</span>
-          </div>
-
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            {attachments.map((f, i) => (
-              <div
-                key={`${f.url}-${i}`}
-                style={{
-                  padding: 10,
-                  borderRadius: 14,
-                  border: `1px solid ${THEME.border}`,
-                  background: "#fff",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                <a
-                  href={f.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    fontWeight: 900,
-                    color: THEME.text,
-                    textDecoration: "none",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: "78%",
-                    fontSize: 14,
-                  }}
-                >
-                  📎 {f.name || `File ${i + 1}`}
-                </a>
-                <button
-                  type="button"
-                  style={{ ...btn, borderColor: "rgba(239,68,68,0.35)", color: "#991b1b" }}
-                  onClick={() => removeGlobalAttachment(i)}
-                  disabled={saving || done}
-                >
-                  {t.remove}
-                </button>
+        {/* ===== Progress + step rail =====
+            Shown from the first form step onwards: on the welcome card there is
+            nothing to be a fraction of yet. */}
+        {step > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+              <div style={{ fontWeight: 900, fontSize: 14, color: THEME.text }}>
+                {fill(t.stepOf, { a: step, b: lastStep })}
               </div>
+              <div style={{ fontWeight: 900, fontSize: 14, color: overall.pct >= 100 ? "#15803d" : THEME.muted }}>
+                {fill(t.progressDone, { n: overall.pct })}
+              </div>
+            </div>
+            <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: "rgba(2,6,23,0.07)", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${overall.pct}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: "linear-gradient(90deg,#0ea5e9,#22c55e)",
+                  transition: "width 0.35s ease",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {steps.slice(1).map((s, i) => {
+                const idx = i + 1;
+                const active = idx === step;
+                const st = s.kind === "page" ? pageStats[i] : null;
+                const complete = st ? st.left === 0 : overall.pct === 100;
+                const needsAttention = problemSteps.has(idx);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => goStep(idx)}
+                    title={s.kind === "review" ? t.reviewTitle : tr(lang, s.page.pageTitle)}
+                    style={{
+                      border: `2px solid ${active ? "#0ea5e9" : needsAttention ? "rgba(239,68,68,0.45)" : complete ? "rgba(34,197,94,0.45)" : THEME.border}`,
+                      background: active ? "rgba(14,165,233,0.12)" : "#fff",
+                      color: THEME.text,
+                      borderRadius: 999,
+                      padding: "7px 13px",
+                      cursor: "pointer",
+                      fontWeight: 900,
+                      fontSize: 13,
+                      fontFamily: "inherit",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{s.kind === "review" ? "🏁" : complete ? "✅" : needsAttention ? "⚠️" : idx}</span>
+                    <span style={{ maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.kind === "review" ? t.reviewTitle : shortPageTitle(tr(lang, s.page.pageTitle))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Autosave state — the promise the invitation e-mail makes. */}
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: THEME.muted }}>
+              {draftSaving
+                ? `💾 ${t.draftSaving}`
+                : draftSavedAt
+                ? `💾 ${fill(t.draftSaved, { t: sinceText(draftSavedAt, lang, t) })}`
+                : ""}
+            </div>
+          </div>
+        ) : null}
+
+        {draftRestored && step > 0 ? (
+          <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 12, background: "rgba(14,165,233,0.08)", border: "1px solid rgba(14,165,233,0.28)", fontWeight: 800, fontSize: 13, color: "#0c4a6e" }}>
+            ↩️ {t.draftRestored}
+          </div>
+        ) : null}
+
+        {msg ? (
+          <div style={{ marginTop: 12, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
+        ) : null}
+
+        {/* ===== Validation errors banner ===== */}
+        {validationErrors.length > 0 ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(239,68,68,0.35)",
+              background: "rgba(239,68,68,0.05)",
+            }}
+          >
+            <div style={{ fontWeight: 900, color: "#991b1b", marginBottom: 6 }}>
+              {isRTL ? "يرجى تصحيح الأخطاء التالية قبل الإرسال:" : "Please fix the following before submission:"}
+            </div>
+            <ul style={{ margin: 0, paddingInlineStart: 20, color: "#7f1d1d", fontWeight: 700, fontSize: 13, lineHeight: 1.7 }}>
+              {validationErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* ===== Step 0 — welcome =====
+            What the form is, how long it takes, what to have ready, and the
+            promise that nothing is lost if they close the tab. */}
+        {current.kind === "intro" ? (
+          <div style={{ marginTop: 16, display: "grid", gap: 14 }}>
+            <div style={{ ...box("rgba(14,165,233,0.05)"), borderColor: "rgba(14,165,233,0.28)" }}>
+              <div data-sep="title" style={{ fontSize: 22, fontWeight: 900, color: THEME.text }}>{t.startTitle}</div>
+              <div data-sep="lead" style={{ marginTop: 8, fontSize: 16, fontWeight: 700, color: "#334155", lineHeight: 1.7 }}>{t.startLead}</div>
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={badge("")}>⏱ {fill(t.minutes, { n: estMinutes })}</span>
+                <span style={badge("")}>🧭 {fill(t.stepsCount, { n: lastStep })}</span>
+              </div>
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 12, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.28)", fontWeight: 800, fontSize: 14, color: "#14532d", lineHeight: 1.6 }}>
+                💾 {t.autosaveNote}
+              </div>
+            </div>
+
+            {/* The same checklist the invitation e-mail carried. */}
+            <div style={box("#fff")}>
+              <div data-sep="h3" style={{ fontWeight: 900, fontSize: 17, color: THEME.text }}>📎 {t.prepareTitle}</div>
+              <ul style={{ margin: "10px 0 0", paddingInlineStart: 22, lineHeight: 1.9, fontSize: 15, fontWeight: 700, color: "#334155" }}>
+                {docsFor(activeType).map((d, i) => (
+                  <li key={i}>{isRTL ? d.ar : d.en}</li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 10, fontSize: 13.5, fontWeight: 700, color: THEME.muted }}>{t.optionalNote}</div>
+            </div>
+
+          {/* ===== Document header — once only ===== */}
+          <div style={{
+            marginTop: 16,
+            padding: "12px 16px",
+            borderRadius: 14,
+            border: `1px solid ${THEME.border}`,
+            background: "rgba(248,250,252,1)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "6px 24px",
+            alignItems: "center",
+          }}>
+            {[
+              isRTL ? "مرجع الوثيقة: نموذج التقييم الذاتي للمورد" : "Document Reference: Supplier Self-Assessment Form",
+              isRTL ? "الجهة المالكة: QA" : "Owned by: QA",
+              isRTL ? "المعتمد من: المدير" : "Authorised By: Director",
+            ].map((item, i) => (
+              <span key={i} style={{ fontSize: 14, fontWeight: 700, color: "#475569" }}>
+                {i > 0 && <span style={{ marginInlineEnd: 24, color: "#cbd5e1" }}>|</span>}
+                {item}
+              </span>
             ))}
           </div>
-        </div>
 
-        {/* Submit */}
-        <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>
-            {info?.created_at ? `${isRTL ? "تم الإنشاء:" : "Created:"} ${String(info.created_at)}` : ""}
+          {/* ===== Supplier Type (READ-ONLY — set by admin only) ===== */}
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(34,197,94,0.30)",
+              background: "rgba(34,197,94,0.05)",
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 17, color: THEME.text, marginBottom: 8 }}>
+              {isRTL ? "نوع المورد" : "Supplier Type"}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#14532d" }}>
+              ✅ {SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType)
+                ? (isRTL
+                    ? SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelAr
+                    : SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelEn)
+                : activeType}
+              <span style={{ marginInlineStart: 8, fontSize: 13, color: "#64748b", fontWeight: 700 }}>
+                ({isRTL ? "محدَّد من قِبل الجهة المُصدِرة — غير قابل للتعديل" : "set by issuer — not editable"})
+              </span>
+            </div>
           </div>
 
-          <button
-            style={{
-              ...btnPrimary(saving),
-              opacity: saving ? 0.55 : 1,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-            onClick={submit}
-            disabled={saving || done}
-          >
-            {saving ? (
-              <>
-                <span
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: "50%",
-                    border: "2px solid rgba(15,23,42,0.25)",
-                    borderTopColor: "rgba(15,23,42,0.75)",
-                    display: "inline-block",
-                    animation: "qcs-spin-btn 0.8s linear infinite",
-                  }}
-                />
-                {t.submitting}
-              </>
+          </div>
+        ) : null}
+
+        {current.kind === "page" ? <div style={section}>{renderPage(current.page, step - 1)}</div> : null}
+
+        {/* ===== Last step — review & send ===== */}
+        {current.kind === "review" ? (
+          <div style={{ marginTop: 16, display: "grid", gap: 14 }}>
+            <div style={box("#fff")}>
+              <div data-sep="h2" style={{ fontSize: 20, fontWeight: 900, color: THEME.text }}>🏁 {t.reviewTitle}</div>
+              <div style={{ marginTop: 6, fontSize: 14.5, fontWeight: 700, color: THEME.muted, lineHeight: 1.7 }}>{t.reviewLead}</div>
+
+              <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+                {visiblePages.map((pg, i) => {
+                  const st = pageStats[i];
+                  const bad = problemSteps.has(i + 1);
+                  return (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "11px 14px", borderRadius: 12, border: `1px solid ${bad ? "rgba(239,68,68,0.35)" : THEME.border}`, background: bad ? "rgba(239,68,68,0.04)" : "#fff" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 900, fontSize: 15, color: THEME.text }}>
+                          {bad ? "⚠️" : st.left === 0 ? "✅" : "•"} {shortPageTitle(tr(lang, pg.pageTitle))}
+                        </div>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: bad ? "#991b1b" : THEME.muted, marginTop: 3 }}>
+                          {bad ? t.reviewMissing : st.left === 0 ? t.allAnsweredHere : fill(t.unansweredHere, { n: st.left })}
+                        </div>
+                      </div>
+                      <button type="button" style={{ ...btnSoft, fontSize: 13 }} onClick={() => goStep(i + 1)}>{t.reviewGo} →</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* The blocking list — every row is a shortcut to the empty box,
+                instead of a description of where to hunt for it. */}
+            {problems.length ? (
+              <div style={{ ...box("rgba(239,68,68,0.04)"), borderColor: "rgba(239,68,68,0.35)" }}>
+                <div style={{ fontWeight: 900, color: "#991b1b", fontSize: 16 }}>⚠️ {t.reviewMissing}</div>
+                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                  {problems.map((x, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 800, color: "#7f1d1d", fontSize: 14 }}>• {x.text}</span>
+                      <button type="button" style={{ ...btnSoft, fontSize: 12.5 }} onClick={() => goToField(x.key)}>{t.reviewGo} →</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
-              t.submit
+              <div style={{ ...box("rgba(34,197,94,0.06)"), borderColor: "rgba(34,197,94,0.35)", fontWeight: 900, fontSize: 16, color: "#14532d" }}>
+                ✅ {t.reviewOk}
+              </div>
             )}
+
+          {/* Global Attachments (kept) */}
+          <div style={section}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontWeight: 900, color: THEME.text, marginBottom: 2 }}>{t.attach}</div>
+              <span style={badge("General")}>{isRTL ? "مرفقات عامة" : "General files"}</span>
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <label htmlFor="global_files" style={{ ...btn, margin: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                📎 {t.addFiles}
+              </label>
+              <input id="global_files" type="file" multiple onChange={(e) => pickFilesGlobal(e.target.files)} disabled={saving || done} style={{ display: "none" }} />
+              <span style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>{saving ? t.saving : ""}</span>
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {attachments.map((f, i) => (
+                <div
+                  key={`${f.url}-${i}`}
+                  style={{
+                    padding: 10,
+                    borderRadius: 14,
+                    border: `1px solid ${THEME.border}`,
+                    background: "#fff",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontWeight: 900,
+                      color: THEME.text,
+                      textDecoration: "none",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      maxWidth: "78%",
+                      fontSize: 14,
+                    }}
+                  >
+                    📎 {f.name || `File ${i + 1}`}
+                  </a>
+                  <button
+                    type="button"
+                    style={{ ...btn, borderColor: "rgba(239,68,68,0.35)", color: "#991b1b" }}
+                    onClick={() => removeGlobalAttachment(i)}
+                    disabled={saving || done}
+                  >
+                    {t.remove}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Submit */}
+          <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>
+              {info?.created_at ? `${isRTL ? "تم الإنشاء:" : "Created:"} ${String(info.created_at)}` : ""}
+            </div>
+
+            <button
+              style={{
+                ...btnPrimary(saving),
+                opacity: saving ? 0.55 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+              onClick={submit}
+              disabled={saving || done}
+            >
+              {saving ? (
+                <>
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      border: "2px solid rgba(15,23,42,0.25)",
+                      borderTopColor: "rgba(15,23,42,0.75)",
+                      display: "inline-block",
+                      animation: "qcs-spin-btn 0.8s linear infinite",
+                    }}
+                  />
+                  {t.submitting}
+                </>
+              ) : (
+                t.submitFinal
+              )}
+            </button>
+            <style>{`@keyframes qcs-spin-btn { to { transform: rotate(360deg); } }`}</style>
+          </div>
+          </div>
+        ) : null}
+
+        {/* ===== Sticky step navigation =====
+            Always in reach on a phone; the old page put the only button after
+            all 78 controls. */}
+        <div style={navBar}>
+          <button type="button" style={{ ...btnSoft, visibility: step === 0 ? "hidden" : "visible" }} onClick={() => goStep(step - 1)}>
+            ← {t.back}
           </button>
-          <style>{`@keyframes qcs-spin-btn { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: 12.5, fontWeight: 900, color: THEME.muted }}>
+            {step > 0 ? fill(t.stepOf, { a: step, b: lastStep }) : ""}
+          </div>
+          {step < lastStep ? (
+            <button type="button" style={{ ...btnPrimary(false), minWidth: 130 }} onClick={() => goStep(step + 1)}>
+              {step === 0 ? (draftRestored ? t.resume : t.start) : t.next} →
+            </button>
+          ) : (
+            <span style={{ width: 1 }} />
+          )}
         </div>
       </div>
 
@@ -2899,10 +3522,40 @@ export default function SupplierEvaluationPublic() {
       )}
 
       <style>{`
+        /* ── Escaping two global rules, scoped to this page only ──
+           1. globals.css sets "#root *, #root *::before, #root *::after
+              { font-size: 14px !important }", which flattened every size on
+              this form — a 26px heading and a 17px question both rendered at
+              14. The doubled ".sep.sep" class out-specifies it without
+              touching any other screen.
+           2. globals.css also puts "overflow-x: hidden" on html/body/#root,
+              and an overflow-x other than visible makes the element a scroll
+              container, which silently disables position:sticky — the step
+              nav below would never stick. "clip" hides the same overflow
+              without creating that container. */
+        html:has(.sep), body:has(.sep), #root:has(.sep) { overflow-x: clip; }
+
+        #root .sep.sep input,
+        #root .sep.sep textarea,
+        #root .sep.sep select { font-size: 17px !important; }
+        #root .sep.sep button,
+        #root .sep.sep a { font-size: 15px !important; }
+        #root .sep.sep li { font-size: 15px !important; }
+        #root .sep.sep [data-sep="title"] { font-size: 26px !important; }
+        #root .sep.sep [data-sep="h2"] { font-size: 20px !important; }
+        #root .sep.sep [data-sep="h3"] { font-size: 17px !important; }
+        #root .sep.sep [data-sep="lead"] { font-size: 16px !important; }
+        #root .sep.sep [data-sep="q"] { font-size: 17px !important; }
+        #root .sep.sep [data-sep="label"] { font-size: 15px !important; }
+        #root .sep.sep [data-sep="small"] { font-size: 13px !important; }
+
+        /* React serialises inline styles kebab-cased, so the old
+           div[style*="gridTemplateColumns: …"] rule never matched anything and
+           the field grid kept 360px tracks on a 360px phone — i.e. it scrolled
+           sideways. The grids now carry a data attribute and cap their track at
+           the container width, which fixes it with or without this rule. */
         @media (max-width: 980px){
-          div[style*="gridTemplateColumns: repeat(auto-fit, minmax(360px, 1fr))"]{
-            grid-template-columns: 1fr !important;
-          }
+          [data-field-grid] { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 600px) {
           [data-decl-grid] { grid-template-columns: 1fr !important; }
@@ -2911,3 +3564,4 @@ export default function SupplierEvaluationPublic() {
     </div>
   );
 }
+
