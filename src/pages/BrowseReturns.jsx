@@ -2649,6 +2649,197 @@ function PasswordModal({ show, onSubmit, onCancel, title = "Enter Password" }) {
   );
 }
 
+/* ============================================================
+   Multi-day XLSX — tick any set of days, get ONE workbook
+   ------------------------------------------------------------
+   The old pair was all-or-nothing: the open day, or every day
+   ever recorded (behind a password). Most real requests are
+   neither — "the first week of September", "these four days" —
+   so this picker takes ticks or a from/to range, and asks how
+   the days should land: one sheet each, or one long sheet with
+   a DATE column that pivots.
+   ============================================================ */
+function DaysExportModal({ open, onClose, days = [], initialDate = "", onExport }) {
+  const [picked, setPicked] = useState(() => new Set());
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [mode, setMode] = useState("combined");   // combined | sheets
+  const [summary, setSummary] = useState(true);
+  const [applyFilters, setApplyFilters] = useState(true);
+  const [openMonths, setOpenMonths] = useState({});
+
+  useEffect(() => {
+    if (!open) return;
+    setPicked(new Set(initialDate ? [initialDate] : []));
+    setFrom(""); setTo("");
+    setOpenMonths(initialDate ? { [initialDate.slice(0, 7)]: true } : {});
+  }, [open, initialDate]);
+
+  const months = useMemo(() => {
+    const map = new Map();
+    for (const d of days) {
+      const ym = (d.date || "").slice(0, 7);
+      if (!map.has(ym)) map.set(ym, []);
+      map.get(ym).push(d);
+    }
+    return [...map.entries()];
+  }, [days]);
+
+  const countOf = (d) => (applyFilters ? d.kept : d.total);
+  const isMonthOpen = (ym, i) => (openMonths[ym] === undefined ? i === 0 : openMonths[ym]);
+
+  const setMany = (list, on) => setPicked((p) => {
+    const n = new Set(p);
+    for (const d of list) { if (on) n.add(d); else n.delete(d); }
+    return n;
+  });
+  const toggle = (date) => setPicked((p) => {
+    const n = new Set(p);
+    if (n.has(date)) n.delete(date); else n.add(date);
+    return n;
+  });
+  const addRange = () => {
+    if (!from && !to) return;
+    const lo = from || "0000-00-00";
+    const hi = to || "9999-99-99";
+    setMany(days.filter((d) => d.date >= lo && d.date <= hi).map((d) => d.date), true);
+  };
+  /* "Latest N" counts recorded days, not calendar days — with gaps in the
+     data a calendar window silently returns fewer sheets than asked for. */
+  const latest = (n) => setPicked(new Set(days.slice(0, n).map((d) => d.date)));
+
+  const pickedDays = days.filter((d) => picked.has(d.date));
+  const totalRows = pickedDays.reduce((s, d) => s + countOf(d), 0);
+  const span = pickedDays.map((d) => d.date).sort();
+
+  const chip = (on) => ({
+    ...sx.btn, padding: "6px 10px", fontSize: 12,
+    background: on ? T.primaryS : T.card,
+    color: on ? T.primaryD : T.textM,
+    borderColor: on ? "#c7d2fe" : T.border,
+  });
+
+  return (
+    <ModalShell open={open} onClose={onClose} title="Export selected days to one Excel file" width={680}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+        {/* Quick picks */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <span style={sx.mutedS}>Quick:</span>
+          <button type="button" style={chip(false)} onClick={() => latest(7)}>Latest 7 days</button>
+          <button type="button" style={chip(false)} onClick={() => latest(30)}>Latest 30 days</button>
+          <button type="button" style={chip(false)} onClick={() => setMany(days.map((d) => d.date), true)}>All days</button>
+          <button type="button" style={chip(false)} onClick={() => setPicked(new Set())}>Clear</button>
+        </div>
+
+        {/* Range */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={sx.mutedS}>Range:</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...sx.input, padding: "6px 10px" }} />
+          <span style={sx.mutedS}>&rarr;</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...sx.input, padding: "6px 10px" }} />
+          <IconBtn icon={FiCheck} onClick={addRange}>Add range</IconBtn>
+        </div>
+
+        {/* Day list */}
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, maxHeight: 300, overflow: "auto" }}>
+          {months.length === 0 && (
+            <div style={{ ...sx.muted, padding: 20, textAlign: "center" }}>No days available.</div>
+          )}
+          {months.map(([ym, list], mi) => {
+            const allOn = list.every((d) => picked.has(d.date));
+            const someOn = !allOn && list.some((d) => picked.has(d.date));
+            const opened = isMonthOpen(ym, mi);
+            return (
+              <div key={ym} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                  background: T.cardAlt, position: "sticky", top: 0, zIndex: 2,
+                }}>
+                  <input
+                    type="checkbox" checked={allOn}
+                    ref={(el) => { if (el) el.indeterminate = someOn; }}
+                    onChange={() => setMany(list.map((d) => d.date), !allOn)}
+                    style={{ accentColor: T.primary }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setOpenMonths((p) => ({ ...p, [ym]: !opened }))}
+                    style={{ ...sx.btnGhost, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, color: T.text }}
+                  >
+                    {opened ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />}
+                    {ym}
+                  </button>
+                  <span style={{ ...sx.mutedS, marginInlineStart: "auto" }}>{list.length} days</span>
+                </div>
+                {opened && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 2, padding: 6 }}>
+                    {list.map((d) => {
+                      const on = picked.has(d.date);
+                      return (
+                        <label key={d.date} style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
+                          borderRadius: 6, cursor: "pointer", fontSize: 13,
+                          background: on ? T.primaryS : "transparent",
+                          color: on ? T.primaryD : T.text,
+                        }}>
+                          <input type="checkbox" checked={on} onChange={() => toggle(d.date)} style={{ accentColor: T.primary }} />
+                          <span style={{ fontWeight: on ? 700 : 500 }}>{d.date}</span>
+                          <span style={{ ...sx.mutedS, marginInlineStart: "auto" }}>{countOf(d)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Layout + options */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={sx.mutedS}>Layout:</span>
+          <button type="button" style={chip(mode === "combined")} onClick={() => setMode("combined")}>
+            <FiList size={13} /> One sheet, DATE column
+          </button>
+          <button type="button" style={chip(mode === "sheets")} onClick={() => setMode("sheets")}>
+            <FiLayers size={13} /> One sheet per day
+          </button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={summary} onChange={() => setSummary((v) => !v)} style={{ accentColor: T.primary }} />
+            Add a Summary sheet (per-day totals)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={applyFilters} onChange={() => setApplyFilters((v) => !v)} style={{ accentColor: T.primary }} />
+            Apply the current filters
+          </label>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
+          <div style={sx.muted}>
+            {picked.size === 0
+              ? "No day selected yet."
+              : `${picked.size} day${picked.size > 1 ? "s" : ""} · ${totalRows} row${totalRows === 1 ? "" : "s"}${span.length > 1 ? ` · ${span[0]} → ${span[span.length - 1]}` : ""}`}
+          </div>
+          <div style={{ marginInlineStart: "auto", display: "flex", gap: 8 }}>
+            <IconBtn onClick={onClose}>Cancel</IconBtn>
+            <PrimaryBtn
+              icon={FiDownload}
+              disabled={picked.size === 0}
+              onClick={() => onExport([...picked], { mode, summary, applyFilters })}
+            >
+              Export {picked.size || ""} day{picked.size === 1 ? "" : "s"}
+            </PrimaryBtn>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 function ImageViewerModal({ open, images = [], title = "", onClose }) {
   const [preview, setPreview] = useState(images[0] || "");
   useEffect(() => { if (open) setPreview(images[0] || ""); }, [open, images]);
@@ -2845,6 +3036,7 @@ export default function BrowseReturns() {
 
   /* --- Modals --- */
   const [pwModal, setPwModal] = useState(false);
+  const [daysModal, setDaysModal] = useState(false);
   const [presetsModal, setPresetsModal] = useState(false);
   const [presets, setPresets] = useState(loadPresets());
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -4764,11 +4956,13 @@ export default function BrowseReturns() {
 
   const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "POS", "TRANSFER NO", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
 
-  function buildRowsForReport(rep, useFiltered = false) {
+  function buildRowsForReport(rep, useFiltered = false, applyAdvanced = true) {
     const changeMap = changeMapByDate.get(rep?.reportDate || "") || new Map();
     const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
     const actionTextSafe = (row) => isOther(row?.action) ? row?.customAction || "" : row?.action || "";
-    const items = useFiltered ? sortedRows : (rep.items || []).filter(rowPassesAdvanced);
+    const items = useFiltered
+      ? sortedRows
+      : (rep.items || []).filter((r) => (applyAdvanced ? rowPassesAdvanced(r) : true));
     return items.map((row, i) => {
       const pos = safeButchery(row);
       const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
@@ -4813,6 +5007,94 @@ export default function BrowseReturns() {
   };
 
   const handleExportXLSXAllLocked = () => setPwModal(true);
+
+  /* Every recorded day, newest first, with both counts the picker shows:
+     the raw item count and what survives the toolbar's filters. */
+  const exportDays = useMemo(() => {
+    return returnsData
+      .filter((r) => r.reportDate)
+      .map((rep) => {
+        const items = rep.items || [];
+        return { date: rep.reportDate, total: items.length, kept: items.filter(rowPassesAdvanced).length };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnsData, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+
+  const handleExportXLSXDays = async (dates, opts = {}) => {
+    const { mode = "combined", summary = true, applyFilters = true } = opts;
+    const wanted = new Set(dates);
+    const reps = returnsData
+      .filter((r) => r.reportDate && wanted.has(r.reportDate))
+      .sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
+    if (!reps.length) { toast("Pick at least one day first", "err"); return; }
+    const itemsOf = (rep) => (applyFilters ? (rep.items || []).filter(rowPassesAdvanced) : (rep.items || []));
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    try {
+      const XLSX = await ensureXLSX();
+      const wb = XLSX.utils.book_new();
+
+      if (summary) {
+        const head = ["DATE", "ITEMS", "KG", "PCS", "PLATE", "OTHER"];
+        const body = [];
+        let tI = 0, tK = 0, tP = 0, tL = 0, tO = 0;
+        for (const rep of reps) {
+          let kg = 0, pcs = 0, plate = 0, other = 0;
+          const items = itemsOf(rep);
+          for (const it of items) {
+            const q = Number(it.quantity || 0);
+            const k = qtyKind(it);
+            if (k === "kg") kg += q; else if (k === "pcs") pcs += q;
+            else if (k === "plate") plate += q; else other += q;
+          }
+          body.push([rep.reportDate, items.length, r2(kg), r2(pcs), r2(plate), r2(other)]);
+          tI += items.length; tK += kg; tP += pcs; tL += plate; tO += other;
+        }
+        body.push(["TOTAL", tI, r2(tK), r2(tP), r2(tL), r2(tO)]);
+        const data = [head, ...body];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        autosizeColumns(ws, data);
+        XLSX.utils.book_append_sheet(wb, ws, "Summary");
+      }
+
+      if (mode === "sheets") {
+        for (const rep of reps) {
+          const data = [PDF_XLSX_COLS, ...buildRowsForReport(rep, false, applyFilters)];
+          const ws = XLSX.utils.aoa_to_sheet(data);
+          autosizeColumns(ws, data);
+          XLSX.utils.book_append_sheet(wb, ws, (rep.reportDate || "DAY").slice(0, 31));
+        }
+      } else {
+        /* One long sheet: the day moves into a DATE column so the whole
+           selection pivots and filters as a single table. */
+        const head = ["SL.NO", "DATE", ...PDF_XLSX_COLS.slice(1)];
+        const rows = [];
+        for (const rep of reps) {
+          for (const r of buildRowsForReport(rep, false, applyFilters)) {
+            rows.push([rows.length + 1, rep.reportDate, ...r.slice(1)]);
+          }
+        }
+        const data = [head, ...rows];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        autosizeColumns(ws, data);
+        XLSX.utils.book_append_sheet(wb, ws, "All_Days");
+      }
+
+      if (!wb.SheetNames.length) { toast("Nothing to export for those days", "err"); return; }
+
+      const ds = reps.map((r) => r.reportDate).sort();
+      const name = ds.length === 1
+        ? `returns_${ds[0]}.xlsx`
+        : `returns_${ds[0]}_to_${ds[ds.length - 1]}_${ds.length}days.xlsx`;
+      XLSX.writeFile(wb, name);
+      setDaysModal(false);
+      toast(`${ds.length} day${ds.length > 1 ? "s" : ""} exported`, "ok");
+    } catch (e) {
+      console.error(e);
+      toast("Failed to export the selected days", "err");
+    }
+  };
+
 
   const handlePasswordSubmit = async (code, setErr) => {
     if (code !== "0585446473") { setErr("Incorrect password."); return; }
@@ -7262,6 +7544,7 @@ export default function BrowseReturns() {
                         <IconBtn icon={FiMail} onClick={() => setEmailOpen(true)}>Email</IconBtn>
                         <IconBtn icon={FiDownload} onClick={handleExportXLSXSelected}>XLSX</IconBtn>
                         <IconBtn icon={FiDownload} onClick={handleExportCSV}>CSV</IconBtn>
+                        <IconBtn icon={FiCalendar} onClick={() => setDaysModal(true)} title="Pick several days and export them into one workbook">XLSX (Days)</IconBtn>
                         <IconBtn icon={FiLock} onClick={handleExportXLSXAllLocked}>XLSX (ALL)</IconBtn>
                       </div>
                     </div>
@@ -7553,6 +7836,13 @@ export default function BrowseReturns() {
 
         {/* Modals */}
         <ImageViewerModal open={viewerOpen} images={viewerData.images} title={viewerData.title} onClose={() => setViewerOpen(false)} />
+        <DaysExportModal
+          open={daysModal}
+          onClose={() => setDaysModal(false)}
+          days={exportDays}
+          initialDate={selectedDate}
+          onExport={handleExportXLSXDays}
+        />
         <PasswordModal show={pwModal} title="Password required" onSubmit={handlePasswordSubmit} onCancel={() => setPwModal(false)} />
         <PresetsModal
           open={presetsModal}

@@ -92,6 +92,68 @@ function getOpenedAt(rec) {
   return rec?.payload?.public?.openedAt || "";
 }
 
+/* jsonb columns come back as arrays from pg, but as strings through some
+   proxies — accept both rather than render "[object Object]". */
+function asList(v) {
+  if (Array.isArray(v)) return v.filter(Boolean).map(String);
+  if (typeof v === "string" && v.trim()) {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [v];
+    } catch {
+      return [v];
+    }
+  }
+  return [];
+}
+
+const METHOD_LABEL = {
+  server:   "🚀 إرسال مباشر",
+  outlook:  "📧 Outlook",
+  whatsapp: "💬 واتساب",
+  copy:     "📋 نسخ",
+  gmail:    "✉️ Gmail",
+  mailto:   "📮 بريد",
+};
+
+/* The send history for one link, newest first.
+
+   The audit table is the real record — it also holds sends made by other
+   users — so it wins whenever it has rows for this token. The copy stamped on
+   the report is the fallback for a server that has not been redeployed with
+   the report_ref column yet. */
+function sendsFor(rec, emailLog) {
+  const token = rec?.payload?.public?.token || "";
+  const audit = emailLog?.[token];
+  if (Array.isArray(audit) && audit.length) {
+    return audit.map((r) => ({
+      at: r.sent_at,
+      subject: r.subject || "",
+      to: asList(r.to_emails),
+      cc: asList(r.cc_emails),
+      method: r.method || "",
+      by: r.sent_by || "",
+      cliche: r.report_title || "",
+      attachments: Number(r.attachment_count) || 0,
+      source: "audit",
+    }));
+  }
+  const local = Array.isArray(rec?.payload?.public?.emails) ? rec.payload.public.emails : [];
+  return [...local]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .map((e) => ({
+      at: e.at,
+      subject: e.subject || "",
+      to: asList(e.to),
+      cc: [],
+      method: e.method || "",
+      by: "",
+      cliche: e.cliche || "",
+      attachments: 0,
+      source: "record",
+    }));
+}
+
 /* ===== styles ===== */
 const S = {
   shell: {
@@ -172,6 +234,16 @@ const S = {
   activity: {
     fontSize: 11, color: "#64748b", fontWeight: 700, lineHeight: 1.5, marginTop: 4,
   },
+  logBox: {
+    marginTop: 6, padding: "8px 10px", borderRadius: 10,
+    background: "#f8fafc", border: "1px solid #dbeafe",
+    display: "grid", gap: 6, maxWidth: 460,
+  },
+  logRow: (latest) => ({
+    paddingInlineStart: 8,
+    borderInlineStart: `3px solid ${latest ? "#2563eb" : "#cbd5e1"}`,
+    lineHeight: 1.6,
+  }),
   /* Cliché chooser — the step between "📧 إيميل" and the composer. */
   overlay: {
     position: "fixed", inset: 0, background: "rgba(2,6,23,0.55)", zIndex: 9000,
@@ -212,6 +284,13 @@ export default function SupplierSentLinks() {
      `emailQueue` holds the records still to be mailed, so a bulk send walks
      them one at a time: each supplier gets their own recipient and their own
      PDF, never one mail with everybody in the To line. */
+  /* Per-supplier send log. One request covers the whole page: the audit table
+     is queried by report type and grouped by report_ref, which for this type
+     is the link's token. That beats a fetch per row, and unlike the copy kept
+     on the record it also shows sends made by other people. */
+  const [emailLog, setEmailLog] = useState({});   // { [token]: [row, ...] }
+  const [openLog, setOpenLog] = useState(() => new Set());
+
   const [clicheFor, setClicheFor] = useState(null); // { records: [], suggested: id }
   const [clichePick, setClichePick] = useState("");
   const [emailCliche, setEmailCliche] = useState("");
@@ -228,9 +307,40 @@ export default function SupplierSentLinks() {
     }
   }, []);
 
+  /* Read the audit trail for every supplier link in one request. Best-effort:
+     a server that predates the report_ref column answers without it, and the
+     rows kept on each record are used instead. */
+  async function loadEmailLog() {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/email-history?report_type=${encodeURIComponent(TYPE)}&limit=500`,
+        { cache: "no-store" }
+      );
+      const json = await res.json().catch(() => null);
+      const rows = Array.isArray(json?.logs) ? json.logs : [];
+      const byToken = {};
+      rows.forEach((r) => {
+        const ref = String(r?.report_ref || "").trim();
+        if (!ref) return;
+        (byToken[ref] = byToken[ref] || []).push(r);
+      });
+      Object.values(byToken).forEach((list) =>
+        list.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime())
+      );
+      setEmailLog(byToken);
+    } catch {
+      setEmailLog({});
+    }
+  }
+
   /* ===== Fetch ===== */
   async function load(silent = false) {
     if (!silent) setLoading(true);
+    /* Deliberately NOT on the silent focus refresh: that one fires every time
+       the tab is re-focused, and the send log changes only when someone here
+       sends something (which refreshes it explicitly). Re-pulling it on every
+       focus would be pure bandwidth. */
+    if (!silent) loadEmailLog();
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
@@ -391,6 +501,14 @@ export default function SupplierSentLinks() {
     });
   }
 
+  function toggleLog(id) {
+    setOpenLog((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   function selectAll() {
     setSelected(new Set(filtered.map((r) => r.id || r._id).filter(Boolean)));
   }
@@ -462,6 +580,7 @@ export default function SupplierSentLinks() {
       /* The mail is already gone; a failed stamp must not look like a failed send. */
     }
     load(true);
+    loadEmailLog();   // the one moment the send log actually changed
   }
 
   const emailPayload = useMemo(() => {
@@ -579,8 +698,9 @@ export default function SupplierSentLinks() {
     const disabledAt = p?.public?.disabledAt || "";
     const expiresAt = p?.public?.expiresAt || "";
     const supplierType = p?.fields?.supplier_type || p?.public?.supplierType || "";
-    const emailCount = Array.isArray(p?.public?.emails) ? p.public.emails.length : 0;
-    const lastEmailAt = p?.public?.lastEmailAt || "";
+    const sends = sendsFor(rec, emailLog);
+    const lastEmailAt = sends[0]?.at || p?.public?.lastEmailAt || "";
+    const logOpen = openLog.has(id);
     const isSel = selected.has(id);
 
     let statusPill;
@@ -615,11 +735,54 @@ export default function SupplierSentLinks() {
             {openedAt && <div>👁 فُتح: {fmtDateTime(openedAt)}</div>}
             {submittedAt && <div>✅ رد: {fmtDateTime(submittedAt)}</div>}
             {disabledAt && <div>🚫 عُطّل: {fmtDateTime(disabledAt)}</div>}
-            {lastEmailAt && (
-              <div>
-                📧 إيميل: {fmtDateTime(lastEmailAt)}
-                {emailCount > 1 ? ` (${emailCount} مرات)` : ""}
-              </div>
+            {/* Send history — collapsed to the last one, because that is the
+                question being asked most of the time ("did we chase them, and
+                when"). The full list is one click away. */}
+            {sends.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => id && toggleLog(id)}
+                  style={{
+                    background: "none", border: "none", padding: 0, margin: 0,
+                    cursor: "pointer", font: "inherit", color: "#1d4ed8",
+                    fontWeight: 800, textAlign: "start",
+                  }}
+                  title="عرض كل مرات الإرسال"
+                >
+                  📧 آخر إيميل: {fmtDateTime(lastEmailAt)}
+                  {sends.length > 1 ? ` — ${sends.length} مرات` : ""} {logOpen ? "▲" : "▼"}
+                </button>
+
+                {logOpen && (
+                  <div style={S.logBox}>
+                    {sends.map((s, si) => (
+                      <div key={si} style={S.logRow(si === 0)}>
+                        <div style={{ fontWeight: 950, color: "#0f172a" }}>
+                          {sends.length - si}. {fmtDateTime(s.at)}
+                          {s.method ? (
+                            <span style={{ marginInlineStart: 8, fontWeight: 800, color: "#475569" }}>
+                              {METHOD_LABEL[s.method] || s.method}
+                            </span>
+                          ) : null}
+                        </div>
+                        {s.cliche && <div>📝 {s.cliche}</div>}
+                        {s.to.length > 0 && <div>👤 {s.to.join("، ")}</div>}
+                        {s.cc.length > 0 && <div>📄 نسخة: {s.cc.join("، ")}</div>}
+                        {s.subject && <div style={{ color: "#475569" }}>✉️ {s.subject}</div>}
+                        {s.by && <div style={{ color: "#64748b" }}>🙋 أرسله: {s.by}</div>}
+                      </div>
+                    ))}
+                    {sends[0]?.source === "record" && (
+                      <div style={{ marginTop: 6, color: "#92400e", fontWeight: 800 }}>
+                        ⚠️ سجل محلي على السجل نفسه — السجل الكامل يظهر بعد رفع تحديث السيرفر.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: "#94a3b8" }}>📧 لم يُرسل إيميل بعد</div>
             )}
           </div>
         </td>

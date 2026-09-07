@@ -1612,20 +1612,35 @@ export default function SupplierEvaluationPublic() {
   /* ===== Autosave =====
      The old page kept everything in memory until Submit: one closed tab after
      forty minutes of typing and the whole thing was gone. */
-  const draftSnapshot = useMemo(
-    () => ({
+  const draftSnapshot = useMemo(() => {
+    /* `fields` and `answers` are initialised with every key of every supplier
+       type — around 140 empty strings and nulls that mean nothing. Sending
+       those on each autosave would trade real bandwidth for no information,
+       so the draft carries only what was actually filled in. Restore merges
+       it over the same initial state, so nothing is lost. */
+    const usedFields = {};
+    Object.entries(fields).forEach(([k, v]) => {
+      if (String(v ?? "").trim()) usedFields[k] = v;
+    });
+    const usedAnswers = {};
+    answeredKeys.forEach((k) => { usedAnswers[k] = answers[k]; });
+    const usedAttachments = {};
+    Object.entries(fieldAttachments || {}).forEach(([k, v]) => {
+      if (Array.isArray(v) && v.length) usedAttachments[k] = v;
+    });
+
+    return {
       v: 1,
-      fields,
-      answers,
+      fields: usedFields,
+      answers: usedAnswers,
       answeredKeys: [...answeredKeys],
-      fieldAttachments,
+      fieldAttachments: usedAttachments,
       attachments,
       productsList,
       declaration,
       step,
-    }),
-    [fields, answers, answeredKeys, fieldAttachments, attachments, productsList, declaration, step]
-  );
+    };
+  }, [fields, answers, answeredKeys, fieldAttachments, attachments, productsList, declaration, step]);
 
   /* An untouched form is not work worth restoring — saving it would make the
      next visit announce "continue where you stopped" over an empty draft. */
@@ -1672,9 +1687,11 @@ export default function SupplierEvaluationPublic() {
   useEffect(() => {
     if (!hydratedRef.current || done) return;
     const id = setTimeout(() => {
-      /* Local on every pause, server at most every 20s — a public endpoint
-         should not take a write per keystroke. */
-      saveDraft(Date.now() - lastServerSaveRef.current > 20000);
+      /* Local on every pause; the server at most once a minute. Every server
+         write keeps Neon awake and bills compute, and the only thing a longer
+         interval risks is the last minute of work on a *different device* —
+         localStorage has it either way, and leaving the page flushes below. */
+      saveDraft(Date.now() - lastServerSaveRef.current > 60000);
     }, 900);
     return () => clearTimeout(id);
   }, [saveDraft, done]);
