@@ -52,6 +52,12 @@ const LAST_EMP_KEY = "butcher_last_emp";
 /** مفتاح «وزن المادة الخام» بلوحة الأرقام. */
 const RAW_KEY = "__raw__";       // cache only — not a store
 const LAST_BRANCH_KEY = "butcher_last_branch"; // cache only — not a store
+/** مفتاح خانة «عدد القطع» — لتلوين السطر اللي واقف عنده الجزار. */
+const PIECE_KEY = "__pieces__";
+/** تفضيل شكل شاشة الأوزان: auto | on | off — كاش جهاز فقط. */
+const COMPACT_KEY = "butcher_compact_view";    // cache only — not a store
+/** تحت هالعرض الشاشة موبايل → الوضع المضغوط بينفتح لحاله. */
+const NARROW_PX = 820;
 
 /* أحجام الخطوط — تتغلّب على `#root *` بفضل الكلاس (نفس التخصيص + ترتيب لاحق) */
 const CSS = `
@@ -89,13 +95,45 @@ const CSS = `
 @media (max-width: 520px) {
   #root .bt-toggle { display: none; }   /* زر اللغة يضيّق الترويسة على الجوال */
 }
+/* ═══ الوضع المضغوط (شاشة الأوزان على الموبايل) ═══
+   كروت صغيرة بثلاثة أعمدة حتى تدخل كل المنتجات بشاشة وحدة. هالقواعد
+   **بعد** الـmedia queries عن قصد: نفس التخصيص بالضبط (#root + كلاس)، فاللي
+   بيجي أخيراً بيربح ولا بتدهسها قاعدة #root .bt * تبع الموبايل. */
+/* ليستة المنتجات المضغوطة: سطر تحت سطر على الجوال، وعمودين على شاشة أوسع
+   (تابلت بدّل يدوياً) — نفس السطر بيتمدّد بدل ما يضل نصّ الشاشة فاضي. */
+#root .bt-gridsm { display: grid; gap: 6px; grid-template-columns: 1fr; }
+@media (min-width: 821px) {
+  #root .bt-gridsm { gap: 10px; grid-template-columns: 1fr 1fr; }
+}
+/* صورة المادة الخام كخلفية خفيفة للشاشة — الجزار بيعرف من أول نظرة شو
+   عم يقطّع حتى وهو نازل بالليستة. طبقة ثابتة تحت المحتوى، بلا لمس. */
+/* الخلفية بشدّتها الكاملة ٩٠٪ — بلا غسلة ولا تخفيف تشبّع، الصورة بتبيّن
+   غامقة وواضحة متل ما هي. اللي بيحمي القراءة هو هالة الكتابة تحت (أقوى
+   طبقات) — وإذا صورة معيّنة طلعت غامقة كتير، بدّلها من صفحة التعريفات. */
+#root .bt-wm::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: var(--bt-wm); background-repeat: no-repeat;
+  background-position: center 42%; background-size: min(88vw, 460px);
+  opacity: .90;
+}
+#root .bt-wm > div { position: relative; z-index: 1; }
+#root .bt-cname { font-size: 16px !important; line-height: 1.25 !important; }
+#root .bt-wm .bt-cname, #root .bt-wm .bt-cbar, #root .bt-wm .bt-lbl,
+#root .bt-wm .bt-name, #root .bt-wm .bt-q, #root .bt-wm .bt-chip,
+#root .bt-wm .bt-sum, #root .bt-wm .bt-title, #root .bt-wm .bt-emp {
+  text-shadow: 0 1px 2px #fff, 0 -1px 2px #fff, 1px 0 2px #fff, -1px 0 2px #fff,
+               0 0 9px rgba(255,255,255,.98), 0 0 16px rgba(255,255,255,.9),
+               0 0 24px rgba(255,255,255,.7);
+}
+#root .bt-cnum  { font-size: 21px !important; }
+#root .bt-cbar  { font-size: 15px !important; }
 /* رصيف الحفظ اللاصق: globals.css حاطط overflow-x:hidden على html/body/#root،
    و«hidden» بيحوّل المحور الثاني لـ auto فبيصير الصندوق حاوية تمرير — وهذا
-   بيعطّل position:sticky لكل ما بداخله. «clip» بيقصّ الزيادة الأفقية نفسها
-   بلا ما يعمل حاوية تمرير، فبيرجع اللصق يشتغل. مقيَّد بصفحة الجزار وحدها
-   عبر :has(.bt) — وإن كان المتصفّح قديماً بتسقط القاعدة ويرجع الرصيف
-   عنصراً عادياً بلا أي كسر. */
-html:has(.bt), body:has(.bt), #root:has(.bt) { overflow-x: clip; }
+   بيعطّل position:sticky لكل ما بداخله. منرجّعه visible لهالصفحة وحدها.
+   ملاحظة: «clip» هون كان غلط — على html بينتقل للـviewport وبيقفل التمرير
+   العمودي كلياً بـChromium، وصفحة ما بتمرق يعني خانة تحت الكيبورد ما في
+   شي بيطلّعها. القصّ الأفقي محلّه .bt نفسه (عنصر عادي، القصّ فيه سليم). */
+html:has(.bt), body:has(.bt), #root:has(.bt) { overflow-x: visible; }
 
 /* حركات خفيفة */
 #root .bt-press { transition: transform .12s ease, box-shadow .12s ease, border-color .15s ease; }
@@ -210,6 +248,85 @@ export default function ButcherLog() {
   const [bomSearch, setBomSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  /* 📱 الوضع المضغوط — شاشة الأوزان بس. كروت صغيرة بثلاثة أعمدة، كرت المادة
+     الخام بينطوي بسطر، ولوحة الأرقام بتصير شريط واطي — الهدف إن الجزار يشوف
+     كل منتجات الوصفة بشاشة الموبايل بلا ما ينزل. الكشك/التابلت بيضل بالكروت
+     الكبيرة (الصورة كبيرة = الجزار اللي ما بيقرا بيتعرّف على الصنف). */
+  const [compactPref, setCompactPref] = useState(() => {
+    try { return localStorage.getItem(COMPACT_KEY) || "auto"; } catch { return "auto"; }
+  });
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= NARROW_PX
+  );
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth <= NARROW_PX);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const compact = compactPref === "on" ? true : compactPref === "off" ? false : narrow;
+  const setCompact = (on) => {
+    setCompactPref(on ? "on" : "off");
+    try { localStorage.setItem(COMPACT_KEY, on ? "on" : "off"); } catch { /* ignore */ }
+  };
+  // كرت المادة الخام: مفتوح بالبداية، وبينطوي لسطر واحد بالوضع المضغوط
+  const [rawOpen, setRawOpen] = useState(true);
+  /* ارتفاع كيبورد الجهاز — 0 يعني مسكّر. أقل من ١٢٠ بكسل بيكون شريط
+     متصفّح لا كيبورد، فما منحسبه حتى ما نزقّ الصفحة بلا سبب. */
+  const [kbH, setKbH] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    const read = () => {
+      const gap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbH(gap > 120 ? Math.round(gap) : 0);
+    };
+    vv.addEventListener("resize", read);
+    vv.addEventListener("scroll", read);
+    read();
+    return () => {
+      vv.removeEventListener("resize", read);
+      vv.removeEventListener("scroll", read);
+    };
+  }, []);
+
+  /* بعد ما يفتح الكيبورد: إذا الخانة صارت تحته منزقّ الصفحة لحتى ترجع
+     فوقه بهامش مريح. مؤجّلة ٣٢٠ms لأن الكيبورد بياخد وقت يطلع، وقبل ما
+     يخلص ما بتكون قياساته صحيحة. */
+  const keepAboveKeyboard = useCallback((el) => {
+    if (!el) return;
+    const settle = () => {
+      const vv = window.visualViewport;
+      const limit = (vv ? vv.height : window.innerHeight) - 14;
+      const box = el.getBoundingClientRect();
+      const under = box.bottom - limit;
+      if (under > 0) window.scrollBy({ top: under + 12, behavior: "smooth" });
+    };
+    /* الوسط: بيشتغل بأي متصفّح ومع أي حاوية تمرير، وبيوقّع الخانة بنص
+       الشاشة — يعني فوق الكيبورد بالأغلب. بعدها منعاير لو ضلّ ناقص. */
+    try {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch { el.scrollIntoView(); }
+    /* مرّتين: وحدة بعد ما يستقرّ التمرير، وتانية بعد ما يخلص الكيبورد
+       يطلع (بياخد وقته، وقبلها قياساته كذّابة). */
+    window.setTimeout(settle, 360);
+    window.setTimeout(settle, 700);
+  }, []);
+
+  /* الخانة اللي إيد الجزار واقفة عليها هلأ — بتتلوّن لحتى يخلّص منها.
+     مربوطة بالـfocus الحقيقي لا بـactiveId: activeId بيضل معلّق بعد ما
+     يترك الخانة (لوحة الأرقام بتعتمد عليه)، وهاي لازم تطفى لحظة ما يطلع. */
+  const [focusId, setFocusId] = useState("");
+  /* التنبيهات الثابتة (خام ناقص / عدد قطع / هدر / تطابق تام) كانت تطلع من
+     أول ما تفتح الشاشة — يعني الجزار يشوف «أخطاء» قبل ما يبلّش. صارت
+     مخفيّة، وما بتبيّن إلا لما يضغط «حفظ» وفي شي فعلاً ناقص. */
+  const [showIssues, setShowIssues] = useState(false);
+  /* رقم فوق الوزن المتاح: ما بينكتب ولا رقم — الخانة بتحمرّ ثانية وبترجع.
+     n طابع وقت حتى تتكرّر الرسمة لو انرفض نفس الرقم مرّتين ورا بعض (بلاه
+     الحالة ما بتتغيّر، فما في رسم جديد، والحرف المكتوب بيضل ظاهر بالـDOM). */
+  const [capHit, setCapHit] = useState({ id: "", n: 0 });
+  const capTimer = useRef(null);
+  useEffect(() => () => { if (capTimer.current) clearTimeout(capTimer.current); }, []);
 
   const [saved, setSaved] = useState(null);     // ملخّص آخر حفظ
   const [cutDate, setCutDate] = useState(todayStr());  // تاريخ التقطيع (يختاره الجزار)
@@ -592,6 +709,16 @@ export default function ButcherLog() {
   /* المسار لسا مبهم: أوزان مُدخلة بس ما انحصر المسار بواحد (مشتركة فقط) */
   const pathwayPending = isMultiPath && filled.length > 0 && !determined;
 
+  /* خانات المادة الخام كلها متعبّاية؟ (الوزن + عدد القطع + تاريخ الانتهاء
+     إن طلبتهنّ الوصفة) — بلاها ما منطوي الكرت ولا مرّة. */
+  const rawDone = !rawMissing && !pieceMissing && !expiryMissing;
+  /* الطيّ بإيد الجزار وبس: كان الكرت بينطوي لحاله أول ما يكتمل الخام وينتقل
+     لمنتج — بس الأرقام كانت بتختفي من قدّامه وهو لسا بدّه يراجعها. بيضل
+     مفتوحاً لحتى يضغط «طيّ»، وبيرجع يفتح لحاله بس إذا نقص شي إلزامي. */
+  useEffect(() => {
+    if (!rawDone || step !== "cuts") setRawOpen(true);
+  }, [rawDone, step]);
+
   const canSave =
     filled.length > 0 && usedKg > 0 && !rawMissing && !overBlocks && !wasteMissing
     && !balanceOff && !pieceMissing && !expiryMissing && !pathwayPending;
@@ -692,8 +819,34 @@ export default function ButcherLog() {
     setActiveId(empty || after[0] || "");
   };
 
+  /* أقصى وزن مسموح بخانة: الباقي من الخام + اللي بالخانة نفسها (لأنه
+     جزء من المحسوب أصلاً). بلا وزن خام ما في سقف — الجزار لسا ما بلّش. */
+  const capFor = useCallback((cutId) => {
+    if (!(carcassKg > 0)) return Infinity;
+    const mine = num(values[cutId]?.w);
+    return Math.max(0, roundKg(carcassKg - usedKg + mine, RULES.roundTo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carcassKg, usedKg, values, RULES.roundTo]);
+
+  /* خانة فاضية والباقي صفر → مقفولة: ما في وزن يتوزّع عليها أصلاً. */
+  const capLocked = useCallback(
+    (cutId) => carcassKg > 0 && !(num(values[cutId]?.w) > 0) && capFor(cutId) <= 0,
+    [carcassKg, values, capFor]
+  );
+
   const setVal = (cutId, key, v) => {
     if (error) setError("");   // رسالة فشل قديمة ما بتضل معلّقة بعد التعديل
+    if (key === "w") {
+      const cap = capFor(cutId);
+      if (Number.isFinite(cap) && num(v) > cap) {
+        /* بلا setValues: الرقم ما بينكتب. تغيير capHit بيعمل رسمة جديدة،
+           وهي اللي بترجّع الخانة لقيمتها القديمة بالـDOM كمان. */
+        setCapHit({ id: cutId, n: Date.now() });
+        if (capTimer.current) clearTimeout(capTimer.current);
+        capTimer.current = setTimeout(() => setCapHit({ id: "", n: 0 }), 900);
+        return;
+      }
+    }
     setValues((prev) => ({ ...prev, [cutId]: { ...prev[cutId], [key]: v } }));
   };
 
@@ -708,8 +861,68 @@ export default function ButcherLog() {
   };
 
   /* زر الحفظ ما بيحفظ فوراً — بيسأل عن الوقت المستغرق أولاً */
+  /* شو ناقص بالضبط ووين محلّه. الترتيب = ترتيب الشاشة، فالجزار بينساق
+     من فوق لتحت. sel فاضي يعني الغلط مش بخانة وحدة (مجموع/تطابق) فمنكتفي
+     بالرسالة. */
+  const saveProblem = () => {
+    const M = (en, ar) => t({ en, ar });
+    if (rawMissing) {
+      return { sel: "[data-bt-need='raw']",
+        msg: M("Enter the raw material weight first — every percentage is based on it.",
+               "أدخل وزن المادة الخام أولاً — كل النسب مبنية عليه.") };
+    }
+    if (pieceMissing) {
+      return { sel: "[data-bt-need='pieces']",
+        msg: M("Number of pieces is required for this recipe.",
+               "إدخال عدد القطع إلزامي لهالوصفة.") };
+    }
+    if (expiryMissing) {
+      return { sel: "[data-bt-need='expiry']",
+        msg: M("Enter the raw material expiry date from its label.",
+               "أدخل تاريخ انتهاء المادة الخام من الملصق.") };
+    }
+    if (!(filled.length > 0) || !(usedKg > 0)) {
+      return { sel: "[data-bt-w]:not([data-bt-need])",
+        msg: M("Weigh at least one product before saving.",
+               "وزّن منتجاً واحداً على الأقل قبل الحفظ.") };
+    }
+    if (wasteMissing) {
+      return { sel: "[data-bt-waste]",
+        msg: M("Waste weight is required.", "إدخال وزن الهدر إلزامي.") };
+    }
+    if (pathwayPending) {
+      return { sel: "", msg: M("Weigh a product specific to one pathway to lock the routing.",
+                               "وزّن منتجاً خاصاً بمسار واحد لتحديد المسار.") };
+    }
+    if (overBlocks) {
+      return { sel: "", msg: isAr
+        ? "المجموع أكبر من وزن المادة الخام بـ " + overKg.toFixed(2) + " كجم — صحّح الأوزان."
+        : "Total exceeds the raw material weight by " + overKg.toFixed(2) + " kg — fix the weights." };
+    }
+    if (balanceOff) {
+      return { sel: "", msg: isAr
+        ? "هالوصفة بدها تطابق تام: ضلّ " + Math.abs(balanceDiff).toFixed(2) + " كجم."
+        : "This recipe needs an exact balance: " + Math.abs(balanceDiff).toFixed(2) + " kg to go." };
+    }
+    return null;
+  };
+
+  /* الزرّ بيضل فعّال دايماً: إذا في نقص بيوصّل الجزار لمحلّه ويشرحه بدل
+     ما يقعد رمادياً وهو ما بيعرف ليش. الحفظ نفسه محميّ بـcanSave. */
   const requestSave = () => {
-    if (!canSave || saving) return;
+    if (saving) return;
+    const problem = saveProblem();
+    if (problem) {
+      setShowIssues(true);
+      setError(problem.msg);
+      const el = problem.sel ? document.querySelector(problem.sel) : null;
+      if (el) {
+        keepAboveKeyboard(el);
+        try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+      }
+      return;
+    }
+    setShowIssues(false);
     setError("");
     setAskTime(true);
   };
@@ -868,8 +1081,36 @@ export default function ButcherLog() {
 
   /* ------- العرض ------- */
 
+  /* خلفية الشاشة = صورة آخر اختيار. الرسمة المدمجة SVG ما بتنفع كـ
+     background-image، فإذا الاختيار بلا صورة مرفوعة منرجع للي قبله. */
+  const pickedImg = (dim, id) => {
+    if (!id || id === UNCAT) return "";
+    const spec = BOM_FACETS[dim];
+    const def = (mrpCfg?.[spec.key] || []).find((x) => x.id === id);
+    return def?.imageUrl || "";
+  };
+  /* بلا useMemo عن قصد: منطق ثلاث مقارنات، والمكان هون بعد بوابة الصلاحية
+     (return مبكّر) فأي hook هون بيكسر ترتيب الـhooks. */
+  const wmUrl = step === "cuts"
+    ? ((inputItem && imageOf(inputItem)) || "")
+    /* من الأخصّ للأعمّ: الفئة ← المنشأ ← النوع */
+    : (pickedImg("category", bomCat)
+      || pickedImg("origin", bomOrigin)
+      || pickedImg("kind", bomKind)
+      || "");
+
   return (
-    <div dir={dir} className="bt" style={S.page}>
+    <div
+      dir={dir}
+      className={wmUrl ? "bt bt-wm" : "bt"}
+      style={{
+        ...S.page,
+        ...(wmUrl ? { "--bt-wm": `url("${wmUrl}")` } : null),
+        /* مساحة تحت بقدّ الكيبورد: بلاها آخر سطر بالشبكة ما إله وين ينزقّ
+           فبيضل مخبّى تحته مهما عملنا scroll. */
+        ...(kbH > 0 ? { paddingBottom: kbH + 40 } : null),
+      }}
+    >
       <style>{CSS}</style>
       <div style={{ ...S.wrap, ...(step === "cuts" ? S.wrapWide : null) }}>
         <div style={S.header}>
@@ -916,7 +1157,7 @@ export default function ButcherLog() {
           </div>
         </div>
 
-        {step !== "emp" && step !== "done" && (
+        {step !== "emp" && step !== "done" && !(compact && step === "cuts") && (
           <StepBar
             step={step}
             hasKind={hasKindStep} hasOrigin={hasOriginStep} hasCat={hasCatStep}
@@ -938,8 +1179,10 @@ export default function ButcherLog() {
           </div>
         )}
 
-        {/* ── خطة اليوم: هدف الملحمة والتقدّم عليه ── */}
-        {step !== "emp" && dayPlan.plan && dayPlan.progress && (
+        {/* ── خطة اليوم: هدف الملحمة والتقدّم عليه ──
+             بشاشة الأوزان المضغوطة بتختفي: كل بكسل فوق الشبكة بيدفع منتجاً
+             تحت حافة الشاشة، والخطة موجودة بكل الشاشات اللي قبلها. */}
+        {step !== "emp" && !(compact && step === "cuts") && dayPlan.plan && dayPlan.progress && (
           <DayPlanBar
             plan={dayPlan.plan}
             progress={dayPlan.progress}
@@ -949,14 +1192,14 @@ export default function ButcherLog() {
           />
         )}
 
-        {step !== "emp" && step !== "done" && totals && (
+        {step !== "emp" && step !== "done" && !(compact && step === "cuts") && totals && (
           <div className="bt-chip" style={S.totals}>
             {t({ en: "Today", ar: "اليوم" })}: {totals.count}{" "}
             {t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
           </div>
         )}
 
-        {step !== "emp" && step !== "done" && (
+        {step !== "emp" && step !== "done" && !(compact && step === "cuts") && (
           <div style={S.crumbs}>
             {locked && (
               <span className="bt-chip" style={S.crumb}>
@@ -1171,6 +1414,30 @@ export default function ButcherLog() {
             <div className="bt-q" style={S.q}>
               {t({ en: "Choose a cutting recipe", ar: "اختر وصفة التقطيع" })}
             </div>
+
+            {/* تاريخ التقطيع — محلّه هون، بصفحة اختيار المادة الخام: بينتحدّد
+                مرّة قبل ما يبلّش، وبتضل شاشة الأوزان للأوزان وبس. */}
+            {compact && (
+              <label style={{ ...S.rawField, ...S.rawFieldSm, marginBottom: 10 }}>
+                <span style={{ ...S.rowArt, ...S.rowArtIcon }}>📅</span>
+                <span className="bt-cname" style={{ ...S.rowBody, ...S.rowName }}>
+                  {t({ en: "Cutting date", ar: "تاريخ التقطيع" })}
+                </span>
+                <input
+                  className="bt-cnum"
+                  type="date"
+                  value={cutDate}
+                  max={todayStr()}
+                  disabled={RULES.allowBackdate !== true}
+                  onChange={(e) => setCutDate(e.target.value)}
+                  style={{
+                    ...S.input,
+                    ...S.rowInputWide,
+                    ...(RULES.allowBackdate !== true ? { background: "#f1f6fb", color: "#6b8299" } : null),
+                  }}
+                />
+              </label>
+            )}
             {!shownBoms.length && (
               <div className="bt-sum" style={S.emptyBox}>
                 {t({
@@ -1211,9 +1478,6 @@ export default function ButcherLog() {
                           فصورته هي أوضح تعريف للوصفة عند جزار ما بيقرأ. */}
                       {inp?.imageUrl && <img src={inp.imageUrl} alt="" style={S.tileImg} />}
                       <span className="bt-name" style={S.name}>{itemName(inp, isAr)}</span>
-                      {altNameOf(inp, isAr) && (
-                        <span className="bt-lbl" style={S.altName}>{altNameOf(inp, isAr)}</span>
-                      )}
                       <span className="bt-lbl" style={S.code}>{b.ref}</span>
                       {(tags.origin || tags.kind) && (
                         <span className="bt-lbl" style={S.altName}>
@@ -1236,72 +1500,161 @@ export default function ButcherLog() {
         {/* 3 — الأوزان: المادة الخام + النواتج بنفس الصفحة */}
         {step === "cuts" && (
           <>
-            {/* ── وزن المادة الخام (يغذّي النسب المئوية للنواتج) ── */}
-            <div style={S.rawCard}>
-              <div style={S.rawHead}>
-                <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                  {t({ en: "Raw material", ar: "المادة الخام" })}
+            {/* ── المادة الخام مطويّة بسطر (الوضع المضغوط، بعد ما تكتمل) ──
+                 كرت الخام لحاله بياكل ثلث شاشة الموبايل، وبعد ما ينكتب الوزن
+                 ما بيتغيّر — فبيصير سطر معلومات، وبفتحه زر ✎ لأي تصحيح. */}
+            {compact && !rawOpen ? (
+              <div className="bt-cbar" style={S.rawLine}>
+                <span style={{ ...S.rowArt, ...S.rawLineArt }}>
+                  {inputItem && hasArt(inputItem) ? <ItemArt item={inputItem} /> : null}
                 </span>
                 {inputItem && (
-                  <>
-                    <span className="bt-name" style={S.name}>{itemName(inputItem, isAr)}</span>
-                    {altNameOf(inputItem, isAr) && (
-                      <span className="bt-lbl" style={S.altName}>{altNameOf(inputItem, isAr)}</span>
-                    )}
-                  </>
+                  <span style={S.rawLineName}>
+                    {nameOf(inputItem, isAr) || itemName(inputItem, isAr)}
+                  </span>
+                )}
+                <span style={{ whiteSpace: "nowrap" }}>
+                  <b>{carcassKg.toFixed(2)}</b> {KG}
+                </span>
+                {needPieces && (
+                  <span style={{ whiteSpace: "nowrap" }}>
+                    · {partial
+                      ? t({ en: "part", ar: "جزء" })
+                      : `${pieceCountNum} ${t({ en: "pcs", ar: "قطعة" })}`}
+                  </span>
+                )}
+                {needExpiry && rawExpiry && (
+                  <span style={{ whiteSpace: "nowrap", ...(expiryPassed ? S.overText : null) }}>
+                    · ⌛ {rawExpiry}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="bt-small"
+                  style={{ ...S.chg, marginInlineStart: "auto" }}
+                  onClick={() => { setRawOpen(true); setActiveId(RAW_KEY); }}
+                >
+                  ✎ {t({ en: "Edit", ar: "تعديل" })}
+                </button>
+              </div>
+            ) : (
+            /* ── وزن المادة الخام (يغذّي النسب المئوية للنواتج) ── */
+            <div style={{ ...S.rawCard, ...(compact ? S.rawCardSm : null) }}>
+              <div style={{ ...S.rawHead, ...(compact ? S.rawHeadSm : null) }}>
+                <span className={compact ? "bt-cbar" : "bt-lbl"} style={{ color: "#6b8299", fontWeight: 800 }}>
+                  {t({ en: "Raw material", ar: "المادة الخام" })}
+                </span>
+                {inputItem && !compact && (
+                  <span className="bt-name" style={S.name}>{itemName(inputItem, isAr)}</span>
+                )}
+                {compact && rawDone && (
+                  <button
+                    type="button"
+                    className="bt-small"
+                    style={S.chg}
+                    onClick={() => { setRawOpen(false); if (activeId === RAW_KEY) setActiveId(""); }}
+                  >
+                    ▲ {t({ en: "Collapse", ar: "طيّ" })}
+                  </button>
                 )}
               </div>
-              <label style={S.rawField}>
-                <span className="bt-lbl" style={S.lbl}>
-                  {t({ en: "Weight before cutting (kg)", ar: "الوزن قبل التقطيع (كجم)" })}
+              {/* سطر المادة الخام: ضِعف ارتفاع سطر المنتج — هو أساس كل النسب
+                  وأول شي بينوزن، فلازم يبيّن إنه مش سطراً من الليستة. */}
+              <label style={{
+                ...S.rawField,
+                ...(compact ? { ...S.rawFieldSm, ...S.rawMainSm } : null),
+                ...(compact && focusId === RAW_KEY ? { ...S.rowFocus, ...S.rowLift } : null),
+              }}>
+                {compact && (
+                  <span style={{ ...S.rowArt, ...S.rawArtBig }}>
+                    {inputItem && hasArt(inputItem) ? <ItemArt item={inputItem} /> : null}
+                  </span>
+                )}
+                <span
+                  className={compact ? "bt-cname" : "bt-lbl"}
+                  style={compact ? { ...S.rowBody, ...S.rowName, ...S.rawNameSm } : S.lbl}
+                >
+                  {compact && inputItem
+                    ? (nameOf(inputItem, isAr) || itemName(inputItem, isAr))
+                    : t({ en: "Weight before cutting (kg)", ar: "الوزن قبل التقطيع (كجم)" })}
                 </span>
                 <input
-                  className="bt-num"
+                  className={compact ? "bt-cnum" : "bt-num"}
                   value={carcass}
                   onChange={(e) => setCarcass(cleanDecimal(e.target.value))}
-                  onFocus={() => setActiveId(RAW_KEY)}
+                  onFocus={(e) => {
+                    setActiveId(RAW_KEY); setFocusId(RAW_KEY);
+                    keepAboveKeyboard(e.currentTarget);
+                  }}
+                  onBlur={() => setFocusId("")}
                   onKeyDown={focusNextWeight}
                   data-bt-w=""
+                  data-bt-need="raw"
                   inputMode="decimal"
                   autoFocus
                   placeholder="0.00"
                   style={{
                     ...S.input,
+                    ...(compact ? { ...S.rowInput, ...S.rawInputBig } : null),
                     ...(rawMissing && filled.length > 0 ? S.inputBad : null),
                     ...(activeId === RAW_KEY ? S.inputActive : null),
+                    ...(focusId === RAW_KEY ? S.inputFocus : null),
                   }}
                 />
-                <span className="bt-lbl" style={S.hintSm}>
-                  {t({
-                    en: "Two decimals max (e.g. 10.25)",
-                    ar: "خانتان عشريتان كحدّ أقصى (مثال: ١٠٫٢٥)",
-                  })}
-                </span>
+                {!compact && (
+                  <span className="bt-lbl" style={S.hintSm}>
+                    {t({
+                      en: "Two decimals max (e.g. 10.25)",
+                      ar: "خانتان عشريتان كحدّ أقصى (مثال: ١٠٫٢٥)",
+                    })}
+                  </span>
+                )}
               </label>
               {needPieces && (
-                <div style={S.rawField}>
-                  <span className="bt-lbl" style={S.lbl}>
-                    {t({ en: "Number of pieces", ar: "عدد القطع" })}
+                <div style={{
+                  ...S.rawField,
+                  ...(compact ? { ...S.rawFieldSm, ...S.pieceRowSm } : null),
+                  ...(compact && focusId === PIECE_KEY ? { ...S.rowFocus, ...S.rowLift } : null),
+                }}>
+                  {compact && <span style={{ ...S.rowArt, ...S.rowArtIcon }}>🔢</span>}
+                  <span
+                    className={compact ? "bt-cname" : "bt-lbl"}
+                    style={compact ? { ...S.rowBody, ...S.rowName } : S.lbl}
+                  >
+                    {compact
+                      ? t({ en: "Pcs", ar: "العدد" })
+                      : t({ en: "Number of pieces", ar: "عدد القطع" })}
                   </span>
                   <input
-                    className="bt-num"
+                    className={compact ? "bt-cnum" : "bt-num"}
                     value={partial ? "" : pieceCount}
                     onChange={(e) => setPieceCount(cleanInt(e.target.value))}
+                    onFocus={(e) => { setFocusId(PIECE_KEY); keepAboveKeyboard(e.currentTarget); }}
+                    onBlur={() => setFocusId("")}
                     onKeyDown={focusNextWeight}
                     data-bt-w=""
+                    data-bt-need="pieces"
                     inputMode="numeric"
                     disabled={partial}
                     placeholder={partial ? "—" : "0"}
                     style={{
                       ...S.input,
+                      ...(compact ? S.rowInput : null),
                       ...(pieceMissing ? S.inputBad : null),
                       ...(partial ? S.inputOff : null),
+                      ...(focusId === PIECE_KEY ? S.inputFocus : null),
                     }}
                   />
 
-                  {/* تجاوز الإلزامية: الداخل جزء من قطعة، فما في عدد قطع */}
+                  {/* تجاوز الإلزامية: الداخل جزء من قطعة، فما في عدد قطع.
+                      بالوضع المضغوط بيصير شارة صغيرة جوّا نفس السطر («جزء»)
+                      بدل زرّ بعرض الكرت مع سطر شرح — الشرح صار بالـtitle. */}
                   <button
                     type="button"
+                    title={t({
+                      en: "Part of a carcass/cut — no piece count to record.",
+                      ar: "جزء من ذبيحة أو قطعة — ما في عدد قطع يتسجّل.",
+                    })}
                     onClick={() => {
                       setPartialPiece((v) => {
                         if (!v) setPieceCount("");     // تفعيل = ما في عدد
@@ -1309,55 +1662,79 @@ export default function ButcherLog() {
                       });
                       if (error) setError("");
                     }}
-                    style={{ ...S.partialBtn, ...(partial ? S.partialBtnOn : null) }}
+                    className={compact ? "bt-cbar" : undefined}
+                    style={{
+                      ...S.partialBtn,
+                      ...(compact ? S.partialBtnSm : null),
+                      ...(partial ? S.partialBtnOn : null),
+                    }}
                   >
-                    <span style={{ ...S.partialBox, ...(partial ? S.partialBoxOn : null) }}>
+                    <span style={{
+                      ...S.partialBox,
+                      ...(compact ? S.partialBoxSm : null),
+                      ...(partial ? S.partialBoxOn : null),
+                    }}>
                       {partial ? "✓" : ""}
                     </span>
                     <span style={{ textAlign: "start" }}>
-                      {t({ en: "Not a whole piece", ar: "ليست قطعة كاملة" })}
-                      <span className="bt-lbl" style={S.partialHint}>
-                        {t({
-                          en: "Part of a carcass/cut — no piece count to record.",
-                          ar: "جزء من ذبيحة أو قطعة — ما في عدد قطع يتسجّل.",
-                        })}
-                      </span>
+                      {compact
+                        ? t({ en: "Part", ar: "جزء" })
+                        : t({ en: "Not a whole piece", ar: "ليست قطعة كاملة" })}
+                      {!compact && (
+                        <span className="bt-lbl" style={S.partialHint}>
+                          {t({
+                            en: "Part of a carcass/cut — no piece count to record.",
+                            ar: "جزء من ذبيحة أو قطعة — ما في عدد قطع يتسجّل.",
+                          })}
+                        </span>
+                      )}
                     </span>
                   </button>
                 </div>
               )}
 
               {needExpiry && (
-                <label style={S.rawField}>
-                  <span className="bt-lbl" style={S.lbl}>
-                    📅 {t({ en: "Raw material expiry date", ar: "تاريخ انتهاء المادة الخام" })}
+                <label style={{ ...S.rawField, ...(compact ? S.rawFieldSm : null) }}>
+                  {compact && <span style={{ ...S.rowArt, ...S.rowArtIcon }}>📅</span>}
+                  <span
+                    className={compact ? "bt-cname" : "bt-lbl"}
+                    style={compact ? { ...S.rowBody, ...S.rowName } : S.lbl}
+                  >
+                    {compact ? "" : "📅 "}{t({ en: "Raw material expiry date", ar: "تاريخ انتهاء المادة الخام" })}
                   </span>
                   <input
-                    className="bt-cutnum"
+                    className={compact ? "bt-cnum" : "bt-cutnum"}
                     type="date"
+                    data-bt-need="expiry"
                     value={rawExpiry}
                     onChange={(e) => { setRawExpiry(e.target.value); if (error) setError(""); }}
                     style={{
                       ...S.input,
+                      ...(compact ? S.rowInputWide : null),
                       ...(expiryMissing ? S.inputBad : null),
                       ...(expiryPassed ? { borderColor: "#e88", background: "#fff7f7" } : null),
                     }}
                   />
-                  <span className="bt-lbl" style={S.hintSm}>
-                    {expiryPassed
-                      ? t({
-                          en: "⚠️ This date is before the cutting date — the raw material is expired.",
-                          ar: "⚠️ هالتاريخ قبل تاريخ التقطيع — المادة الخام منتهية.",
-                        })
-                      : t({
-                          en: "From the label on the incoming carcass/cut.",
-                          ar: "من الملصق الموجود على الذبيحة/القطعة الداخلة.",
-                        })}
-                  </span>
+                  {(expiryPassed || !compact) && (
+                    <span className="bt-lbl" style={S.hintSm}>
+                      {expiryPassed
+                        ? t({
+                            en: "⚠️ This date is before the cutting date — the raw material is expired.",
+                            ar: "⚠️ هالتاريخ قبل تاريخ التقطيع — المادة الخام منتهية.",
+                          })
+                        : t({
+                            en: "From the label on the incoming carcass/cut.",
+                            ar: "من الملصق الموجود على الذبيحة/القطعة الداخلة.",
+                          })}
+                    </span>
+                  )}
                 </label>
               )}
 
-              {/* ── التواريخ: تاريخ التقطيع (يختاره الجزار) وتاريخ الإدخال (تلقائي) ── */}
+              {/* ── التواريخ: تاريخ التقطيع (يختاره الجزار) وتاريخ الإدخال (تلقائي) ──
+                   بالوضع المضغوط الصفّ كله بينشال: التقطيع انتحدّد بصفحة اختيار
+                   المادة الخام، وطابع الإدخال بينكتب لحاله وبيبيّن بشاشة «تم». */}
+              {!compact && (
               <div style={S.dateRow}>
                 <label style={S.dateField}>
                   <span className="bt-lbl" style={S.lbl}>
@@ -1383,10 +1760,14 @@ export default function ButcherLog() {
                   <span className="bt-cutnum" style={S.stamp}>{stampStr(entryAt)}</span>
                 </label>
               </div>
+              )}
             </div>
+            )}
 
-            {/* ── شريط التقدّم: كم انوزن من الخام وكم ضلّ ── */}
-            {carcassKg > 0 && (
+            {/* ── شريط التقدّم: كم انوزن من الخام وكم ضلّ ──
+                 مطفي بالوضع المضغوط: نفس الأرقام موجودة برصيف الحفظ الملتصق
+                 تحت (المتبقي · التصافي · الموزون) بلا ما تاخد مكان فوق. */}
+            {carcassKg > 0 && !compact && (
               <div style={S.progWrap}>
                 <div style={S.progTop}>
                   <span className="bt-name" style={{ fontWeight: 900 }}>
@@ -1444,16 +1825,47 @@ export default function ButcherLog() {
             )}
 
             {/* ── المنتجات النهائية (قائمة موحّدة بلا تكرار) ── */}
-            <div style={S.sectionBar}>
-              <span className="bt-name" style={{ fontWeight: 900 }}>
+            <div style={{ ...S.sectionBar, ...(compact ? S.sectionBarSm : null) }}>
+              <span className={compact ? "bt-cbar" : "bt-name"} style={{ fontWeight: 900 }}>
                 🥩 {t({ en: "Final products", ar: "المنتجات النهائية" })}
               </span>
-              <span className="bt-lbl" style={S.countChip}>
-                {productCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {productCuts.length}{" "}
-                {t({ en: "weighed", ar: "موزون" })}
+              <span
+                className={compact ? "bt-cbar" : "bt-lbl"}
+                style={{ ...S.countChip, ...(compact ? S.countChipSm : null) }}
+              >
+                {productCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {productCuts.length}
+                {compact ? "" : ` ${t({ en: "weighed", ar: "موزون" })}`}
               </span>
+              {/* تفريغ الأوزان — كان بشريط المجاميع اللي انشال من الوضع
+                  المضغوط، فبلاه ما بيبقى للجزار طريق يمسح غلطة بالجملة. */}
+              {compact && filled.length > 0 && !isMultiPath && (
+                <button
+                  type="button"
+                  className="bt-cbar"
+                  style={{ ...S.chg, ...S.chgSm, marginInlineStart: "auto" }}
+                  onClick={clearWeights}
+                  title={t({ en: "Clear weights", ar: "تفريغ الأوزان" })}
+                >
+                  ↺
+                </button>
+              )}
+              {/* تبديل الشكل — المضغوط بيدخّل كل المنتجات بشاشة وحدة،
+                  والكبير بيكبّر الصور لجزار بيتعرّف على الصنف بالصورة. */}
+              <button
+                type="button"
+                className="bt-small"
+                style={{
+                  ...S.chg, ...(compact ? S.chgSm : null),
+                  ...(compact && filled.length > 0 && !isMultiPath
+                    ? null : { marginInlineStart: "auto" }),
+                }}
+                onClick={() => setCompact(!compact)}
+                title={t({ en: "Switch card size", ar: "تبديل حجم الكروت" })}
+              >
+                {compact ? "⛶" : `▦ ${t({ en: "Compact", ar: "عرض مضغوط" })}`}
+              </button>
             </div>
-            <div style={S.grid}>
+            <div className={compact ? "bt-gridsm" : undefined} style={compact ? undefined : S.grid}>
               {productCuts.map((c) => {
                 const w = num(values[c.itemId]?.w);
                 const info = isMultiPath ? chosenLineOf.get(c.itemId) : c;
@@ -1462,7 +1874,7 @@ export default function ButcherLog() {
                   <ItemCard
                     key={c.itemId}
                     item={c}
-                    disabled={itemLocked(c.itemId)}
+                    disabled={itemLocked(c.itemId) || capLocked(c.itemId)}
                     value={values[c.itemId]?.w || ""}
                     onChange={(v) => setVal(c.itemId, "w", v)}
                     selected={activeId === c.itemId}
@@ -1475,6 +1887,11 @@ export default function ButcherLog() {
                     tone={targetTone(target, w)}
                     isAr={isAr}
                     t={t}
+                    compact={compact}
+                    focused={focusId === c.itemId}
+                    capHit={capHit.id === c.itemId}
+                    onFocusIn={(el) => { setFocusId(c.itemId); keepAboveKeyboard(el); }}
+                    onFocusOut={() => setFocusId("")}
                   />
                 );
               })}
@@ -1490,23 +1907,26 @@ export default function ButcherLog() {
             {/* ── الهدر (قائمة موحّدة بلا تكرار) ── */}
             {wasteCuts.length > 0 && (
               <>
-                <div style={S.sectionBar}>
-                  <span className="bt-name" style={{ fontWeight: 900 }}>
+                <div style={{ ...S.sectionBar, ...(compact ? S.sectionBarSm : null) }}>
+                  <span className={compact ? "bt-cbar" : "bt-name"} style={{ fontWeight: 900 }}>
                     🦴 {t({ en: "Waste", ar: "الهدر" })}
                   </span>
-                  <span className="bt-lbl" style={S.countChip}>
-                    {wasteCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {wasteCuts.length}{" "}
-                    {t({ en: "weighed", ar: "موزون" })}
+                  <span
+                    className={compact ? "bt-cbar" : "bt-lbl"}
+                    style={{ ...S.countChip, ...(compact ? S.countChipSm : null) }}
+                  >
+                    {wasteCuts.filter((c) => num(values[c.itemId]?.w) > 0).length} / {wasteCuts.length}
+                    {compact ? "" : ` ${t({ en: "weighed", ar: "موزون" })}`}
                   </span>
                 </div>
-                <div style={S.wasteRow}>
+                <div className={compact ? "bt-gridsm" : undefined} style={compact ? undefined : S.wasteRow}>
                   {wasteCuts.map((c) => {
                     const w = num(values[c.itemId]?.w);
                     return (
                       <ItemCard
                         key={c.itemId}
                         item={c}
-                        disabled={itemLocked(c.itemId)}
+                        disabled={itemLocked(c.itemId) || capLocked(c.itemId)}
                         value={values[c.itemId]?.w || ""}
                         onChange={(v) => setVal(c.itemId, "w", v)}
                         selected={activeId === c.itemId}
@@ -1517,6 +1937,12 @@ export default function ButcherLog() {
                         tone={S.wasteTone}
                         isAr={isAr}
                         t={t}
+                        compact={compact}
+                        focused={focusId === c.itemId}
+                        capHit={capHit.id === c.itemId}
+                        onFocusIn={(el) => { setFocusId(c.itemId); keepAboveKeyboard(el); }}
+                        onFocusOut={() => setFocusId("")}
+                        mark="waste"
                       />
                     );
                   })}
@@ -1524,6 +1950,7 @@ export default function ButcherLog() {
               </>
             )}
 
+            {!compact && (
             <div className="bt-sum" style={{ ...S.sumBar, ...(isOver ? S.sumBarOver : null) }}>
               <ProgressRing used={usedKg} total={carcassKg} over={isOver} t={t} />
               <span>{t({ en: "Products", ar: "النواتج" })}: <b>{cutsKg.toFixed(2)}</b></span>
@@ -1539,8 +1966,10 @@ export default function ButcherLog() {
                 </button>
               )}
             </div>
+            )}
 
             {/* النِّسب من وزن المادة الخام */}
+            {!compact && (
             <div className="bt-sum" style={S.pctBar}>
               <span>
                 {t({ en: "Net yield", ar: "نسبة التصافي" })}: <b>{netYieldPct.toFixed(1)}%</b>
@@ -1549,8 +1978,9 @@ export default function ButcherLog() {
                 {t({ en: "Waste %", ar: "نسبة الهدر" })}: <b>{wastePct.toFixed(1)}%</b>
               </span>
             </div>
+            )}
 
-            {exactBalance && (
+            {showIssues && exactBalance && (
               <div className="bt-sum" style={{ ...S.pctBar, ...(balanceOff ? S.sumBarOver : null) }}>
                 <span>🎯 {t({ en: "Exact balance required", ar: "مطلوب تطابق تام" })}</span>
                 <span style={balanceOff ? S.overText : { color: "#166534", fontWeight: 900 }}>
@@ -1565,7 +1995,7 @@ export default function ButcherLog() {
               </div>
             )}
 
-            {rawMissing && filled.length > 0 && (
+            {showIssues && rawMissing && (
               <div className="bt-sum" style={S.warn}>
                 {t({
                   en: "Enter the raw material weight — every percentage is based on it.",
@@ -1580,7 +2010,7 @@ export default function ButcherLog() {
                   : `Check the weight: this recipe's standard input is about ${inputQty} kg.`}
               </div>
             )}
-            {pieceMissing && (
+            {showIssues && pieceMissing && (
               <div className="bt-sum" style={S.warn}>
                 {t({
                   en: "Number of pieces is required for this recipe.",
@@ -1588,7 +2018,7 @@ export default function ButcherLog() {
                 })}
               </div>
             )}
-            {wasteMissing && (
+            {showIssues && wasteMissing && (
               <div className="bt-sum" style={S.warn}>
                 {t({
                   en: "Waste weight is required.",
@@ -1610,7 +2040,7 @@ export default function ButcherLog() {
             {error && <div className="bt-sum" style={S.error}>{error}</div>}
 
             {/* ── لوحة الأرقام: إدخال بلمسة كبيرة بدل الكيبورد ── */}
-            {activeId && (
+            {activeId && !compact && (
               <NumPad
                 t={t}
                 title={activeId === RAW_KEY
@@ -1625,18 +2055,37 @@ export default function ButcherLog() {
             )}
 
             {/* رصيف الحفظ — ملتصق بأسفل الشاشة حتى ما يضيع تحت شبكة طويلة */}
-            <div style={S.saveDock}>
+            {/* الرصيف بيرتفع بمقدار الكيبورد: بلاها بيضل ملزوق بأسفل
+                الشاشة الحقيقية — يعني مخبّى تحت الكيبورد وقت الكتابة. */}
+            <div style={{
+              ...S.saveDock,
+              ...(compact ? S.saveDockSm : null),
+              ...(kbH > 0 ? { transform: "translateY(-" + kbH + "px)" } : null),
+            }}>
+              {/* حلقة الوزن — جوّا الرصيف الملزوق، فبتلحق الجزار وين ما مشى
+                  بلا ما تطلع فوق صورة ولا خانة، وبتضل واضحة مية بالمية. */}
+              {compact && carcassKg > 0 && (
+                <FloatRing used={usedKg} total={carcassKg} over={isOver} />
+              )}
+              <span style={compact ? S.dockBody : null}>
               {(carcassKg > 0 || filled.length > 0) && (
-                <div className="bt-small" style={S.dockLine}>
-                  <span>
-                    {t({ en: "Remaining", ar: "المتبقي" })}:{" "}
+                <div
+                  className={compact ? "bt-cbar" : "bt-small"}
+                  style={{ ...S.dockLine, ...(compact ? S.dockLineSm : null) }}
+                >
+                  {/* بالمضغوط رموز بدل كلمات: الحلقة آخدة عرض والرصيف لازم
+                      يضل سطراً واحداً حتى ما ياكل سطرين منتجات من فوقه. */}
+                  <span style={{ whiteSpace: "nowrap" }}>
+                    {compact ? "⚖ " : t({ en: "Remaining: ", ar: "المتبقي: " })}
                     <b style={isOver ? S.overText : null}>{remainingKg.toFixed(2)}</b> {KG}
                   </span>
-                  <span>
-                    {t({ en: "Net yield", ar: "التصافي" })}: <b>{netYieldPct.toFixed(1)}%</b>
-                  </span>
-                  <span>
-                    {t({ en: "Weighed", ar: "الموزون" })}: <b>{cutCount}</b>
+                  {!compact && (
+                    <span>
+                      {t({ en: "Net yield", ar: "التصافي" })}: <b>{netYieldPct.toFixed(1)}%</b>
+                    </span>
+                  )}
+                  <span style={{ whiteSpace: "nowrap" }}>
+                    {compact ? "✓ " : t({ en: "Weighed: ", ar: "الموزون: " })}<b>{cutCount}</b>
                     {wasteOnlyKg > 0 ? ` + ${t({ en: "waste", ar: "هدر" })}` : ""}
                   </span>
                 </div>
@@ -1644,13 +2093,18 @@ export default function ButcherLog() {
               <button
                 className="bt-btn"
                 onClick={requestSave}
-                disabled={!canSave || saving}
-                style={{ ...S.primary, ...(canSave && !saving ? null : S.disabled) }}
+                disabled={saving}
+                style={{
+                  ...S.primary, ...(compact ? S.primarySm : null),
+                  ...(saving ? S.disabled : null),
+                  ...(!canSave && !saving ? S.primaryNeeds : null),
+                }}
               >
                 {saving
                   ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
                   : `${t({ en: "Save", ar: "حفظ" })} (${cutCount})`}
               </button>
+              </span>
             </div>
           </>
         )}
@@ -1939,9 +2393,61 @@ function ItemArt({ item }) {
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
   item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
-  selected, onSelect,
+  selected, onSelect, compact, focused, onFocusIn, onFocusOut, mark, capHit,
 }) {
   const active = num(value) > 0;
+
+  /* الوضع المضغوط: نفس الكرت بس مضجّع — صورة، اسم، خانة وزن، بصفّ واحد.
+     ليستة تحت بعض: الجزار بيمشي بعينه عمودياً سطر سطر بدل ما يلفّ بشبكة،
+     وارتفاع السطر ~٦٤px بدل ~٤٠٠ فبتدخل الوصفة كلها بشاشة الجوال. */
+  if (compact) {
+    return (
+      <div
+        className="bt-press"
+        onClick={disabled ? undefined : onSelect}
+        style={{
+          ...S.cutRow, ...(active ? S.cutRowOn : null), ...(tone || null),
+          /* التحديد الأزرق بينطفي وقت الوقوف بالخانة — الكهرماني هو حالة
+             «عم أكتب هون» ولازم يكون هو الوحيد اللي بيبيّن. */
+          ...(selected && !focused ? S.cutCardSel : null),
+          ...(focused ? { ...S.rowFocus, ...S.rowLift } : null),
+          ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
+        }}
+      >
+        <span style={S.rowArt}>{hasArt(item) ? <ItemArt item={item} /> : null}</span>
+        <span style={S.rowBody}>
+          <span className="bt-cname" style={S.rowName}>{nameOf(item, isAr)}</span>
+          {Number.isFinite(target) && target > 0 && (
+            <span className="bt-cbar" style={S.targetSm}>
+              🎯 {target.toFixed(2)}
+              {active && ` (${num(value) >= target ? "+" : "−"}${Math.abs(num(value) - target).toFixed(2)})`}
+            </span>
+          )}
+        </span>
+        {active && <span className="bt-cbar" style={S.rowTick}>✓</span>}
+        <input
+          className="bt-cnum"
+          value={value}
+          onChange={(e) => onChange(cleanDecimal(e.target.value))}
+          onFocus={(e) => { onSelect(); if (onFocusIn) onFocusIn(e.currentTarget); }}
+          onBlur={onFocusOut}
+          onKeyDown={focusNextWeight}
+          data-bt-w=""
+          data-bt-waste={mark === "waste" ? "" : undefined}
+          inputMode="decimal"
+          placeholder="0.00"
+          disabled={disabled}
+          style={{
+            ...S.cutInput, ...S.rowInput,
+            ...(selected ? S.inputActive : null),
+            ...(focused ? S.inputFocus : null),
+            ...(capHit ? S.inputReject : null),
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="bt-press"
@@ -1975,7 +2481,11 @@ function ItemCard({
           inputMode="decimal"
           placeholder="0.00"
           disabled={disabled}
-          style={{ ...S.cutInput, ...(selected ? S.inputActive : null) }}
+          style={{
+          ...S.cutInput,
+          ...(selected ? S.inputActive : null),
+          ...(capHit ? S.inputReject : null),
+        }}
         />
       </label>
       {Number.isFinite(pct) && pct > 0 && (
@@ -2125,7 +2635,7 @@ function ProgressRing({ used, total, over, t }) {
   const r = 34;
   const c = 2 * Math.PI * r;
   const ratio = total > 0 ? Math.min(used / total, 1) : 0;
-  const color = over ? "#dc2626" : ratio > 0.9 ? "#d97706" : "#1f6fd0";
+  const color = over ? "#dc2626" : ratio > 0.9 ? "#b45309" : "#14507f";
 
   return (
     <span style={S.ringWrap}>
@@ -2148,13 +2658,41 @@ function ProgressRing({ used, total, over, t }) {
   );
 }
 
+/* ═══ حلقة الوزن الطايفة (الموبايل) ═══
+   نسخة مصغّرة من ProgressRing، ثابتة بزاوية الشاشة: بتقول كم انوزن من وزن
+   المادة الخام وكم ضلّ، بلا ما تاخد سطراً من الشبكة ولا تحجب خانة. */
+function FloatRing({ used, total, over }) {
+  const r = 26;
+  const c = 2 * Math.PI * r;
+  const ratio = total > 0 ? Math.min(used / total, 1) : 0;
+  const color = over ? "#dc2626" : ratio > 0.9 ? "#b45309" : "#14507f";
+
+  return (
+    <span style={S.floatRing} aria-hidden="true">
+      <svg width="52" height="52" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r={r} fill="none" stroke="#cddcec" strokeWidth="9" />
+        <circle
+          cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="9"
+          strokeLinecap="round" strokeDasharray={`${c * ratio} ${c}`}
+          transform="rotate(-90 32 32)"
+          style={{ transition: "stroke-dasharray .3s ease, stroke .2s ease" }}
+        />
+        <text x="32" y="38" textAnchor="middle" fontSize="18" fontWeight="900" fill={color}>
+          {Math.round(ratio * 100)}%
+        </text>
+      </svg>
+    </span>
+  );
+}
+
 /** لون خلفية كرت المنتج حسب قربه من الوزن المستهدف من الوصفة (±10%). */
 function targetTone(targetKg, actualKg) {
   if (!(targetKg > 0) || !(actualKg > 0)) return null;
   const diff = (actualKg - targetKg) / targetKg;
-  if (diff < -0.1) return { background: "#fffbeb", borderColor: "#fcd34d" };   // أقل من الهدف
-  if (diff > 0.1) return { background: "#fef2f2", borderColor: "#fca5a5" };    // أكثر من الهدف
-  return { background: "#f0fdf4", borderColor: "#86efac" };                     // ضمن المدى
+  /* شفافة ٥٠٪ متل باقي المستطيلات — الحدّ هو اللي بيحمل اللون بوضوح */
+  if (diff < -0.1) return { background: "transparent", borderColor: "#b8860b" };  // أقل من الهدف
+  if (diff > 0.1) return { background: "transparent", borderColor: "#b91c1c" };   // أكثر من الهدف
+  return { background: "transparent", borderColor: "#15803d" };                   // ضمن المدى
 }
 
 /* ============================ الأنماط ============================ */
@@ -2165,7 +2703,11 @@ const FONT = "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-ser
 const S = {
   page: {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
-    padding: "18px 14px 40px", overflowX: "hidden",
+    padding: "18px 14px 40px",
+    /* clip لا hidden: «hidden» بيحوّل الصندوق لحاوية تمرير فبيموت كل
+       position:sticky جوّاته — ورصيف الحفظ كان بيضل تحت آخر الصفحة بدل ما
+       ينلزق بأسفل الشاشة. «clip» بيقصّ الزيادة الأفقية بلا حاوية تمرير. */
+    overflowX: "clip",
   },
   wrap: { maxWidth: "min(1100px, 100%)", margin: "0 auto" },
   wrapWide: { maxWidth: "100%" },   // شبكة القطع تملأ الصفحة
@@ -2174,6 +2716,8 @@ const S = {
   title: { fontWeight: 900 },
   langBtn: { background: "#fff", border: "1px solid #cfe0f0", color: "#1f6fd0", fontSize: 18 },
   emp: { display: "flex", alignItems: "center", gap: 8, fontWeight: 800 },
+  chgSm: { padding: "4px 10px", borderRadius: 8 },
+  countChipSm: { padding: "3px 10px" },
   chg: {
     border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
     borderRadius: 10, padding: "7px 14px", fontFamily: FONT, fontWeight: 700, cursor: "pointer",
@@ -2230,11 +2774,14 @@ const S = {
     border: "1px solid #fcd9a4", borderRadius: 12, padding: "8px 12px",
   },
   totals: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 12,
-    padding: "10px 12px", fontWeight: 800, color: "#3c5a75", textAlign: "center", marginBottom: 12,
+    background: "transparent", border: "2px solid #2f5877", borderRadius: 12,
+    padding: "10px 12px", fontWeight: 800, color: "#22415c", textAlign: "center", marginBottom: 12,
   },
   crumbs: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 },
-  crumb: { background: "#dceaf8", color: "#14507f", borderRadius: 999, padding: "8px 18px", fontWeight: 800 },
+  crumb: {
+    background: "transparent", color: "#14507f", borderRadius: 999, padding: "7px 16px",
+    fontWeight: 800, border: "2px solid #2f5877",
+  },
   q: { fontWeight: 900, margin: "8px 0 10px", textAlign: "center" },
 
   // كروت كبيرة — الرسمة تملأ عرض الكرت
@@ -2244,22 +2791,128 @@ const S = {
     display: "block", borderRadius: 20, background: "#f5f9fd", padding: 6, boxSizing: "border-box",
   },
   tile: {
-    background: "#fff", border: "3px solid #dbe6f2", borderRadius: 26,
+    background: "transparent", borderWidth: 3, borderStyle: "solid", borderColor: "#2f5877", borderRadius: 26,
     padding: "16px 14px 22px", display: "flex", flexDirection: "column",
     alignItems: "center", gap: 12, cursor: "pointer", fontFamily: FONT, color: "#0f2740",
   },
   cutCard: {
     position: "relative",
-    background: "#fff", border: "3px solid #dbe6f2", borderRadius: 26,
+    background: "transparent", borderWidth: 3, borderStyle: "solid", borderColor: "#2f5877", borderRadius: 26,
     padding: "14px 16px 18px", display: "flex", flexDirection: "column",
     alignItems: "center", gap: 8, fontFamily: FONT, color: "#0f2740",
   },
-  cutCardOn: { border: "3px solid #1f6fd0", background: "#f7fbff" },
+  cutCardOn: { borderWidth: 3, borderStyle: "solid", borderColor: "#0d4c94", background: "transparent" },
   target: { fontWeight: 800, color: "#0f766e" },
+
+  /* ── الوضع المضغوط: سطر لكل منتج (صورة · اسم · وزن) ── */
+  cutRow: {
+    display: "flex", alignItems: "center", gap: 10,
+    background: "transparent", borderWidth: 2, borderStyle: "solid", borderColor: "#2f5877", borderRadius: 14,
+    padding: "6px 10px", fontFamily: FONT, color: "#0f2740",
+    transition: "transform .22s cubic-bezier(.34,1.4,.5,1), box-shadow .2s ease, background .2s ease",
+  },
+  cutRowOn: { borderColor: "#0d4c94", background: "transparent" },
+  rowArt: {
+    width: 44, height: 44, flex: "0 0 44px", borderRadius: 10, overflow: "hidden",
+    display: "block", background: "#f5f9fd",
+  },
+  /* السطر الواقف عنده بيرتفع شوي: تكبير ٢٪ + ظلّ. transform ما بياخد
+     مساحة بالتخطيط، فما بيزحّط ولا سطر ولا بيغيّر ارتفاع الشبكة — بس
+     بيبيّن إنه هو المستهدف. (الصورة ما عاد تنبثق: كانت بتغطّي الاسم.) */
+  rowLift: {
+    transform: "scale(1.045)", zIndex: 6, position: "relative",
+    willChange: "transform",
+  },
+  /* flex-basis صغير عن قصد: بلاه الاسم الطويل بيطلب عرضه الطبيعي (~٣٠٠px)
+     فبينزل مربّع الوزن لسطر تاني ويصير السطر ١٦٨px بدل ٦٤ — تقليص الفليكس
+     ما بيشتغل إلا بعد ما يفشل اللفّ، فمنمنعه يطلب عرضاً كبيراً من الأساس. */
+  rowBody: { flex: "1 1 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: 1 },
+  rowName: {
+    fontWeight: 900, textAlign: "start",
+    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+    overflow: "hidden", wordBreak: "break-word",
+  },
+  rowTick: {
+    flex: "0 0 auto", width: 22, height: 22, borderRadius: "50%",
+    background: "#047857", color: "#fff", display: "grid", placeItems: "center", fontWeight: 900,
+  },
+  rowInput: { flex: "0 0 96px", width: 96, padding: "8px 4px", borderRadius: 10, marginTop: 0 },
+  /* التاريخ بده عرض أكبر من الرقم — نفس الارتفاع بالضبط */
+  rowInputWide: { flex: "0 0 150px", width: 150, padding: "8px 4px", borderRadius: 10, marginTop: 0 },
+  /* خانات المادة الخام بالوضع المضغوط: نفس سطر المنتج — اسم عاليسار وخانة
+     ٩٦px عاليمين، فالجزار بيلاقي كل الخانات بنفس المكان وبنفس الحجم. */
+  rawFieldSm: {
+    transition: "transform .22s cubic-bezier(.34,1.4,.5,1), box-shadow .2s ease, background .2s ease",
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    gap: 10, maxWidth: "100%", flexWrap: "wrap",
+    background: "transparent", borderWidth: 2, borderStyle: "solid", borderColor: "#2f5877",
+    borderRadius: 14, padding: "6px 10px",
+  },
+  rawHeadSm: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  /* سطر المادة الخام: ضِعف ارتفاع سطر المنتج (٦٤ → ١٢٨) بصورة وخانة أكبر */
+  rawMainSm: { minHeight: 128, padding: "10px 12px", borderWidth: 3 },
+  rawArtBig: { width: 60, height: 60, flex: "0 0 60px", borderRadius: 12 },
+  rawInputBig: { flex: "0 0 96px", width: 96, padding: "16px 4px", borderRadius: 12 },
+  /* اسم المادة الخام إله ٣ أسطر: السطر بضِعف الارتفاع فالمكان موجود، وبلاها
+     كان الاسم الطويل ينقصّ لكلمة وحدة («AUS…»). */
+  rawNameSm: { WebkitLineClamp: 4 },
+  /* الخانة اللي واقف عندها الجزار — السطر كله بينصبغ لحتى يخلّص منها */
+  /* borderColor لا border المختصرة: مزج الشكلين بيخلّي React لما يشيل الطويلة
+     بين رسمتين يمسح لون الحدّ كلياً فيطلع الإطار بلا لون. كل حالات السطر
+     (tone / محدَّد / موقوف عنده) بتستعمل borderColor وبس. */
+  rowFocus: {
+    borderColor: "#b45309", borderWidth: 3,
+    /* تظليل فعلي: تدرّج كهرماني شبه صلب — باقي السطور شفافة، فهالسطر
+       بيقرأ لحاله من بعيد وما بيضل الجزار يدوّر وين واقف. */
+    background: "linear-gradient(180deg, #fdf0cf 0%, #f9dfa4 100%)",
+    boxShadow: [
+      "0 0 0 5px rgba(224,166,62,.38)",
+      "0 14px 30px rgba(15,39,64,.28)",
+      "inset 0 1px 0 rgba(255,255,255,.85)",
+    ].join(", "),
+  },
+  /* الرفض: حدّ أحمر سميك بلا أي رسالة — الجزار بيفهم من اللون إنه الرقم
+     أكبر من المتاح، وبيكمّل بلا ما ينقطع عليه سياق الإدخال. */
+  inputReject: {
+    borderColor: "#dc2626", borderWidth: 3, background: "#fff",
+    boxShadow: "0 0 0 4px rgba(220,38,38,.22)",
+  },
+  inputFocus: {
+    borderColor: "#b45309", borderWidth: 3, background: "#fff",
+    boxShadow: "0 2px 6px rgba(15,39,64,.14)",
+  },
+  partialBoxSm: { width: 20, height: 20, borderRadius: 6, flex: "0 0 20px" },
+  /* سطر العدد: بلا لفّ — شارة «جزء» لازم تضل جنب الخانة، والاسم بيتقلّص */
+  pieceRowSm: { flexWrap: "nowrap" },
+  /* محل الصورة بسطر ما إله صنف (عدد القطع، تاريخ الانتهاء) — أيقونة بنفس
+     المربّع، فالسطور بتضل مصطفّة على نفس الشبكة البصرية. */
+  rowArtIcon: { display: "grid", placeItems: "center", background: "#f1f6fb" },
+  /* width:auto مقصود: S.partialBtn عليه width:100% وهو اللي كان بينزّل الشارة
+     لسطر لحالها تحت خانة العدد بدل ما تضل جنبها. */
+  partialBtnSm: {
+    padding: "6px 10px", borderRadius: 10, alignItems: "center", gap: 6,
+    width: "auto", flex: "0 0 auto", whiteSpace: "nowrap",
+  },
+  targetSm: { fontWeight: 800, color: "#0f766e", lineHeight: 1.1 },
+  /* سطر المادة الخام المطويّ — بديل كرت كامل بيعادل ثلث شاشة الموبايل */
+  rawLine: {
+    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+    background: "transparent", border: "2px solid #2f5877", borderRadius: 14,
+    padding: "8px 12px", marginBottom: 10, fontWeight: 800, color: "#22415c",
+  },
+  rawLineArt: { width: 34, height: 34, flex: "0 0 34px", borderRadius: 8 },
+  rawLineName: {
+    color: "#0f2740", fontWeight: 900, minWidth: 0,
+    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "45%",
+  },
   rawCard: {
-    background: "#fff", border: "2px solid #cfe0f0", borderRadius: 18,
+    background: "transparent", borderWidth: 2, borderStyle: "solid", borderColor: "#2f5877", borderRadius: 18,
     padding: "14px 16px", marginBottom: 16, display: "flex",
     flexDirection: "column", gap: 10,
+  },
+  rawCardSm: {
+    padding: "8px 10px", marginBottom: 10, gap: 6, borderRadius: 14,
+    background: "transparent", borderColor: "#7b98b3",
   },
   rawHead: {
     display: "flex", flexDirection: "column", gap: 2, alignItems: "center", textAlign: "center",
@@ -2295,9 +2948,9 @@ const S = {
     gap: 18,
     marginBottom: 4,
   },
-  wasteTone: { background: "#fffdf5", borderColor: "#e8d9a8" },
+  wasteTone: { background: "transparent", borderColor: "#a97e2a" },
   emptyBox: {
-    gridColumn: "1 / -1", background: "#fff", border: "2px dashed #cfe0f0",
+    gridColumn: "1 / -1", background: "transparent", border: "2px dashed #2f5877",
     borderRadius: 20, padding: "26px 18px", textAlign: "center",
     fontWeight: 800, color: "#6b8299",
   },
@@ -2307,7 +2960,7 @@ const S = {
   field: { width: "100%", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 },
   lbl: { fontWeight: 800, color: "#6b8299" },
   cutInput: {
-    width: "100%", boxSizing: "border-box", border: "2px solid #cfe0f0", borderRadius: 12,
+    width: "100%", boxSizing: "border-box", borderWidth: 2, borderStyle: "solid", borderColor: "#cfe0f0", borderRadius: 12,
     padding: "12px 10px", fontWeight: 800, textAlign: "center", fontFamily: FONT,
     color: "#0f2740", outline: "none",
   },
@@ -2332,16 +2985,16 @@ const S = {
 
 
   card: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 22,
+    background: "transparent", border: "1px solid #dbe6f2", borderRadius: 22,
     padding: 24, display: "flex", flexDirection: "column", gap: 14,
   },
   input: {
-    width: "100%", boxSizing: "border-box", border: "2px solid #cfe0f0", borderRadius: 16,
+    width: "100%", boxSizing: "border-box", borderWidth: 2, borderStyle: "solid", borderColor: "#cfe0f0", borderRadius: 16,
     padding: "18px 14px", fontWeight: 900, textAlign: "center", fontFamily: FONT,
     color: "#0f2740", outline: "none",
   },
   select: {
-    width: "100%", boxSizing: "border-box", border: "2px solid #cfe0f0", borderRadius: 16,
+    width: "100%", boxSizing: "border-box", borderWidth: 2, borderStyle: "solid", borderColor: "#cfe0f0", borderRadius: 16,
     padding: "16px 14px", fontWeight: 800, textAlign: "center", fontFamily: FONT,
     color: "#0f2740", outline: "none", background: "#fff",
   },
@@ -2349,6 +3002,23 @@ const S = {
     border: "none", background: "#1f6fd0", color: "#fff", borderRadius: 16,
     padding: "18px 14px", fontWeight: 900, fontFamily: FONT, cursor: "pointer", width: "100%",
   },
+  /* الرصيف بالوضع المضغوط: كل بكسل بياخده الرصيف بيخفي سطر منتج من فوقه */
+  saveDockSm: {
+    marginTop: 8, padding: "8px 10px", gap: 10,
+    flexDirection: "row", alignItems: "center",
+    /* خلفية صلبة: التدرّج الشفاف كان يخلّي أرقام الرصيف تنقرأ فوق صور
+       السطور اللي بتمرق من تحته. */
+    background: "#eef4fb", borderTop: "2px solid #dbe6f2",
+    marginInline: -14, paddingInline: 14,
+    boxShadow: "0 -8px 20px rgba(15,39,64,.10)",
+  },
+  /* سطر أرقام الرصيف بالمضغوط: سطر واحد ما بيلفّ — الحلقة آخدة عرض */
+  dockLineSm: { flexWrap: "nowrap", gap: 10, justifyContent: "space-between" },
+  primarySm: { padding: "12px 10px", borderRadius: 12 },
+  /* حلقة الوزن جوّا الرصيف: معتمة بالكامل — كانت طايفة نص شفافة فوق
+     صور السطور، والجزار ما عاد يقراها. الرصيف ملزوق فهي بتلحقه. */
+  floatRing: { flex: "0 0 auto", display: "block", lineHeight: 0 },
+  dockBody: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 },
   /* رصيف الحفظ الملتصق بأسفل الشاشة — زر الحفظ دائماً بمتناول اليد */
   saveDock: {
     position: "sticky", bottom: 0, zIndex: 6, marginTop: 14, padding: "10px 0 8px",
@@ -2362,7 +3032,7 @@ const S = {
   inputBad: { borderColor: "#e88", background: "#fff7f7" },
   /* شريط التقدّم أعلى خطوة الأوزان */
   progWrap: {
-    background: "#fff", border: "2px solid #dbe6f2", borderRadius: 18,
+    background: "transparent", border: "2px solid #2f5877", borderRadius: 18,
     padding: "12px 14px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
   },
   progTop: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" },
@@ -2380,7 +3050,7 @@ const S = {
     margin: "16px 2px 8px",
   },
   countChip: {
-    marginInlineStart: "auto", background: "#f4f9ff", border: "1px solid #cfe0f0",
+    marginInlineStart: "auto", background: "transparent", border: "2px solid #2f5877",
     color: "#14507f", borderRadius: 999, padding: "5px 14px", fontWeight: 900,
   },
   /* الخانة النشطة — مربوطة بلوحة الأرقام */
@@ -2464,18 +3134,23 @@ const S = {
   /* «ليست قطعة كاملة» — تجاوز إلزامية عدد القطع */
   partialBtn: {
     display: "flex", alignItems: "flex-start", gap: 10, width: "100%",
-    border: "2px solid #cfe0f0", background: "#fff", color: "#3c5a75",
+    borderWidth: 2, borderStyle: "solid", borderColor: "#cfe0f0",
+    background: "#fff", color: "#3c5a75",
     borderRadius: 14, padding: "11px 13px", fontFamily: FONT, fontWeight: 800,
     cursor: "pointer", textAlign: "start",
   },
   partialBtnOn: { borderColor: "#b45309", background: "#fffaf1", color: "#8a5a12" },
   partialBox: {
     width: 26, height: 26, borderRadius: 9, flexShrink: 0,
-    border: "2px solid #cfe0f0", background: "#fff", color: "#fff",
+    borderWidth: 2, borderStyle: "solid", borderColor: "#cfe0f0",
+    background: "#fff", color: "#fff",
     display: "grid", placeItems: "center", fontWeight: 900,
   },
   partialBoxOn: { borderColor: "#b45309", background: "#b45309" },
   partialHint: { display: "block", fontWeight: 700, color: "#8aa3b8", marginTop: 3 },
+  /* «في شي ناقص»: مش رمادي مقفول — لونه بيقول «انتبه» وهو لسا بينضغط،
+     والضغطة بتوصّل الجزار للخانة الناقصة بدل ما يقعد يحزّر ليش الزرّ ميّت. */
+  primaryNeeds: { background: "#e0a63e", boxShadow: "0 8px 18px rgba(224,166,62,.30)" },
   disabled: { background: "#a9c3dd", cursor: "not-allowed" },
   back: {
     marginTop: 16, width: "100%", border: "1px solid #cfe0f0", background: "#fff",
