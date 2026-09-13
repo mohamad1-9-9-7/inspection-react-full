@@ -4,7 +4,7 @@
 //   السنة = بنفسجي باستيل، الشهر = سماوي باستيل، اليوم = زمردي باستيل
 // تُستخدم من كل ملفات العرض السبعة لتوحيد شجرة التاريخ والإطار العام.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 import { canDelete } from "../../../../utils/perms";
 import API_BASE from "../../../../config/api";
@@ -661,6 +661,24 @@ export function DateTreeSidebar({
     }
     return out;
   }, [items]);
+
+  /* الشجرة كانت تفتح مطويّة بالكامل: شاشة فيها تقارير تبدو متل شاشة
+     فاضية، ولازم نقرتين قبل ما يبيّن أول تاريخ. منفتح الفرع اللي فيه السجل
+     المحدّد — الأحدث لمّا ما يكون في شي محدّد — ومنتبعه لو انتقل لشهر تاني.
+     بس هالمسار بينفتح، فأي شي طواه المستخدم بإيده بيضل مطوي. */
+  const autoOpenedRef = useRef(null);
+  useEffect(() => {
+    if (!items.length) return;
+    const target = items.find((it) => it.key === activeKey) || items[0];
+    const m = String(target?.dateISO || "").match(/^(\d{4})-(\d{2})/);
+    if (!m) return;
+    const [, y, mo] = m;
+    const path = `${y}-${mo}`;
+    if (autoOpenedRef.current === path) return;
+    autoOpenedRef.current = path;
+    setOpenYears((p) => (p[y] ? p : { ...p, [y]: true }));
+    setOpenMonths((p) => (p[path] ? p : { ...p, [path]: true }));
+  }, [items, activeKey]);
 
   const toggleYear = (y) => setOpenYears((p) => ({ ...p, [y]: !p[y] }));
   const toggleMonth = (y, mo) =>

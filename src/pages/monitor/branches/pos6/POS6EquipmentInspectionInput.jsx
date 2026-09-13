@@ -5,18 +5,16 @@
 import React, { useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
-import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
+import { BRANCH, DOCS, EQUIPMENT_SLOTS, TYPES, todayISO, useSaveReport } from "./pos6Api";
 import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
 
-/* Sanitizing rounds through the day. */
-const SLOTS = [
-  { key: "s_8_9_AM",  label: "8–9 AM" },
-  { key: "s_12_1_PM", label: "12–1 PM" },
-  { key: "s_4_5_PM",  label: "4–5 PM" },
-  { key: "s_8_9_PM",  label: "8–9 PM" },
-  { key: "s_12_1_AM", label: "12–1 AM" },
-];
+/** Document control for this sheet — shared with the viewer (pos6Api.DOCS). */
+const DOC = DOCS[TYPES.equipmentInspection];
+
+/* Sanitizing rounds through the day — shared with the viewer (pos6Api), which
+   has to read `payload.slots` back into these headings. */
+const SLOTS = EQUIPMENT_SLOTS;
 
 const YES_NO = [
   { key: "freeFromDamage",       label: "Free from damage" },
@@ -46,7 +44,7 @@ export default function POS6EquipmentInspectionInput() {
   const { saving, opMsg, save } = useSaveReport();
 
   const [date, setDate] = useState(todayISO);
-  const [formRef, setFormRef] = useState("FSMS/BR/F17");
+  const [formRef, setFormRef] = useState(DOC.documentNo);
   const [section, setSection] = useState("");
   const [rows, setRows] = useState(() => DEFAULT_EQUIPMENT.map((n) => emptyRow(n)));
   const [checkedBy, setCheckedBy] = useState("");
@@ -79,6 +77,7 @@ export default function POS6EquipmentInspectionInput() {
     save(TYPES.equipmentInspection, {
       uniqueKey: `${TYPES.equipmentInspection}__${BRANCH}__${date}`,
       branch: BRANCH,
+      documentNo: DOC.documentNo,
       formRef,
       section,
       reportDate: date,
@@ -100,7 +99,7 @@ export default function POS6EquipmentInspectionInput() {
         accent="#f59e0b"
         fields={[
           { label: "Form ref.",          value: formRef, onChange: setFormRef },
-          { labelKey: "hdr_revision_no", value: "0" },
+          { labelKey: "hdr_revision_no", value: DOC.revision },
           { label: t("hdr_branch"),      value: BRANCH },
           { label: t("eq_section"),      value: section, onChange: setSection },
           { labelKey: "hdr_controlling", value: "Quality Controller" },

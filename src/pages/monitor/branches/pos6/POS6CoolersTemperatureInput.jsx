@@ -8,15 +8,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
-import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
+import { BRANCH, DOCS, TYPES, todayISO, useSaveReport } from "./pos6Api";
 import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
+// The accepted ranges are shared with the viewer and the Excel backup, so all
+// three agree on what a failing reading is.
+import { RANGES, isOutOfRange } from "./pos6CoolerRanges";
 
-/* Accepted range per unit kind. `max: null` means "no upper bound". */
-export const RANGES = {
-  chiller: { min: 0, max: 5, label: "0 °C … +5 °C" },
-  freezer: { min: null, max: -18, label: "≤ −18 °C" },
-};
+/** Document control for this sheet — shared with the viewer (pos6Api.DOCS). */
+const DOC = DOCS[TYPES.coolers];
 
 const DEFAULT_SLOTS = ["08:00", "11:00", "14:00", "17:00", "20:00", "22:00"];
 
@@ -55,16 +55,6 @@ const makeUnit = (kind, name) => ({
   temps: {},
   remarks: "",
 });
-
-/** A reading outside its unit's range. Blank and non-numeric are not failures. */
-export function isOutOfRange(kind, value) {
-  const n = Number(value);
-  if (value === "" || value === null || value === undefined || Number.isNaN(n)) return false;
-  const r = RANGES[kind] || RANGES.chiller;
-  if (r.min !== null && n < r.min) return true;
-  if (r.max !== null && n > r.max) return true;
-  return false;
-}
 
 export default function POS6CoolersTemperatureInput() {
   const { t, dir, isAr } = useLang();
@@ -131,12 +121,36 @@ export default function POS6CoolersTemperatureInput() {
   /* ── time slots ── */
   const addSlot = () =>
     setSlots((prev) => {
-      const next = `${String(6 + prev.length).padStart(2, "0")}:00`;
-      return prev.includes(next) ? [...prev, ""] : [...prev, next];
+      // Walk forward to the first free hour rather than giving up on the first
+      // clash: a blank heading is a column whose readings have nowhere to go.
+      for (let h = 6 + prev.length; h < 30; h += 1) {
+        const next = `${String(h % 24).padStart(2, "0")}:00`;
+        if (!prev.includes(next)) return [...prev, next];
+      }
+      return prev;
     });
 
-  const renameSlot = (idx, value) =>
+  /* A reading is stored under its slot's time, so renaming the column has to
+     carry the readings over with it — otherwise correcting "14:00" to "15:00"
+     at the end of a shift emptied that whole column, on the sheet and in the
+     saved record alike. Two columns may not share a time either: they would be
+     one key, so the second would overwrite the first. */
+  const renameSlot = (idx, value) => {
+    const from = slots[idx];
+    if (value === from) return;
+    if (value && slots.some((s, i) => i !== idx && s === value)) {
+      alert("⚠️ " + t("cl_slot_duplicate"));
+      return;
+    }
     setSlots((prev) => prev.map((s, i) => (i === idx ? value : s)));
+    setUnits((prev) =>
+      prev.map((u) => {
+        if (!(from in (u.temps || {}))) return u;
+        const { [from]: moved, ...rest } = u.temps;
+        return { ...u, temps: value ? { ...rest, [value]: moved } : rest };
+      })
+    );
+  };
 
   const removeSlot = (idx) => {
     const slot = slots[idx];
@@ -179,6 +193,7 @@ export default function POS6CoolersTemperatureInput() {
 
     const ok = await save(TYPES.coolers, {
       branch: BRANCH,
+      documentNo: DOC.documentNo,
       reportDate: date,
       slots,
       // uid is a client-side key only — it has no meaning once stored.
@@ -209,8 +224,8 @@ export default function POS6CoolersTemperatureInput() {
         subtitle={t("cl_subtitle")}
         accent="#0284c7"
         fields={[
-          { labelKey: "hdr_document_no", value: "FSMS/BR/F04" },
-          { labelKey: "hdr_revision_no", value: "0" },
+          { labelKey: "hdr_document_no", value: DOC.documentNo },
+          { labelKey: "hdr_revision_no", value: DOC.revision },
           { label: t("hdr_branch"),      value: BRANCH },
           { label: `${t("cl_chiller")} — ${t("cl_range")}`, value: RANGES.chiller.label },
           { label: `${t("cl_freezer")} — ${t("cl_range")}`, value: RANGES.freezer.label },

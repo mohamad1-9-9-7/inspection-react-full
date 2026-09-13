@@ -4,9 +4,12 @@
 import React, { useMemo, useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
-import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
+import { BRANCH, DOCS, TYPES, todayISO, useSaveReport } from "./pos6Api";
 import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
+
+/** Document control for this sheet — shared with the viewer (pos6Api.DOCS). */
+const DOC = DOCS[TYPES.cleaningChecklist];
 
 const GENERAL_CLEANER = "bh-20 (General purpose) 10 ml/litr / Multi clean";
 const SURFACE_SANITIZER = "bh-30 (surface sanitizer) 30 ml/bottle";
@@ -116,6 +119,7 @@ export default function POS6CleaningChecklistInput() {
 
     save(TYPES.cleaningChecklist, {
       branch: BRANCH,
+      documentNo: DOC.documentNo,
       reportDate: date,
       entries: rows,
       checkedBy,
@@ -133,9 +137,9 @@ export default function POS6CleaningChecklistInput() {
         subtitle={t("tab_cleaning_sub")}
         accent="#22c55e"
         fields={[
-          { labelKey: "hdr_document_no", value: "FF-QM/REC/CC" },
-          { labelKey: "hdr_issue_date",  value: "05/02/2020" },
-          { labelKey: "hdr_revision_no", value: "0" },
+          { labelKey: "hdr_document_no", value: DOC.documentNo },
+          { labelKey: "hdr_issue_date",  value: DOC.issueDate },
+          { labelKey: "hdr_revision_no", value: DOC.revision },
           { label: t("hdr_branch"),      value: BRANCH },
           { labelKey: "hdr_issued_by",   value: "QA" },
           { labelKey: "hdr_controlling", value: "Quality Controller" },

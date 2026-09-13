@@ -25,6 +25,15 @@ export const POS6_STR = {
   tab_coolers:        { en: "Coolers Temperatures",    ar: "درجات حرارة البرادات" },
   tab_coolers_sub:    { en: "Chillers & freezers log", ar: "سجل البرادات والمجمدات" },
 
+  // Personal hygiene screen — the Production dictionary names the production
+  // area in these three strings, so POS 6 says its own name instead.
+  ph_subtitle:        { en: "POS 6 — Sharjah Butchery • Daily employee hygiene inspection",
+                        ar: "POS 6 — ملحمة الشارقة • فحص يومي للنظافة الشخصية" },
+  ph_roster_hint:     { en: "Employees assigned to POS 6 · Personal Hygiene in Settings → Staff Directory",
+                        ar: "الموظفون المعيّنون على POS 6 · النظافة الشخصية من الإعدادات ← سجل الموظفين" },
+  ph_roster_empty:    { en: "No employee is assigned to this sheet yet — add them in Settings → Staff Directory (POS 6 · Personal Hygiene), then reopen this form.",
+                        ar: "لا يوجد موظفون معيّنون لهذا النموذج بعد — أضِفهم من الإعدادات ← سجل الموظفين (POS 6 · النظافة الشخصية) ثم أعد فتح النموذج." },
+
   // Coolers screen
   cl_subtitle:        { en: "Add as many chillers and freezers as this branch has", ar: "أضف ما تحتاجه من برادات ومجمدات حسب الفرع" },
   cl_unit:            { en: "Unit",                    ar: "الوحدة" },
@@ -32,6 +41,7 @@ export const POS6_STR = {
   cl_add_freezer:     { en: "Add freezer",             ar: "إضافة مجمّد" },
   cl_add_slot:        { en: "Add time slot",           ar: "إضافة وقت" },
   cl_remove_slot:     { en: "Remove this time slot",   ar: "حذف هذا الوقت" },
+  cl_slot_duplicate:  { en: "That time is already a column on this sheet.", ar: "هذا الوقت موجود كعمود في الورقة أصلاً." },
   cl_no_units:        { en: "No units yet — add a chiller or a freezer to start.", ar: "لا توجد وحدات — أضف براداً أو مجمّداً للبدء." },
   cl_chiller:         { en: "Chiller",                 ar: "براد" },
   cl_freezer:         { en: "Freezer",                 ar: "مجمّد" },
@@ -47,6 +57,17 @@ export const POS6_STR = {
   rc_add_row:         { en: "Add delivery",            ar: "إضافة شحنة" },
   rc_req_row:         { en: "Enter at least one delivery.", ar: "أدخل شحنة واحدة على الأقل." },
   rc_bad_dates:       { en: "Expiry date must be later than the production date.", ar: "تاريخ الصلاحية يجب أن يكون بعد تاريخ الإنتاج." },
+  // One delivery has one supplier, one invoice, one vehicle and one receiver,
+  // so those four are asked once above the table instead of on every line.
+  rc_delivery:        { en: "Delivery details",        ar: "بيانات الشحنة" },
+  rc_supplier:        { en: "Supplier",                ar: "المورّد" },
+  rc_invoice_no:      { en: "Invoice no.",             ar: "رقم الفاتورة" },
+  rc_received_by:     { en: "Received by",             ar: "استلمها" },
+  rc_vehicle_temp:    { en: "Vehicle °C",              ar: "حرارة السيارة" },
+  rc_req_delivery:    { en: "Enter the supplier and the invoice number — the invoice number is what tells one delivery from another on the same day.",
+                        ar: "أدخل اسم المورّد ورقم الفاتورة — رقم الفاتورة هو اللي بيفرّق شحنة عن شحنة بنفس اليوم." },
+  rc_sheet_note:      { en: "One sheet per delivery: saving again with the same invoice number updates this sheet, a different invoice number files a new one.",
+                        ar: "نموذج لكل شحنة: الحفظ مرة تانية بنفس رقم الفاتورة بيحدّث هالنموذج، ورقم فاتورة مختلف بيفتح نموذج جديد." },
 
   // Equipment inspection screen
   eq_section:         { en: "Section",                 ar: "القسم" },

@@ -47,6 +47,7 @@ export const STAFF_EVENT = "staff_directory_changed";
 export const STAFF_FORMS = [
   // ── Personal hygiene, one per site ──
   { key: "qcs_personal_hygiene",   reportType: "qcs-ph",                   site: "QCS",     siteAr: "القصيص",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true },
+  { key: "pos6_personal_hygiene",  reportType: "pos6_personal_hygiene",    site: "POS 6",   siteAr: "ملحمة الشارقة", en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
   { key: "pos10_personal_hygiene", reportType: "pos10_personal_hygiene",   site: "POS 10",  siteAr: "أبوظبي",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "pos11_personal_hygiene", reportType: "pos11_personal_hygiene",   site: "POS 11",  siteAr: "العين",         en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "pos15_personal_hygiene", reportType: "pos15_personal_hygiene",   site: "POS 15",  siteAr: "البرشاء",       en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },

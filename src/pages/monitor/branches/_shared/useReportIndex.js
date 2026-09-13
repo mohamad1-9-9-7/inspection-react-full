@@ -26,6 +26,48 @@ import {
   reportId,
 } from "./reportApi";
 
+/* ── Caches that outlive the component ──────────────────────────────
+   A viewer hub unmounts its panel on every tab switch, so a per-mount cache
+   threw the index away each time: going Hygiene → Cleaning → Hygiene refetched
+   the first index from scratch, and the screen sat on "⏳ Loading…" again for a
+   list it had already downloaded. Keeping the index (and the records already
+   opened) at module level makes a return visit instant, and the in-flight map
+   collapses the duplicate request React StrictMode's double mount would fire.
+   Short TTL — this is a viewer, so a minute-old index is fine, and `reload()`
+   (the refresh button) always bypasses it. */
+const INDEX_TTL = 60 * 1000;
+const _indexCache = new Map();   // type → { rows, ts }
+const _indexInflight = new Map();// type → Promise<rows>
+const _recordCache = new Map();  // `${type}::${id|date}` → { row, ts }
+
+function cachedIndex(type) {
+  const hit = _indexCache.get(type);
+  if (!hit) return null;
+  if (Date.now() - hit.ts > INDEX_TTL) { _indexCache.delete(type); return null; }
+  return hit.rows;
+}
+
+function fetchIndex(type) {
+  if (_indexInflight.has(type)) return _indexInflight.get(type);
+  const p = listReportDates(type)
+    .then((rows) => { _indexCache.set(type, { rows, ts: Date.now() }); return rows; })
+    .finally(() => _indexInflight.delete(type));
+  _indexInflight.set(type, p);
+  return p;
+}
+
+/** Drop everything cached for a type — after a save, or on an explicit refresh. */
+export function invalidateReportIndex(type) {
+  if (type) {
+    _indexCache.delete(type);
+    const prefix = `${type}::`;
+    [..._recordCache.keys()].forEach((k) => { if (k.startsWith(prefix)) _recordCache.delete(k); });
+  } else {
+    _indexCache.clear();
+    _recordCache.clear();
+  }
+}
+
 /**
  * @param {string} type            report type
  * @param {object} [opts]
@@ -39,8 +81,17 @@ export default function useReportIndex(type, opts = {}) {
   const [loading, setLoading] = useState(false);  // loading the index
   const [opening, setOpening] = useState(false);  // loading one record
 
-  const cacheRef = useRef(new Map());
-  const autoOpenedRef = useRef(false);
+  // The TYPE this hook has loaded, not a "have we loaded once" flag. A caller
+  // that swaps `type` on a live instance — one viewer component driving several
+  // sheets — would otherwise keep serving the first type's index forever.
+  const loadedTypeRef = useRef(null);
+
+  /* `load` is not rebuilt when the selection changes, so reading `selected`
+     straight out of its closure gave it whatever was on screen the last time
+     the callback was created — stale by exactly the edits a reload is meant to
+     pick up. The ref is always current. */
+  const selectedRef = useRef(null);
+  selectedRef.current = selected;
 
   /** Newest first, by business date then by id (same-day records). */
   const sortIndex = useCallback((rows) => {
@@ -56,13 +107,16 @@ export default function useReportIndex(type, opts = {}) {
     async (item) => {
       if (!item) return null;
       const id = reportId(item) || item.id;
-      const key = String(id || reportDateOf(item));
+      const key = `${type}::${String(id || reportDateOf(item))}`;
 
-      const cached = cacheRef.current.get(key);
-      if (cached) {
-        setSelected(cached);
-        return cached;
+      const hit = _recordCache.get(key);
+      // Same TTL as the index: a viewer may hold a record for a minute, never
+      // past the point where somebody could have re-saved that sheet.
+      if (hit && Date.now() - hit.ts <= INDEX_TTL) {
+        setSelected(hit.row);
+        return hit.row;
       }
+      if (hit) _recordCache.delete(key);
 
       setOpening(true);
       try {
@@ -71,7 +125,7 @@ export default function useReportIndex(type, opts = {}) {
         // record whose id did not come through is still reachable by date.
         if (!full) full = item.payload ? item : await getReportRowByDate(type, reportDateOf(item));
         if (full) {
-          cacheRef.current.set(key, full);
+          _recordCache.set(key, { row: full, ts: Date.now() });
           setSelected(full);
         }
         return full;
@@ -82,17 +136,31 @@ export default function useReportIndex(type, opts = {}) {
     [type]
   );
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  /**
+   * @param {object} [o]
+   * @param {boolean} [o.fresh=true] skip the module cache and hit the server.
+   *   A mount passes false, so returning to a tab paints from what is already
+   *   in memory; the refresh button leaves it true.
+   */
+  const load = useCallback(async ({ fresh = true } = {}) => {
+    const cached = fresh ? null : cachedIndex(type);
+    setLoading(!cached);
     try {
-      const rows = sortIndex(await listReportDates(type));
-      cacheRef.current.clear();
+      if (fresh) invalidateReportIndex(type);
+      const rows = sortIndex(cached || (await fetchIndex(type)));
       setIndex(rows);
 
       // Keep the record on screen if it survived the reload, else fall back.
-      const currentId = String(reportId(selected) || "");
+      const current = selectedRef.current;
+      const currentId = String(reportId(current) || "");
       const still = currentId && rows.some((r) => String(reportId(r) || r.id) === currentId);
-      if (!still) {
+      if (still) {
+        // It survived — but a `fresh` reload is exactly how a screen asks for
+        // the version it just wrote, so re-read it rather than leaving the
+        // pre-save copy on screen. The record cache was dropped above, so this
+        // really does go back to the server.
+        if (fresh) await open(current);
+      } else {
         setSelected(null);
         if (autoOpenLatest && rows.length) await open(rows[0]);
       }
@@ -104,15 +172,21 @@ export default function useReportIndex(type, opts = {}) {
     } finally {
       setLoading(false);
     }
-    // `selected` is read but must not retrigger the load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, sortIndex, open, autoOpenLatest]);
 
+  /** Public refresh — always goes to the server. */
+  const reload = useCallback(() => load({ fresh: true }), [load]);
+
   useEffect(() => {
-    if (autoOpenedRef.current) return;
-    autoOpenedRef.current = true;
-    reload();
-  }, [reload]);
+    if (loadedTypeRef.current === type) return;
+    loadedTypeRef.current = type;
+    // Drop the record on screen first: it belongs to the previous type, and
+    // rendering it under the new type's columns shows a row of dashes until
+    // the new index lands.
+    setSelected(null);
+    setIndex([]);
+    load({ fresh: false });
+  }, [type, load]);
 
   /** The full list — for "export everything", never for rendering the tree. */
   const loadAll = useCallback(async () => listReports(type), [type]);

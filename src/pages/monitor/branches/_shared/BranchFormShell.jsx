@@ -70,6 +70,43 @@ export function GuidanceNote({ isAr, accent = "#0284c7", items = [] }) {
   );
 }
 
+/**
+ * A strip of report-level fields shown above the table.
+ *
+ * Some columns are the same on every line of a sheet — one delivery has one
+ * supplier, one invoice and one vehicle — so typing them per row is copying,
+ * and two rows can disagree about a fact the report only has one of. Those
+ * fields belong here, once, and the table keeps only what genuinely varies
+ * line by line.
+ *
+ * @param {Array} fields [{ key, label, value, onChange, type?, placeholder?, required? }]
+ */
+export function FieldPanel({ title, fields = [], align = "left" }) {
+  if (!fields.length) return null;
+  return (
+    <div className="ph-fieldbar">
+      {title && <div className="ph-fieldbar-title">{title}</div>}
+      <div className="ph-fieldbar-grid">
+        {fields.map((f) => (
+          <label key={f.key} className="ph-field">
+            <span className="ph-field-label" style={{ textAlign: align }}>
+              {f.label}
+              {f.required && <span className="ph-req"> *</span>}
+            </span>
+            <input
+              type={f.type || "text"}
+              value={f.value ?? ""}
+              onChange={(e) => f.onChange(e.target.value)}
+              placeholder={f.placeholder || ""}
+              className="ph-input"
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* `disabled` blocks the button for a reason that is not "a save is running" —
    e.g. the report date is already taken. Without it the caller had to pass that
    state as `saving`, and the button then claimed to be saving when it was not. */
@@ -298,7 +335,47 @@ const FORM_STYLES = `
   }
 
   /* ── POS 6 additions ── */
+  .ph-toolbar-left, .ph-toolbar-right {
+    display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
   .ph-toolbar-note { font-size: 12px; font-weight: 600; color: #64748b; }
+
+  /* Report-level fields (FieldPanel) */
+  .ph-fieldbar {
+    margin: 0 0 14px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(15,23,42,.04);
+  }
+  .ph-fieldbar-title {
+    font-size: 11px; font-weight: 900; color: #64748b;
+    letter-spacing: .07em; text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .ph-fieldbar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }
+  .ph-field { display: flex; flex-direction: column; gap: 5px; }
+  .ph-field-label {
+    font-size: 10px; font-weight: 800; color: #0f766e;
+    letter-spacing: .07em; text-transform: uppercase;
+  }
+
+  /* Directory-backed employee columns */
+  .ph-input-no  { text-align: center; font-weight: 800; letter-spacing: .02em; }
+  .ph-input-job { font-size: 13px; color: #475569; }
+  .ph-hint {
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+    font-size: 13px; font-weight: 700; line-height: 1.55;
+  }
+  .ph-hint-warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
   .ph-btn-soft { background:#f0fdfa; color:#0f766e; border-color:#99f6e4; }
   .ph-btn-soft:hover { background:#ccfbf1; }
   .ph-btn-amber { background:#fffbeb; color:#b45309; border-color:#fde68a; }

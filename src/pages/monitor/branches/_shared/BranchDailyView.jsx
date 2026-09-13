@@ -394,6 +394,11 @@ export default function BranchDailyView({
   tabs = [],
   defaultTabKey,
   direction = "rtl",
+  // The header print button prints the page generically, stamping the official
+  // header with today's date and no document number. A hub whose panels print
+  // the selected record themselves (POS 6) turns it off so the two do not sit
+  // side by side offering different printouts of the same screen.
+  showPrint = true,
 }) {
   const [activeKey, setActiveKey] = useState(defaultTabKey || tabs[0]?.key);
 
@@ -465,7 +470,7 @@ export default function BranchDailyView({
               <span className="bdv-count-pill">{liveCount}</span>
               ملفات مربوطة
             </div>
-            {activeTab?.key !== "overview" && (
+            {showPrint && activeTab?.key !== "overview" && (
               <PrintButton
                 title={activeTab?.label || branchCode}
                 documentNo=""
@@ -504,7 +509,16 @@ export default function BranchDailyView({
         <div className="bdv-content">
           {activeTab ? (
             <PanelShell tab={{ ...activeTab, branchCode }}>
-              <Suspense fallback={<Loader label={activeTab.loaderLabel || activeTab.label} />}>
+              {/* Keyed by tab: without it React sees the same element TYPE in the
+                  same position and updates that instance in place instead of
+                  remounting it, so a hub whose tabs share one component (POS 6
+                  drives five sheets through a single POS6ReportView) carried the
+                  previous tab's report and date tree into the next tab — land on
+                  a sheet with no records first and every other tab looked empty
+                  too, forever. Remounting per tab makes each panel load its own
+                  data, which is what the hubs with a component per tab always
+                  got for free. */}
+              <Suspense key={activeTab.key} fallback={<Loader label={activeTab.loaderLabel || activeTab.label} />}>
                 {activeTab.element}
               </Suspense>
             </PanelShell>

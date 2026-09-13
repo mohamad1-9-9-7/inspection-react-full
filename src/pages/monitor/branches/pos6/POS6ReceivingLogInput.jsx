@@ -1,12 +1,20 @@
 // src/pages/monitor/branches/pos6/POS6ReceivingLogInput.jsx
 // Incoming-delivery inspection for POS 6, drawn in the Production form style.
+//
+// Supplier, invoice number, vehicle temperature and receiver are asked ONCE,
+// above the table: one delivery has one of each, so repeating them per line was
+// copying, and two lines could disagree about a fact the sheet only has one of.
+// The table keeps only what genuinely changes from line to line.
 import React, { useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
-import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
-import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
+import { BRANCH, DOCS, TYPES, todayISO, useSaveReport } from "./pos6Api";
+import FormShell, { FieldPanel, GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
 import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
+
+/** Document control for this sheet — shared with the viewer (pos6Api.DOCS). */
+const DOC = DOCS[TYPES.receivingLog];
 
 /* Columns judged C / NC on arrival. */
 const TICK_COLS = [
@@ -24,9 +32,7 @@ const TEXT_COLS = [
   // the same product everywhere else (QCS shipment, traceability, final product).
   { key: "itemCode",       label: "Item code",        type: "code",    w: 120 },
   { key: "foodItem",       label: "Food item",        type: "product", w: 180 },
-  { key: "supplier",       label: "Supplier",         type: "text",    w: 160 },
   { key: "netWeight",      label: "Net weight (kg)",  type: "number", w: 110 },
-  { key: "vehicleTemp",    label: "Vehicle °C",       type: "number", w: 95 },
   { key: "foodTemp",       label: "Food °C",          type: "number", w: 95 },
 ];
 
@@ -34,8 +40,6 @@ const TAIL_COLS = [
   { key: "countryOfOrigin", label: "Country of origin", type: "text", w: 130 },
   { key: "productionDate",  label: "Production date",   type: "date", w: 140 },
   { key: "expiryDate",      label: "Expiry date",       type: "date", w: 140 },
-  { key: "invoiceNo",       label: "Invoice no.",       type: "text", w: 120 },
-  { key: "receivedBy",      label: "Received by",       type: "text", w: 130 },
   { key: "remarks",         label: "Remarks",           type: "text", w: 180 },
 ];
 
@@ -50,12 +54,27 @@ const emptyRow = () => {
 
 const isFilled = (r) => Object.values(r).some((v) => String(v ?? "").trim() !== "");
 
+/* Invoice numbers get typed with stray spaces, dashes and slashes, so two
+   spellings of the same invoice must not become two sheets. */
+const sameInvoice = (a, b) => {
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[\s\-_/\\.]/g, "");
+  const x = norm(a);
+  return x !== "" && x === norm(b);
+};
+
 export default function POS6ReceivingLogInput() {
   const { t, dir, isAr } = useLang();
   const { saving, opMsg, save } = useSaveReport();
 
   const [date, setDate] = useState(todayISO);
-  const [formRef, setFormRef] = useState("FSMS/BR/F01A");
+  const [formRef, setFormRef] = useState(DOC.documentNo);
+
+  /* One per delivery, not one per line. */
+  const [supplier, setSupplier] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
+  const [vehicleTemp, setVehicleTemp] = useState("");
+
   const [rows, setRows] = useState(() => Array.from({ length: STARTING_ROWS }, emptyRow));
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
@@ -81,6 +100,10 @@ export default function POS6ReceivingLogInput() {
 
   const handleSave = () => {
     if (!date) return alert("⚠️ " + t("hdr_report_date"));
+    // The invoice number identifies the delivery now that it is filed once per
+    // sheet — it is what tells a second delivery on the same day apart from the
+    // first, so the form cannot be saved without it.
+    if (!supplier.trim() || !invoiceNo.trim()) return alert("⚠️ " + t("rc_req_delivery"));
     const entries = rows.filter(isFilled);
     if (entries.length === 0) return alert("⚠️ " + t("rc_req_row"));
 
@@ -95,11 +118,21 @@ export default function POS6ReceivingLogInput() {
 
     save(TYPES.receivingLog, {
       branch: BRANCH,
+      documentNo: DOC.documentNo,
       formRef,
       reportDate: date,
+      supplier,
+      invoiceNo,
+      receivedBy,
+      vehicleTemp,
       entries,
       checkedBy,
       verifiedBy,
+    }, {
+      // One sheet per delivery: re-saving this invoice updates its record,
+      // while another delivery the same day is filed as its own sheet instead
+      // of overwriting this one.
+      match: (p) => sameInvoice(p.invoiceNo, invoiceNo),
     });
   };
 
@@ -123,6 +156,19 @@ export default function POS6ReceivingLogInput() {
 
       <GuidanceNote isAr={isAr} accent="#f97316" items={GUIDANCE.receiving} />
 
+      <FieldPanel
+        title={t("rc_delivery")}
+        align={alignStart}
+        fields={[
+          { key: "supplier",    label: t("rc_supplier"),     value: supplier,    onChange: setSupplier,   required: true },
+          { key: "invoiceNo",   label: t("rc_invoice_no"),   value: invoiceNo,   onChange: setInvoiceNo,  required: true },
+          { key: "receivedBy",  label: t("rc_received_by"),  value: receivedBy,  onChange: setReceivedBy },
+          { key: "vehicleTemp", label: t("rc_vehicle_temp"), value: vehicleTemp, onChange: setVehicleTemp, type: "number" },
+        ]}
+      />
+
+      <div className="ph-hint">🧾 {t("rc_sheet_note")}</div>
+
       <div className="ph-toolbar">
         <div className="ph-legend">
           <span><b className="ph-chip-c">C</b> {t("ph_conform")}</span>
@@ -135,7 +181,7 @@ export default function POS6ReceivingLogInput() {
       </div>
 
       <div className="ph-table-wrap ph-scroll-x">
-        <table className="ph-table" style={{ minWidth: 1660 }}>
+        <table className="ph-table" style={{ minWidth: 1280 }}>
           <thead>
             <tr>
               <th style={{ width: 44 }}>{t("ph_col_no")}</th>
