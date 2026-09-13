@@ -1,14 +1,22 @@
-// src/pages/monitor/branches/pos 11/POS11PersonalHygieneView.jsx
+// src/pages/monitor/branches/POS 11/POS11PersonalHygieneView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
-
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
+import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
 const TYPE = "pos11_personal_hygiene";
+const BRANCH = "POS 11";
 
 /* ✅ أعمدة النظافة فقط (مثل الإدخال الجديد) */
 const HYGIENE_COLUMNS = [
@@ -19,553 +27,359 @@ const HYGIENE_COLUMNS = [
 ];
 
 export default function POS11PersonalHygieneView() {
-  const [reports, setReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const reportRef = useRef();
+  const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // helper: ID موحّد للحذف والمقارنة
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+  const [date, setDate] = useState("");      // empty = nothing open until a date is picked
+  const [allDates, setAllDates] = useState([]);
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [exporting, setExporting] = useState(false);
 
-  // 🔐 مطالبة كلمة السر (9999)
-  const askPass = (label = "") =>
-    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+  const payload = record?.payload || {};
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  // helper: تاريخ آمن من reportDate ثم fallback على created_at
-  const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
-    if (!isNaN(d1)) return d1;
-    const d2 = new Date(r?.created_at);
-    return isNaN(d2) ? new Date(0) : d2;
-  };
-
-  const isPOS11 = (r) =>
-    String(r?.payload?.branch || r?.branch || "")
-      .trim()
-      .toLowerCase() === "pos 11";
-
-  const fetchReports = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
-
-      // ✅ نحصر النتائج بفرع POS 11 فقط
-      arr = arr.filter(isPOS11);
-
-      // ✅ الأحدث أولاً
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
-
-      setReports(arr);
-      setSelectedReport(arr[0] || null); // الأحدث
-    } catch (err) {
-      console.error(err);
-      alert("⚠️ Failed to fetch data.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const payload = selectedReport?.payload || {};
+  const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   // ✅ اظهار POS 11 ومعه الاسم (ملحمة العين) — يدعم القديم والجديد
   const branchLabel = useMemo(() => {
     const base =
       (payload?.branchLabel && String(payload.branchLabel).trim()) ||
       (payload?.branch && String(payload.branch).trim()) ||
-      "POS 11";
-
-    // لو كان فقط POS 11 بدون وصف، أضف ملحمة العين تلقائياً
+      BRANCH;
     if (/^pos\s*11$/i.test(base)) return "POS 11 — Al Ain Butchery";
     return base;
   }, [payload?.branchLabel, payload?.branch]);
 
-  const reportDate = payload?.reportDate || payload?.date || "—";
+  const reportDate = payload?.reportDate || payload?.date || date || "—";
 
   // ✅ لو التقارير القديمة كانت تستخدم checkedBy/verifiedBy
-  const checkedBySupervisor =
-    payload?.checkedBySupervisor || payload?.checkedBy || "—";
-  const verifiedByQA = payload?.verifiedByQA || payload?.verifiedBy || "—";
+  const checkedBySupervisor = payload?.checkedBySupervisor || payload?.checkedBy || "";
+  const verifiedByQA = payload?.verifiedByQA || payload?.verifiedBy || "";
 
-  const handleExportPDF = async () => {
-    if (!reportRef.current) return;
-
-    const actions = reportRef.current.querySelector(".action-bar");
-    const prev = actions?.style.display;
-    if (actions) actions.style.display = "none";
-
-    const canvas = await html2canvas(reportRef.current, {
-      scale: 2,
-      windowWidth: reportRef.current.scrollWidth,
-      windowHeight: reportRef.current.scrollHeight,
-    });
-    const imgData = canvas.toDataURL("image/png");
-
-    const pdf = new jsPDF("l", "pt", "a4"); // Landscape
-    const pageWidth = pdf.internal.pageSize.getWidth();
-
-    pdf.setFontSize(18);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(`AL MAWASHI — ${branchLabel}`, pageWidth / 2, 30, { align: "center" });
-
-    const imgWidth = pageWidth - 40;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    const x = 20;
-    const y = 50;
-
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(`POS11_Personal_Hygiene_${reportDate}.pdf`);
-
-    if (actions) actions.style.display = prev || "flex";
-  };
-
-  const handleDelete = async (report) => {
-    if (!askPass("Delete confirmation")) {
-      alert("❌ Wrong password");
-      return;
+  /* ===== date tree =====
+     A metadata-only index (?lite=1): dates, no payloads. The page used to pull
+     every record of the type — full payloads — on mount and then filter them in
+     the browser, which is what made it crawl. The record for one day is fetched
+     only when that day is opened. */
+  async function fetchAllDates() {
+    try {
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean)))
+        .sort((a, b) => String(b).localeCompare(String(a)));
+      setAllDates(uniq);
+    } catch (e) {
+      console.warn("Dates fetch failed", e);
     }
+  }
+
+  async function fetchRecord(d = date) {
+    setLoading(true); setErr(""); setRecord(null);
+    try {
+      setRecord(await getReportRowByDate(TYPE, d));
+    } catch (e) {
+      console.error(e);
+      setErr("Failed to fetch data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchAllDates(); }, []);
+  useEffect(() => { if (date) fetchRecord(date); }, [date]);
+
+  const treeItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
+
+  /* ===== KPIs ===== */
+  const kpis = useMemo(() => {
+    const unfit = entries.filter((e) => /^no$/i.test(String(e?.fitForFoodHandling || "").trim())).length;
+    return { total: entries.length, unfit };
+  }, [entries]);
+
+  /* ===== PDF (loaded on demand — keeps html2canvas/jsPDF out of the bundle) ===== */
+  async function handleExportPDF() {
+    if (!reportRef.current) return;
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        windowWidth: reportRef.current.scrollWidth,
+        windowHeight: reportRef.current.scrollHeight,
+      });
+      const imgData = canvas.toDataURL("image/png");
+
+      const pdf = new jsPDF("l", "pt", "a4"); // Landscape
+      const pageWidth = pdf.internal.pageSize.getWidth();
+
+      pdf.setFontSize(18);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`AL MAWASHI — ${branchLabel}`, pageWidth / 2, 30, { align: "center" });
+
+      const imgWidth = pageWidth - 40;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, "PNG", 20, 50, imgWidth, imgHeight);
+      pdf.save(`POS11_Personal_Hygiene_${reportDate}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to export PDF.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /* ===== delete ===== */
+  async function handleDelete() {
+    if (!record) return;
+    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
-    const rid = getId(report);
+    const rid = getId(record);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error("Failed to delete");
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Report deleted successfully.");
-      fetchReports();
-    } catch (err) {
-      console.error(err);
+      await fetchAllDates();
+      setRecord(null);
+      const next = allDates.find((d) => d !== payload.reportDate) || "";
+      setDate(next);
+    } catch (e) {
+      console.error(e);
       alert("⚠️ Failed to delete report.");
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  const handleExportJSON = () => {
-    try {
-      const payloads = reports.map((r) => r?.payload ?? r);
-      const bundle = {
-        type: TYPE,
-        branch: "POS 11",
-        exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
-      };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      a.href = url;
-      a.download = `POS11_Personal_Hygiene_ALL_${ts}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to export JSON.");
-    }
-  };
+  /* ===== export / import JSON — the open record only.
+     Exporting every sheet at once belongs to the Excel Backup tab; doing it here
+     meant holding the whole table in the page just to have the button. */
+  function exportJSON() {
+    if (!record) return;
+    const blob = new Blob([JSON.stringify({ type: TYPE, payload }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `POS11_Personal_Hygiene_${payload.reportDate || date}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   const triggerImport = () => fileInputRef.current?.click();
 
-  const handleImportJSON = async (e) => {
+  async function handleImportJSON(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       setLoading(true);
-      const text = await file.text();
-      const json = JSON.parse(text);
-
+      const json = JSON.parse(await file.text());
       const itemsRaw =
         Array.isArray(json) ? json :
         Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data : [];
+        Array.isArray(json?.data) ? json.data :
+        json?.payload ? [json] : [];
 
-      if (!itemsRaw.length) {
-        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
-        return;
-      }
+      if (!itemsRaw.length) return alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
 
       let ok = 0, fail = 0;
       for (const item of itemsRaw) {
-        const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
-
+        const p = item?.payload ?? item;
+        if (!p || typeof p !== "object") { fail++; continue; }
         try {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reporter: "pos11",
-              type: TYPE,
-              payload,
-            }),
+            body: JSON.stringify({ reporter: "pos11", type: TYPE, payload: { branch: BRANCH, ...p } }),
           });
           if (res.ok) ok++; else fail++;
-        } catch {
-          fail++;
-        }
+        } catch { fail++; }
       }
 
       alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
-    } catch (err) {
-      console.error(err);
+      await fetchAllDates();
+      if (date) await fetchRecord(date);
+    } catch (err2) {
+      console.error(err2);
       alert("❌ Invalid JSON file.");
     } finally {
       setLoading(false);
       if (e?.target) e.target.value = "";
     }
+  }
+
+  /* ===== styles ===== */
+  const thCell = {
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "9px 6px",
+    textAlign: "center",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
+    fontSize: "0.85rem",
   };
-
-  const groupedReports = useMemo(() => {
-    return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
-      if (isNaN(date)) return acc;
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      acc[year] ??= {};
-      acc[year][month] ??= [];
-      acc[year][month].push({ ...r, day, _dt: date.getTime() });
-      return acc;
-    }, {});
-  }, [reports]);
-
-  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+  const tdCell = { border: "1px solid #c7d2fe", padding: "7px 6px", textAlign: "center" };
+  const tdHeader = { border: "1px solid #9aa4ae", padding: "5px 8px", background: "#f8fbff", fontSize: "0.85rem" };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar dates */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
+    <GlassShell
+      icon="🧼"
+      title={`Personal Hygiene — ${BRANCH}`}
+      actions={
+        <>
+          <button onClick={handleExportPDF} disabled={!record || exporting} style={btn(record && !exporting ? "#dc2626" : "#94a3b8")}>
+            {exporting ? "Exporting…" : "⬇ PDF"}
+          </button>
+          <button onClick={exportJSON} disabled={!record} style={btn(record ? "#0f766e" : "#94a3b8")}>⬇ JSON</button>
+          <button onClick={triggerImport} style={btn("#d97706")}>⬆ Import</button>
+          <button onClick={() => { fetchAllDates(); if (date) fetchRecord(date); }} style={btn("#2563eb")}>↻ Refresh</button>
+          {canDelete("daily") && record && (
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">🗑 Delete</button>
+          )}
+          <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.key)}
+            loading={loading && !allDates.length}
+          />
+        }
       >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports ({branchLabel})
-        </h4>
+        {loading && <p>Loading…</p>}
+        {err && <p style={{ color: "#b91c1c" }}>{err}</p>}
+        {!loading && !err && !record && <EmptyState text={date ? "No report for this date." : "Pick a date from the tree."} />}
 
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(yb) - Number(ya))
-              .map(([year, months]) => (
-                <details key={year} open={false}>
-                  <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                    📅 Year {year}
-                  </summary>
+        {record && (
+          <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+            <div ref={reportRef} style={{ width: "100%", minWidth: 0, background: "#fff", padding: 14, borderRadius: 12 }}>
+              {/* meta badges */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>
+                {[
+                  ["Branch", safe(payload.branch) || BRANCH],
+                  ["Report Date", formatDMY(safe(payload.reportDate) || date)],
+                  ["Employees", String(kpis.total)],
+                  ["Not fit", String(kpis.unfit)],
+                ].map(([k, v]) => (
+                  <div key={k} style={{
+                    background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                    border: "1px solid rgba(139,92,246,0.25)",
+                    borderRadius: 10,
+                    padding: "7px 12px",
+                  }}>
+                    <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                  </div>
+                ))}
+              </div>
 
-                  {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(mb) - Number(ma))
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open={false}>
-                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                getId(selectedReport) && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {`${r.day}/${month}/${year}`}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* Report display */}
-      <div
-        style={{
-          flex: 1,
-          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
-      >
-        {!selectedReport ? (
-          <p>❌ No report selected.</p>
-        ) : (
-          <>
-            {/* Actions */}
-            <div
-              className="action-bar"
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "0.6rem",
-                marginBottom: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <button onClick={handleExportPDF} style={btn("#27ae60")}>
-                ⬇ Export PDF
-              </button>
-
-              <button onClick={handleExportJSON} style={btn("#16a085")}>
-                ⬇ Export JSON
-              </button>
-
-              <button onClick={triggerImport} style={btn("#f39c12")}>
-                ⬆ Import JSON
-              </button>
-
-              {canDelete("daily") && (
-                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
-                  🗑 Delete
-                </button>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* Report content */}
-            <div ref={reportRef}>
+              {/* AL MAWASHI document header (kept as-is so the PDF/Excel backups stay faithful) */}
               <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem" }}>
                 <tbody>
                   <tr>
-                    <td style={tdHeader}>
-                      <strong>Document Title:</strong> Personal Hygiene Check List
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Document No:</strong> FS-QM /REC/PH
-                    </td>
+                    <td style={tdHeader}><strong>Document Title:</strong> Personal Hygiene Check List</td>
+                    <td style={tdHeader}><strong>Document No:</strong> FS-QM /REC/PH</td>
+                  </tr>
+                  <tr>
+                    <td style={tdHeader}><strong>Issue Date:</strong> 05/02/2020</td>
+                    <td style={tdHeader}><strong>Revision No:</strong> 0</td>
                   </tr>
                   <tr>
                     <td style={tdHeader}>
-                      <strong>Issue Date:</strong> 05/02/2020
+                      <strong>Area:</strong> QA &nbsp;&nbsp;<span style={{ fontWeight: 800 }}>{branchLabel}</span>
                     </td>
-                    <td style={tdHeader}>
-                      <strong>Revision No:</strong> 0
-                    </td>
+                    <td style={tdHeader}><strong>Date:</strong> {reportDate}</td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}>
-                      <strong>Area:</strong> QA &nbsp;&nbsp;
-                      <span style={{ fontWeight: 800 }}>{branchLabel}</span>
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Date:</strong> {reportDate}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Controlling Officer:</strong> Quality Controller
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Approved By:</strong> Hussam.O.Sarhan
-                    </td>
+                    <td style={tdHeader}><strong>Controlling Officer:</strong> Quality Controller</td>
+                    <td style={tdHeader}><strong>Approved By:</strong> Hussam.O.Sarhan</td>
                   </tr>
                 </tbody>
               </table>
 
-              <h3
-                style={{
-                  textAlign: "center",
-                  background: "#e5e7eb",
-                  padding: "6px",
-                  marginBottom: "0.5rem",
-                }}
-              >
+              <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "0.5rem" }}>
                 {branchLabel}
                 <br />
                 PERSONAL HYGIENE CHECKLIST
               </h3>
 
-              {/* ✅ اعتماد إلكتروني */}
-              <div
-                style={{
-                  marginBottom: "10px",
-                  padding: "10px",
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
-                  background: "#f8fafc",
-                  fontWeight: 800,
-                  color: "#065f46",
-                  textAlign: "center",
-                }}
-              >
+              <div style={{
+                marginBottom: 10, padding: 10, borderRadius: 10,
+                border: "1px solid #cbd5e1", background: "#f8fafc",
+                fontWeight: 800, color: "#065f46", textAlign: "center",
+              }}>
                 ✅ This report is electronically approved; no signature is required.
               </div>
 
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" }}>
                 <thead>
-                  <tr style={{ background: "#2980b9", color: "#fff" }}>
-                    <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-                    <th style={{ ...thStyle, width: "160px" }}>Employee Name</th>
-
+                  <tr style={{ background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" }}>
+                    <th style={{ ...thCell, width: "50px" }}>S.No</th>
+                    <th style={{ ...thCell, width: "160px" }}>Employee Name</th>
                     {HYGIENE_COLUMNS.map((col, i) => (
-                      <th key={i} style={{ ...thStyle, width: "120px" }}>
-                        {col}
-                      </th>
+                      <th key={i} style={{ ...thCell, width: "120px" }}>{col}</th>
                     ))}
-
-                    <th style={{ ...thStyle, width: "150px" }}>
-                      Fit for Food Handling?
-                      <br />
-                      (Yes/No)
-                    </th>
-                    <th style={{ ...thStyle, width: "140px" }}>
-                      If No: Communicable disease
-                      <br />
-                      (Yes/No)
-                    </th>
-                    <th style={{ ...thStyle, width: "140px" }}>
-                      If No: Open wound
-                      <br />
-                      (Yes/No)
-                    </th>
-                    <th style={{ ...thStyle, width: "170px" }}>If No: Other</th>
-
-                    <th style={{ ...thStyle, width: "260px" }}>
-                      Remarks and Corrective Actions
-                    </th>
+                    <th style={{ ...thCell, width: "150px" }}>Fit for Food Handling?<br />(Yes/No)</th>
+                    <th style={{ ...thCell, width: "140px" }}>If No: Communicable disease<br />(Yes/No)</th>
+                    <th style={{ ...thCell, width: "140px" }}>If No: Open wound<br />(Yes/No)</th>
+                    <th style={{ ...thCell, width: "170px" }}>If No: Other</th>
+                    <th style={{ ...thCell, width: "260px" }}>Remarks and Corrective Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry, i) => (
-                    <tr key={i}>
-                      <td style={tdStyle}>{i + 1}</td>
-                      <td style={tdStyle}>{entry?.name || "—"}</td>
-
-                      {HYGIENE_COLUMNS.map((col, cIndex) => (
-                        <td key={cIndex} style={tdStyle}>
-                          {entry?.[col] || "—"}
+                  {entries.map((entry, i) => {
+                    const unfit = /^no$/i.test(String(entry?.fitForFoodHandling || "").trim());
+                    return (
+                      <tr key={i} style={{ background: unfit ? "#fef2f2" : "#fff" }}>
+                        <td style={tdCell}>{i + 1}</td>
+                        <td style={{ ...tdCell, textAlign: "start" }}>{entry?.name || "—"}</td>
+                        {HYGIENE_COLUMNS.map((col, cIndex) => (
+                          <td key={cIndex} style={tdCell}>{entry?.[col] || "—"}</td>
+                        ))}
+                        <td style={{ ...tdCell, fontWeight: 800, color: unfit ? "#b91c1c" : "#065f46" }}>
+                          {entry?.fitForFoodHandling || "—"}
                         </td>
-                      ))}
-
-                      <td style={tdStyle}>{entry?.fitForFoodHandling || "—"}</td>
-                      <td style={tdStyle}>{entry?.reasonCommunicableDisease || "—"}</td>
-                      <td style={tdStyle}>{entry?.reasonOpenWound || "—"}</td>
-                      <td style={tdStyle}>{entry?.reasonOther || "—"}</td>
-
-                      <td style={tdStyle}>{entry?.remarks || "—"}</td>
-                    </tr>
-                  ))}
+                        <td style={tdCell}>{entry?.reasonCommunicableDisease || "—"}</td>
+                        <td style={tdCell}>{entry?.reasonOpenWound || "—"}</td>
+                        <td style={tdCell}>{entry?.reasonOther || "—"}</td>
+                        <td style={{ ...tdCell, textAlign: "start" }}>{entry?.remarks || "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: "1rem",
-                  fontWeight: 800,
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem", fontWeight: 800, gap: "1rem", flexWrap: "wrap" }}>
                 <div>
                   Checked By (Branch Supervisor - PIC):{" "}
-                  <SignatureName name={checkedBySupervisor === "—" ? "" : checkedBySupervisor} underline={false} inline />
+                  <SignatureName name={checkedBySupervisor} underline={false} inline />
                 </div>
                 <div>
-                  Verified by (QA):{" "}
-                  <SignatureName name={verifiedByQA === "—" ? "" : verifiedByQA} underline={false} inline />
+                  Verified by (QA): <SignatureName name={verifiedByQA} underline={false} inline />
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: "10px",
-                  textAlign: "center",
-                  fontWeight: 900,
-                  color: "#065f46",
-                  borderTop: "1px dashed #94a3b8",
-                  paddingTop: "8px",
-                }}
-              >
+              <div style={{
+                marginTop: 10, textAlign: "center", fontWeight: 900,
+                color: "#065f46", borderTop: "1px dashed #94a3b8", paddingTop: 8,
+              }}>
                 ✅ This report is electronically approved; no signature is required.
               </div>
             </div>
-          </>
+          </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
-
-const thStyle = {
-  padding: "6px",
-  border: "1px solid #ccc",
-  textAlign: "center",
-  fontSize: "0.85rem",
-};
-
-const tdStyle = {
-  padding: "6px",
-  border: "1px solid #ccc",
-  textAlign: "center",
-};
-
-const tdHeader = {
-  border: "1px solid #ccc",
-  padding: "4px 6px",
-  fontSize: "0.85rem",
-};
-
-const btn = (bg) => ({
-  padding: "6px 12px",
-  borderRadius: "6px",
-  background: bg,
-  color: "#fff",
-  fontWeight: "600",
-  border: "none",
-  cursor: "pointer",
-});

@@ -6,6 +6,7 @@ import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../utils/perms";
 import { uploadImage, photoOf } from "../../../../utils/imageUpload";
+import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
 
 
@@ -94,37 +95,27 @@ export default function POS11PestControlView() {
     fontSize: "0.9rem",
   };
 
-  /* ===== جلب كل التواريخ ===== */
+  /* ===== جلب كل التواريخ =====
+     فهرس خفيف (lite=1): تواريخ فقط بدون الـ payloads. الصفحة كانت تنزّل كل
+     السجلات بصورها مرتين عند الفتح ومرة أخرى مع كل نقرة على تاريخ — وهو سبب
+     تجمّد الشاشة. السجل الكامل يُجلب الآن عند الطلب فقط. */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list.map(r=>r?.payload).filter(p=>p && p.branch===BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map(r => reportDateOf(r)).filter(Boolean)))
+        .sort((a,b)=>String(b).localeCompare(String(a)));
       setAllDates(uniq);
-
-      // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch(e) {
       console.warn("Failed to fetch dates", e);
     }
   }
 
-  /* ===== جلب سجل واحد ===== */
+  /* ===== جلب سجل واحد (استعلام مُوجّه بالتاريخ) ===== */
   async function fetchRecord(d=date) {
     setLoading(true); setErr(""); setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find(r=>r?.payload?.branch===BRANCH && r?.payload?.reportDate===d) || null;
+      const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
 
       const p = match?.payload || {};

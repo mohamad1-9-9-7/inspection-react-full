@@ -1,506 +1,343 @@
-// src/pages/monitor/branches/pos 11/POS11DailyCleaningView.jsx
-import React, { useEffect, useState, useRef } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+// src/pages/monitor/branches/POS 11/POS11DailyCleaningView.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
+import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+const TYPE = "pos11_daily_cleanliness";
+const BRANCH = "POS 11";
 
 export default function POS11DailyCleaningView() {
-  const [reports, setReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const reportRef = useRef();
+  const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+  const todayDubai = useMemo(() => {
+    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
+    catch { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  }, []);
 
-  // 🔐 مطالبة كلمة السر (9999)
-  const askPass = (label = "") =>
-    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+  const [date, setDate] = useState("");      // empty = nothing open until a date is picked
+  const [allDates, setAllDates] = useState([]);
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [exporting, setExporting] = useState(false);
 
-  // نحصر النتائج بفرع POS 11 فقط
-  const isPOS11 = (r) =>
-    String(r?.payload?.branch || r?.branch || "")
-      .trim()
-      .toLowerCase() === "pos 11";
+  const payload = record?.payload || {};
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
 
-  // ===== Fetch (أقدم ← أحدث)
-  async function fetchReports() {
-    setLoading(true);
+  const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+
+  /* ===== date tree =====
+     A metadata-only index (?lite=1) — dates without payloads. This page used to
+     download every record of the type, payload and all, on mount; that is what
+     froze the screen once the branch had a year of sheets. The full record is
+     now fetched only for the day the user opens. */
+  async function fetchAllDates() {
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=pos11_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean)))
+        .sort((a, b) => String(b).localeCompare(String(a)));
+      setAllDates(uniq);
+    } catch (e) {
+      console.warn("Dates fetch failed", e);
+    }
+  }
 
-      // فلترة الفرع
-      arr = arr.filter(isPOS11);
-
-      // ترتيب تصاعدي بالتاريخ
-      arr.sort(
-        (a, b) =>
-          new Date(a?.payload?.reportDate || 0) -
-          new Date(b?.payload?.reportDate || 0)
-      );
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+  async function fetchRecord(d = date) {
+    setLoading(true); setErr(""); setRecord(null);
+    try {
+      setRecord(await getReportRowByDate(TYPE, d));
     } catch (e) {
       console.error(e);
-      alert("⚠️ Failed to fetch data.");
+      setErr("Failed to fetch data.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
+  useEffect(() => { fetchAllDates(); }, []);
+  useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
-  // ===== PDF
-  const handleExportPDF = async () => {
+  const treeItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
+
+  /* ===== KPIs ===== */
+  const kpis = useMemo(() => {
+    const checks = entries.filter((e) => !e?.isSection);
+    const c = checks.filter((e) => String(e?.status || "").toUpperCase() === "C").length;
+    const nc = checks.filter((e) => String(e?.status || "").toUpperCase() === "NC").length;
+    return { total: checks.length, c, nc };
+  }, [entries]);
+
+  /* ===== PDF (loaded on demand — keeps html2canvas/jsPDF out of the bundle) ===== */
+  async function handleExportPDF() {
     if (!reportRef.current) return;
-    const buttons = reportRef.current.querySelector(".action-buttons");
-    if (buttons) buttons.style.display = "none";
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
 
-    const canvas = await html2canvas(reportRef.current, {
-      scale: 4,
-      windowWidth: reportRef.current.scrollWidth,
-      windowHeight: reportRef.current.scrollHeight,
-    });
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        windowWidth: reportRef.current.scrollWidth,
+        windowHeight: reportRef.current.scrollHeight,
+      });
 
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "pt", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
-    let imgWidth = pageWidth;
-    let imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (imgHeight > pageHeight) {
-      imgHeight = pageHeight;
-      imgWidth = (canvas.width * imgHeight) / canvas.height;
+      let imgWidth = pageWidth - 40;
+      let imgHeight = (canvas.height * imgWidth) / canvas.width;
+      if (imgHeight > pageHeight - 40) {
+        imgHeight = pageHeight - 40;
+        imgWidth = (canvas.width * imgHeight) / canvas.height;
+      }
+
+      pdf.addImage(imgData, "PNG", (pageWidth - imgWidth) / 2, 20, imgWidth, imgHeight);
+      pdf.save(`POS11_Cleanliness_${payload.reportDate || date || "report"}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to export PDF.");
+    } finally {
+      setExporting(false);
     }
+  }
 
-    const x = (pageWidth - imgWidth) / 2;
-    const y = 20;
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(
-      `POS11_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`
-    );
-
-    if (buttons) buttons.style.display = "flex";
-  };
-
-  // ===== Delete (بكلمة سر 9999 + تأكيد)
-  const handleDelete = async (report) => {
-    if (!askPass("Delete confirmation")) {
-      alert("❌ Wrong password");
-      return;
-    }
+  /* ===== delete ===== */
+  async function handleDelete() {
+    if (!record) return;
+    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("⚠️ Delete this report?")) return;
 
+    const rid = getId(record);
+    if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(getId(report))}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete");
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Report deleted.");
-      fetchReports();
+      await fetchAllDates();
+      setRecord(null);
+      const next = allDates.find((d) => d !== payload.reportDate) || "";
+      setDate(next);
     } catch (e) {
       console.error(e);
       alert("❌ Failed to delete.");
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  // ===== Export JSON (كل التقارير لفرع POS 11)
-  const handleExportJSON = () => {
-    try {
-      const payloads = reports.map((r) => r?.payload ?? r);
-      const bundle = {
-        type: "pos11_daily_cleanliness",
-        branch: "POS 11",
-        exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
-      };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      a.href = url;
-      a.download = `POS11_Cleanliness_ALL_${ts}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to export JSON.");
-    }
-  };
+  /* ===== export / import JSON — the open record only.
+     Exporting every sheet of the type is what the Excel Backup tab is for; doing
+     it here meant loading the whole table into the page just to have the button. */
+  function exportJSON() {
+    if (!record) return;
+    const blob = new Blob([JSON.stringify({ type: TYPE, payload }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `POS11_Cleanliness_${payload.reportDate || date}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
-  // ===== Import JSON (رفع للسيرفر)
   const triggerImport = () => fileInputRef.current?.click();
 
-  const handleImportJSON = async (e) => {
+  async function handleImportJSON(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       setLoading(true);
-      const text = await file.text();
-      const json = JSON.parse(text);
-
+      const json = JSON.parse(await file.text());
       const itemsRaw =
         Array.isArray(json) ? json :
         Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data : [];
+        Array.isArray(json?.data) ? json.data :
+        json?.payload ? [json] : [];
 
-      if (!itemsRaw.length) {
-        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
-        return;
-      }
+      if (!itemsRaw.length) return alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
 
       let ok = 0, fail = 0;
       for (const item of itemsRaw) {
-        const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
-
+        const p = item?.payload ?? item;
+        if (!p || typeof p !== "object") { fail++; continue; }
         try {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "pos11_daily_cleanliness",
-              payload,
-            }),
+            body: JSON.stringify({ reporter: "pos11", type: TYPE, payload: { branch: BRANCH, ...p } }),
           });
           if (res.ok) ok++; else fail++;
-        } catch {
-          fail++;
-        }
+        } catch { fail++; }
       }
 
       alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
-    } catch (e) {
-      console.error(e);
+      await fetchAllDates();
+      if (date) await fetchRecord(date);
+    } catch (err2) {
+      console.error(err2);
       alert("❌ Invalid JSON file.");
     } finally {
       setLoading(false);
       if (e?.target) e.target.value = "";
     }
-  };
+  }
 
-  // ===== Group by Year > Month > Day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r?.payload?.reportDate);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  /* ===== styles ===== */
+  const thCell = {
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
+    textAlign: "center",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
+  };
+  const tdCell = { border: "1px solid #c7d2fe", padding: "8px 7px", verticalAlign: "middle" };
+  const tdHeader = { border: "1px solid #9aa4ae", padding: "6px 8px", background: "#f8fbff", fontSize: "0.9rem" };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
+    <GlassShell
+      icon="🧹"
+      title={`Cleaning Checklist — ${BRANCH}`}
+      actions={
+        <>
+          <button onClick={handleExportPDF} disabled={!record || exporting} style={btn(record && !exporting ? "#dc2626" : "#94a3b8")}>
+            {exporting ? "Exporting…" : "⬇ PDF"}
+          </button>
+          <button onClick={exportJSON} disabled={!record} style={btn(record ? "#0f766e" : "#94a3b8")}>⬇ JSON</button>
+          <button onClick={triggerImport} style={btn("#d97706")}>⬆ Import</button>
+          <button onClick={() => { fetchAllDates(); if (date) fetchRecord(date); }} style={btn("#2563eb")}>↻ Refresh</button>
+          {canDelete("daily") && record && (
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">🗑 Delete</button>
+          )}
+          <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.key)}
+            loading={loading && !allDates.length}
+          />
+        }
       >
-        <h4
-          style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}
-        >
-          🗓️ Saved Reports (POS 11)
-        </h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months]) => (
-                <details key={year}>
-                  <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt);
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: "500" }}>
-                            📅 Month {month}
-                          </summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                selectedReport && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                    borderLeft: isActive
-                                      ? "4px solid #4c1d95"
-                                      : "4px solid transparent",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 8,
-                                  }}
-                                  title={isActive ? "Currently open" : "Open report"}
-                                >
-                                  <span>{`${r.day}/${month}/${year}`}</span>
-                                  {isActive ? (
-                                    <span>✔️</span>
-                                  ) : (
-                                    <span style={{ opacity: 0.5 }}>•</span>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+        {loading && <p>Loading…</p>}
+        {err && <p style={{ color: "#b91c1c" }}>{err}</p>}
+        {!loading && !err && !record && <EmptyState text={date ? "No report for this date." : "Pick a date from the tree."} />}
 
-      {/* Report display */}
-      <div
-        style={{
-          flex: 1,
-          background: "#fff",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
-      >
-        {!selectedReport ? (
-          <p>❌ No report selected.</p>
-        ) : (
-          <div ref={reportRef} style={{ paddingBottom: "100px" }}>
-            {/* Header with actions */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <h3 style={{ color: "#2980b9" }}>
-                🧹 Report: {selectedReport.payload?.reportDate}
-              </h3>
-              <div className="action-buttons" style={{ display: "flex", gap: "0.6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>
-                  ⬇ Export PDF
-                </button>
-                <button onClick={handleExportJSON} style={btnJson}>
-                  ⬇ Export JSON
-                </button>
-                <button onClick={triggerImport} style={btnImport}>
-                  ⬆ Import JSON
-                </button>
-                {canDelete("daily") && (
-                  <button
-                    onClick={() => handleDelete(selectedReport)}
-                    style={btnDelete}
-                   data-delete-action="true">
-                    🗑 Delete
-                  </button>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* شعار */}
-            <div style={{ textAlign: "right", marginBottom: "1rem" }}>
-              <h2 style={{ margin: 0, color: "darkred" }}>AL MAWASHI</h2>
-              <div style={{ fontSize: "0.95rem", color: "#333" }}>
-                Trans Emirates Livestock Trading L.L.C.
-              </div>
-            </div>
-
-            {/* الترويسة */}
-            <table
-              style={{
-                width: "100%",
-                border: "1px solid #ccc",
-                marginBottom: "1rem",
-                fontSize: "0.9rem",
-                borderCollapse: "collapse",
-              }}
-            >
-              <tbody>
-                <tr>
-                  <td style={tdStyleHeader}>
-                    <b>Document Title:</b> Cleaning Checklist
-                  </td>
-                  <td style={tdStyleHeader}>
-                    <b>Document No:</b> FF-QM/REC/CC
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdStyleHeader}>
-                    <b>Issue Date:</b> 05/02/2020
-                  </td>
-                  <td style={tdStyleHeader}>
-                    <b>Revision No:</b> 0
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdStyleHeader}>
-                    <b>Area:</b> POS 11
-                  </td>
-                  <td style={tdStyleHeader}>
-                    <b>Issued By:</b> MOHAMAD ABDULLAH
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdStyleHeader}>
-                    <b>Controlling Officer:</b> Quality Controller
-                  </td>
-                  <td style={tdStyleHeader}>
-                    <b>Approved By:</b> Hussam O.Sarhan
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <h3
-              style={{
-                textAlign: "center",
-                background: "#e5e7eb",
-                padding: "6px",
-                marginBottom: "1rem",
-              }}
-            >
-              TRANS EMIRATES LIVESTOCK (AL AIN BUTCHERY) <br />
-              CLEANING CHECKLIST – POS 11
-            </h3>
-
-            {/* جدول العرض */}
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#2980b9", color: "#fff" }}>
-                  <th style={thStyle}>Sl-No</th>
-                  <th style={thStyle}>General Cleaning</th>
-                  <th style={thStyle}>C / NC</th>
-                  <th style={thStyle}>Observation</th>
-                  <th style={thStyle}>Informed To</th>
-                  <th style={thStyle}>Remarks & CA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedReport.payload?.entries?.map((entry, i) => (
-                  <tr key={i}>
-                    <td style={tdStyleCell}>
-                      {entry.isSection ? entry.secNo : entry.subLetter}
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyleCell,
-                        fontWeight: entry.isSection ? 700 : 400,
-                      }}
-                    >
-                      {entry.section || entry.item}
-                    </td>
-                    <td style={tdStyleCell}>
-                      {entry.isSection ? "—" : entry.status || ""}
-                    </td>
-                    <td style={tdStyleCell}>
-                      {entry.isSection ? "—" : entry.observation || ""}
-                    </td>
-                    <td style={tdStyleCell}>
-                      {entry.isSection ? "—" : entry.informed || ""}
-                    </td>
-                    <td style={tdStyleCell}>
-                      {entry.isSection ? "—" : entry.remarks || ""}
-                    </td>
-                  </tr>
+        {record && (
+          <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+            <div ref={reportRef} style={{ width: "100%", minWidth: 0, background: "#fff", padding: 14, borderRadius: 12 }}>
+              {/* meta badges */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>
+                {[
+                  ["Branch", safe(payload.branch) || BRANCH],
+                  ["Report Date", formatDMY(safe(payload.reportDate) || date)],
+                  ["Checks", String(kpis.total)],
+                  ["C / NC", `${kpis.c} / ${kpis.nc}`],
+                ].map(([k, v]) => (
+                  <div key={k} style={{
+                    background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                    border: "1px solid rgba(139,92,246,0.25)",
+                    borderRadius: 10,
+                    padding: "7px 12px",
+                  }}>
+                    <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
 
-            {/* Checked/Verified */}
-            <div
-              style={{
-                marginTop: "1.5rem",
-                display: "flex",
-                justifyContent: "space-between",
-                fontWeight: 600,
-                padding: "0 1rem",
-              }}
-            >
-              <SignatureName label="Checked By" name={selectedReport.payload?.checkedBy} align="start" />
-              <SignatureName label="Verified By" name={selectedReport.payload?.verifiedBy} align="end" />
+              {/* AL MAWASHI document header (kept as-is so the PDF/Excel backups stay faithful) */}
+              <div style={{ textAlign: "right", marginBottom: "0.75rem" }}>
+                <h2 style={{ margin: 0, color: "darkred" }}>AL MAWASHI</h2>
+                <div style={{ fontSize: "0.95rem", color: "#333" }}>Trans Emirates Livestock Trading L.L.C.</div>
+              </div>
+
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+                <tbody>
+                  <tr>
+                    <td style={tdHeader}><b>Document Title:</b> Cleaning Checklist</td>
+                    <td style={tdHeader}><b>Document No:</b> FF-QM/REC/CC</td>
+                  </tr>
+                  <tr>
+                    <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
+                    <td style={tdHeader}><b>Revision No:</b> 0</td>
+                  </tr>
+                  <tr>
+                    <td style={tdHeader}><b>Area:</b> {BRANCH}</td>
+                    <td style={tdHeader}><b>Issued By:</b> MOHAMAD ABDULLAH</td>
+                  </tr>
+                  <tr>
+                    <td style={tdHeader}><b>Controlling Officer:</b> Quality Controller</td>
+                    <td style={tdHeader}><b>Approved By:</b> Hussam O.Sarhan</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem" }}>
+                TRANS EMIRATES LIVESTOCK (AL AIN BUTCHERY) <br />
+                CLEANING CHECKLIST – {BRANCH}
+              </h3>
+
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" }}>
+                <thead>
+                  <tr style={{ background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" }}>
+                    <th style={{ ...thCell, width: 60 }}>Sl-No</th>
+                    <th style={thCell}>General Cleaning</th>
+                    <th style={{ ...thCell, width: 90 }}>C / NC</th>
+                    <th style={thCell}>Observation</th>
+                    <th style={thCell}>Informed To</th>
+                    <th style={thCell}>Remarks &amp; CA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry, i) => {
+                    const nc = !entry.isSection && String(entry.status || "").toUpperCase() === "NC";
+                    return (
+                      <tr key={i} style={{ background: entry.isSection ? "#eef2ff" : nc ? "#fef2f2" : "#fff" }}>
+                        <td style={{ ...tdCell, textAlign: "center" }}>{entry.isSection ? entry.secNo : entry.subLetter}</td>
+                        <td style={{ ...tdCell, fontWeight: entry.isSection ? 700 : 400 }}>{entry.section || entry.item}</td>
+                        <td style={{ ...tdCell, textAlign: "center", fontWeight: 800, color: nc ? "#b91c1c" : "#065f46" }}>
+                          {entry.isSection ? "—" : entry.status || ""}
+                        </td>
+                        <td style={tdCell}>{entry.isSection ? "—" : entry.observation || ""}</td>
+                        <td style={tdCell}>{entry.isSection ? "—" : entry.informed || ""}</td>
+                        <td style={tdCell}>{entry.isSection ? "—" : entry.remarks || ""}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between", fontWeight: 600, padding: "0 1rem", gap: 16, flexWrap: "wrap" }}>
+                <SignatureName label="Checked By" name={payload.checkedBy} align="start" />
+                <SignatureName label="Verified By" name={payload.verifiedBy} align="end" />
+              </div>
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
-
-const thStyle = {
-  padding: "8px",
-  border: "1px solid #ccc",
-  textAlign: "center",
-  fontSize: "0.9rem",
-};
-const tdStyleHeader = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
-const tdStyleCell = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
-
-const btnBase = {
-  padding: "8px 14px",
-  borderRadius: "6px",
-  color: "#fff",
-  fontWeight: "600",
-  border: "none",
-  cursor: "pointer",
-};
-
-const btnExport = { ...btnBase, background: "#27ae60" };
-const btnJson = { ...btnBase, background: "#16a085" };
-const btnImport = { ...btnBase, background: "#f39c12" };
-const btnDelete = { ...btnBase, background: "#c0392b" };
