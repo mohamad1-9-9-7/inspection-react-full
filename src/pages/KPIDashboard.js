@@ -177,7 +177,6 @@ const BRANCHES = [
       { t: "pos11_receiving_log_butchery",  label: "Receiving Log" },
       { t: "pos11_traceability_log",        label: "Traceability Log" },
       { t: "pos11_pest_control",            label: "Pest Control" },
-      { t: "pos11_calibration_log",         label: "Calibration Log" },
     ],
   },
   {

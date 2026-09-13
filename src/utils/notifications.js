@@ -23,7 +23,6 @@ const DEFAULTS = {
     ohc_certificate: true,
     licenses_contracts: true,
     municipality_inspection: true,
-    pos11_calibration_log: true,
     pos15_calibration_log: true,
     ftr1_calibration_log: true,
     ftr2_calibration_log: true,

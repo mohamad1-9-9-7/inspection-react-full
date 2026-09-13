@@ -14,7 +14,6 @@ const POS11TemperatureInput     = lazy(() => import("./POS11TemperatureInput"));
 const POS11TraceabilityLogInput = lazy(() => import("./TraceabilityLogInput"));
 const POS11ReceivingLogInput    = lazy(() => import("./POS11ReceivingLogInput"));
 const POS11PestControlInput     = lazy(() => import("./POS11PestControlInput"));
-const POS11CalibrationInput     = lazy(() => import("./POS11CalibrationInput"));
 const POS11SanitizerInput       = lazy(() => import("./POS11SanitizerConcentrationInput"));
 const EquipmentInspectionInput = lazy(() => import("../pos15/POS15EquipmentInspectionSanitizingLogInput"));
 
@@ -23,7 +22,7 @@ const config = {
   source: "pos11-tabs",
   title: "📋 POS 11 — Operations Inputs (Al Ain Butchery)",
   description:
-    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, Pest Control, and Calibration) in one place.",
+    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, and Pest Control) in one place.",
   defaultTab: "shipments",
   tabs: [
     { key: "shipments",    label: "📦 Shipments",          Component: QCSRawMaterialInspection,    loadingText: "Loading Shipments form…" },
@@ -33,7 +32,6 @@ const config = {
     { key: "traceability", label: "🧬 Traceability Log",   Component: POS11TraceabilityLogInput,   loadingText: "Loading Traceability Log…" },
     { key: "receiving",    label: "📥 Receiving Log",      Component: POS11ReceivingLogInput,      loadingText: "Loading Receiving Log…" },
     { key: "pest",         label: "🪲 Pest Control",       Component: POS11PestControlInput,       loadingText: "Loading Pest Control…" },
-    { key: "calibration",  label: "🧰 Calibration",        Component: POS11CalibrationInput,       loadingText: "Loading Calibration…" },
     { key: "sanitizer",    label: "🧴 Sanitizer Concentration", Component: POS11SanitizerInput,     loadingText: "Loading Sanitizer Concentration…" },
     { key: "equipment", label: "🧪 Equipment Inspection & Sanitizing", Component: () => <EquipmentInspectionInput reportType="pos11_equipment_inspection" branch="POS 11" reporter="pos11" />, loadingText: "Loading Equipment Inspection…" },
   ],
