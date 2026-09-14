@@ -640,7 +640,8 @@ filled in the report afterwards:
   qty       the weight - "1.68" or "1,68"; the report calls this QUANTITY
   unit      KG / PCS / PLATE (taken from the catalog when left out)
   expiry    2026-09-10 or 10/09/2026
-  remarks   EXPIRED, BAD SMELL, DAMAGE, NEAR EXP, CRITICAL (comma separated)
+  remarks   EXPIRED, NEAR EXP, MILD SMELL, BAD SMELL, DAMAGE, MILD CRITICAL,
+            CRITICAL (comma separated)
   action    one of the report's actions; anything else lands as "Other..."
   name      only used to show you which product a code did not match
 

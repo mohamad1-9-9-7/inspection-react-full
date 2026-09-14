@@ -1,14 +1,13 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait,
-} from "./_lib";
+  pageSetupPortrait, rowsOf } from "./_lib";
 
 export function makeFtrOilBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : [];
+    const entries = rowsOf(p.entries);
 
     const HEAD = [
       { label: "Date",                width: 14 },

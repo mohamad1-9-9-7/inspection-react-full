@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const HYGIENE_COLUMNS = [
   "Nails",
@@ -18,7 +17,7 @@ export function makeFtrPhBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const rows = Array.isArray(p.entries) ? p.entries : (Array.isArray(p.personalHygiene) ? p.personalHygiene : []);
+    const rows = Array.isArray(p.entries) ? p.entries : (rowsOf(p.personalHygiene));
 
     const HEAD = [
       { label: "S.No",  width: 7 },

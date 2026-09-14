@@ -10,7 +10,7 @@ import {
 import ReturnNoteScanner from "./shared/ReturnNoteScanner";
 import ReturnNoteImport from "./shared/ReturnNoteImport";
 import CodeSuggest from "./shared/CodeSuggest";
-import { fetchFiledDates, rememberFiledDate } from "../utils/filedDates";
+import { fetchFiledDates, rememberFiledDate, subscribeFiledDates } from "../utils/filedDates";
 import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
 import { API_BASE as SHARED_API_BASE } from "../config/api";
 
@@ -68,6 +68,32 @@ const ACTIONS = [
   "Other...",
 ];
 
+/* Every action carries its own colour, mark and rail, so a scan down the
+   ACTION column reads as a picture instead of a wall of identical grey boxes:
+   what went back to production, what went in the bin, what went to the
+   kitchen. The two bin colours (red, orange) are deliberately the loudest -
+   they are the rows an auditor stops at - and the mark is glued to the option
+   label, so a closed dropdown still says which family the row belongs to. */
+const ACTION_STYLE = {
+  "Use in production":        { mark: "♻️", ink: "#3730a3", bg: "#eef2ff", line: "#6366f1" },
+  "Condemnation":             { mark: "⛔", ink: "#991b1b", bg: "#fef2f2", line: "#ef4444" },
+  "Condemnation / Cooking":   { mark: "🔥", ink: "#9a3412", bg: "#fff7ed", line: "#f97316" },
+  "Use in kitchen":           { mark: "🍳", ink: "#854d0e", bg: "#fefce8", line: "#eab308" },
+  "Send to market":           { mark: "🏪", ink: "#075985", bg: "#f0f9ff", line: "#0ea5e9" },
+  "Disposed":                 { mark: "🗑️", ink: "#334155", bg: "#f1f5f9", line: "#64748b" },
+  "Separated expired shelf":  { mark: "📦", ink: "#6b21a8", bg: "#faf5ff", line: "#a855f7" },
+  "Other...":                 { mark: "✏️", ink: "#9d174d", bg: "#fdf2f8", line: "#ec4899" },
+};
+/* A row with no action yet keeps the ordinary box: the colouring states what
+   was answered, it never nudges towards an answer. */
+const NO_ACTION_STYLE = { mark: "", ink: "#0f172a", bg: "", line: "" };
+const actionStyle = (a) => ACTION_STYLE[String(a || "").trim()] || NO_ACTION_STYLE;
+
+/* The finished-row wash. One constant, because the same stops are re-stated
+   in the hover rule and in the completion flash inside RET_CSS, and a row
+   that changed colour under the mouse would read as un-finishing itself. */
+const DONE_ROW_BG = "linear-gradient(90deg, #dcfce7 0%, #f0fdf7 42%, #ffffff 100%)";
+
 /* An action that ends in the bin has to say WHY - a condemned return with no
    reason on it is the one row an auditor always stops at, and the reason is
    never recoverable later. "Condemnation / Cooking" counts too: the meat is
@@ -90,8 +116,22 @@ const QTY_TYPES = ["KG", "PCS", "PLATE", "أخرى / Other"];
 /* REMARKS is picked from a list now, but it is still STORED as a plain
    comma-separated string: BrowseReturns' filters and every Excel/PDF exporter
    read `remarks` as text, and old records already hold free typing. So the
-   picker only builds that same string - one row can carry several remarks. */
-const REMARK_OPTIONS = ["EXPIRED", "BAD SMELL", "DAMAGE", "NEAR EXP", "CRITICAL"];
+   picker only builds that same string - one row can carry several remarks.
+
+   The list reads in severity order and keeps a light grade next to the heavy
+   one it belongs to (MILD SMELL before BAD SMELL, MILD CRITICAL before
+   CRITICAL), so whoever picks sees the two steps of the same defect together.
+   Never re-spell a value already in use: saved reports hold these exact
+   words and the filters and exporters read them as text. */
+const REMARK_OPTIONS = [
+  "EXPIRED",
+  "NEAR EXP",
+  "MILD SMELL",
+  "BAD SMELL",
+  "DAMAGE",
+  "MILD CRITICAL",
+  "CRITICAL",
+];
 
 const splitRemarks = (v) =>
   String(v || "")
@@ -242,6 +282,37 @@ function numberFromCell(v) {
 /* ========= Draft storage key ========= */
 const DRAFT_KEY = "returns_draft_v1";
 const DRAFT_DATE_KEY = "returns_draft_date_v1";
+const DRAFT_SIGN_KEY = "returns_draft_sign_v1";
+
+/* ═════════════════════ Document control ═════════════════════
+   This sheet is a controlled QA record, not a scratch table, so it carries the
+   same document block its Excel backup prints - see the addDocHeader call in
+   settings/excel-exporters/returns.js. The two must be changed together or the
+   screen and the file stop being one document.
+
+   English only: this page is an English/LTR form and stays one language. */
+const DOC = {
+  company: "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC",
+  brand: "AL MAWASHI",
+  title: "Returns Report",
+  no: "RTN-QM/REC/001",
+  issueDate: "05/02/2020",
+  revisionNo: "0",
+  area: "QA / Logistics",
+  issuedBy: "MOHAMAD ABDULLAH",
+  controllingOfficer: "Quality Controller",
+  approvedBy: "Hussam O. Sarhan",
+};
+
+/** Whoever is signed in on this browser, used to propose the "Checked by" name. */
+function signedInName() {
+  try {
+    const u = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    return String(u.name || u.fullName || u.username || "").trim();
+  } catch {
+    return "";
+  }
+}
 
 /* ========= Helpers ========= */
 function getToday() {
@@ -307,6 +378,109 @@ function missingIn(row) {
   return out;
 }
 
+/* ═════════════════════ Duplicate rows ═════════════════════
+   The same line reaches the table twice more often than anyone admits: a note
+   read by the scanner and read again, an import run a second time, a row typed
+   by hand that a colleague had already typed. Nothing used to say a word about
+   it, and the day was saved with that weight counted twice.
+
+   Two rows are the SAME line only when the item, the branch and the unit all
+   agree - that is the hard key. The transfer note, the expiry and the action
+   are compared softly: an equal value matches, and a BLANK matches anything,
+   because a blank is a box nobody filled yet, not a different value. So a
+   second note from the same branch, a second batch with its own expiry, and
+   the two halves of a quantity deliberately split across two actions all stay
+   apart, which is the whole point - merging those would destroy the trace. */
+const dupItemKey = (r) =>
+  String(r?.itemCode || r?.productName || "").trim().toLowerCase().replace(/\s+/g, " ");
+const dupUnitKey = (r) =>
+  String((r?.qtyType === OTHER_QTY ? r?.customQtyType : r?.qtyType) || "").trim().toLowerCase();
+const dupActionKey = (r) =>
+  String((r?.action === "Other..." ? r?.customAction : r?.action) || "").trim().toLowerCase();
+const softSame = (a, b) => !a || !b || a === b;
+
+/** Row indexes that are the same line, as [[0,3],[5,6]]; singles are left out. */
+function findDuplicateGroups(rows) {
+  const byHardKey = new Map();
+  rows.forEach((r, i) => {
+    if (!rowHasData(r)) return;
+    const item = dupItemKey(r);
+    const branch = branchKeyOf(r).toLowerCase();
+    // a row that does not say WHAT came back from WHERE cannot be a duplicate yet
+    if (!item || !branch) return;
+    const key = `${item}|${branch}|${dupUnitKey(r)}`;
+    if (!byHardKey.has(key)) byHardKey.set(key, []);
+    byHardKey.get(key).push(i);
+  });
+
+  const groups = [];
+  byHardKey.forEach((idxs) => {
+    const open = [];
+    idxs.forEach((i) => {
+      const r = rows[i];
+      const note = String(r.transferNo || "").trim().toLowerCase();
+      const exp = String(r.expiry || "").trim();
+      const act = dupActionKey(r);
+      const hit = open.find(
+        (c) => softSame(c.note, note) && softSame(c.exp, exp) && softSame(c.act, act)
+      );
+      if (hit) {
+        hit.idxs.push(i);
+        // a blank that joined a filled line now answers for the filled value
+        hit.note = hit.note || note;
+        hit.exp = hit.exp || exp;
+        hit.act = hit.act || act;
+      } else {
+        open.push({ idxs: [i], note, exp, act });
+      }
+    });
+    open.forEach((c) => { if (c.idxs.length > 1) groups.push(c.idxs); });
+  });
+
+  return groups;
+}
+
+/* One line out of a group of duplicates: the quantities add up, every blank is
+   filled from whichever copy carries the value, and the remarks and the photos
+   of all the copies are kept. Nothing a person typed is thrown away, and the
+   first copy keeps its place in the table. */
+function mergeRowGroup(rows, idxs) {
+  const [keepIdx, ...rest] = idxs;
+  const merged = { ...rows[keepIdx] };
+
+  const first = Number(merged.quantity);
+  let qty = Number.isFinite(first) ? first : 0;
+
+  const remarks = splitRemarks(merged.remarks);
+  const images = safeArr(merged.images).slice();
+
+  const COPY_FIELDS = [
+    "itemCode", "productName", "origin", "butchery", "customButchery",
+    "transferNo", "qtyType", "customQtyType", "expiry", "action", "customAction",
+  ];
+
+  rest.forEach((i) => {
+    const r = rows[i];
+    const n = Number(r.quantity);
+    if (Number.isFinite(n)) qty += n;
+
+    COPY_FIELDS.forEach((f) => {
+      if (!String(merged[f] || "").trim() && String(r[f] || "").trim()) merged[f] = r[f];
+    });
+
+    splitRemarks(r.remarks).forEach((x) => {
+      if (!remarks.some((y) => y.toLowerCase() === x.toLowerCase())) remarks.push(x);
+    });
+    safeArr(r.images).forEach((src) => { if (!images.includes(src)) images.push(src); });
+  });
+
+  // 0.1 + 0.2 must not become 0.30000000000000004 on a weight sheet
+  if (qty > 0) merged.quantity = String(Number(qty.toFixed(3)));
+  merged.remarks = joinRemarks(remarks);
+  merged.images = images;
+  return merged;
+}
+
 /* ===== Helpers: Images API ===== */
 const MAX_IMAGES_PER_ROW = 8;
 
@@ -354,12 +528,28 @@ async function fetchServerItemsCached() {
    save. It was also pointless: the save that followed it was always a POST,
    and POST always INSERTs, so a second save for the same day hit the
    (type, reportDate) unique index and came back 409 "Save failed". */
-async function saveReturnsReport({ reportDate, items }) {
-  const url = `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`;
-  const res = await fetch(url, {
+async function saveReturnsReport({ reportDate, items, checkedBy = "", verifiedBy = "" }) {
+  /* ⚠️ This is the GENERIC upsert, not `PUT /api/reports/returns`.
+     Both upsert on (type, reportDate) in one call and neither reads the list
+     first, so the saving is the same - but the returns-only route rebuilds the
+     payload from `{reportDate, items}` alone and DROPS every other key, which
+     silently threw the two signatures away. The generic route stores the
+     payload it is given, so whatever this sheet adds next survives too.
+     ReturnView already saves through this same route. */
+  const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, _clientSavedAt: Date.now() }),
+    body: JSON.stringify({
+      reporter: "anonymous",
+      type: "returns",
+      payload: {
+        reportDate,
+        items,
+        checkedBy,
+        verifiedBy,
+        _clientSavedAt: Date.now(),
+      },
+    }),
   });
 
   if (!res.ok) {
@@ -483,41 +673,103 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
 }
 
 /* ===== Images Manager Modal ===== */
+/* ═══════════════ The photo manager ═══════════════
+   The window behind the photo button on a row. It used to be a white sheet
+   with a blue "Upload images" button, a line of text and a grid of squares
+   with a red ✕ that deleted without asking - and the preview opened INSIDE
+   the sheet, pushing the grid down the screen.
+
+   What it is now:
+     · one drop zone that also accepts a paste (Ctrl+V) and a dragged file,
+       because a photo is usually already on the clipboard from the camera roll
+     · a real progress bar while the photos upload, so a slow branch line looks
+       like work instead of a frozen window
+     · a tile grid where the actions appear on the tile itself, and removing
+       asks first - the photo is deleted from the image host, there is no undo
+     · a full-screen viewer with ← → and Esc, over the window rather than in it
+
+   `onRemoveImage(i)` and `onAddImages(urls)` are unchanged, so the row keeps
+   owning its photos and this window only drives them. */
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
-  const [previewSrc, setPreviewSrc] = useState("");
+  const [viewIdx, setViewIdx] = useState(-1);      // -1 = the viewer is closed
   const [uploadMsg, setUploadMsg] = useState("");
+  const [progress, setProgress] = useState(null);  // {done, total} while uploading
+  const [dragOver, setDragOver] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState(-1);
   const inputRef = useRef(null);
+
+  const images = safeArr(row?.images);
+  const count = images.length;
+  const room = Math.max(0, MAX_IMAGES_PER_ROW - count);
+  const busy = !!progress;
+
+  /* Everything this window remembers is about ONE row, so it all resets when
+     the window closes - reopening on another row must not show its state. */
   useEffect(() => {
     if (!open) {
-      setPreviewSrc("");
+      setViewIdx(-1);
       setUploadMsg("");
+      setProgress(null);
+      setDragOver(false);
+      setPendingRemove(-1);
     }
-    const onEsc = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [open, onClose]);
-  if (!open) return null;
-  const pick = () => inputRef.current?.click();
-  const handleFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
-    if (!files.length) return;
+  }, [open]);
 
-    const already = safeArr(row?.images).length;
-    const room = Math.max(0, MAX_IMAGES_PER_ROW - already);
+  /* Esc closes the viewer first and the window second - one key, the
+     innermost thing it can close. The arrows walk the photos. */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (viewIdx >= 0) setViewIdx(-1);
+        else if (pendingRemove >= 0) setPendingRemove(-1);
+        else onClose();
+        return;
+      }
+      if (viewIdx < 0 || count < 2) return;
+      if (e.key === "ArrowRight") setViewIdx((i) => (i + 1) % count);
+      if (e.key === "ArrowLeft") setViewIdx((i) => (i - 1 + count) % count);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose, viewIdx, count, pendingRemove]);
+
+  /* A photo is usually already on the clipboard - from the phone, from a chat,
+     from a screenshot - so pasting into this window uploads it. */
+  useEffect(() => {
+    if (!open) return;
+    const onPaste = (e) => {
+      const files = Array.from(e.clipboardData?.files || []).filter((f) =>
+        String(f.type || "").startsWith("image/")
+      );
+      if (files.length) {
+        e.preventDefault();
+        uploadFiles(files);
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
+
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) =>
+      String(f.type || "").startsWith("image/")
+    );
+    if (!files.length || busy) return;
+
     if (room <= 0) {
-      setUploadMsg(`This row already has ${MAX_IMAGES_PER_ROW} photos - remove one first.`);
+      setUploadMsg(`⚠️ This row already holds ${MAX_IMAGES_PER_ROW} photos — remove one first.`);
       return;
     }
+
     const batch = files.slice(0, room);
     const skipped = files.length - batch.length;
 
     const urls = [];
     let failed = 0;
+    setUploadMsg("");
     for (let i = 0; i < batch.length; i++) {
-      setUploadMsg(`Uploading ${i + 1} of ${batch.length}…`);
+      setProgress({ done: i, total: batch.length });
       try {
         urls.push(await uploadImage(batch[i], "returns_photo"));
       } catch (err) {
@@ -525,77 +777,237 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
         console.error("upload failed:", err);
       }
     }
+    setProgress(null);
 
     if (urls.length) onAddImages(urls);
+
     const notes = [];
     if (failed) notes.push(`${failed} failed to upload`);
     if (skipped) notes.push(`${skipped} skipped (max ${MAX_IMAGES_PER_ROW} per row)`);
-    setUploadMsg(notes.length ? `⚠️ ${notes.join(" - ")}` : "");
-    if (!notes.length) setTimeout(() => setUploadMsg(""), 1200);
+    if (notes.length) setUploadMsg(`⚠️ ${notes.join(" — ")}`);
+    else {
+      setUploadMsg(`✅ ${urls.length} photo${urls.length === 1 ? "" : "s"} added.`);
+      setTimeout(() => setUploadMsg(""), 1600);
+    }
   };
+
+  const handleFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    uploadFiles(files);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    uploadFiles(e.dataTransfer?.files);
+  };
+
+  const confirmRemove = (i) => {
+    setPendingRemove(-1);
+    if (viewIdx >= 0) setViewIdx(-1);
+    onRemoveImage(i);
+  };
+
+  if (!open) return null;
+
+  const subtitle = [
+    row?.itemCode ? `Code ${row.itemCode}` : "",
+    row?.butchery === OTHER_BRANCH ? row?.customButchery : row?.butchery,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div style={galleryBack} onClick={onClose}>
-      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
-            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+    <div className="rt-im-back" onClick={onClose}>
+      <div className="rt-im-card" onClick={(e) => e.stopPropagation()}>
+        {/* ── Header: which row this is, and how full it is ── */}
+        <div className="rt-im-head">
+          <div className="rt-im-headtxt">
+            <div className="rt-im-title">
+              {row?.productName || "Product photos"}
+            </div>
+            <div className="rt-im-sub">{subtitle || "Evidence for this returned item"}</div>
           </div>
-          <button onClick={onClose} style={galleryClose}>
-            ✕
-          </button>
+          <div className="rt-im-headright">
+            <span className={`rt-im-count${room === 0 ? " is-full" : ""}`}>
+              {count} / {MAX_IMAGES_PER_ROW}
+            </span>
+            <button className="rt-im-x" onClick={onClose} title="Close (Esc)">✕</button>
+          </div>
         </div>
-        {previewSrc && (
-          <div style={{ marginTop: 10, marginBottom: 8 }}>
-            <img
-              src={previewSrc}
-              alt="preview"
-              style={{
-                maxWidth: "100%",
-                maxHeight: 700,
-                borderRadius: 15,
-                boxShadow: "0 6px 18px rgba(0,0,0,.2)",
-              }}
-            />
+
+        {/* ── Drop zone ── */}
+        <div
+          className={`rt-im-drop${dragOver ? " is-over" : ""}${room === 0 ? " is-full" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); if (room > 0 && !busy) setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => { if (room > 0 && !busy) inputRef.current?.click(); }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if ((e.key === "Enter" || e.key === " ") && room > 0 && !busy) inputRef.current?.click();
+          }}
+        >
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7a1 1 0 0 0 .84-.46l.92-1.42A1 1 0 0 1 9.8 3.7h4.4a1 1 0 0 1 .84.42l.92 1.42a1 1 0 0 0 .84.46h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
+            <circle cx="12" cy="12.4" r="3.4" />
+          </svg>
+          <div>
+            <b>
+              {room === 0
+                ? `This row is full — ${MAX_IMAGES_PER_ROW} photos`
+                : dragOver
+                ? "Drop the photos here"
+                : "Take or choose photos"}
+            </b>
+            <span>
+              {room === 0
+                ? "Remove one to make room for another."
+                : `Drag them in, paste with Ctrl+V, or click to browse — ${room} left. They are shrunk on this device before they are sent.`}
+            </span>
+          </div>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleFiles}
+          style={{ display: "none" }}
+        />
+
+        {/* ── What the upload is doing ── */}
+        {busy && (
+          <div className="rt-im-prog">
+            <div className="rt-im-progtxt">
+              Uploading photo {Math.min(progress.done + 1, progress.total)} of {progress.total}…
+            </div>
+            <div className="rt-im-track">
+              <div
+                className="rt-im-fill"
+                style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
+              />
+            </div>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8, flexWrap: "wrap" }}>
-          <button onClick={pick} style={btnBlueModal}>
-            ⬆️ Upload images
-          </button>
-          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
-          <div style={{ fontSize: 13, color: "#334155" }}>
-            Up to {MAX_IMAGES_PER_ROW} photos per item. They are shrunk on this
-            device before uploading, then compressed again on the server.
+        {!busy && uploadMsg && (
+          <div className={`rt-im-msg${uploadMsg.startsWith("⚠️") ? " is-warn" : ""}`}>{uploadMsg}</div>
+        )}
+
+        {/* ── The photos ── */}
+        {count === 0 ? (
+          <div className="rt-im-empty">No photos on this row yet.</div>
+        ) : (
+          <div className="rt-im-grid">
+            {images.map((src, i) => (
+              <figure key={`${src}_${i}`} className="rt-im-tile">
+                <img
+                  src={thumbUrl(src, 400)}
+                  alt={`Return ${i + 1}`}
+                  onClick={() => setViewIdx(i)}
+                  loading="lazy"
+                />
+                <span className="rt-im-no">{i + 1}</span>
+
+                {pendingRemove === i ? (
+                  /* Asking before it goes: the photo is deleted from the image
+                     host as well, so there is nothing to undo afterwards. */
+                  <div className="rt-im-ask">
+                    <b>Remove this photo?</b>
+                    <div>
+                      <button className="rt-im-askno" onClick={() => setPendingRemove(-1)}>Keep</button>
+                      <button className="rt-im-askyes" onClick={() => confirmRemove(i)}>Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rt-im-acts">
+                    <button onClick={() => setViewIdx(i)} title="View full size">🔍</button>
+                    <button className="is-danger" onClick={() => setPendingRemove(i)} title="Remove this photo">🗑</button>
+                  </div>
+                )}
+              </figure>
+            ))}
           </div>
-          {uploadMsg && (
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: "bold",
-                color: uploadMsg.startsWith("⚠️") ? "#b45309" : "#2563eb",
-                width: "100%",
-              }}
-            >
-              {uploadMsg}
-            </div>
-          )}
-        </div>
-        <div style={thumbsWrap}>
-          {(row?.images || []).length === 0 ? (
-            <div style={{ color: "#64748b" }}>No images yet.</div>
-          ) : (
-            row.images.map((src, i) => (
-              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
-                <img src={thumbUrl(src, 320)} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
-                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>
-                  ✕
-                </button>
-              </div>
-            ))
-          )}
+        )}
+
+        <div className="rt-im-foot">
+          <span>Photos are stored on the image host, never inside the report.</span>
+          <button className="rt-im-done" onClick={onClose}>Done</button>
         </div>
       </div>
+
+      {/* ── Full-screen viewer, over the window and not inside it ── */}
+      {viewIdx >= 0 && images[viewIdx] && (
+        <div className="rt-im-view" onClick={(e) => { e.stopPropagation(); setViewIdx(-1); }}>
+          <img src={images[viewIdx]} alt={`Return ${viewIdx + 1}`} onClick={(e) => e.stopPropagation()} />
+          {count > 1 && (
+            <>
+              <button
+                className="rt-im-nav is-prev"
+                onClick={(e) => { e.stopPropagation(); setViewIdx((i) => (i - 1 + count) % count); }}
+                title="Previous (←)"
+              >‹</button>
+              <button
+                className="rt-im-nav is-next"
+                onClick={(e) => { e.stopPropagation(); setViewIdx((i) => (i + 1) % count); }}
+                title="Next (→)"
+              >›</button>
+            </>
+          )}
+          <div className="rt-im-viewbar" onClick={(e) => e.stopPropagation()}>
+            <span>{viewIdx + 1} / {count}</span>
+            <button onClick={() => { setViewIdx(-1); setPendingRemove(viewIdx); }}>🗑 Remove</button>
+            <button onClick={() => setViewIdx(-1)}>✕ Close</button>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ═══════════════ The photo control on every row ═══════════════
+   It used to be a flat blue pill reading "🖼️ Images (0)", identical on a row
+   with evidence and a row without it - the only difference was a digit nobody
+   reads while typing. Now the control IS the evidence: a row with no photo
+   shows a dashed camera tile that asks for one, and a row that has photos
+   shows the first one with the count over it. Both open the same manager. */
+function PhotoButton({ images = [], onClick }) {
+  const count = images.length;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rt-photo${count ? "" : " is-empty"}`}
+      title={
+        count
+          ? `${count} photo${count === 1 ? "" : "s"} on this row — click to view, add or remove`
+          : "Add a photo of this item"
+      }
+    >
+      {count ? (
+        <>
+          <span className="rt-photo-thumb">
+            <img src={thumbUrl(images[0], 96)} alt="" />
+            {count > 1 && <i className="rt-photo-badge">{count}</i>}
+          </span>
+          <span className="rt-photo-txt">
+            {count} photo{count === 1 ? "" : "s"}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="rt-photo-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7a1 1 0 0 0 .84-.46l.92-1.42A1 1 0 0 1 9.8 3.7h4.4a1 1 0 0 1 .84.42l.92 1.42a1 1 0 0 0 .84.46h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
+              <circle cx="12" cy="12.4" r="3.4" />
+            </svg>
+          </span>
+          <span className="rt-photo-txt">Add photo</span>
+        </>
+      )}
+    </button>
   );
 }
 
@@ -971,6 +1383,99 @@ function AddItemModal({ open, onClose, onAdd, error }) {
 }
 
 /* ====================== Main page ====================== */
+/* ═══════════ Document-control header (the form's identity) ═══════════
+   The block every controlled QA form opens with: who issues it, under which
+   number, at which revision. It is fixed text - nobody types into it - and it
+   is deliberately the same text the Excel backup prints, so a sheet read on
+   the screen and the same sheet read out of the file are one document.
+
+   The report date is shown here as well, because on a printed page the date
+   belongs inside the document block and not only in the editing bar above it. */
+function DocumentControl({ reportDate }) {
+  const dmy = /^\d{4}-\d{2}-\d{2}$/.test(String(reportDate || ""))
+    ? String(reportDate).split("-").reverse().join("/")
+    : reportDate || "—";
+
+  const cells = [
+    ["Document Title", DOC.title],
+    ["Document No", DOC.no],
+    ["Issue Date", DOC.issueDate],
+    ["Revision No", DOC.revisionNo],
+    ["Area", DOC.area],
+    ["Issued By", DOC.issuedBy],
+    ["Controlling Officer", DOC.controllingOfficer],
+    ["Approved By", DOC.approvedBy],
+    ["Report Date", dmy],
+    ["Company", DOC.company],
+  ];
+  const pairs = [];
+  for (let i = 0; i < cells.length; i += 2) pairs.push([cells[i], cells[i + 1] || null]);
+
+  const cell = {
+    border: "1px solid #c7b8d4",
+    padding: "6px 10px",
+    verticalAlign: "middle",
+    color: "#3b2149",
+    fontSize: 12.5,
+  };
+
+  return (
+    <div style={{ marginBottom: 14, overflowX: "auto" }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          background: "#fdfbff",
+          border: "1px solid #c7b8d4",
+          minWidth: 640,
+        }}
+      >
+        <tbody>
+          {pairs.map((pair, ri) => (
+            <tr key={ri}>
+              {ri === 0 && (
+                <td
+                  rowSpan={pairs.length}
+                  style={{ ...cell, width: 130, textAlign: "center", background: "#f5eeff" }}
+                >
+                  <div style={{ fontWeight: 900, color: "#b91c1c", lineHeight: 1.15, fontSize: 15 }}>
+                    AL<br />MAWASHI
+                  </div>
+                </td>
+              )}
+              {pair.map((c, ci) =>
+                c ? (
+                  <td key={ci} style={cell}>
+                    <b style={{ fontWeight: 800 }}>{c[0]}:</b> <span>{c[1] || "—"}</span>
+                  </td>
+                ) : (
+                  <td key={ci} style={cell} />
+                )
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div
+        style={{
+          textAlign: "center",
+          background: "#ede3f7",
+          border: "1px solid #c7b8d4",
+          borderTop: "none",
+          color: "#3b2149",
+          fontWeight: 800,
+          letterSpacing: ".4px",
+          padding: "6px 4px",
+          fontSize: 13,
+        }}
+      >
+        BRANCH RETURNS REPORT
+      </div>
+    </div>
+  );
+}
+
 export default function Returns() {
   const navigate = useNavigate();
 
@@ -1046,6 +1551,29 @@ export default function Returns() {
     return [makeEmptyRow()];
   });
 
+  /* Who filled the sheet in and who checked it afterwards. Every other
+     controlled report on the system carries these two names, and an audit
+     reads them before it reads the rows. They travel inside the payload, so
+     the view, the e-mail and the Excel backup all show the same two people.
+     "Checked by" opens on whoever is signed in - it is nearly always them -
+     and stays editable, because a supervisor may sign for a sheet a clerk
+     typed. "Verified by" is never guessed: it is a second person's signature
+     and proposing a name there would be putting words in their mouth. */
+  const [checkedBy, setCheckedBy] = useState(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_SIGN_KEY) || "{}");
+      if (typeof d.checkedBy === "string") return d.checkedBy;
+    } catch { /* ignore */ }
+    return signedInName();
+  });
+  const [verifiedBy, setVerifiedBy] = useState(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_SIGN_KEY) || "{}");
+      if (typeof d.verifiedBy === "string") return d.verifiedBy;
+    } catch { /* ignore */ }
+    return "";
+  });
+
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
   /* Holds the just-saved report date while the "send it now?" prompt is up. */
@@ -1063,10 +1591,26 @@ export default function Returns() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchFiledDates("returns")
-      .then((dates) => { if (!cancelled) setFiledDates(new Set(dates)); })
-      .catch(() => { if (!cancelled) setFiledDates(false); });
-    return () => { cancelled = true; };
+    const load = () => {
+      fetchFiledDates("returns")
+        .then((dates) => { if (!cancelled) setFiledDates(new Set(dates)); })
+        .catch(() => { if (!cancelled) setFiledDates(false); });
+    };
+    load();
+    /* The view screen - normally a second tab - can delete a day or move it to
+       another date. It keeps the shared index straight, so re-reading that
+       index when this tab is looked at again is what keeps the warning honest
+       instead of pointing at a day that no longer exists. */
+    const stopWatching = subscribeFiledDates("returns", load);
+    const recheck = () => { if (!document.hidden) load(); };
+    window.addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      cancelled = true;
+      stopWatching();
+      window.removeEventListener("focus", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+    };
   }, []);
 
   const dateAlreadyFiled =
@@ -1074,7 +1618,7 @@ export default function Returns() {
 
   // ✅ Track whether there are unsaved changes
   const [isDirty, setIsDirty] = useState(false);
-  const savedRowsRef = useRef(null); // JSON of the last-saved rows
+  const savedRowsRef = useRef(null); // JSON of the last-saved rows + signatures
 
   /* Draft auto-save, debounced.
      This used to run on every keystroke and serialise the whole table TWICE
@@ -1087,15 +1631,19 @@ export default function Returns() {
       try {
         localStorage.setItem(DRAFT_KEY, json);
         localStorage.setItem(DRAFT_DATE_KEY, reportDate);
+        localStorage.setItem(DRAFT_SIGN_KEY, JSON.stringify({ checkedBy, verifiedBy }));
       } catch {
         // ignore
       }
+      /* The two signatures are part of the report, so typing one is an unsaved
+         change like any other - the snapshot below carries them with the rows. */
+      const snap = JSON.stringify({ rows, checkedBy, verifiedBy });
       if (savedRowsRef.current !== null) {
-        setIsDirty(json !== savedRowsRef.current);
+        setIsDirty(snap !== savedRowsRef.current);
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [rows, reportDate]);
+  }, [rows, reportDate, checkedBy, verifiedBy]);
 
   // ✅ Warn before leaving page if unsaved changes
   useEffect(() => {
@@ -1719,6 +2267,46 @@ export default function Returns() {
     }
   };
 
+  /* ===== Duplicate rows: find them, and offer to fold them into one ===== */
+  const dupGroups = useMemo(() => findDuplicateGroups(rows), [rows]);
+
+  /* row index -> {copies, rank} so the table can mark every copy and say which
+     one of how many it is, without searching the groups again per row. */
+  const dupMarks = useMemo(() => {
+    const m = new Map();
+    dupGroups.forEach((idxs) => {
+      idxs.forEach((i, rank) => m.set(i, { copies: idxs.length, rank: rank + 1 }));
+    });
+    return m;
+  }, [dupGroups]);
+
+  const dupRowCount = dupMarks.size;
+
+  const mergeDuplicates = () => {
+    if (!dupGroups.length) return;
+
+    const drop = new Set();
+    const replace = new Map();
+    dupGroups.forEach((idxs) => {
+      replace.set(idxs[0], mergeRowGroup(rows, idxs));
+      idxs.slice(1).forEach((i) => drop.add(i));
+    });
+
+    const merged = rows
+      .map((r, i) => (replace.has(i) ? replace.get(i) : r))
+      .filter((_, i) => !drop.has(i));
+
+    // the table always keeps one empty line at the bottom to type into
+    if (!merged.length || rowHasData(merged[merged.length - 1])) merged.push(makeEmptyRow());
+
+    setRows(merged);
+    setRowErrors({});
+    setSaveMsg(
+      `✅ Merged ${drop.size} duplicate row(s) into ${dupGroups.length} line(s) — the quantities were added up.`
+    );
+    setTimeout(() => setSaveMsg(""), 5000);
+  };
+
   /* ===== ✅ Summary: row count + total quantities ===== */
   const summary = useMemo(() => {
     const filledRows = rows.filter(rowHasData);
@@ -1737,7 +2325,22 @@ export default function Returns() {
       else totalOther += qty;
     });
 
-    return { filledRows: filledRows.length, totalKG, totalPCS, totalPLATE, totalOther };
+    /* How many started rows are actually finished, and how the report splits
+       across actions. Both read off the very rules the table paints with, so
+       the bar under the table can never disagree with the colours in it. */
+    const doneRows = filledRows.filter((r) => !Object.keys(missingIn(r)).length).length;
+
+    const counts = new Map();
+    filledRows.forEach((r) => {
+      const a = String(r.action || "").trim();
+      if (!a) return;
+      counts.set(a, (counts.get(a) || 0) + 1);
+    });
+    const actions = [...counts.entries()]
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count || a.action.localeCompare(b.action));
+
+    return { filledRows: filledRows.length, doneRows, actions, totalKG, totalPCS, totalPLATE, totalOther };
   }, [rows]);
 
   /* ===== Save ===== */
@@ -1814,10 +2417,15 @@ export default function Returns() {
       setSaving(true);
       setSaveMsg("⏳ Saving to server…");
 
-      const res = await saveReturnsReport({ reportDate, items: filtered });
+      const res = await saveReturnsReport({
+        reportDate,
+        items: filtered,
+        checkedBy: checkedBy.trim(),
+        verifiedBy: verifiedBy.trim(),
+      });
 
       // ✅ Mark as saved → clear dirty flag
-      savedRowsRef.current = JSON.stringify(rows);
+      savedRowsRef.current = JSON.stringify({ rows, checkedBy, verifiedBy });
       setIsDirty(false);
 
       /* This date is now on file — and this session is the one that filed it,
@@ -1830,6 +2438,10 @@ export default function Returns() {
       try {
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_DATE_KEY);
+        /* The names stay on the screen for the sheet that was just saved, but
+           they are dropped from the draft: a verifier signs one day's report,
+           never tomorrow's by inheritance. */
+        localStorage.removeItem(DRAFT_SIGN_KEY);
       } catch { /* ignore */ }
 
       const saved = res?.report || {};
@@ -1885,6 +2497,23 @@ export default function Returns() {
     ...input(hasErr),
     appearance: "auto",
   });
+
+  /* The action box wears the action's own rail, ground and ink. An error
+     still wins: a box a save complained about has to stay red, whatever the
+     answer inside it says. */
+  const actionSelectStyle = (action, hasErr) => {
+    const base = selectStyle(hasErr);
+    const a = actionStyle(action);
+    if (hasErr || !a.line) return base;
+    return {
+      ...base,
+      background: a.bg,
+      color: a.ink,
+      border: `1.5px solid ${a.line}`,
+      borderLeft: `6px solid ${a.line}`,
+      fontWeight: 800,
+    };
+  };
 
   return (
     <div
@@ -1960,6 +2589,9 @@ export default function Returns() {
         </div>
       </div>
 
+      {/* The controlled-document block: what this form IS, before what it says */}
+      <DocumentControl reportDate={reportDate} />
+
       {/* ✅ Unsaved changes banner */}
       {isDirty && (
         <div
@@ -1980,237 +2612,191 @@ export default function Returns() {
         </div>
       )}
 
-      {/* Catalog load status + add-item button */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <span
-          style={{
-            background: allItems.length ? "#e8f5e9" : "#ffebee",
-            color: allItems.length ? "#1b5e20" : "#b71c1c",
-            border: "1px solid #eee",
-            padding: "6px 10px",
-            borderRadius: 10,
-            fontWeight: 800,
-          }}
+      {/* ═══════════ One toolbar ═══════════
+          The date, the four things a person DOES to a report and the two table
+          switches used to stand on three stacked rows, and the table started a
+          third of the way down the screen. They are one strip now, read left to
+          right: the date first, because nothing else means anything without it,
+          then the actions, then the switches behind a hairline.
+
+          Anything that is a MESSAGE - a save result, a date already on file, a
+          catalog that did not load - is deliberately kept OUT of the strip and
+          reported under it. Messages come and go, and a strip that grows a line
+          every time one appears moves the buttons under the cursor. */}
+      <div className="rt-bar">
+        <label className="rt-bar-date">
+          <span aria-hidden="true">📅</span>
+          <span>Report date</span>
+          <input
+            type="date"
+            value={reportDate}
+            onChange={(e) => setReportDate(e.target.value)}
+          />
+        </label>
+
+        <span className="rt-bar-sep" aria-hidden="true" />
+
+        <button
+          onClick={() => handleSave()}
+          disabled={saving}
+          className={`rt-btn is-save${dateAlreadyFiled ? " is-replace" : ""}`}
+          title={
+            dateAlreadyFiled
+              ? "This date already has a report — you will be asked to confirm"
+              : "Save this report"
+          }
         >
-          Items loaded: {allItems.length} (base: {itemsAll.length}, custom: {customItems.length})
-        </span>
+          {saving ? "⏳ Saving…" : dateAlreadyFiled ? "💾 Save (replaces)" : "💾 Save"}
+        </button>
+
+        <button
+          onClick={() => setScanOpen(true)}
+          className="rt-btn is-scan"
+          title="Read the item codes and the branch from photos of the return notes"
+        >
+          📷 Scan notes
+        </button>
+
+        <button
+          onClick={() => setImportOpen(true)}
+          className="rt-btn is-import"
+          title="Load a note that was already read — as a file, or pasted in"
+        >
+          📥 Import note
+        </button>
+
+        <button
+          onClick={() => navigate("/returns/view")}
+          className="rt-btn is-view"
+          title="Open the saved returns reports"
+        >
+          📋 View reports
+        </button>
+
+        <span className="rt-bar-sep" aria-hidden="true" />
 
         <button
           onClick={() => {
             setAddItemError("");
             setAddItemOpen(true);
           }}
-          style={{ ...btnPrimary, background: "#2563eb", boxShadow: "0 1px 6px #bfdbfe", padding: "8px 14px" }}
-          title="Add new item code"
+          className="rt-btn is-ghost"
+          title="Add an item code the catalog does not have yet"
         >
           ➕ Add item
         </button>
 
         <button
           onClick={() => setCompact((v) => !v)}
-          style={{ ...btnGhost, padding: "8px 14px" }}
-          title="Toggle compact mode"
+          className={`rt-btn is-ghost${compact ? " is-on" : ""}`}
+          title="Tighter rows, so more of the report fits on one screen"
         >
-          {compact ? "↔️ Compact: ON" : "↔️ Compact: OFF"}
+          ↔️ Compact
         </button>
 
         <span
-          style={{
-            background: "#eef2ff",
-            color: "#3730a3",
-            border: "1px solid #c7d2fe",
-            borderRadius: 10,
-            padding: "6px 10px",
-            fontWeight: 700,
-            fontSize: 12,
-          }}
+          className="rt-bar-info"
+          title={`${allItems.length} item codes loaded — ${itemsAll.length} from the catalog file, ${customItems.length} added here`}
+        >
+          🗂️ {allItems.length}
+        </span>
+
+        <span
+          className="rt-bar-info"
           title="Copy a block of cells in Excel (item code in the first column, quantity in the second) and paste it onto any row. Enter moves down the same column; Ctrl+D copies the row above."
         >
-          ⌨️ Paste from Excel · Enter = next row · Ctrl+D = copy row above
+          ⌨️ Excel paste
         </span>
-
-        {itemsLoadError && <span style={{ color: "#b71c1c", fontWeight: 800 }}>{itemsLoadError}</span>}
       </div>
 
-      {/* Date */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 18, flexWrap: "wrap" }}>
-        <span
-          className="rt-datelabel"
+      {/* Everything the strip refuses to carry: what just happened, and what is
+          wrong with the day or the catalog. */}
+      {(saveMsg || dateAlreadyFiled || filedDates === false || itemsLoadError) && (
+        <div className="rt-notices">
+          {saveMsg && (
+            <span
+              className="rt-note-msg"
+              style={{
+                color: saveMsg.startsWith("✅")
+                  ? "#166534"
+                  : saveMsg.startsWith("⏳")
+                  ? "#512e5f"
+                  : "#b91c1c",
+              }}
+            >
+              {saveMsg}
+            </span>
+          )}
+
+          {dateAlreadyFiled && (
+            <span className="rt-note is-stop">
+              🛑 This date already has a saved report — saving will replace it.
+              <button
+                onClick={() => window.open("/returns/view", "_blank", "noopener")}
+                title="Opens in a new tab — nothing typed here is lost"
+              >
+                View it
+              </button>
+            </span>
+          )}
+
+          {filedDates === false && (
+            <span
+              className="rt-note is-warn"
+              title="The list of already-filed dates could not be read, so this page cannot warn you about overwriting one."
+            >
+              ⚠️ Could not check which dates are already filed
+            </span>
+          )}
+
+          {itemsLoadError && <span className="rt-note is-warn">{itemsLoadError}</span>}
+        </div>
+      )}
+
+      {/* Duplicate rows — said out loud, and foldable in one click. It is a
+          suggestion, never automatic: only the person entering knows whether
+          the branch really sent the same item twice. */}
+      {dupRowCount > 0 && (
+        <div
           style={{
-            background: "linear-gradient(135deg, #884ea0, #a855f7)",
-            color: "#fff",
-            padding: "9px 16px",
-            borderRadius: 14,
-            boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
             display: "flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 12,
-            fontWeight: "bold",
             flexWrap: "wrap",
+            background: "linear-gradient(180deg, #fff7ed, #ffedd5)",
+            border: "1.5px solid #fdba74",
+            borderRadius: 12,
+            padding: "10px 16px",
+            marginBottom: 12,
+            color: "#9a3412",
+            fontWeight: 800,
+            fontSize: 14,
           }}
         >
-          <span role="img" aria-label="calendar">📅</span>
-          Report Date:
-          <input
-            type="date"
-            value={reportDate}
-            onChange={(e) => setReportDate(e.target.value)}
+          <span>
+            ⧉ {dupRowCount} row(s) look like the same line entered twice
+            {dupGroups.length > 1 ? ` (${dupGroups.length} items)` : ""} — same item,
+            branch and unit, with no transfer note, expiry or action telling them apart.
+          </span>
+          <button
+            onClick={mergeDuplicates}
+            title="Add the quantities up into the first copy and remove the others — the remarks and the photos of every copy are kept"
             style={{
-              background: "rgba(255,255,255,.97)",
+              background: "linear-gradient(135deg, #c2410c, #f97316)",
+              color: "#fff",
               border: "none",
-              borderRadius: 9,
-              padding: "7px 12px",
-              fontWeight: 800,
-              color: "#512e5f",
-              boxShadow: "0 1px 4px rgba(0,0,0,.10)",
-            }}
-          />
-        </span>
-
-        {dateAlreadyFiled && (
-          <span
-            style={{
-              background: "linear-gradient(180deg, #fee2e2, #fecaca)",
-              border: "1.5px solid #f87171",
-              color: "#991b1b",
-              borderRadius: 12,
-              padding: "8px 14px",
-              fontWeight: 800,
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
+              borderRadius: 10,
+              fontWeight: 900,
+              cursor: "pointer",
+              padding: "8px 16px",
+              boxShadow: "0 2px 8px #fed7aa",
             }}
           >
-            🛑 This date already has a saved report — saving will replace it.
-            <button
-              onClick={() => window.open("/returns/view", "_blank", "noopener")}
-              style={{
-                background: "#fff",
-                border: "1px solid #fca5a5",
-                color: "#991b1b",
-                borderRadius: 8,
-                fontWeight: 800,
-                cursor: "pointer",
-                padding: "3px 9px",
-              }}
-              title="Opens in a new tab — nothing typed here is lost"
-            >
-              View it
-            </button>
-          </span>
-        )}
-
-        {filedDates === false && (
-          <span
-            style={{
-              background: "#fffbeb",
-              border: "1.5px solid #fcd34d",
-              color: "#92400e",
-              borderRadius: 12,
-              padding: "8px 14px",
-              fontWeight: 700,
-              fontSize: 13,
-            }}
-            title="The list of already-filed dates could not be read, so this page cannot warn you about overwriting one."
-          >
-            ⚠️ Could not check which dates are already filed
-          </span>
-        )}
-      </div>
-
-      {/* Buttons */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.9rem", marginBottom: 16, flexWrap: "wrap" }}>
-        <button
-          onClick={() => handleSave()}
-          disabled={saving}
-          title={dateAlreadyFiled ? "This date already has a report — you will be asked to confirm" : "Save this report"}
-          style={{
-            background: saving
-              ? "#7fbf9f"
-              : dateAlreadyFiled
-              ? "linear-gradient(135deg, #b45309, #f59e0b)"
-              : "linear-gradient(135deg, #16a34a, #22c55e)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 14,
-            fontWeight: "bold",
-            fontSize: "1.02em",
-            padding: "10px 26px",
-            cursor: saving ? "not-allowed" : "pointer",
-            boxShadow: dateAlreadyFiled ? "0 2px 8px #fde68a" : "0 2px 8px #d4efdf",
-          }}
-        >
-          {saving ? "Saving…" : dateAlreadyFiled ? "💾 Save (replaces this date)" : "💾 Save"}
-        </button>
-
-        <button
-          onClick={() => setScanOpen(true)}
-          title="Read the item codes and the branch from photos of the return notes"
-          style={{
-            background: "linear-gradient(135deg, #2563eb, #60a5fa)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 14,
-            fontWeight: "bold",
-            fontSize: "1.02em",
-            padding: "10px 26px",
-            cursor: "pointer",
-            boxShadow: "0 2px 8px #aed6f1",
-          }}
-        >
-          📷 Scan Return Notes
-        </button>
-
-        <button
-          onClick={() => setImportOpen(true)}
-          title="Load a note that was already read - as a file, or pasted in"
-          style={{
-            background: "linear-gradient(135deg, #0e7490, #22d3ee)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 14,
-            fontWeight: "bold",
-            fontSize: "1.02em",
-            padding: "10px 26px",
-            cursor: "pointer",
-            boxShadow: "0 2px 8px #a5f3fc",
-          }}
-        >
-          📥 Import Read Note
-        </button>
-
-        <button
-          onClick={() => navigate("/returns/view")}
-          style={{
-            background: "linear-gradient(135deg, #884ea0, #a855f7)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 14,
-            fontWeight: "bold",
-            fontSize: "1.02em",
-            padding: "10px 26px",
-            cursor: "pointer",
-            boxShadow: "0 2px 8px #d2b4de",
-          }}
-        >
-          📋 View Reports
-        </button>
-
-        {saveMsg && (
-          <span
-            style={{
-              marginLeft: 8,
-              fontWeight: "bold",
-              color: saveMsg.startsWith("✅") ? "#229954" : saveMsg.startsWith("⏳") ? "#512e5f" : "#c0392b",
-              fontSize: "1.02em",
-              textAlign: "center",
-            }}
-          >
-            {saveMsg}
-          </span>
-        )}
-      </div>
+            ⧉ Merge duplicates
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div
@@ -2267,6 +2853,7 @@ export default function Returns() {
               const done = hasData && !Object.keys(missing).length;
               // a box is marked when it is empty OR when a save complained
               const bad = { ...missing, ...err };
+              const dup = dupMarks.get(idx) || null;
               return (
                 <tr
                   key={idx}
@@ -2274,19 +2861,48 @@ export default function Returns() {
                   className={
                     "rt-row" +
                     (Object.keys(err).length ? " rt-err" : "") +
-                    (done ? " rt-done" : "")
+                    (done ? " rt-done" : "") +
+                    (dup ? " rt-dup" : "")
                   }
                   style={{
-                    background: done
-                      ? "#22c55e"
-                      : Object.keys(err).length
+                    background: Object.keys(err).length
                       ? "#fff1f2"
+                      : dup
+                      ? "#fff7ed"
+                      : done
+                      ? DONE_ROW_BG
                       : idx % 2
                       ? "#faf5ff"
                       : "#fff",
                   }}
                 >
-                  <td style={td}>{idx + 1}</td>
+                  {/* SL.NO doubles as the row's state: a finished row gets the
+                      emerald tick, a started one an amber count of the boxes it
+                      is still waiting for. Both are small on purpose - the rail
+                      down the left edge is what carries at a glance. */}
+                  <td style={td}>
+                    <div className="rt-sl">
+                      <span>{idx + 1}</span>
+                      {dup ? (
+                        <span
+                          className="rt-dupmark"
+                          title={`Copy ${dup.rank} of ${dup.copies} of the same line — merge them or tell them apart with the transfer note, the expiry or the action`}
+                        >
+                          ⧉{dup.rank}
+                        </span>
+                      ) : null}
+                      {done ? (
+                        <span className="rt-tick" title="Row complete">✓</span>
+                      ) : hasData ? (
+                        <span
+                          className="rt-left"
+                          title={`${Object.keys(missing).length} box(es) still empty on this row`}
+                        >
+                          {Object.keys(missing).length}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
 
                   {/* ITEM CODE — the list lives in a portal, see CodeSuggest */}
                   <td style={td}>
@@ -2443,17 +3059,24 @@ export default function Returns() {
                     />
                   </td>
 
-                  {/* ACTION */}
+                  {/* ACTION - the box wears the chosen action's colours */}
                   <td style={td}>
-                    <select data-col="action" style={selectStyle(!!bad.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
+                    <select
+                      data-col="action"
+                      style={actionSelectStyle(row.action, !!bad.action)}
+                      value={row.action}
+                      onChange={(e) => handleChange(idx, "action", e.target.value)}
+                    >
                       <option value="">Select action</option>
                       {ACTIONS.map((a) => (
-                        <option key={a} value={a}>{a}</option>
+                        <option key={a} value={a}>{`${ACTION_STYLE[a].mark} ${a}`}</option>
                       ))}
                     </select>
                     {row.action === "Other..." && (
                       <input
-                        style={{ ...input(!!bad.action), marginTop: 6 }}
+                        /* the box the action is actually typed into belongs to
+                           the same "Other" colour as the dropdown above it */
+                        style={{ ...actionSelectStyle(row.action, !!bad.action), marginTop: 6, appearance: "none" }}
                         placeholder="Enter custom action"
                         value={row.customAction}
                         onChange={(e) => handleChange(idx, "customAction", e.target.value)}
@@ -2463,9 +3086,10 @@ export default function Returns() {
 
                   {/* Images */}
                   <td style={td}>
-                    <button onClick={() => openImagesFor(idx)} style={btnImg} title="Manage images">
-                      🖼️ Images ({safeArr(row.images).length})
-                    </button>
+                    <PhotoButton
+                      images={safeArr(row.images)}
+                      onClick={() => openImagesFor(idx)}
+                    />
                   </td>
 
                   {/* Delete row (with confirmation) */}
@@ -2532,6 +3156,59 @@ export default function Returns() {
         )}
       </div>
 
+      {/* How far the report is from finished, and what it is made of. The
+          bar answers the question the green rows answer one at a time -
+          am I done - without scrolling the table; the chips under it say
+          in the same colours the ACTION column uses where the returns
+          went. Both disappear on an untouched report, which has nothing
+          to report yet. */}
+      {summary.filledRows > 0 && (
+        <div className="rt-progress">
+          <div className="rt-progress-head">
+            <span>
+              {summary.doneRows === summary.filledRows
+                ? "✓ Every started row is complete"
+                : "Rows complete"}
+            </span>
+            <span>
+              <strong>{summary.doneRows}</strong> / {summary.filledRows}
+            </span>
+          </div>
+          <div className="rt-progress-track">
+            <div
+              className="rt-progress-fill"
+              style={{
+                width: `${Math.round((summary.doneRows / Math.max(1, summary.filledRows)) * 100)}%`,
+              }}
+            />
+          </div>
+
+          {summary.actions.length > 0 && (
+            <div className="rt-legend">
+              {summary.actions.map(({ action, count }) => {
+                const a = actionStyle(action);
+                return (
+                  <span
+                    key={action}
+                    className="rt-chip"
+                    style={{
+                      background: a.bg || "#f8fafc",
+                      color: a.ink || "#0f172a",
+                      borderColor: a.line || "#e2e8f0",
+                      borderLeftColor: a.line || "#e2e8f0",
+                    }}
+                  >
+                    <span aria-hidden="true">{a.mark}</span>
+                    {action}
+                    <b style={{ background: a.line || "#94a3b8" }}>{count}</b>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ marginTop: "1.3rem", textAlign: "center" }}>
         <button
           onClick={addRow}
@@ -2549,6 +3226,54 @@ export default function Returns() {
         >
           ➕ Add new row
         </button>
+      </div>
+
+      {/* ═══ Signatures ═══
+          The two names a controlled record closes with: whoever filled the
+          sheet in, and whoever checked it afterwards. They are saved inside
+          the report, so the view and the Excel backup print the same pair. */}
+      <div
+        style={{
+          marginTop: 22,
+          background: "rgba(255,255,255,.9)",
+          border: "1px solid #ddd0e8",
+          borderRadius: 14,
+          padding: "14px 18px",
+          boxShadow: "0 6px 18px rgba(81, 46, 95, .07)",
+        }}
+      >
+        <div style={{ fontWeight: 900, color: "#512e5f", marginBottom: 10, fontSize: 14 }}>
+          ✍️ Signatures
+        </div>
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 240, flex: 1 }}>
+            <label style={{ display: "block", fontWeight: 800, color: "#475569", marginBottom: 5, fontSize: 13 }}>
+              Checked By
+            </label>
+            <input
+              type="text"
+              value={checkedBy}
+              onChange={(e) => setCheckedBy(e.target.value)}
+              placeholder="Name of the person who filled this sheet in"
+              style={{ ...inputBase, width: "100%" }}
+            />
+          </div>
+          <div style={{ minWidth: 240, flex: 1 }}>
+            <label style={{ display: "block", fontWeight: 800, color: "#475569", marginBottom: 5, fontSize: 13 }}>
+              Verified By
+            </label>
+            <input
+              type="text"
+              value={verifiedBy}
+              onChange={(e) => setVerifiedBy(e.target.value)}
+              placeholder="Name of the person who checked it"
+              style={{ ...inputBase, width: "100%" }}
+            />
+          </div>
+        </div>
+        <div style={{ marginTop: 8, color: "#94a3b8", fontWeight: 600, fontSize: 12 }}>
+          Both names are saved with the report and printed on the Excel backup.
+        </div>
       </div>
 
       <ReturnNoteScanner
@@ -2627,7 +3352,6 @@ const RET_CSS = `
 #root .rt.rt .rt-brand { font-size: 14px !important; }
 #root .rt.rt .rt-brand-sub { font-size: 10px !important; }
 #root .rt.rt .rt-badge { font-size: 20px !important; }
-#root .rt.rt .rt-datelabel { font-size: 17px !important; }
 
 /* ===== Bigger, bolder table type =====
    globals.css pins EVERYTHING inside a table to 12px !important, and an inline
@@ -2676,26 +3400,571 @@ const RET_CSS = `
   box-shadow: 0 0 0 3px rgba(168, 85, 247, .18);
 }
 
-/* A finished row - every box answered - goes BRIGHT green, and stays green
-   under the mouse: the colour exists to be found while scrolling a long
-   report, so the generic hover wash (which comes first in this sheet and
-   carries !important) has to be beaten here, or a finished row would turn
-   ordinary the moment it is pointed at. Hover goes brighter still rather than
-   darker, so pointing at a row never reads as dimming it. The row number is
-   darkened instead of lightened - on a vivid green a near-black green is what
-   stays legible - and the inputs keep their own white ground. */
-#root .rt.rt tbody tr.rt-row.rt-done { box-shadow: inset 4px 0 0 0 #15803d; }
+/* ===== A finished row =====
+   It used to turn a flat, shouting #22c55e - a slab of colour the eye had to
+   read through to reach the values on it. What replaced it says the same
+   thing with three quieter marks that stack: an emerald rail down the left
+   edge (the part that carries while scrolling a long report), a mint wash
+   that fades out to white across the row so the boxes stay readable, and a
+   tick badge on the number. The wash still has to beat the generic hover rule
+   above - that one carries !important - or a finished row would turn ordinary
+   the moment it was pointed at; hover only deepens the mint, so pointing at a
+   row never reads as un-finishing it.
+
+   The flash is the reward: the moment the last box is answered the class
+   lands and the row lights up once, then settles. A CSS animation outranks an
+   inline style, which is why it can repaint a background React set inline. */
+@keyframes rtDoneFlash {
+  0%   { background: linear-gradient(90deg, #6ee7b7 0%, #a7f3d0 55%, #d1fae5 100%); }
+  60%  { background: linear-gradient(90deg, #bbf7d0 0%, #e4fbef 50%, #f4fffa 100%); }
+  100% { background: linear-gradient(90deg, #dcfce7 0%, #f0fdf7 42%, #ffffff 100%); }
+}
+#root .rt.rt tbody tr.rt-row.rt-done {
+  box-shadow: inset 5px 0 0 0 #10b981;
+  animation: rtDoneFlash .5s ease-out both;
+}
 #root .rt.rt tbody tr.rt-row.rt-done:hover,
 #root .rt.rt tbody tr.rt-row.rt-done:focus-within {
-  background: #4ade80 !important;
-  box-shadow: inset 4px 0 0 0 #15803d;
+  background: linear-gradient(90deg, #bbf7d0 0%, #dcfce7 45%, #f6fffb 100%) !important;
+  box-shadow: inset 5px 0 0 0 #059669;
 }
-#root .rt.rt tbody tr.rt-row.rt-done td { color: #052e16; }
+#root .rt.rt tbody tr.rt-row.rt-done td { color: #064e3b; }
 #root .rt.rt tbody tr.rt-row.rt-done:hover td:first-child,
 #root .rt.rt tbody tr.rt-row.rt-done:focus-within td:first-child {
-  color: #052e16;
+  color: #065f46;
   font-weight: 900;
 }
+
+/* ===== The state badge in SL.NO =====
+   globals.css pins every descendant of a table to 12px !important, so these
+   two badges have to re-state their own size through the doubled page class,
+   the same way the cells above do. */
+#root .rt.rt .rt-sl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+#root .rt.rt .rt-tick {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #34d399, #059669);
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, .40);
+  animation: rtTickIn .34s cubic-bezier(.2, 1.5, .45, 1) both;
+}
+@keyframes rtTickIn {
+  from { transform: scale(.2); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+/* A started row says how many boxes it is still waiting for - the same count
+   the red outlines already show, gathered into one number so it can be read
+   without hunting across thirteen columns. */
+#root .rt.rt .rt-left {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff7ed;
+  border: 1.5px solid #fdba74;
+  color: #b45309 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+/* ===== Progress + action breakdown under the table ===== */
+#root .rt.rt .rt-progress {
+  margin: 18px auto 0;
+  max-width: 720px;
+  background: rgba(255, 255, 255, .78);
+  border: 1px solid #ede9fe;
+  border-radius: 18px;
+  padding: 14px 18px 16px;
+  box-shadow: 0 8px 24px rgba(81, 46, 95, .08);
+  backdrop-filter: blur(6px);
+}
+#root .rt.rt .rt-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: #065f46;
+  font-weight: 800;
+  font-size: 14px !important;
+  margin-bottom: 8px;
+}
+#root .rt.rt .rt-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #ede9fe;
+  overflow: hidden;
+}
+#root .rt.rt .rt-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6ee7b7, #10b981, #047857);
+  box-shadow: 0 0 10px rgba(16, 185, 129, .5);
+  transition: width .35s ease;
+}
+#root .rt.rt .rt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+#root .rt.rt .rt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid;
+  border-left-width: 5px;
+  border-radius: 999px;
+  padding: 6px 12px 6px 10px;
+  font-weight: 800;
+  font-size: 13px !important;
+}
+#root .rt.rt .rt-chip b {
+  color: #fff;
+  border-radius: 999px;
+  min-width: 20px;
+  padding: 1px 7px;
+  text-align: center;
+  font-size: 12px !important;
+}
+
+/* ===== A row that is the same line twice =====
+   The amber rail is written after the emerald one on purpose: a duplicate can
+   also be a complete row, and "this may be entered twice" is the thing the
+   person has to see first. */
+#root .rt.rt tbody tr.rt-row.rt-dup { box-shadow: inset 5px 0 0 0 #f97316; }
+#root .rt.rt tbody tr.rt-row.rt-dup:hover,
+#root .rt.rt tbody tr.rt-row.rt-dup:focus-within {
+  background: linear-gradient(90deg, #fed7aa 0%, #ffedd5 45%, #fffbf5 100%) !important;
+  box-shadow: inset 5px 0 0 0 #ea580c;
+}
+#root .rt.rt .rt-dupmark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+  font-weight: 900;
+  font-size: 11px !important;
+  line-height: 1;
+}
+
+/* ===== The per-row photo control =====
+   Two states in one control: an empty row asks for a photo, a row that has
+   one shows it. Sized to the 150px IMAGES column, so it must stay compact. */
+#root .rt.rt .rt-photo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 12px !important;
+  text-align: left;
+  background: #fff;
+  border: 1.5px solid #c7d2fe;
+  color: #3730a3;
+  box-shadow: 0 1px 3px rgba(49, 46, 129, .10);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+#root .rt.rt .rt-photo:hover {
+  transform: translateY(-1px);
+  border-color: #818cf8;
+  box-shadow: 0 6px 14px rgba(49, 46, 129, .18);
+}
+#root .rt.rt .rt-photo:active { transform: translateY(0); }
+#root .rt.rt .rt-photo:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+#root .rt.rt .rt-photo.is-empty {
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  color: #64748b;
+  box-shadow: none;
+}
+#root .rt.rt .rt-photo.is-empty:hover {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #4338ca;
+}
+#root .rt.rt .rt-photo-ico { display: grid; place-items: center; flex: 0 0 auto; }
+#root .rt.rt .rt-photo-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #e0e7ff;
+  background: #eef2ff;
+}
+#root .rt.rt .rt-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#root .rt.rt .rt-photo-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #4f46e5;
+  color: #fff;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 10px !important;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1.5px #fff;
+}
+#root .rt.rt .rt-photo-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════ The single toolbar over the table ═══════════
+   One strip, three groups: the date, the actions, the switches. It wraps on a
+   narrow screen instead of scrolling sideways - a button that has to be
+   scrolled to is a button nobody presses. */
+#root .rt.rt .rt-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid rgba(216, 199, 231, .85);
+  box-shadow: 0 8px 22px rgba(81, 46, 95, .10);
+  backdrop-filter: blur(6px);
+}
+#root .rt.rt .rt-bar-sep {
+  width: 1px;
+  height: 26px;
+  background: #e4d8ee;
+  margin: 0 4px;
+}
+#root .rt.rt .rt-bar-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #512e5f, #884ea0);
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px !important;
+  box-shadow: 0 3px 10px rgba(136, 78, 160, .35);
+  white-space: nowrap;
+}
+#root .rt.rt .rt-bar-date input {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: rgba(255, 255, 255, .97);
+  color: #512e5f;
+  font-weight: 800;
+  font-size: 13px !important;
+}
+#root .rt.rt .rt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 11px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px !important;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+#root .rt.rt .rt-btn:hover { transform: translateY(-1px); filter: brightness(1.04); }
+#root .rt.rt .rt-btn:active { transform: translateY(0); }
+#root .rt.rt .rt-btn:disabled { cursor: not-allowed; filter: grayscale(.35); transform: none; }
+#root .rt.rt .rt-btn.is-save { background: linear-gradient(135deg, #16a34a, #22c55e); box-shadow: 0 3px 10px rgba(22, 163, 74, .30); }
+#root .rt.rt .rt-btn.is-save.is-replace { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 3px 10px rgba(217, 119, 6, .30); }
+#root .rt.rt .rt-btn.is-scan { background: linear-gradient(135deg, #2563eb, #60a5fa); box-shadow: 0 3px 10px rgba(37, 99, 235, .28); }
+#root .rt.rt .rt-btn.is-import { background: linear-gradient(135deg, #0e7490, #22d3ee); box-shadow: 0 3px 10px rgba(14, 116, 144, .28); }
+#root .rt.rt .rt-btn.is-view { background: linear-gradient(135deg, #884ea0, #a855f7); box-shadow: 0 3px 10px rgba(136, 78, 160, .30); }
+#root .rt.rt .rt-btn.is-ghost {
+  background: #fff;
+  color: #512e5f;
+  border: 1.5px solid #ddd0e8;
+  box-shadow: none;
+}
+#root .rt.rt .rt-btn.is-ghost:hover { background: #f8f3ff; }
+#root .rt.rt .rt-btn.is-ghost.is-on {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+#root .rt.rt .rt-bar-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 11px;
+  border-radius: 11px;
+  background: #f6f1fb;
+  border: 1px solid #e4d8ee;
+  color: #6b5b7b;
+  font-weight: 800;
+  font-size: 12px !important;
+  cursor: help;
+  white-space: nowrap;
+}
+
+/* Messages live under the strip, never inside it */
+#root .rt.rt .rt-notices {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+#root .rt.rt .rt-note-msg { font-weight: 900; font-size: 13.5px !important; }
+#root .rt.rt .rt-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 11px;
+  padding: 7px 13px;
+  font-weight: 800;
+  font-size: 13px !important;
+}
+#root .rt.rt .rt-note.is-stop { background: linear-gradient(180deg, #fee2e2, #fecaca); border: 1.5px solid #f87171; color: #991b1b; }
+#root .rt.rt .rt-note.is-warn { background: #fffbeb; border: 1.5px solid #fcd34d; color: #92400e; }
+#root .rt.rt .rt-note.is-stop button {
+  background: #fff;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 12px !important;
+  cursor: pointer;
+  padding: 3px 10px;
+}
+
+/* ═══════════ The photo manager window ═══════════ */
+#root .rt.rt .rt-im-back {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .55);
+  backdrop-filter: blur(3px);
+}
+#root .rt.rt .rt-im-card {
+  width: min(980px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e9e0f2;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+  padding: 0 18px 16px;
+}
+#root .rt.rt .rt-im-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -18px 14px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f7f0ff, #eef2ff);
+  border-bottom: 1px solid #e9e0f2;
+  border-radius: 18px 18px 0 0;
+}
+#root .rt.rt .rt-im-title { font-weight: 900; font-size: 16px !important; color: #3b2149; }
+#root .rt.rt .rt-im-sub { font-weight: 700; font-size: 12px !important; color: #7c6b8a; margin-top: 2px; }
+#root .rt.rt .rt-im-headright { display: flex; align-items: center; gap: 10px; }
+#root .rt.rt .rt-im-count {
+  background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe;
+  border-radius: 999px; padding: 4px 12px; font-weight: 900; font-size: 12px !important;
+}
+#root .rt.rt .rt-im-count.is-full { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+#root .rt.rt .rt-im-x {
+  background: #fff; border: 1px solid #e2e8f0; color: #475569;
+  border-radius: 10px; width: 32px; height: 32px; font-weight: 900; cursor: pointer;
+}
+#root .rt.rt .rt-im-x:hover { background: #fee2e2; border-color: #fecaca; color: #b91c1c; }
+
+#root .rt.rt .rt-im-drop {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+#root .rt.rt .rt-im-drop:hover { border-color: #a5b4fc; background: #eef2ff; color: #4338ca; }
+#root .rt.rt .rt-im-drop.is-over {
+  border-color: #6366f1; background: #e0e7ff; color: #3730a3;
+  box-shadow: inset 0 0 0 3px rgba(99, 102, 241, .12);
+}
+#root .rt.rt .rt-im-drop.is-full { border-color: #fdba74; background: #fff7ed; color: #9a3412; cursor: not-allowed; }
+#root .rt.rt .rt-im-drop b { display: block; font-size: 14px !important; font-weight: 900; }
+#root .rt.rt .rt-im-drop span { display: block; margin-top: 3px; font-size: 12px !important; font-weight: 600; opacity: .85; }
+
+#root .rt.rt .rt-im-prog { margin-top: 12px; }
+#root .rt.rt .rt-im-progtxt { font-weight: 800; font-size: 12.5px !important; color: #4338ca; margin-bottom: 5px; }
+#root .rt.rt .rt-im-track { height: 8px; border-radius: 999px; background: #e0e7ff; overflow: hidden; }
+#root .rt.rt .rt-im-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #818cf8, #4f46e5);
+  transition: width .25s ease;
+}
+#root .rt.rt .rt-im-msg {
+  margin-top: 12px; padding: 8px 12px; border-radius: 10px;
+  background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;
+  font-weight: 800; font-size: 12.5px !important;
+}
+#root .rt.rt .rt-im-msg.is-warn { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
+
+#root .rt.rt .rt-im-empty {
+  margin-top: 16px; padding: 26px; text-align: center;
+  color: #94a3b8; font-weight: 700; font-size: 13px !important;
+  border: 1px solid #eef2f7; border-radius: 14px; background: #fcfdff;
+}
+#root .rt.rt .rt-im-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+#root .rt.rt .rt-im-tile {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #e9e0f2;
+  background: #f5f3ff;
+  box-shadow: 0 2px 8px rgba(81, 46, 95, .10);
+}
+#root .rt.rt .rt-im-tile img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+#root .rt.rt .rt-im-no {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(15, 23, 42, .62); color: #fff;
+  border-radius: 999px; padding: 1px 9px;
+  font-weight: 900; font-size: 11px !important;
+}
+#root .rt.rt .rt-im-acts {
+  position: absolute; inset: auto 0 0 0;
+  display: flex; justify-content: flex-end; gap: 6px;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(15,23,42,0), rgba(15,23,42,.55));
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+#root .rt.rt .rt-im-tile:hover .rt-im-acts,
+#root .rt.rt .rt-im-tile:focus-within .rt-im-acts { opacity: 1; }
+#root .rt.rt .rt-im-acts button {
+  background: rgba(255, 255, 255, .94);
+  border: none; border-radius: 9px;
+  width: 30px; height: 30px;
+  cursor: pointer; font-size: 13px !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .25);
+}
+#root .rt.rt .rt-im-acts button.is-danger:hover { background: #fecaca; }
+#root .rt.rt .rt-im-ask {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(15, 23, 42, .72);
+  color: #fff; text-align: center; padding: 10px;
+}
+#root .rt.rt .rt-im-ask b { font-size: 13px !important; font-weight: 900; }
+#root .rt.rt .rt-im-ask div { display: flex; gap: 8px; }
+#root .rt.rt .rt-im-askno,
+#root .rt.rt .rt-im-askyes {
+  border: none; border-radius: 9px; padding: 6px 14px;
+  font-weight: 900; font-size: 12px !important; cursor: pointer;
+}
+#root .rt.rt .rt-im-askno { background: #fff; color: #334155; }
+#root .rt.rt .rt-im-askyes { background: #dc2626; color: #fff; }
+
+#root .rt.rt .rt-im-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  color: #94a3b8; font-weight: 600; font-size: 12px !important;
+}
+#root .rt.rt .rt-im-done {
+  background: linear-gradient(135deg, #512e5f, #884ea0);
+  color: #fff; border: none; border-radius: 11px;
+  padding: 9px 22px; font-weight: 900; font-size: 13px !important; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(136, 78, 160, .35);
+}
+
+/* the viewer sits above the window, and the window is already above the page */
+#root .rt.rt .rt-im-view {
+  position: fixed; inset: 0; z-index: 1300;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 6, 23, .9);
+  padding: 44px 18px 90px;
+}
+#root .rt.rt .rt-im-view img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+}
+#root .rt.rt .rt-im-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(255, 255, 255, .12); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 999px; width: 46px; height: 46px;
+  font-size: 26px !important; font-weight: 900; line-height: 1; cursor: pointer;
+}
+#root .rt.rt .rt-im-nav:hover { background: rgba(255, 255, 255, .25); }
+#root .rt.rt .rt-im-nav.is-prev { left: 18px; }
+#root .rt.rt .rt-im-nav.is-next { right: 18px; }
+#root .rt.rt .rt-im-viewbar {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(15, 23, 42, .85);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 999px; padding: 8px 14px;
+  color: #e2e8f0; font-weight: 800; font-size: 12.5px !important;
+}
+#root .rt.rt .rt-im-viewbar button {
+  background: rgba(255, 255, 255, .12); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 9px; padding: 5px 12px;
+  font-weight: 800; font-size: 12px !important; cursor: pointer;
+}
+#root .rt.rt .rt-im-viewbar button:hover { background: rgba(255, 255, 255, .24); }
 `;
 
 const inputBase = {
@@ -2730,18 +3999,6 @@ const btnGhost = {
   fontWeight: 900,
   cursor: "pointer",
   padding: "10px 16px",
-};
-
-const btnImg = {
-  background: "#2563eb",
-  color: "#fff",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: 12,
-  fontWeight: 900,
-  cursor: "pointer",
-  boxShadow: "0 1px 6px #bfdbfe",
-  width: "100%",
 };
 
 const hintBox = {

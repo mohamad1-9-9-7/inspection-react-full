@@ -192,6 +192,7 @@ const MODULES = [
   "OHS: PPE & Safe Work",
   "OHS: Knife Safety",
   "OHS: Manual Handling",
+  "OHS: Loading & Unloading",
   "OHS: Fire Safety & Emergency",
   "OHS: First Aid & Incident Reporting",
   "TESTO OIL — Oil Quality Test",

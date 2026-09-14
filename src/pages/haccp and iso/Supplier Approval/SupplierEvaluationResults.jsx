@@ -776,6 +776,34 @@ function getSubmittedAtIso(r) {
   const p = getPayloadObj(r) || {};
   return p?.public?.submittedAt || p?.meta?.submittedAt || p?.public?.submission?.submittedAt || x?.submittedAt || "";
 }
+/* A link the admin disabled is NOT an evaluation.
+   Revoking writes meta.submitted=true so the public form refuses a late answer
+   (see SupplierSentLinks.revokeLink), and that is exactly the flag this list
+   reads — so without this check every revoked link showed up here as a blank
+   assessment: supplier type "Unspecified", 0 Yes / 0 No / 0 N/A. */
+function isRevokedLink(p) {
+  const pub = p?.public || {};
+  return !!(pub.disabled || pub.revokedAt || p?.meta?.disabledByAdmin);
+}
+
+/* A real submission carries answers, typed fields, products, files or a signed
+   declaration. Anything with none of that is a placeholder row, not a supplier
+   reply — the public submit endpoint used to mint one for any token string. */
+function hasSubmissionContent(p) {
+  const ans = p?.answers && typeof p.answers === "object" ? p.answers : {};
+  if (Object.keys(ans).length > 0) return true;
+
+  const fields = p?.fields && typeof p.fields === "object" ? p.fields : {};
+  if (Object.values(fields).some((v) => String(v ?? "").trim() !== "")) return true;
+
+  if (Array.isArray(p?.attachments) && p.attachments.length) return true;
+  if (Array.isArray(p?.productsList) && p.productsList.some((x) => String(x?.name || "").trim())) return true;
+  if (p?.declaration?.agreed) return true;
+
+  const fa = p?.fieldAttachments && typeof p.fieldAttachments === "object" ? p.fieldAttachments : {};
+  return Object.values(fa).some((list) => Array.isArray(list) && list.length > 0);
+}
+
 function getRecordDate(r) {
   const p = getPayloadObj(r) || {};
   return p?.recordDate || p?.meta?.recordDate || p?.public?.recordDate || p?.public?.submission?.recordDate || "—";
@@ -1251,12 +1279,14 @@ export default function SupplierEvaluationResults() {
     try {
       const list = await listReportsByType(TYPE);
 
-      // ✅ only public + submitted
+      // ✅ only public + submitted + actually answered
       const onlySubmitted = (list || []).filter((r) => {
         const p = getPayloadObj(r) || {};
         const isPublic = !!p?.public?.token || p?.public?.mode === "PUBLIC";
         const isSubmitted = p?.meta?.submitted === true || !!p?.public?.submittedAt || !!p?.public?.submission?.submittedAt;
-        return isPublic && isSubmitted;
+        if (!isPublic || !isSubmitted) return false;
+        if (isRevokedLink(p)) return false;
+        return hasSubmissionContent(p);
       });
 
       // ✅ sort by "last update" (latest change first)

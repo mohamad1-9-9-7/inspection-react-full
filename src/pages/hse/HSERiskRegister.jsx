@@ -1,23 +1,29 @@
 // src/pages/hse/HSERiskRegister.jsx
-// سجل المخاطر التشغيلية — ثنائي اللغة
+// سجل المخاطر التشغيلية — بنمط صفحات ISO / HACCP، عرض كامل الشاشة، ثنائي اللغة
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
-  pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
-  cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  apiList, apiSave, apiDelete, apiUpdate, calcRiskScore, riskLevelLabel,
-  SITE_LOCATIONS, HAZARD_CATEGORIES, tableStyle, thStyle, tdStyle,
+  inputStyle, labelStyle, todayISO,
+  apiList, apiSave, apiDelete, apiUpdate, apiUploadFile, calcRiskScore, riskLevelLabel,
+  SITE_LOCATIONS, HAZARD_CATEGORIES, CONTROL_TYPES, localize,
   useHSELang, HSELangToggle,
 } from "./hseShared";
+import { SEED_RISKS, LOADING_RISKS, SEED_CATALOG } from "./hseRiskSeeds";
+import { SOP_OPTIONS, findSop } from "./hseSopData";
+import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
+import { ISO_UI, UI } from "./hseIsoUi";
+import mawashiLogo from "../../assets/almawashi-logo.jpg";
+
 
 const T = {
   pageTitle:    { ar: "⚠️ سجل المخاطر التشغيلية — Risk Register", en: "⚠️ Operational Risk Register" },
   pageSubtitle: { ar: "التقييم = الاحتمالية × الشدة (1-5 لكل منهما) → 1 إلى 25",
                   en: "Score = Likelihood × Severity (1–5 each) → 1 to 25" },
   pageIntro: {
-    ar: "يُعدّ سجل المخاطر (Risk Register) الوثيقة الأهم في نظام إدارة HSE، لأنه الأساس الذي تُبنى عليه جميع السياسات وإجراءات التحكم. يجب أن يُحدَّث ميدانياً من قِبَل مدير HSE فور تعيينه، ويُراجَع سنوياً أو عند: إدخال معدات جديدة، تغيير عمليات، حادث كبير، أو ملاحظة تفتيش حكومي. السجل التالي يحتوي على 20 خطر مُعرّف مسبقاً تغطي طبيعة عمل شركة استيراد وتخزين وتصنيع اللحوم المبردة والمجمدة، ويمكن إضافة المزيد عبر زر «إضافة خطر».",
-    en: "The Risk Register is the most important document in an HSE management system — it's the foundation on which all policies and controls are built. It must be field-updated by the HSE Manager upon hire, and reviewed annually or when: new equipment is introduced, processes change, a major incident occurs, or a government inspection finding is raised. The following register contains 20 pre-identified risks covering the nature of an air-imported chilled & frozen meat company's operations. More can be added via the «Add Risk» button.",
+    ar: "يُعدّ سجل المخاطر (Risk Register) الوثيقة الأهم في نظام إدارة HSE، لأنه الأساس الذي تُبنى عليه جميع السياسات وإجراءات التحكم. يجب أن يُحدَّث ميدانياً من قِبَل مدير HSE فور تعيينه، ويُراجَع سنوياً أو عند: إدخال معدات جديدة، تغيير عمليات، حادث كبير، أو ملاحظة تفتيش حكومي. السجل التالي يحتوي على 28 خطراً مُعرّفاً مسبقاً تغطي طبيعة عمل شركة استيراد وتخزين وتصنيع اللحوم المبردة والمجمدة، ويمكن إضافة المزيد عبر زر «إضافة خطر».",
+    en: "The Risk Register is the most important document in an HSE management system — it's the foundation on which all policies and controls are built. It must be field-updated by the HSE Manager upon hire, and reviewed annually or when: new equipment is introduced, processes change, a major incident occurs, or a government inspection finding is raised. The following register contains 28 pre-identified risks covering the nature of an air-imported chilled & frozen meat company's operations. More can be added via the «Add Risk» button.",
   },
   methodologyTitle: { ar: "🧮 منهجية التقييم", en: "🧮 Assessment Methodology" },
   methodologyExplain: {
@@ -81,30 +87,81 @@ const T = {
   noResults: { ar: "لا توجد مخاطر بهذه الفلاتر", en: "No risks match these filters" },
   enterHazard: { ar: "اكتب وصف الخطر أولاً", en: "Enter the hazard description first" },
   confirmDel:  { ar: "حذف هذا الخطر؟", en: "Delete this risk?" },
+
+  /* — الحقول المضافة — */
+  controlType:   { ar: "نوع التحكم (هرم الضبط)", en: "Control type (hierarchy)" },
+  residualTitle: { ar: "الخطر المتبقي بعد التحكم", en: "Residual risk after controls" },
+  resLikelihood: { ar: "الاحتمالية المتبقية (1-5)", en: "Residual likelihood (1–5)" },
+  resSeverity:   { ar: "الشدة المتبقية (1-5)", en: "Residual severity (1–5)" },
+  notAssessed:   { ar: "غير مُقيّم", en: "Not assessed" },
+  linkedSop:     { ar: "الإجراء المرتبط (SOP)", en: "Linked procedure (SOP)" },
+  noSop:         { ar: "— بدون إجراء مرتبط —", en: "— no linked procedure —" },
+  linkedForm:    { ar: "النموذج / السجل المرتبط", en: "Linked form / record" },
+  linkedFormPh:  { ar: "مثال: F-29 محضر Toolbox", en: "e.g., F-29 Toolbox minutes" },
+  attachments:   { ar: "المرفقات (دليل التطبيق)", en: "Attachments (implementation evidence)" },
+  addFile:       { ar: "📎 إرفاق ملف", en: "📎 Attach file" },
+  uploading:     { ar: "⏳ جارٍ الرفع…", en: "⏳ Uploading…" },
+  removeFile:    { ar: "إزالة", en: "Remove" },
+  reviewedBy:    { ar: "روجع بواسطة", en: "Reviewed by" },
+  reviewedDate:  { ar: "تاريخ المراجعة", en: "Review date" },
+
+  /* — ضبط الوثيقة والاعتماد — */
+  docCardTitle:  { ar: "🗂️ ضبط الوثيقة والاعتماد", en: "🗂️ Document control & approval" },
+  docCardHint: {
+    ar: "هذه البيانات تظهر في ترويسة ملف الـ PDF وفي خانة التواقيع أسفله، وهي ما يطلبه المدقق ليعتبر تقييم المخاطر وثيقة مضبوطة.",
+    en: "These fields appear in the PDF header and the signature block, and are what an auditor needs for the assessment to count as a controlled document.",
+  },
+  docNo:         { ar: "رقم الوثيقة", en: "Document No." },
+  docRevision:   { ar: "رقم المراجعة", en: "Revision" },
+  docIssueDate:  { ar: "تاريخ الإصدار", en: "Issue date" },
+  docScope:      { ar: "نطاق التقييم", en: "Assessment scope" },
+  docScopePh:    { ar: "مثال: عمليات التحميل والتفريغ — جميع المواقع", en: "e.g., Loading & unloading operations — all sites" },
+  docPreparedBy: { ar: "أُعدّت بواسطة", en: "Prepared by" },
+  docReviewedBy: { ar: "روجعت بواسطة", en: "Reviewed by" },
+  docApprovedBy: { ar: "اعتُمدت بواسطة", en: "Approved by" },
+  docApprovedOn: { ar: "تاريخ الاعتماد", en: "Approval date" },
+  saveDoc:       { ar: "💾 حفظ بيانات الوثيقة", en: "💾 Save document details" },
+  docSaved:      { ar: "✅ حُفظت بيانات الوثيقة", en: "✅ Document details saved" },
+  exportPdf:     { ar: "📄 تصدير PDF", en: "📄 Export PDF" },
+  exporting:     { ar: "⏳ جارٍ التصدير…", en: "⏳ Exporting…" },
+  showDoc:       { ar: "🗂️ بيانات الوثيقة", en: "🗂️ Document details" },
+
+  /* — عناوين وثيقة الـ PDF — */
+  pdfTitle:      { ar: "تقييم المخاطر التشغيلية — سجل المخاطر", en: "Operational Risk Assessment — Risk Register" },
+  pdfCompany:    { ar: "الأسماك والمواشي — قسم الصحة والسلامة والبيئة", en: "AL MAWASHI — Health, Safety & Environment Department" },
+  pdfPrintedOn:  { ar: "تاريخ الطباعة", en: "Printed on" },
+  pdfRows:       { ar: "عدد المخاطر", en: "Risks listed" },
+  pdfInitial:    { ar: "التقييم قبل التحكم", en: "Initial risk" },
+  pdfResidual:   { ar: "الخطر المتبقي", en: "Residual risk" },
+  pdfRef:        { ar: "المرجع", en: "Reference" },
+  pdfNo:         { ar: "م", en: "#" },
+  pdfSign:       { ar: "التوقيع", en: "Signature" },
+  pdfName:       { ar: "الاسم", en: "Name" },
+  pdfDate:       { ar: "التاريخ", en: "Date" },
+  pdfLegend:     { ar: "مفتاح التقييم: 1–5 منخفض · 6–12 متوسط · 13–19 عالٍ · 20–25 حرج", en: "Scoring key: 1–5 Low · 6–12 Medium · 13–19 High · 20–25 Critical" },
+  /* — إصلاح السجل — */
+  repairBtn:     { ar: "🧹 إصلاح السجل", en: "🧹 Repair register" },
+  repairing:     { ar: "⏳ جارٍ الإصلاح…", en: "⏳ Repairing…" },
+  repairNothing: { ar: "✅ السجل سليم: لا تكرار ولا سجلات بلغة واحدة.", en: "✅ Register is clean: no duplicates, no single-language rows." },
+  repairConfirm: {
+    ar: "سيتم دمج {dup} سجلاً مكرراً وإعادة النص ثنائي اللغة إلى {lang} خطراً.\nالبيانات التي عدّلتها (المسؤول، التقييم، تواريخ المراجعة) تُحفظ.\nهل تريد المتابعة؟",
+    en: "This will merge {dup} duplicate records and restore bilingual text on {lang} risks.\nYour own edits (owner, scoring, review dates) are preserved.\nContinue?",
+  },
+  repairDone:    { ar: "✅ تم الإصلاح. عدد المخاطر الآن: ", en: "✅ Repaired. Risks now: " },
 };
 
-const SEED_RISKS = [
-  { id: "seed-1", area: "Frozen Room (-18°C)", hazard: { ar: "انخفاض حرارة الجسم / قضمة الصقيع", en: "Hypothermia / frostbite" }, consequence: { ar: "إصابات جلدية، فقدان وعي، نوبات قلبية", en: "Skin injuries, loss of consciousness, heart attacks" }, likelihood: 4, severity: 4, controls: { ar: "حد أقصى للدخول 45 دقيقة، ملابس معزولة معتمدة، نظام تدوير للعمال، زر طوارئ داخل الغرفة", en: "Max 45 min entry, certified insulated clothing, worker rotation system, emergency button inside room" }, category: "cold" },
-  { id: "seed-2", area: "Frozen Room (-18°C)", hazard: { ar: "انحصار العامل داخل الغرفة", en: "Worker trapped inside the room" }, consequence: { ar: "وفاة اختناقاً أو بالبرودة", en: "Death by suffocation or hypothermia" }, likelihood: 3, severity: 5, controls: { ar: "نظام فتح من الداخل، نظام إنذار، اتصال لاسلكي، تفقّد قبل الإغلاق", en: "Inside-release system, alarm, two-way radio, pre-close inspection" }, category: "cold" },
-  { id: "seed-3", area: "Chiller Room (0 to +4°C)", hazard: { ar: "تسرب غاز الأمونيا (NH3)", en: "Ammonia (NH3) gas leak" }, consequence: { ar: "تسمم، حرق الجهاز التنفسي، الوفاة عند تركيز عالٍ", en: "Poisoning, respiratory burns, death at high concentration" }, likelihood: 4, severity: 5, controls: { ar: "كواشف غاز ذات إنذار، تهوية طارئة، أقنعة واقية، خطة إخلاء، تدريب ربع سنوي", en: "Alarmed gas detectors, emergency ventilation, respirators, evacuation plan, quarterly drill" }, category: "chemical" },
-  { id: "seed-4", area: "Chiller Room (0 to +4°C)", hazard: { ar: "تسرب غاز الفريون", en: "Freon gas leak" }, consequence: { ar: "اختناق، تلف بيئي", en: "Asphyxiation, environmental damage" }, likelihood: 3, severity: 4, controls: { ar: "كواشف، صيانة دورية، شهادة فنيي التبريد", en: "Detectors, periodic maintenance, certified refrigeration technicians" }, category: "chemical" },
-  { id: "seed-5", area: "Production / Processing Line", hazard: { ar: "قطوع من السكاكين والمناشير", en: "Cuts from knives & saws" }, consequence: { ar: "جروح عميقة، قطع أصابع", en: "Deep wounds, finger amputation" }, likelihood: 4, severity: 4, controls: { ar: "قفازات مقاومة للقطع، صدرية واقية، تدريب استخدام الآلات، أغطية واقية للشفرات", en: "Cut-resistant gloves, protective apron, machine training, blade guards" }, category: "physical" },
-  { id: "seed-6", area: "Production / Processing Line", hazard: { ar: "التعامل مع آلات التقطيع الكهربائية", en: "Electric slicing machines" }, consequence: { ar: "بتر، صعق كهربائي", en: "Amputation, electric shock" }, likelihood: 4, severity: 5, controls: { ar: "إيقاف طارئ، حساسات أمان، قفل وسم (LOTO) عند الصيانة، تدريب مكثف", en: "E-stop, safety sensors, LOTO during maintenance, intensive training" }, category: "fire" },
-  { id: "seed-7", area: "Production / Processing Line", hazard: { ar: "التلوث المتبادل (Cross-contamination)", en: "Cross-contamination" }, consequence: { ar: "سحب منتج، تسمم عملاء، غرامات", en: "Product recall, customer poisoning, fines" }, likelihood: 3, severity: 5, controls: { ar: "فصل لحوم نيئة/مجهزة، ألوان أدوات، غسل يدين إلزامي، برنامج تعقيم", en: "Raw/processed segregation, color-coded tools, mandatory hand wash, sanitation program" }, category: "cross" },
-  { id: "seed-8", area: "QCS — Al Qusais Cold Storage", hazard: { ar: "حوادث الرافعات الشوكية", en: "Forklift accidents" }, consequence: { ar: "وفاة، إصابات بليغة، تلف منشآت", en: "Fatality, severe injuries, facility damage" }, likelihood: 3, severity: 5, controls: { ar: "رخصة سائق معتمدة، فحص يومي، سرعة قصوى 10 كم/س، ممرات محددة للمشاة", en: "Certified driver license, daily inspection, max 10 km/h, defined pedestrian lanes" }, category: "physical" },
-  { id: "seed-9", area: "QCS — Al Qusais Cold Storage", hazard: { ar: "سقوط بضائع من الرفوف", en: "Goods falling from racks" }, consequence: { ar: "إصابات رأس، كسور", en: "Head injuries, fractures" }, likelihood: 3, severity: 3, controls: { ar: "فحص رفوف ربع سنوي، حدود وزن، توزيع صحيح، خوذات إلزامية", en: "Quarterly rack inspection, weight limits, proper distribution, mandatory helmets" }, category: "physical" },
-  { id: "seed-10", area: "QCS — Al Qusais Cold Storage", hazard: { ar: "انزلاق على الأرضيات الرطبة", en: "Slip on wet floors" }, consequence: { ar: "كسور، إصابات ظهر", en: "Fractures, back injuries" }, likelihood: 4, severity: 3, controls: { ar: "أحذية مضادة للانزلاق، لافتات تحذيرية، تجفيف فوري، برنامج نظافة منظم", en: "Anti-slip footwear, warning signs, immediate drying, organized cleaning program" }, category: "physical" },
-  { id: "seed-11", area: "Receiving Bay — Air Cargo Reception", hazard: { ar: "الرفع اليدوي للأحمال الثقيلة", en: "Manual lifting of heavy loads" }, consequence: { ar: "إصابات ظهر، فتق", en: "Back injuries, hernia" }, likelihood: 4, severity: 3, controls: { ar: "حد أقصى 25 كجم، تدريب الرفع الصحيح، استخدام العربات والرافعات", en: "Max 25 kg, lifting technique training, use of trolleys and lifts" }, category: "ergonomic" },
-  { id: "seed-12", area: "Receiving Bay — Air Cargo Reception", hazard: { ar: "استقبال بضائع خارج نطاق درجة الحرارة", en: "Receiving goods outside temperature range" }, consequence: { ar: "فساد، سحب منتج", en: "Spoilage, product recall" }, likelihood: 3, severity: 5, controls: { ar: "فحص حرارة إلزامي، رفض البضائع المخالفة، سجلات استلام", en: "Mandatory temperature check, reject non-conforming goods, receiving logs" }, category: "coldchain" },
-  { id: "seed-13", area: "All sites", hazard: { ar: "حرائق (كهربائية / مواد تغليف)", en: "Fire (electrical / packaging materials)" }, consequence: { ar: "خسائر بشرية ومادية ضخمة", en: "Massive human and material losses" }, likelihood: 4, severity: 4, controls: { ar: "أنظمة رش آلية، طفايات كل 15م، إنذار متصل بالدفاع المدني، تدريب إخلاء", en: "Automatic sprinklers, extinguishers every 15m, alarm linked to Civil Defence, evacuation training" }, category: "fire" },
-  { id: "seed-14", area: "All sites", hazard: { ar: "صعق كهربائي", en: "Electric shock" }, consequence: { ar: "وفاة، حروق", en: "Death, burns" }, likelihood: 3, severity: 5, controls: { ar: "قفل/وسم (LOTO)، فنيون معتمدون فقط، قواطع تيار، فحص دوري", en: "LOTO, certified technicians only, circuit breakers, periodic inspection" }, category: "fire" },
-  { id: "seed-15", area: "All sites", hazard: { ar: "تلوث بكتيري (Salmonella, E. coli, Listeria)", en: "Bacterial contamination (Salmonella, E. coli, Listeria)" }, consequence: { ar: "تسمم غذائي جماعي، دعاوى قضائية", en: "Mass food poisoning, lawsuits" }, likelihood: 4, severity: 4, controls: { ar: "مسحات أسبوعية، تعقيم، تحكم بدرجة الحرارة، فحص طبي للعمال", en: "Weekly swabs, sanitation, temperature control, employee medical checks" }, category: "biological" },
-  { id: "seed-16", area: "All sites", hazard: { ar: "الإصابة بالحشرات والقوارض", en: "Pest / rodent infestation" }, consequence: { ar: "تلوث، إغلاق من البلدية", en: "Contamination, DM closure" }, likelihood: 3, severity: 4, controls: { ar: "عقد مع شركة معتمدة، فحص شهري، مصائد حول المحيط، سدّ الفتحات", en: "Approved company contract, monthly inspection, perimeter traps, seal openings" }, category: "pest" },
-  { id: "seed-17", area: "Distribution Fleet (Refrigerated trucks)", hazard: { ar: "عطل التبريد أثناء النقل", en: "Refrigeration failure during transport" }, consequence: { ar: "فساد الشحنة، خسائر مالية", en: "Shipment spoilage, financial loss" }, likelihood: 3, severity: 4, controls: { ar: "أجهزة تسجيل حرارة (Data loggers)، صيانة دورية، خطة بديلة", en: "Data loggers, periodic maintenance, contingency plan" }, category: "coldchain" },
-  { id: "seed-18", area: "Distribution Fleet (Refrigerated trucks)", hazard: { ar: "حوادث مرورية", en: "Road traffic accidents" }, consequence: { ar: "إصابات، خسائر", en: "Injuries, losses" }, likelihood: 3, severity: 3, controls: { ar: "تتبع GPS، قيود سرعة، راحة السائق، فحص دوري للمركبات", en: "GPS tracking, speed limits, driver rest, periodic vehicle inspection" }, category: "physical" },
-  { id: "seed-19", area: "All sites", hazard: { ar: "تصريف مياه ملوثة للصرف", en: "Discharge of contaminated water" }, consequence: { ar: "غرامات بيئية من البلدية", en: "Environmental fines from DM" }, likelihood: 3, severity: 3, controls: { ar: "مصائد دهون، معالجة أولية، سجلات صيانة، التعاقد مع شركة معتمدة", en: "Grease traps, primary treatment, maintenance logs, approved-company contract" }, category: "env" },
-  { id: "seed-20", area: "All sites", hazard: { ar: "سوء إدارة النفايات العضوية", en: "Mismanagement of organic waste" }, consequence: { ar: "روائح، حشرات، غرامات", en: "Odors, pests, fines" }, likelihood: 4, severity: 3, controls: { ar: "حاويات مغطاة، إخلاء يومي، شركة نقل معتمدة من البلدية", en: "Covered containers, daily emptying, DM-approved waste carrier" }, category: "env" },
-];
+const DOC_TYPE = "risk_register_doc";
+
+const blankDoc = () => ({
+  docNo: "HSE-RA-01",
+  revision: "01",
+  issueDate: todayISO(),
+  scope: "",
+  preparedBy: "",
+  reviewedBy: "",
+  approvedBy: "",
+  approvedDate: "",
+});
 
 const blank = () => ({
   id: "",
@@ -118,8 +175,44 @@ const blank = () => ({
   owner: "",
   status: "active",
   reviewDate: todayISO(),
+  controlType: "administrative",
+  residualLikelihood: 0,
+  residualSeverity: 0,
+  linkedSop: "",
+  linkedForm: "",
+  attachments: [],
+  reviewedBy: "",
+  reviewedDate: "",
   createdAt: new Date().toISOString(),
 });
+
+function plusMonthsISO(months) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+/** يكمل الحقول الافتراضية قبل حفظ خطر من القائمة الجاهزة */
+function withSeedDefaults(seed) {
+  return {
+    status: "active",
+    linkedForm: "",
+    attachments: [],
+    reviewedBy: "",
+    reviewedDate: "",
+    reviewDate: plusMonthsISO(12),
+    createdAt: new Date().toISOString(),
+    ...seed,
+  };
+}
+
+/** الخطر المتبقي — يعيد null إذا لم يُقيَّم بعد */
+function residualScoreOf(r) {
+  const l = Number(r?.residualLikelihood) || 0;
+  const sv = Number(r?.residualSeverity) || 0;
+  if (!l || !sv) return null;
+  return calcRiskScore(l, sv);
+}
 
 // resolve a stored value (string or {ar,en}) to the active language
 function txt(v, lang) {
@@ -127,6 +220,30 @@ function txt(v, lang) {
   if (typeof v === "string") return v;
   if (typeof v === "object") return v[lang] ?? v.ar ?? v.en ?? "";
   return String(v);
+}
+
+const normTxt = (v) => String(v || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** يطابق سجلاً محفوظاً مع خطر من القوائم الجاهزة (بالعربية أو بالإنجليزية) */
+function seedFor(record) {
+  const h = record?.hazard;
+  const keys = h && typeof h === "object" ? [h.ar, h.en] : [h];
+  for (const seed of SEED_CATALOG) {
+    for (const k of keys) {
+      if (!k) continue;
+      if (normTxt(k) === normTxt(seed.hazard.ar) || normTxt(k) === normTxt(seed.hazard.en)) return seed;
+    }
+  }
+  return null;
+}
+
+/**
+ * يبقي النص ثنائي اللغة عند الحفظ: يستبدل لغة العرض فقط
+ * بدل أن يمسح الترجمة الأخرى كما كان يحدث سابقاً.
+ */
+function wrapLang(original, value, lang) {
+  if (original && typeof original === "object") return { ...original, [lang]: value };
+  return { [lang]: value };
 }
 
 export default function HSERiskRegister() {
@@ -139,36 +256,79 @@ export default function HSERiskRegister() {
   const [draft, setDraft] = useState(blank());
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [doc, setDoc] = useState(blankDoc());
+  const [docId, setDocId] = useState(null);
+  const [showDocCard, setShowDocCard] = useState(false);
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const pdfRef = useRef(null);
+  const bootedRef = useRef(false);
 
   async function reload() {
     const arr = await apiList("risk_register");
     if (!arr || arr.length === 0) {
-      // Seed once
       try {
-        for (const seed of SEED_RISKS) {
-          await apiSave("risk_register", seed, "HSE_seed");
-        }
-        const fresh = await apiList("risk_register");
-        setRisks(fresh);
+        for (const seed of SEED_RISKS) await apiSave("risk_register", seed, "HSE_seed");
+        for (const seed of LOADING_RISKS) await apiSave("risk_register", withSeedDefaults(seed), "HSE_seed");
+        setRisks(await apiList("risk_register"));
         return;
       } catch (e) {
         console.warn("Risk Register seed failed, showing local SEED:", e?.message || e);
-        setRisks(SEED_RISKS);
+        setRisks([...SEED_RISKS, ...LOADING_RISKS.map((x) => ({ ...withSeedDefaults(x), id: x.seedKey }))]);
         return;
+      }
+    }
+    // سجل قديم لا يحوي مخاطر التحميل والتفريغ → تُضاف مرة واحدة فقط
+    const hasLoading = arr.some((r) => typeof r.seedKey === "string" && r.seedKey.startsWith("load-"));
+    if (!hasLoading) {
+      try {
+        for (const seed of LOADING_RISKS) await apiSave("risk_register", withSeedDefaults(seed), "HSE_seed");
+        setRisks(await apiList("risk_register"));
+        return;
+      } catch (e) {
+        console.warn("Loading/unloading risks top-up failed:", e?.message || e);
       }
     }
     setRisks(arr);
   }
-  useEffect(() => { reload(); }, []);
+
+  // حارس ضد التشغيل المزدوج في وضع التطوير (StrictMode) — وإلا تُزرع النسخ مرتين
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    reload();
+  }, []);
+
+  /* بيانات ضبط الوثيقة — سجل واحد على السيرفر، لا تخزين محلي */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const arr = await apiList(DOC_TYPE);
+        if (!alive || !arr || arr.length === 0) return;
+        const rec = arr[0];
+        setDocId(rec.id || null);
+        setDoc({ ...blankDoc(), ...rec });
+      } catch (e) {
+        console.warn("Risk register doc-control load failed:", e?.message || e);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   function startNew() { setDraft(blank()); setEditingId("__new__"); setShowForm(true); }
+
   function startEdit(r) {
-    // when editing existing, expose ar text in single-language fields
     setDraft({
       ...r,
-      hazard: typeof r.hazard === "object" ? (r.hazard[lang] ?? r.hazard.ar ?? "") : r.hazard,
-      consequence: typeof r.consequence === "object" ? (r.consequence[lang] ?? r.consequence.ar ?? "") : r.consequence,
-      controls: typeof r.controls === "object" ? (r.controls[lang] ?? r.controls.ar ?? "") : r.controls,
+      origHazard: r.hazard,
+      origConsequence: r.consequence,
+      origControls: r.controls,
+      hazard: txt(r.hazard, lang),
+      consequence: txt(r.consequence, lang),
+      controls: txt(r.controls, lang),
     });
     setEditingId(r.id);
     setShowForm(true);
@@ -178,10 +338,18 @@ export default function HSERiskRegister() {
     if (!String(draft.hazard).trim()) { alert(pick(T.enterHazard)); return; }
     setSaving(true);
     try {
+      const { origHazard, origConsequence, origControls, ...rest } = draft;
+      const payload = {
+        ...rest,
+        hazard: wrapLang(origHazard, draft.hazard, lang),
+        consequence: wrapLang(origConsequence, draft.consequence, lang),
+        controls: wrapLang(origControls, draft.controls, lang),
+      };
       if (editingId === "__new__") {
-        await apiSave("risk_register", draft);
+        delete payload.id;
+        await apiSave("risk_register", payload);
       } else {
-        await apiUpdate("risk_register", editingId, draft);
+        await apiUpdate("risk_register", editingId, payload);
       }
       await reload();
       setShowForm(false); setEditingId(null);
@@ -202,6 +370,165 @@ export default function HSERiskRegister() {
     }
   }
 
+  async function saveDoc() {
+    setSavingDoc(true);
+    try {
+      const payload = {
+        docNo: doc.docNo, revision: doc.revision, issueDate: doc.issueDate, scope: doc.scope,
+        preparedBy: doc.preparedBy, reviewedBy: doc.reviewedBy,
+        approvedBy: doc.approvedBy, approvedDate: doc.approvedDate,
+      };
+      if (docId) {
+        await apiUpdate(DOC_TYPE, docId, payload, doc.approvedBy || doc.preparedBy || "HSE");
+      } else {
+        const saved = await apiSave(DOC_TYPE, payload, doc.approvedBy || doc.preparedBy || "HSE");
+        if (saved?.id) setDocId(saved.id);
+      }
+      alert(pick(T.docSaved));
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSavingDoc(false);
+    }
+  }
+
+  async function attachFile(file) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await apiUploadFile(file);
+      setDraft((d) => ({ ...d, attachments: [...(d.attachments || []), { url, name: file.name }] }));
+    } catch (e) {
+      alert((pick({ ar: "❌ فشل رفع الملف: ", en: "❌ Upload failed: " })) + (e?.message || e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function exportPdf() {
+    setExporting(true);
+    try {
+      await new Promise((r) => setTimeout(r, 60));
+      await exportNodeToPdf(
+        pdfRef.current,
+        safeFileName((doc.docNo || "HSE-RA") + "_Rev" + (doc.revision || "01") + "_" + todayISO()),
+        { orientation: "l" }
+      );
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالتصدير: ", en: "❌ Export error: " })) + (e?.message || e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /* ── إصلاح السجل: دمج المكرر وإعادة النص ثنائي اللغة ── */
+  function groupRisks() {
+    const groups = new Map();
+    for (const r of risks) {
+      if (!r.id) continue;
+      const seed = seedFor(r);
+      const key = seed
+        ? "seed:" + (seed.seedKey || seed.id)
+        : "free:" + String(r.area || "") + "|" + normTxt(txt(r.hazard, "ar") || txt(r.hazard, "en"));
+      if (!groups.has(key)) groups.set(key, { seed, items: [] });
+      groups.get(key).items.push(r);
+    }
+    return groups;
+  }
+
+  function mergeGroup(seed, items) {
+    const richness = (r) =>
+      (r.owner ? 4 : 0) + (r.updatedAt ? 2 : 0) + (r.reviewDate ? 1 : 0) +
+      (r.linkedSop ? 1 : 0) + ((r.attachments || []).length ? 1 : 0);
+    const sorted = [...items].sort((a, b) => richness(b) - richness(a));
+
+    const first = (get) => {
+      for (const r of sorted) {
+        const v = get(r);
+        if (v === undefined || v === null || v === "") continue;
+        if (Array.isArray(v) && v.length === 0) continue;
+        return v;
+      }
+      return undefined;
+    };
+
+    // نص: تعديل المستخدم يتقدّم، ثم النسخة ثنائية اللغة، ثم نص البذرة
+    const textField = (key) => {
+      const edited = sorted.find(
+        (r) => typeof r[key] === "string" && r[key].trim() &&
+          !(seed && (normTxt(r[key]) === normTxt(seed[key].ar) || normTxt(r[key]) === normTxt(seed[key].en)))
+      );
+      if (edited) return edited[key];
+      const bilingual = sorted.find((r) => r[key] && typeof r[key] === "object");
+      if (bilingual) return bilingual[key];
+      if (seed) return seed[key];
+      return first((r) => r[key]) || "";
+    };
+
+    // رقم: القيمة التي غيّرها المستخدم عن البذرة تتقدّم
+    const numField = (key, fallback) => {
+      const seedVal = seed ? Number(seed[key]) : 0;
+      const changed = sorted.map((r) => Number(r[key])).find((v) => v && seedVal && v !== seedVal);
+      if (changed) return changed;
+      const any = sorted.map((r) => Number(r[key])).find((v) => v);
+      return any || seedVal || fallback;
+    };
+
+    const out = {
+      area: first((r) => r.area) || (seed && seed.area) || SITE_LOCATIONS[0].v,
+      category: first((r) => r.category) || (seed && seed.category) || HAZARD_CATEGORIES[0].v,
+      hazard: textField("hazard"),
+      consequence: textField("consequence"),
+      controls: textField("controls"),
+      likelihood: numField("likelihood", 3),
+      severity: numField("severity", 3),
+      owner: first((r) => r.owner) || (seed && seed.owner) || "",
+      status: first((r) => r.status) || "active",
+      reviewDate: first((r) => r.reviewDate) || "",
+      controlType: first((r) => r.controlType) || (seed && seed.controlType) || "",
+      residualLikelihood: Number(first((r) => r.residualLikelihood)) || (seed && seed.residualLikelihood) || 0,
+      residualSeverity: Number(first((r) => r.residualSeverity)) || (seed && seed.residualSeverity) || 0,
+      linkedSop: first((r) => r.linkedSop) || (seed && seed.linkedSop) || "",
+      linkedForm: first((r) => r.linkedForm) || "",
+      attachments: first((r) => r.attachments) || [],
+      reviewedBy: first((r) => r.reviewedBy) || "",
+      reviewedDate: first((r) => r.reviewedDate) || "",
+    };
+    if (seed && seed.seedKey) out.seedKey = seed.seedKey;
+    return { keep: sorted[0], drop: sorted.slice(1), payload: out };
+  }
+
+  async function repairRegister() {
+    const groups = groupRisks();
+    let dup = 0;
+    let langFix = 0;
+    for (const g of groups.values()) {
+      dup += Math.max(0, g.items.length - 1);
+      if (g.seed && g.items.some((r) => typeof r.hazard !== "object")) langFix += 1;
+    }
+    if (!dup && !langFix) { alert(pick(T.repairNothing)); return; }
+    const msg = pick(T.repairConfirm).replace("{dup}", String(dup)).replace("{lang}", String(langFix));
+    if (!window.confirm(msg)) return;
+
+    setRepairing(true);
+    try {
+      for (const g of groups.values()) {
+        const { keep, drop, payload } = mergeGroup(g.seed, g.items);
+        await apiUpdate("risk_register", keep.id, payload);
+        for (const extra of drop) {
+          if (extra.id && extra.id !== keep.id) await apiDelete(extra.id);
+        }
+      }
+      const fresh = await apiList("risk_register");
+      setRisks(fresh);
+      alert(pick(T.repairDone) + fresh.length);
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالإصلاح: ", en: "❌ Repair error: " })) + (e?.message || e));
+    } finally {
+      setRepairing(false);
+    }
+  }
+
   const filtered = useMemo(() => {
     return risks.filter((r) => {
       const score = calcRiskScore(r.likelihood, r.severity);
@@ -211,7 +538,7 @@ export default function HSERiskRegister() {
       if (filter === "low" && score >= 6) return false;
       if (search.trim()) {
         const s = search.toLowerCase();
-        const hay = `${txt(r.hazard, lang)} ${r.area} ${txt(r.controls, lang)}`.toLowerCase();
+        const hay = `${txt(r.hazard, "ar")} ${txt(r.hazard, "en")} ${r.area} ${txt(r.controls, lang)}`.toLowerCase();
         if (!hay.includes(s)) return false;
       }
       return true;
@@ -230,78 +557,139 @@ export default function HSERiskRegister() {
     return out;
   }, [risks]);
 
+  const busy = saving || repairing || exporting || savingDoc;
+
   return (
-    <main style={pageStyle} dir={dir}>
-      <div style={containerStyle}>
-        <div style={headerBar}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 950 }}>{pick(T.pageTitle)}</div>
-            <div style={{ fontSize: 12, color: HSE_COLORS.primaryDark, marginTop: 4 }}>{pick(T.pageSubtitle)}</div>
+    <main style={UI.page} dir={dir}>
+      <div style={UI.wrap}>
+        <div style={ISO_UI.topBar}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <img src={mawashiLogo} alt="logo" style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover" }} />
+            <div>
+              <div style={ISO_UI.title}>{pick(T.pageTitle)}</div>
+              <div style={ISO_UI.subtitle}>{pick(T.pageSubtitle)}</div>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
-            <button style={buttonPrimary} onClick={startNew}>{pick(T.add)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button style={ISO_UI.btn("primary")} onClick={startNew}>{pick(T.add)}</button>
+            <button style={ISO_UI.btn(showDocCard ? "primary" : "secondary")} onClick={() => setShowDocCard((v) => !v)}>{pick(T.showDoc)}</button>
+            <button style={ISO_UI.btn("success", exporting)} onClick={exportPdf} disabled={busy}>
+              {exporting ? pick(T.exporting) : pick(T.exportPdf)}
+            </button>
+            <button style={ISO_UI.btn("violet", repairing)} onClick={repairRegister} disabled={busy}>
+              {repairing ? pick(T.repairing) : pick(T.repairBtn)}
+            </button>
+            <button style={ISO_UI.btn("secondary")} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #f3f4f6, #ffffff)", borderInlineStart: "5px solid #1f2937" }}>
-          <p style={{ fontSize: 14, lineHeight: 1.9, color: "#1f0f00", margin: 0 }}>{pick(T.pageIntro)}</p>
+        <div style={{ ...UI.card, borderInlineStart: "5px solid #0ea5e9" }}>
+          <p style={{ fontSize: 14, lineHeight: 1.9, margin: 0, fontWeight: 600 }}>{pick(T.pageIntro)}</p>
         </div>
 
-        {/* Methodology block */}
-        <div style={{ ...cardStyle, marginBottom: 14 }}>
-          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 8, color: HSE_COLORS.primaryDark }}>{pick(T.methodologyTitle)}</div>
-          <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.8, margin: "0 0 12px" }}>{pick(T.methodologyExplain)}</p>
+        {/* المنهجية */}
+        <div style={UI.card}>
+          <div style={UI.sectionTitle}>{pick(T.methodologyTitle)}</div>
+          <p style={{ fontSize: 13, color: "#334155", lineHeight: 1.85, margin: "0 0 12px", fontWeight: 600 }}>{pick(T.methodologyExplain)}</p>
           <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
+            <table style={UI.table}>
               <thead>
-                <tr>
-                  <th style={thStyle}>{pick(T.methCols.score)}</th>
-                  <th style={thStyle}>{pick(T.methCols.level)}</th>
-                  <th style={thStyle}>{pick(T.methCols.action)}</th>
+                <tr style={ISO_UI.theadRow}>
+                  <th style={UI.th}>{pick(T.methCols.score)}</th>
+                  <th style={UI.th}>{pick(T.methCols.level)}</th>
+                  <th style={UI.th}>{pick(T.methCols.action)}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: "#dcfce7", color: "#166534" }}>1 – 5</td>   <td style={{ ...tdStyle, fontWeight: 800, color: "#166534" }}>{pick(T.methLow)}</td>   <td style={tdStyle}>{pick(T.methActLow)}</td></tr>
-                <tr><td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: "#fef9c3", color: "#854d0e" }}>6 – 12</td>  <td style={{ ...tdStyle, fontWeight: 800, color: "#854d0e" }}>{pick(T.methMed)}</td>   <td style={tdStyle}>{pick(T.methActMed)}</td></tr>
-                <tr><td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: "#fed7aa", color: "#9a3412" }}>13 – 19</td> <td style={{ ...tdStyle, fontWeight: 800, color: "#9a3412" }}>{pick(T.methHigh)}</td>  <td style={tdStyle}>{pick(T.methActHigh)}</td></tr>
-                <tr><td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: "#fee2e2", color: "#7f1d1d" }}>20 – 25</td> <td style={{ ...tdStyle, fontWeight: 800, color: "#7f1d1d" }}>{pick(T.methCrit)}</td>  <td style={tdStyle}>{pick(T.methActCrit)}</td></tr>
+                <tr><td style={{ ...UI.td, textAlign: "center", fontWeight: 900, background: "#dcfce7", color: "#166534" }}>1 – 5</td>   <td style={{ ...UI.td, fontWeight: 900, color: "#166534" }}>{pick(T.methLow)}</td>   <td style={UI.td}>{pick(T.methActLow)}</td></tr>
+                <tr><td style={{ ...UI.td, textAlign: "center", fontWeight: 900, background: "#fef9c3", color: "#854d0e" }}>6 – 12</td>  <td style={{ ...UI.td, fontWeight: 900, color: "#854d0e" }}>{pick(T.methMed)}</td>   <td style={UI.td}>{pick(T.methActMed)}</td></tr>
+                <tr><td style={{ ...UI.td, textAlign: "center", fontWeight: 900, background: "#fed7aa", color: "#9a3412" }}>13 – 19</td> <td style={{ ...UI.td, fontWeight: 900, color: "#9a3412" }}>{pick(T.methHigh)}</td>  <td style={UI.td}>{pick(T.methActHigh)}</td></tr>
+                <tr><td style={{ ...UI.td, textAlign: "center", fontWeight: 900, background: "#fee2e2", color: "#7f1d1d" }}>20 – 25</td> <td style={{ ...UI.td, fontWeight: 900, color: "#7f1d1d" }}>{pick(T.methCrit)}</td>  <td style={UI.td}>{pick(T.methActCrit)}</td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
           {[
-            { label: pick(T.total), val: stats.total, bg: "#e0e7ff", color: "#3730a3" },
+            { label: pick(T.total), val: stats.total, bg: "#e0f2fe", color: "#0c4a6e" },
             { label: pick(T.critical), val: stats.critical, bg: "#fee2e2", color: "#7f1d1d" },
             { label: pick(T.high), val: stats.high, bg: "#fed7aa", color: "#9a3412" },
             { label: pick(T.medium), val: stats.medium, bg: "#fef9c3", color: "#854d0e" },
             { label: pick(T.low), val: stats.low, bg: "#dcfce7", color: "#166534" },
           ].map((s, i) => (
-            <div key={i} style={{ padding: "12px 14px", borderRadius: 12, background: s.bg, color: s.color, border: "1px solid rgba(120,53,15,0.18)", boxShadow: HSE_COLORS.shadow }}>
-              <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.85 }}>{s.label}</div>
-              <div style={{ fontSize: 26, fontWeight: 950 }}>{s.val}</div>
+            <div key={i} style={{ padding: "12px 14px", borderRadius: 12, background: s.bg, color: s.color, border: "1px solid rgba(15,23,42,0.14)", boxShadow: "0 8px 20px rgba(2,132,199,0.08)" }}>
+              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>{s.label}</div>
+              <div style={{ fontSize: 27, fontWeight: 950 }}>{s.val}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ ...cardStyle, marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <input type="text" placeholder={pick(T.search)} value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, maxWidth: 260 }} />
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...inputStyle, maxWidth: 200 }}>
+        {showDocCard && (
+          <div style={{ ...UI.card, borderInlineStart: "5px solid #0c4a6e" }}>
+            <div style={UI.sectionTitle}>{pick(T.docCardTitle)}</div>
+            <p style={{ fontSize: 12.5, color: "#334155", lineHeight: 1.8, margin: "0 0 12px", fontWeight: 600 }}>{pick(T.docCardHint)}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+              <div>
+                <label style={labelStyle}>{pick(T.docNo)}</label>
+                <input type="text" value={doc.docNo} onChange={(e) => setDoc({ ...doc, docNo: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docRevision)}</label>
+                <input type="text" value={doc.revision} onChange={(e) => setDoc({ ...doc, revision: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docIssueDate)}</label>
+                <input type="date" value={doc.issueDate} onChange={(e) => setDoc({ ...doc, issueDate: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docPreparedBy)}</label>
+                <input type="text" value={doc.preparedBy} onChange={(e) => setDoc({ ...doc, preparedBy: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docReviewedBy)}</label>
+                <input type="text" value={doc.reviewedBy} onChange={(e) => setDoc({ ...doc, reviewedBy: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docApprovedBy)}</label>
+                <input type="text" value={doc.approvedBy} onChange={(e) => setDoc({ ...doc, approvedBy: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.docApprovedOn)}</label>
+                <input type="date" value={doc.approvedDate} onChange={(e) => setDoc({ ...doc, approvedDate: e.target.value })} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label style={labelStyle}>{pick(T.docScope)}</label>
+              <input type="text" value={doc.scope} onChange={(e) => setDoc({ ...doc, scope: e.target.value })} placeholder={pick(T.docScopePh)} style={inputStyle} />
+            </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button style={ISO_UI.btn("primary", savingDoc)} onClick={saveDoc} disabled={busy}>
+                {savingDoc ? pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" }) : pick(T.saveDoc)}
+              </button>
+              <button style={ISO_UI.btn("success", exporting)} onClick={exportPdf} disabled={busy}>
+                {exporting ? pick(T.exporting) : pick(T.exportPdf)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ ...UI.card, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input type="text" placeholder={pick(T.search)} value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, maxWidth: 280 }} />
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...inputStyle, maxWidth: 210 }}>
             <option value="all">{pick(T.fAll)}</option>
             <option value="critical">{pick(T.fCritical)}</option>
             <option value="high">{pick(T.fHigh)}</option>
             <option value="medium">{pick(T.fMedium)}</option>
             <option value="low">{pick(T.fLow)}</option>
           </select>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{pick(T.shown)} {filtered.length} / {risks.length}</span>
+          <span style={{ fontSize: 13, color: "#0c4a6e", fontWeight: 900 }}>{pick(T.shown)} {filtered.length} / {risks.length}</span>
         </div>
 
         {showForm && (
-          <div style={{ ...cardStyle, marginBottom: 14, border: `2px solid ${HSE_COLORS.primary}` }}>
-            <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 12, color: HSE_COLORS.primaryDark }}>
+          <div style={{ ...UI.card, border: "2px solid #0ea5e9" }}>
+            <div style={UI.sectionTitle}>
               {editingId === "__new__" ? pick(T.newTitle) : pick(T.editTitle)}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
@@ -331,7 +719,7 @@ export default function HSERiskRegister() {
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.reviewDate)}</label>
-                <input type="date" value={draft.reviewDate} onChange={(e) => setDraft({ ...draft, reviewDate: e.target.value })} style={inputStyle} />
+                <input type="date" value={draft.reviewDate || ""} onChange={(e) => setDraft({ ...draft, reviewDate: e.target.value })} style={inputStyle} />
               </div>
             </div>
             <div style={{ marginTop: 10 }}>
@@ -344,73 +732,274 @@ export default function HSERiskRegister() {
             </div>
             <div style={{ marginTop: 10 }}>
               <label style={labelStyle}>{pick(T.controls)}</label>
-              <textarea value={draft.controls} onChange={(e) => setDraft({ ...draft, controls: e.target.value })} style={{ ...inputStyle, minHeight: 80 }} />
+              <textarea value={draft.controls} onChange={(e) => setDraft({ ...draft, controls: e.target.value })} style={{ ...inputStyle, minHeight: 90 }} />
             </div>
 
-            <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "#fff7ed", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 800 }}>{pick(T.currentScore)}</span>
-              <span style={{ padding: "4px 10px", borderRadius: 999, background: riskLevelLabel(calcRiskScore(draft.likelihood, draft.severity), lang).bg, color: riskLevelLabel(calcRiskScore(draft.likelihood, draft.severity), lang).color, fontWeight: 900 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 10 }}>
+              <div>
+                <label style={labelStyle}>{pick(T.controlType)}</label>
+                <select value={draft.controlType || "administrative"} onChange={(e) => setDraft({ ...draft, controlType: e.target.value })} style={inputStyle}>
+                  {CONTROL_TYPES.map((c) => <option key={c.v} value={c.v}>{c[lang]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.linkedSop)}</label>
+                <select value={draft.linkedSop || ""} onChange={(e) => setDraft({ ...draft, linkedSop: e.target.value })} style={inputStyle}>
+                  <option value="">{pick(T.noSop)}</option>
+                  {SOP_OPTIONS.map((o) => <option key={o.code} value={o.code}>{o.code} — {o.title[lang]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.linkedForm)}</label>
+                <input type="text" value={draft.linkedForm || ""} onChange={(e) => setDraft({ ...draft, linkedForm: e.target.value })} placeholder={pick(T.linkedFormPh)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.resLikelihood)}</label>
+                <input type="number" min="0" max="5" value={draft.residualLikelihood || 0} onChange={(e) => setDraft({ ...draft, residualLikelihood: Number(e.target.value) || 0 })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.resSeverity)}</label>
+                <input type="number" min="0" max="5" value={draft.residualSeverity || 0} onChange={(e) => setDraft({ ...draft, residualSeverity: Number(e.target.value) || 0 })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.reviewedBy)}</label>
+                <input type="text" value={draft.reviewedBy || ""} onChange={(e) => setDraft({ ...draft, reviewedBy: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>{pick(T.reviewedDate)}</label>
+                <input type="date" value={draft.reviewedDate || ""} onChange={(e) => setDraft({ ...draft, reviewedDate: e.target.value })} style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <label style={labelStyle}>{pick(T.attachments)}</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ ...ISO_UI.btn("secondary"), cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.6 : 1 }}>
+                  {uploading ? pick(T.uploading) : pick(T.addFile)}
+                  <input
+                    type="file"
+                    style={{ display: "none" }}
+                    disabled={uploading}
+                    onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; attachFile(f); }}
+                  />
+                </label>
+                {(draft.attachments || []).map((a, i) => (
+                  <span key={a.url + i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: "#e0f2fe", border: "1px solid rgba(15,23,42,0.14)", fontSize: 12.5, fontWeight: 700 }}>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: "#0c4a6e", fontWeight: 800 }}>{a.name || "file"}</a>
+                    <button
+                      type="button"
+                      onClick={() => setDraft({ ...draft, attachments: (draft.attachments || []).filter((_, j) => j !== i) })}
+                      style={{ border: "none", background: "transparent", color: "#b91c1c", fontWeight: 900, cursor: "pointer" }}
+                      title={pick(T.removeFile)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "#e0f2fe", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 900 }}>{pick(T.currentScore)}</span>
+              <span style={{ padding: "4px 11px", borderRadius: 999, background: riskLevelLabel(calcRiskScore(draft.likelihood, draft.severity), lang).bg, color: riskLevelLabel(calcRiskScore(draft.likelihood, draft.severity), lang).color, fontWeight: 900 }}>
                 {calcRiskScore(draft.likelihood, draft.severity)} — {riskLevelLabel(calcRiskScore(draft.likelihood, draft.severity), lang).level}
               </span>
+              <span style={{ fontSize: 13, fontWeight: 900 }}>{pick(T.residualTitle)}:</span>
+              {residualScoreOf(draft) === null ? (
+                <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 800 }}>{pick(T.notAssessed)}</span>
+              ) : (
+                <span style={{ padding: "4px 11px", borderRadius: 999, background: riskLevelLabel(residualScoreOf(draft), lang).bg, color: riskLevelLabel(residualScoreOf(draft), lang).color, fontWeight: 900 }}>
+                  {residualScoreOf(draft)} — {riskLevelLabel(residualScoreOf(draft), lang).level}
+                </span>
+              )}
             </div>
 
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+              <button style={ISO_UI.btn("success", saving)} onClick={save} disabled={busy}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
               </button>
-              <button style={buttonGhost} onClick={() => { setShowForm(false); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={ISO_UI.btn("secondary")} onClick={() => { setShowForm(false); setEditingId(null); }} disabled={busy}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
+        <div style={{ ...UI.card, padding: 0, overflowX: "auto" }}>
+          <table style={UI.table}>
             <thead>
-              <tr>
-                <th style={thStyle}>{pick(T.cols.area)}</th>
-                <th style={thStyle}>{pick(T.cols.hazard)}</th>
-                <th style={thStyle}>{pick(T.cols.score)}</th>
-                <th style={thStyle}>{pick(T.cols.level)}</th>
-                <th style={thStyle}>{pick(T.cols.controls)}</th>
-                <th style={thStyle}>{pick(T.cols.owner)}</th>
-                <th style={thStyle}>{pick(T.cols.actions)}</th>
+              <tr style={ISO_UI.theadRow}>
+                <th style={UI.th}>{pick(T.cols.area)}</th>
+                <th style={UI.th}>{pick(T.cols.hazard)}</th>
+                <th style={UI.th}>{pick(T.cols.score)}</th>
+                <th style={UI.th}>{pick(T.cols.level)}</th>
+                <th style={UI.th}>{pick(T.cols.controls)}</th>
+                <th style={UI.th}>{pick(T.pdfResidual)}</th>
+                <th style={UI.th}>{pick(T.cols.owner)}</th>
+                <th style={UI.th}>{pick(T.cols.actions)}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => {
                 const score = calcRiskScore(r.likelihood, r.severity);
                 const lvl = riskLevelLabel(score, lang);
-                // localize area name from constants
+                const res = residualScoreOf(r);
+                const resLvl = res === null ? null : riskLevelLabel(res, lang);
                 const areaItem = SITE_LOCATIONS.find((s) => s.v === r.area);
                 const areaTxt = areaItem ? areaItem[lang] : r.area;
                 return (
                   <tr key={r.id}>
-                    <td style={tdStyle}>{areaTxt}</td>
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>
+                    <td style={{ ...UI.td, fontWeight: 800, whiteSpace: "nowrap" }}>{areaTxt}</td>
+                    <td style={{ ...UI.td, fontWeight: 800, minWidth: 240 }}>
                       {txt(r.hazard, lang)}
-                      {r.consequence && <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>↳ {txt(r.consequence, lang)}</div>}
+                      {r.consequence && <div style={{ fontSize: 12, color: "#475569", marginTop: 4, fontWeight: 600 }}>↳ {txt(r.consequence, lang)}</div>}
                     </td>
-                    <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800 }}>{r.likelihood} × {r.severity} = {score}</td>
-                    <td style={tdStyle}>
-                      <span style={{ padding: "3px 8px", borderRadius: 8, background: lvl.bg, color: lvl.color, fontWeight: 900, fontSize: 12 }}>
+                    <td style={{ ...UI.td, textAlign: "center", fontWeight: 900, whiteSpace: "nowrap" }}>{r.likelihood} × {r.severity} = {score}</td>
+                    <td style={{ ...UI.td, textAlign: "center" }}>
+                      <span style={{ padding: "3px 9px", borderRadius: 8, background: lvl.bg, color: lvl.color, fontWeight: 900, fontSize: 12 }}>
                         {lvl.level}
                       </span>
                     </td>
-                    <td style={{ ...tdStyle, fontSize: 12, maxWidth: 280 }}>{txt(r.controls, lang)}</td>
-                    <td style={tdStyle}>{r.owner}</td>
-                    <td style={tdStyle}>
-                      <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => startEdit(r)}>{pick(T.edit)}</button>
-                      <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(r.id)}>{pick(T.del)}</button>
+                    <td style={{ ...UI.td, minWidth: 320 }}>
+                      {txt(r.controls, lang)}
+                      <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {r.controlType && <span style={UI.chip("#e0e7ff", "#3730a3")}>{localize(CONTROL_TYPES, r.controlType, lang)}</span>}
+                        {r.linkedSop && <span style={UI.chip("#dcfce7", "#166534")}>{r.linkedSop}</span>}
+                        {r.linkedForm && <span style={UI.chip("#fef9c3", "#854d0e")}>{r.linkedForm}</span>}
+                        {(r.attachments || []).length > 0 && <span style={UI.chip("#fee2e2", "#7f1d1d")}>📎 {(r.attachments || []).length}</span>}
+                      </div>
+                    </td>
+                    <td style={{ ...UI.td, textAlign: "center", whiteSpace: "nowrap" }}>
+                      {res === null ? (
+                        <span style={{ color: "#94a3b8", fontWeight: 800 }}>—</span>
+                      ) : (
+                        <span style={{ padding: "3px 9px", borderRadius: 8, background: resLvl.bg, color: resLvl.color, fontWeight: 900, fontSize: 12 }}>
+                          {r.residualLikelihood} × {r.residualSeverity} = {res}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...UI.td, fontWeight: 800 }}>{r.owner}</td>
+                    <td style={{ ...UI.td, textAlign: "center", whiteSpace: "nowrap" }}>
+                      <button style={{ ...ISO_UI.btn("secondary"), padding: "5px 11px" }} onClick={() => startEdit(r)}>{pick(T.edit)}</button>
+                      <button style={{ ...ISO_UI.btn("danger"), padding: "5px 11px", marginInlineStart: 5 }} onClick={() => remove(r.id)}>{pick(T.del)}</button>
                     </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="7" style={{ ...tdStyle, textAlign: "center", padding: 30, color: "#64748b" }}>{pick(T.noResults)}</td></tr>
+                <tr><td colSpan="8" style={{ ...UI.td, textAlign: "center", padding: 30, color: "#64748b" }}>{pick(T.noResults)}</td></tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* وثيقة الـ PDF — تُرسم خارج #root عبر بوابة حتى لا تفرض عليها
+            globals.css قاعدة `#root * { font-size: 14px !important }` */}
+        {createPortal(
+          <div ref={pdfRef} style={pdfStageStyle(1500)} dir={dir}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
+              <img src={mawashiLogo} alt="" style={{ height: 52 }} />
+              <div style={{ flex: 1 }}>
+                <div style={PDF_UI.h1}>{pick(T.pdfTitle)}</div>
+                <div style={PDF_UI.sub}>{pick(T.pdfCompany)}</div>
+              </div>
+            </div>
+
+            <table style={PDF_UI.metaTable}>
+              <tbody>
+                <tr>
+                  <td style={PDF_UI.th}>{pick(T.docNo)}</td><td style={PDF_UI.td}>{doc.docNo || "—"}</td>
+                  <td style={PDF_UI.th}>{pick(T.docRevision)}</td><td style={PDF_UI.td}>{doc.revision || "—"}</td>
+                  <td style={PDF_UI.th}>{pick(T.docIssueDate)}</td><td style={PDF_UI.td}>{doc.issueDate || "—"}</td>
+                  <td style={PDF_UI.th}>{pick(T.pdfPrintedOn)}</td><td style={PDF_UI.td}>{todayISO()}</td>
+                </tr>
+                <tr>
+                  <td style={PDF_UI.th}>{pick(T.docScope)}</td>
+                  <td style={PDF_UI.td} colSpan={5}>{doc.scope || "—"}</td>
+                  <td style={PDF_UI.th}>{pick(T.pdfRows)}</td><td style={PDF_UI.td}>{filtered.length}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style={{ fontSize: 10, color: "#4b5563", marginTop: 8 }}>{pick(T.pdfLegend)}</div>
+
+            <table style={{ ...PDF_UI.table, marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...PDF_UI.th, width: 26 }}>{pick(T.pdfNo)}</th>
+                  <th style={{ ...PDF_UI.th, width: 116 }}>{pick(T.cols.area)}</th>
+                  <th style={{ ...PDF_UI.th, width: 200 }}>{pick(T.hazard)}</th>
+                  <th style={{ ...PDF_UI.th, width: 170 }}>{pick(T.consequence)}</th>
+                  <th style={{ ...PDF_UI.th, width: 78 }}>{pick(T.pdfInitial)}</th>
+                  <th style={{ ...PDF_UI.th, width: 96 }}>{pick(T.controlType)}</th>
+                  <th style={PDF_UI.th}>{pick(T.controls)}</th>
+                  <th style={{ ...PDF_UI.th, width: 104 }}>{pick(T.pdfRef)}</th>
+                  <th style={{ ...PDF_UI.th, width: 78 }}>{pick(T.pdfResidual)}</th>
+                  <th style={{ ...PDF_UI.th, width: 104 }}>{pick(T.owner)}</th>
+                  <th style={{ ...PDF_UI.th, width: 74 }}>{pick(T.reviewDate)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => {
+                  const score = calcRiskScore(r.likelihood, r.severity);
+                  const lvl = riskLevelLabel(score, lang);
+                  const res = residualScoreOf(r);
+                  const resLvl = res === null ? null : riskLevelLabel(res, lang);
+                  const areaItem = SITE_LOCATIONS.find((x) => x.v === r.area);
+                  const sop = findSop(r.linkedSop);
+                  return (
+                    <tr key={r.id || i}>
+                      <td style={{ ...PDF_UI.td, textAlign: "center" }}>{i + 1}</td>
+                      <td style={PDF_UI.td}>{areaItem ? areaItem[lang] : r.area}</td>
+                      <td style={{ ...PDF_UI.td, fontWeight: 700 }}>{txt(r.hazard, lang)}</td>
+                      <td style={PDF_UI.td}>{txt(r.consequence, lang)}</td>
+                      <td style={{ ...PDF_UI.td, textAlign: "center", background: lvl.bg, color: lvl.color, fontWeight: 800 }}>
+                        {r.likelihood} × {r.severity} = {score}
+                        <div style={{ fontSize: 9 }}>{lvl.level}</div>
+                      </td>
+                      <td style={PDF_UI.td}>{localize(CONTROL_TYPES, r.controlType, lang) || "—"}</td>
+                      <td style={PDF_UI.td}>{txt(r.controls, lang)}</td>
+                      <td style={PDF_UI.td}>
+                        {r.linkedSop ? <div style={{ fontWeight: 700 }}>{r.linkedSop}</div> : null}
+                        {sop ? <div style={{ fontSize: 9, color: "#4b5563" }}>{sop.title[lang]}</div> : null}
+                        {r.linkedForm ? <div style={{ marginTop: 3 }}>{r.linkedForm}</div> : null}
+                        {!r.linkedSop && !r.linkedForm ? "—" : null}
+                      </td>
+                      <td style={{ ...PDF_UI.td, textAlign: "center", ...(resLvl ? { background: resLvl.bg, color: resLvl.color, fontWeight: 800 } : {}) }}>
+                        {res === null ? "—" : (
+                          <>
+                            {r.residualLikelihood} × {r.residualSeverity} = {res}
+                            <div style={{ fontSize: 9 }}>{resLvl.level}</div>
+                          </>
+                        )}
+                      </td>
+                      <td style={PDF_UI.td}>{r.owner || "—"}</td>
+                      <td style={{ ...PDF_UI.td, textAlign: "center" }}>{r.reviewDate || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <table style={{ ...PDF_UI.metaTable, marginTop: 18 }}>
+              <tbody>
+                <tr>
+                  {[
+                    { label: pick(T.docPreparedBy), name: doc.preparedBy, date: doc.issueDate },
+                    { label: pick(T.docReviewedBy), name: doc.reviewedBy, date: "" },
+                    { label: pick(T.docApprovedBy), name: doc.approvedBy, date: doc.approvedDate },
+                  ].map((b, i) => (
+                    <td key={i} style={PDF_UI.signBox}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>{b.label}</div>
+                      <div>{pick(T.pdfName)}: {b.name || "________________________"}</div>
+                      <div style={{ marginTop: 4 }}>{pick(T.pdfDate)}: {b.date || "____________"}</div>
+                      <div style={{ marginTop: 12 }}>{pick(T.pdfSign)}: ____________________</div>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>,
+          document.body
+        )}
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 // src/pages/car/pages/LoadingLog.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
+import { BlankFormPrintButton } from "../../monitor/branches/_shared/blankFormPrint";
 
 /**
  * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
@@ -467,6 +468,59 @@ export default function LoadingLog() {
   ];
   const CHECK_COLUMNS = CHECK_GROUPS.flatMap((g) => g.items);
 
+  /* ── The same sheet, empty, on paper ──────────────────────────────────
+     Trucks leave while nobody is at a screen, so the checklist is often
+     filled by hand on the dock and typed in afterwards. This spec is the
+     printed twin of the table below: same column order, same wording, same
+     document control — only the cells are blank and the number of vehicle
+     lines is chosen at print time. */
+  const blankFormSpec = useMemo(
+    () => ({
+      title: "VISUAL INSPECTION (OUTBOUND CHECKLIST)",
+      subtitle: "ONE LINE PER VEHICLE — TICK Y OR N FOR EVERY CHECK",
+      dir: "ltr",
+      orientation: "landscape",
+      rows: 12,
+      rowHeight: 30,
+      doc: {
+        documentNo: HEAD_DEFAULT.documentNo,
+        revisionNo: HEAD_DEFAULT.revisionNo,
+        issueDate: HEAD_DEFAULT.issueDate,
+        area: HEAD_DEFAULT.area,
+        issuedBy: HEAD_DEFAULT.issuedBy,
+        controllingOfficer: HEAD_DEFAULT.controllingOfficer,
+        approvedBy: HEAD_DEFAULT.approvedBy,
+      },
+      fields: [{ label: "Report date" }, { label: "Shift" }, { label: "Inspected by" }],
+      groups: [
+        { label: "VEHICLE", span: 4 },
+        { label: "TIMES & TEMPERATURE", span: 3 },
+        { label: CHECK_GROUPS[0].title.toUpperCase(), span: CHECK_GROUPS[0].items.length },
+        { label: CHECK_GROUPS[1].title.toUpperCase(), span: CHECK_GROUPS[1].items.length },
+        { label: "NOTES", span: 2 },
+      ],
+      columns: [
+        { label: "#", type: "index", width: "3%" },
+        { label: "VEHICLE NO", width: "8%" },
+        { label: "DRIVER NAME", width: "8%" },
+        { label: "DESTINATION", width: "8%" },
+        { label: "TIME\nSTART", width: "5%" },
+        { label: "TIME\nEND", width: "5%" },
+        { label: "TRUCK\nTEMP (°C)", width: "5%" },
+        ...CHECK_COLUMNS.map(([, text]) => ({ label: text, type: "yesno", width: "3.6%" })),
+        { label: "INFORMED TO\n(OPTIONAL)", width: "6%" },
+        { label: "REMARKS", width: "9%" },
+      ],
+      footer: [{ label: "Inspected by (name & sign)" }, { label: "Verified by (name & sign)" }],
+      notes: [
+        "Compliant answer is YES for every check except PEST ACTIVITES and BAD ODOUR, where the compliant answer is NO.",
+        "Any deviation must be written in REMARKS with the corrective action taken.",
+        `Destinations: ${DESTINATIONS.join(" · ")}`,
+      ],
+    }),
+    [CHECK_GROUPS, CHECK_COLUMNS]
+  );
+
   /* The compliant answer is not always YES — "Pest activities" and "Bad odour"
      are compliant at NO. newRow() already encodes that, so the defaults are the
      single source for it instead of a second list that could drift. */
@@ -612,6 +666,7 @@ export default function LoadingLog() {
               />
             </label>
             <button type="button" onClick={addRow} style={ISO_UI.btn("secondary")}>+ Vehicle</button>
+            <BlankFormPrintButton spec={blankFormSpec} />
             <button type="submit" disabled={busy} style={ISO_UI.btn("success", busy)}>
               {busy ? "Saving…" : "💾 Save report"}
             </button>

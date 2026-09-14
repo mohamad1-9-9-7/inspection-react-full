@@ -28,7 +28,7 @@ const browseLinks = [
   { perm: "inventory.browse", to: "/inventory-daily/browse", Icon: FiPackage, label: "Browse Inventory Daily", ar: "عرض المخزون اليومي", tone: "cyan" },
   { perm: "enoc.browse", to: "/enoc-returns/browse-view", Icon: FiTruck, label: "Browse ENOC Returns", ar: "عرض مرتجعات ENOC", tone: "orange" },
   { perm: "destruction.browse", to: "/destruction/browse", Icon: FiTrash2, label: "Browse Condemnations", ar: "عرض سجلات الإعدام", tone: "red" },
-  { perm: "disposalLog.browse", to: "/disposal-log/browse", Icon: FiCheckSquare, label: "Disposal Log Comparison", ar: "مقارنة سجل الإعدام (أودو)", aria: "Compare the Odoo disposal log with our condemnation register", tone: "slate" },
+  { perm: "disposalLog.compare", to: "/disposal-log/compare", Icon: FiCheckSquare, label: "Disposal vs Branch Returns", ar: "مطابقة الإعدام مع مرتجعات الفروع", aria: "Compare the Odoo disposal log with the branch returns day by day", tone: "red" },
 ];
 
 const createLinks = [

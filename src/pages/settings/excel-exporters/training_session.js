@@ -7,8 +7,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const PART_COLS = [
   { key: "slNo",        label: "SL",          width: 6  },
@@ -22,11 +21,11 @@ const PART_COLS = [
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const participants = Array.isArray(p.participants) ? p.participants : [];
+  const participants = rowsOf(p.participants);
   const bank = p.questionsBank || {};
   const questions = Array.isArray(bank.en) ? bank.en
                   : Array.isArray(bank) ? bank
-                  : Array.isArray(bank.ar) ? bank.ar : [];
+                  : rowsOf(bank.ar);
 
   const NC = 6;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
@@ -138,7 +137,7 @@ export default async function build(wb, record, ctx) {
     ws.getRow(r).height = 20; r++;
     questions.forEach((q, qi) => {
       const bg = qi % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
-      const opts = Array.isArray(q.options) ? q.options : [];
+      const opts = rowsOf(q.options);
       const correctIdx = Number(q.correct);
       const correctText = Number.isFinite(correctIdx) ? (opts[correctIdx] ?? "") : "";
       // No

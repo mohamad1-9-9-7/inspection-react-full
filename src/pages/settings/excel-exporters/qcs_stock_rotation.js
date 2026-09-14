@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const COLS = [
   { key: "productCode",     label: "Product Code",    width: 14 },
@@ -22,7 +21,7 @@ const COLS = [
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const items = Array.isArray(p.items) ? p.items : [];
+  const items = rowsOf(p.items);
   const summary = p.summary || {};
   const extras = Array.isArray(p.images?.extras) ? p.images.extras : [];
 

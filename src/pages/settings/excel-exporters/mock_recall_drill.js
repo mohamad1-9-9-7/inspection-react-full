@@ -6,8 +6,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const BACKWARD_COLS = [
   { key: "material",     label: "Material / Ingredient", width: 26, align: "left" },
@@ -46,8 +45,8 @@ export default async function build(wb, record, ctx) {
   const timing = p.timing || {};
   const results = p.results || {};
   const signoff = p.signoff || {};
-  const backward = Array.isArray(p.backwardTrace) ? p.backwardTrace : [];
-  const forward = Array.isArray(p.forwardTrace) ? p.forwardTrace : [];
+  const backward = rowsOf(p.backwardTrace);
+  const forward = rowsOf(p.forwardTrace);
 
   const NC = 6;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

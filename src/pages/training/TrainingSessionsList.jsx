@@ -1,8 +1,10 @@
 // src/pages/training/TrainingSessionsList.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { QRCodeCanvas } from 'qrcode.react';
 import TrainingReferenceModal, { MODULE_DETAILS_BI, parseRefSections, LETTER_PALETTE } from './TrainingReferenceModal';
+import { exportNodeToPdf, safeFileName, pdfStageStyle } from "../../utils/nodeToPdf";
 
 import {
   REPORTS_URL,
@@ -336,10 +338,57 @@ function issueTone(issue) {
 }
 
 /* ===================== Constants ===================== */
-const TOTAL_MODULES = 16; // total required training modules per branch
+const TOTAL_MODULES = Object.keys(MODULE_DETAILS_BI).filter((k) => k !== '__DEFAULT__').length; // مشتق من المرجع حتى لا يتخلّف عن عدد الوحدات
 // Default QA signatory (same as the training record's "Approved By" in TrainingSessionCreate)
 const DEFAULT_QA_MANAGER = "Hussam O.Sarhan";
 const TRAINING_DOC_NO = "FS-QM/REC/TR/1";
+const TRAINING_DOC_REV = "0";
+const TRAINING_DOC_ISSUE = "05/02/2020";
+
+/* Attendance-sheet styles.
+   English only: the PDF is rasterised by html2canvas, which does not shape
+   Arabic script — every Arabic label came out reversed and broken.
+   Kept local instead of extending PDF_UI so the HSE documents are untouched. */
+const ATT = {
+  title: { fontSize: 17, fontWeight: 900, letterSpacing: 1.2, color: "#0c4a6e", margin: 0, textTransform: "uppercase" },
+  subtitle: { fontSize: 10.5, color: "#64748b", marginTop: 3, letterSpacing: 0.4 },
+  docBox: { borderCollapse: "collapse", fontSize: 8.5, color: "#334155" },
+  docKey: { border: "1px solid #cbd5e1", background: "#f1f5f9", padding: "2px 7px", fontWeight: 800, letterSpacing: 0.3, whiteSpace: "nowrap" },
+  docVal: { border: "1px solid #cbd5e1", padding: "2px 7px", whiteSpace: "nowrap" },
+  rule: { height: 3, background: "linear-gradient(90deg,#0c4a6e 0%,#0284c7 55%,#bae6fd 100%)", borderRadius: 2, marginTop: 10 },
+
+  meta: { width: "100%", borderCollapse: "collapse", fontSize: 9.5, marginTop: 14 },
+  metaKey: {
+    border: "1px solid #cbd5e1", background: "#f1f5f9", padding: "6px 9px",
+    fontWeight: 800, fontSize: 8.5, letterSpacing: 0.6, textTransform: "uppercase",
+    color: "#475569", width: 110, whiteSpace: "nowrap",
+  },
+  metaVal: { border: "1px solid #cbd5e1", padding: "6px 9px", fontSize: 10, fontWeight: 600, color: "#0f172a" },
+
+  panel: { marginTop: 14, border: "1px solid #e2e8f0", borderLeft: "4px solid #0284c7", background: "#f8fafc", padding: "10px 14px" },
+  panelTitle: { fontSize: 8.5, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#0c4a6e", marginBottom: 6 },
+  panelLine: { fontSize: 9.5, lineHeight: 1.75, color: "#334155" },
+  panelLabel: { fontWeight: 800, color: "#0f172a" },
+
+  declaration: {
+    marginTop: 14, padding: "8px 12px", border: "1px dashed #94a3b8", background: "#fffbeb",
+    fontSize: 9.5, fontStyle: "italic", color: "#78350f",
+  },
+
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 9.5, marginTop: 10 },
+  th: {
+    border: "1px solid #0c4a6e", background: "#0c4a6e", color: "#fff",
+    padding: "7px 6px", fontSize: 8.5, fontWeight: 800, letterSpacing: 0.7,
+    textTransform: "uppercase", textAlign: "center",
+  },
+  td: { border: "1px solid #cbd5e1", padding: "8px", fontSize: 9.5, color: "#0f172a", verticalAlign: "middle" },
+
+  footer: {
+    marginTop: 16, paddingTop: 8, borderTop: "1px solid #cbd5e1",
+    display: "flex", justifyContent: "space-between",
+    fontSize: 8.5, color: "#64748b", letterSpacing: 0.3,
+  },
+};
 
 /* ===================== Certificate card (shared by the modal and the PDF export) ===================== */
 function CertificateCard({ participant, session, moduleName, branch, date, conductedBy, verifiedBy, withPrintIds = false }) {
@@ -902,6 +951,8 @@ export default function TrainingSessionsList() {
   const [selected, setSelected] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [savingParticipants, setSavingParticipants] = useState(false);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const attendanceRef = useRef(null);
 
   const [refOpen, setRefOpen] = useState(false);
   const [certData, setCertData] = useState(null);
@@ -1459,6 +1510,24 @@ export default function TrainingSessionsList() {
   };
 
   const downloadCertificates = () => runCertExport(certTargets);
+
+  /* كشف حضور موقّع — الدليل الذي يطلبه المدقق على أن التدريب نُفّذ فعلاً */
+  const downloadAttendanceSheet = async () => {
+    if (!selected) return;
+    setSheetBusy(true);
+    try {
+      await new Promise((r) => setTimeout(r, 60));
+      await exportNodeToPdf(
+        attendanceRef.current,
+        safeFileName("Attendance_" + safeModule(selected) + "_" + (safeDate(selected) || "")),
+        { orientation: "p" }
+      );
+    } catch (e) {
+      alert("Attendance sheet error: " + (e?.message || e));
+    } finally {
+      setSheetBusy(false);
+    }
+  };
 
   const saveParticipants = async () => {
     if (!selected) return;
@@ -3291,6 +3360,29 @@ export default function TrainingSessionsList() {
                     ➕ Add 5 Rows
                   </button>
                   <button
+                    onClick={downloadAttendanceSheet}
+                    disabled={sheetBusy || deletingSession || namedParticipants(selected, participants).length === 0}
+                    title={
+                      namedParticipants(selected, participants).length === 0
+                        ? "Add at least one named participant first"
+                        : "Attendance record — trainees, scores and results"
+                    }
+                    style={{
+                      padding: "9px 14px", borderRadius: 12,
+                      border: "1.5px solid #bae6fd",
+                      background: namedParticipants(selected, participants).length
+                        ? "linear-gradient(135deg,#f0f9ff,#e0f2fe)"
+                        : "#f8fafc",
+                      color: namedParticipants(selected, participants).length ? "#0369a1" : "#94a3b8",
+                      fontWeight: 900, fontSize: 12.5,
+                      cursor: sheetBusy ? "wait" : namedParticipants(selected, participants).length ? "pointer" : "not-allowed",
+                      opacity: sheetBusy ? 0.7 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sheetBusy ? "⏳ Building sheet…" : "🖊️ Attendance Sheet PDF"}
+                  </button>
+                  <button
                     onClick={saveParticipants}
                     disabled={savingParticipants || deletingSession}
                     style={{
@@ -3902,7 +3994,120 @@ export default function TrainingSessionsList() {
         </div>
       )}
 
-      {/* ── Trainer Reference Card Modal ── */}
+      {/* ── Attendance sheet: off-screen stage captured by the PDF exporter ── */}
+      {selected && createPortal(
+        <div ref={attendanceRef} style={pdfStageStyle(900)}>
+          {/* ── Header: identity + document control ── */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <img src="/mawashi-logo.jpg" alt="" style={{ height: 46, marginTop: 2 }} />
+            <div style={{ flex: 1 }}>
+              <div style={ATT.title}>Training Attendance Sheet</div>
+              <div style={ATT.subtitle}>AL MAWASHI &nbsp;·&nbsp; Quality &amp; Training Department</div>
+            </div>
+            <table style={ATT.docBox}>
+              <tbody>
+                <tr><td style={ATT.docKey}>Doc. No</td><td style={ATT.docVal}>{TRAINING_DOC_NO}</td></tr>
+                <tr><td style={ATT.docKey}>Revision</td><td style={ATT.docVal}>{TRAINING_DOC_REV}</td></tr>
+                <tr><td style={ATT.docKey}>Issue date</td><td style={ATT.docVal}>{TRAINING_DOC_ISSUE}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={ATT.rule} />
+
+          {/* ── Session details — every name is filled in automatically ── */}
+          <table style={ATT.meta}>
+            <tbody>
+              <tr>
+                <td style={ATT.metaKey}>Module</td>
+                <td style={ATT.metaVal}>{safeModule(selected)}</td>
+                <td style={ATT.metaKey}>Date</td>
+                <td style={ATT.metaVal}>{safeDate(selected) || "—"}</td>
+              </tr>
+              <tr>
+                <td style={ATT.metaKey}>Branch</td>
+                <td style={ATT.metaVal}>{safeBranch(selected) || "—"}</td>
+                <td style={ATT.metaKey}>Conducted by</td>
+                <td style={ATT.metaVal}>{selected?.payload?.conductedBy || "—"}</td>
+              </tr>
+              <tr>
+                <td style={ATT.metaKey}>Verified by</td>
+                <td style={ATT.metaVal}>{selected?.payload?.verifiedBy || "—"}</td>
+                <td style={ATT.metaKey}>Approved by</td>
+                <td style={ATT.metaVal}>{selected?.payload?.approvedBy || DEFAULT_QA_MANAGER}</td>
+              </tr>
+              <tr>
+                <td style={ATT.metaKey}>Pass mark</td>
+                <td style={ATT.metaVal}>{PASS_MARK}%</td>
+                <td style={ATT.metaKey}>Trainees</td>
+                <td style={ATT.metaVal}>{namedParticipants(selected, participants).length}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {selected?.payload?.objectives && (
+            <div style={ATT.panel}>
+              <div style={ATT.panelTitle}>Training objectives</div>
+              {String(selected.payload.objectives).split(/\r?\n/).filter((ln) => ln.trim()).map((ln, i) => {
+                const at = ln.indexOf(":");
+                const hasLabel = at > 0 && at < 40;
+                return (
+                  <div key={i} style={ATT.panelLine}>
+                    {hasLabel
+                      ? <><span style={ATT.panelLabel}>{ln.slice(0, at + 1)}</span>{ln.slice(at + 1)}</>
+                      : ln}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={ATT.declaration}>
+            Attendance is evidenced by each trainee&rsquo;s completed assessment. The scores and
+            results below are taken from the recorded quiz and are not entered by hand.
+          </div>
+
+          {/* ── Attendance & assessment results ──
+              No signature column: sitting the assessment is itself the attendance evidence. */}
+          <table style={ATT.table}>
+            <thead>
+              <tr>
+                <th style={{ ...ATT.th, width: 26 }}>#</th>
+                <th style={{ ...ATT.th, textAlign: "left" }}>Trainee name</th>
+                <th style={{ ...ATT.th, width: 92 }}>Emp. ID</th>
+                <th style={{ ...ATT.th, width: 190 }}>Designation</th>
+                <th style={{ ...ATT.th, width: 70 }}>Score</th>
+                <th style={{ ...ATT.th, width: 80 }}>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {namedParticipants(selected, participants).map((pt, i) => {
+                const zebra = i % 2 ? { background: "#f8fafc" } : null;
+                const passed = String(pt.result || "").toUpperCase() === "PASS";
+                return (
+                  <tr key={pt.employeeId || pt.name || i}>
+                    <td style={{ ...ATT.td, ...zebra, textAlign: "center", color: "#64748b" }}>{i + 1}</td>
+                    <td style={{ ...ATT.td, ...zebra, fontWeight: 700 }}>{pt.name}</td>
+                    <td style={{ ...ATT.td, ...zebra, textAlign: "center" }}>{pt.employeeId || "—"}</td>
+                    <td style={{ ...ATT.td, ...zebra, color: "#475569" }}>{pt.designation || "—"}</td>
+                    <td style={{ ...ATT.td, ...zebra, textAlign: "center", fontWeight: 700 }}>{pt.score || "—"}</td>
+                    <td style={{
+                      ...ATT.td, ...zebra, textAlign: "center", fontWeight: 800, letterSpacing: 0.4,
+                      color: pt.result ? (passed ? "#15803d" : "#b91c1c") : "#94a3b8",
+                    }}>{pt.result || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div style={ATT.footer}>
+            <span>{TRAINING_DOC_NO} &nbsp;·&nbsp; Rev {TRAINING_DOC_REV} &nbsp;·&nbsp; ISO 22000:2018</span>
+            <span>Printed on {new Date().toISOString().slice(0, 10)}</span>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {selected && (
         <TrainingReferenceModal
           open={refOpen}

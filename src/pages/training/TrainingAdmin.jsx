@@ -2,7 +2,7 @@
 // 🛠️ Training Administration Console — bilingual EN/AR
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE, getModuleName, useGlobalLang } from "./TrainingSessionsList.helpers";
+import { API_BASE, getModuleName, useGlobalLang, QUIZ_BANK } from "./TrainingSessionsList.helpers";
 import { MODULES as CANON_MODULES, QUESTION_BANK as CANON_QB } from "./TrainingSessionCreate";
 import { MODULE_DETAILS_BI, DEFAULT_DETAILS_BI } from "./TrainingReferenceModal";
 import html2canvas from "html2canvas";
@@ -386,6 +386,20 @@ async function apiDel(id) {
 
 /* ===================== Normalizer ===================== */
 function normalizeCanonQuestions(mod) {
+  // QUIZ_BANK is the bank the trainee quiz actually reads: richer (15 per module)
+  // and already tagged Easy/Medium/Hard, so prefer it over the session-sheet bank.
+  // Without this, a module present only in QUIZ_BANK shows "0 questions" here while
+  // its quiz works — and the first question saved would then shadow all 15.
+  const quiz = QUIZ_BANK[mod];
+  if (Array.isArray(quiz) && quiz.length) {
+    return quiz.map((q) => ({
+      q_en: q.q_en || "", q_ar: q.q_ar || "",
+      options_en: q.options_en || ["", "", ""], options_ar: q.options_ar || ["", "", ""],
+      correct: typeof q.correct === "number" ? q.correct : 0,
+      difficulty: q.difficulty || "Medium",
+      tags: [],
+    }));
+  }
   const pack = CANON_QB[mod];
   if (!pack) return [];
   const en = pack.en || [], ar = pack.ar || [];
@@ -566,7 +580,11 @@ export default function TrainingAdmin() {
       ]);
       const modRec = modRecs[0] || null;
       setModulesRecord(modRec);
-      if (modRec?.payload?.modules?.length) setModules(modRec.payload.modules);
+      // Merge the saved list with the canonical one so a newly shipped module
+      // is never hidden by an older saved training_config record.
+      if (modRec?.payload?.modules?.length) {
+        setModules([...new Set([...modRec.payload.modules, ...CANON_MODULES])]);
+      }
       if (modRec?.payload?.meta) setModulesMeta(modRec.payload.meta);
       setQuestionsRecords(qRecs); setReferences(refRecs);
       const setRec = setRecs[0] || null;

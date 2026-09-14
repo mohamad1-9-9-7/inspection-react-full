@@ -56,8 +56,16 @@ const LAST_BRANCH_KEY = "butcher_last_branch"; // cache only — not a store
 const PIECE_KEY = "__pieces__";
 /** تفضيل شكل شاشة الأوزان: auto | on | off — كاش جهاز فقط. */
 const COMPACT_KEY = "butcher_compact_view";    // cache only — not a store
+/** مسوّدة التسجيل الجاري — كاش جهاز فقط، والسيرفر بيضل مصدر الحقيقة.
+    الجوال بيقفل الشاشة أو المتصفّح بيفرّغ التبويب وقت مكالمة، وبلاها كان
+    الجزار يرجع يلاقي عشر أوزان راحت. بتنمسح لحظة ما ينحفظ السجل. */
+const DRAFT_KEY = "butcher_draft";             // cache only — not a store
+/** عمر المسوّدة — أطول من هيك يعني شغل يوم تاني، فما منعرضها. */
+const DRAFT_TTL_MS = 12 * 60 * 60 * 1000;
 /** تحت هالعرض الشاشة موبايل → الوضع المضغوط بينفتح لحاله. */
 const NARROW_PX = 820;
+/** تحت هالعرض ما في محل لزرّ لغة بكلمة — بيصير أيقونة. */
+const TIGHT_PX = 520;
 
 /* أحجام الخطوط — تتغلّب على `#root *` بفضل الكلاس (نفس التخصيص + ترتيب لاحق) */
 const CSS = `
@@ -92,9 +100,6 @@ const CSS = `
   /* شريط الخطوات: أرقام فقط بلا أسماء */
   #root .bt-step-lbl { display: none !important; }
 }
-@media (max-width: 520px) {
-  #root .bt-toggle { display: none; }   /* زر اللغة يضيّق الترويسة على الجوال */
-}
 /* ═══ الوضع المضغوط (شاشة الأوزان على الموبايل) ═══
    كروت صغيرة بثلاثة أعمدة حتى تدخل كل المنتجات بشاشة وحدة. هالقواعد
    **بعد** الـmedia queries عن قصد: نفس التخصيص بالضبط (#root + كلاس)، فاللي
@@ -127,6 +132,8 @@ const CSS = `
 }
 #root .bt-cnum  { font-size: 21px !important; }
 #root .bt-cbar  { font-size: 15px !important; }
+#root .bt-tick  { font-size: 13px !important; }
+#root .bt-tail  { font-size: 13px !important; }
 /* رصيف الحفظ اللاصق: globals.css حاطط overflow-x:hidden على html/body/#root،
    و«hidden» بيحوّل المحور الثاني لـ auto فبيصير الصندوق حاوية تمرير — وهذا
    بيعطّل position:sticky لكل ما بداخله. منرجّعه visible لهالصفحة وحدها.
@@ -207,6 +214,55 @@ function focusNextWeight(e) {
   if (next) { next.focus(); next.select?.(); } else e.currentTarget.blur();
 }
 
+/** رجّة قصيرة — إشارة لمس بدل رسالة، الجزار ماسك السكين وما بيقرأ. */
+function buzz(ms) {
+  try { navigator.vibrate?.(ms); } catch { /* ignore */ }
+}
+
+/* ═══ الذيل المشترك بأسماء الأصناف ═══
+   وصفة وحدة بتطلع أسماؤها هيك: «LEG-BONE IN (LAMB AUSTRALIA)» و«RACK SADDLE
+   (LAMB AUSTRALIA)»… نفس القوس مكرّر على كل سطر: بياخد نص عرض الجوال وبيقصّ
+   الجزء اللي بيفرّق بين الأصناف. منشيله من السطور ومنعرضه مرّة وحدة بعنوان
+   القسم — بس إذا كان فعلاً مشترك (سطرين على الأقل وأغلبية الليستة). */
+function commonTail(names) {
+  const count = new Map();
+  names.forEach((n) => {
+    const m = /\s*\([^()]*\)\s*$/.exec(String(n || ""));
+    if (!m) return;
+    const tail = m[0].trim();
+    if (tail.length < 4) return;            // «(1)» مش ذيل وصفي
+    count.set(tail, (count.get(tail) || 0) + 1);
+  });
+  let best = "";
+  let hits = 0;
+  count.forEach((c, k) => { if (c > hits) { hits = c; best = k; } });
+  return hits >= 2 && hits >= names.length * 0.6 ? best : "";
+}
+
+/** شيل الذيل المشترك من اسم واحد — بيرجع كما هو إذا ما كان إله. */
+function stripTail(name, tail) {
+  const s = String(name || "");
+  if (!tail || !s.endsWith(tail)) return s;
+  return s.slice(0, -tail.length).trim() || s;
+}
+
+/** لاحقة وحدة القياس بآخر الاسم («– كجم» / «- KG») — ما بتميّز صنف عن صنف. */
+const UNIT_TAIL =
+  /\s*[-–—]\s*(kgs?|gms?|grams?|pcs?|pieces?|كجم|كغم|كغ|كيلو|غرام|جم|قطعة|قطع)\s*$/i;
+
+/* ═══ أسماء العرض بسطور الوضع المضغوط ═══
+   منشيل شغلتين بيتكرّروا على كل سطر وبياكلوا عرض الجوال: الذيل المشترك
+   («(LAMB AUSTRALIA)») ولاحقة الوحدة («– كجم»). وإذا الشيل خلّى اسمين
+   ينقرأوا نفس الشي، منرجع للأسماء الكاملة كلها — اسم ملتبس بالملحمة يعني
+   وزن براس صنف غلط، وهاي ما بترجع. */
+function shortenNames(names) {
+  const tail = commonTail(names);
+  const out = names.map((n) => stripTail(n, tail).replace(UNIT_TAIL, "").trim() || n);
+  const keys = out.map((x) => x.toLowerCase());
+  if (new Set(keys).size !== keys.length) return { tail: "", names };
+  return { tail, names: out };
+}
+
 /* ============================ الصفحة ============================ */
 
 export default function ButcherLog() {
@@ -259,10 +315,23 @@ export default function ButcherLog() {
   const [narrow, setNarrow] = useState(
     () => typeof window !== "undefined" && window.innerWidth <= NARROW_PX
   );
+  /* شاشة ضيّقة جداً — زرّ اللغة بيصير أيقونة بدل كلمة. كان مخفيّاً كلياً،
+     يعني الجزار على الجوال ما بيقدر يبدّل اللغة أبداً وهو أكتر واحد محتاجها. */
+  const [tight, setTight] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= TIGHT_PX
+  );
   useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth <= NARROW_PX);
+    const onResize = () => {
+      setNarrow(window.innerWidth <= NARROW_PX);
+      setTight(window.innerWidth <= TIGHT_PX);
+    };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    /* تدوير الجهاز ما بيطلّع resize بكل المتصفّحات — الجوال بيدور بالجيب */
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, []);
   const compact = compactPref === "on" ? true : compactPref === "off" ? false : narrow;
   const setCompact = (on) => {
@@ -327,6 +396,29 @@ export default function ButcherLog() {
   const [capHit, setCapHit] = useState({ id: "", n: 0 });
   const capTimer = useRef(null);
   useEffect(() => () => { if (capTimer.current) clearTimeout(capTimer.current); }, []);
+
+  /* ── 📥 مسوّدة التسجيل الجاري ──
+     الجزار بيوزن عشر أصناف عالجوال، بتيجي مكالمة أو بتقفل الشاشة، والمتصفّح
+     بيفرّغ التبويب — وكل الأوزان بتروح وهو ما بيعرف ليش. منكتب نسخة محلّية
+     مع كل تعديل ومنعرض شريط «استئناف» أول ما يرجع. السيرفر بيضل مصدر
+     الحقيقة: هاي مسوّدة ما قبل الحفظ، لا مخزن. */
+  const [draft, setDraft] = useState(null);
+  const clearDraft = useCallback(() => {
+    setDraft(null);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d?.bomId || !(Date.now() - (Number(d.ts) || 0) < DRAFT_TTL_MS)) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      setDraft(d);
+    } catch { /* ignore */ }
+  }, []);
 
   const [saved, setSaved] = useState(null);     // ملخّص آخر حفظ
   const [cutDate, setCutDate] = useState(todayStr());  // تاريخ التقطيع (يختاره الجزار)
@@ -464,9 +556,13 @@ export default function ButcherLog() {
     [mrpCfg, bomsOfOrigin]
   );
 
-  const hasKindStep = kindPick.opts.length > 0;
-  const hasOriginStep = originPick.opts.length > 0;
-  const hasCatStep = catPick.opts.length > 0;
+  /* «شاشة معروضة» = فيها قرار فعلي (خيارين فأكتر، أو خيار + كرت «بلا …»).
+     خيار واحد بيتاخد لحاله بـresolveChain، فما بيظهر بشريط الخطوات كمان —
+     وإلا الشريط بيعد خطوات الجزار ما بيشوفها أبداً. */
+  const hasDecision = (p) => p.opts.length + (p.none > 0 ? 1 : 0) > 1;
+  const hasKindStep = hasDecision(kindPick);
+  const hasOriginStep = hasDecision(originPick);
+  const hasCatStep = hasDecision(catPick);
 
   /* الوصفات المعروضة = بعد النوع والمنشأ والفئة */
   const shownBoms = useMemo(
@@ -547,6 +643,20 @@ export default function ButcherLog() {
     [isMultiPath, merged, mrpCfg, bom]
   );
   const ALL = useMemo(() => [...productCuts, ...wasteCuts], [productCuts, wasteCuts]);
+
+  /* الذيل المشترك بأسماء الأصناف («(LAMB AUSTRALIA)» على كل سطر): بينشال من
+     السطور وبينكتب مرّة وحدة بعنوان القسم. بالوضع المضغوط بس — عالكشك الكرت
+     كبير والاسم كامل بيدخل بلا ما يقصّ. */
+  const prodShort = useMemo(
+    () => (compact ? shortenNames(productCuts.map((c) => nameOf(c, isAr))) : null),
+    [compact, productCuts, isAr]
+  );
+  const wasteShort = useMemo(
+    () => (compact ? shortenNames(wasteCuts.map((c) => nameOf(c, isAr))) : null),
+    [compact, wasteCuts, isAr]
+  );
+  const prodTail = prodShort ? prodShort.tail : "";
+  const wasteTail = wasteShort ? wasteShort.tail : "";
 
   /* المسارات المرشّحة = تقاطع مجموعات المسارات لكل صنف مميِّز موزون.
      - صنف معلَّم «مشترك/Any» → ما بيضيّق التقاطع (بيضل الوضع مبهم).
@@ -723,7 +833,75 @@ export default function ButcherLog() {
     filled.length > 0 && usedKg > 0 && !rawMissing && !overBlocks && !wasteMissing
     && !balanceOff && !pieceMissing && !expiryMissing && !pathwayPending;
 
+  /* كتابة المسوّدة — مؤجّلة نص ثانية حتى ما نكتب عالقرص بكل ضغطة رقم. */
+  useEffect(() => {
+    if (step !== "cuts" || !bom?.id) return undefined;
+    const id = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          v: 1, ts: Date.now(), bomId: bom.id, bomRef: bom.ref || "",
+          empNo, branch, carcass, pieceCount, partialPiece, rawExpiry, cutDate, values,
+        }));
+      } catch { /* ignore */ }
+    }, 500);
+    return () => clearTimeout(id);
+  }, [step, bom, empNo, branch, carcass, pieceCount, partialPiece, rawExpiry, cutDate, values]);
+
+  /* مسوّدة تستاهل شريط «استئناف»: نفس الجزار، ووصفتها لسّا موجودة، وفيها
+     شغل فعلي (وزن خام أو وزن صنف) — لا مسوّدة فاضية من شاشة انفتحت وانقفلت. */
+  const resumable = useMemo(() => {
+    if (!draft || !empNo) return null;
+    if (String(draft.empNo || "") !== String(empNo).trim()) return null;
+    /* ونفس الملحمة كمان: الأوزان تبع عملية بدأت بفرع معيّن، وعرضها بفرع تاني
+       بيخلّي السجل ينحفظ على فرع ما صار فيه التقطيع. */
+    if (String(draft.branch || "") !== String(branch || "")) return null;
+    const b = allBoms.find((x) => x.id === draft.bomId);
+    if (!b) return null;
+    const any = num(draft.carcass) > 0
+      || Object.values(draft.values || {}).some((v) => num(v?.w) > 0);
+    return any ? { ...draft, bom: b } : null;
+  }, [draft, empNo, branch, allBoms]);
+
   /* ------- الانتقالات ------- */
+
+  /* شاشات التصفية اللي فعلاً انعرضت — «رجوع» بيرجع لآخر شاشة شافها الجزار
+     لا لشاشة انتخطّت (وإلا بيرجع عليها وبتتخطّى لقدّام فوراً = زرّ ميّت). */
+  const trail = useRef([]);
+
+  /* ── تخطّي الشاشات اللي إلها خيار واحد ──
+     شاشة بخيار واحد مش قرار: بتاخد لمسة من الجزار وبترجّع نفس النتيجة مهما
+     عمل. منمشي بالسلسلة (نوع ← منشأ ← فئة)، منختار لحالنا كل بُعد ما فيه
+     إلا خيار واحد ولا وصفة بلا تعريف عليه، ومنوقف عند أول شاشة فيها قرار
+     حقيقي. تركيب فيه خيارات متعددة ما بيتغيّر عنده ولا شي. */
+  const resolveChain = useCallback((fromDim, boms) => {
+    const DIMS = ["kind", "origin", "category"];
+    const picks = { kind: null, origin: null, category: null };
+    let list = boms;
+    for (let i = DIMS.indexOf(fromDim); i < DIMS.length; i += 1) {
+      const d = DIMS[i];
+      const p = bomFacetOptions(mrpCfg, list, d);
+      if (!p.opts.length) continue;                    // بُعد بلا تعريفات — متخطّى أصلاً
+      if (p.opts.length === 1 && !p.none) {            // خيار واحد → بلا شاشة
+        picks[d] = p.opts[0].id;
+        list = filterBomsByFacet(mrpCfg, list, d, picks[d]);
+        continue;
+      }
+      return { step: d, picks };
+    }
+    return { step: "bom", picks };
+  }, [mrpCfg]);
+
+  /** ابدأ سلسلة التصفية من أولها (بعد الهوية، وبعد «تسجيل جديد»). */
+  const goToFirstFilter = useCallback(() => {
+    const r = resolveChain("kind", allBoms);
+    setBomKind(r.picks.kind);
+    setBomOrigin(r.picks.origin);
+    setBomCat(r.picks.category);
+    setBom(null);
+    setBomSearch("");
+    trail.current = ["emp"];
+    setStep(r.step);
+  }, [resolveChain, allBoms]);
 
   const startWithEmp = () => {
     const emp = empNo.trim();
@@ -734,38 +912,33 @@ export default function ButcherLog() {
       localStorage.setItem(LAST_BRANCH_KEY, branch);
     } catch { /* ignore */ }
     setEmpNo(emp);
-    // ابدأ بأول شاشة تصفية متاحة (نوع ← منشأ ← فئة)، وإلا الوصفات مباشرة
-    setBomKind(null);
-    setBomOrigin(null);
-    setBomCat(null);
-    setStep(firstFilterStep());
+    goToFirstFilter();
     dayPlan.reload();
   };
-
-  /** أول شاشة تصفية معروضة — بتتخطّى الأبعاد اللي ما إلها تعريفات. */
-  const firstFilterStep = () =>
-    hasKindStep ? "kind" : hasOriginStep ? "origin" : hasCatStep ? "category" : "bom";
 
   /* اختيار النوع → المنشأ (أو الفئة/الوصفات إذا ما في) */
   const pickKind = (id) => {
     const rest = filterBomsByFacet(mrpCfg, allBoms, "kind", id);
+    const r = resolveChain("origin", rest);
     setBomKind(id);
-    setBomOrigin(null);
-    setBomCat(null);
+    setBomOrigin(r.picks.origin);
+    setBomCat(r.picks.category);
     setBom(null);
     setBomSearch("");
-    if (bomFacetOptions(mrpCfg, rest, "origin").opts.length) { setStep("origin"); return; }
-    setStep(bomFacetOptions(mrpCfg, rest, "category").opts.length ? "category" : "bom");
+    trail.current.push("kind");
+    setStep(r.step);
   };
 
   /* اختيار المنشأ → الفئة (أو الوصفات إذا ما في فئات) */
   const pickOrigin = (id) => {
     const rest = filterBomsByFacet(mrpCfg, bomsOfKind, "origin", id);
+    const r = resolveChain("category", rest);
     setBomOrigin(id);
-    setBomCat(null);
+    setBomCat(r.picks.category);
     setBom(null);
     setBomSearch("");
-    setStep(bomFacetOptions(mrpCfg, rest, "category").opts.length ? "category" : "bom");
+    trail.current.push("origin");
+    setStep(r.step);
   };
 
   /* اختيار فئة الوصفات → عرض وصفات هذه الفئة فقط */
@@ -773,6 +946,7 @@ export default function ButcherLog() {
     setBomCat(id);
     setBom(null);
     setBomSearch("");
+    trail.current.push("category");
     setStep("bom");
   };
 
@@ -787,7 +961,35 @@ export default function ButcherLog() {
     setActiveId("");
     setValues({});
     setError("");
+    setShowIssues(false);
+    clearDraft();             // وصفة جديدة = المسوّدة القديمة ما عاد إلها معنى
     setEntryAt(new Date());   // لحظة بداية هالتسجيل، لا لحظة فتح الشاشة
+    trail.current.push("bom");
+    setStep("cuts");
+  };
+
+  /** استئناف مسوّدة — بترجّع الوصفة والأوزان متل ما تركهنّ بالضبط. */
+  const resumeDraft = () => {
+    const d = resumable;
+    if (!d) return;
+    setBom(d.bom);
+    /* فتات المسار وشريط الخطوات بيقرأوا الأبعاد — منرجّعهنّ من الوصفة نفسها
+       حتى يلاقي الجزار نفس السياق اللي ترك الشاشة عليه. */
+    setBomKind(d.bom.kindId || null);
+    setBomOrigin(d.bom.originId || null);
+    setBomCat(d.bom.categoryId || null);
+    setCarcass(d.carcass || "");
+    setPieceCount(d.pieceCount || "");
+    setPartialPiece(d.partialPiece === true);
+    setRawExpiry(d.rawExpiry || "");
+    setDurationMin("");
+    setActiveId("");
+    setValues(d.values && typeof d.values === "object" ? d.values : {});
+    setCutDate(d.cutDate || todayStr());
+    setError("");
+    setShowIssues(false);
+    setEntryAt(new Date());
+    trail.current.push(step);
     setStep("cuts");
   };
 
@@ -841,6 +1043,7 @@ export default function ButcherLog() {
       if (Number.isFinite(cap) && num(v) > cap) {
         /* بلا setValues: الرقم ما بينكتب. تغيير capHit بيعمل رسمة جديدة،
            وهي اللي بترجّع الخانة لقيمتها القديمة بالـDOM كمان. */
+        buzz(55);   // الجزار عالجوال عينه عالميزان مش عالشاشة — الرجّة بتوصل أسرع
         setCapHit({ id: cutId, n: Date.now() });
         if (capTimer.current) clearTimeout(capTimer.current);
         capTimer.current = setTimeout(() => setCapHit({ id: "", n: 0 }), 900);
@@ -1027,6 +1230,8 @@ export default function ButcherLog() {
         queued: res.queued === true,
         refNo: opNoLabel(res.refNo),   // رقم العملية المميّز من السيرفر + بادئة INV-
       });
+      clearDraft();        // انحفظ (أو دخل صندوق الصادر) — المسوّدة خلص دورها
+      buzz(40);            // رجّة تأكيد: الجزار حاسس بالحفظ بلا ما يقرأ
       setStep("done");
       dayPlan.reload();
     } catch (e) {
@@ -1039,10 +1244,6 @@ export default function ButcherLog() {
   const newEntry = () => {
     setCutDate(todayStr());
     setEntryAt(new Date());
-    setBomKind(null);
-    setBomOrigin(null);
-    setBomCat(null);
-    setBom(null);
     setCarcass("");
     setPieceCount("");
     setPartialPiece(false);
@@ -1050,28 +1251,33 @@ export default function ButcherLog() {
     setDurationMin("");
     setActiveId("");
     setValues({});
-    setBomSearch("");
     setError("");
+    setShowIssues(false);
     setSaved(null);
-    setStep(firstFilterStep());
+    goToFirstFilter();
   };
 
-  /** رجوع خطوة — لأقرب شاشة تصفية معروضة قبل الحالية. */
+  /** رجوع خطوة — لآخر شاشة شافها الجزار فعلاً (الشاشات المتخطّاة مش بالمسار). */
   const back = () => {
-    const beforeCat = hasOriginStep ? "origin" : hasKindStep ? "kind" : "emp";
-    if (step === "kind") { setStep("emp"); return; }
-    if (step === "origin") { setStep(hasKindStep ? "kind" : "emp"); return; }
-    if (step === "category") { setStep(beforeCat); return; }
-    if (step === "bom") { setBomSearch(""); setStep(hasCatStep ? "category" : beforeCat); return; }
     if (step === "cuts") {
       // اختيار وصفة بيصفّر الأوزان — فالرجوع بيضيّعها. منسأل قبل.
       if (filled.length > 0 && !window.confirm(t({
         en: "Go back? The weights you entered will be discarded.",
         ar: "رجوع؟ الأوزان اللي دخّلتها رح تنمسح.",
       }))) return;
-      setStep("bom");
-      return;
+      clearDraft();
     }
+    if (step === "bom") setBomSearch("");
+    const prev = trail.current.pop() || (step === "cuts" ? "bom" : "emp");
+    /* الرجوع لشاشة تصفية بيلغي كل اللي بعدها — بلاها فتات المسار بيضل يعرض
+       منشأً وفئةً وهو عم يختار النوع من جديد (خصوصاً لما ينكونوا انتخطّوا). */
+    if (prev === "kind") { setBomKind(null); setBomOrigin(null); setBomCat(null); }
+    if (prev === "origin") { setBomOrigin(null); setBomCat(null); }
+    if (prev === "category") setBomCat(null);
+    setBom(null);
+    setShowIssues(false);
+    setError("");
+    setStep(prev);
   };
 
   const KG = t({ en: "kg", ar: "كجم" });
@@ -1139,7 +1345,21 @@ export default function ButcherLog() {
               </button>
             )}
             <span className="bt-toggle">
-              <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
+              {tight ? (
+                /* الجوال: أيقونة بس — الكلمة بتاكل الترويسة، وإخفاء الزرّ
+                   كلياً (اللي كان) بيقفل اللغة بوجه اللي بيشتغل من الجيب. */
+                <button
+                  type="button"
+                  onClick={toggle}
+                  aria-label={isAr ? "Switch to English" : "التبديل إلى العربية"}
+                  title={isAr ? "Switch to English" : "التبديل إلى العربية"}
+                  style={S.langIcon}
+                >
+                  🌐
+                </button>
+              ) : (
+                <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
+              )}
             </span>
             {step === "emp" && isLoggedIn && (
               <button className="bt-small" style={S.chg} onClick={() => navigate("/butcher", { replace: true })}>
@@ -1149,7 +1369,11 @@ export default function ButcherLog() {
             {step !== "emp" && (
               <div className="bt-emp" style={S.emp}>
                 {empNo}
-                <button className="bt-small" style={S.chg} onClick={() => setStep("emp")}>
+                <button
+                  className="bt-small"
+                  style={S.chg}
+                  onClick={() => { trail.current = []; setStep("emp"); }}
+                >
                   {t({ en: "Change", ar: "تغيير" })}
                 </button>
               </div>
@@ -1195,7 +1419,9 @@ export default function ButcherLog() {
         {step !== "emp" && step !== "done" && !(compact && step === "cuts") && totals && (
           <div className="bt-chip" style={S.totals}>
             {t({ en: "Today", ar: "اليوم" })}: {totals.count}{" "}
-            {t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
+            {totals.count === 1
+              ? t({ en: "carcass", ar: "ذبيحة" })
+              : t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
           </div>
         )}
 
@@ -1222,6 +1448,25 @@ export default function ButcherLog() {
                 {t({ en: "Raw material", ar: "المادة الخام" })}: {carcassKg.toFixed(2)} {KG}
               </span>
             )}
+          </div>
+        )}
+
+        {/* 📥 تسجيل ما خلص — الشاشة انقفلت عليه بالنص (مكالمة، قفل جهاز،
+             متصفّح فرّغ التبويب). منعرضه بلا ما نفرضه: استئناف أو تجاهل. */}
+        {resumable && step !== "emp" && step !== "cuts" && step !== "done" && (
+          <div className="bt-sum bt-rise" style={S.draftBar}>
+            <span style={{ flex: "1 1 170px", minWidth: 0 }}>
+              📥 {t({ en: "You have an unfinished entry", ar: "عندك تسجيل ما خلّصته" })}
+              {" — "}
+              <b>{itemName(bomInputItem(mrpCfg, resumable.bom), isAr)}</b>
+              {resumable.bomRef ? ` · ${resumable.bomRef}` : ""}
+            </span>
+            <button type="button" className="bt-small" style={S.draftGo} onClick={resumeDraft}>
+              ↩ {t({ en: "Resume", ar: "استئناف" })}
+            </button>
+            <button type="button" className="bt-small" style={S.chg} onClick={clearDraft}>
+              {t({ en: "Discard", ar: "تجاهل" })}
+            </button>
           </div>
         )}
 
@@ -1487,8 +1732,12 @@ export default function ButcherLog() {
                       )}
                       <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
                         {multi
-                          ? `🔀 ${outN} ${t({ en: "pathways", ar: "مسار" })}`
-                          : `${outN} ${t({ en: "final products", ar: "منتج نهائي" })}`}
+                          ? `🔀 ${outN} ${outN === 1
+                              ? t({ en: "pathway", ar: "مسار" })
+                              : t({ en: "pathways", ar: "مسار" })}`
+                          : `${outN} ${outN === 1
+                              ? t({ en: "final product", ar: "منتج نهائي" })
+                              : t({ en: "final products", ar: "منتج نهائي" })}`}
                       </span>
                     </button>
                   );
@@ -1591,12 +1840,19 @@ export default function ButcherLog() {
                   data-bt-w=""
                   data-bt-need="raw"
                   inputMode="decimal"
-                  autoFocus
+                  enterKeyHint="next"
+                  autoComplete="off"
+                  /* بيتقرأ مرّة وحدة وقت ما تتركّب الخانة: وصفة جديدة = الكيبورد
+                     بيفتح فوراً على وزن الخام. استئناف مسوّدة = الوزن موجود
+                     أصلاً، فما منفتح كيبورد فوق شغل جاهز. */
+                  autoFocus={!carcass}
                   placeholder="0.00"
                   style={{
                     ...S.input,
                     ...(compact ? { ...S.rowInput, ...S.rawInputBig } : null),
-                    ...(rawMissing && filled.length > 0 ? S.inputBad : null),
+                    /* الأحمر بس بعد ما يضغط «حفظ» — قبلها الخانة الفاضية
+                       مش غلط، هي بداية الشغل. */
+                    ...(showIssues && rawMissing ? S.inputBad : null),
                     ...(activeId === RAW_KEY ? S.inputActive : null),
                     ...(focusId === RAW_KEY ? S.inputFocus : null),
                   }}
@@ -1635,12 +1891,14 @@ export default function ButcherLog() {
                     data-bt-w=""
                     data-bt-need="pieces"
                     inputMode="numeric"
+                    enterKeyHint="next"
+                    autoComplete="off"
                     disabled={partial}
                     placeholder={partial ? "—" : "0"}
                     style={{
                       ...S.input,
                       ...(compact ? S.rowInput : null),
-                      ...(pieceMissing ? S.inputBad : null),
+                      ...(showIssues && pieceMissing ? S.inputBad : null),
                       ...(partial ? S.inputOff : null),
                       ...(focusId === PIECE_KEY ? S.inputFocus : null),
                     }}
@@ -1711,7 +1969,7 @@ export default function ButcherLog() {
                     style={{
                       ...S.input,
                       ...(compact ? S.rowInputWide : null),
-                      ...(expiryMissing ? S.inputBad : null),
+                      ...(showIssues && expiryMissing ? S.inputBad : null),
                       ...(expiryPassed ? { borderColor: "#e88", background: "#fff7f7" } : null),
                     }}
                   />
@@ -1801,8 +2059,10 @@ export default function ButcherLog() {
 
             {/* بانر المسارات — التوجيه/الحالة (يظهر بوضع المسارات فقط) */}
             {isMultiPath && (
-              <div className="bt-sum" style={{
+              <div className={compact ? "bt-cbar" : "bt-sum"} style={{
                 ...S.emptyBox, textAlign: "start",
+                /* بالمضغوط: حشوة ٢٦px فوق وتحت كانت تاكل سطرين منتجات */
+                ...(compact ? { padding: "10px 12px", borderRadius: 14 } : null),
                 background: determined ? "#ecfdf5" : "#f7f5ff",
                 borderColor: determined ? "#a7f3d0" : "#c9b8f2",
                 color: determined ? "#047857" : "#4c1d95",
@@ -1816,7 +2076,9 @@ export default function ButcherLog() {
                     </button>
                   </>
                 ) : (
-                  <span>🔀 {pathwayPending
+                  /* الشرح الطويل للكشك؛ على الجوال الجملة القصيرة بتكفي
+                     وبتوفّر سطرين من الشبكة. */
+                  <span>🔀 {(pathwayPending || compact)
                     ? t({ en: "Weigh a product specific to one pathway to lock the routing.", ar: "وزّن منتجاً خاصاً بمسار واحد لتحديد المسار." })
                     : t({ en: "Weigh the products — a distinguishing one selects the pathway; the rest lock.", ar: "وزّن المنتجات — المنتج المميِّز بيحدّد المسار وباقي المسارات بتتعطّل." })}
                   </span>
@@ -1826,8 +2088,18 @@ export default function ButcherLog() {
 
             {/* ── المنتجات النهائية (قائمة موحّدة بلا تكرار) ── */}
             <div style={{ ...S.sectionBar, ...(compact ? S.sectionBarSm : null) }}>
-              <span className={compact ? "bt-cbar" : "bt-name"} style={{ fontWeight: 900 }}>
-                🥩 {t({ en: "Final products", ar: "المنتجات النهائية" })}
+              <span
+                className={compact ? "bt-cbar" : "bt-name"}
+                style={compact ? S.sectionTitleSm : { fontWeight: 900 }}
+              >
+                {/* بالمضغوط: الذيل المشترك محلّ الكلمتين. 🥩 بيقول إنها
+                    المنتجات (متل 🦴 للهدر)، والذيل بيقول عيلة المنتجات —
+                    وهالمعلومة هي الجديدة. الاثنين مع بعض ما بيدخلوا بسطر. */}
+                🥩 {compact && prodTail
+                  ? <span className="bt-tail" style={S.tailNote}>
+                      {prodTail.replace(/^\(|\)$/g, "")}
+                    </span>
+                  : t({ en: "Final products", ar: "المنتجات النهائية" })}
               </span>
               <span
                 className={compact ? "bt-cbar" : "bt-lbl"}
@@ -1842,7 +2114,7 @@ export default function ButcherLog() {
                 <button
                   type="button"
                   className="bt-cbar"
-                  style={{ ...S.chg, ...S.chgSm, marginInlineStart: "auto" }}
+                  style={{ ...S.chg, ...S.chgSm }}
                   onClick={clearWeights}
                   title={t({ en: "Clear weights", ar: "تفريغ الأوزان" })}
                 >
@@ -1855,9 +2127,10 @@ export default function ButcherLog() {
                 type="button"
                 className="bt-small"
                 style={{
+                  /* بالمضغوط العنوان هو اللي بياكل الفاضي (sectionTitleSm)،
+                     فهامش auto هون بيدفع السطر يلفّ ويوكل سطر منتج. */
                   ...S.chg, ...(compact ? S.chgSm : null),
-                  ...(compact && filled.length > 0 && !isMultiPath
-                    ? null : { marginInlineStart: "auto" }),
+                  ...(compact ? null : { marginInlineStart: "auto" }),
                 }}
                 onClick={() => setCompact(!compact)}
                 title={t({ en: "Switch card size", ar: "تبديل حجم الكروت" })}
@@ -1866,7 +2139,7 @@ export default function ButcherLog() {
               </button>
             </div>
             <div className={compact ? "bt-gridsm" : undefined} style={compact ? undefined : S.grid}>
-              {productCuts.map((c) => {
+              {productCuts.map((c, i) => {
                 const w = num(values[c.itemId]?.w);
                 const info = isMultiPath ? chosenLineOf.get(c.itemId) : c;
                 const target = targetKgOf({ targetQty: info ? info.targetQty : (isMultiPath ? 0 : c.targetQty) });
@@ -1880,6 +2153,7 @@ export default function ButcherLog() {
                     selected={activeId === c.itemId}
                     onSelect={() => setActiveId(c.itemId)}
                     code={c.sku}
+                    label={prodShort ? prodShort.names[i] : ""}
                     pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
                     pctLabel={t({ en: "of raw", ar: "من الخام" })}
                     target={target > 0 ? target : null}
@@ -1908,8 +2182,15 @@ export default function ButcherLog() {
             {wasteCuts.length > 0 && (
               <>
                 <div style={{ ...S.sectionBar, ...(compact ? S.sectionBarSm : null) }}>
-                  <span className={compact ? "bt-cbar" : "bt-name"} style={{ fontWeight: 900 }}>
-                    🦴 {t({ en: "Waste", ar: "الهدر" })}
+                  <span
+                    className={compact ? "bt-cbar" : "bt-name"}
+                    style={compact ? S.sectionTitleSm : { fontWeight: 900 }}
+                  >
+                    🦴 {compact && wasteTail
+                      ? <span className="bt-tail" style={S.tailNote}>
+                          {wasteTail.replace(/^\(|\)$/g, "")}
+                        </span>
+                      : t({ en: "Waste", ar: "الهدر" })}
                   </span>
                   <span
                     className={compact ? "bt-cbar" : "bt-lbl"}
@@ -1920,7 +2201,7 @@ export default function ButcherLog() {
                   </span>
                 </div>
                 <div className={compact ? "bt-gridsm" : undefined} style={compact ? undefined : S.wasteRow}>
-                  {wasteCuts.map((c) => {
+                  {wasteCuts.map((c, i) => {
                     const w = num(values[c.itemId]?.w);
                     return (
                       <ItemCard
@@ -1932,6 +2213,7 @@ export default function ButcherLog() {
                         selected={activeId === c.itemId}
                         onSelect={() => setActiveId(c.itemId)}
                         code={c.sku}
+                        label={wasteShort ? wasteShort.names[i] : ""}
                         pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
                         pctLabel={t({ en: "of raw", ar: "من الخام" })}
                         tone={S.wasteTone}
@@ -1995,35 +2277,15 @@ export default function ButcherLog() {
               </div>
             )}
 
-            {showIssues && rawMissing && (
-              <div className="bt-sum" style={S.warn}>
-                {t({
-                  en: "Enter the raw material weight — every percentage is based on it.",
-                  ar: "أدخل وزن المادة الخام — كل النسب مبنية عليه.",
-                })}
-              </div>
-            )}
+            {/* تنبيهات «خام ناقص / عدد قطع / هدر» كانت تتكرّر حرفياً: مرّة هون
+                ومرّة بصندوق الخطأ تحت اللي بيطلع من نفس الضغطة على «حفظ».
+                صندوق الخطأ بيزيد عليها إنه بيوقّف المؤشّر عالخانة الناقصة،
+                فخلّينا إيّاه لحاله وشلنا التكرار. */}
             {rawFar && (
               <div className="bt-sum" style={S.warn}>
                 {isAr
                   ? `تأكّد من الوزن: الوزن القياسي لهالوصفة ${inputQty} كجم تقريباً.`
                   : `Check the weight: this recipe's standard input is about ${inputQty} kg.`}
-              </div>
-            )}
-            {showIssues && pieceMissing && (
-              <div className="bt-sum" style={S.warn}>
-                {t({
-                  en: "Number of pieces is required for this recipe.",
-                  ar: "إدخال عدد القطع إلزامي لهالوصفة.",
-                })}
-              </div>
-            )}
-            {showIssues && wasteMissing && (
-              <div className="bt-sum" style={S.warn}>
-                {t({
-                  en: "Waste weight is required.",
-                  ar: "إدخال وزن الهدر إلزامي.",
-                })}
               </div>
             )}
             {isOver && (
@@ -2076,7 +2338,11 @@ export default function ButcherLog() {
                   {/* بالمضغوط رموز بدل كلمات: الحلقة آخدة عرض والرصيف لازم
                       يضل سطراً واحداً حتى ما ياكل سطرين منتجات من فوقه. */}
                   <span style={{ whiteSpace: "nowrap" }}>
-                    {compact ? "⚖ " : t({ en: "Remaining: ", ar: "المتبقي: " })}
+                    {/* «⚖» كان بيلخبط: ميزان ممكن يعني الموزون كمان. كلمة قصيرة
+                        بتقول المقصود بالضبط وبتدخل بنفس السطر. */}
+                    {compact
+                      ? `${t({ en: "Left", ar: "الباقي" })} `
+                      : t({ en: "Remaining: ", ar: "المتبقي: " })}
                     <b style={isOver ? S.overText : null}>{remainingKg.toFixed(2)}</b> {KG}
                   </span>
                   {!compact && (
@@ -2191,7 +2457,9 @@ export default function ButcherLog() {
             {totals && (
               <div className="bt-chip" style={S.totals}>
                 {t({ en: "Today", ar: "اليوم" })}: {totals.count}{" "}
-                {t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
+                {totals.count === 1
+                  ? t({ en: "carcass", ar: "ذبيحة" })
+                  : t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
               </div>
             )}
             <button className="bt-btn" onClick={newEntry} style={S.primary}>
@@ -2363,7 +2631,9 @@ function DayPlanBar({ plan, progress, branchName, KG, t }) {
       {progress.mine.count > 0 && (
         <div className="bt-lbl" style={S.planMine}>
           {t({ en: "Your share today", ar: "نصيبك اليوم" })}: {progress.mine.count}{" "}
-          {t({ en: "carcasses", ar: "ذبيحة" })} · {progress.mine.rawKg.toFixed(0)} {KG}
+          {progress.mine.count === 1
+            ? t({ en: "carcass", ar: "ذبيحة" })
+            : t({ en: "carcasses", ar: "ذبيحة" })} · {progress.mine.rawKg.toFixed(0)} {KG}
         </div>
       )}
       {plan.note && (
@@ -2393,9 +2663,21 @@ function ItemArt({ item }) {
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
   item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
-  selected, onSelect, compact, focused, onFocusIn, onFocusOut, mark, capHit,
+  selected, onSelect, compact, focused, onFocusIn, onFocusOut, mark, capHit, label,
 }) {
   const active = num(value) > 0;
+  const inputRef = useRef(null);
+
+  /* لمسة على أي محل بالسطر بتفتح الكيبورد على خانة السطر — الجزار عالجوال
+     كان لازم يصيب مربّع ٩٦px بإصبع مبلّل. لمسة جوّا الخانة نفسها ما منتدخّل
+     فيها: هي لتحريك المؤشّر. */
+  const focusInput = () => {
+    const el = inputRef.current;
+    if (!el || el.disabled || document.activeElement === el) return;
+    el.focus();
+    // select بعد ما يستقرّ الـfocus — إعادة الوزن بتصير كتابة فوق، لا مسح رقم رقم
+    setTimeout(() => { try { el.select(); } catch { /* ignore */ } }, 0);
+  };
 
   /* الوضع المضغوط: نفس الكرت بس مضجّع — صورة، اسم، خانة وزن، بصفّ واحد.
      ليستة تحت بعض: الجزار بيمشي بعينه عمودياً سطر سطر بدل ما يلفّ بشبكة،
@@ -2404,7 +2686,7 @@ function ItemCard({
     return (
       <div
         className="bt-press"
-        onClick={disabled ? undefined : onSelect}
+        onClick={disabled ? undefined : focusInput}
         style={{
           ...S.cutRow, ...(active ? S.cutRowOn : null), ...(tone || null),
           /* التحديد الأزرق بينطفي وقت الوقوف بالخانة — الكهرماني هو حالة
@@ -2414,9 +2696,14 @@ function ItemCard({
           ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
         }}
       >
-        <span style={S.rowArt}>{hasArt(item) ? <ItemArt item={item} /> : null}</span>
+        {/* علامة «تمّ» فوق زاوية الصورة لا بصفّ السطر: كانت تاخد ٣٢px من عرض
+            الاسم، والاسم هو اللي بيفرّق بين صنف وصنف. */}
+        <span style={S.rowArt}>
+          {hasArt(item) ? <ItemArt item={item} /> : null}
+          {active && <span className="bt-tick" style={S.rowTick} aria-hidden="true">✓</span>}
+        </span>
         <span style={S.rowBody}>
-          <span className="bt-cname" style={S.rowName}>{nameOf(item, isAr)}</span>
+          <span className="bt-cname" style={S.rowName}>{label || nameOf(item, isAr)}</span>
           {Number.isFinite(target) && target > 0 && (
             <span className="bt-cbar" style={S.targetSm}>
               🎯 {target.toFixed(2)}
@@ -2424,8 +2711,8 @@ function ItemCard({
             </span>
           )}
         </span>
-        {active && <span className="bt-cbar" style={S.rowTick}>✓</span>}
         <input
+          ref={inputRef}
           className="bt-cnum"
           value={value}
           onChange={(e) => onChange(cleanDecimal(e.target.value))}
@@ -2435,8 +2722,11 @@ function ItemCard({
           data-bt-w=""
           data-bt-waste={mark === "waste" ? "" : undefined}
           inputMode="decimal"
+          enterKeyHint="next"
+          autoComplete="off"
           placeholder="0.00"
           disabled={disabled}
+          aria-label={label || nameOf(item, isAr)}
           style={{
             ...S.cutInput, ...S.rowInput,
             ...(selected ? S.inputActive : null),
@@ -2475,10 +2765,13 @@ function ItemCard({
           className="bt-cutnum"
           value={value}
           onChange={(e) => onChange(cleanDecimal(e.target.value))}
+          ref={inputRef}
           onFocus={onSelect}
           onKeyDown={focusNextWeight}
           data-bt-w=""
           inputMode="decimal"
+          enterKeyHint="next"
+          autoComplete="off"
           placeholder="0.00"
           disabled={disabled}
           style={{
@@ -2555,7 +2848,8 @@ function NumPad({ t, title, value, onKey, onNext, onClose, KG }) {
    «بلا …» لما يكون في وصفات ما عليها تعريف بهالبُعد. */
 function FacetStep({ dim, pick, onPick, title, t, isAr }) {
   const spec = BOM_FACETS[dim];
-  const label = t({ en: "recipes", ar: "وصفة" });
+  // «١ recipes» كان بيطلع بالإنجليزي — العربي ما بيصرّف العدد، الإنجليزي بيصرّف
+  const label = (n) => (isAr ? "وصفة" : n === 1 ? "recipe" : "recipes");
 
   return (
     <>
@@ -2570,7 +2864,7 @@ function FacetStep({ dim, pick, onPick, title, t, isAr }) {
             )}
             <span className="bt-name" style={S.name}>{nameOf(o, isAr) || o.id}</span>
             <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-              {o.count} {label}
+              {o.count} {label(o.count)}
             </span>
           </button>
         ))}
@@ -2578,7 +2872,7 @@ function FacetStep({ dim, pick, onPick, title, t, isAr }) {
           <button className="bt-press" onClick={() => onPick(UNCAT)} style={S.tile}>
             <span className="bt-name" style={S.name}>{t({ en: spec.enNone, ar: spec.arNone })}</span>
             <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-              {pick.none} {label}
+              {pick.none} {label(pick.none)}
             </span>
           </button>
         )}
@@ -2715,9 +3009,27 @@ const S = {
   headerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   title: { fontWeight: 900 },
   langBtn: { background: "#fff", border: "1px solid #cfe0f0", color: "#1f6fd0", fontSize: 18 },
+  /* زرّ اللغة على الجوال — أيقونة بمربّع لمس كامل، بلا كلمة تضيّق الترويسة */
+  langIcon: {
+    width: 42, height: 42, borderRadius: 999, flex: "0 0 auto",
+    border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
+    display: "grid", placeItems: "center", cursor: "pointer",
+    fontFamily: FONT, lineHeight: 1, padding: 0,
+  },
+  /* شريط استئناف المسوّدة */
+  draftBar: {
+    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+    background: "#fff7ed", border: "2px solid #fcd9a4", color: "#8a5a12",
+    borderRadius: 14, padding: "10px 12px", marginBottom: 12, fontWeight: 800,
+  },
+  draftGo: {
+    border: "none", background: "#b45309", color: "#fff", borderRadius: 10,
+    padding: "8px 16px", fontFamily: FONT, fontWeight: 900, cursor: "pointer",
+    flex: "0 0 auto",
+  },
   emp: { display: "flex", alignItems: "center", gap: 8, fontWeight: 800 },
   chgSm: { padding: "4px 10px", borderRadius: 8 },
-  countChipSm: { padding: "3px 10px" },
+  countChipSm: { padding: "3px 10px", marginInlineStart: 0 },
   chg: {
     border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
     borderRadius: 10, padding: "7px 14px", fontFamily: FONT, fontWeight: 700, cursor: "pointer",
@@ -2813,6 +3125,7 @@ const S = {
   },
   cutRowOn: { borderColor: "#0d4c94", background: "transparent" },
   rowArt: {
+    position: "relative",
     width: 44, height: 44, flex: "0 0 44px", borderRadius: 10, overflow: "hidden",
     display: "block", background: "#f5f9fd",
   },
@@ -2832,9 +3145,14 @@ const S = {
     display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
     overflow: "hidden", wordBreak: "break-word",
   },
+  /* علامة «تمّ» بزاوية الصورة — بلا عرض من السطر، وبنفس المحل بكل سطر */
+  /* علامة «تمّ» بزاوية الصورة — بلا عرض من السطر، وبنفس المحل بكل سطر.
+     حجم الحرف من كلاس .bt-tick بالـCSS فوق: `#root .bt *` بيدهس أي inline. */
   rowTick: {
-    flex: "0 0 auto", width: 22, height: 22, borderRadius: "50%",
-    background: "#047857", color: "#fff", display: "grid", placeItems: "center", fontWeight: 900,
+    position: "absolute", insetInlineEnd: 0, insetBlockEnd: 0,
+    width: 22, height: 22, borderRadius: "50%", border: "2px solid #fff",
+    background: "#047857", color: "#fff", display: "grid", placeItems: "center",
+    fontWeight: 900, lineHeight: 1, boxSizing: "border-box",
   },
   rowInput: { flex: "0 0 96px", width: 96, padding: "8px 4px", borderRadius: 10, marginTop: 0 },
   /* التاريخ بده عرض أكبر من الرقم — نفس الارتفاع بالضبط */
@@ -2881,7 +3199,10 @@ const S = {
     borderColor: "#b45309", borderWidth: 3, background: "#fff",
     boxShadow: "0 2px 6px rgba(15,39,64,.14)",
   },
-  partialBoxSm: { width: 20, height: 20, borderRadius: 6, flex: "0 0 20px" },
+  /* flexBasis/flexGrow لا المختصرة «flex»: الأساس partialBox عليه flexShrink،
+     ولمّا يبدّل الجزار للكروت الكبيرة React بيشيل المختصرة والطويلة باقية —
+     بيطلع تحذير «mixing shorthand» وبيصير سلوك الحدّ غير مضمون. */
+  partialBoxSm: { width: 20, height: 20, borderRadius: 6, flexBasis: 20, flexGrow: 0 },
   /* سطر العدد: بلا لفّ — شارة «جزء» لازم تضل جنب الخانة، والاسم بيتقلّص */
   pieceRowSm: { flexWrap: "nowrap" },
   /* محل الصورة بسطر ما إله صنف (عدد القطع، تاريخ الانتهاء) — أيقونة بنفس
@@ -2894,6 +3215,16 @@ const S = {
     width: "auto", flex: "0 0 auto", whiteSpace: "nowrap",
   },
   targetSm: { fontWeight: 800, color: "#0f766e", lineHeight: 1.1 },
+  /* الذيل المشترك بعنوان القسم — أهدأ وأصغر من العنوان، هو سياق لا عنوان */
+  tailNote: { color: "#6b8299", fontWeight: 800 },
+  /* عنوان القسم بالمضغوط بياخد الفاضي وبينقصّ بثلاث نقط بدل ما يلفّ لسطر
+     تاني — كل سطر فوق الشبكة بيدفع منتجاً تحت حافة الشاشة. */
+  /* flex-basis صفر مقصود: مع «auto» الفليكس بيقرّر اللفّ على عرض المحتوى
+     الطبيعي فبتنزل الأزرار لسطر تاني قبل ما يتقلّص العنوان أصلاً. */
+  sectionTitleSm: {
+    fontWeight: 900, flex: "1 1 0%", minWidth: 0,
+    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+  },
   /* سطر المادة الخام المطويّ — بديل كرت كامل بيعادل ثلث شاشة الموبايل */
   rawLine: {
     display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
@@ -3049,6 +3380,9 @@ const S = {
     display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
     margin: "16px 2px 8px",
   },
+  /* كان مستعملاً بالـJSX وغير معرَّف هون إطلاقاً — يعني الوضع المضغوط كان
+     ياخد هوامش الكشك: ٢٤px ضايعة فوق كل قسم بشاشة الجوال. */
+  sectionBarSm: { margin: "10px 2px 6px", gap: 8 },
   countChip: {
     marginInlineStart: "auto", background: "transparent", border: "2px solid #2f5877",
     color: "#14507f", borderRadius: 999, padding: "5px 14px", fontWeight: 900,

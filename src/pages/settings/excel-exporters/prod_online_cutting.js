@@ -6,8 +6,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 const QUALITY = [
   ["shape", "Shape"], ["color", "Color"], ["fat", "Fat"],
@@ -19,7 +18,7 @@ export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
   const h = p.header || {};
-  const products = Array.isArray(p.products) ? p.products : [];
+  const products = rowsOf(p.products);
 
   const NC = 6;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
@@ -86,7 +85,7 @@ export default async function build(wb, record, ctx) {
     lc.value = spec ? `${label} (${spec})` : label;
     lc.font = lblFont; lc.fill = lblFill; lc.alignment = left; lc.border = BORDER_BLACK;
     ws.getCell(r, 2).border = BORDER_BLACK;
-    const vals = Array.isArray(values) ? values : [];
+    const vals = rowsOf(values);
     for (let i = 0; i < 4; i++) {
       const c = ws.getCell(r, 3 + i);
       c.value = display(vals[i]); c.font = { size: 10 }; c.alignment = center; c.border = BORDER_BLACK;
@@ -118,7 +117,7 @@ export default async function build(wb, record, ctx) {
       c.fill = fillSolid(COLORS.NAVY); c.alignment = center; c.border = BORDER_BLACK;
     });
     ws.getRow(r).height = 20; r++;
-    const samples = Array.isArray(prod.samples) ? prod.samples : [];
+    const samples = rowsOf(prod.samples);
     samples.forEach((s, si) => {
       const bg = si % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
       [s.sampleNo, s.time, s.pdtTemp].forEach((val, i) => {

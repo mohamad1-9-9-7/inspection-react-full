@@ -145,6 +145,8 @@ const SORT_OPTIONS = [
   { value: "branch_asc",  label: "Branch (A → Z)" },
   { value: "appno_asc",   label: "Employee No (Asc)" },
   { value: "appno_desc",  label: "Employee No (Desc)" },
+  { value: "job_asc",     label: "Occupation (A → Z)" },
+  { value: "job_desc",    label: "Occupation (Z → A)" },
 ];
 
 const STATUS_FILTERS = [
@@ -247,8 +249,10 @@ export default function OHCView() {
   const [branchFilter, setBranchFilter] = useState("all");
   const [resultFilter, setResultFilter] = useState("all"); // all | FIT | UNFIT
   const [nationalityFilter, setNationalityFilter] = useState("all");
+  const [jobFilter, setJobFilter] = useState("all");
   const [sortBy, setSortBy] = useState("expiry_asc");
   const [groupByBranch, setGroupByBranch] = useState(false);
+  const [groupByJob, setGroupByJob] = useState(false);
   const [search, setSearch] = useState(""); // search by employeeNo/name/nationality/job/branch
 
   // editing (بدون تغيير رقم الموظف أو الصورة، وبدون Issue Date)
@@ -331,6 +335,19 @@ export default function OHCView() {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [enriched]);
 
+  // قائمة الوظائف مع عدد الموظفين في كل وظيفة
+  const jobList = useMemo(() => {
+    const m = new Map();
+    enriched.forEach((r) => {
+      const j = String(r.job || "").trim();
+      if (!j) return;
+      m.set(j, (m.get(j) || 0) + 1);
+    });
+    return Array.from(m.entries())
+      .map(([job, count]) => ({ job, count }))
+      .sort((a, b) => a.job.localeCompare(b.job));
+  }, [enriched]);
+
   // إحصاءات على الموظفين النشطين داخل دبي فقط
   const stats = useMemo(() => {
     const out = {
@@ -386,6 +403,30 @@ export default function OHCView() {
     );
   }, [enriched]);
 
+  // إحصاءات لكل وظيفة (نتجاهل خارج دبي ومن ترك الشركة)
+  const jobStats = useMemo(() => {
+    const map = new Map();
+    enriched.forEach((r) => {
+      if (r.outsideDubai || r.leftCompany) return;
+      const j = String(r.job || "").trim() || "—";
+      const cur = map.get(j) || {
+        job: j,
+        total: 0,
+        expired: 0,
+        expiring_soon: 0,
+        expiring: 0,
+        valid: 0,
+        no_expiry: 0,
+      };
+      cur.total += 1;
+      cur[r.status.key] = (cur[r.status.key] || 0) + 1;
+      map.set(j, cur);
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => b.total - a.total || a.job.localeCompare(b.job)
+    );
+  }, [enriched]);
+
   // الصفوف بعد كل الفلاتر والفرز
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -411,6 +452,9 @@ export default function OHCView() {
     }
     if (nationalityFilter !== "all") {
       out = out.filter((r) => r.nationality === nationalityFilter);
+    }
+    if (jobFilter !== "all") {
+      out = out.filter((r) => String(r.job || "").trim() === jobFilter);
     }
     if (term) {
       out = out.filter((r) => {
@@ -450,6 +494,10 @@ export default function OHCView() {
           return numAppNo(a) - numAppNo(b);
         case "appno_desc":
           return numAppNo(b) - numAppNo(a);
+        case "job_asc":
+          return cmpStr(a.job, b.job) || cmpStr(a.name, b.name);
+        case "job_desc":
+          return cmpStr(b.job, a.job) || cmpStr(a.name, b.name);
         default:
           return 0;
       }
@@ -462,6 +510,7 @@ export default function OHCView() {
     branchFilter,
     resultFilter,
     nationalityFilter,
+    jobFilter,
     search,
     sortBy,
   ]);
@@ -473,6 +522,7 @@ export default function OHCView() {
     setBranchFilter("all");
     setResultFilter("all");
     setNationalityFilter("all");
+    setJobFilter("all");
     setSortBy("expiry_asc");
   }
 
@@ -1006,9 +1056,10 @@ export default function OHCView() {
 
   return (
     <div
+      className="ohcv"
       style={{
         minHeight: "100vh",
-        padding: "2.5rem 1.5rem",
+        padding: "10px",
         background:
           "radial-gradient(circle at top left, #0f766e 0%, #0f172a 40%, #020617 80%)",
         display: "flex",
@@ -1018,10 +1069,21 @@ export default function OHCView() {
         fontFamily: "Inter, Tahoma, Arial, sans-serif",
       }}
     >
+      {/* خط الصفحة 16px بولد — الكلاس مضاعف لتخطّي !important في globals.css */}
+      <style>{`
+        #root .ohcv.ohcv,
+        #root .ohcv.ohcv *,
+        #root .ohcv.ohcv *::before,
+        #root .ohcv.ohcv *::after {
+          font-size: 16px !important;
+          font-weight: 700 !important;
+        }
+        #root .ohcv.ohcv h2 { font-size: 22px !important; }
+      `}</style>
       <div
         style={{
           width: "100%",
-          maxWidth: 1300,
+          maxWidth: "100%",
           background:
             "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.94))",
           borderRadius: 26,
@@ -1034,8 +1096,8 @@ export default function OHCView() {
           style={{
             background:
               "radial-gradient(circle at top right, #ecfeff 0%, #f9fafb 40%, #e5e7eb 100%)",
-            borderRadius: 24,
-            padding: "1.75rem 1.75rem 1.75rem",
+            borderRadius: 20,
+            padding: "14px 16px",
           }}
         >
           {/* Header */}
@@ -1416,6 +1478,29 @@ export default function OHCView() {
             </select>
 
             <select
+              value={jobFilter}
+              onChange={(e) => setJobFilter(e.target.value)}
+              style={{
+                ...selectStyle,
+                ...(jobFilter !== "all"
+                  ? {
+                      border: "1px solid #0369a1",
+                      background: "linear-gradient(135deg,#e0f2fe,#bae6fd)",
+                      fontWeight: 700,
+                    }
+                  : null),
+              }}
+              title="Filter by Occupation"
+            >
+              <option value="all">👷 All Occupations</option>
+              {jobList.map((j) => (
+                <option key={j.job} value={j.job}>
+                  {j.job} ({j.count})
+                </option>
+              ))}
+            </select>
+
+            <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               style={selectStyle}
@@ -1452,6 +1537,32 @@ export default function OHCView() {
                 style={{ margin: 0 }}
               />
               Group by Branch
+            </label>
+
+            <label
+              style={{
+                display: "inline-flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#374151",
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: groupByJob
+                  ? "linear-gradient(135deg,#e0f2fe,#bae6fd)"
+                  : "transparent",
+                border: "1px solid rgba(148,163,184,0.7)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={groupByJob}
+                onChange={(e) => setGroupByJob(e.target.checked)}
+                style={{ margin: 0 }}
+              />
+              Group by Occupation
             </label>
 
             <button
@@ -1620,6 +1731,100 @@ export default function OHCView() {
                     {b.valid > 0 && (
                       <span style={{ color: "#15803d", fontWeight: 700 }}>
                         ✓ {b.valid}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Group by Occupation summary (when active) */}
+          {groupByJob && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 8,
+                borderRadius: 12,
+                border: "1px solid rgba(148,163,184,0.6)",
+                background: "linear-gradient(135deg,#f8fafc,#ecfeff,#cffafe)",
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#374151",
+                  width: "100%",
+                }}
+              >
+                OCCUPATION BREAKDOWN ({jobStats.length} occupations)
+              </div>
+              {jobStats.map((j) => (
+                <button
+                  key={j.job}
+                  type="button"
+                  onClick={() =>
+                    setJobFilter(jobFilter === j.job ? "all" : j.job)
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    border:
+                      jobFilter === j.job
+                        ? "2px solid #0369a1"
+                        : "1px solid rgba(148,163,184,0.7)",
+                    background:
+                      jobFilter === j.job
+                        ? "linear-gradient(135deg,#e0f2fe,#bae6fd)"
+                        : "#ffffff",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    textAlign: "left",
+                    minWidth: 180,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "#0f172a",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {j.job}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      flexWrap: "wrap",
+                      fontSize: 10,
+                    }}
+                  >
+                    <span style={{ color: "#0369a1", fontWeight: 700 }}>
+                      Total: {j.total}
+                    </span>
+                    {j.expired > 0 && (
+                      <span style={{ color: "#b91c1c", fontWeight: 700 }}>
+                        ⛔ {j.expired}
+                      </span>
+                    )}
+                    {j.expiring_soon > 0 && (
+                      <span style={{ color: "#c2410c", fontWeight: 700 }}>
+                        ⚠ {j.expiring_soon}
+                      </span>
+                    )}
+                    {j.expiring > 0 && (
+                      <span style={{ color: "#a16207", fontWeight: 700 }}>
+                        ⏳ {j.expiring}
+                      </span>
+                    )}
+                    {j.valid > 0 && (
+                      <span style={{ color: "#15803d", fontWeight: 700 }}>
+                        ✓ {j.valid}
                       </span>
                     )}
                   </div>

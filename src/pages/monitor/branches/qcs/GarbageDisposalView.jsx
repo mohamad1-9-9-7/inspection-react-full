@@ -72,23 +72,27 @@ async function buildGarbagePDF(records, includeImages) {
   let y = 34;
 
   // ── KPI Summary ──
-  let totalKg = 0, totalAmount = 0;
+  let totalKg = 0, totalM3 = 0, totalAmount = 0;
   records.forEach(r => {
     const p = r?.payload || {};
     const q = Number(p.quantity) || 0;
     if (p.unit === "kg") totalKg += q;
     else if (p.unit === "ton") totalKg += q * 1000;
+    // A volume cannot be added to a weight, so m³ is totalled on its own.
+    else if (p.unit === "m³") totalM3 += q;
     totalAmount += Number(p.vendor?.invoiceAmount) || 0;
   });
 
   const kpis = [
     { label: "Total Records", val: String(records.length), r: 3, g: 105, b: 161 },
     { label: "Total Qty (kg)", val: String(Math.round(totalKg)), r: 21, g: 128, b: 61 },
+    ...(totalM3 > 0 ? [{ label: "Total Qty (m3)", val: String(Math.round(totalM3 * 100) / 100), r: 2, g: 132, b: 199 }] : []),
     { label: "Total Amount (AED)", val: totalAmount.toFixed(2), r: 161, g: 98, b: 7 },
   ];
-  const bw = (pw - M * 2 - 8) / 3;
+  const gap = 4;
+  const bw = (pw - M * 2 - gap * (kpis.length - 1)) / kpis.length;
   kpis.forEach((k, i) => {
-    const x = M + i * (bw + 4);
+    const x = M + i * (bw + gap);
     doc.setFillColor(k.r, k.g, k.b);
     doc.roundedRect(x, y, bw, 16, 2, 2, "F");
     doc.setTextColor(255);
@@ -256,15 +260,22 @@ export default function GarbageDisposalView() {
 
   const kpis = useMemo(() => {
     const total = filtered.length;
-    let totalKg = 0, totalAmount = 0;
+    let totalKg = 0, totalM3 = 0, totalAmount = 0;
     filtered.forEach((r) => {
       const p = r?.payload || {};
       const q = Number(p.quantity) || 0;
       if (p.unit === "kg") totalKg += q;
       else if (p.unit === "ton") totalKg += q * 1000;
+      // A volume cannot be added to a weight, so m³ is totalled on its own.
+      else if (p.unit === "m³") totalM3 += q;
       totalAmount += Number(p.vendor?.invoiceAmount) || 0;
     });
-    return { total, totalKg: Math.round(totalKg), totalAmount: totalAmount.toFixed(2) };
+    return {
+      total,
+      totalKg: Math.round(totalKg),
+      totalM3: Math.round(totalM3 * 100) / 100,
+      totalAmount: totalAmount.toFixed(2),
+    };
   }, [filtered]);
 
   const exportCount = useMemo(() => {
@@ -317,6 +328,9 @@ export default function GarbageDisposalView() {
         items={[
           { label: "Total Records", value: kpis.total, color: "#0369a1" },
           { label: "Total Quantity (kg)", value: kpis.totalKg, color: "#16a34a" },
+          // Shown only once a volume has actually been recorded, so the strip
+          // stays as it was for the branches that only ever weigh their waste.
+          ...(kpis.totalM3 > 0 ? [{ label: "Total Quantity (m³)", value: kpis.totalM3, color: "#0284c7" }] : []),
           { label: "Total Invoices (AED)", value: kpis.totalAmount, color: "#a16207" },
         ]}
       />

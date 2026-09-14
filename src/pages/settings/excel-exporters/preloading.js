@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const ROWS_DEF = [
   { key: "no",                 label: "SAMPLE NO",         width: 8  },
@@ -32,7 +31,7 @@ function makeBuilder(branchTitle, siteLabel) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
     const header = p.header || {};
-    const samples = Array.isArray(p.samples) ? p.samples : (Array.isArray(p.rows) ? p.rows : []);
+    const samples = Array.isArray(p.samples) ? p.samples : (rowsOf(p.rows));
     const signoff = p.signoff || {};
 
     const NC = ROWS_DEF.length;

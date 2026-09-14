@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 import {
   defForStorageKey,
   defsFromPayload,
@@ -103,7 +102,7 @@ export default async function build(wb, record, ctx) {
   r++;
 
   /* ─── Data rows ─── */
-  const coolers = Array.isArray(p.coolers) ? p.coolers : [];
+  const coolers = rowsOf(p.coolers);
   if (coolers.length === 0) {
     ws.mergeCells(r, 1, r, NC);
     const c = ws.getCell(r, 1);
@@ -187,7 +186,7 @@ export default async function build(wb, record, ctx) {
   }
 
   /* ─── Product Temperature Verification (Matching) ─── */
-  const pvs = Array.isArray(p.productVerifications) ? p.productVerifications : [];
+  const pvs = rowsOf(p.productVerifications);
   if (pvs.length) {
     r += 1; // spacer
 
@@ -230,7 +229,7 @@ export default async function build(wb, record, ctx) {
       if (row.storageKey === "loading-area") return p?.loadingArea?.temps?.[row.time];
       const m = String(row.storageKey || "").match(/^cooler-(\d+)$/);
       if (!m) return undefined;
-      return (Array.isArray(p.coolers) ? p.coolers : [])[Number(m[1])]?.temps?.[row.time];
+      return (rowsOf(p.coolers))[Number(m[1])]?.temps?.[row.time];
     };
 
     pvs.forEach((row, ri) => {

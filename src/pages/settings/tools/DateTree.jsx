@@ -3,15 +3,12 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../config/api";
+import { BRANCHES, describeReportType } from "../reportTypeCatalog";
 
-const KNOWN_TYPES = [
-  "internal_multi_audit", "supervisor_corrective_action",
-  "hse_incident_reports", "hse_work_permits", "hse_evacuation_drills",
-  "hse_toolbox_meeting", "hse_fire_equipment", "hse_forklift_inspection",
-  "car_approvals", "cars_loading_inspection", "truck_daily_cleaning",
-  "ohc_certificate", "fsms_communication_log", "customer_complaint", "internal_audit_record",
-  "ccp_monitoring_record", "calibration_record", "mock_recall_drill",
-];
+// كانت هون قائمة مكتوبة يدوياً فيها مفاتيح ماتت (hse_fire_equipment،
+// hse_toolbox_meeting، hse_ppe_log...) وبتفوّت معظم النظام. صارت مشتقّة من
+// كتالوج الأنواع الموحّد في reportTypeCatalog.js.
+const KNOWN_TYPES = [...new Set(BRANCHES.flatMap((b) => b.types.map(([t]) => t)))];
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -121,7 +118,10 @@ export default function DateTree() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <select value={type} onChange={(e) => setType(e.target.value)} disabled={loading} style={s.select}>
-            {KNOWN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {KNOWN_TYPES.map((t) => {
+                const d = describeReportType(t);
+                return <option key={t} value={t}>{d.branch ? `${d.branch} · ${d.label}` : d.label} — {t}</option>;
+              })}
           </select>
           <button type="button" onClick={load} disabled={loading} style={s.btnPrimary}>
             {loading ? "⏳ Loading…" : "↻ Refresh"}

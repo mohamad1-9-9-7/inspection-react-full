@@ -32,6 +32,37 @@ function getSubmitEndpoint(token) {
 }
 
 /* ===================== helpers ===================== */
+/* The public endpoints answer a dead link with a code, not a sentence.
+   Showing the supplier "LINK_NOT_FOUND (token: ...)" tells them nothing and
+   makes them call us, so every code gets a sentence they can act on. */
+function linkErrorMessage(code, rtl) {
+  switch (String(code || "")) {
+    case "LINK_NOT_FOUND":
+      return rtl
+        ? "🔗 هذا الرابط غير صالح. تأكد من نسخه كاملاً، أو اطلب رابطاً جديداً من الجهة التي أرسلته."
+        : "🔗 This link is not valid. Check that it was copied in full, or ask the sender for a new one.";
+    case "LINK_DISABLED":
+    case "LINK_REVOKED":
+      return rtl
+        ? "🚫 تم إيقاف هذا الرابط. يرجى التواصل مع الجهة التي أرسلته لطلب رابط جديد."
+        : "🚫 This link has been disabled. Please contact the sender to request a new one.";
+    case "LINK_EXPIRED":
+      return rtl
+        ? "⏰ انتهت صلاحية هذا الرابط. يرجى التواصل مع الجهة التي أرسلته لطلب رابط جديد."
+        : "⏰ This link has expired. Please contact the sender to request a new one.";
+    case "ALREADY_SUBMITTED":
+      return rtl
+        ? "✅ تم استلام هذا النموذج مسبقاً. لا حاجة لإرساله مرة أخرى."
+        : "✅ This form has already been received. There is no need to send it again.";
+    case "EMPTY_SUBMISSION":
+      return rtl
+        ? "⚠️ النموذج فارغ. يرجى الإجابة على الأسئلة قبل الإرسال."
+        : "⚠️ The form is empty. Please answer the questions before sending.";
+    default:
+      return "";
+  }
+}
+
 async function fetchJson(url, options) {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -1588,8 +1619,9 @@ export default function SupplierEvaluationPublic() {
       }
       hydratedRef.current = true;
     } catch (e) {
-      const errMsg = `${e?.message || "Failed to load"} (token: ${token})`;
-      setMsg(`❌ ${errMsg}`);
+      const friendly = linkErrorMessage(e?.data?.error || e?.message, isRTL);
+      const errMsg = friendly || `${e?.message || "Failed to load"} (token: ${token})`;
+      setMsg(`${friendly ? "" : "❌ "}${errMsg}`);
       setLoadError(errMsg);
       setInfo(null);
     } finally {
@@ -1918,7 +1950,8 @@ export default function SupplierEvaluationPublic() {
       setDone(true);
       setMsg(isRTL ? "✅ تم الإرسال بنجاح" : "✅ Submitted successfully");
     } catch (e) {
-      setMsg(`❌ ${e?.message || "Submit failed"}`);
+      const friendly = linkErrorMessage(e?.data?.error || e?.message, isRTL);
+      setMsg(friendly || `❌ ${e?.message || "Submit failed"}`);
     } finally {
       setSaving(false);
     }

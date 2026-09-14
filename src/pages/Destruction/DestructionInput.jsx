@@ -35,33 +35,23 @@ import {
   rowHasData,
   safeArr,
 } from "./destructionOptions";
+import {
+  FIELDS,
+  buildRows,
+  firstColumn,
+  guessMapping,
+  looksLikeHeader,
+  matrixIsSingleColumn,
+  parseClipboard,
+  qtyTypeFromUom,
+} from "./excelPaste";
 
 const DRAFT_KEY = "destruction_draft_v1";
 
-/* The catalog carries the ERP unit of measure; this register offers KG / PCS /
-   CTN / LTR. Anything else keeps its own name in the "Other..." field. */
-const UOM_TO_QTY = {
-  KG: "KG",
-  KGS: "KG",
-  PIECES: "PCS",
-  PIECE: "PCS",
-  PCS: "PCS",
-  PC: "PCS",
-  CTN: "CTN",
-  CARTON: "CTN",
-  BOX: "CTN",
-  LTR: "LTR",
-  LITRE: "LTR",
-  LITER: "LTR",
-  L: "LTR",
-};
-
-function qtyTypeFromUom(uom) {
-  const u = String(uom || "").trim().toUpperCase();
-  if (!u) return null;
-  if (UOM_TO_QTY[u]) return { qtyType: UOM_TO_QTY[u], customQtyType: "" };
-  return { qtyType: OTHER, customQtyType: u };
-}
+/* Codes + weights is the copy the stores actually make, so a block of those
+   fills the table straight away; anything wider goes through the mapping modal
+   where every column can be checked first. */
+const DIRECT_FIELDS = new Set(["ignore", "itemCode", "productName", "quantity", "qtyType"]);
 
 /* ================= server helpers ================= */
 async function uploadViaServer(file) {
@@ -237,6 +227,211 @@ function ImageManagerModal({ open, title, hint, images, onClose, onAddImages, on
   );
 }
 
+/* ================= Excel paste modal =================
+   The store lists live in Excel. The whole block is pasted here, each column is
+   mapped to a field (guessed first, changeable by hand) and the result is shown
+   before it reaches the table — a paste never overwrites work silently. */
+function ExcelPasteModal({ open, initialText, catalog, onClose, onApply }) {
+  const [text, setText] = useState("");
+  const [headerRow, setHeaderRow] = useState(false);
+  const [mapping, setMapping] = useState([]);
+  const areaRef = useRef(null);
+  const signature = useRef("");
+
+  useEffect(() => {
+    if (!open) return;
+    setText(initialText || "");
+    signature.current = "";
+    setTimeout(() => areaRef.current?.focus(), 40);
+  }, [open, initialText]);
+
+  useEffect(() => {
+    const onEsc = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (open) window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  const matrix = useMemo(() => parseClipboard(text), [text]);
+
+  /* Re-guess whenever a genuinely different block is pasted, never while the
+     user is adjusting the dropdowns. */
+  useEffect(() => {
+    if (!matrix.length) {
+      signature.current = "";
+      setMapping([]);
+      return;
+    }
+    const sig = `${matrix.length}|${matrix[0].length}|${matrix[0].join("~")}`;
+    if (sig === signature.current) return;
+    signature.current = sig;
+    const hdr = looksLikeHeader(matrix[0], catalog.isKnownCode);
+    setHeaderRow(hdr);
+    setMapping(guessMapping(matrix, { headerRow: hdr, isKnownCode: catalog.isKnownCode }));
+  }, [matrix, catalog]);
+
+  const body = useMemo(
+    () => (headerRow ? matrix.slice(1) : matrix),
+    [matrix, headerRow]
+  );
+
+  const built = useMemo(
+    () => (mapping.length ? buildRows(body, mapping, catalog) : []),
+    [body, mapping, catalog]
+  );
+
+  if (!open) return null;
+
+  const hasCode = mapping.includes("itemCode");
+  const unmatched = built.filter((b) => b.hasCode && !b.matched).length;
+  const missing = built.filter((b) => !b.hasCode).length;
+
+  const setColumn = (col, field) =>
+    setMapping((prev) => {
+      const next = [...prev];
+      /* one field per column — taking it frees the column that had it */
+      if (field !== "ignore") {
+        for (let i = 0; i < next.length; i += 1) if (next[i] === field) next[i] = "ignore";
+      }
+      next[col] = field;
+      return next;
+    });
+
+  const toggleHeader = () => {
+    const hdr = !headerRow;
+    setHeaderRow(hdr);
+    setMapping(guessMapping(matrix, { headerRow: hdr, isKnownCode: catalog.isKnownCode }));
+  };
+
+  const apply = (mode) => {
+    if (!built.length) return;
+    onApply(built.map((b) => b.row), mode);
+  };
+
+  return (
+    <div style={galleryBack} onClick={onClose}>
+      <div style={pasteCard} onClick={(e) => e.stopPropagation()}>
+        <div style={galleryTop}>
+          <div style={galleryTitle}>📋 Paste from Excel — لصق من الإكسل</div>
+          <button onClick={onClose} style={galleryClose}>
+            ✕
+          </button>
+        </div>
+
+        <div style={pasteHint}>
+          Copy the rows in Excel (the codes column on its own is enough) and press
+          Ctrl+V in the box below. Dates are read as DD/MM/YYYY.
+        </div>
+
+        <textarea
+          ref={areaRef}
+          style={pasteArea}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={"10001\t Beef Cube \t12\tKG\n10002\t Lamb Leg \t8\tKG"}
+          spellCheck={false}
+        />
+
+        {matrix.length > 0 && (
+          <>
+            <div style={pasteBar}>
+              <label style={pasteCheck}>
+                <input type="checkbox" checked={headerRow} onChange={toggleHeader} />
+                <span>First line is a header</span>
+              </label>
+              <span style={pasteCount}>{built.length} rows</span>
+              {hasCode ? (
+                <>
+                  <span style={pasteOk}>{built.length - unmatched - missing} matched</span>
+                  {unmatched > 0 && <span style={pasteWarn}>{unmatched} not in the catalog</span>}
+                  {missing > 0 && <span style={pasteWarn}>{missing} with no code</span>}
+                </>
+              ) : (
+                <span style={pasteWarn}>No column is mapped to the item code</span>
+              )}
+            </div>
+
+            <div style={pastePreviewWrap}>
+              <table style={pastePreview}>
+                <thead>
+                  <tr>
+                    <th style={pasteTh}>#</th>
+                    {mapping.map((field, col) => (
+                      <th key={col} style={pasteTh}>
+                        <select
+                          value={field}
+                          onChange={(e) => setColumn(col, e.target.value)}
+                          style={pasteSelect}
+                        >
+                          {FIELDS.map((f) => (
+                            <option key={f.key} value={f.key}>
+                              {f.label}
+                            </option>
+                          ))}
+                        </select>
+                        {headerRow && matrix[0][col] ? (
+                          <div style={pasteHeadCell}>{matrix[0][col]}</div>
+                        ) : null}
+                      </th>
+                    ))}
+                    <th style={pasteTh}>Product read</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {body.slice(0, 60).map((cells, i) => {
+                    const info = built[i];
+                    return (
+                      <tr key={i} style={{ background: i % 2 ? "#fdf7f7" : "#fff" }}>
+                        <td style={pasteTd}>{i + 1}</td>
+                        {mapping.map((field, col) => (
+                          <td
+                            key={col}
+                            style={{
+                              ...pasteTd,
+                              color: field === "ignore" ? "#cbd5e1" : "#0f172a",
+                            }}
+                          >
+                            {cells[col]}
+                          </td>
+                        ))}
+                        <td style={pasteTd}>
+                          {info?.matched ? (
+                            <span style={pasteOkCell}>✔ {info.row.productName}</span>
+                          ) : info?.hasCode ? (
+                            <span style={pasteWarnCell}>⚠ code not in the catalog</span>
+                          ) : (
+                            <span style={pasteWarnCell}>⚠ no item code</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {body.length > 60 && (
+                <div style={pasteMore}>… {body.length - 60} more rows will be added too.</div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div style={pasteActions}>
+          <button onClick={() => apply("append")} disabled={!built.length} style={btnBlue}>
+            ➕ Add {built.length || ""} rows
+          </button>
+          <button onClick={() => apply("replace")} disabled={!built.length} style={btnReplace}>
+            ♻ Replace the table
+          </button>
+          <button onClick={onClose} style={btnGhost}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== PAGE ====================== */
 export default function DestructionInput() {
   const navigate = useNavigate();
@@ -269,7 +464,15 @@ export default function DestructionInput() {
           setHeader({ ...blankHeader(), ...data.header });
         }
         if (Array.isArray(data?.rows) && data.rows.length) setRows(data.rows);
-        if (data?.rows || data?.header) flash("Draft loaded.", 1500);
+        const draftPhotos = safeArr(data?.header?.images).length;
+        if (data?.rows || data?.header) {
+          flash(
+            draftPhotos
+              ? `Draft loaded — it still carries ${draftPhotos} photo(s). Clear them if they belong to an earlier record.`
+              : "Draft loaded.",
+            draftPhotos ? 6000 : 1500
+          );
+        }
       }
     } catch {
       /* ignore */
@@ -353,6 +556,136 @@ export default function DestructionInput() {
   const isKnownCode = (code) => {
     const s = normalizeCode(code);
     return !!s && byCode.has(s);
+  };
+
+  /* ===== paste from Excel =====
+     One lookup bundle shared by the fill-down paste on the code cell and by the
+     import modal, so a pasted line resolves exactly like a typed one. */
+  const byName = useMemo(() => {
+    const m = new Map();
+    for (const it of allItems) {
+      const k = normalizeCode(it.description);
+      if (k && !m.has(k)) m.set(k, it);
+    }
+    return m;
+  }, [allItems]);
+
+  const catalogLookup = useMemo(
+    () => ({
+      isKnownCode: (v) => byCode.has(normalizeCode(v)),
+      lookupCode: (v) => byCode.get(normalizeCode(v)) || null,
+      lookupName: (v) => byName.get(normalizeCode(v)) || null,
+    }),
+    [byCode, byName]
+  );
+
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+
+  const openPaste = (text = "") => {
+    setPasteText(text);
+    setPasteOpen(true);
+  };
+
+  /** Write a list of codes down the table from `startIdx`, growing it as needed. */
+  const fillCodesDown = (startIdx, codes) => {
+    setRows((prev) => {
+      const next = [...prev];
+      codes.forEach((code, k) => {
+        const at = startIdx + k;
+        const base = next[at] || blankItem();
+        next[at] = {
+          ...base,
+          itemCode: code,
+          ...catalogPatch(byCode.get(normalizeCode(code))),
+        };
+      });
+      return next;
+    });
+    const unknown = codes.filter((c) => !isKnownCode(c)).length;
+    flash(
+      unknown
+        ? `${codes.length} codes pasted — ${unknown} not in the catalog.`
+        : `${codes.length} codes pasted.`,
+      3500
+    );
+  };
+
+  /** Write pasted lines over the rows from `startIdx`, leaving every field the
+      block did not mention (photos, reasons, a unit already chosen) alone. */
+  const mergeRowsDown = (startIdx, built) => {
+    setRows((prev) => {
+      const next = [...prev];
+      built.forEach((b, k) => {
+        const at = startIdx + k;
+        next[at] = { ...(next[at] || blankItem()), ...b.patch };
+      });
+      return next;
+    });
+  };
+
+  /* A code cell accepts a whole Excel column: one value per line fills the rows
+     below, a block with several columns hands over to the mapping modal. */
+  const handleCodePaste = (idx, e) => {
+    const text = e.clipboardData?.getData("text/plain") || "";
+    if (!/[\t\n\r]/.test(text.trim())) return; // one value — let the browser paste it
+    e.preventDefault();
+    const input = e.target;
+    const matrix = parseClipboard(text);
+    if (!matrix.length) return;
+
+    if (matrixIsSingleColumn(matrix)) {
+      const codes = firstColumn(matrix);
+      /* a copied column often carries its Excel title in the first cell */
+      if (codes.length > 1 && looksLikeHeader([codes[0]], isKnownCode)) codes.shift();
+      if (codes.length) {
+        fillCodesDown(idx, codes);
+        input.blur?.(); // the suggestion list still hangs on the old value
+      }
+      return;
+    }
+
+    const headerRow = looksLikeHeader(matrix[0], isKnownCode);
+    const mapping = guessMapping(matrix, { headerRow, isKnownCode });
+    const narrow =
+      matrix[0].length <= 3 &&
+      mapping.includes("itemCode") &&
+      mapping.every((f) => DIRECT_FIELDS.has(f));
+
+    if (narrow) {
+      const built = buildRows(headerRow ? matrix.slice(1) : matrix, mapping, catalogLookup);
+      if (built.length) {
+        mergeRowsDown(idx, built);
+        input.blur?.();
+        const unknown = built.filter((b) => b.hasCode && !b.matched).length;
+        const withQty = mapping.includes("quantity") ? " with quantities" : "";
+        flash(
+          unknown
+            ? `${built.length} rows pasted${withQty} — ${unknown} not in the catalog.`
+            : `${built.length} rows pasted${withQty}.`,
+          3500
+        );
+      }
+      return;
+    }
+
+    openPaste(text);
+  };
+
+  const applyPastedRows = (built, mode) => {
+    setRows((prev) => {
+      if (mode === "replace") return built.length ? built : [blankItem()];
+      const kept = prev.filter(rowHasData);
+      return [...kept, ...built];
+    });
+    setRowErrors({});
+    setPasteOpen(false);
+    flash(
+      mode === "replace"
+        ? `Table replaced with ${built.length} rows.`
+        : `${built.length} rows added.`,
+      3000
+    );
   };
 
   /* ===== row editing ===== */
@@ -629,6 +962,13 @@ export default function DestructionInput() {
       } catch {
         /* ignore */
       }
+      /* A filed event takes its photos and its note with it. They used to be
+         left in the form, so the next record opened carrying the previous
+         day's pictures and re-attached them on save — and removing the draft
+         key above never helped, because the autosave rewrites it from state a
+         moment later. The site, the method and the names DO stay: they are
+         the same every time and re-typing them is the whole point of a draft. */
+      setHeader((h) => ({ ...h, images: [], notes: "", municipalityRef: "" }));
       setRows([blankItem()]);
     } catch (err) {
       console.error(err);
@@ -665,6 +1005,9 @@ export default function DestructionInput() {
         <div style={topButtons}>
           <button onClick={handleSave} disabled={saving} style={saving ? btnSaveDisabled : btnSave}>
             {saving ? "Saving..." : "💾 Save"}
+          </button>
+          <button onClick={() => openPaste("")} style={btnPaste}>
+            📋 Paste from Excel
           </button>
           <button onClick={() => navigate("/destruction/browse")} style={btnView}>
             📋 View Records
@@ -811,6 +1154,24 @@ export default function DestructionInput() {
               <span style={reportPhotosCount}>
                 {safeArr(header.images).length} photo(s) — no limit
               </span>
+              {safeArr(header.images).length > 0 && (
+                /* Photos are the one part of a carried-over draft that is
+                   never right twice, so dropping the whole strip is one
+                   click. The pictures stay on Cloudinary and on whatever
+                   record already holds them — this only detaches them here. */
+                <button
+                  type="button"
+                  style={clearPhotosBtn}
+                  title="Remove every photo from this form (already-saved records keep theirs)"
+                  onClick={() => {
+                    if (window.confirm(`Remove all ${safeArr(header.images).length} photo(s) from this form?`)) {
+                      setHeader((h) => ({ ...h, images: [] }));
+                    }
+                  }}
+                >
+                  ✖ Clear photos
+                </button>
+              )}
               <div style={reportPhotosStrip}>
                 {safeArr(header.images).slice(0, 12).map((src, i) => (
                   <img
@@ -882,7 +1243,11 @@ export default function DestructionInput() {
                     search={localSearch}
                     style={inp(idx)}
                     placeholder="Code or name"
-                    inputProps={{ "data-col": "itemCode" }}
+                    inputProps={{
+                      "data-col": "itemCode",
+                      onPaste: (e) => handleCodePaste(idx, e),
+                      title: "Paste a whole column of codes from Excel here",
+                    }}
                   />
                   {row.itemCode && !isKnownCode(row.itemCode) && (
                     <div style={codeMissNote}>Code not in the catalog</div>
@@ -1127,11 +1492,22 @@ export default function DestructionInput() {
         ))}
       </div>
 
-      <div style={{ marginTop: 16, textAlign: "center" }}>
+      <div style={{ marginTop: 16, textAlign: "center", display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
         <button onClick={addRow} style={btnAdd}>
           ➕ Add Item
         </button>
+        <button onClick={() => openPaste("")} style={btnPasteWide}>
+          📋 Paste rows from Excel
+        </button>
       </div>
+
+      <ExcelPasteModal
+        open={pasteOpen}
+        initialText={pasteText}
+        catalog={catalogLookup}
+        onClose={() => setPasteOpen(false)}
+        onApply={applyPastedRows}
+      />
 
       <ImageManagerModal
         open={imageModalOpen && (imageTarget === "report" || imageRowIndex >= 0)}
@@ -1328,6 +1704,17 @@ const reportPhotosBar = {
   flexWrap: "wrap",
 };
 
+const clearPhotosBtn = {
+  background: "#fef2f2",
+  color: "#b91c1c",
+  border: "1px solid #fecaca",
+  borderRadius: 10,
+  padding: "6px 12px",
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
 const reportPhotosCount = {
   fontSize: 12.5,
   fontWeight: 800,
@@ -1411,6 +1798,101 @@ const btnGhost = {
   color: "#7f1d1d",
   border: "1px solid rgba(127,29,29,.45)",
 };
+
+const btnPaste = { ...btnBase, background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,.22)" };
+const btnPasteWide = { ...btnPaste, padding: "12px 22px", fontSize: "1rem" };
+const btnReplace = { ...btnBase, background: "#b45309" };
+
+/* ── Excel paste modal ── */
+const pasteCard = {
+  width: "min(1200px, 97vw)",
+  maxHeight: "90vh",
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  background: "#fff",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "14px 16px",
+  boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+  fontFamily: "Cairo, system-ui, sans-serif",
+};
+
+const pasteHint = { fontSize: 13, color: "#475569", fontWeight: 700, lineHeight: 1.5 };
+
+const pasteArea = {
+  width: "100%",
+  minHeight: 110,
+  boxSizing: "border-box",
+  border: "2px dashed #c4b5fd",
+  borderRadius: 12,
+  padding: 10,
+  fontFamily: "Consolas, Menlo, monospace",
+  fontSize: 13,
+  color: "#0f172a",
+  background: "#faf5ff",
+  resize: "vertical",
+};
+
+const pasteBar = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 10,
+  fontSize: 12.5,
+  fontWeight: 800,
+};
+
+const pasteCheck = { display: "flex", alignItems: "center", gap: 6, color: "#334155", cursor: "pointer" };
+const pasteCount = { background: "#eef2ff", color: "#3730a3", borderRadius: 999, padding: "3px 10px" };
+const pasteOk = { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "3px 10px" };
+const pasteWarn = { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "3px 10px" };
+
+const pastePreviewWrap = {
+  flex: 1,
+  minHeight: 0,
+  overflow: "auto",
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+};
+
+const pastePreview = { width: "100%", borderCollapse: "collapse" };
+
+const pasteTh = {
+  position: "sticky",
+  top: 0,
+  background: "#f8fafc",
+  borderBottom: "1px solid #e2e8f0",
+  padding: 6,
+  textAlign: "left",
+  whiteSpace: "nowrap",
+};
+
+const pasteTd = {
+  borderBottom: "1px solid #f1f5f9",
+  padding: "5px 6px",
+  whiteSpace: "nowrap",
+  maxWidth: 240,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const pasteSelect = {
+  border: "1px solid #ddd6fe",
+  borderRadius: 8,
+  padding: "3px 6px",
+  fontWeight: 800,
+  color: "#5b21b6",
+  background: "#fff",
+  fontFamily: "inherit",
+};
+
+const pasteHeadCell = { marginTop: 3, fontSize: 11, color: "#94a3b8", fontWeight: 700 };
+const pasteOkCell = { color: "#166534", fontWeight: 700 };
+const pasteWarnCell = { color: "#b45309", fontWeight: 700 };
+const pasteMore = { padding: 8, fontSize: 12, color: "#64748b", fontWeight: 700 };
+
+const pasteActions = { display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "flex-end" };
 
 const reasonChips = {
   display: "flex",

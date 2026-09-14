@@ -246,11 +246,6 @@ const ALL_ROLES = [
     glow: "rgba(8,145,178,.45)",
   },
   {
-    id: "halalAudit", label: "HALAL Audit", route: "/halal-audit", icon: "📋",
-    grad: "linear-gradient(135deg,#84cc16,#65a30d)",
-    glow: "rgba(132,204,22,.45)",
-  },
-  {
     id: "hse", label: "HSE", route: "/hse", icon: "🦺",
     grad: "linear-gradient(135deg,#eab308,#ca8a04)",
     glow: "rgba(234,179,8,.45)",

@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
@@ -14,10 +13,10 @@ export default async function build(wb, record, ctx) {
   const emp = p.employeeInfo || {};
   const abs = p.absenceDetails || {};
   const absHist = abs.absenceHistory || {};
-  const questionnaire = Array.isArray(p.questionnaire) ? p.questionnaire : [];
-  const curSymptoms = Array.isArray(p.currentSymptoms) ? p.currentSymptoms : [];
-  const conSymptoms = Array.isArray(p.contactSymptoms) ? p.contactSymptoms : [];
-  const diseases = Array.isArray(p.communicableDiseases) ? p.communicableDiseases : [];
+  const questionnaire = rowsOf(p.questionnaire);
+  const curSymptoms = rowsOf(p.currentSymptoms);
+  const conSymptoms = rowsOf(p.contactSymptoms);
+  const diseases = rowsOf(p.communicableDiseases);
   const vac = p.vacation || {};
   const addAction = p.additionalAction || {};
   const empSig = p.employeeSignature || {};

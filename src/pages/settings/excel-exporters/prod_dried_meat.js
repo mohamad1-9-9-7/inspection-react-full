@@ -6,8 +6,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const DRYING_COLS = [
   { key: "elapsedHrs",  label: "Elapsed Hrs", width: 10 },
@@ -26,7 +25,7 @@ export default async function build(wb, record, ctx) {
   const h = p.header || {};
   const f = p.form || {};
   const m = p.metrics || {};
-  const dryingLog = Array.isArray(f.dryingLog) ? f.dryingLog : [];
+  const dryingLog = rowsOf(f.dryingLog);
 
   const NC = 8;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

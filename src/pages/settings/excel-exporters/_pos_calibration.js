@@ -1,8 +1,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const COLS = [
   { key: "date",              label: "Date",              width: 12 },
@@ -21,7 +20,7 @@ export function makePosCalibrationBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : (Array.isArray(p.rows) ? p.rows : []);
+    const entries = rowsOf(Array.isArray(p.entries) ? p.entries : p.rows);
 
     const NC = COLS.length;
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

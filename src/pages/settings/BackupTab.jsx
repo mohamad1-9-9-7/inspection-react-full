@@ -3,91 +3,30 @@ import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
+import { BRANCHES } from "./reportTypeCatalog";
+import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
 
 
 /* ============================================================
-   تصنيف أنواع التقارير حسب الفرع/الفئة
-   ============================================================ */
-const REPORT_GROUPS = {
-  "QCS": [
-    "qcs-coolers", "qcs-ph", "qcs-clean",
-    "qcs_raw_material", "qcs_fresh_chicken",
-    "qcs_internal_audit", "qcs_non_conformance", "qcs_corrective_action",
-    "qcs_rm_packaging", "qcs_rm_ingredients",
-    "qcs_garbage_disposal", "qcs_meat_waste_disposal",
-    "qcs_pest_control", "qcs_stock_rotation",
-    "qcs_visitor_checklist", "qcs_staff_sickness",
-    "qcs_employee_return_to_work", "qcs_product_rejection",
-  ],
-  "FTR1": [
-    "ftr1_temperature", "ftr1_personal_hygiene", "ftr1_oil_calibration",
-    "ftr1_daily_cleanliness", "ftr1_cooking_temperature_log", "ftr1_receiving_log",
-    "ftr1_preloading_inspection",
-  ],
-  "FTR2": [
-    "ftr2_temperature", "ftr2_personal_hygiene", "ftr2_oil_calibration",
-    "ftr2_daily_cleanliness", "ftr2_cooking_temperature_log", "ftr2_receiving_log",
-    "ftr2_preloading_inspection",
-  ],
-  "POS 10": [
-    "pos10_temperature", "pos10_daily_cleanliness", "pos10_personal_hygiene",
-    "pos10_calibration", "pos10_pest_control", "pos10_receiving_log", "pos10_traceability",
-  ],
-  "POS 11": [
-    "pos11_temperature", "pos11_daily_cleanliness", "pos11_personal_hygiene",
-    "pos11_calibration", "pos11_pest_control", "pos11_receiving_log",
-  ],
-  "POS 15": [
-    "pos15_temperature", "pos15_daily_cleanliness", "pos15_personal_hygiene",
-    "pos15_pest_control", "pos15_receiving_log", "pos15_traceability",
-    "pos15_equipment_inspection_sanitizing",
-  ],
-  "POS 19": [
-    "pos19_temperature_monitoring", "pos19_hot_holding_temperature",
-    "pos19_food_temperature_verification", "pos19_cooking_temperature",
-  ],
-  "Production": [
-    "prod_personal_hygiene", "prod_cleaning_checklist", "prod_defrosting_record",
-  ],
-  "Returns": [
-    "returns", "returns_changes",
-    "returns_customers", "returns_customers_changes",
-    "enoc_returns",
-    "destruction_record",
-  ],
-  "HACCP & ISO": [
-    "ccp_monitoring_record",
-    "calibration_record", "internal_calibration_record",
-    "mock_recall_drill", "real_recall", "product_withdrawal",
-    "mrm_record",
-    "fsms_communication_log",
-    "customer_complaint",
-    "glass_register_item",
-    "fsms_risk_register_item", "fsms_opportunity_register_item",
-    "fsms_change_management_log_item",
-    "fsms_food_defense_item",
-    "continual_improvement",
-    "fsms_objective",
-    "document_metadata",
-    "policy_acknowledgment",
-    "haccp_manual_overrides",
-    "internal_audit_record",
-  ],
-  "Training & Compliance": [
-    "training_certificate", "training_session", "training_quiz",
-    "supplier_self_assessment_form",
-    "municipality_inspection", "licenses_contracts",
-    "product_details", "sop_ssop", "haccp_iso",
-  ],
-  "Other": [
-    "meat_daily", "inventory_daily_grouped",
-    "car_approval", "maintenance_request",
-    "finished_product", "ohc_upload",
-    "users", "admin_notification_config",
-  ],
-};
+   أنواع التقارير — مشتقّة من الكتالوج الموحّد
+   ============================================================
+   كانت هون قائمة مكتوبة يدوياً انفصلت عن الواقع: 68 نوع ناقص
+   (وحدة HSE كاملة، POS 6، معظم POS 19، OHC، الأسطول) وإحدى عشر
+   مفتاح ميت بيرجّع صفر دايماً (pos10_calibration، ftr1_receiving_log،
+   car_approval...). الحل إن BRANCHES في reportTypeCatalog.js صارت
+   المصدر الوحيد، فأي نوع جديد بينضاف مرّة وحدة وبيوصل للنسختين. */
+const REPORT_GROUPS = BRANCHES.reduce((acc, b) => {
+  acc[`${b.emoji} ${b.label}`] = b.types.map(([type]) => type);
+  return acc;
+}, {});
 
-const ALL_TYPES = Object.values(REPORT_GROUPS).flat();
+/** type slug → اسمه المقروء، لعرضه جنب المفتاح في قائمة الاختيار. */
+const TYPE_LABELS = BRANCHES.reduce((acc, b) => {
+  b.types.forEach(([type, label]) => { if (!acc[type]) acc[type] = label; });
+  return acc;
+}, {});
+
+const ALL_TYPES = [...new Set(Object.values(REPORT_GROUPS).flat())];
 
 const RESTORE_PROTECTED_LOCAL_KEYS = new Set(["currentUser", "subscription_cache"]);
 
@@ -160,15 +99,11 @@ function inDateRange(report, from, to) {
   return true;
 }
 
+/* كان طلب واحد بيرجّع 5000 صف كحدّ أقصى (سقف السيرفر) وبيسكت عن الباقي.
+   fetchAllOfType بتقسّم المدة لما تضرب بالسقف — شوف _shared/reportBackupFetch.js. */
 async function fetchByType(type) {
-  try {
-    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
-    if (!res.ok) return [];
-    const json = await res.json().catch(() => null);
-    return Array.isArray(json) ? json : json?.data || [];
-  } catch {
-    return [];
-  }
+  const page = await fetchAllOfType(type);
+  return page.rows;
 }
 
 function downloadJSON(filename, data) {
@@ -217,6 +152,14 @@ export default function BackupTab() {
   const [msg, setMsg] = useState({ kind: "", text: "" });
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [confirmReload, setConfirmReload] = useState(false);
+
+  /* نافذة الرؤية: حساب بلا صلاحية «history» بياخد آخر ٣٠ يوم لفروع POS
+     وشهرين للمرتجعات، والقصّ بيصير مركزياً في authFetch.js. بدون تحذير بتطلع
+     نسخة ناقصة واسمها كاملة — وهاي بالذات نسخة بتنستعمل للاستعادة. */
+  const windowWarning = useMemo(
+    () => visibilityWarningText(Array.from(selectedTypes)),
+    [selectedTypes]
+  );
 
   /* --- localStorage live preview --- */
   const localPreview = useMemo(() => {
@@ -293,15 +236,19 @@ export default function BackupTab() {
   }
 
   /* ===== جلب التقارير حسب التحديد ===== */
-  async function fetchSelectedReports(onProgress) {
+  async function fetchSelectedReports(onProgress, notes) {
     if (!includeServerReports || selectedTypes.size === 0) return [];
     const types = Array.from(selectedTypes);
     const all = [];
     for (let i = 0; i < types.length; i++) {
       const t = types[i];
       if (onProgress) onProgress(i + 1, types.length, t);
-      const arr = await fetchByType(t);
-      arr.forEach((r) => {
+      const page = await fetchAllOfType(t);
+      if (notes) {
+        if (page.paged) notes.paged.push(t);
+        if (page.truncated) notes.truncated.push(t);
+      }
+      page.rows.forEach((r) => {
         if (inDateRange(r, dateFrom, dateTo)) all.push(r);
       });
     }
@@ -361,9 +308,10 @@ export default function BackupTab() {
     setProgress({ current: 0, total: selectedTypes.size, label: "" });
 
     try {
+      const notes = { paged: [], truncated: [] };
       const reports = await fetchSelectedReports((cur, total, label) => {
         setProgress({ current: cur, total, label });
-      });
+      }, notes);
 
       let localData = {};
       if (includeLocalData) {
@@ -394,6 +342,12 @@ export default function BackupTab() {
         counts: {
           serverReports: reports.length,
           localStorageKeys: Object.keys(localData).length,
+        },
+        /* سلامة النسخة — بينقرا وقت الاستعادة بدل ما نخمّن إذا كانت كاملة. */
+        completeness: {
+          pagedTypes: notes.paged,
+          truncatedTypes: notes.truncated,
+          visibilityWindowWarning: windowWarning || null,
         },
         localStorage: localData,
         serverReports: reports,
@@ -611,6 +565,22 @@ export default function BackupTab() {
         title="Backup & Restore"
         subtitle="Choose exactly what to export: server reports, local drafts, browser settings, and date-limited backups."
       />
+      {windowWarning && (
+        <div
+          style={{
+            ...card,
+            background: "#fef2f2",
+            borderColor: "#fca5a5",
+            color: "#991b1b",
+            fontWeight: 700,
+            lineHeight: 1.7,
+            fontSize: "0.9rem",
+          }}
+        >
+          {windowWarning}
+        </div>
+      )}
+
       {/* مقدمة */}
       <div style={{ ...card, background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderColor: "#bfdbfe" }}>
         <div style={{ fontWeight: 800, color: "#1e3a5f", marginBottom: 6 }}>
@@ -755,7 +725,8 @@ export default function BackupTab() {
                           onChange={() => toggleType(t)}
                           style={{ width: 14, height: 14 }}
                         />
-                        <code style={{ fontSize: "0.78rem" }}>{t}</code>
+                        <span style={{ fontSize: "0.82rem" }}>{TYPE_LABELS[t] || t}</span>
+                        <code style={{ fontSize: "0.68rem", color: "#9ca3af" }}>{t}</code>
                         {estimate?.counts?.[t] !== undefined && (
                           <span style={{ marginInlineStart: "auto", color: "#16a34a", fontWeight: 700 }}>
                             {estimate.counts[t]}

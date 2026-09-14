@@ -693,106 +693,111 @@ const categoryLabel = {
 const modern = {
   shell: {
     minHeight: "100vh",
-    padding: "24px clamp(18px, 3vw, 48px) 48px",
+    padding: "10px clamp(8px, 0.8vw, 16px) 26px",
     background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     color: "#0f172a",
   },
   layout: {
-    width: "min(1760px, 100%)",
+    width: "100%",
     margin: "0 auto",
   },
   hero: {
     position: "relative",
     overflow: "hidden",
-    borderRadius: 8,
-    padding: "28px clamp(22px, 4vw, 56px)",
+    borderRadius: 10,
+    padding: "18px clamp(16px, 1.6vw, 32px)",
     background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))",
     color: "#fff",
     border: "1px solid rgba(255,255,255,0.20)",
-    boxShadow: "0 24px 64px rgba(15,23,42,0.22)",
+    boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
   },
   heroInner: {
     position: "relative",
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
-    gap: 24,
+    gap: 20,
   },
   brand: {
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
     minWidth: 0,
   },
   logo: {
-    width: 76,
-    height: 76,
-    borderRadius: 8,
+    width: 62,
+    height: 62,
+    borderRadius: 10,
     objectFit: "cover",
     border: "1px solid rgba(255,255,255,0.34)",
     background: "#fff",
-    boxShadow: "0 16px 30px rgba(0,0,0,0.25)",
+    boxShadow: "0 12px 24px rgba(0,0,0,0.25)",
     flexShrink: 0,
   },
   eyebrow: {
     margin: 0,
     fontWeight: 900,
     color: "rgba(255,255,255,0.78)",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
   },
   title: {
-    margin: "8px 0 0",
+    margin: "4px 0 0",
     fontWeight: 1000,
-    lineHeight: 1.05,
-    letterSpacing: 0,
+    lineHeight: 1.08,
+    letterSpacing: "-0.01em",
   },
   subtitle: {
-    margin: "12px 0 0",
-    maxWidth: 980,
-    color: "rgba(255,255,255,0.82)",
+    margin: "6px 0 0",
+    maxWidth: 940,
+    color: "rgba(255,255,255,0.80)",
     lineHeight: 1.45,
-    fontWeight: 700,
+    fontWeight: 650,
   },
   heroStats: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(150px, 1fr))",
-    gap: 12,
-    minWidth: 340,
+    gridTemplateColumns: "repeat(2, minmax(112px, 1fr))",
+    gap: 10,
+    minWidth: 250,
   },
   stat: {
-    borderRadius: 8,
-    padding: "16px 18px",
+    borderRadius: 10,
+    padding: "12px 14px",
     background: "rgba(255,255,255,0.12)",
     border: "1px solid rgba(255,255,255,0.22)",
     backdropFilter: "blur(12px)",
+    textAlign: "center",
   },
   statValue: {
     fontWeight: 1000,
     lineHeight: 1,
   },
   statLabel: {
-    marginTop: 8,
+    marginTop: 6,
     color: "rgba(255,255,255,0.76)",
     fontWeight: 800,
   },
   toolbar: {
-    margin: "22px 0",
+    position: "sticky",
+    top: 0,
+    zIndex: 6,
+    margin: "12px 0 14px",
+    padding: "9px 0",
     display: "grid",
-    gridTemplateColumns: "minmax(280px, 1fr) auto",
-    gap: 14,
+    gridTemplateColumns: "minmax(220px, 360px) 1fr",
+    gap: 12,
     alignItems: "center",
+    background: "linear-gradient(180deg, rgba(248,250,252,0.97) 62%, rgba(248,250,252,0))",
+    backdropFilter: "blur(8px)",
   },
   searchWrap: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    padding: "12px 16px",
-    borderRadius: 8,
+    gap: 10,
+    padding: "9px 14px",
+    borderRadius: 10,
     background: "#fff",
     border: "1px solid rgba(15,23,42,0.13)",
-    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+    boxShadow: "0 8px 20px rgba(15,23,42,0.07)",
   },
   searchInput: {
     width: "100%",
@@ -808,53 +813,67 @@ const modern = {
     display: "flex",
     flexWrap: "wrap",
     justifyContent: "flex-end",
-    gap: 10,
+    gap: 8,
   },
   filterButton: (active) => ({
-    minHeight: 52,
-    padding: "10px 18px",
-    borderRadius: 8,
+    minHeight: 38,
+    padding: "8px 15px",
+    borderRadius: 999,
     border: active ? "1px solid #0f766e" : "1px solid rgba(15,23,42,0.14)",
     background: active ? "#0f766e" : "#fff",
     color: active ? "#fff" : "#334155",
     fontWeight: 950,
     cursor: "pointer",
-    boxShadow: active ? "0 14px 28px rgba(15,118,110,0.22)" : "0 10px 20px rgba(15,23,42,0.07)",
+    fontFamily: "inherit",
+    transition: "background .16s ease, color .16s ease, box-shadow .16s ease",
+    boxShadow: active ? "0 10px 22px rgba(15,118,110,0.22)" : "0 6px 14px rgba(15,23,42,0.06)",
   }),
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 390px), 1fr))",
-    gap: 18,
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
+    gap: 14,
+    alignItems: "stretch",
   },
   card: (isHover, highlight) => ({
     position: "relative",
-    minHeight: 220,
+    minHeight: 176,
+    height: "100%",
     display: "grid",
     gridTemplateRows: "auto 1fr auto",
-    gap: 18,
-    padding: "24px 24px 22px",
-    borderRadius: 8,
+    gap: 12,
+    padding: "16px 18px 13px",
+    borderRadius: 10,
     border: highlight ? "2px solid rgba(245,158,11,0.56)" : isHover ? "1px solid rgba(15,118,110,0.48)" : "1px solid rgba(15,23,42,0.12)",
     background: highlight ? "linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)" : "#ffffff",
     color: "#0f172a",
     cursor: "pointer",
     textAlign: "left",
-    boxShadow: isHover ? "0 24px 52px rgba(15,23,42,0.16)" : "0 12px 30px rgba(15,23,42,0.08)",
+    boxShadow: isHover ? "0 18px 38px rgba(15,23,42,0.14)" : "0 6px 18px rgba(15,23,42,0.06)",
     transform: isHover ? "translateY(-3px)" : "translateY(0)",
     transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease",
     overflow: "hidden",
     fontFamily: "inherit",
   }),
+  cardAccent: (highlight, isHover) => ({
+    position: "absolute",
+    insetInlineStart: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    background: highlight ? "#f59e0b" : "#0f766e",
+    opacity: isHover ? 1 : 0.34,
+    transition: "opacity .16s ease",
+  }),
   cardTop: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 14,
+    gap: 12,
   },
   iconWrap: (highlight) => ({
-    width: 58,
-    height: 58,
-    borderRadius: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     display: "grid",
     placeItems: "center",
     color: highlight ? "#b45309" : "#0f766e",
@@ -863,7 +882,7 @@ const modern = {
     flexShrink: 0,
   }),
   pill: (highlight) => ({
-    padding: "7px 12px",
+    padding: "5px 10px",
     borderRadius: 999,
     background: highlight ? "#ffedd5" : "#f1f5f9",
     color: highlight ? "#9a3412" : "#475569",
@@ -872,29 +891,29 @@ const modern = {
   }),
   cardTitle: {
     margin: 0,
-    lineHeight: 1.22,
+    lineHeight: 1.25,
     fontWeight: 1000,
     color: "#0f172a",
   },
   cardSub: {
-    marginTop: 10,
+    marginTop: 7,
     lineHeight: 1.5,
-    fontWeight: 700,
+    fontWeight: 650,
     color: "#475569",
   },
   cardBottom: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 14,
-    paddingTop: 16,
+    gap: 12,
+    paddingTop: 11,
     borderTop: "1px solid rgba(15,23,42,0.09)",
     fontWeight: 950,
     color: "#0f766e",
   },
   empty: {
     padding: 28,
-    borderRadius: 8,
+    borderRadius: 10,
     background: "#fff",
     border: "1px solid rgba(15,23,42,0.12)",
     color: "#64748b",
@@ -902,12 +921,63 @@ const modern = {
     textAlign: "center",
   },
   footer: {
-    marginTop: 26,
+    marginTop: 20,
     textAlign: "center",
     color: "#64748b",
     fontWeight: 800,
   },
 };
+
+/* globals.css forces `#root * { font-size: 14px !important }`, so every inline
+   fontSize on this page is ignored. The doubled-class selectors below win on
+   specificity and give the hub back a real type scale. Colors are untouched. */
+const HUB_CSS = `
+  html:has(.hix-shell), body:has(.hix-shell), #root:has(.hix-shell) { overflow-x: clip; }
+
+  #root .hix.hix-eyebrow { font-size: 10.5px !important; letter-spacing: .16em; text-transform: uppercase; }
+  #root .hix.hix-title { font-size: clamp(19px, 1.9vw, 30px) !important; }
+  #root .hix.hix-subtitle { font-size: 13px !important; }
+  #root .hix.hix-stat-value { font-size: clamp(20px, 1.7vw, 28px) !important; }
+  #root .hix.hix-stat-label { font-size: 10.5px !important; letter-spacing: .10em; text-transform: uppercase; }
+  #root .hix.hix-search-label { font-size: 11px !important; letter-spacing: .10em; text-transform: uppercase; color: #64748b; font-weight: 900; }
+  #root .hix.hix-search-input { font-size: 13.5px !important; }
+  #root .hix.hix-filter { font-size: 12px !important; letter-spacing: .04em; }
+  #root .hix.hix-pill { font-size: 10px !important; letter-spacing: .08em; text-transform: uppercase; }
+  #root .hix.hix-card-title { font-size: 15px !important; }
+  #root .hix.hix-card-sub { font-size: 12.5px !important; }
+  #root .hix.hix-card-foot { font-size: 11px !important; letter-spacing: .08em; text-transform: uppercase; }
+  #root .hix.hix-master-eyebrow { font-size: 10.5px !important; letter-spacing: .16em; text-transform: uppercase; }
+  #root .hix.hix-master-title { font-size: clamp(18px, 1.7vw, 26px) !important; }
+  #root .hix.hix-master-sub { font-size: 13px !important; }
+  #root .hix.hix-master-icon { font-size: 30px !important; }
+  #root .hix.hix-chip { font-size: 10.5px !important; letter-spacing: .04em; }
+  #root .hix.hix-cta { font-size: 13px !important; }
+  #root .hix.hix-footer { font-size: 11px !important; letter-spacing: .10em; text-transform: uppercase; }
+
+  #root .hix-card:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+  #root .hix-search-input::placeholder { color: #94a3b8; font-weight: 700; }
+
+  @media (max-width: 980px) {
+    .haccp-hero-inner,
+    .haccp-toolbar { grid-template-columns: 1fr !important; }
+    .haccp-hero-stats,
+    .haccp-filters {
+      min-width: 0 !important;
+      justify-content: flex-start !important;
+    }
+    .haccp-toolbar { position: static !important; }
+  }
+  @media (max-width: 760px) {
+    .haccp-master-card {
+      grid-template-columns: 1fr !important;
+      justify-items: start;
+    }
+    .haccp-master-cta {
+      justify-self: stretch !important;
+      justify-content: center !important;
+    }
+  }
+`;
 
 export default function HaccpIsoMenu() {
   const navigate = useNavigate();
@@ -927,36 +997,16 @@ export default function HaccpIsoMenu() {
     });
   }, [activeCategory, allowedSections, query]);
 
+  const isFiltered = filteredSections.length !== allowedSections.length;
+
   const handleOpen = (item) => {
     if (item.route) navigate(item.route);
   };
 
   return (
-    <main style={modern.shell}>
+    <main className="hix-shell" style={modern.shell}>
       <FloatingSettingsButton />
-      <style>{`
-        @media (max-width: 980px) {
-          .haccp-hero-inner,
-          .haccp-toolbar {
-            grid-template-columns: 1fr !important;
-          }
-          .haccp-hero-stats,
-          .haccp-filters {
-            min-width: 0 !important;
-            justify-content: flex-start !important;
-          }
-        }
-        @media (max-width: 760px) {
-          .haccp-master-card {
-            grid-template-columns: 1fr !important;
-            justify-items: start;
-          }
-          .haccp-master-cta {
-            justify-self: stretch !important;
-            justify-content: center !important;
-          }
-        }
-      `}</style>
+      <style>{HUB_CSS}</style>
 
       <div style={modern.layout}>
         <section style={modern.hero}>
@@ -975,9 +1025,13 @@ export default function HaccpIsoMenu() {
             <div style={modern.brand}>
               <img src={mawashiLogo} alt="Al Mawashi Logo" style={modern.logo} />
               <div style={{ minWidth: 0 }}>
-                <p style={modern.eyebrow}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</p>
-                <h1 style={modern.title}>ISO 22000 & HACCP Command Center</h1>
-                <p style={modern.subtitle}>
+                <p className="hix hix-eyebrow" style={modern.eyebrow}>
+                  TRANS EMIRATES LIVESTOCK TRADING L.L.C.
+                </p>
+                <h1 className="hix hix-title" style={modern.title}>
+                  ISO 22000 &amp; HACCP Command Center
+                </h1>
+                <p className="hix hix-subtitle" style={modern.subtitle}>
                   A clean operational hub for food safety documents, records, inspections, product files, and performance tracking.
                 </p>
               </div>
@@ -985,12 +1039,16 @@ export default function HaccpIsoMenu() {
 
             <div className="haccp-hero-stats" style={modern.heroStats}>
               <div style={modern.stat}>
-                <div style={modern.statValue}>{allowedSections.length}</div>
-                <div style={modern.statLabel}>Modules</div>
+                <div className="hix hix-stat-value" style={modern.statValue}>
+                  {isFiltered ? `${filteredSections.length}/${allowedSections.length}` : allowedSections.length}
+                </div>
+                <div className="hix hix-stat-label" style={modern.statLabel}>
+                  {isFiltered ? "Shown" : "Modules"}
+                </div>
               </div>
               <div style={modern.stat}>
-                <div style={modern.statValue}>ISO</div>
-                <div style={modern.statLabel}>22000 / HACCP</div>
+                <div className="hix hix-stat-value" style={modern.statValue}>ISO</div>
+                <div className="hix hix-stat-label" style={modern.statLabel}>22000 / HACCP</div>
               </div>
             </div>
           </div>
@@ -998,8 +1056,9 @@ export default function HaccpIsoMenu() {
 
         <section className="haccp-toolbar" style={modern.toolbar}>
           <label style={modern.searchWrap}>
-            <span aria-hidden="true">Search</span>
+            <span className="hix hix-search-label" aria-hidden="true">Search</span>
             <input
+              className="hix hix-search-input"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Find a module..."
@@ -1012,6 +1071,7 @@ export default function HaccpIsoMenu() {
               <button
                 key={filter.id}
                 type="button"
+                className="hix hix-filter"
                 onClick={() => setActiveCategory(filter.id)}
                 style={modern.filterButton(activeCategory === filter.id)}
               >
@@ -1033,7 +1093,7 @@ export default function HaccpIsoMenu() {
                     <button
                       key={item.id}
                       type="button"
-                      className="haccp-master-card"
+                      className="haccp-master-card hix-card"
                       onClick={() => handleOpen(item)}
                       onMouseEnter={() => setHoverId(item.id)}
                       onMouseLeave={() => setHoverId(null)}
@@ -1047,10 +1107,10 @@ export default function HaccpIsoMenu() {
                         display: "grid",
                         gridTemplateColumns: "auto 1fr auto",
                         alignItems: "center",
-                        gap: 24,
+                        gap: 20,
                         textAlign: "left",
-                        padding: "26px clamp(22px, 3vw, 42px)",
-                        borderRadius: 12,
+                        padding: "18px clamp(16px, 1.6vw, 32px)",
+                        borderRadius: 10,
                         cursor: "pointer",
                         color: "#fff",
                         fontFamily: "inherit",
@@ -1058,8 +1118,8 @@ export default function HaccpIsoMenu() {
                         background:
                           "linear-gradient(120deg, #0b2a30 0%, #0f766e 46%, #115e59 78%, #0b2a30 100%)",
                         boxShadow: isHover
-                          ? "0 30px 72px rgba(15,118,110,0.40), inset 0 0 0 1px rgba(245,158,11,0.38)"
-                          : "0 22px 52px rgba(15,23,42,0.30), inset 0 0 0 1px rgba(255,255,255,0.06)",
+                          ? "0 24px 56px rgba(15,118,110,0.36), inset 0 0 0 1px rgba(245,158,11,0.38)"
+                          : "0 14px 36px rgba(15,23,42,0.26), inset 0 0 0 1px rgba(255,255,255,0.06)",
                         transform: isHover ? "translateY(-3px)" : "translateY(0)",
                         transition: "transform .18s ease, box-shadow .18s ease",
                       }}
@@ -1079,51 +1139,39 @@ export default function HaccpIsoMenu() {
                       <div
                         style={{
                           position: "relative",
-                          width: 80,
-                          height: 80,
-                          borderRadius: 18,
+                          width: 62,
+                          height: 62,
+                          borderRadius: 12,
                           display: "grid",
                           placeItems: "center",
-                          fontSize: 40,
                           background:
                             "linear-gradient(160deg, rgba(245,158,11,0.32), rgba(217,119,6,0.16))",
                           border: "1px solid rgba(245,158,11,0.55)",
-                          boxShadow: "0 16px 32px rgba(217,119,6,0.32)",
+                          boxShadow: "0 12px 26px rgba(217,119,6,0.32)",
                           flexShrink: 0,
                         }}
                       >
-                        📕
+                        <span className="hix hix-master-icon" style={{ lineHeight: 1 }}>📕</span>
                       </div>
 
                       <div style={{ position: "relative", minWidth: 0 }}>
                         <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 950,
-                            letterSpacing: ".14em",
-                            textTransform: "uppercase",
-                            color: "#fcd34d",
-                            marginBottom: 8,
-                          }}
+                          className="hix hix-master-eyebrow"
+                          style={{ fontWeight: 950, color: "#fcd34d", marginBottom: 5 }}
                         >
                           ★ Master Controlled Document
                         </div>
                         <h2
-                          style={{
-                            margin: 0,
-                            fontSize: "clamp(20px, 2.4vw, 28px)",
-                            fontWeight: 1000,
-                            lineHeight: 1.1,
-                            color: "#fff",
-                          }}
+                          className="hix hix-master-title"
+                          style={{ margin: 0, fontWeight: 1000, lineHeight: 1.15, color: "#fff" }}
                         >
                           HACCP / FSMS Manual
                         </h2>
                         <p
+                          className="hix hix-master-sub"
                           style={{
-                            margin: "8px 0 0",
-                            maxWidth: 720,
-                            fontSize: 14,
+                            margin: "6px 0 0",
+                            maxWidth: 860,
                             fontWeight: 650,
                             lineHeight: 1.5,
                             color: "rgba(255,255,255,0.82)",
@@ -1132,15 +1180,15 @@ export default function HaccpIsoMenu() {
                           Hazard analysis, CCPs &amp; HACCP plan, product descriptions and the
                           full ISO 22000:2018 clauses (4–10) — bilingual, e-signed and audit-ready.
                         </p>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
                           {["ISO 22000:2018", "Rev 2.1", "Clauses 4–10", "HACCP Plan · 4 CCPs", "EN / العربية"].map((chip) => (
                             <span
                               key={chip}
+                              className="hix hix-chip"
                               style={{
-                                fontSize: 11.5,
                                 fontWeight: 900,
                                 color: "#e2fbf6",
-                                padding: "5px 11px",
+                                padding: "4px 10px",
                                 borderRadius: 999,
                                 background: "rgba(255,255,255,0.10)",
                                 border: "1px solid rgba(255,255,255,0.20)",
@@ -1154,21 +1202,20 @@ export default function HaccpIsoMenu() {
                       </div>
 
                       <div
-                        className="haccp-master-cta"
+                        className="haccp-master-cta hix hix-cta"
                         style={{
                           position: "relative",
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: 10,
-                          padding: "13px 24px",
+                          gap: 9,
+                          padding: "11px 20px",
                           borderRadius: 999,
-                          fontSize: 14,
                           fontWeight: 950,
                           whiteSpace: "nowrap",
                           color: "#08312c",
                           background: "linear-gradient(135deg, #fcd34d, #f59e0b)",
                           border: "1px solid rgba(255,255,255,0.4)",
-                          boxShadow: "0 14px 30px rgba(245,158,11,0.35)",
+                          boxShadow: "0 12px 26px rgba(245,158,11,0.35)",
                         }}
                       >
                         Open Manual
@@ -1187,6 +1234,7 @@ export default function HaccpIsoMenu() {
                   <button
                     key={item.id}
                     type="button"
+                    className="hix-card"
                     style={modern.card(isHover, item.highlight)}
                     onClick={() => handleOpen(item)}
                     onMouseEnter={() => setHoverId(item.id)}
@@ -1195,21 +1243,23 @@ export default function HaccpIsoMenu() {
                     onBlur={() => setHoverId(null)}
                     title={item.title}
                   >
+                    <span aria-hidden="true" style={modern.cardAccent(item.highlight, isHover)} />
+
                     <div style={modern.cardTop}>
                       <div style={modern.iconWrap(item.highlight)}>
                         <IconFolder />
                       </div>
-                      <span style={modern.pill(item.highlight)}>
+                      <span className="hix hix-pill" style={modern.pill(item.highlight)}>
                         {item.highlight ? "Master" : categoryLabel[category]}
                       </span>
                     </div>
 
                     <div>
-                      <h2 style={modern.cardTitle}>{item.title}</h2>
-                      <div style={modern.cardSub}>{item.subtitle}</div>
+                      <h2 className="hix hix-card-title" style={modern.cardTitle}>{item.title}</h2>
+                      <div className="hix hix-card-sub" style={modern.cardSub}>{item.subtitle}</div>
                     </div>
 
-                    <div style={modern.cardBottom}>
+                    <div className="hix hix-card-foot" style={modern.cardBottom}>
                       <span>Open module</span>
                       <span aria-hidden="true">→</span>
                     </div>
@@ -1222,7 +1272,7 @@ export default function HaccpIsoMenu() {
           )}
         </section>
 
-        <div style={modern.footer}>© Al Mawashi — Quality & Food Safety System</div>
+        <div className="hix hix-footer" style={modern.footer}>© Al Mawashi — Quality &amp; Food Safety System</div>
       </div>
     </main>
   );

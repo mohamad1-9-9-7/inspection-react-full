@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 function calcScore(checklist) {
   if (!Array.isArray(checklist)) return null;
@@ -30,9 +29,9 @@ export default async function build(wb, record, ctx) {
   const h    = p.headRow   || {};
   const hTop = p.headerTop || {};
   const ft   = p.footer    || {};
-  const checklist = Array.isArray(p.checklist) ? p.checklist : [];
+  const checklist = rowsOf(p.checklist);
   const sc = calcScore(checklist);
-  const recs = Array.isArray(p.auditRecommendation) ? p.auditRecommendation : [];
+  const recs = rowsOf(p.auditRecommendation);
 
   const NC = 6;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

@@ -6,32 +6,22 @@
 // ones, and a branch that adds a 7 PM round must get that column.
 
 import { buildPos6Sheet } from "./_pos6";
-
-/* Accepted range per unit kind — kept in step with the input screen. */
-const RANGES = {
-  chiller: { min: 0, max: 5 },
-  freezer: { min: null, max: -18 },
-};
-
-function outOfRange(kind, value) {
-  const n = Number(value);
-  if (value === "" || value === null || value === undefined || Number.isNaN(n)) return false;
-  const r = RANGES[kind] || RANGES.chiller;
-  if (r.min !== null && n < r.min) return true;
-  if (r.max !== null && n > r.max) return true;
-  return false;
-}
+// The single definition of what a passing reading is — the input screen and the
+// viewer read the same file, so a backup can never grade a chiller differently
+// from the sheet the branch filled in.
+import { RANGES, isOutOfRange } from "../../monitor/branches/pos6/pos6CoolerRanges";
+import { rowsOf } from "./_lib";
 
 const columnsFor = (p) => [
   { key: "sNo",       label: "S.No",   width: 7 },
   { key: "kindLabel", label: "Type",   width: 11 },
   { key: "name",      label: "Unit",   width: 22, align: "left" },
-  ...(p.slots || []).map((s) => ({ key: `slot_${s}`, label: s, width: 10 })),
+  ...rowsOf(p.slots).map((s) => ({ key: `slot_${s}`, label: s, width: 10 })),
   { key: "remarks",   label: "Remarks / Corrective Action", width: 30, align: "left" },
 ];
 
 const rowsFor = (p) =>
-  (p.units || []).map((u, i) => {
+  rowsOf(p.units).map((u, i) => {
     const row = {
       sNo: i + 1,
       kind: u.kind,
@@ -39,7 +29,7 @@ const rowsFor = (p) =>
       name: u.name,
       remarks: u.remarks,
     };
-    (p.slots || []).forEach((s) => { row[`slot_${s}`] = u.temps?.[s] ?? ""; });
+    rowsOf(p.slots).forEach((s) => { row[`slot_${s}`] = u.temps?.[s] ?? ""; });
     return row;
   });
 
@@ -51,7 +41,7 @@ export default async function build(wb, record, ctx) {
     title: "Coolers Temperatures",
     formRef: "FSMS/BR/F04",
     subtitle: () =>
-      `Chillers 0 °C to +5 °C  ·  Freezers −18 °C or colder` +
+      `Chillers ${RANGES.chiller.label}  ·  Freezers ${RANGES.freezer.label}` +
       (s.readings != null ? `   —   ${s.readings} readings, ${s.out || 0} out of range, average ${s.avg ?? "—"} °C` : ""),
     columns: columnsFor(p),
     getRows: rowsFor,
@@ -59,7 +49,7 @@ export default async function build(wb, record, ctx) {
     cellWarn: ({ value, key, row }) => {
       if (!String(key).startsWith("slot_")) return undefined;
       if (value === "" || value === undefined) return undefined;
-      return outOfRange(row.kind, value) ? "red" : "green";
+      return isOutOfRange(row.kind, value) ? "red" : "green";
     },
   });
 }

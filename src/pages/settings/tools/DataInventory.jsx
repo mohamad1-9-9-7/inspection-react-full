@@ -6,37 +6,12 @@
 
 import React, { useState } from "react";
 import API_BASE from "../../../config/api";
+import { BRANCHES } from "../reportTypeCatalog";
 
-const KNOWN_TYPES = [
-  // HSE (migrated)
-  "hse_incident_reports", "hse_work_permits", "hse_licenses_certs",
-  "hse_fire_equipment", "hse_forklift_inspection", "hse_toolbox_meeting",
-  "hse_evacuation_drills", "hse_monthly_safety_report", "hse_ncr_reports",
-  "hse_capa_actions", "hse_risk_register", "hse_policies_status",
-  "hse_sops_status", "hse_training_records", "hse_ppe_log",
-  "hse_emergency_contacts", "hse_cleaning_log", "hse_swabs_log",
-  "hse_pest_control_log", "hse_equipment_maintenance", "hse_waste_log",
-  "hse_welfare",
-  // HACCP / ISO
-  "ccp_monitoring_record", "ccp_catalog_config", "calibration_record",
-  "internal_calibration_record", "internal_audit_record", "fsms_objective",
-  "fsms_opportunity_register_item", "fsms_change_management_log_item",
-  "fsms_food_defense_item",
-  "glass_register_item", "mock_recall_drill", "mock_recall_config",
-  "returns_report_template", "returns_report_log",
-  "real_recall", "product_withdrawal",
-  "mrm_record", "fsms_communication_log", "customer_complaint", "continual_improvement",
-  "licenses_contracts", "municipality_inspection", "haccp_manual_overrides",
-  // QCS / branches
-  "qcs_internal_audit", "qcs_raw_material_inspection",
-  "qcs_meat_product_inspection", "qcs_pest_control",
-  // Cars
-  "car_approvals", "cars_loading_inspection", "truck_daily_cleaning",
-  // Misc
-  "internal_multi_audit", "ohc_certificate", "training_certificate",
-  "supervisor_corrective_action", "admin_notification_config",
-  "finished_products_report", "enoc_returns", "destruction_record",
-];
+// كانت هون قائمة مكتوبة يدوياً فيها مفاتيح ماتت (hse_fire_equipment،
+// hse_toolbox_meeting، hse_ppe_log...) وبتفوّت معظم النظام. صارت مشتقّة من
+// كتالوج الأنواع الموحّد في reportTypeCatalog.js.
+const KNOWN_TYPES = [...new Set(BRANCHES.flatMap((b) => b.types.map(([t]) => t)))];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

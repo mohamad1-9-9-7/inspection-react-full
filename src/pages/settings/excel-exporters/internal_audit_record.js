@@ -6,8 +6,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const FINDING_COLS = [
   { key: "n",                 label: "#",                width: 5  },
@@ -32,7 +31,7 @@ function typeStyle(type) {
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const findings = Array.isArray(p.findings) ? p.findings : [];
+  const findings = rowsOf(p.findings);
 
   const NC = FINDING_COLS.length; // 9
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

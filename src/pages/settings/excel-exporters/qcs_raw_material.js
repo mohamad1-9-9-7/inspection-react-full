@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const ATTRIBUTES = [
   { key: "temperature",       label: "Product Temperature" },
@@ -55,9 +54,9 @@ export default async function build(wb, record, ctx) {
   const p = record?.payload || {};
   const docMeta = p.docMeta || {};
   const gen     = p.generalInfo || {};
-  const samples = Array.isArray(p.samples) ? p.samples : [];
+  const samples = rowsOf(p.samples);
   const lines   = Array.isArray(p.productLines) ? p.productLines
-                : Array.isArray(p.lines) ? p.lines : [];
+                : rowsOf(p.lines);
 
   // Number of columns: 1 attribute col + N samples (min 4 wide for header)
   const sampleCount = Math.max(samples.length, 1);
@@ -392,7 +391,7 @@ export default async function build(wb, record, ctx) {
   }
 
   /* ─── Attachments (URLs) ─── */
-  const images = Array.isArray(p.images) ? p.images : [];
+  const images = rowsOf(p.images);
   if (images.length || p.certificateUrl) {
     r += 1;
     ws.mergeCells(r, 1, r, NC);

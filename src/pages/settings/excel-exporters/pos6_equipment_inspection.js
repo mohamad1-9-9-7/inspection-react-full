@@ -1,5 +1,6 @@
 // POS 6 equipment inspection & sanitizing log.
 import { buildPos6Sheet, numbered, verdictWarn, S_NO } from "./_pos6";
+import { rowsOf } from "./_lib";
 
 const columns = [
   S_NO,
@@ -21,7 +22,7 @@ export default async function build(wb, record, ctx) {
     formRef: "FSMS/BR/F17",
     subtitle: (p) => (p.section ? `Section: ${p.section}` : ""),
     columns,
-    getRows: (p) => numbered(p.entries || []),
+    getRows: (p) => numbered(rowsOf(p.entries)),
     cellWarn: verdictWarn,
   });
 }

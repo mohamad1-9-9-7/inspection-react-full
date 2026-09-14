@@ -28,6 +28,7 @@ const shortLabel = (m, lang = 'en') => {
     'OHS: PPE & Safe Work':           'PPE',
     'OHS: Knife Safety':              'Knife',
     'OHS: Manual Handling':           'Manual',
+    'OHS: Loading & Unloading':       'Loading',
     'OHS: Fire Safety & Emergency':   'Fire',
     'OHS: First Aid & Incident Reporting': 'First Aid',
     'TESTO OIL — Oil Quality Test':   'TESTO Oil',

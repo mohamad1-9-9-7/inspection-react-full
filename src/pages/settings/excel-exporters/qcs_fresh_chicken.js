@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const VARIANT_LABEL = {
   mixed_parts: "Mixed Parts",
@@ -20,7 +19,7 @@ export default async function build(wb, record, ctx) {
   const hdr = p.header || {};
   const ftr = p.footer || {};
   const samples = p.samplesTable;
-  const breakup = Array.isArray(p.breakup) ? p.breakup : [];
+  const breakup = rowsOf(p.breakup);
 
   const NC = 10; // wide layout for samples
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
@@ -225,8 +224,8 @@ export default async function build(wb, record, ctx) {
   }
 
   /* ─── Attachments URLs ─── */
-  const images = Array.isArray(p.images) ? p.images : [];
-  const certs  = Array.isArray(p.certificates) ? p.certificates : [];
+  const images = rowsOf(p.images);
+  const certs  = rowsOf(p.certificates);
   if (images.length || certs.length) {
     r += 1;
     ws.mergeCells(r, 1, r, NC);

@@ -76,7 +76,7 @@ export function makeRegisterExporter(spec) {
     let r = ws.lastRow.number + 1;
     ws.mergeCells(r, 1, r, NC);
     const cnt = ws.getCell(r, 1);
-    cnt.value = `Total entries: ${items.length}`;
+    cnt.value = ctx?.blankForm ? "Total entries:" : `Total entries: ${items.length}`;
     cnt.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
     cnt.font = { bold: true, size: 11, color: { argb: COLORS.NAVY } };
     cnt.fill = fillSolid(COLORS.GRAY_LIGHT);

@@ -1,8 +1,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const COLS = [
   { key: "supplier",        label: "Name of the Supplier",   width: 22, align: "left" },
@@ -39,7 +38,7 @@ export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : [];
+    const entries = rowsOf(p.entries);
 
     const NC = 1 + COLUMNS.length; // + S.No
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

@@ -1,14 +1,13 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait,
-} from "./_lib";
+  pageSetupPortrait, rowsOf } from "./_lib";
 
 export function makeFtrCleanBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : (Array.isArray(p.cleanlinessRows) ? p.cleanlinessRows : []);
+    const entries = Array.isArray(p.entries) ? p.entries : (rowsOf(p.cleanlinessRows));
 
     const HEAD = [
       { label: "Sl-No",            width: 8  },

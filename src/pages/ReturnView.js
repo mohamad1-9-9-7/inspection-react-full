@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
 import { API_BASE } from "../config/api";
+import { forgetFiledDate, moveFiledDate } from "../utils/filedDates";
 
 /* Left date-tree panel: remember whether the user folded it away (UI preference only). */
 const TREE_HIDDEN_KEY = "returnView.treeHidden";
@@ -28,11 +29,22 @@ async function fetchReturns() {
 }
 
 /* ========== Update a report on server (PUT only) ========== */
-async function saveReportToServer(reportDate, items) {
+/** The part of a report that is not rows, ready to be saved back untouched. */
+const sigOf = (rep) => ({
+  checkedBy: String(rep?.checkedBy || ""),
+  verifiedBy: String(rep?.verifiedBy || ""),
+});
+
+/* `meta` carries everything on the report that is NOT a row - today the two
+   signatures. It has to be passed back on every edit: the payload is stored
+   whole, so a save that leaves the names out erases them. (The returns-only
+   fallback route below rebuilds the payload from the items alone and drops
+   them regardless, which is why the generic route is tried first.) */
+async function saveReportToServer(reportDate, items, meta = {}) {
   const payload = {
     reporter: "anonymous",
     type: "returns",
-    payload: { reportDate, items, _clientSavedAt: Date.now() },
+    payload: { reportDate, items, ...meta, _clientSavedAt: Date.now() },
   };
 
   const attempts = [
@@ -92,6 +104,9 @@ function normalizeServerReturns(raw) {
         payload,
         reportDate: payload.reportDate || rec?.reportDate || "",
         items: Array.isArray(payload.items) ? payload.items : [],
+        // the two signatures the input sheet closes with
+        checkedBy: String(payload.checkedBy || ""),
+        verifiedBy: String(payload.verifiedBy || ""),
       };
     })
     .filter((e) => e.reportDate);
@@ -103,7 +118,12 @@ function normalizeServerReturns(raw) {
   }
 
   return Array.from(latest.values())
-    .map((e) => ({ reportDate: e.reportDate, items: e.items }))
+    .map((e) => ({
+      reportDate: e.reportDate,
+      items: e.items,
+      checkedBy: e.checkedBy,
+      verifiedBy: e.verifiedBy,
+    }))
     .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 }
 
@@ -169,9 +189,46 @@ function itemKey(row) {
   ].join("|");
 }
 
+
+/* ========== The day a line became a destruction ==========
+   A return is written on the day the product came back; what happens to it
+   is often decided days later, by editing this very page. Odoo posts the
+   condemnation voucher on the day of the DECISION, so a report keeping only
+   its own date makes the same event look like two failures in the disposal
+   reconciliation: destroyed in Odoo and not by us on one day, and the
+   reverse on another.
+
+   So the day of the decision is stamped on the line itself. The change log
+   records it too, but a stamp on the row survives without it and is what
+   `/disposal-log/compare` reads first. */
+const DISPOSAL_ACTION_RE = /(condemn|destro|dispos|discard|إعدام|اعدام|إتلاف|اتلاف|تخلص|إدانة|ادانة)/i;
+const isDisposalText = (txt) => DISPOSAL_ACTION_RE.test(String(txt || ""));
+
+/** Today in Dubai — the business day, not the browser's UTC day. */
+function businessToday() {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/** Stamp (or clear) the disposal date after an action change. */
+function stampActionDate(row, changed) {
+  if (!changed) return row;
+  if (isDisposalText(row?.action === "إجراء آخر..." || row?.action === "Other..." ? row?.customAction : row?.action)) {
+    row.actionDate = businessToday();
+  } else {
+    delete row.actionDate;
+  }
+  return row;
+}
+
 /* ========== Action-change log ========== */
-async function appendActionChange(reportDate, changeItem) {
-  let existing = [];
+/** The change entries already recorded for one day (never throws). */
+async function readChangeLog(reportDate) {
   try {
     // Targeted read: the server matches the business date, so only this day's
     // change log arrives instead of every change ever recorded.
@@ -179,27 +236,50 @@ async function appendActionChange(reportDate, changeItem) {
       `${API_BASE}/api/reports?type=returns_changes&reportDate=${encodeURIComponent(reportDate)}`,
       { cache: "no-store" }
     );
-    if (res.ok) {
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data || [];
-      const sameDay = arr.filter((r) => (r?.payload?.reportDate || r?.reportDate) === reportDate);
-      if (sameDay.length) {
-        sameDay.sort((a, b) => (toTs(b?.updatedAt) || toTs(b?._id) || 0) - (toTs(a?.updatedAt) || toTs(a?._id) || 0));
-        const latest = sameDay[0];
-        existing = Array.isArray(latest?.payload?.items) ? latest.payload.items : [];
-      }
-    }
-  } catch { }
-  const merged = [...existing, changeItem];
+    if (!res.ok) return [];
+    const json = await res.json();
+    const arr = Array.isArray(json) ? json : json?.data || [];
+    const sameDay = arr.filter((r) => (r?.payload?.reportDate || r?.reportDate) === reportDate);
+    if (!sameDay.length) return [];
+    sameDay.sort((a, b) => (toTs(b?.updatedAt) || toTs(b?._id) || 0) - (toTs(a?.updatedAt) || toTs(a?._id) || 0));
+    const latest = sameDay[0];
+    return Array.isArray(latest?.payload?.items) ? latest.payload.items : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeChangeLog(reportDate, items) {
   await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       reporter: "anonymous",
       type: "returns_changes",
-      payload: { reportDate, items: merged, _clientSavedAt: Date.now() },
+      payload: { reportDate, items, _clientSavedAt: Date.now() },
     }),
   });
+}
+
+async function appendActionChange(reportDate, changeItem) {
+  const existing = await readChangeLog(reportDate);
+  await writeChangeLog(reportDate, [...existing, changeItem]);
+}
+
+/* The change log is filed per day as well, so a report that moves to another
+   date has to take its history with it - left behind, the entries would hang
+   on a day that no longer has a report at all. */
+async function moveChangeLog(fromDate, toDate) {
+  const from = await readChangeLog(fromDate);
+  if (!from.length) return;
+  const to = await readChangeLog(toDate);
+  await writeChangeLog(toDate, [...to, ...from]);
+  try {
+    await fetch(
+      `${API_BASE}/api/reports?type=returns_changes&reportDate=${encodeURIComponent(fromDate)}`,
+      { method: "DELETE" }
+    );
+  } catch { }
 }
 
 /* ========= ✅ Confirm Modal (replaces window.confirm) ========= */
@@ -431,6 +511,85 @@ function SplitQtyModal({ open, row, draft, onChange, onCancel, onConfirm, busy }
   );
 }
 
+/* ========= Change the day a report is filed under ========= */
+function ChangeDateModal({ open, fromDate, value, onChange, onCancel, onConfirm, busy, target, rowCount }) {
+  if (!open) return null;
+
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(value) && value !== fromDate;
+  const merging = valid && !!target;
+  const future = valid && value > businessToday();
+
+  return (
+    <div style={galleryBack} onClick={busy ? undefined : onCancel}>
+      <div style={splitCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            📅 Change report date
+          </div>
+          <button onClick={onCancel} style={galleryClose} disabled={busy}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: "#475569", marginTop: 6, lineHeight: 1.6 }}>
+          The whole day moves: every row, its photos and its change history are filed
+          under the new date, and the old day disappears from the tree.
+        </div>
+
+        <div style={splitFactsRow}>
+          <div style={splitFact}><span style={splitFactLbl}>Current date</span><b>{fromDate}</b></div>
+          <div style={splitFact}><span style={splitFactLbl}>Rows</span><b>{rowCount}</b></div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <label style={splitLbl}>New date</label>
+          <input
+            type="date"
+            value={value}
+            max="2100-12-31"
+            onChange={(e) => onChange(e.target.value)}
+            style={{ ...cellInputStyle, maxWidth: 220, fontWeight: 800 }}
+          />
+          {value && value === fromDate && (
+            <div style={splitWarn}>That is the date the report already has.</div>
+          )}
+          {future && (
+            <div style={{ ...splitWarn, color: "#b45309" }}>
+              ⚠️ That date is in the future — check it before saving.
+            </div>
+          )}
+        </div>
+
+        {merging && (
+          <div style={splitPreview}>
+            <div style={splitPreviewRow}>
+              <span style={splitMove}>Merge</span>
+              <span>
+                {value} already has a report with <b>{(target.items || []).length}</b> row(s).
+                The two days are joined into one — <b>{(target.items || []).length + rowCount}</b> rows
+                under {value} — and nothing is lost.
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 10 }}>
+          Photos are never deleted by this move; the rows keep the images they already show.
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+          <button onClick={onCancel} style={bulkCancelBtn} disabled={busy}>✖ Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={!valid || busy}
+            style={{ ...bulkSaveBtn, background: valid ? (merging ? "#f59e0b" : "#0ea5e9") : "#cbd5e1", cursor: valid && !busy ? "pointer" : "not-allowed", boxShadow: "none" }}
+          >
+            {busy ? "⏳ Moving…" : merging ? `🔀 Merge into ${value}` : "📅 Move report"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== Main Component ====================== */
 export default function ReturnView() {
   const [reports, setReports] = useState([]);
@@ -467,6 +626,9 @@ export default function ReturnView() {
     open: false, idx: -1, qty: "", action: "Condemnation", customAction: "", remarks: "",
   });
   const [splitBusy, setSplitBusy] = useState(false);
+
+  // 📅 Move the whole day to another date (it was written under the wrong one)
+  const [dateMove, setDateMove] = useState({ open: false, value: "", busy: false });
 
   // ✅ Confirm modal state
   const [confirmState, setConfirmState] = useState({ show: false, title: "", message: "", confirmLabel: "Confirm", confirmColor: "#dc2626", onConfirm: null });
@@ -689,6 +851,9 @@ export default function ReturnView() {
       action: row.action || "",
       customAction: row.action === "إجراء آخر..." ? (row.customAction || "").trim() : "",
       images: Array.isArray(row.images) ? row.images : existingImages,
+      // The day this line became a destruction — see `stampActionDate`. It has
+      // to be carried here or the next edit of the row would drop it.
+      ...(row.actionDate ? { actionDate: String(row.actionDate).slice(0, 10) } : {}),
       // Split lineage has to survive later edits: anything not listed in this
       // shape is dropped the next time the row is saved.
       ...(row.splitGroup ? { splitGroup: row.splitGroup } : {}),
@@ -721,11 +886,13 @@ export default function ReturnView() {
         const nextTxt = actionText(prepared);
         changedAction = prevTxt && prevTxt !== nextTxt;
       }
+      stampActionDate(prepared, changedAction);
+
       const newItems = addingRow
         ? [...currentItems, prepared]
         : currentItems.map((r, i) => (i === editRowIdx ? prepared : r));
 
-      await saveReportToServer(selectedReport.reportDate, newItems);
+      await saveReportToServer(selectedReport.reportDate, newItems, sigOf(selectedReport));
 
       if (changedAction) {
         await appendActionChange(selectedReport.reportDate, {
@@ -794,10 +961,13 @@ export default function ReturnView() {
       setOpMsg("⏳ Saving all rows…");
       const items = (selectedReport.items || []);
       const prepared = bulkRows
-        .map((r, idx) => ({ r, img: items[idx]?.images || [] }))
+        .map((r, idx) => ({ r, img: items[idx]?.images || [], was: items[idx] }))
         .filter((x) => !x.r._removed)
-        .map((x) => prepareRowForSave(x.r, x.img));
-      await saveReportToServer(selectedReport.reportDate, prepared);
+        .map((x) => stampActionDate(
+          prepareRowForSave(x.r, x.img),
+          !!x.was && actionText(x.was) !== actionText(x.r)
+        ));
+      await saveReportToServer(selectedReport.reportDate, prepared, sigOf(selectedReport));
       await reloadFromServer();
       cancelBulkEdit();
       setOpMsg("✅ All rows saved.");
@@ -826,7 +996,7 @@ export default function ReturnView() {
           await deleteImagesMany(Array.isArray(row.images) ? row.images : []);
           setOpMsg("⏳ Deleting row…");
           const newItems = (selectedReport.items || []).filter((_, idx) => idx !== i);
-          await saveReportToServer(selectedReport.reportDate, newItems);
+          await saveReportToServer(selectedReport.reportDate, newItems, sigOf(selectedReport));
           await reloadFromServer();
           if (editRowIdx === i) cancelEditRow();
           setOpMsg("✅ Row deleted.");
@@ -885,7 +1055,9 @@ export default function ReturnView() {
     const group = row.splitGroup || `sp-${Date.now().toString(36)}`;
     const cameFrom = Number(row.splitOf) > 0 ? Number(row.splitOf) : total;
     const stays = { ...row, quantity: round3(total - part), splitGroup: group, splitOf: cameFrom };
-    const moves = {
+    /* The half that moves is the one being condemned, so it is the half that
+       carries the day the decision was made. */
+    const moves = stampActionDate({
       ...row,
       quantity: part,
       action: splitState.action,
@@ -894,13 +1066,13 @@ export default function ReturnView() {
       images: [],           // photos stay on the original line (shared Cloudinary URLs)
       splitGroup: group,
       splitOf: cameFrom,
-    };
+    }, true);
     const newItems = [...items.slice(0, idx), stays, moves, ...items.slice(idx + 1)];
 
     try {
       setSplitBusy(true);
       setOpMsg("⏳ Splitting the line…");
-      await saveReportToServer(selectedReport.reportDate, newItems);
+      await saveReportToServer(selectedReport.reportDate, newItems, sigOf(selectedReport));
       await appendActionChange(selectedReport.reportDate, {
         key: itemKey(row),
         from: actionText(row),
@@ -960,7 +1132,7 @@ export default function ReturnView() {
       const merged = [...cur, ...urls].slice(0, MAX_IMAGES_PER_PRODUCT);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
       setOpMsg("⏳ Updating images…");
-      await saveReportToServer(selectedReport.reportDate, newItems);
+      await saveReportToServer(selectedReport.reportDate, newItems, sigOf(selectedReport));
       if (editingImageRow) setEditRowData((s) => ({ ...s, images: merged }));
       await reloadFromServer();
       setOpMsg("✅ Images updated.");
@@ -991,7 +1163,7 @@ export default function ReturnView() {
       cur.splice(imgIndex, 1);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
       setOpMsg("⏳ Updating report…");
-      await saveReportToServer(selectedReport.reportDate, newItems);
+      await saveReportToServer(selectedReport.reportDate, newItems, sigOf(selectedReport));
       if (editingImageRow) setEditRowData((s) => ({ ...s, images: cur }));
       await reloadFromServer();
       setOpMsg("✅ Image removed.");
@@ -1025,6 +1197,7 @@ export default function ReturnView() {
           if (json?.deleted === 0) {
             setOpMsg("ℹ️ Nothing to delete (it may already be deleted).");
           } else {
+            forgetFiledDate("returns", d); // the input screen may still call the day filed
             await reloadFromServer();
             setSelectedDate("");
             setOpMsg("✅ Deleted this day's report from server.");
@@ -1034,6 +1207,88 @@ export default function ReturnView() {
         } finally { setTimeout(() => setOpMsg(""), 3000); }
       },
     });
+  };
+
+  /* ========== Move the selected day to another date ==========
+     A returns report is filed under its business date - that date IS its key
+     on the server, so "changing the date" means writing the day again under
+     the new one and dropping the old record; there is no field to rename. */
+  const openDateMove = () => {
+    if (!selectedReport) return;
+    setDateMove({ open: true, value: selectedReport.reportDate, busy: false });
+  };
+  const closeDateMove = () => setDateMove((s) => (s.busy ? s : { ...s, open: false }));
+
+  const confirmDateMove = async () => {
+    if (!selectedReport) return;
+    const from = selectedReport.reportDate;
+    const to = (dateMove.value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(to) || to === from) return;
+
+    // Looked up across every report, not the filtered ones: a day hidden by the
+    // date filter would still be overwritten by the save below.
+    const target = reports.find((r) => r.reportDate === to) || null;
+    const movedRows = selectedReport.items || [];
+    // On a merge the target day's own rows stay first, where its reader expects them.
+    const items = target ? [...(target.items || []), ...movedRows] : movedRows;
+    const meta = {
+      checkedBy: target?.checkedBy || selectedReport.checkedBy || "",
+      verifiedBy: target?.verifiedBy || selectedReport.verifiedBy || "",
+    };
+
+    setDateMove((s) => ({ ...s, busy: true }));
+    try {
+      setOpMsg("⏳ Writing the report under the new date…");
+      await saveReportToServer(to, items, meta);
+
+      /* The old record goes, its images stay: the very same Cloudinary URLs are
+         now carried by the rows under the new date, so deleting them here would
+         blank the report that was just saved. */
+      setOpMsg("⏳ Removing the old date…");
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=returns&reportDate=${encodeURIComponent(from)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(`half-moved: ${res.status} ${await res.text().catch(() => "")}`);
+
+      await moveChangeLog(from, to);
+      await appendActionChange(to, {
+        key: "",
+        dateMove: true,
+        fromDate: from,
+        toDate: to,
+        rows: movedRows.length,
+        merged: !!target,
+        at: new Date().toISOString(),
+      });
+
+      /* The input screen answers "is this day already filed?" from a cached
+         index; without this it would keep warning about the day that moved
+         away and stay silent about the one it landed on. */
+      moveFiledDate("returns", from, to);
+
+      await reloadFromServer();
+      // A day moved outside the active filter would vanish from the tree the
+      // moment it arrives, so the filter opens up to let it show.
+      if (filterFrom && to < filterFrom) setFilterFrom("");
+      if (filterTo && to > filterTo) setFilterTo("");
+      setSelectedDate(to);
+      setDateMove({ open: false, value: "", busy: false });
+      setOpMsg(target ? `✅ ${movedRows.length} row(s) merged into ${to}.` : `✅ Report moved to ${to}.`);
+    } catch (e) {
+      console.error(e);
+      setDateMove((s) => ({ ...s, busy: false }));
+      /* When the delete is what failed, the new day is already written: the same
+         rows now sit under both dates, and saying "failed" would hide that. */
+      setOpMsg(
+        String(e?.message || "").startsWith("half-moved")
+          ? `⚠️ Saved under ${to}, but ${from} could not be removed — delete that day by hand.`
+          : "❌ Failed to change the report date."
+      );
+      await reloadFromServer();
+    } finally {
+      setTimeout(() => setOpMsg(""), 6000);
+    }
   };
 
   /* ========== Export/Import ========== */
@@ -1513,6 +1768,11 @@ export default function ReturnView() {
                     <button onClick={startBulkEdit} style={bulkEditBtn}>✏️ Edit All</button>
                   )}
                   {!bulkEdit && <button onClick={startAddRow} style={addRowBtn}>➕ Add Row</button>}
+                  {!bulkEdit && (
+                    <button onClick={openDateMove} style={dateMoveBtn} title="File this whole day under a different date">
+                      📅 Change Date
+                    </button>
+                  )}
                   {!bulkEdit && <button onClick={handleDeleteDay} style={deleteBtnMain} data-delete-action="true">🗑️ Delete This Day Report</button>}
                 </div>
               </div>
@@ -1794,6 +2054,24 @@ export default function ReturnView() {
                   </tbody>
                 </table>
               </div>
+
+              {/* The two names the sheet was closed with. Read-only here: the
+                  signatures are given on the input form, and this screen edits
+                  rows - it must never look like a place to sign for someone. */}
+              <div style={signRow}>
+                <div style={signCell}>
+                  <span style={signLabel}>Checked by</span>
+                  <span style={selectedReport.checkedBy ? signName : signBlank}>
+                    {selectedReport.checkedBy || "not signed"}
+                  </span>
+                </div>
+                <div style={signCell}>
+                  <span style={signLabel}>Verified by</span>
+                  <span style={selectedReport.verifiedBy ? signName : signBlank}>
+                    {selectedReport.verifiedBy || "not signed"}
+                  </span>
+                </div>
+              </div>
             </div>
           ) : (
             <div style={{ textAlign: "center", color: "#6b7280", padding: 80, fontSize: "1.05em" }}>
@@ -1822,6 +2100,23 @@ export default function ReturnView() {
         onChange={(patch) => setSplitState((st) => ({ ...st, ...patch }))}
         onCancel={() => { if (!splitBusy) closeSplit(); }}
         onConfirm={confirmSplit}
+      />
+
+      {/* 📅 Change-date Modal */}
+      <ChangeDateModal
+        open={dateMove.open && !!selectedReport}
+        fromDate={selectedReport?.reportDate || ""}
+        value={dateMove.value}
+        busy={dateMove.busy}
+        rowCount={(selectedReport?.items || []).length}
+        target={
+          dateMove.value && dateMove.value !== selectedReport?.reportDate
+            ? reports.find((r) => r.reportDate === dateMove.value) || null
+            : null
+        }
+        onChange={(v) => setDateMove((s) => ({ ...s, value: v }))}
+        onCancel={closeDateMove}
+        onConfirm={confirmDateMove}
       />
 
       {/* ✅ Confirm Modal */}
@@ -1894,7 +2189,15 @@ const editBtn = { background: "#3b82f6", color: "#fff", border: "none", borderRa
 const imageBtn = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, padding: "4px 10px", cursor: "pointer" };
 const deleteBtnMain = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" };
 const addRowBtn = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" };
+const dateMoveBtn = { background: "#0ea5e9", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer", boxShadow: "0 2px 8px #bae6fd" };
 const rowDeleteBtn = { background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, padding: "4px 8px", cursor: "pointer" };
+
+/* ===== The signature strip under a day's rows ===== */
+const signRow = { display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" };
+const signCell = { flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 4 };
+const signLabel = { fontSize: 12, fontWeight: 800, color: "#64748b", letterSpacing: ".3px", textTransform: "uppercase" };
+const signName = { fontSize: "1.02em", fontWeight: 800, color: "#0f172a" };
+const signBlank = { fontSize: "1.02em", fontWeight: 700, color: "#94a3b8", fontStyle: "italic" };
 
 /* ===== Bulk edit styles (same Soft-Sky palette) ===== */
 const bulkEditBtn = { background: "linear-gradient(135deg, #0ea5e9, #6366f1)", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer", boxShadow: "0 2px 8px #bae6fd" };

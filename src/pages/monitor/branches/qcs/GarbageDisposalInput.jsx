@@ -24,7 +24,9 @@ const WASTE_TYPES = [
   "Other",
 ];
 
-const UNITS = ["kg", "bag", "ton", "container", "trip"];
+/* m³ is a volume, so it never joins the weight totals on the view screen -
+   those add up kg and ton only. */
+const UNITS = ["kg", "bag", "ton", "m³", "container", "trip"];
 
 const LOCATIONS = [
   "QCS Warehouse",

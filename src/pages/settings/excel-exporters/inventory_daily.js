@@ -3,8 +3,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 /* Status labels — mirrors STATUS_LABELS in InventoryDailyBrowse.jsx */
 const STATUS_LABELS = {
@@ -76,7 +75,7 @@ export default async function build(wb, record, ctx) {
   let r = ws.lastRow.number + 1;
 
   /* ── Overall summary band ── */
-  const allRows  = sections.flatMap((s) => Array.isArray(s.rows) ? s.rows : []);
+  const allRows  = sections.flatMap((s) => rowsOf(s.rows));
   const totalPcs = allRows.reduce((s, r) => s + (Number(r?.qtyPcs) || 0), 0);
   const totalKg  = allRows.reduce((s, r) => s + (Number(r?.qtyKg)  || 0), 0);
   const issueCount = allRows.filter(
@@ -114,7 +113,7 @@ export default async function build(wb, record, ctx) {
   } else {
     let globalSeq = 0;
     sections.forEach((sec) => {
-      const rows = Array.isArray(sec.rows) ? sec.rows : [];
+      const rows = rowsOf(sec.rows);
 
       /* ── Section header band ── */
       const secPcs = rows.reduce((s, x) => s + (Number(x?.qtyPcs) || 0), 0);

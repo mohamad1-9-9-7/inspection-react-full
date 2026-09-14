@@ -44,7 +44,7 @@ export const SECTION_ITEMS = {
         { id: "destruction.create",  icon: "📝", label: "Create" },
       ]},
       { id: "disposalLog",     icon: "⚖️", label: "Odoo Disposal Log", subItems: [
-        { id: "disposalLog.browse",  icon: "⚖️", label: "Comparison" },
+        { id: "disposalLog.compare", icon: "⚖️", label: "Comparison" },
         { id: "disposalLog.import",  icon: "📥", label: "Import" },
       ]},
     ],
@@ -129,8 +129,6 @@ export const SECTION_ITEMS = {
     ],
   },
 
-  halalAudit: { kind: "none" },
-
   hse: {
     kind: "pages",
     items: [
@@ -156,7 +154,7 @@ export const SECTION_ITEMS = {
       { id: "ppe-log",               icon: "🧤", label: "PPE Issue Log" },
       { id: "waste-log",             icon: "🗑️", label: "Waste Disposal" },
       { id: "capa-tracker",          icon: "📌", label: "CAPA Tracker" },
-      { id: "training-matrix",       icon: "🎓", label: "Training Matrix" },
+      { id: "training-matrix",       icon: "🎓", label: "Internal Training (opens /training)" },
       { id: "licenses",              icon: "🪪", label: "Licenses & Certifications" },
     ],
   },

@@ -5,8 +5,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const COLS = [
   { key: "_sl",         label: "SL",          width: 5  },
@@ -26,7 +25,7 @@ export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
   const h = p.meta || {};
-  const rows = Array.isArray(p.rows) ? p.rows : [];
+  const rows = rowsOf(p.rows);
 
   const NC = COLS.length; // 11
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

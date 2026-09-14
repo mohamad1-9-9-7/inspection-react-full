@@ -35,9 +35,15 @@ function findMainTable(payload) {
   if (!best) return null;
 
   // Flatten nested one-level objects (e.g. temps: { "AM 4:00": 1.2 } → columns)
+  //
+  // Only the FIRST element used to be type-checked, so an array like
+  // [{…}, null] — a row the user deleted in an older screen — reached
+  // Object.entries(null) and threw, losing the whole record to the
+  // "failed to render" placeholder. Guard every element.
   const cols = [];
   const flatRows = best.arr.map((item) => {
     const flat = {};
+    if (!item || typeof item !== "object") return flat;
     for (const [k, v] of Object.entries(item)) {
       if (typeof v === "object" && v !== null && !Array.isArray(v)) {
         for (const [sk, sv] of Object.entries(v)) {

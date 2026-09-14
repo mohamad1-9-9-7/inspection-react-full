@@ -1,8 +1,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 /* "22000 · NAME" — the item code glued to its product name, exactly as the
    branch view renders it. Either half may be missing. */
@@ -33,7 +32,7 @@ export function makePosTraceabilityBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : (Array.isArray(p.rows) ? p.rows : []);
+    const entries = rowsOf(Array.isArray(p.entries) ? p.entries : p.rows);
 
     const NC = COLS.length;
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

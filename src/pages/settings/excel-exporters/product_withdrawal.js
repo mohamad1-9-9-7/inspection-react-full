@@ -8,8 +8,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const LEVEL_LABEL = {
   Warehouse: "Company warehouse only",
@@ -104,7 +103,7 @@ const num = (v) => {
 
 /* Same maths as summarizeLocations() in ProductWithdrawalInput.jsx */
 function totalsOf(locations) {
-  const rows = Array.isArray(locations) ? locations : [];
+  const rows = rowsOf(locations);
   const t = rows.reduce(
     (a, l) => ({
       dispatched: a.dispatched + num(l.dispatched),
@@ -141,7 +140,7 @@ function fmtDateTime(iso) {
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const locations = Array.isArray(p.locations) ? p.locations : [];
+  const locations = rowsOf(p.locations);
   const t = totalsOf(locations);
   const unit = p.unit || "";
   const hrs = secureHours(p.initDate, p.initTime, p.holdCompleted);
@@ -407,7 +406,7 @@ export default async function build(wb, record, ctx) {
   pair("Linked NCR / CAR", p.ncrRef, "Linked Recall No.", p.recallRef);
 
   /* ── 12. Supporting documents ──────────────────────────────────────── */
-  const attachments = Array.isArray(p.attachments) ? p.attachments : [];
+  const attachments = rowsOf(p.attachments);
   section(`Supporting Documents (${attachments.length})`);
   if (attachments.length === 0) {
     ws.mergeCells(r, 1, r, NC);

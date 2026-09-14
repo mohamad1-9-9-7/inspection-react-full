@@ -112,6 +112,43 @@ function normalize(raw) {
     .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 }
 
+
+/* ========== The day a line became a destruction ==========
+   A return is written on the day the product came back; what happens to it
+   is often decided days later, by editing this very page. Odoo posts the
+   condemnation voucher on the day of the DECISION, so a report keeping only
+   its own date makes the same event look like two failures in the disposal
+   reconciliation: destroyed in Odoo and not by us on one day, and the
+   reverse on another.
+
+   So the day of the decision is stamped on the line itself. The change log
+   records it too, but a stamp on the row survives without it and is what
+   `/disposal-log/compare` reads first. */
+const DISPOSAL_ACTION_RE = /(condemn|destro|dispos|discard|إعدام|اعدام|إتلاف|اتلاف|تخلص|إدانة|ادانة)/i;
+const isDisposalText = (txt) => DISPOSAL_ACTION_RE.test(String(txt || ""));
+
+/** Today in Dubai — the business day, not the browser's UTC day. */
+function businessToday() {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/** Stamp (or clear) the disposal date after an action change. */
+function stampActionDate(row, changed) {
+  if (!changed) return row;
+  if (isDisposalText(row?.action === "Other..." ? row?.customAction : row?.action)) {
+    row.actionDate = businessToday();
+  } else {
+    delete row.actionDate;
+  }
+  return row;
+}
+
 /* ========== Action-change log (type=returns_customers_changes) ========== */
 async function appendActionChange(reportDate, changeItem) {
   let existing = [];
@@ -513,6 +550,10 @@ export default function CustomerReturnView() {
       action: row.action || "",
       customAction: row.action === "Other..." ? (row.customAction || "").trim() : "",
       images: Array.isArray(row.images) ? row.images : existingImages,
+      // The day this line became a destruction — see `stampActionDate`. This
+      // shape is a whitelist, so it has to be listed or the next edit of the
+      // row drops the date with it.
+      ...(row.actionDate ? { actionDate: String(row.actionDate).slice(0, 10) } : {}),
     };
   };
 
@@ -551,6 +592,8 @@ export default function CustomerReturnView() {
         const nextTxt = (prepared.action === "Other..." ? prepared.customAction : prepared.action) || "";
         changedAction = prevTxt && prevTxt !== nextTxt;
       }
+
+      stampActionDate(prepared, changedAction);
 
       let newItems;
       if (addingRow) newItems = [...currentItems, prepared];

@@ -3,11 +3,11 @@
 // Mirrors the Maintenance module list (each record = one request).
 
 import { makeRegisterExporter } from "./_register";
-import { formatDMY, prettifyKey } from "./_lib";
+import { formatDMY, prettifyKey, rowsOf } from "./_lib";
 
 /* problems[] is a list of issue objects/strings — join to a readable summary */
 function problemsText(it) {
-  const arr = Array.isArray(it.problems) ? it.problems : [];
+  const arr = rowsOf(it.problems);
   if (arr.length) {
     return arr
       .map((x) => (typeof x === "string" ? x : (x?.description || x?.title || x?.issueType || "")))

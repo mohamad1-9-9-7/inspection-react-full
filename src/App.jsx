@@ -156,7 +156,7 @@ const DestructionBrowse = lazy(() => import("./pages/Destruction/DestructionBrow
 
 // ✅🆕 Odoo monthly disposal log — import + reconciliation against our register
 const DisposalLogImport = lazy(() => import("./pages/Destruction/DisposalLog/DisposalLogImport"));
-const DisposalLogBrowse = lazy(() => import("./pages/Destruction/DisposalLog/DisposalLogBrowse"));
+const DisposalLogCompare = lazy(() => import("./pages/Destruction/DisposalLog/DisposalLogCompare"));
 
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
@@ -508,7 +508,6 @@ const HSEEvacuationDrills      = lazy(() => import("./pages/hse/HSEEvacuationDri
 const HSEPPELog                = lazy(() => import("./pages/hse/HSEPPELog"));
 const HSEWasteLog              = lazy(() => import("./pages/hse/HSEWasteLog"));
 const HSECAPATracker           = lazy(() => import("./pages/hse/HSECAPATracker"));
-const HSETrainingMatrix        = lazy(() => import("./pages/hse/HSETrainingMatrix"));
 const HSELicenses              = lazy(() => import("./pages/hse/HSELicenses"));
 const HSEKPIs                  = lazy(() => import("./pages/hse/HSEKPIs"));
 
@@ -1538,11 +1537,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* day × product reconciliation against our own registers.
+              The old `browse` screen compared the file with the handful of
+              written-up condemnations and was retired — this is the one
+              comparison. */}
           <Route
-            path="browse"
+            path="compare"
             element={
               <ProtectedRoute>
-                <DisposalLogBrowse />
+                <DisposalLogCompare />
               </ProtectedRoute>
             }
           />
@@ -2426,7 +2429,8 @@ export default function App() {
         <Route path="/hse/ppe-log" element={<ProtectedRoute><HSEPPELog /></ProtectedRoute>} />
         <Route path="/hse/waste-log" element={<ProtectedRoute><HSEWasteLog /></ProtectedRoute>} />
         <Route path="/hse/capa-tracker" element={<ProtectedRoute><HSECAPATracker /></ProtectedRoute>} />
-        <Route path="/hse/training-matrix" element={<ProtectedRoute><HSETrainingMatrix /></ProtectedRoute>} />
+        {/* التدريب صار موحّداً في /training — يبقى المسار القديم محوّلاً حتى لا تنكسر الروابط */}
+        <Route path="/hse/training-matrix" element={<Navigate to="/training" replace />} />
         <Route path="/hse/licenses" element={<ProtectedRoute><HSELicenses /></ProtectedRoute>} />
         <Route path="/hse/kpis" element={<ProtectedRoute><HSEKPIs /></ProtectedRoute>} />
 

@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const FIXED_COLUMNS = [
   { label: "S. No",                 width: 7,  isSerial: true },
@@ -34,7 +33,7 @@ function buildPackagingLike(title, docNo) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
-    const entries = Array.isArray(p.entries) ? p.entries : [];
+    const entries = rowsOf(p.entries);
 
     const NC = FIXED_COLUMNS.length;
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

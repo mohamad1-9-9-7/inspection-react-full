@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const DEFAULT_TIMES = [
   "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM",
@@ -19,7 +18,7 @@ export function makeFtrTempBuilder(branchLabel) {
     const times = (p.times || DEFAULT_TIMES).filter(
       (t) => String(t).toLowerCase() !== "corrective action"
     );
-    const coolersRaw = (p.coolers || []).map((c, idx) => ({
+    const coolersRaw = rowsOf(p.coolers).map((c, idx) => ({
       ...c,
       __idx: idx,
       __name: String(c?.name || c?.label || `Cooler ${idx + 1}`),
@@ -108,7 +107,7 @@ export function makeFtrTempBuilder(branchLabel) {
     }
 
     /* ─── Product Temperature Verification (Matching) ─── */
-    const pvs = Array.isArray(p.productVerifications) ? p.productVerifications : [];
+    const pvs = rowsOf(p.productVerifications);
     if (pvs.length) {
       // Ensure the matching table's extra columns have a sensible width
       [9, 10, 11].forEach((cIdx) => {

@@ -47,6 +47,25 @@ export const left   = { horizontal: "left",   vertical: "middle", wrapText: true
 /* ─── Generic helpers ─── */
 export const safe = (v) => (v == null ? "" : v);
 export const isFilledRow = (r = {}) => Object.values(r).some((v) => String(v ?? "").trim() !== "");
+
+/**
+ * A payload array, safe to read fields off.
+ *
+ * An is-it-an-array check alone is not enough: records written by older
+ * screens hold arrays with `null` holes where a row was deleted, and the very
+ * next line of an exporter reads `it.someField` — which throws, and the whole
+ * record loses its sheet to the "failed to render" placeholder. Sixty-one
+ * report types were one such record away from that.
+ *
+ * Holes become empty objects rather than being dropped, so a row that existed
+ * still occupies a line, and lists of plain strings (time slots, option lists)
+ * pass through untouched.
+ */
+export function rowsOf(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((r) => (r == null ? {} : r));
+}
+
 export function formatDMY(iso) {
   if (!iso) return "";
   const s = String(iso);
@@ -297,6 +316,43 @@ export function addTable(ws, cols, rows, opts = {}) {
 /* ─── Set column widths from a [{key,width}] spec ─── */
 export function setColumns(ws, cols) {
   ws.columns = cols.map((c) => ({ key: c.key, width: c.width || 14 }));
+}
+
+/* ─── Turn bare URLs into clickable links ─── */
+/**
+ * Evidence (photos, signed PDFs, certificates) lives on Cloudinary and reaches
+ * every exporter as a plain URL string, so the backup wrote it as grey text
+ * nobody could open without copying it out. This pass runs over a finished
+ * worksheet and converts any cell whose whole value is an http(s) URL into a
+ * real hyperlink.
+ *
+ * Done as a post-pass rather than inside each exporter so all 130-odd of them
+ * get it from one place, and none of them has to know about it.
+ *
+ * Cells holding several URLs on separate lines are linked to the first one —
+ * Excel allows a single hyperlink per cell, and the rest stay readable as text.
+ */
+const URL_RE = /^https?:\/\/\S+$/i;
+export function linkifySheet(ws, maxRows) {
+  /* Coerced rather than defaulted: `sheets.forEach(linkifySheet)` hands the
+     array index in as maxRows, and a 0 there silently links nothing. */
+  const cap = Number(maxRows) > 0 ? Number(maxRows) : 20000;
+  try {
+    ws.eachRow({ includeEmpty: false }, (row, n) => {
+      if (n > cap) return;
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const v = cell.value;
+        if (typeof v !== "string") return;
+        const first = v.split("\n")[0].trim();
+        if (!URL_RE.test(first)) return;
+        cell.value = { text: v, hyperlink: first };
+        cell.font = { ...(cell.font || {}), color: { argb: "1D4ED8" }, underline: true };
+      });
+    });
+  } catch {
+    /* A sheet that cannot be walked is still a valid sheet — never fail an
+       export over cosmetics. */
+  }
 }
 
 /* ─── Apply page setup (landscape, fit width) ─── */

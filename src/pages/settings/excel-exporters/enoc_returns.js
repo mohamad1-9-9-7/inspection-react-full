@@ -3,8 +3,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const COLS = [
   { label: "Box Code",     width: 11 },
@@ -58,7 +57,7 @@ export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p     = record?.payload || {};
   const date  = formatDMY(p.reportDate || extractDate(record));
-  const items = Array.isArray(p.items) ? p.items : [];
+  const items = rowsOf(p.items);
 
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
   pageSetupLandscape(ws);

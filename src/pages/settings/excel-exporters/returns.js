@@ -3,8 +3,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 import { getRefNo } from "../../../utils/reportRef";
 
 const COLS = [
@@ -39,15 +38,19 @@ export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p     = record?.payload || {};
   const date  = formatDMY(p.reportDate || extractDate(record));
-  const items = Array.isArray(p.items) ? p.items : [];
+  const items = rowsOf(p.items);
 
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
   pageSetupLandscape(ws);
   ws.columns = COLS.map((c) => ({ width: c.width }));
 
+  /* Same document block the input sheet shows on screen (the DOC constant in
+     pages/Returns.js) — one document, whether it is read there or here. */
   addDocHeader(ws, {
     documentTitle: "Returns Report",
     documentNo:    "RTN-QM/REC/001",
+    issueDate:     "05/02/2020",
+    revisionNo:    "0",
     area:          "QA / Logistics",
     reportTitle:   "BRANCH RETURNS REPORT",
     reportDate:    date,
@@ -132,6 +135,9 @@ export default async function build(wb, record, ctx) {
     });
   }
 
-  addFooter(ws, {}, NC);
+  /* The two signatures the sheet was closed with. An older report has none —
+     the footer then prints the empty lines, exactly like a paper form waiting
+     to be signed. */
+  addFooter(ws, { checkedBy: p.checkedBy || "", verifiedBy: p.verifiedBy || "" }, NC);
   return ws;
 }

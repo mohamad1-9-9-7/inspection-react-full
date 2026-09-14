@@ -5,6 +5,7 @@
 // every field faithfully without summarizing.
 
 import buildGeneric from "./_generic";
+import autoRegister from "./_auto_register";
 
 /* ─── QCS (20) ─── */
 import qcs_coolers           from "./qcs_coolers";
@@ -295,13 +296,108 @@ const CUSTOM = {
   "odoo_disposal_log":                      odoo_disposal_log,
 };
 
+/* ═══════════════════════════════════════════════════════════════
+   AUTOMATIC REGISTERS
+   ═══════════════════════════════════════════════════════════════
+   Types below store ONE REGISTER ROW per `/api/reports` record: the screen
+   shows them as a table and the record is a line in it. Sending those through
+   the per-record `_generic` exporter produced one worksheet per row — a year
+   of toolbox meetings became ~250 sheets in a single workbook. `_auto_register`
+   renders the whole type as one filterable, sortable table instead, deriving
+   its columns from the data.
+
+   A type belongs here only when its record really is one row. Document-shaped
+   reports (a whole recall drill, an audit, a day's temperature sheet) stay on
+   the per-record path. */
+const AUTO_REGISTER_TYPES = [
+  /* HSE — every page persists through apiSave(type, oneRow) in hseShared.js */
+  "hse_incident_reports",
+  "hse_risk_register",
+  "hse_risk_register_doc",
+  "hse_work_permits",
+  "hse_cleaning_log",
+  "hse_microbiological_swabs",
+  "hse_pest_control_log",
+  "hse_equipment_maintenance",
+  "hse_fire_equipment_inspections",
+  "hse_forklift_inspections",
+  "hse_toolbox_meetings",
+  "hse_evacuation_drills",
+  "hse_waste_disposal_log",
+  "hse_capa_tracker",
+  "hse_monthly_safety_reports",
+  "hse_ncr_reports",
+  "hse_licenses_certs",
+  "hse_policies_status",
+  "hse_sops_status",
+  "hse_training_records",
+  "hse_ppe_issue_log",
+  "hse_emergency_contacts",
+  "hse_welfare_checks",
+
+  /* ISO & HACCP registers with no hand-written column spec */
+  "water_testing_log",
+  "legal_register",
+  "kitchen_menu_nutrition_item",
+  "licenses_contracts",
+  "document_metadata",
+  "policy_acknowledgment",
+  "product_details",
+  "sop_employee_acknowledgement",
+  "sop_training_evidence",
+  "sop_implementation_evidence",
+  "qcs_supplier",
+  "supplier_self_assessment_form",
+  "supplier_performance",
+  "service_provider_performance",
+
+  /* Inspection / training / MRP / change logs */
+  "inspection_annual_plan",
+  "internal_multi_audit",
+  "supervisor_corrective_action",
+  "training_annual_plan",
+  "training_quiz",
+  "mrp_work_order",
+  "mrp_stock_move",
+  "mrp_audit_log",
+  "butcher_day_plan",
+  "settings_audit_log",
+  "returns_changes",
+  "returns_customers_changes",
+  "returns_report_log",
+
+  /* Fleet lookups — short lists, one value per record */
+  "cars_loading_lookup_driver_names",
+  "cars_loading_lookup_vehicle_numbers",
+  "truck_daily_cleaning_lookup_truck_numbers",
+];
+
+const AUTO = new Set(AUTO_REGISTER_TYPES);
+
 /**
- * Get the exporter for a given report type. Falls back to the generic exporter
- * if no custom one is registered. The fallback still produces a properly styled
- * sheet matching the Al Mawashi document layout and contains every payload field.
+ * Get the exporter for a given report type.
+ *
+ * Resolution order: a hand-written exporter, then the automatic register for
+ * row-per-record types, then the generic per-record sheet. Every path produces
+ * a styled Al Mawashi document layout containing the full payload — nothing is
+ * summarized away.
  */
 export function getExporter(typeKey) {
-  return CUSTOM[typeKey] || buildGeneric;
+  if (CUSTOM[typeKey]) return CUSTOM[typeKey];
+  if (AUTO.has(typeKey)) return autoRegister;
+  return buildGeneric;
 }
 
-export { buildGeneric };
+/** True when the type has a hand-written exporter (not generic, not automatic). */
+export function hasCustomExporter(typeKey) {
+  return Boolean(CUSTOM[typeKey]);
+}
+
+/** How a type is rendered — used by the backup manifest. */
+export function exporterKindFor(typeKey) {
+  if (CUSTOM[typeKey]) return CUSTOM[typeKey].collection ? "register" : "form";
+  if (AUTO.has(typeKey)) return "auto-register";
+  return "generic";
+}
+
+export { buildGeneric, autoRegister, AUTO_REGISTER_TYPES };

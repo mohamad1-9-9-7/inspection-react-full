@@ -12,8 +12,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const HYGIENE_COLUMNS = [
   "Nails",
@@ -31,7 +30,7 @@ const nameOf  = (e) => String(e?.name ?? e?.employeeName ?? e?.employName ?? "")
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const rows = Array.isArray(p.entries) ? p.entries : [];
+  const rows = rowsOf(p.entries);
 
   const hasEmpNo = rows.some((e) => empNoOf(e));
   const hasJob   = rows.some((e) => jobOf(e));

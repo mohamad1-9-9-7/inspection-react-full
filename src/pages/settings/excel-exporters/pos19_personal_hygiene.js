@@ -1,4 +1,5 @@
 import { buildPos19Sheet } from "./_pos19_base";
+import { rowsOf } from "./_lib";
 
 // The PH checklist for POS 19 — same general columns as QCS PH but POS 19 style.
 const columns = [
@@ -18,6 +19,6 @@ export default async function build(wb, record, ctx) {
     title: "Personal Hygiene Checklist",
     formRef: "FS-HACCP/POS19/PH/02",
     columns: columns.map((c, i) => ({ ...c, get: i === 0 ? (_row, _p, idx) => idx + 1 : undefined })),
-    getRows: (p) => Array.isArray(p.personalHygiene) ? p.personalHygiene : (p.entries || []),
+    getRows: (p) => rowsOf(Array.isArray(p.personalHygiene) ? p.personalHygiene : p.entries),
   });
 }

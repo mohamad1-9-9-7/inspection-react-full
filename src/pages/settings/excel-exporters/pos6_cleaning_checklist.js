@@ -1,6 +1,7 @@
 // POS 6 cleaning checklist — the sheet keeps its area headings, so a section
 // row is flattened into the "General cleanliness" column rather than dropped.
 import { buildPos6Sheet, verdictWarn } from "./_pos6";
+import { rowsOf } from "./_lib";
 
 const columns = [
   { key: "letter",   label: "No.",                  width: 8 },
@@ -12,7 +13,7 @@ const columns = [
 ];
 
 const flatten = (p) =>
-  (p.entries || []).map((r) =>
+  rowsOf(p.entries).map((r) =>
     r.isSection
       ? { letter: r.sectionNo, general: r.section, chemical: "", cnc: "", doneBy: "", remarks: "" }
       : r

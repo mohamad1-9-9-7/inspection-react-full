@@ -5,7 +5,7 @@
 import {
   COLORS, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
+  pageSetupLandscape, rowsOf,
 } from "./_lib";
 
 const BORDER_NAVY = {
@@ -40,7 +40,9 @@ const safe = (v) => v ?? "";
 export async function buildPos19Sheet(wb, record, ctx, opts) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const rowsRaw = (typeof opts.getRows === "function" ? opts.getRows(p) : (p.entries || []));
+  /* rowsOf(): getRows may hand back an array with null holes from an older
+     record, and rowFilter/cell readers dereference every element. */
+  const rowsRaw = rowsOf(typeof opts.getRows === "function" ? opts.getRows(p) : p.entries);
   const rows = opts.rowFilter ? rowsRaw.filter(opts.rowFilter) : rowsRaw;
 
   const NC = Math.max(opts.columns.length, 4);
@@ -105,7 +107,10 @@ export async function buildPos19Sheet(wb, record, ctx, opts) {
     rows.forEach((row, i) => {
       const bg = i % 2 === 0 ? "FFFFFF" : "F8FAFF";
       opts.columns.forEach((col, ci) => {
-        const v = typeof col.get === "function" ? col.get(row, p) : row[col.key];
+        /* The row index is the third argument: the POS 19 personal-hygiene
+           sheet numbers its "S. No" column with it, and without it that
+           column printed NaN on every line. */
+        const v = typeof col.get === "function" ? col.get(row, p, i) : row[col.key];
         const c = ws.getCell(r, ci + 1);
         c.value = safe(v);
         c.font = { size: 10 };

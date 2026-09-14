@@ -33,16 +33,16 @@ export function HSELangToggle({ lang, toggle, style }) {
       style={{
         padding: "7px 14px",
         borderRadius: 999,
-        border: "1px solid rgba(120, 53, 15, 0.30)",
-        background: "linear-gradient(135deg, #fed7aa, #fef3c7)",
-        color: "#7c2d12",
+        border: "1px solid rgba(34,211,238,0.38)",
+        background: "linear-gradient(135deg, rgba(34,211,238,0.20), rgba(34,197,94,0.14))",
+        color: "#052336",
         fontWeight: 900,
         fontSize: 12,
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        boxShadow: "0 4px 12px rgba(234,88,12,0.18)",
+        boxShadow: "0 8px 20px rgba(34,211,238,0.16)",
         whiteSpace: "nowrap",
         ...style,
       }}
@@ -71,6 +71,7 @@ export const SITE_LOCATIONS = [
   { v: "Production / Processing Line",                  ar: "خط الإنتاج / التصنيع",                  en: "Production / Processing Line" },
   { v: "Receiving Bay — Air Cargo Reception",           ar: "منطقة الاستلام — شحن جوي",              en: "Receiving Bay — Air Cargo Reception" },
   { v: "Dispatch Bay",                                  ar: "منطقة الشحن (Dispatch Bay)",            en: "Dispatch Bay" },
+  { v: "Loading & Unloading Bay",                       ar: "منطقة التحميل والتفريغ",                 en: "Loading & Unloading Bay" },
   { v: "Frozen Room (-18°C)",                           ar: "غرفة التجميد (-18°م)",                   en: "Frozen Room (-18°C)" },
   { v: "Chiller Room (0 to +4°C)",                      ar: "غرفة التبريد (0 إلى +4°م)",             en: "Chiller Room (0 to +4°C)" },
   { v: "Distribution Fleet (Refrigerated trucks)",      ar: "أسطول التوزيع (شاحنات مبرّدة)",         en: "Distribution Fleet (Refrigerated trucks)" },
@@ -104,6 +105,16 @@ export const HAZARD_CATEGORIES = [
   { v: "cross",           ar: "تلوث متبادل",                                          en: "Cross-contamination" },
   { v: "pest",            ar: "حشرات / قوارض",                                       en: "Pest / Rodent" },
   { v: "env",             ar: "بيئي — نفايات / مياه / انبعاثات",                    en: "Environmental — Waste / Effluent / Emissions" },
+];
+
+/** تصنيف نوع التحكم — هرم الضبط (Hierarchy of Controls) وفق ISO 45001 */
+export const CONTROL_TYPES = [
+  { v: "elimination",   ar: "إزالة الخطر (Elimination)",                 en: "Elimination" },
+  { v: "substitution",  ar: "استبدال (Substitution)",                     en: "Substitution" },
+  { v: "engineering",   ar: "ضبط هندسي (Engineering)",                    en: "Engineering control" },
+  { v: "administrative",ar: "ضبط إداري — إجراء/تدريب/إشراف",             en: "Administrative — procedure/training/supervision" },
+  { v: "ppe",           ar: "معدات وقاية شخصية (PPE)",                    en: "Personal Protective Equipment" },
+  { v: "combined",      ar: "مزيج من أكثر من مستوى",                      en: "Combination of levels" },
 ];
 
 /** Helper: convert legacy array of strings or new array of {v,ar,en} into options */
@@ -190,8 +201,9 @@ function flattenRecord(rec) {
   if (!rec) return null;
   const p = rec.payload || rec.data?.payload || {};
   return {
-    id: rec.id || rec._id || p.id,
     ...p,
+    // معرّف السيرفر يتقدّم على أي id داخل الـ payload (سجلات البذور تحمل id: "seed-1")
+    id: rec.id || rec._id || p.id,
     createdAt: p.createdAt || rec.createdAt,
     updatedAt: p.updatedAt || rec.updatedAt,
   };

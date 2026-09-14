@@ -1,9 +1,14 @@
 // POS 6 personal hygiene — mirrors the columns of the POS 6 viewer.
 import { buildPos6Sheet, numbered, verdictWarn, S_NO } from "./_pos6";
+import { rowsOf } from "./_lib";
 
 const columns = [
   S_NO,
+  // Number and job title come from Settings → Staff Directory. Sheets filed
+  // before those columns existed simply export them blank.
+  { key: "empNo", label: "Emp. No",       width: 10 },
   { key: "name",  label: "Employee Name", width: 24, align: "left" },
+  { key: "job",   label: "Job Title",     width: 20, align: "left" },
   { key: "Nails", label: "Nails", width: 11 },
   { key: "Hair",  label: "Hair",  width: 11 },
   { key: "Not wearing Jewelry", label: "Not wearing jewellery", width: 15 },
@@ -19,7 +24,7 @@ export default async function build(wb, record, ctx) {
     title: "Personal Hygiene Checklist",
     formRef: "FS-QM/REC/PH",
     columns,
-    getRows: (p) => numbered(p.entries || []),
+    getRows: (p) => numbered(rowsOf(p.entries)),
     cellWarn: verdictWarn,
   });
 }

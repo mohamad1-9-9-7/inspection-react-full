@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { FiArrowLeft, FiBookOpen, FiSave } from "react-icons/fi";
 import logo from "../../assets/almawashi-logo.jpg";
 import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
+import { QUIZ_BANK } from './TrainingSessionsList.helpers';
 
 /* ===================== API base ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -150,6 +151,7 @@ export const MODULES = [
   "OHS: PPE & Safe Work",
   "OHS: Knife Safety",
   "OHS: Manual Handling",
+  "OHS: Loading & Unloading",
   "OHS: Fire Safety & Emergency",
   "OHS: First Aid & Incident Reporting",
   "TESTO OIL — Oil Quality Test",
@@ -436,6 +438,32 @@ export const QUESTION_BANK = {
     ],
   },
 
+  "OHS: Loading & Unloading": {
+    en: [
+      { q: "Before any handling starts, the vehicle must be:", options: ["Left with the engine running for a quick departure", "Engine off, parking brake on, wheel chocks fitted, key held by the supervisor", "Parked wherever is convenient"], correct: 1 },
+      { q: "Who may stand in the exclusion zone behind a reversing vehicle?", options: ["The banksman only", "No one", "Anyone wearing a high-visibility vest"], correct: 1 },
+      { q: "The maximum single-person lifting weight in the loading bay is:", options: ["40 kg", "25 kg — above that a two-person lift is required", "There is no limit"], correct: 1 },
+      { q: "To get down from the truck bed you must:", options: ["Jump down carefully", "Use the fixed steps or an approved access platform", "Climb down over the stacked load"], correct: 1 },
+      { q: "A banksman is required:", options: ["Only at night", "For every reversing manoeuvre", "Only when the driver asks for one"], correct: 1 },
+      { q: "The minimum lighting level in the loading area is:", options: ["50 lux", "200 lux, verified by a documented monthly check", "Any light level is acceptable"], correct: 1 },
+      { q: "A damaged securement strap must be:", options: ["Used only for light loads", "Withdrawn from service immediately", "Repaired with tape and reused"], correct: 1 },
+      { q: "The pre-departure load-securement checklist is signed by:", options: ["The driver only", "The driver and the supervisor", "Nobody — it is an informal check"], correct: 1 },
+      { q: "During heavy rain or on an iced floor, the shift supervisor:", options: ["Must continue in order to keep the schedule", "Has the authority to suspend the operation until it is safe", "Must obtain head-office approval first"], correct: 1 },
+      { q: "A near-miss in the loading bay where nobody was injured must be:", options: ["Ignored, since there was no injury", "Reported and investigated like any other incident", "Mentioned verbally to the supervisor only"], correct: 1 },
+    ],
+    ar: [
+      { q: "قبل بدء أي مناولة يجب أن تكون المركبة:", options: ["محركها يعمل استعداداً للمغادرة السريعة", "المحرك مطفأ، فرامل الوقوف مفعّلة، الأوتاد مركّبة، والمفتاح لدى المشرف", "متوقفة في أي مكان مناسب"], correct: 1 },
+      { q: "من يُسمح له بالوقوف في منطقة الاستبعاد خلف مركبة ترجع للخلف؟", options: ["المراقب فقط", "لا أحد", "أي شخص يرتدي سترة عاكسة"], correct: 1 },
+      { q: "الحد الأقصى للرفع اليدوي للفرد الواحد في منطقة التحميل هو:", options: ["40 كجم", "25 كجم — وما فوقها يتطلب رفعاً ثنائياً", "لا يوجد حد"], correct: 1 },
+      { q: "للنزول من صندوق الشاحنة يجب:", options: ["القفز بحذر", "استخدام السلالم الثابتة أو منصة وصول معتمدة", "النزول فوق الأحمال المستيفة"], correct: 1 },
+      { q: "وجود المراقب (Banksman) مطلوب:", options: ["ليلاً فقط", "عند كل مناورة رجوع للخلف", "فقط إذا طلبه السائق"], correct: 1 },
+      { q: "الحد الأدنى للإضاءة في منطقة التحميل هو:", options: ["50 لكس", "200 لكس مع فحص شهري موثّق", "أي مستوى إضاءة مقبول"], correct: 1 },
+      { q: "حزام التثبيت التالف يجب:", options: ["استخدامه للأحمال الخفيفة فقط", "سحبه من الخدمة فوراً", "إصلاحه بشريط لاصق وإعادة استخدامه"], correct: 1 },
+      { q: "قائمة فحص تثبيت الحمولة قبل المغادرة يوقّعها:", options: ["السائق فقط", "السائق والمشرف معاً", "لا أحد — فحص غير رسمي"], correct: 1 },
+      { q: "عند الأمطار الغزيرة أو الأرضية المتجمّدة، مشرف المناوبة:", options: ["يجب أن يستمر للحفاظ على الجدول", "له صلاحية تعليق العملية حتى تصبح آمنة", "يجب أن يأخذ موافقة الإدارة أولاً"], correct: 1 },
+      { q: "شبه الحادث في منطقة التحميل الذي لم يُصب فيه أحد يجب:", options: ["تجاهله لعدم وجود إصابة", "الإبلاغ عنه والتحقيق فيه كأي حادث", "ذكره شفهياً للمشرف فقط"], correct: 1 },
+    ],
+  },
   "TESTO OIL — Oil Quality Test": {
     en: [
       { q: "When should you test oil quality with TESTO 270?", options: ["Once a week", "Before service + every 2–3 hrs during frying", "Only when oil looks dark"], correct: 1 },
@@ -471,9 +499,25 @@ export const QUESTION_BANK = {
   },
 };
 
+// Convert a QUIZ_BANK module (flat, bilingual, difficulty-tagged) into the
+// { en, ar } shape this page uses. QUIZ_BANK covers every module, QUESTION_BANK
+// does not — without this fallback those modules saved a placeholder bank.
+function packFromQuizBank(moduleName) {
+  const arr = QUIZ_BANK?.[moduleName];
+  if (!Array.isArray(arr) || !arr.length) return null;
+  const toSide = (qKey, oKey) => arr.map((q) => ({
+    q: q[qKey] || "",
+    options: Array.isArray(q[oKey]) ? q[oKey] : [],
+    correct: typeof q.correct === "number" ? q.correct : 0,
+  }));
+  return { en: toSide("q_en", "options_en"), ar: toSide("q_ar", "options_ar") };
+}
+
 function pickQuestionsForModule(moduleName, liveBank = {}) {
   const pack = liveBank[moduleName] || QUESTION_BANK[moduleName];
   if (pack?.en?.length) return pack;
+  const fromQuiz = packFromQuizBank(moduleName);
+  if (fromQuiz) return fromQuiz;
   return {
     en: [{ q: "This training module requires QA-defined questions.", options: ["OK"], correct: 0 }],
     ar: [{ q: "هذا القسم يحتاج أسئلة من QA.", options: ["موافق"], correct: 0 }],
@@ -835,8 +879,10 @@ export default function TrainingSessionCreate() {
         details={details}
         objectives={objectives}
         conductedBy={conductedBy}
-        quickCheckQuestions={((liveQuestionBank[effectiveModule] || QUESTION_BANK[effectiveModule])?.en || []).slice(0, 5).map(q => ({
+        quickCheckQuestions={(questionsPack?.en || []).slice(0, 5).map((q, i) => ({
           q_en: q.q, options_en: q.options, correct: q.correct,
+          q_ar: questionsPack?.ar?.[i]?.q || "",
+          options_ar: questionsPack?.ar?.[i]?.options || [],
         }))}
       />
     </div>

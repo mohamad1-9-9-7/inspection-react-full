@@ -5,8 +5,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, addTable, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const NC = 10; // # · Meat Type · Qty · Reason · Details · Method · Code · Batch · Notes · Photos
 
@@ -31,7 +30,7 @@ const num = (v) => {
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const entries = Array.isArray(p.entries) ? p.entries : [];
+  const entries = rowsOf(p.entries);
   const totalKg = num(p.totals?.totalKg) || entries.reduce((s, e) => s + num(e.quantityKg), 0);
 
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

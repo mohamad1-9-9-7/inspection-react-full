@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
@@ -14,8 +13,8 @@ export default async function build(wb, record, ctx) {
   const visitor = p.visitor || {};
   const hq = p.healthQuestions || {};
   const questions = [
-    ...(Array.isArray(hq.q1) ? hq.q1 : []),
-    ...(Array.isArray(hq.additional) ? hq.additional : []),
+    ...(rowsOf(hq.q1)),
+    ...(rowsOf(hq.additional)),
   ];
   const decl = p.declaration || {};
   const sig = p.signatures || {};

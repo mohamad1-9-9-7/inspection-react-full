@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait,
-} from "./_lib";
+  pageSetupPortrait, rowsOf } from "./_lib";
 
 const HEAD = [
   { label: "SI-No",                       width: 8 },
@@ -22,7 +21,7 @@ export default async function build(wb, record, ctx) {
   const ftr = p.footer || p?.headers?.dcFooter || {};
 
   const raw = p.cleanlinessRows || p.entries || p.rows || [];
-  const rows = Array.isArray(raw) ? raw : [];
+  const rows = rowsOf(raw);
 
   const NC = HEAD.length;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

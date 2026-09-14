@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape,
-} from "./_lib";
+  pageSetupLandscape, rowsOf } from "./_lib";
 
 const HEAD_COLS = [
   { key: "sno",                  label: "S. No",                                     width: 7 },
@@ -27,7 +26,7 @@ export default async function build(wb, record, ctx) {
   const ftr = p.footer || p?.headers?.phFooter || {};
 
   const rowsRaw = Array.isArray(p.personalHygiene) ? p.personalHygiene
-                : (Array.isArray(p.rows) ? p.rows : []);
+                : (rowsOf(p.rows));
   const rows = rowsRaw.map((x) => ({
     employeeNo:          x?.employeeNo ?? x?.empNo ?? "",
     employeeName:        x?.employeeName ?? x?.employName ?? "",

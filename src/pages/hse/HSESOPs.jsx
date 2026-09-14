@@ -1,438 +1,606 @@
 // src/pages/hse/HSESOPs.jsx
-// قائمة SOPs — ثنائية اللغة
+// الإجراءات التشغيلية القياسية — بتصميم صفحة SOP الخاصة بـ HACCP / ISO:
+// شريط علوي زجاجي، بطاقات وثائق، ونافذة قراءة بحجم 75% من الشاشة. ثنائية اللغة.
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import {
-  pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
-  cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  apiList, apiSave, apiUpdate, useHSELang, HSELangToggle,
-} from "./hseShared";
+import { todayISO, useHSELang } from "./hseShared";
+import { SOP_GROUPS } from "./hseSopData";
+import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
+import mawashiLogo from "../../assets/almawashi-logo.jpg";
 
 const T = {
-  pageTitle:    { ar: "📘 الإجراءات التشغيلية القياسية — SOPs", en: "📘 Standard Operating Procedures — SOPs" },
-  pageSubtitle: { ar: "28 إجراءً مقسّمة على 5 مجموعات", en: "28 procedures across 5 groups" },
-  pageIntro: {
-    ar: "تُترجم السياسات إلى خطوات عملية عبر الإجراءات التشغيلية القياسية (Standard Operating Procedures). كل إجراء يجب أن يتضمّن: الهدف، النطاق، المسؤوليات، الخطوات التفصيلية، السجلات المطلوبة، والمراجعات الدورية. الإجراءات هنا مرقّمة بنظام موحّد (SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD) ومرتّبة حسب الأولوية التشغيلية. يجب توقيع كل إجراء من مدير HSE قبل تطبيقه، ومراجعته سنوياً أو بعد أي تغيير جوهري.",
-    en: "Policies are translated into practical steps via Standard Operating Procedures. Each SOP must include: Objective, Scope, Responsibilities, Detailed Steps, Required Records, and Periodic Review. Procedures here are numbered with a unified scheme (SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD) and ordered by operational priority. Each SOP must be signed by the HSE Manager before implementation, and reviewed annually or after any significant change.",
+  brandLine1:   { ar: "ترانس إميرتس لتجارة المواشي ذ.م.م", en: "TRANS EMIRATES LIVESTOCK TRADING L.L.C." },
+  brandLine2:   { ar: "الأسماك والمواشي — نظام إدارة الصحة والسلامة والبيئة", en: "AL MAWASHI — HSE Management System" },
+  badgeLabel:   { ar: "📘 وثائق مضبوطة", en: "📘 Controlled documents" },
+  pageTitle:    { ar: "الإجراءات التشغيلية القياسية — SOPs", en: "Standard Operating Procedures — SOPs" },
+  pageSubtitle: { ar: "33 إجراءً موزّعة على 5 مجموعات · مرقّمة بنظام موحّد SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD",
+                  en: "33 procedures across 5 groups · numbered SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD" },
+  tagline: {
+    ar: "كل إجراء يتضمّن الهدف والنطاق والتعريفات والمسؤوليات والخطوات والسجلات والتكرار، إضافةً إلى التعامل مع الانحرافات وطريقة التحقق والمرجعية القانونية والمعيارية.",
+    en: "Every procedure carries objective, scope, definitions, responsibilities, steps, records and frequency, plus deviation handling, the verification method and its legal and standard references.",
   },
-  back:         { ar: "← HSE", en: "← HSE" },
-  expand:       { ar: "▼ التفاصيل", en: "▼ Details" },
-  collapse:     { ar: "▲ إخفاء", en: "▲ Hide" },
-  objective:    { ar: "🎯 الهدف", en: "🎯 Objective" },
-  scope:        { ar: "📍 النطاق", en: "📍 Scope" },
-  steps:        { ar: "🔢 الخطوات الرئيسية", en: "🔢 Key Steps" },
-  records:      { ar: "📁 السجلات المطلوبة", en: "📁 Required Records" },
-  freq:         { ar: "⏰ التكرار", en: "⏰ Frequency" },
-  activate:     { ar: "تفعيل", en: "Activate" },
-  edit:         { ar: "تعديل", en: "Edit" },
-  cancel:       { ar: "إلغاء", en: "Cancel" },
-  save:         { ar: "💾 حفظ", en: "💾 Save" },
-  version:      { ar: "الإصدار", en: "Version" },
-  status:       { ar: "الحالة", en: "Status" },
-  approvedDate: { ar: "تاريخ الاعتماد", en: "Approval Date" },
-  reviewDate:   { ar: "المراجعة القادمة", en: "Next Review" },
-  owner:        { ar: "المسؤول", en: "Owner" },
-  optDraft:     { ar: "🟡 مسودة", en: "🟡 Draft" },
-  optReview:    { ar: "🔵 قيد المراجعة", en: "🔵 Under Review" },
-  optActive:    { ar: "✅ معتمدة", en: "✅ Approved" },
-  badgeActive:  { ar: "✅ معتمدة", en: "✅ Approved" },
-  badgeReview:  { ar: "🔵 مراجعة", en: "🔵 Review" },
-  badgeDraft:   { ar: "🟡 مسودة", en: "🟡 Draft" },
+  back:         { ar: "← مركز HSE", en: "← HSE hub" },
+  search:       { ar: "ابحث برمز أو عنوان الإجراء…", en: "Search by code or procedure title…" },
+  filterAll:    { ar: "الكل", en: "All" },
+  statTotal:    { ar: "إجمالي الإجراءات", en: "Total procedures" },
+  statGroups:   { ar: "المجموعات", en: "Groups" },
+  statShowing:  { ar: "المعروض", en: "Showing" },
+  viewDetails:  { ar: "عرض الوثيقة كاملة", en: "View full document" },
+  noResults:    { ar: "لا يوجد إجراء مطابق لبحثك", en: "No procedure matches your search" },
+
+  objective:      { ar: "الهدف", en: "Objective" },
+  scope:          { ar: "النطاق", en: "Scope" },
+  definitions:    { ar: "التعريفات", en: "Definitions" },
+  responsibilities:{ ar: "المسؤوليات", en: "Responsibilities" },
+  steps:          { ar: "الخطوات الرئيسية", en: "Key steps" },
+  records:        { ar: "📁 السجلات المطلوبة", en: "📁 Required records" },
+  freq:           { ar: "⏰ التكرار", en: "⏰ Frequency" },
+  deviation:      { ar: "الانحرافات والإجراء التصحيحي", en: "Deviations and corrective action" },
+  verification:   { ar: "التحقق والمراقبة", en: "Verification and monitoring" },
+  refs:           { ar: "المرجعية القانونية والمعيارية", en: "Legal and standard references" },
+
+  code:         { ar: "رمز الوثيقة", en: "Document code" },
+  group:        { ar: "المجموعة", en: "Group" },
+  close:        { ar: "إغلاق", en: "Close" },
+
+  exportRegister: { ar: "📄 PDF — سجل الإجراءات", en: "📄 PDF — SOP register" },
+  exportSop:      { ar: "📄 تصدير هذه الوثيقة", en: "📄 Export this document" },
+  exporting:      { ar: "⏳ جارٍ التصدير…", en: "⏳ Exporting…" },
+
+  pdfCompany:   { ar: "الأسماك والمواشي — قسم الصحة والسلامة والبيئة", en: "AL MAWASHI — Health, Safety & Environment Department" },
+  pdfRegTitle:  { ar: "سجل الإجراءات التشغيلية القياسية (قائمة الوثائق المضبوطة)", en: "Standard Operating Procedures Register (Controlled Document List)" },
+  pdfPrintedOn: { ar: "تاريخ الطباعة", en: "Printed on" },
+  pdfCount:     { ar: "عدد الإجراءات", en: "Procedures listed" },
+  pdfNo:        { ar: "م", en: "#" },
+  pdfSopTitle:  { ar: "عنوان الإجراء", en: "Procedure title" },
 };
 
-const SOP_GROUPS = [
-  {
-    id: "fs", title: { ar: "Food Safety & Cold Chain — سلامة الغذاء وسلسلة التبريد", en: "Food Safety & Cold Chain" },
-    color: "#0369a1", bg: "#dbeafe",
-    items: [
-      {
-        code: "SOP-FS-01",
-        title: { ar: "استلام الشحنات المستوردة", en: "Receiving imported shipments" },
-        desc: { ar: "فحص درجة الحرارة، الشهادات الصحية، المطابقة", en: "Temperature check, health certificates, conformity" },
-        objective: { ar: "ضمان أن كل شحنة لحوم تصل للشركة (جوي/بحري) مطابقة للمواصفات قبل قبولها وتخزينها لمنع إدخال مخاطر سلامة غذاء.",
-                     en: "Ensure every meat shipment arriving (air/sea) conforms to specifications before acceptance and storage — preventing the introduction of food-safety risks." },
-        scope: { ar: "كل الشحنات المستوردة، من نقطة الاستلام (Cargo Village / Jebel Ali) إلى الإيداع في غرف التبريد/التجميد.",
-                 en: "All imported shipments — from receipt point (Cargo Village / Jebel Ali) to placement in chiller/freezer rooms." },
-        steps: { ar: "1) فحص بصري للشاحنة وحاوية التبريد. 2) قياس حرارة الشاحنة + قلب المنتج + سطحه (3 قراءات). 3) التحقق من الشهادة الصحية البيطرية والحلال وCOO. 4) فحص بصري للتغليف والرائحة وأي تلوث. 5) قرار: قبول/رفض/قبول جزئي/حجر صحي. 6) تسجيل في نموذج F-09. 7) إيداع في الغرفة المناسبة.",
-                 en: "1) Visual inspection of truck and refrigerated container. 2) Measure truck temperature + product core + surface (3 readings). 3) Verify veterinary health certificate, Halal, COO. 4) Visual check for packaging, smell, any contamination. 5) Decision: accept/reject/partial/quarantine. 6) Record in form F-09. 7) Place in appropriate room." },
-        records: { ar: "F-09 (سجل استلام الشحنات)، نسخ الشهادات، صور الشحنة عند الاستلام.",
-                   en: "F-09 (Shipment Receiving Log), certificate copies, shipment photos at receipt." },
-        freq: { ar: "عند كل شحنة (CCP حرج)", en: "On every shipment (Critical CCP)" },
-      },
-      {
-        code: "SOP-FS-02",
-        title: { ar: "مراقبة ومعايرة درجات الحرارة", en: "Temperature monitoring & calibration" },
-        desc: { ar: "في الغرف المبردة والمجمدة", en: "Chiller and freezer rooms" },
-        objective: { ar: "ضمان الحفاظ على سلسلة التبريد ضمن الحدود المستهدفة وتسجيل القراءات بشكل موثق لتلبية متطلبات HACCP وبلدية دبي.",
-                     en: "Maintain the cold chain within target limits and log readings in a documented way to meet HACCP and Dubai Municipality requirements." },
-        scope: { ar: "كل غرف التبريد (0 إلى +4°م) والتجميد (-18°م)، مناطق الاستلام والشحن، شاحنات النقل.",
-                 en: "All chiller (0 to +4°C) and freezer (-18°C) rooms, receiving and dispatch areas, transport trucks." },
-        steps: { ar: "1) قياس الحرارة كل 4 ساعات في كل غرفة. 2) تسجيل القراءة في نموذج F-08. 3) عند انحراف >2°م → بدء SOP-FS-03. 4) معايرة أجهزة القياس كل 6 أشهر بمختبر معتمد. 5) فحص أجهزة Data Loggers يومياً. 6) مقارنة قراءات يدوية مع قراءات Data Logger أسبوعياً.",
-                 en: "1) Read temperatures every 4 hours in each room. 2) Log reading in form F-08. 3) On deviation >2°C → trigger SOP-FS-03. 4) Calibrate devices every 6 months at an accredited lab. 5) Check data loggers daily. 6) Cross-check manual vs data-logger readings weekly." },
-        records: { ar: "F-08 (سجل درجات الحرارة)، شهادات معايرة، تقارير Data Loggers.",
-                   en: "F-08 (Temperature Log), calibration certificates, data-logger reports." },
-        freq: { ar: "كل 4 ساعات (24/7)", en: "Every 4 hours (24/7)" },
-      },
-      {
-        code: "SOP-FS-03",
-        title: { ar: "التعامل مع انحرافات درجة الحرارة", en: "Temperature deviation response" },
-        desc: { ar: "Temperature Deviation Response", en: "Triggers, escalation, product hold/release" },
-        objective: { ar: "الاستجابة الفورية لأي انحراف في حرارة سلسلة التبريد لمنع فساد المنتج وتقييم سلامته قبل الإفراج عنه.",
-                     en: "Immediately respond to any cold-chain temperature deviation — to prevent product spoilage and assess safety before release." },
-        scope: { ar: "كل انحراف يتجاوز الحد المسموح (>4°م في التبريد، >-15°م في التجميد) لأكثر من 30 دقيقة.",
-                 en: "Any deviation exceeding the allowed limit (>4°C chilled, >-15°C frozen) for more than 30 minutes." },
-        steps: { ar: "1) إنذار فوري + إبلاغ مسؤول سلامة الغذاء. 2) عزل المنتج المتأثر (Hold). 3) تقييم درجة الانحراف ومدته. 4) قياس حرارة قلب المنتج. 5) قرار: إفراج/إعادة معالجة/إتلاف. 6) تحقيق في السبب الجذري. 7) إجراء تصحيحي.",
-                 en: "1) Immediate alarm + notify Food Safety Officer. 2) Hold affected product. 3) Assess severity and duration of deviation. 4) Measure product core temperature. 5) Decision: release / re-process / destroy. 6) Root-cause investigation. 7) Corrective action." },
-        records: { ar: "تقرير الانحراف، قرار الإفراج/الإتلاف، CAPA (F-20).",
-                   en: "Deviation report, release/destroy decision, CAPA (F-20)." },
-        freq: { ar: "عند كل انحراف", en: "On every deviation" },
-      },
-      {
-        code: "SOP-FS-04",
-        title: { ar: "إجراء التنظيف والتعقيم", en: "Cleaning & sanitation procedure" },
-        desc: { ar: "اليومي والأسبوعي والشهري", en: "Daily / weekly / monthly" },
-        objective: { ar: "الحفاظ على بيئة إنتاج خالية من البكتيريا الممرضة والملوثات الفيزيائية والكيميائية.",
-                     en: "Maintain a production environment free of pathogenic bacteria and physical/chemical contaminants." },
-        scope: { ar: "خط التصنيع، الغرف الباردة، الأدوات والمعدات، الأرضيات، أحواض غسل اليدين، دورات المياه.",
-                 en: "Processing line, cold rooms, tools and equipment, floors, hand-wash sinks, toilets." },
-        steps: { ar: "1) إزالة المخلفات الخشنة. 2) شطف بالماء. 3) تطبيق المنظف. 4) فرك ميكانيكي. 5) شطف. 6) تطبيق المعقّم بالتركيز الصحيح. 7) ترك زمن التلامس. 8) شطف نهائي. 9) فحص بصري + ATP. 10) تسجيل في F-10.",
-                 en: "1) Remove gross debris. 2) Rinse with water. 3) Apply detergent. 4) Mechanical scrubbing. 5) Rinse. 6) Apply sanitizer at correct concentration. 7) Allow contact time. 8) Final rinse. 9) Visual + ATP check. 10) Log in F-10." },
-        records: { ar: "F-10 (سجل التنظيف)، شهادات تركيز المعقّمات، نتائج ATP.",
-                   en: "F-10 (Cleaning Log), sanitizer concentration certs, ATP results." },
-        freq: { ar: "يومي + أسبوعي + شهري عميق", en: "Daily + Weekly + Monthly deep clean" },
-      },
-      {
-        code: "SOP-FS-05",
-        title: { ar: "برنامج المسحات الميكروبية", en: "Microbiological swabbing program" },
-        desc: { ar: "Microbiological Swabbing", en: "Surfaces + hand swabs + lab tests" },
-        objective: { ar: "التحقق العلمي من فعالية برنامج التنظيف والتعقيم وكشف أي تلوث ميكروبي مبكراً.",
-                     en: "Scientifically verify the effectiveness of the cleaning/sanitation program and detect any microbial contamination early." },
-        scope: { ar: "أسطح التلامس مع الغذاء، أيدي العاملين، أدوات التقطيع، الأرضيات، مياه الشطف.",
-                 en: "Food-contact surfaces, workers' hands, cutting tools, floors, rinse water." },
-        steps: { ar: "1) خطة شهرية تحدد النقاط ونوع الفحص. 2) أخذ المسحات بأدوات معقمة. 3) إرسال لمختبر معتمد. 4) تحليل النتائج وفق الحدود المسموحة. 5) عند الفشل: تعقيم فوري + إعادة الفحص + تحقيق. 6) رصد الاتجاهات شهرياً.",
-                 en: "1) Monthly plan defining points and test types. 2) Take swabs with sterile tools. 3) Send to accredited lab. 4) Analyze results per allowed limits. 5) On failure: immediate re-sanitation + re-test + investigation. 6) Trend monitoring monthly." },
-        records: { ar: "F-11 (سجل المسحات)، تقارير المختبر، تقارير الاتجاه الشهرية.",
-                   en: "F-11 (Swabs Log), lab reports, monthly trend reports." },
-        freq: { ar: "أسبوعي للأسطح الحرجة، شهري للعينات الأخرى", en: "Weekly for critical surfaces, monthly for others" },
-      },
-      {
-        code: "SOP-FS-06",
-        title: { ar: "إجراء استرجاع المنتج من السوق", en: "Product recall procedure" },
-        desc: { ar: "Product Recall", en: "Backward + forward trace" },
-        objective: { ar: "الاستجابة السريعة لسحب أي منتج غير آمن من السوق لحماية المستهلك وسمعة الشركة وتلبية متطلبات الجهات الرقابية.",
-                     en: "Rapidly recall any unsafe product from market — to protect the consumer, company reputation, and meet regulatory requirements." },
-        scope: { ar: "أي منتج غادر بوابة الشركة وتبيّن لاحقاً عدم سلامته (نتيجة فحص، شكوى، انحراف، خبر خارجي).",
-                 en: "Any product that has left the company gate and is later identified as unsafe (test result, complaint, deviation, external news)." },
-        steps: { ar: "1) تشكيل فريق استرجاع طارئ. 2) تحديد دفعة المنتج وكميته. 3) تتبع كل العملاء الذين استلموا. 4) إخطار البلدية وسحب البضاعة. 5) تأكيد الاستلام من كل عميل. 6) إتلاف موثق. 7) تحقيق وسبب جذري. 8) تقرير نهائي للإدارة والبلدية.",
-                 en: "1) Form emergency recall team. 2) Identify batch and quantity. 3) Trace all customers who received it. 4) Notify the municipality and retrieve goods. 5) Confirm receipt from each customer. 6) Documented destruction. 7) Investigation + root cause. 8) Final report to management and municipality." },
-        records: { ar: "نموذج Mock Recall، سجل تتبع، شهادات إتلاف، تقرير نهائي.",
-                   en: "Mock recall form, traceability log, destruction certificates, final report." },
-        freq: { ar: "عند الحاجة + تجربة وهمية ربع سنوية", en: "When needed + Quarterly mock drill" },
-      },
-      {
-        code: "SOP-FS-07",
-        title: { ar: "التتبع العكسي والأمامي للمنتجات", en: "Product traceability" },
-        desc: { ar: "Traceability", en: "Backward and forward tracing" },
-        objective: { ar: "إمكانية تتبع أي قطعة لحم بأقل من ساعة من المورّد الأصلي إلى العميل النهائي والعكس.",
-                     en: "Ability to trace any meat piece in less than 1 hour from the original supplier to the final customer and vice-versa." },
-        scope: { ar: "كل المنتجات من لحظة الاستلام حتى التسليم النهائي، شامل المنتجات المُجهّزة في خط التصنيع.",
-                 en: "All products from receipt until final delivery — including products processed on the production line." },
-        steps: { ar: "1) تسجيل رقم الدفعة (Batch) عند الاستلام. 2) ربط الدفعات بمكان التخزين. 3) تسجيل التحويلات الداخلية. 4) ربط الدفعة بالعميل عند الشحن. 5) اختبار التتبع شهرياً (عينة عشوائية).",
-                 en: "1) Log batch number on receipt. 2) Link batches to storage location. 3) Record internal transfers. 4) Link batch to customer on dispatch. 5) Monthly traceability test (random sample)." },
-        records: { ar: "نظام تتبع رقمي، سجلات الدخول والخروج، تقارير الاختبار الشهري.",
-                   en: "Digital traceability system, in/out logs, monthly test reports." },
-        freq: { ar: "مستمر + اختبار شهري", en: "Continuous + monthly test" },
-      },
-      {
-        code: "SOP-FS-08",
-        title: { ar: "فصل اللحوم الحلال وغير الحلال", en: "Halal/Non-Halal segregation" },
-        desc: { ar: "Halal segregation", en: "Color-coded zones, separate equipment" },
-        objective: { ar: "ضمان عدم اختلاط اللحوم الحلال بأي مصدر غير حلال في أي مرحلة من مراحل التشغيل، تلبية للمتطلبات الإلزامية لـ ESMA و UAE.S 2055-1.",
-                     en: "Ensure no mixing of Halal meat with non-Halal sources at any operational stage — fulfilling mandatory ESMA and UAE.S 2055-1 requirements." },
-        scope: { ar: "كل المراحل: الاستلام، التخزين، التصنيع، التغليف، التوزيع.",
-                 en: "All stages: receipt, storage, processing, packaging, distribution." },
-        steps: { ar: "1) كل اللحوم المستوردة بشهادة حلال معتمدة. 2) لا توجد منتجات غير حلال في المنشأة. 3) أدوات وملابس مخصصة. 4) تدقيق سنوي من جهة حلال خارجية. 5) تدريب العاملين على المتطلبات الشرعية.",
-                 en: "1) All imported meat with certified Halal cert. 2) No non-Halal products in the facility. 3) Dedicated tools and apparel. 4) Annual external Halal audit. 5) Worker training on Halal requirements." },
-        records: { ar: "شهادات الحلال، تقارير التدقيق السنوي، سجلات التدريب.",
-                   en: "Halal certificates, annual audit reports, training records." },
-        freq: { ar: "مستمر + تدقيق سنوي", en: "Continuous + annual audit" },
-      },
-      {
-        code: "SOP-FS-09",
-        title: { ar: "إدارة المنتجات منتهية أو قريبة الانتهاء", en: "Expiry management" },
-        desc: { ar: "Expiry Management", en: "FIFO/FEFO + early-warning system" },
-        objective: { ar: "منع تواجد منتجات منتهية الصلاحية في المخزون أو السوق، وتقليل الخسائر من خلال إدارة المخزون بنظام FIFO/FEFO.",
-                     en: "Prevent expired products from being in stock or market, and minimize losses through FIFO/FEFO inventory management." },
-        scope: { ar: "كل المنتجات في غرف التبريد والتجميد ومخازن المنتج النهائي.",
-                 en: "All products in chillers, freezers, and finished-product stores." },
-        steps: { ar: "1) تطبيق FIFO (الأقدم يخرج أولاً) للأقل عمراً. 2) FEFO (الأقرب انتهاءً يخرج أولاً) لمنتجات بتواريخ متفاوتة. 3) تنبيه آلي قبل الانتهاء بـ 60 يوم. 4) إخطار قسم المبيعات للتسعير الترويجي. 5) إتلاف موثق للمنتهي. 6) تحديث المخزون.",
-                 en: "1) Apply FIFO (oldest out first) for younger stock. 2) FEFO (closest expiry out first) for varied dates. 3) Auto-alert 60 days before expiry. 4) Notify sales for promotional pricing. 5) Documented destruction of expired. 6) Update inventory." },
-        records: { ar: "تقارير المخزون، سجل الإتلاف، تنبيهات النظام.",
-                   en: "Inventory reports, destruction log, system alerts." },
-        freq: { ar: "يومي + تقرير أسبوعي للإدارة", en: "Daily + weekly management report" },
-      },
-    ],
-  },
-  {
-    id: "ohs", title: { ar: "Occupational Health & Safety — السلامة المهنية", en: "Occupational Health & Safety" },
-    color: "#9a3412", bg: "#fed7aa",
-    items: [
-      { code: "SOP-OHS-01", title: { ar: "التدريب التعريفي للموظفين الجدد", en: "New employee induction" }, desc: { ar: "Induction Training", en: "Day-1 onboarding training" } },
-      { code: "SOP-OHS-02", title: { ar: "استخدام معدات الوقاية الشخصية", en: "PPE usage" }, desc: { ar: "PPE — لكل منطقة", en: "PPE per area" } },
-      { code: "SOP-OHS-03", title: { ar: "العمل الآمن في الغرف المجمدة", en: "Safe work in frozen rooms" }, desc: { ar: "Cold Storage Safety", en: "Cold storage safety" } },
-      { code: "SOP-OHS-04", title: { ar: "تشغيل الرافعات الشوكية", en: "Forklift operation" }, desc: { ar: "Forklift Operation", en: "License, daily check, max speed" } },
-      { code: "SOP-OHS-05", title: { ar: "التعامل الآمن مع السكاكين وآلات التقطيع", en: "Safe knife & slicer handling" }, desc: { ar: "Knife & Cutting Machine Safety", en: "Cut-resistant gloves, blade guards" } },
-      {
-        code: "SOP-OHS-06",
-        title: { ar: "الرفع اليدوي الآمن للأحمال والتعامل مع العربات", en: "Safe manual lifting & trolley handling" },
-        desc: { ar: "Manual Lifting & Trolleys", en: "Max 25 kg, technique, trolleys" },
-        objective: { ar: "منع إصابات الظهر والجهاز العضلي الهيكلي الناتجة عن الرفع اليدوي وتحريك العربات، عبر تحديد الحدود الوزنية والأسلوب الصحيح واشتراطات فحص واستخدام العربات.",
-                     en: "Prevent back and musculoskeletal injuries caused by manual lifting and trolley movement — by defining weight limits, correct technique, and trolley inspection and usage requirements." },
-        scope: { ar: "كل العاملين في الاستلام والإنتاج والمخازن وغرف التبريد والتجميد والمطبخ والتحميل، وكل عربة يدوية أو رافعة بليت مستخدمة في الموقع.",
-                 en: "All staff in receiving, production, stores, chillers/freezers, kitchen, and loading — and every manual trolley or pallet jack used on site." },
-        steps: { ar: "1) قيّم الحمل قبل الرفع (الوزن/الشكل/الثبات/الأرضية) وخطّط المسار. 2) حد أقصى 25 كغم للرفع الفردي — فوق ذلك: رفع جماعي أو عربة. 3) أسلوب الرفع: قدمان بعرض الكتفين، ثني الركبتين لا الظهر، إمساك محكم، الحمل قريب من الجسم، الرفع بعضلات الساقين. 4) لا التفاف بالجذع أثناء الحمل — أدِّر قدميك. 5) فحص العربة قبل الاستخدام: العجلات تدور بحرية، لا أجزاء مكسورة، المقابض سليمة، الفرامل تعمل — أي عطل = بطاقة \"خارج الخدمة\" + طلب صيانة. 6) التحميل: لا تتجاوز السعة المصمّمة، الثقيل أسفل والخفيف أعلى، توزيع متوازن، لا يحجب الرؤية، تثبيت الأحمال العالية. 7) التحريك: ادفع ولا تسحب، اليدان معاً على المقبض، سرعة المشي فقط، منعطفات واسعة وتدريجية، لا توقف مفاجئ. 8) المنحدرات: الصعود بيدين (شخصان للأحمال الثقيلة)، النزول من الجهة العليا، لا ترك ترولي على منحدر. 9) الفرامل: فعّلها عند أي توقف وقبل التحميل/التفريغ وقبل الابتعاد. 10) الإيقاف: لا سدّ الممرات أو مخارج الطوارئ أو الطفايات أو لوحات الكهرباء — إعادة العربة لمكانها المخصص. 11) تناوب المهام كل 1-2 ساعة للمهام المتكررة. 12) الإبلاغ الفوري عن أي ألم أو توتر أو near-miss.",
-                 en: "1) Assess the load before lifting (weight/shape/stability/floor) and plan the route. 2) Max 25 kg single-person lift — above that: team lift or trolley. 3) Lifting technique: feet shoulder-width, bend knees not back, firm grip, load close to body, lift with leg muscles. 4) No twisting of the torso while carrying — pivot the feet. 5) Trolley pre-use check: wheels roll freely, no broken parts, handles intact, brakes working — any defect = OUT OF SERVICE tag + maintenance request. 6) Loading: never exceed rated capacity, heavy at bottom / light on top, even distribution, must not block line of sight, secure tall loads. 7) Movement: push don't pull, both hands on the handle, walking pace only, wide gradual turns, no sudden stops. 8) Ramps: push uphill with both hands (two people for heavy loads), stay on the uphill side going down, never leave a trolley on a slope. 9) Brakes: engage at every stop, before loading/unloading, and before stepping away. 10) Parking: never block aisles, fire exits, extinguishers, or electrical panels — return trolleys to the designated bay. 11) Job rotation every 1-2 hours for repetitive tasks. 12) Immediate reporting of any pain, strain, or near-miss." },
-        records: { ar: "سجلات تدريب المناولة اليدوية (موقّعة لكل موظف)، تقييم مخاطر المناولة لكل منطقة، سجل فحص/صيانة العربات، بطاقات \"خارج الخدمة\"، تقارير الحوادث وnear-miss، جدول تناوب المهام.",
-                   en: "Manual handling training records (signed per employee), manual handling risk assessment per area, trolley inspection/maintenance log, OUT OF SERVICE tags, incident and near-miss reports, job rotation schedule." },
-        freq: { ar: "فحص العربة: كل وردية | تدريب: عند التعيين + سنوياً | مراجعة تقييم المخاطر: سنوياً", en: "Trolley check: every shift | Training: on hire + annually | Risk assessment review: annually" },
-      },
-      { code: "SOP-OHS-07", title: { ar: "نظام تصاريح العمل", en: "Work permit system" }, desc: { ar: "Work Permit System", en: "Hot work, confined space, heights, electrical" } },
-      { code: "SOP-OHS-08", title: { ar: "قفل ووسم المعدات أثناء الصيانة", en: "Lockout / Tagout (LOTO)" }, desc: { ar: "LOTO", en: "Energy isolation during maintenance" } },
-      { code: "SOP-OHS-09", title: { ar: "الإبلاغ عن الحوادث وشبه الحوادث والتحقيق", en: "Incident & near-miss reporting + investigation" }, desc: { ar: "Incident & Near-miss", en: "Incident & near-miss" } },
-      { code: "SOP-OHS-10", title: { ar: "الفحص الطبي الدوري للعاملين", en: "Periodic medical check" }, desc: { ar: "Periodic Medical Check", en: "Annual + role-specific" } },
-    ],
-  },
-  {
-    id: "em", title: { ar: "Emergency — الطوارئ", en: "Emergency" }, color: "#7f1d1d", bg: "#fee2e2",
-    items: [
-      { code: "SOP-EM-01", title: { ar: "خطة الاستجابة للحرائق والإخلاء", en: "Fire & evacuation response plan" }, desc: { ar: "Fire & Evacuation", en: "Fire & evacuation" } },
-      { code: "SOP-EM-02", title: { ar: "الاستجابة لتسرب الأمونيا أو غازات التبريد", en: "Ammonia / refrigerant leak response" }, desc: { ar: "Ammonia / Refrigerant Leak", en: "Detection, evacuation, isolation" } },
-      { code: "SOP-EM-03", title: { ar: "الاستجابة لانقطاع الكهرباء المطوّل", en: "Extended power outage response" }, desc: { ar: "Cold Storage Power Outage", en: "Cold storage power outage" } },
-      {
-        code: "SOP-EM-04",
-        title: { ar: "الاستجابة للإصابات الجسيمة والإسعافات الأولية", en: "Major injury & first aid response" },
-        desc: { ar: "First Aid & Major Injuries", en: "First aid + ambulance call" },
-        objective: { ar: "تحديد ما يجب فعله بالضبط عند وقوع حادث أو إصابة — حفظ الحياة، ومنع تفاقم الحالة، وضمان تصعيد سريع وصحيح للرعاية الطبية، وتوثيق الحادث للتحقيق.",
-                     en: "Define exactly what to do when an accident or injury occurs — preserve life, prevent the condition worsening, ensure fast and correct escalation to medical care, and document the incident for investigation." },
-        scope: { ar: "كل الحوادث والإصابات في الإنتاج والمستودعات والمطبخ وغرف التبريد والتحميل والمكاتب — لكل الموظفين والمقاولين والزوار.",
-                 en: "All accidents and injuries in production, warehouses, kitchen, chillers, loading, and offices — for all employees, contractors, and visitors." },
-        steps: { ar: "1) ابقَ هادئاً ولا تتجمهر. 2) اتصل فوراً بالمسعف المناوب وضابط HSE (الأسماء والأرقام على قائمة F-31 المعلّقة في كل منطقة). 3) طبّق الفحص الأولي DRABC: خطر ← استجابة (COWS) ← مجرى الهواء ← التنفس ← الضغطات. 4) أمّن مكان الحادث أولاً — كهرباء، آلات، انسكاب، أمونيا. 5) المسعف/ضابط HSE يقيّم شدة الإصابة. 6) حالة بسيطة ← إسعاف أولي في عيادة الشركة (مختبر QA) + تسجيل في سجل العلاج الإسعافي. 7) حالة خطيرة ← اتصال فوري بالإسعاف 998 (الشرطة 999، الدفاع المدني 997، الموحّد 112) ولا تُحرَّك الضحية إلا عند خطر مستمر. 8) تعيين شخص لاستقبال سيارة الإسعاف عند البوابة وإرشادها. 9) مرافقة المصاب للمستشفى وإبلاغ عائلته. 10) عزل موقع الحادث وحفظ الأدلة والصور قبل التنظيف. 11) ضابط HSE يفتح تقرير الحادث F-01 خلال ساعة ويجري التحقيق و5 Whys. 12) إجراء تصحيحي/وقائي + التحقق من الفعالية. 13) الإصابات الجسيمة تُبلَّغ لوزارة الموارد البشرية (MOHRE) خلال 24 ساعة. 14) إعادة تزويد حقيبة الإسعاف المستخدمة فوراً.",
-                 en: "1) Stay calm, do not crowd the casualty. 2) Immediately call the on-shift first aider and the HSE Officer (names and numbers on the F-31 list posted in every area). 3) Apply the DRABC primary survey: Danger → Response (COWS) → Airway → Breathing → Compressions. 4) Make the scene safe first — electricity, machinery, spill, ammonia. 5) First aider / HSE Officer assesses injury severity. 6) Minor case → first aid at the company clinic (QA Laboratory) + entry in the first aid treatment log. 7) Major or severe case → call the ambulance immediately on 998 (Police 999, Civil Defence 997, Unified 112) and do not move the casualty unless danger is ongoing. 8) Assign one person to meet and guide the ambulance at the gate. 9) Escort the casualty to hospital and notify next of kin. 10) Isolate the scene and preserve evidence and photos before cleaning. 11) HSE Officer opens Incident Report F-01 within one hour and conducts the investigation and 5 Whys. 12) Corrective/preventive action + effectiveness verification. 13) Serious injuries reported to MOHRE within 24 hours. 14) Restock the used first aid kit immediately." },
-        records: { ar: "تقرير الحادث F-01، سجل العلاج الإسعافي، شهادات الشهود، تقرير التحقيق والسبب الجذري، سجل المسعفين المعتمدين وشهاداتهم، سجل فحص حقائب الإسعاف الشهري، قائمة جهات الطوارئ F-31، إبلاغ MOHRE، سجلات العودة للعمل.",
-                   en: "Incident Report F-01, first aid treatment log, witness statements, investigation and root-cause report, register of certified first aiders and their certificates, monthly first aid kit inspection log, F-31 Emergency Contacts list, MOHRE notification, return-to-work records." },
-        freq: { ar: "عند كل حادث | فحص حقائب الإسعاف: شهري | تدريب المسعفين: تجديد كل سنتين | مراجعة الإجراء: سنوياً", en: "Every incident | First aid kit check: monthly | First aider training: renew every 2 years | Procedure review: annually" },
-      },
-    ],
-  },
-  {
-    id: "en", title: { ar: "Environment — البيئة", en: "Environment" }, color: "#166534", bg: "#dcfce7",
-    items: [
-      { code: "SOP-EN-01", title: { ar: "إدارة النفايات العضوية والصلبة", en: "Organic & solid waste management" }, desc: { ar: "Organic & Solid Waste", en: "Organic & solid waste" } },
-      { code: "SOP-EN-02", title: { ar: "إدارة المياه العادمة ومصائد الدهون", en: "Wastewater & grease trap management" }, desc: { ar: "Wastewater & Grease Traps", en: "Wastewater & grease traps" } },
-      { code: "SOP-EN-03", title: { ar: "إدارة غازات التبريد والتخلص منها", en: "Refrigerant gas management & disposal" }, desc: { ar: "Refrigerant Gas Management", en: "Refrigerant gas management" } },
-      { code: "SOP-EN-04", title: { ar: "مراقبة استهلاك الطاقة والمياه", en: "Energy & water consumption monitoring" }, desc: { ar: "Energy & Water Monitoring", en: "Energy & water monitoring" } },
-    ],
-  },
-  {
-    id: "ad", title: { ar: "Administrative — الإدارية المساندة", en: "Administrative" }, color: "#7c3aed", bg: "#e9d5ff",
-    items: [
-      { code: "SOP-AD-01", title: { ar: "مراجعة وثائق HSE السنوية", en: "Annual HSE document review" }, desc: { ar: "Annual Documentation Review", en: "Annual documentation review" } },
-      { code: "SOP-AD-02", title: { ar: "التدقيق الداخلي", en: "Internal audit" }, desc: { ar: "Internal Audit", en: "Internal audit" } },
-      { code: "SOP-AD-03", title: { ar: "استقبال مفتشي الجهات الحكومية", en: "Government inspector reception" }, desc: { ar: "Govt Inspection Reception", en: "Govt inspection reception" } },
-      { code: "SOP-AD-04", title: { ar: "إدارة المقاولين والموردين", en: "Contractor & supplier management" }, desc: { ar: "Contractors & Suppliers", en: "Contractors & suppliers" } },
-      { code: "SOP-AD-05", title: { ar: "إدارة التغيير", en: "Management of Change" }, desc: { ar: "Management of Change", en: "Management of change" } },
-    ],
-  },
-];
+/* ═══════════ أيقونات ═══════════ */
+const IconDoc = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+  </svg>
+);
+const IconSearch = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.4" strokeLinecap="round">
+    <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+  </svg>
+);
+const IconClose = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+    <path d="M18 6L6 18M6 6l12 12" />
+  </svg>
+);
 
-const TYPE = "sops_status";
+const glassBtn = (accent = "#0369a1") => ({
+  display: "inline-flex", alignItems: "center", gap: 6,
+  padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 900,
+  color: accent, background: "rgba(34,211,238,0.10)",
+  border: "1px solid rgba(34,211,238,0.32)", cursor: "pointer", whiteSpace: "nowrap",
+});
 
+const solidBtn = (bg = "#0f766e") => ({
+  display: "inline-flex", alignItems: "center", gap: 6,
+  padding: "9px 18px", borderRadius: 12, fontSize: 13.5, fontWeight: 900,
+  color: "#fff", background: bg, border: `1px solid ${bg}`, cursor: "pointer", whiteSpace: "nowrap",
+});
+
+/** أقسام الوثيقة بالترتيب المعتمد */
+function documentSections(item, pick) {
+  return [
+    { label: pick(T.objective), value: item.objective },
+    { label: pick(T.scope), value: item.scope },
+    { label: pick(T.definitions), value: item.definitions },
+    { label: pick(T.responsibilities), value: item.responsibilities },
+    { label: pick(T.steps), value: item.steps },
+  ].filter((s) => s.value);
+}
+
+function closingSections(item, pick) {
+  return [
+    { label: pick(T.deviation), value: item.deviation },
+    { label: pick(T.verification), value: item.verification },
+    { label: pick(T.refs), value: item.refs },
+  ].filter((s) => s.value);
+}
+
+/* ═══════════ بطاقة إجراء ═══════════ */
+function SopCard({ item, group, pick, dir, hover, setHover, onOpen }) {
+  const isHover = hover === item.code;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHover(item.code)}
+      onMouseLeave={() => setHover(null)}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }}
+      style={{
+        position: "relative", borderRadius: 18, overflow: "hidden",
+        padding: "16px 18px", cursor: "pointer",
+        background: "rgba(255,255,255,0.92)",
+        border: `1px solid ${isHover ? "rgba(34,211,238,0.55)" : "rgba(15,23,42,0.14)"}`,
+        boxShadow: isHover ? "0 20px 50px rgba(34,211,238,0.20)" : "0 10px 28px rgba(2,132,199,0.09)",
+        transform: isHover ? "translateY(-4px)" : "translateY(0)",
+        transition: "transform .18s ease, box-shadow .18s ease, border-color .18s ease",
+        textAlign: dir === "rtl" ? "right" : "left",
+      }}
+    >
+      <div aria-hidden="true" style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        background: "radial-gradient(260px 180px at 0% 0%,rgba(34,211,238,0.12),transparent 60%),radial-gradient(220px 150px at 100% 100%,rgba(34,197,94,0.10),transparent 55%)",
+        opacity: isHover ? 1 : 0.7, transition: "opacity .18s ease",
+      }} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+            background: "linear-gradient(135deg,rgba(34,211,238,0.18),rgba(34,197,94,0.12))",
+            border: "1px solid rgba(34,211,238,0.34)",
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#0369a1",
+          }}>
+            <IconDoc />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", letterSpacing: "0.10em" }}>{item.code}</div>
+            <div style={{ fontSize: 15, fontWeight: 950, color: "#071b2d", lineHeight: 1.25 }}>{pick(item.title)}</div>
+          </div>
+        </div>
+        <span style={{
+          fontSize: 10.5, fontWeight: 900, padding: "4px 10px", borderRadius: 999,
+          whiteSpace: "nowrap", flexShrink: 0,
+          background: group.bg, color: group.color, border: `1px solid ${group.color}33`,
+        }}>
+          {pick(group.short || group.title)}
+        </span>
+      </div>
+
+      <div style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.65, marginBottom: 12, fontWeight: 600, position: "relative" }}>
+        {pick(item.desc)}
+      </div>
+
+      {item.freq && (
+        <div style={{
+          padding: "7px 11px", borderRadius: 10, position: "relative",
+          background: "rgba(241,245,249,0.85)", border: "1px solid rgba(15,23,42,0.07)",
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", letterSpacing: "0.06em" }}>{pick(T.freq)}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 900, color: "#1e293b", marginTop: 2 }}>{pick(item.freq)}</div>
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 12, fontSize: 11, fontWeight: 900, color: "#0369a1",
+        letterSpacing: "0.10em", display: "flex", alignItems: "center", gap: 5, position: "relative",
+        opacity: isHover ? 1 : 0.45, transition: "opacity .18s ease",
+      }}>
+        <span>{pick(T.viewDetails)}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: dir === "rtl" ? "scaleX(-1)" : "none" }}>
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════ نافذة الوثيقة — 75% من الشاشة ═══════════ */
+function SopModal({ item, group, pick, dir, onClose, onExport, exporting }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", handler); document.body.style.overflow = ""; };
+  }, [onClose]);
+
+  const main = documentSections(item, pick);
+  const closing = closingSections(item, pick);
+
+  const Section = ({ n, label, value }) => (
+    <section style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
+        <span style={{
+          width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "linear-gradient(135deg,rgba(34,211,238,0.22),rgba(34,197,94,0.16))",
+          color: "#0c4a6e", fontSize: 12, fontWeight: 950,
+        }}>{n}</span>
+        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 950, color: "#0c4a6e" }}>{label}</h3>
+      </div>
+      <p style={{ margin: 0, fontSize: 14.5, lineHeight: 2, fontWeight: 600, color: "#1e293b", whiteSpace: "pre-line" }}>
+        {pick(value)}
+      </p>
+    </section>
+  );
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 4000,
+        background: "rgba(7,27,45,0.55)", backdropFilter: "blur(6px)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        dir={dir}
+        style={{
+          width: "75vw", height: "75vh", minWidth: 340, minHeight: 420,
+          background: "#fff", borderRadius: 18, overflow: "hidden",
+          boxShadow: "0 30px 80px rgba(2,32,71,0.45)",
+          display: "flex", flexDirection: "column",
+          fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+          color: "#071b2d",
+        }}
+      >
+        {/* ترويسة */}
+        <div style={{
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14,
+          padding: "16px 22px", borderBottom: "1px solid rgba(15,23,42,0.12)",
+          background: "linear-gradient(135deg,rgba(34,211,238,0.10),rgba(34,197,94,0.07))", flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 46, height: 46, borderRadius: 12, flexShrink: 0,
+              background: "linear-gradient(135deg,rgba(34,211,238,0.20),rgba(34,197,94,0.14))",
+              border: "1px solid rgba(34,211,238,0.34)",
+              display: "flex", alignItems: "center", justifyContent: "center", color: "#0369a1",
+            }}>
+              <IconDoc />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", letterSpacing: "0.08em" }}>{item.code}</div>
+              <div style={{ fontSize: 19, fontWeight: 980, lineHeight: 1.2 }}>{pick(item.title)}</div>
+              <span style={{
+                display: "inline-block", marginTop: 6, fontSize: 10.5, fontWeight: 900,
+                padding: "3px 10px", borderRadius: 999,
+                background: group.bg, color: group.color, border: `1px solid ${group.color}33`,
+              }}>
+                {pick(group.short || group.title)}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} title={pick(T.close)} style={{
+            flexShrink: 0, width: 36, height: 36, borderRadius: 10,
+            background: "rgba(15,23,42,0.06)", border: "1px solid rgba(15,23,42,0.12)",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#334155",
+          }}>
+            <IconClose />
+          </button>
+        </div>
+
+        {/* الجسم */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {main.map((s, i) => <Section key={s.label} n={i + 1} label={s.label} value={s.value} />)}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 20 }}>
+            {item.records && (
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, background: "#f8fafc" }}>
+                <div style={{ fontSize: 13, fontWeight: 950, color: "#7c3aed", marginBottom: 5 }}>{pick(T.records)}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.85 }}>{pick(item.records)}</div>
+              </div>
+            )}
+            {item.freq && (
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, background: "#f8fafc" }}>
+                <div style={{ fontSize: 13, fontWeight: 950, color: "#7c3aed", marginBottom: 5 }}>{pick(T.freq)}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.85 }}>{pick(item.freq)}</div>
+              </div>
+            )}
+          </div>
+
+          {closing.map((s, i) => <Section key={s.label} n={main.length + i + 1} label={s.label} value={s.value} />)}
+        </div>
+
+        {/* التذييل */}
+        <div style={{
+          padding: "12px 22px", borderTop: "1px solid rgba(15,23,42,0.12)",
+          background: "rgba(248,250,252,0.95)", display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0,
+        }}>
+          <button style={{ ...solidBtn("#0f766e"), opacity: exporting ? 0.6 : 1 }} onClick={onExport} disabled={!!exporting}>
+            {exporting ? pick(T.exporting) : pick(T.exportSop)}
+          </button>
+          <button style={{
+            padding: "9px 28px", borderRadius: 12, fontSize: 13.5, fontWeight: 900, cursor: "pointer",
+            background: "linear-gradient(135deg,rgba(34,211,238,0.18),rgba(34,197,94,0.12))",
+            border: "1px solid rgba(34,211,238,0.38)", color: "#052336",
+          }} onClick={onClose}>
+            {pick(T.close)}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ═══════════ الصفحة ═══════════ */
 export default function HSESOPs() {
   const navigate = useNavigate();
-  const { lang, toggle, dir, pick } = useHSELang();
-  const [statuses, setStatuses] = useState({});
-  const [editingCode, setEditingCode] = useState(null);
-  const [expandedCode, setExpandedCode] = useState(null);
-  const [draft, setDraft] = useState({ version: "1.0", approvedDate: "", reviewDate: "", owner: "", status: "draft" });
-  const [saving, setSaving] = useState(false);
+  const { lang, setLang, dir, pick } = useHSELang();
+  const [search, setSearch] = useState("");
+  const [activeGroup, setActiveGroup] = useState("All");
+  const [hover, setHover] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [exporting, setExporting] = useState("");
+  const registerRef = useRef(null);
+  const sopRef = useRef(null);
 
-  async function reload() {
-    const arr = await apiList(TYPE);
-    const map = {};
-    arr.forEach((s) => { if (s.code) map[s.code] = s; });
-    setStatuses(map);
-  }
-  useEffect(() => { reload(); }, []);
+  const allItems = useMemo(
+    () => SOP_GROUPS.flatMap((g) => g.items.map((it) => ({ item: it, group: g }))),
+    []
+  );
 
-  function startEdit(item) {
-    setEditingCode(item.code);
-    const ex = statuses[item.code] || {};
-    setDraft({
-      version: ex.version || "1.0",
-      approvedDate: ex.approvedDate || todayISO(),
-      reviewDate: ex.reviewDate || "",
-      owner: ex.owner || "",
-      status: ex.status || "draft",
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allItems.filter(({ item, group }) => {
+      if (activeGroup !== "All" && group.id !== activeGroup) return false;
+      if (!q) return true;
+      const hay = `${item.code} ${item.title.ar} ${item.title.en} ${item.desc.ar} ${item.desc.en}`.toLowerCase();
+      return hay.includes(q);
     });
-  }
+  }, [allItems, activeGroup, search]);
 
-  async function saveStatus(item) {
-    setSaving(true);
+  async function exportPdf(kind) {
+    setExporting(kind);
     try {
-      const existing = statuses[item.code];
-      const payload = { ...draft, code: item.code, titleAr: item.title.ar, titleEn: item.title.en };
-      if (existing && existing.id) {
-        await apiUpdate(TYPE, existing.id, payload, draft.owner || "HSE");
-      } else {
-        await apiSave(TYPE, payload, draft.owner || "HSE");
+      await new Promise((r) => setTimeout(r, 60));
+      if (kind === "register") {
+        await exportNodeToPdf(registerRef.current, safeFileName("HSE_SOP_Register_" + todayISO()), { orientation: "l" });
+      } else if (selected) {
+        await exportNodeToPdf(sopRef.current, safeFileName(selected.item.code), { orientation: "p" });
       }
-      await reload();
-      setEditingCode(null);
     } catch (e) {
-      alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
+      alert((pick({ ar: "❌ خطأ بالتصدير: ", en: "❌ Export error: " })) + (e?.message || e));
     } finally {
-      setSaving(false);
+      setExporting("");
     }
   }
 
   return (
-    <main style={pageStyle} dir={dir}>
-      <div style={containerStyle}>
-        <div style={headerBar}>
+    <main style={{
+      minHeight: "100vh", padding: "22px 16px", width: "100%",
+      background:
+        "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.22) 0, rgba(255,255,255,1) 42%)," +
+        "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.16) 0, rgba(255,255,255,0) 55%)," +
+        "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.16) 0, rgba(255,255,255,0) 58%)",
+      fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+      color: "#071b2d", direction: dir,
+    }} dir={dir}>
+      {selected && (
+        <SopModal
+          item={selected.item}
+          group={selected.group}
+          pick={pick}
+          dir={dir}
+          onClose={() => setSelected(null)}
+          onExport={() => exportPdf("sop")}
+          exporting={exporting === "sop"}
+        />
+      )}
+
+      <div style={{ width: "100%", margin: 0 }}>
+        {/* الشريط العلوي */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
+          padding: "14px 16px", borderRadius: 18, marginBottom: 18, flexWrap: "wrap",
+          background: "rgba(255,255,255,0.84)", border: "1px solid rgba(15,23,42,0.18)",
+          boxShadow: "0 14px 40px rgba(2,132,199,0.12)", position: "relative", overflow: "hidden",
+        }}>
+          <div aria-hidden="true" style={{
+            position: "absolute", inset: 0, pointerEvents: "none",
+            background: "radial-gradient(800px 220px at 15% 0%,rgba(34,211,238,0.18),transparent 60%),radial-gradient(800px 220px at 85% 10%,rgba(34,197,94,0.14),transparent 60%)",
+          }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, position: "relative" }}>
+            <img src={mawashiLogo} alt="Al Mawashi" style={{
+              width: 46, height: 46, borderRadius: 12, objectFit: "cover",
+              border: "1px solid rgba(2,132,199,0.18)", background: "#fff",
+            }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.2 }}>{pick(T.brandLine1)}</div>
+              <div style={{ fontSize: 12, fontWeight: 750, opacity: 0.78, marginTop: 4 }}>{pick(T.brandLine2)}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", position: "relative", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(34,211,238,0.40)" }}>
+              {["en", "ar"].map((l) => (
+                <button key={l} onClick={() => setLang(l)} style={{
+                  padding: "7px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", border: "none",
+                  background: lang === l ? "linear-gradient(135deg,rgba(34,211,238,0.30),rgba(34,197,94,0.20))" : "rgba(255,255,255,0.70)",
+                  color: lang === l ? "#052336" : "#64748b",
+                }}>
+                  {l === "en" ? "EN" : "العربية"}
+                </button>
+              ))}
+            </div>
+
+            <button style={{ ...glassBtn("#0f766e"), opacity: exporting === "register" ? 0.6 : 1 }}
+              onClick={() => exportPdf("register")} disabled={!!exporting}>
+              {exporting === "register" ? pick(T.exporting) : pick(T.exportRegister)}
+            </button>
+
+            <button style={glassBtn()} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 999,
+              fontSize: 12, fontWeight: 900, color: "#052336",
+              background: "linear-gradient(135deg,rgba(34,211,238,0.20),rgba(34,197,94,0.14))",
+              border: "1px solid rgba(34,211,238,0.38)",
+            }}>
+              {pick(T.badgeLabel)}
+            </div>
+          </div>
+        </div>
+
+        {/* عنوان الصفحة */}
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, margin: "14px 0 18px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 950 }}>{pick(T.pageTitle)}</div>
-            <div style={{ fontSize: 12, color: HSE_COLORS.primaryDark, marginTop: 4 }}>{pick(T.pageSubtitle)}</div>
+            <div style={{ fontSize: 26, fontWeight: 980, letterSpacing: "0.02em" }}>{pick(T.pageTitle)}</div>
+            <div style={{ fontSize: 13, fontWeight: 750, opacity: 0.82, marginTop: 6 }}>{pick(T.pageSubtitle)}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HSELangToggle lang={lang} toggle={toggle} />
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
-          </div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#334155", maxWidth: 480, margin: 0, lineHeight: 1.8 }}>{pick(T.tagline)}</p>
+        </header>
+
+        {/* الإحصاءات */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+          {[
+            { label: pick(T.statTotal), value: allItems.length, color: "#0369a1" },
+            { label: pick(T.statGroups), value: SOP_GROUPS.length, color: "#15803d" },
+            { label: pick(T.statShowing), value: filtered.length, color: "#4c1d95" },
+          ].map((s) => (
+            <div key={s.label} style={{
+              padding: "10px 18px", borderRadius: 14,
+              background: "rgba(255,255,255,0.88)", border: "1px solid rgba(15,23,42,0.12)",
+              boxShadow: "0 6px 18px rgba(2,132,199,0.08)",
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 980, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>{s.label}</div>
+            </div>
+          ))}
         </div>
 
-        <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #f3f4f6, #ffffff)", borderInlineStart: "5px solid #1f2937" }}>
-          <p style={{ fontSize: 14, lineHeight: 1.9, color: "#1f0f00", margin: 0 }}>{pick(T.pageIntro)}</p>
+        {/* أدوات البحث والتصفية */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 12,
+            background: "rgba(255,255,255,0.92)", border: "1px solid rgba(15,23,42,0.16)",
+            boxShadow: "0 4px 12px rgba(2,132,199,0.06)", flex: 1, minWidth: 220, maxWidth: 360,
+          }}>
+            <IconSearch />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={pick(T.search)}
+              style={{ border: "none", outline: "none", background: "transparent", fontSize: 14, fontWeight: 700, color: "#071b2d", flex: 1 }}
+            />
+          </div>
+          {[{ id: "All", label: pick(T.filterAll), color: "#0369a1" },
+            ...SOP_GROUPS.map((g) => ({ id: g.id, label: pick(g.short || g.title), color: g.color }))
+          ].map((c) => {
+            const active = activeGroup === c.id;
+            return (
+              <button key={c.id} onClick={() => setActiveGroup(c.id)} style={{
+                padding: "8px 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 900, cursor: "pointer",
+                background: active ? c.color : "rgba(255,255,255,0.88)",
+                color: active ? "#fff" : c.color,
+                border: `1px solid ${active ? c.color : "rgba(15,23,42,0.14)"}`,
+              }}>
+                {c.label}
+              </button>
+            );
+          })}
         </div>
 
-        {SOP_GROUPS.map((g) => (
-          <div key={g.id} style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: "8px 14px", borderRadius: 10, marginBottom: 12, background: g.bg, color: g.color, fontWeight: 950, fontSize: 16, display: "inline-block" }}>
-              {pick(g.title)}
-            </div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {g.items.map((it) => {
-                const st = statuses[it.code];
-                const isEdit = editingCode === it.code;
-                const hasDetails = !!(it.objective || it.scope || it.steps || it.records || it.freq);
-                const isExpanded = expandedCode === it.code;
-                return (
-                  <div key={it.code} style={{ padding: "12px 14px", borderRadius: 10, background: "#fff7ed", border: "1px solid rgba(120,53,15,0.18)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-                      <div style={{ flex: 1, minWidth: 240 }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 900, background: g.bg, color: g.color }}>{it.code}</span>
-                          <span style={{ fontWeight: 900, fontSize: 14 }}>{pick(it.title)}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{pick(it.desc)}</div>
-                        {hasDetails && (
-                          <button
-                            onClick={() => setExpandedCode(isExpanded ? null : it.code)}
-                            style={{ marginTop: 8, padding: "4px 10px", borderRadius: 8, background: g.bg, color: g.color, border: `1px solid ${g.color}33`, fontSize: 11, fontWeight: 900, cursor: "pointer" }}
-                          >
-                            {isExpanded ? pick(T.collapse) : pick(T.expand)}
-                          </button>
-                        )}
-                      </div>
-                      <div style={{ minWidth: 160, textAlign: dir === "rtl" ? "left" : "right" }}>
-                        {st && !isEdit && (
-                          <div style={{ fontSize: 11, color: HSE_COLORS.primaryDark, marginBottom: 4 }}>
-                            v{st.version} • {st.status === "active" ? pick(T.badgeActive) : st.status === "review" ? pick(T.badgeReview) : pick(T.badgeDraft)}
-                          </div>
-                        )}
-                        {!isEdit && (
-                          <button style={{ ...buttonGhost, fontSize: 12 }} onClick={() => startEdit(it)}>{st ? pick(T.edit) : pick(T.activate)}</button>
-                        )}
-                      </div>
-                    </div>
-
-                    {isExpanded && hasDetails && (
-                      <div style={{ marginTop: 12, padding: 12, background: "#fff", borderRadius: 8, border: `1px dashed ${g.color}55` }}>
-                        {it.objective && (
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, fontWeight: 900, color: g.color, marginBottom: 3 }}>{pick(T.objective)}</div>
-                            <div style={{ fontSize: 13, lineHeight: 1.7, color: "#1f0f00" }}>{pick(it.objective)}</div>
-                          </div>
-                        )}
-                        {it.scope && (
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, fontWeight: 900, color: g.color, marginBottom: 3 }}>{pick(T.scope)}</div>
-                            <div style={{ fontSize: 13, lineHeight: 1.7, color: "#1f0f00" }}>{pick(it.scope)}</div>
-                          </div>
-                        )}
-                        {it.steps && (
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, fontWeight: 900, color: g.color, marginBottom: 3 }}>{pick(T.steps)}</div>
-                            <div style={{ fontSize: 13, lineHeight: 1.7, color: "#1f0f00" }}>{pick(it.steps)}</div>
-                          </div>
-                        )}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginTop: 6 }}>
-                          {it.records && (
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: "#7c3aed", marginBottom: 2 }}>{pick(T.records)}</div>
-                              <div style={{ fontSize: 12, color: "#1f0f00" }}>{pick(it.records)}</div>
-                            </div>
-                          )}
-                          {it.freq && (
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: "#7c3aed", marginBottom: 2 }}>{pick(T.freq)}</div>
-                              <div style={{ fontSize: 12, color: "#1f0f00" }}>{pick(it.freq)}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {isEdit && (
-                      <div style={{ marginTop: 10, padding: 10, background: "#fff", borderRadius: 8, border: "1px solid rgba(120,53,15,0.18)" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-                          <div>
-                            <label style={labelStyle}>{pick(T.version)}</label>
-                            <input type="text" value={draft.version} onChange={(e) => setDraft({ ...draft, version: e.target.value })} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>{pick(T.status)}</label>
-                            <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} style={inputStyle}>
-                              <option value="draft">{pick(T.optDraft)}</option>
-                              <option value="review">{pick(T.optReview)}</option>
-                              <option value="active">{pick(T.optActive)}</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label style={labelStyle}>{pick(T.approvedDate)}</label>
-                            <input type="date" value={draft.approvedDate} onChange={(e) => setDraft({ ...draft, approvedDate: e.target.value })} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>{pick(T.reviewDate)}</label>
-                            <input type="date" value={draft.reviewDate} onChange={(e) => setDraft({ ...draft, reviewDate: e.target.value })} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>{pick(T.owner)}</label>
-                            <input type="text" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} style={inputStyle} />
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                          <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={() => saveStatus(it)} disabled={saving}>
-                            {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
-                          </button>
-                          <button style={buttonGhost} onClick={() => setEditingCode(null)} disabled={saving}>{pick(T.cancel)}</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        {/* البطاقات */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 16 }}>
+          {filtered.map(({ item, group }) => (
+            <SopCard
+              key={item.code}
+              item={item}
+              group={group}
+              pick={pick}
+              dir={dir}
+              hover={hover}
+              setHover={setHover}
+              onOpen={() => setSelected({ item, group })}
+            />
+          ))}
+        </div>
+        {filtered.length === 0 && (
+          <div style={{
+            padding: 40, textAlign: "center", color: "#64748b", fontWeight: 800,
+            background: "rgba(255,255,255,0.88)", borderRadius: 16, border: "1px solid rgba(15,23,42,0.12)",
+          }}>
+            {pick(T.noResults)}
           </div>
-        ))}
+        )}
+
+        {/* ── وثائق الـ PDF خارج #root ── */}
+        {createPortal(
+          <div ref={registerRef} style={pdfStageStyle(1400)} dir={dir}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
+              <img src={mawashiLogo} alt="" style={{ height: 52 }} />
+              <div style={{ flex: 1 }}>
+                <div style={PDF_UI.h1}>{pick(T.pdfRegTitle)}</div>
+                <div style={PDF_UI.sub}>{pick(T.pdfCompany)}</div>
+              </div>
+            </div>
+
+            <table style={PDF_UI.metaTable}>
+              <tbody>
+                <tr>
+                  <td style={PDF_UI.th}>{pick(T.pdfPrintedOn)}</td><td style={PDF_UI.td}>{todayISO()}</td>
+                  <td style={PDF_UI.th}>{pick(T.pdfCount)}</td><td style={PDF_UI.td}>{allItems.length}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <table style={{ ...PDF_UI.table, marginTop: 10 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...PDF_UI.th, width: 28 }}>{pick(T.pdfNo)}</th>
+                  <th style={{ ...PDF_UI.th, width: 96 }}>{pick(T.code)}</th>
+                  <th style={{ ...PDF_UI.th, width: 260 }}>{pick(T.pdfSopTitle)}</th>
+                  <th style={{ ...PDF_UI.th, width: 130 }}>{pick(T.group)}</th>
+                  <th style={PDF_UI.th}>{pick(T.objective)}</th>
+                  <th style={{ ...PDF_UI.th, width: 150 }}>{pick(T.freq)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allItems.map(({ item, group }, i) => (
+                  <tr key={item.code}>
+                    <td style={{ ...PDF_UI.td, textAlign: "center" }}>{i + 1}</td>
+                    <td style={{ ...PDF_UI.td, fontWeight: 700 }}>{item.code}</td>
+                    <td style={PDF_UI.td}>{pick(item.title)}</td>
+                    <td style={PDF_UI.td}>{pick(group.short || group.title)}</td>
+                    <td style={PDF_UI.td}>{item.objective ? pick(item.objective) : "—"}</td>
+                    <td style={PDF_UI.td}>{item.freq ? pick(item.freq) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>,
+          document.body
+        )}
+
+        {selected && createPortal(
+          <div ref={sopRef} style={pdfStageStyle(900)} dir={dir}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
+              <img src={mawashiLogo} alt="" style={{ height: 52 }} />
+              <div style={{ flex: 1 }}>
+                <div style={PDF_UI.h1}>{pick(selected.item.title)}</div>
+                <div style={PDF_UI.sub}>{selected.item.code} · {pick(T.pdfCompany)}</div>
+              </div>
+            </div>
+
+            <table style={PDF_UI.metaTable}>
+              <tbody>
+                <tr>
+                  <td style={PDF_UI.th}>{pick(T.code)}</td><td style={PDF_UI.td}>{selected.item.code}</td>
+                  <td style={PDF_UI.th}>{pick(T.group)}</td><td style={PDF_UI.td}>{pick(selected.group.short || selected.group.title)}</td>
+                  <td style={PDF_UI.th}>{pick(T.pdfPrintedOn)}</td><td style={PDF_UI.td}>{todayISO()}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {[...documentSections(selected.item, pick),
+              { label: pick(T.records), value: selected.item.records },
+              { label: pick(T.freq), value: selected.item.freq },
+              ...closingSections(selected.item, pick),
+            ].filter((b) => b.value).map((b, i) => (
+              <div key={i} style={{ marginTop: 12 }}>
+                <div style={PDF_UI.sectionTitle}>{i + 1}. {b.label}</div>
+                <div style={{ fontSize: 11, lineHeight: 1.8, whiteSpace: "pre-line" }}>{pick(b.value)}</div>
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
       </div>
     </main>
   );

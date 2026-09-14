@@ -6,8 +6,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupLandscape, display,
-} from "./_lib";
+  pageSetupLandscape, display, rowsOf } from "./_lib";
 
 const COLS = [
   { key: "vehicleNo",    label: "Vehicle No.",   width: 14 },
@@ -24,7 +23,7 @@ const COLS = [
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const items = Array.isArray(p.items) ? p.items : [];
+  const items = rowsOf(p.items);
 
   const NC = COLS.length; // 9
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

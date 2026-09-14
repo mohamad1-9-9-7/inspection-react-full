@@ -2,11 +2,14 @@
 //
 // سجل الإعدام الشهري من أودو — Odoo Monthly Disposal Log.
 //
-// This register is deliberately SEPARATE from `destruction_record`:
-//   • `destruction_record`  = what QA condemned (our own system, with evidence)
-//   • `odoo_disposal_log`   = what the store team exported from Odoo and printed
-// The whole point of this module is to reconcile the two, so the two data sets
-// must never be merged into one report type.
+// The imported file is kept in its own report type and never merged into
+// ours — it is the OTHER side of the reconciliation:
+//   • `odoo_disposal_log`   = what the store team exported from Odoo
+//   • `returns`             = what the branches returned for destruction
+//   • `returns_customers`   = what customers sent back for destruction
+//   • `destruction_record`  = what QA wrote up itself, with evidence
+// `/disposal-log/compare` reads the file against the other three, day by day
+// and product by product.
 //
 // Server is the source of truth (POST / PUT /api/reports, type=odoo_disposal_log).
 // One saved record = one month of the Odoo export.
@@ -412,6 +415,10 @@ export function flattenDestructionRecords(records, opts = {}) {
       const code = String(it?.itemCode || "").trim();
       if (!qty && !name && !code) continue;
       out.push({
+        /* Same shape as the two returns registers, so all three can be
+           reconciled side by side; `action` carries the reason it was
+           condemned, which is the closest thing this register has to one. */
+        source: "condemnation",
         recordId: rec?.id || rec?._id || "",
         date,
         branch,
@@ -419,6 +426,7 @@ export function flattenDestructionRecords(records, opts = {}) {
         product: name,
         uom: normalizeUom(resolveOption(it?.qtyType, it?.customQtyType)),
         qty,
+        action: resolveOption(it?.reason, it?.customReason) || "Condemnation",
         reason: resolveOption(it?.reason, it?.customReason),
         method: resolveOption(it?.method, it?.customMethod),
         batchNo: String(it?.batchNo || "").trim(),
@@ -430,224 +438,6 @@ export function flattenDestructionRecords(records, opts = {}) {
   return out;
 }
 
-/* ============================================================
-   The reconciliation engine
-   ============================================================ */
-
-export const STATUS = {
-  MATCH: "match",
-  QTY_DIFF: "qty_diff",
-  ODOO_ONLY: "odoo_only", // in the store file, missing from our condemnation register
-  MINE_ONLY: "mine_only", // we condemned it, the store file does not show it
-};
-
-export const STATUS_META = {
-  [STATUS.MATCH]:     { label: "Matched",            ar: "مطابق",              color: "#047857", bg: "#ecfdf5", border: "#a7f3d0", icon: "✓" },
-  [STATUS.QTY_DIFF]:  { label: "Quantity differs",   ar: "فرق في الكمية",      color: "#b45309", bg: "#fffbeb", border: "#fde68a", icon: "≠" },
-  [STATUS.ODOO_ONLY]: { label: "Only in Odoo file",  ar: "في ملف أودو فقط",    color: "#b91c1c", bg: "#fef2f2", border: "#fecaca", icon: "!" },
-  [STATUS.MINE_ONLY]: { label: "Only in my records", ar: "في سجلي فقط",        color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe", icon: "★" },
-};
-
-function entryKeys(e, mode) {
-  const bk = branchKeyOf(e.branch);
-  const ck = productCodeKey(e.code, e.product);
-  const nk = normKey(e.product);
-  const bucket = mode === "day" ? String(e.date || "").slice(0, 10) : "";
-  return {
-    bucket,
-    branchKey: bk,
-    codeKey: ck || nk || "?",
-    nameKey: nk,
-    key: `${bk}||${bucket}||${ck || nk || "?"}`,
-    nameLookup: `${bk}||${bucket}||#${nk}`,
-  };
-}
-
-function aggregate(entries, mode, side) {
-  const map = new Map();
-  const byName = new Map();
-  for (const e of safeArr(entries)) {
-    const k = entryKeys(e, mode);
-    let g = map.get(k.key);
-    if (!g) {
-      g = {
-        key: k.key,
-        bucket: k.bucket,
-        branch: e.branch || "—",
-        branchKey: k.branchKey,
-        code: e.code || "",
-        codeKey: k.codeKey,
-        product: e.product || "",
-        category: e.category || "",
-        qty: 0,
-        lines: 0,
-        units: new Map(),
-        details: [],
-        nameKeys: new Set(),
-      };
-      map.set(k.key, g);
-    }
-    g.qty += num(e.qty);
-    g.lines += 1;
-    g.units.set(e.uom, num(g.units.get(e.uom)) + num(e.qty));
-    g.nameKeys.add(k.nameKey);
-    if (!g.product && e.product) g.product = e.product;
-    if (!g.code && e.code) g.code = e.code;
-    if (!g.category && e.category) g.category = e.category;
-    g.details.push(
-      side === "odoo"
-        ? { date: e.date, ref: e.reference, qty: num(e.qty), uom: e.uom, category: e.category, remarks: e.remarks }
-        : { date: e.date, qty: num(e.qty), uom: e.uom, reason: e.reason, method: e.method, batchNo: e.batchNo, expiry: e.expiry, images: e.images, recordId: e.recordId }
-    );
-    if (k.nameKey) byName.set(k.nameLookup, k.key);
-  }
-  return { map, byName };
-}
-
-function unitRows(odooUnits, mineUnits) {
-  const units = new Set([...(odooUnits?.keys() || []), ...(mineUnits?.keys() || [])]);
-  return Array.from(units).sort().map((u) => {
-    const o = num(odooUnits?.get(u));
-    const m = num(mineUnits?.get(u));
-    return { unit: u, odoo: o, mine: m, diff: m - o };
-  });
-}
-
-/**
- * Reconcile one imported Odoo month against our own condemnation records.
- *
- * @param {Array}  odooRows   normalized rows from `buildRows()` (already month-scoped)
- * @param {Array}  mineRows   entries from `flattenDestructionRecords()`
- * @param {Object} opts       { mode: "month"|"day", tolerance: number }
- */
-export function buildComparison(odooRows, mineRows, opts = {}) {
-  const mode = opts.mode === "day" ? "day" : "month";
-  const tolerance = Number.isFinite(Number(opts.tolerance)) ? Number(opts.tolerance) : 0.005;
-
-  const odoo = aggregate(odooRows, mode, "odoo");
-  const mine = aggregate(mineRows, mode, "mine");
-
-  /* Pair up by key, then rescue leftovers by product name. */
-  const pairs = new Map(); // key → { o, m, matchedBy }
-  for (const [key, o] of odoo.map) pairs.set(key, { o, m: null, matchedBy: "code" });
-  for (const [key, m] of mine.map) {
-    const p = pairs.get(key);
-    if (p) {
-      p.m = m;
-      continue;
-    }
-    let rescued = null;
-    for (const nk of m.nameKeys) {
-      const cand = odoo.byName.get(`${m.branchKey}||${m.bucket}||#${nk}`);
-      if (cand && pairs.get(cand) && !pairs.get(cand).m) {
-        rescued = cand;
-        break;
-      }
-    }
-    if (rescued) {
-      const p2 = pairs.get(rescued);
-      p2.m = m;
-      p2.matchedBy = "name";
-    } else {
-      pairs.set(key, { o: null, m, matchedBy: "code" });
-    }
-  }
-
-  const rows = [];
-  for (const [key, { o, m, matchedBy }] of pairs) {
-    const units = unitRows(o?.units, m?.units);
-    const odooQty = num(o?.qty);
-    const mineQty = num(m?.qty);
-    const diff = mineQty - odooQty;
-    const unitMismatch = !!o && !!m && units.some((u) => (u.odoo === 0) !== (u.mine === 0));
-
-    let status;
-    if (o && !m) status = STATUS.ODOO_ONLY;
-    else if (!o && m) status = STATUS.MINE_ONLY;
-    else if (Math.abs(diff) <= tolerance && !unitMismatch) status = STATUS.MATCH;
-    else status = STATUS.QTY_DIFF;
-
-    rows.push({
-      key,
-      bucket: o?.bucket || m?.bucket || "",
-      branch: o?.branch || m?.branch || "—",
-      branchKey: o?.branchKey || m?.branchKey || "",
-      code: o?.code || m?.code || "",
-      codeKey: o?.codeKey || m?.codeKey || "",
-      product: o?.product || m?.product || "",
-      category: o?.category || m?.category || "",
-      units,
-      odooQty,
-      mineQty,
-      diff,
-      absDiff: Math.abs(diff),
-      odooLines: num(o?.lines),
-      mineLines: num(m?.lines),
-      odooDetails: safeArr(o?.details),
-      mineDetails: safeArr(m?.details),
-      unitMismatch,
-      matchedBy: o && m ? matchedBy : "",
-      status,
-    });
-  }
-
-  rows.sort((a, b) => {
-    const order = { [STATUS.ODOO_ONLY]: 0, [STATUS.QTY_DIFF]: 1, [STATUS.MINE_ONLY]: 2, [STATUS.MATCH]: 3 };
-    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
-    if (b.absDiff !== a.absDiff) return b.absDiff - a.absDiff;
-    return String(a.branch).localeCompare(String(b.branch));
-  });
-
-  /* ── per-branch roll-up ── */
-  const bMap = new Map();
-  for (const r of rows) {
-    const b = r.branch || "—";
-    let g = bMap.get(b);
-    if (!g) {
-      g = {
-        branch: b, odooQty: 0, mineQty: 0, lines: 0,
-        match: 0, qtyDiff: 0, odooOnly: 0, mineOnly: 0,
-        odooLines: 0, mineLines: 0,
-      };
-      bMap.set(b, g);
-    }
-    g.lines += 1;
-    g.odooQty += r.odooQty;
-    g.mineQty += r.mineQty;
-    g.odooLines += r.odooLines;
-    g.mineLines += r.mineLines;
-    if (r.status === STATUS.MATCH) g.match += 1;
-    else if (r.status === STATUS.QTY_DIFF) g.qtyDiff += 1;
-    else if (r.status === STATUS.ODOO_ONLY) g.odooOnly += 1;
-    else g.mineOnly += 1;
-  }
-  const branches = Array.from(bMap.values())
-    .map((g) => ({
-      ...g,
-      diff: g.mineQty - g.odooQty,
-      coverage: g.lines ? Math.round(((g.match + g.qtyDiff) / g.lines) * 100) : 0,
-    }))
-    .sort((a, b) => b.odooQty - a.odooQty);
-
-  const totals = {
-    rows: rows.length,
-    match: rows.filter((r) => r.status === STATUS.MATCH).length,
-    qtyDiff: rows.filter((r) => r.status === STATUS.QTY_DIFF).length,
-    odooOnly: rows.filter((r) => r.status === STATUS.ODOO_ONLY).length,
-    mineOnly: rows.filter((r) => r.status === STATUS.MINE_ONLY).length,
-    odooQty: rows.reduce((s, r) => s + r.odooQty, 0),
-    mineQty: rows.reduce((s, r) => s + r.mineQty, 0),
-    odooLines: safeArr(odooRows).length,
-    mineLines: safeArr(mineRows).length,
-  };
-  totals.diff = totals.mineQty - totals.odooQty;
-  totals.matchRate = totals.rows ? Math.round((totals.match / totals.rows) * 100) : 0;
-  totals.coverage = totals.rows
-    ? Math.round(((totals.match + totals.qtyDiff) / Math.max(1, totals.match + totals.qtyDiff + totals.odooOnly)) * 100)
-    : 0;
-
-  return { mode, tolerance, rows, branches, totals };
-}
 
 /* ============================================================
    Record shape helpers (server payload)
@@ -672,4 +462,618 @@ export function recordPeriod(rec) {
     rec?.payload?.period ||
     monthKeyOf(rec?.payload?.reportDate || rec?.reportDate || "")
   );
+}
+
+/* ============================================================
+   The returns register — the other half of the reconciliation
+   ============================================================
+   `destruction_record` holds only the handful of condemnations QA writes up
+   with evidence; the register that actually carries the branches' destroyed
+   stock is the daily RETURNS report, where every line already says what was
+   done with the product. So the Odoo file is reconciled against the returns
+   rows whose action means "this was destroyed", and the condemnation register
+   stays available as a second, separate source. */
+
+export const RETURNS_TYPE = "returns";
+export const CUSTOMER_RETURNS_TYPE = "returns_customers";
+
+/* The three registers that can carry a destroyed product. They are read
+   together because Odoo posts one voucher whichever door the product came
+   back through: a branch transfer, a customer collection, or a QA write-up.
+   Keeping them apart on the line is what lets a gap be explained instead of
+   only counted. */
+export const SOURCES = ["branch", "customer", "condemnation"];
+export const SOURCE_META = {
+  branch:       { label: "Branch returns",      ar: "مرتجعات الفروع",  mark: "\ud83c\udfea", tone: "teal" },
+  customer:     { label: "Customer returns",    ar: "مرتجعات العملاء", mark: "\ud83e\uddfe", tone: "violet" },
+  condemnation: { label: "Condemnation record", ar: "سجل الإعدام",     mark: "\ud83d\udcdd", tone: "amber" },
+};
+
+/** The returns actions that end in destruction. */
+export const DISPOSAL_ACTIONS = ["Condemnation", "Condemnation / Cooking", "Disposed"];
+
+export const ACTION_META = {
+  "Condemnation":           { ar: "إعدام",        color: "#991b1b", bg: "#fef2f2", border: "#fecaca", mark: "⛔" },
+  "Condemnation / Cooking": { ar: "إعدام / طبخ",  color: "#9a3412", bg: "#fff7ed", border: "#fed7aa", mark: "🔥" },
+  "Disposed":               { ar: "تخلّص",        color: "#334155", bg: "#f1f5f9", border: "#cbd5e1", mark: "🗑️" },
+};
+
+/* A branch that types its own action still means destruction when it says so.
+   Both languages, because the free-text box is filled in either. */
+const CUSTOM_DISPOSAL_RE =
+  /(condemn|destro|dispos|discard|waste|إعدام|اعدام|إتلاف|اتلاف|تخلص|تلف|إدانة|ادانة)/i;
+
+/** Does this returns line mean the product was destroyed? */
+export function isDisposalAction(action, customAction = "") {
+  const a = String(action || "").trim();
+  if (DISPOSAL_ACTIONS.some((x) => x.toLowerCase() === a.toLowerCase())) return true;
+  if (a === "Other..." || !a) return CUSTOM_DISPOSAL_RE.test(String(customAction || ""));
+  return CUSTOM_DISPOSAL_RE.test(a);
+}
+
+/** The label a returns line is counted under. */
+export function actionLabel(action, customAction = "") {
+  const a = String(action || "").trim();
+  if (a === "Other...") return String(customAction || "").trim() || "Other";
+  return a || "—";
+}
+
+/**
+ * KG and grams weigh; pieces, plates, boxes count. Odoo says PLATE where the
+ * branch says PCS for the very same salad, so the two have to land in one
+ * family or every plate in the month reads as a missing product.
+ */
+export function unitFamily(uom) {
+  const u = normalizeUom(uom);
+  if (u === "KG" || u === "G") return "KG";
+  if (u === "LTR") return "LTR";
+  if (u === "PCS" || u === "PLATE" || u === "CTN" || u === "BOX") return "COUNT";
+  return u || "—";
+}
+
+export const UNIT_FAMILY_LABEL = { KG: "Weight (KG)", COUNT: "Count (PCS / PLATE)", LTR: "Litres" };
+
+/** Flatten `returns` API records into comparable disposal entries. */
+export function flattenReturnsRecords(records, opts = {}) {
+  const { period = "", from = "", to = "", actions = null, changeIndex = null, useChangeDates = true } = opts;
+  const allow = actions && actions.length ? new Set(actions.map((a) => String(a).toLowerCase())) : null;
+  const out = [];
+
+  for (const rec of safeArr(records)) {
+    const p = rec?.payload || {};
+    const reportDate = String(p.reportDate || rec?.reportDate || "").slice(0, 10);
+    if (!reportDate) continue;
+
+    for (const it of safeArr(p.items)) {
+      const action = String(it?.action || "").trim();
+      const custom = String(it?.customAction || "").trim();
+      if (!isDisposalAction(action, custom)) continue;
+      const label = actionLabel(action, custom);
+      if (allow && !allow.has(label.toLowerCase()) && !allow.has(action.toLowerCase())) continue;
+
+      const qty = num(it?.quantity);
+      const code = String(it?.itemCode || "").trim();
+      const name = String(it?.productName || "").trim();
+      if (!qty && !code && !name) continue;
+
+      /* The period is applied to the DISPOSAL date, not the report date: a
+         line written in July and condemned in August belongs to August's
+         Odoo file, and one written in August and condemned in September has
+         left it. */
+      const eff = disposalDateOf(it, reportDate, changeIndex, "branch", useChangeDates);
+      const date = eff.date;
+      if (period && monthKeyOf(date) !== period) continue;
+      if (from && date < from) continue;
+      if (to && date > to) continue;
+
+      out.push({
+        source: "branch",
+        recordId: rec?.id || rec?._id || "",
+        date,
+        reportDate,
+        dateFrom: eff.from,
+        changedAt: eff.changedAt,
+        dateShifted: date !== reportDate,
+        branch: resolveOption(it?.butchery, it?.customButchery) || "",
+        code,
+        product: name,
+        origin: String(it?.origin || "").trim(),
+        uom: normalizeUom(resolveOption(it?.qtyType, it?.customQtyType)),
+        qty,
+        action: label,
+        rawAction: action,
+        remarks: String(it?.remarks || "").trim(),
+        transferNo: String(it?.transferNo || "").trim(),
+        expiry: String(it?.expiry || "").trim(),
+        images: safeArr(it?.images).length,
+      });
+    }
+  }
+  return out;
+}
+
+
+/* ============================================================
+   When was it actually destroyed?
+   ============================================================
+   A branch writes a return on the day the product came back and often
+   decides its fate days later — the line is edited from "Use in production"
+   to "Condemnation" on, say, the 3rd, while the report still sits under the
+   1st. Odoo posts the voucher on the 3rd, so comparing on the report date
+   makes the very same event look like two failures at once: destroyed in
+   Odoo and not destroyed by us on one day, and the reverse two days later.
+
+   Every such edit is already recorded. `ReturnView` appends to
+   `returns_changes` (and the customer page to `returns_customers_changes`) a
+   line carrying the item key, the old and new action, and `at` — the moment
+   the action was changed. Reading that log gives the disposal date for free,
+   for rows that were changed long before this page existed.
+
+   Order of preference for a line's disposal date:
+     1. `actionDate` stamped on the item when the action was changed
+     2. the change log, when its latest entry moved this line TO the action
+        it now carries
+     3. the report date
+   ============================================================ */
+
+export const RETURNS_CHANGES_TYPE = "returns_changes";
+export const CUSTOMER_RETURNS_CHANGES_TYPE = "returns_customers_changes";
+
+/** Calendar date in Dubai — the day the business says it happened. */
+export function businessDateOf(value) {
+  if (!value) return "";
+  const t = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(t)) return String(value).slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Dubai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(t));
+  } catch {
+    return new Date(t).toISOString().slice(0, 10);
+  }
+}
+
+const lower = (v) => String(v ?? "").trim().toLowerCase();
+
+/** Exactly the key `ReturnView` / `CustomerReturnView` write into the log. */
+export function returnsItemKey(it, kind = "branch") {
+  const who =
+    kind === "customer"
+      ? it?.customerName
+      : (String(it?.butchery || "").includes("Other") || String(it?.butchery || "").includes("آخر"))
+        ? it?.customButchery
+        : (/^\d+$/.test(String(it?.butchery || "").trim())
+            ? `POS ${String(it.butchery).trim()}`
+            : it?.butchery);
+  return [lower(it?.itemCode), lower(it?.productName), lower(it?.origin), lower(who), lower(it?.expiry)].join("|");
+}
+
+/**
+ * Index a change log: `${reportDate}||${itemKey}` → the LATEST change on it.
+ * Only the latest matters — a line moved to Condemnation and then away from
+ * it must not keep the condemnation date.
+ */
+export function buildChangeIndex(records) {
+  const map = new Map();
+  for (const rec of safeArr(records)) {
+    const d = String(rec?.payload?.reportDate || rec?.reportDate || "").slice(0, 10);
+    if (!d) continue;
+    for (const ch of safeArr(rec?.payload?.items)) {
+      const k = ch?.key;
+      if (!k) continue;
+      const ts = Date.parse(ch?.at) || 0;
+      const id = `${d}||${k}`;
+      const prev = map.get(id);
+      if (!prev || ts > prev.ts) {
+        map.set(id, { to: ch.to || "", from: ch.from || "", at: ch.at || "", ts, partial: !!ch.partial });
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * The date a returns line should be compared on.
+ * @returns {{date: string, from: "stamp"|"log"|"report", changedAt: string}}
+ */
+export function disposalDateOf(it, reportDate, changeIndex, kind = "branch", useChangeDates = true) {
+  const stamped = String(it?.actionDate || it?.disposalDate || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(stamped)) {
+    return { date: stamped, from: "stamp", changedAt: stamped };
+  }
+  if (useChangeDates && changeIndex) {
+    const hit = changeIndex.get(`${reportDate}||${returnsItemKey(it, kind)}`);
+    const now = actionLabel(it?.action, it?.customAction);
+    if (hit && hit.at && lower(hit.to) === lower(now)) {
+      const d = businessDateOf(hit.at);
+      if (d) return { date: d, from: "log", changedAt: hit.at };
+    }
+  }
+  return { date: reportDate, from: "report", changedAt: "" };
+}
+
+/**
+ * Flatten `returns_customers` records into the same comparable entries.
+ *
+ * A customer return has no branch on it — it has the customer who sent it
+ * back. That is left in `customer` and the branch stays empty on purpose: the
+ * product still shows up in Odoo under whichever site cleared it, so forcing a
+ * branch here would only invent a mismatch. With "Day × branch × product"
+ * grouping these lines therefore stand on their own, which is the honest
+ * answer — the branch is genuinely not recorded on them.
+ */
+export function flattenCustomerReturns(records, opts = {}) {
+  const { period = "", from = "", to = "", actions = null, changeIndex = null, useChangeDates = true } = opts;
+  const allow = actions && actions.length ? new Set(actions.map((a) => String(a).toLowerCase())) : null;
+  const out = [];
+
+  for (const rec of safeArr(records)) {
+    const p = rec?.payload || {};
+    const reportDate = String(p.reportDate || rec?.reportDate || "").slice(0, 10);
+    if (!reportDate) continue;
+
+    for (const it of safeArr(p.items)) {
+      const action = String(it?.action || "").trim();
+      const custom = String(it?.customAction || "").trim();
+      if (!isDisposalAction(action, custom)) continue;
+      const label = actionLabel(action, custom);
+      if (allow && !allow.has(label.toLowerCase()) && !allow.has(action.toLowerCase())) continue;
+
+      const qty = num(it?.quantity);
+      const code = String(it?.itemCode || "").trim();
+      const name = String(it?.productName || "").trim();
+      if (!qty && !code && !name) continue;
+
+      const eff = disposalDateOf(it, reportDate, changeIndex, "customer", useChangeDates);
+      const date = eff.date;
+      if (period && monthKeyOf(date) !== period) continue;
+      if (from && date < from) continue;
+      if (to && date > to) continue;
+
+      out.push({
+        source: "customer",
+        recordId: rec?.id || rec?._id || "",
+        date,
+        reportDate,
+        dateFrom: eff.from,
+        changedAt: eff.changedAt,
+        dateShifted: date !== reportDate,
+        branch: "",
+        customer: String(it?.customerName || "").trim(),
+        code,
+        product: name,
+        origin: String(it?.origin || "").trim(),
+        uom: normalizeUom(resolveOption(it?.qtyType, it?.customQtyType)),
+        qty,
+        action: label,
+        rawAction: action,
+        remarks: String(it?.remarks || "").trim(),
+        carNumber: String(it?.carNumber || "").trim(),
+        driverName: String(it?.driverName || "").trim(),
+        expiry: String(it?.expiry || "").trim(),
+        images: safeArr(it?.images).length,
+      });
+    }
+  }
+  return out;
+}
+
+/* ============================================================
+   Day × product reconciliation
+   ============================================================
+   One row per day, per product, per unit family - the shape the question is
+   actually asked in: "on the 3rd of August, how much HUMMUS did Odoo destroy
+   and how much did the branches return for destruction?". Branch is a
+   dimension you can switch on; with it off, a product destroyed in three
+   branches on one day is one line, which is how the monthly figure is read.
+
+   `dayWindow` exists because the two systems date the same event differently:
+   the branch writes the return on the day it came back, Odoo posts the
+   voucher when the store clears it, often a day or two later. Pairing inside
+   a window turns those from "missing on both sides" into one line that says
+   how many days apart the two entries are. */
+
+const dayShift = (iso, delta) => {
+  const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setUTCDate(d.getUTCDate() + Number(delta || 0));
+  return d.toISOString().slice(0, 10);
+};
+
+export const DAY_STATUS = {
+  MATCH: "match",
+  QTY_DIFF: "qty_diff",
+  ODOO_ONLY: "odoo_only",
+  RETURNS_ONLY: "returns_only",
+};
+
+export const DAY_STATUS_META = {
+  [DAY_STATUS.MATCH]:        { label: "Matched",           ar: "مطابق",            color: "#047857", bg: "#ecfdf5", border: "#a7f3d0", icon: "✓" },
+  [DAY_STATUS.QTY_DIFF]:     { label: "Quantity differs",  ar: "فرق بالكمية",      color: "#b45309", bg: "#fffbeb", border: "#fde68a", icon: "≠" },
+  [DAY_STATUS.ODOO_ONLY]:    { label: "Only in Odoo",      ar: "في أودو فقط",      color: "#b91c1c", bg: "#fef2f2", border: "#fecaca", icon: "!" },
+  [DAY_STATUS.RETURNS_ONLY]: { label: "Only in returns", ar: "في المرتجعات فقط", color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe", icon: "★" },
+};
+
+/* `unitMode`:
+     "family" — a product returned in KG and a product returned in PLATE are
+                two lines, which is the correct default: adding them is
+                meaningless and the split exposes the disagreement.
+     "merge"  — one line per product per day whatever the unit. Needed here
+                because branches and customers routinely type KG for a salad
+                Odoo posts in PLATE; merging turns two half-lines that both
+                look wrong into one line that says "25 against 25, units
+                disagree". The row keeps every unit it saw either way. */
+function groupEntries(entries, splitByBranch, side, unitMode) {
+  const map = new Map(); // groupKey -> Map(date -> bucket)
+  for (const e of safeArr(entries)) {
+    const fam = unitFamily(e.uom);
+    const codeKey = productCodeKey(e.code, e.product) || normKey(e.product) || "?";
+    const bKey = splitByBranch ? branchKeyOf(e.branch) : "";
+    const groupKey = `${bKey}||${codeKey}||${unitMode === "merge" ? "*" : fam}`;
+    const date = String(e.date || "").slice(0, 10);
+    if (!date) continue;
+
+    let byDate = map.get(groupKey);
+    if (!byDate) { byDate = new Map(); map.set(groupKey, byDate); }
+    let b = byDate.get(date);
+    if (!b) {
+      b = {
+        groupKey, date, fam, codeKey,
+        code: e.code || "", product: e.product || "", category: e.category || "",
+        branches: new Set(), units: new Set(), fams: new Set(), sources: new Set(), customers: new Set(),
+        qty: 0, lines: [],
+      };
+      byDate.set(date, b);
+    }
+    b.qty += num(e.qty);
+    if (e.dateShifted) b.shiftedLines = (b.shiftedLines || 0) + 1;
+    if (e.branch) b.branches.add(e.branch);
+    if (e.source) b.sources.add(e.source);
+    if (e.customer) b.customers.add(e.customer);
+    b.units.add(normalizeUom(e.uom));
+    b.fams.add(fam);
+    if (!b.code && e.code) b.code = e.code;
+    if (!b.product && e.product) b.product = e.product;
+    if (!b.category && e.category) b.category = e.category;
+    b.lines.push(side === "odoo"
+      ? { date: e.date, branch: e.branch, ref: e.reference, qty: num(e.qty), uom: normalizeUom(e.uom), category: e.category, remarks: e.remarks, srcRow: e.srcRow }
+      : {
+          date: e.date, reportDate: e.reportDate || e.date, dateFrom: e.dateFrom || "report",
+          changedAt: e.changedAt || "", source: e.source || "branch", branch: e.branch, customer: e.customer || "",
+          qty: num(e.qty), uom: normalizeUom(e.uom), action: e.action, remarks: e.remarks,
+          transferNo: e.transferNo, expiry: e.expiry, images: e.images, recordId: e.recordId,
+        });
+  }
+  return map;
+}
+
+/**
+ * Reconcile the Odoo disposal file against the returns register.
+ *
+ * @param {Array}  odooRows  rows from `buildRows()`
+ * @param {Array}  mineRows  entries from `flattenReturnsRecords()`
+ * @param {Object} opts      { splitByBranch, dayWindow, tolerance }
+ */
+/** Product codes the comparison should ignore, as a lookup set. */
+export function excludeSet(list) {
+  const s = new Set();
+  for (const e of safeArr(list)) {
+    const code = productCodeKey(typeof e === "string" ? e : e?.code, typeof e === "string" ? "" : e?.product);
+    if (code) s.add(code);
+  }
+  return s;
+}
+
+export function buildDailyComparison(odooRows, mineRows, opts = {}) {
+  const splitByBranch = !!opts.splitByBranch;
+  const dayWindow = Math.max(0, Math.min(7, Number(opts.dayWindow) || 0));
+  const tolerance = Number.isFinite(Number(opts.tolerance)) ? Number(opts.tolerance) : 0.005;
+  const unitMode = opts.unitMode === "merge" ? "merge" : "family";
+
+  /* Excluded products leave BOTH sides, so an item somebody decided not to
+     reconcile (a consumable, a sachet, a line Odoo posts under a rule of its
+     own) stops distorting the counts instead of merely being hidden. */
+  const skip = opts.exclude instanceof Set ? opts.exclude : excludeSet(opts.exclude);
+  const keep = (r) => !skip.size || !skip.has(productCodeKey(r.code, r.product) || normKey(r.product));
+  const odooKept = safeArr(odooRows).filter(keep);
+  const mineKept = safeArr(mineRows).filter(keep);
+  const excludedLines = safeArr(odooRows).length - odooKept.length + safeArr(mineRows).length - mineKept.length;
+
+  const A = groupEntries(odooKept, splitByBranch, "odoo", unitMode);
+  const B = groupEntries(mineKept, splitByBranch, "mine", unitMode);
+
+  const usedMine = new Set(); // `${groupKey}||${date}`
+  const rows = [];
+
+  const pushRow = (o, m, shift) => {
+    const odooQty = num(o?.qty);
+    const mineQty = num(m?.qty);
+    const diff = mineQty - odooQty;
+    let status;
+    if (o && !m) status = DAY_STATUS.ODOO_ONLY;
+    else if (!o && m) status = DAY_STATUS.RETURNS_ONLY;
+    else if (Math.abs(diff) <= tolerance) status = DAY_STATUS.MATCH;
+    else status = DAY_STATUS.QTY_DIFF;
+
+    const branches = new Set([...(o?.branches || []), ...(m?.branches || [])]);
+    const units = new Set([...(o?.units || []), ...(m?.units || [])]);
+    const sources = new Set(m?.sources || []);
+    const customers = new Set(m?.customers || []);
+    /* With units merged a line can hold both weights and counts; it is then
+       reported under its own combined family so no total ever adds them. */
+    const fams = [...new Set([...(o?.fams || []), ...(m?.fams || [])])].sort();
+
+    rows.push({
+      key: `${o?.groupKey || m?.groupKey}||${o?.date || m?.date}||${m?.date || ""}`,
+      date: o?.date || m?.date || "",
+      odooDate: o?.date || "",
+      mineDate: m?.date || "",
+      shiftDays: Number(shift || 0),
+      code: o?.code || m?.code || "",
+      codeKey: o?.codeKey || m?.codeKey || "",
+      product: o?.product || m?.product || "",
+      category: o?.category || m?.category || "",
+      branch: branches.size === 1 ? [...branches][0] : (branches.size ? `${branches.size} branches` : "—"),
+      branches: [...branches].sort(),
+      sources: SOURCES.filter((x) => sources.has(x)),
+      customers: [...customers].sort(),
+      datedByChange: num(m?.shiftedLines),
+      fam: fams.length ? fams.join(" + ") : (o?.fam || m?.fam || "—"),
+      fams,
+      units: [...units].sort(),
+      unitMismatch: units.size > 1,
+      odooQty,
+      mineQty,
+      diff,
+      absDiff: Math.abs(diff),
+      odooLines: safeArr(o?.lines),
+      mineLines: safeArr(m?.lines),
+      actions: Array.from(new Set(safeArr(m?.lines).map((l) => l.action).filter(Boolean))),
+      status,
+    });
+  };
+
+  /* 1 — same product, same day. */
+  for (const [groupKey, byDate] of A) {
+    const mineDates = B.get(groupKey);
+    for (const [date, o] of byDate) {
+      const m = mineDates?.get(date);
+      if (m) {
+        usedMine.add(`${groupKey}||${date}`);
+        pushRow(o, m, 0);
+      }
+    }
+  }
+
+  /* 2 — same product, a day or two apart (nearest first). */
+  for (const [groupKey, byDate] of A) {
+    const mineDates = B.get(groupKey);
+    for (const [date, o] of byDate) {
+      if (mineDates?.get(date)) continue; // already paired above
+      let paired = null;
+      if (dayWindow && mineDates) {
+        for (let step = 1; step <= dayWindow && !paired; step++) {
+          for (const delta of [-step, step]) {
+            const d2 = dayShift(date, delta);
+            const cand = mineDates.get(d2);
+            if (cand && !usedMine.has(`${groupKey}||${d2}`)) {
+              usedMine.add(`${groupKey}||${d2}`);
+              paired = { m: cand, shift: delta };
+              break;
+            }
+          }
+        }
+      }
+      pushRow(o, paired?.m || null, paired?.shift || 0);
+    }
+  }
+
+  /* 3 — whatever the returns register still holds alone. */
+  for (const [groupKey, byDate] of B) {
+    for (const [date, m] of byDate) {
+      if (usedMine.has(`${groupKey}||${date}`)) continue;
+      pushRow(null, m, 0);
+    }
+  }
+
+  /* ── per-day roll-up, the spine of the date tree ── */
+  const dayMap = new Map();
+  for (const r of rows) {
+    let g = dayMap.get(r.date);
+    if (!g) {
+      g = {
+        date: r.date, rows: 0, match: 0, qtyDiff: 0, odooOnly: 0, returnsOnly: 0,
+        byFam: new Map(), products: new Set(),
+      };
+      dayMap.set(r.date, g);
+    }
+    g.rows += 1;
+    g.products.add(r.codeKey);
+    if (r.status === DAY_STATUS.MATCH) g.match += 1;
+    else if (r.status === DAY_STATUS.QTY_DIFF) g.qtyDiff += 1;
+    else if (r.status === DAY_STATUS.ODOO_ONLY) g.odooOnly += 1;
+    else g.returnsOnly += 1;
+
+    const f = g.byFam.get(r.fam) || { fam: r.fam, odoo: 0, mine: 0 };
+    f.odoo += r.odooQty;
+    f.mine += r.mineQty;
+    g.byFam.set(r.fam, f);
+  }
+  const days = Array.from(dayMap.values())
+    .map((g) => ({
+      ...g,
+      products: g.products.size,
+      clean: g.qtyDiff + g.odooOnly + g.returnsOnly === 0,
+      issues: g.qtyDiff + g.odooOnly + g.returnsOnly,
+      byFam: Array.from(g.byFam.values())
+        .map((f) => ({ ...f, diff: f.mine - f.odoo }))
+        .sort((a, b) => String(a.fam).localeCompare(String(b.fam))),
+    }))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  /* ── per-branch roll-up ── */
+  const bMap = new Map();
+  for (const r of rows) {
+    for (const b of r.branches.length ? r.branches : ["—"]) {
+      let g = bMap.get(b);
+      if (!g) g = { branch: b, rows: 0, match: 0, qtyDiff: 0, odooOnly: 0, returnsOnly: 0, odooQty: 0, mineQty: 0 };
+      g.rows += 1;
+      if (r.status === DAY_STATUS.MATCH) g.match += 1;
+      else if (r.status === DAY_STATUS.QTY_DIFF) g.qtyDiff += 1;
+      else if (r.status === DAY_STATUS.ODOO_ONLY) g.odooOnly += 1;
+      else g.returnsOnly += 1;
+      g.odooQty += r.odooQty;
+      g.mineQty += r.mineQty;
+      bMap.set(b, g);
+    }
+  }
+  const branches = Array.from(bMap.values())
+    .map((g) => ({ ...g, diff: g.mineQty - g.odooQty, matchRate: g.rows ? Math.round((g.match / g.rows) * 100) : 0 }))
+    .sort((a, b) => b.rows - a.rows);
+
+  /* ── per-product roll-up ── */
+  const pMap = new Map();
+  for (const r of rows) {
+    const k = `${r.codeKey}||${r.fam}`;
+    let g = pMap.get(k);
+    if (!g) g = { key: k, code: r.code, product: r.product, fam: r.fam, days: 0, odooQty: 0, mineQty: 0, match: 0, issues: 0 };
+    g.days += 1;
+    g.odooQty += r.odooQty;
+    g.mineQty += r.mineQty;
+    if (r.status === DAY_STATUS.MATCH) g.match += 1; else g.issues += 1;
+    if (!g.product && r.product) g.product = r.product;
+    pMap.set(k, g);
+  }
+  const products = Array.from(pMap.values())
+    .map((g) => ({ ...g, diff: g.mineQty - g.odooQty, absDiff: Math.abs(g.mineQty - g.odooQty) }))
+    .sort((a, b) => b.absDiff - a.absDiff);
+
+  const famTotals = new Map();
+  for (const r of rows) {
+    const f = famTotals.get(r.fam) || { fam: r.fam, odoo: 0, mine: 0 };
+    f.odoo += r.odooQty;
+    f.mine += r.mineQty;
+    famTotals.set(r.fam, f);
+  }
+
+  const totals = {
+    rows: rows.length,
+    days: days.length,
+    match: rows.filter((r) => r.status === DAY_STATUS.MATCH).length,
+    qtyDiff: rows.filter((r) => r.status === DAY_STATUS.QTY_DIFF).length,
+    odooOnly: rows.filter((r) => r.status === DAY_STATUS.ODOO_ONLY).length,
+    returnsOnly: rows.filter((r) => r.status === DAY_STATUS.RETURNS_ONLY).length,
+    shifted: rows.filter((r) => r.shiftDays).length,
+    odooLines: odooKept.length,
+    mineLines: mineKept.length,
+    excludedLines,
+    datedByChange: rows.filter((r) => r.datedByChange).length,
+    byFam: Array.from(famTotals.values()).map((f) => ({ ...f, diff: f.mine - f.odoo })),
+  };
+  totals.matchRate = totals.rows ? Math.round((totals.match / totals.rows) * 100) : 0;
+
+  return { rows, days, branches, products, totals, splitByBranch, dayWindow, tolerance, unitMode };
 }

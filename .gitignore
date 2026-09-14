@@ -10,3 +10,4 @@ release
 # Claude Code worktrees (used internally — never tracked)
 .claude/worktrees/
 .claude/settings.local.json
+.env.bak

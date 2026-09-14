@@ -3,16 +3,15 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 export function makePosPestBuilder(branchLabel) {
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
     const company = p.company || {};
-    const stations = Array.isArray(p.stations) ? p.stations : [];
-    const pests    = Array.isArray(p.pestsTargeted) ? p.pestsTargeted : [];
+    const stations = rowsOf(p.stations);
+    const pests    = rowsOf(p.pestsTargeted);
 
     const NC = 4;
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

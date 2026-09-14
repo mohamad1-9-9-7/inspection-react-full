@@ -242,7 +242,6 @@ export const ST = {
   amSecTraining:         { en: "Training Certs",    ar: "شهادات التدريب" },
   amSecInternalTraining: { en: "Internal Training", ar: "التدريب الداخلي" },
   amSecIso:              { en: "ISO & HACCP",       ar: "ISO و HACCP" },
-  amSecHalalAudit:       { en: "HALAL Audit",       ar: "تدقيق الحلال" },
   amSecHse:              { en: "HSE",               ar: "السلامة والصحة المهنية" },
   amSecButcher:          { en: "Butcher",           ar: "الجزار" },
   amSecWorkforce:        { en: "Workforce",         ar: "القوى العاملة" },

@@ -4,8 +4,7 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 function makeWasteBuilder(title, docNo) {
   return async function build(wb, record, ctx) {
@@ -13,7 +12,7 @@ function makeWasteBuilder(title, docNo) {
     const p = record?.payload || {};
     const vendor = p.vendor || {};
     const images = p.images || {};
-    const extras = Array.isArray(images.extras) ? images.extras : [];
+    const extras = rowsOf(images.extras);
 
     const NC = 4;
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });

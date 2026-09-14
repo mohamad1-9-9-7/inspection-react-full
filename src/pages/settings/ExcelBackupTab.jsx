@@ -4,9 +4,18 @@
 
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../config/api";
-import { getExporter } from "./excel-exporters";
-import { sheetNameFor, sanitizeSheetName, extractDate, formatDMY } from "./excel-exporters/_lib";
-import { BRANCHES } from "./reportTypeCatalog";
+import { getExporter, exporterKindFor } from "./excel-exporters";
+import {
+  sheetNameFor, sanitizeSheetName, extractDate, formatDMY, linkifySheet,
+} from "./excel-exporters/_lib";
+import { pickTemplateRecord, makeBlankRecord, makeBlankRecordList } from "./excel-exporters/_blank_form";
+import {
+  BRANCHES, activeCards, branchesOfCard, groupsOfBranch,
+} from "./reportTypeCatalog";
+import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
+import {
+  buildWorkList, folderFor, manifestCsv, readmeText, blankReadmeText,
+} from "./_shared/backupTree";
 
 /* ═══════════════════════════════════════════════════════════════
    DATE FILTER
@@ -76,24 +85,63 @@ function filterSuffix(f) {
   return "";
 }
 
+/* Path and file-name safety live in _shared/backupTree.js (`safeSegment`), so
+   the Excel backup and the blank-forms export can never disagree about where a
+   file lands. */
+
 /* ═══════════════════════════════════════════════════════════════
    BRANCH / TYPE DEFINITIONS
    ═══════════════════════════════════════════════════════════════ */
-/* Branch/type catalog lives in reportTypeCatalog.js so other screens can reuse it. */
+/* Branch/type catalog lives in reportTypeCatalog.js so other screens can reuse
+   it. It also owns the card → branch → group tree this ZIP mirrors. */
+
+/** Oldest and newest business date across a set of records. */
+function dateSpan(records) {
+  const days = records.map(recordDate).filter(Boolean).sort();
+  return { firstDate: days[0] || "", lastDate: days[days.length - 1] || "" };
+}
+
+/** Hand a finished ZIP to the browser. */
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000); // 60s — enough for large ZIPs on slow connections
+}
+
+/**
+ * The newest single record of a type — the shape a blank form is modelled on.
+ *
+ * `limit=1` is set explicitly because utils/authFetch.js injects `limit=5000`
+ * into any report read that names a type but no limit. Pulling 5000 payloads
+ * to learn a column layout would make this export heavier than the backup it
+ * sits next to; the server orders by created_at DESC, so one row is the latest.
+ */
+async function fetchNewestRecord(type) {
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=1`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    const rows = Array.isArray(json) ? json : json?.data || [];
+    return pickTemplateRecord(rows);
+  } catch {
+    return null;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    API FETCH
-   ═══════════════════════════════════════════════════════════════ */
-async function fetchType(type) {
-  try {
-    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
-    if (!res.ok) return [];
-    const json = await res.json().catch(() => null);
-    return Array.isArray(json) ? json : json?.data || [];
-  } catch {
-    return [];
-  }
-}
+   ═══════════════════════════════════════════════════════════════
+   القراءة صارت عبر fetchAllOfType في _shared/reportBackupFetch.js: السيرفر
+   بيسقّف كل طلب بـ 5000 صف وما بيدعم offset، فالنوع اللي تعدّى السقف كان
+   بينقصّ بصمت. الهيلبر بيقسّم المدة (سنة ← شهر ← يوم) لما يضرب بالسقف. */
 
 /* ═══════════════════════════════════════════════════════════════
    WORKBOOK BUILDER
@@ -107,25 +155,27 @@ function addEmptySheet(wb, typeLabel) {
   ws.getRow(1).height = 36;
 }
 
-async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records) {
+async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records, opts = {}) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Al Mawashi — Excel Backup";
+  wb.creator = opts.blankForm ? "Al Mawashi — Blank Forms" : "Al Mawashi — Excel Backup";
   wb.created = new Date();
 
   const exporter = getExporter(typeKey);
+  const blankForm = !!opts.blankForm;
 
   // Collection exporters (registers/logs) render ALL records into ONE sheet
   // that mirrors the on-screen table — call once with the full array.
   if (exporter.collection) {
     if (!records.length) { addEmptySheet(wb, typeLabel); return wb; }
     try {
-      await exporter(wb, records, { branchLabel, typeKey, typeLabel });
+      await exporter(wb, records, { branchLabel, typeKey, typeLabel, blankForm });
     } catch (e) {
       console.error(`Collection exporter failed for ${typeKey}:`, e);
       const ws = wb.addWorksheet(sanitizeSheetName(typeLabel), { views: [{ showGridLines: false }] });
       ws.getCell("A1").value = `⚠️ Failed to render this register: ${e?.message || e}`;
       ws.getCell("A1").font = { color: { argb: "B91C1C" } };
     }
+    wb.worksheets.forEach((ws) => linkifySheet(ws)); // not point-free: forEach passes the index, which would land in maxRows
     return wb;
   }
 
@@ -137,13 +187,13 @@ async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records) 
   const usedNames = new Map();
   for (let i = 0; i < records.length; i++) {
     const rec = records[i];
-    let name = sheetNameFor(i, rec);
+    let name = blankForm ? sanitizeSheetName(typeLabel) : sheetNameFor(i, rec);
     const count = usedNames.get(name) || 0;
     usedNames.set(name, count + 1);
     if (count > 0) name = `${name.slice(0, 28)}(${count})`;
     name = sanitizeSheetName(name);
     try {
-      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name });
+      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name, blankForm });
     } catch (e) {
       console.error(`Exporter failed for ${typeKey} record ${i}:`, e);
       const ws = wb.addWorksheet(name, { views: [{ showGridLines: false }] });
@@ -151,6 +201,7 @@ async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records) 
       ws.getCell("A1").font = { color: { argb: "B91C1C" } };
     }
   }
+  wb.worksheets.forEach((ws) => linkifySheet(ws)); // not point-free: forEach passes the index, which would land in maxRows
   return wb;
 }
 
@@ -181,6 +232,8 @@ export default function ExcelBackupTab() {
     includeUndated: false,
   });
   const [skipEmpty, setSkipEmpty] = useState(false);
+  /* Blank-forms export: how many writable lines a free-entry log gets. */
+  const [blankRows, setBlankRows] = useState(15);
 
   function setMode(mode) {
     setFilter((f) => ({ ...f, mode }));
@@ -196,6 +249,17 @@ export default function ExcelBackupTab() {
   );
   const pickedCount = picked.size;
   const filterQ = query.trim().toLowerCase();
+
+  /* نافذة الرؤية: حساب بلا صلاحية «history» بياخد آخر ٣٠ يوم لفروع POS وشهرين
+     للمرتجعات — والقصّ بيصير مركزياً في authFetch.js، فبدون هالتحذير بتطلع نسخة
+     ناقصة واسمها كاملة. منحسبها من الأنواع المختارة فعلياً. */
+  const windowWarning = useMemo(() => {
+    const types = [];
+    BRANCHES.forEach((b) => b.types.forEach(([k]) => {
+      if (picked.has(`${b.id}::${k}`)) types.push(k);
+    }));
+    return visibilityWarningText(types);
+  }, [picked]);
 
   function isPicked(branchId, typeKey) {
     return picked.has(`${branchId}::${typeKey}`);
@@ -220,6 +284,19 @@ export default function ExcelBackupTab() {
         if (allOn) next.delete(id);
         else next.add(id);
       });
+      return next;
+    });
+  }
+  /** Tick or untick every type of every branch on one dashboard card. */
+  function toggleCardAll(branches) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      const allOn = branches.every((b) => b.types.every(([k]) => next.has(`${b.id}::${k}`)));
+      branches.forEach((b) => b.types.forEach(([k]) => {
+        const id = `${b.id}::${k}`;
+        if (allOn) next.delete(id);
+        else next.add(id);
+      }));
       return next;
     });
   }
@@ -271,13 +348,9 @@ export default function ExcelBackupTab() {
       const ExcelJS = ExcelJSModule.default || ExcelJSModule;
       const zip     = new JSZip();
 
-      // Build flat list of [branch, typeKey, typeLabel] for picked items
-      const work = [];
-      BRANCHES.forEach((b) => {
-        b.types.forEach(([k, lbl]) => {
-          if (picked.has(`${b.id}::${k}`)) work.push({ branch: b, typeKey: k, typeLabel: lbl });
-        });
-      });
+      /* One work item per selected placement, already carrying the folder path
+         it belongs in. Order follows the catalog, which follows the screens. */
+      const work = buildWorkList(picked);
 
       let step = 0;
       let filesCreated = 0;
@@ -286,18 +359,48 @@ export default function ExcelBackupTab() {
       let totalRows    = 0;   // records that survived the date filter
       let totalFetched = 0;   // records returned by the server before filtering
       const folderCache = new Map();
+      const fetchCache  = new Map(); // typeKey → page, so a type listed under two cards is read once
+      const counted     = new Set(); // typeKeys already added to the record total
+      const manifest    = [];
       const heavyTypes  = []; // types with 400+ records — warn user after export
+      const pagedTypes  = []; // types that needed date-splitting to clear the 5000 cap
+      const cutTypes    = []; // types where even one day exceeded the cap
 
-      for (const { branch, typeKey, typeLabel } of work) {
+      for (const item of work) {
+        const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
         step++;
-        setProgress({ current: step, total: work.length, label: `${branch.label} ← ${typeLabel}` });
+        setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
 
-        const fetched = await fetchType(typeKey);
+        const atStep = step;
+        let page = fetchCache.get(typeKey);
+        if (!page) {
+          page = await fetchAllOfType(typeKey, {
+            onProgress: ({ requests }) => {
+              if (requests > 1) {
+                setProgress({
+                  current: atStep,
+                  total: work.length,
+                  label: `${branch.label} ← ${typeLabel} — تقسيم المدة (${requests} طلب)`,
+                });
+              }
+            },
+          });
+          fetchCache.set(typeKey, page);
+          totalFetched += page.rows.length;
+          if (page.paged) pagedTypes.push(`${typeLabel} (${page.requests} طلب)`);
+          if (page.truncated) cutTypes.push(typeLabel);
+        }
+        const fetched = page.rows;
         const records = filterOn ? fetched.filter((r) => matchesFilter(r, filter)) : fetched;
-        totalFetched += fetched.length;
-        totalRows    += records.length;
-        if (records.length >= 400) {
-          heavyTypes.push(`${typeLabel} (${records.length.toLocaleString()} سجل)`);
+        /* Counted per TYPE, not per file: a type placed under two cards writes
+           two files but is still one set of records, and adding it twice would
+           inflate the summary the user reads. */
+        if (!counted.has(typeKey)) {
+          counted.add(typeKey);
+          totalRows += records.length;
+          if (records.length >= 400) {
+            heavyTypes.push(`${typeLabel} (${records.length.toLocaleString()} سجل)`);
+          }
         }
 
         // لا ملف أصلاً للأنواع الفارغة عند تفعيل "تخطّي الملفات الفارغة"
@@ -306,23 +409,28 @@ export default function ExcelBackupTab() {
           continue;
         }
 
-        // المجلد يُنشأ فقط عند وجود ملف فعلي بداخله
-        let folder = folderCache.get(branch.label);
-        if (!folder) {
-          folder = zip.folder(branch.label);
-          folderCache.set(branch.label, folder);
-        }
-
+        const folder = folderFor(zip, segments, folderCache);
         const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records);
         const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
 
-        if (records.length === 0) {
-          filesEmpty++;
-          folder.file(`${typeLabel} — empty.xlsx`, buf);
-        } else {
-          filesCreated++;
-          folder.file(`${typeLabel}.xlsx`, buf);
-        }
+        const empty = records.length === 0;
+        const fileName = empty ? `${fileBase} — empty.xlsx` : `${fileBase}.xlsx`;
+        folder.file(fileName, buf);
+        if (empty) filesEmpty++; else filesCreated++;
+
+        const { firstDate, lastDate } = dateSpan(records);
+        manifest.push({
+          card: card.label,
+          branch: branch.label,
+          group: item.group,
+          typeLabel,
+          typeKey,
+          count: records.length,
+          firstDate,
+          lastDate,
+          kind: exporterKindFor(typeKey),
+          path: [...segments, fileName].join("/"),
+        });
       }
 
       if (filesCreated === 0 && filesEmpty === 0) {
@@ -337,6 +445,23 @@ export default function ExcelBackupTab() {
 
       setProgress({ current: work.length, total: work.length, label: "🗜️ جارٍ ضغط الملفات..." });
 
+      /* Index + readme at the ZIP root. Without them a 200-file archive is a
+         pile of folders with no way to tell what is inside without opening
+         each one, or to notice that a type came back empty. */
+      const generatedAt = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
+      const notes = [];
+      if (cutTypes.length)   notes.push(`نسخة ناقصة (يوم فيه أكتر من 5000 سجل): ${cutTypes.join(" · ")}`);
+      if (pagedTypes.length) notes.push(`انقسمت المدة لتجاوز السقف: ${pagedTypes.join(" · ")}`);
+      if (filesSkipped)      notes.push(`${filesSkipped} نوع بلا سجلات — ما انعمله ملف.`);
+      if (windowWarning)     notes.push(windowWarning.replace(/^⚠️\s*/, ""));
+      zip.file("00 INDEX.csv", manifestCsv(manifest));
+      zip.file("00 README.txt", readmeText({
+        generatedAt,
+        filterLabel: filterLabel(filter),
+        rows: manifest,
+        notes,
+      }));
+
       const today = new Date().toISOString().slice(0, 10);
       const blob = await zip.generateAsync({
         type: "blob",
@@ -344,16 +469,9 @@ export default function ExcelBackupTab() {
         compressionOptions: { level: 6 },
       });
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `AlMawashi_Excel_Backup_${today}${filterSuffix(filter)}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 60_000); // 60s — enough for large ZIPs on slow connections
+      downloadBlob(blob, `AlMawashi_Excel_Backup_${today}${filterSuffix(filter)}.zip`);
 
-      setStats({ filesCreated, filesEmpty, totalRows, branches: folderCache.size });
+      setStats({ mode: "backup", filesCreated, filesEmpty, totalRows, branches: new Set(manifest.map((m) => m.branch)).size });
       const heavyNote = heavyTypes.length > 0
         ? `  ⚠️ تقارير ضخمة (${heavyTypes.length}): ${heavyTypes.join(" · ")}`
         : "";
@@ -361,9 +479,16 @@ export default function ExcelBackupTab() {
         ? `  🗓️ الفلترة: ${filterLabel(filter)} — ${totalRows.toLocaleString()} من أصل ${totalFetched.toLocaleString()} سجل.`
         : "";
       const skipNote = filesSkipped > 0 ? `  ⏭️ ${filesSkipped} نوع بلا سجلات (ما انعمله ملف).` : "";
+      const pagedNote = pagedTypes.length > 0
+        ? `  📄 تعدّى سقف الـ5000 فانقسمت المدة: ${pagedTypes.join(" · ")}.`
+        : "";
+      const cutNote = cutTypes.length > 0
+        ? `  ⛔ يوم واحد فيه أكتر من 5000 سجل — النسخة ناقصة لـ: ${cutTypes.join(" · ")}.`
+        : "";
+      const windowNote = windowWarning ? `  ${windowWarning}` : "";
       setMsg({
-        kind: heavyTypes.length > 0 ? "info" : "ok",
-        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${folderCache.size} فرع${filterNote}${skipNote}${heavyNote}`,
+        kind: cutTypes.length > 0 || windowWarning ? "err" : (heavyTypes.length > 0 ? "info" : "ok"),
+        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${manifest.length} ملف بالفهرس${filterNote}${skipNote}${pagedNote}${cutNote}${windowNote}${heavyNote}`,
       });
     } catch (e) {
       console.error(e);
@@ -374,6 +499,108 @@ export default function ExcelBackupTab() {
     }
   }
 
+  /* ─── Blank forms ───
+     نفس شجرة المجلدات، بس الملفات نماذج فارغة جاهزة للطباعة. منجيب سجل واحد
+     فقط لكل نوع (limit=1 ⇒ الأحدث) لأن الهدف الشكل مش البيانات — فالتصدير
+     أخف بمراحل من النسخة الاحتياطية حتى لو انختار كل شي. */
+  async function handleBlankForms() {
+    if (pickedCount === 0) {
+      setMsg({ kind: "err", text: "⚠️ اختر تقرير واحد على الأقل" });
+      return;
+    }
+    setBusy(true);
+    setStats(null);
+    setMsg({ kind: "info", text: "⏳ جارٍ تحضير النماذج الفارغة..." });
+
+    try {
+      const [JSZipModule, ExcelJSModule] = await Promise.all([
+        import("jszip"),
+        import("exceljs"),
+      ]);
+      const JSZip   = JSZipModule.default;
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+      const zip     = new JSZip();
+
+      const work = buildWorkList(picked);
+      const folderCache   = new Map();
+      const templateCache = new Map();   // typeKey → newest record (or null)
+      const manifest = [];
+      const missing  = [];
+      let step = 0;
+      let made = 0;
+
+      for (const item of work) {
+        const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
+        step++;
+        setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
+
+        let template = templateCache.get(typeKey);
+        if (template === undefined) {
+          template = await fetchNewestRecord(typeKey);
+          templateCache.set(typeKey, template);
+          if (!template) missing.push(`${branch.label} — ${typeLabel}`);
+        }
+
+        const exporter = getExporter(typeKey);
+        const payload = exporter.collection
+          ? makeBlankRecordList(template, blankRows)
+          : [makeBlankRecord(template, blankRows)];
+
+        const wb = await buildWorkbook(
+          ExcelJS, branch.label, typeKey, typeLabel, payload, { blankForm: true }
+        );
+        const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+
+        const folder = folderFor(zip, segments, folderCache);
+        const fileName = `${fileBase} — BLANK.xlsx`;
+        folder.file(fileName, buf);
+        made++;
+
+        manifest.push({
+          card: card.label,
+          branch: branch.label,
+          group: item.group,
+          typeLabel,
+          typeKey,
+          count: template ? "modelled on a real record" : "skeleton",
+          firstDate: "",
+          lastDate: "",
+          kind: exporterKindFor(typeKey),
+          path: [...segments, fileName].join("/"),
+        });
+      }
+
+      setProgress({ current: work.length, total: work.length, label: "🗜️ جارٍ ضغط الملفات..." });
+      const generatedAt = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
+      zip.file("00 INDEX.csv", manifestCsv(manifest));
+      zip.file("00 README.txt", blankReadmeText({
+        generatedAt, rowCount: blankRows, rows: manifest, missing,
+      }));
+
+      const blob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `AlMawashi_Blank_Forms_${today}.zip`);
+
+      setStats({ mode: "blank", filesCreated: made, filesEmpty: missing.length, totalRows: 0, branches: new Set(manifest.map((m) => m.branch)).size });
+      setMsg({
+        kind: missing.length ? "info" : "ok",
+        text: `✅ تم! ${made} نموذج فارغ · ${blankRows} سطر لكل نموذج` +
+          (missing.length
+            ? `  ℹ️ ${missing.length} نوع ما عنده ولا سجل محفوظ فانبنى من هيكل عام (التفاصيل بملف README داخل الـZIP).`
+            : ""),
+      });
+    } catch (e) {
+      console.error(e);
+      setMsg({ kind: "err", text: `❌ فشل إنشاء النماذج: ${e?.message || e}` });
+    } finally {
+      setBusy(false);
+      setProgress({ current: 0, total: 0, label: "" });
+    }
+  }
   const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
   return (
@@ -400,6 +627,25 @@ export default function ExcelBackupTab() {
           </div>
         </div>
       </div>
+
+      {/* ═══ تحذير نافذة الرؤية ═══ */}
+      {windowWarning && (
+        <div
+          style={{
+            margin: "0 0 14px",
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #fca5a5",
+            background: "#fef2f2",
+            color: "#991b1b",
+            fontSize: "0.9rem",
+            lineHeight: 1.7,
+            fontWeight: 600,
+          }}
+        >
+          {windowWarning}
+        </div>
+      )}
 
       {/* ═══ Toolbar ═══ */}
       <div style={S.toolbar}>
@@ -534,78 +780,156 @@ export default function ExcelBackupTab() {
         </div>
       </div>
 
-      {/* ═══ Branch grid ═══ */}
-      <div style={S.branchGrid}>
-        {BRANCHES.map((branch) => {
-          const expanded = expandedBranches.has(branch.id);
-          const count = branchPickedCount(branch);
-          const total = branch.types.length;
-          const allOn = count === total;
-          const someOn = count > 0 && count < total;
+      {/* ═══ Card → branch → group tree ═══
+           نفس شجرة المجلدات اللي بتطلع بالـZIP، فاللي بيختار من هون بيعرف
+           سلفاً وين رح يلاقي الملف. */}
+      {activeCards().map((card) => {
+        const branches = branchesOfCard(card.id);
+        const cardTotal  = branches.reduce((s, b) => s + b.types.length, 0);
+        const cardPicked = branches.reduce((s, b) => s + branchPickedCount(b), 0);
 
-          // Filter types by search query
-          const visibleTypes = branch.types.filter(([, lbl]) => {
-            if (!filterQ) return true;
-            return lbl.toLowerCase().includes(filterQ) || branch.label.toLowerCase().includes(filterQ);
-          });
-          if (filterQ && visibleTypes.length === 0) return null;
+        const cardBranches = branches
+          .map((branch) => {
+            const visibleTypes = branch.types.filter(([, lbl]) => {
+              if (!filterQ) return true;
+              return lbl.toLowerCase().includes(filterQ)
+                || branch.label.toLowerCase().includes(filterQ)
+                || card.label.toLowerCase().includes(filterQ);
+            });
+            return { branch, visibleTypes };
+          })
+          .filter(({ visibleTypes }) => !filterQ || visibleTypes.length > 0);
 
-          return (
-            <div key={branch.id} style={S.branchCard(branch.accent, count > 0)}>
-              {/* Branch header */}
-              <div style={S.branchHead}>
-                <button
-                  type="button"
-                  onClick={() => toggleExpand(branch.id)}
-                  style={S.branchHeadLeft}
-                  title={expanded ? "طي" : "توسيع"}
-                >
-                  <span style={S.branchEmoji}>{branch.emoji}</span>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={S.branchName(branch.accent)}>{branch.label}</div>
-                    <div style={S.branchCount}>
-                      {count}/{total} نوع
-                    </div>
-                  </div>
-                  <span style={S.branchChev}>{expanded ? "▾" : "▸"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleBranchAll(branch)}
-                  style={S.branchTogAll(allOn, someOn, branch.accent)}
-                  title={allOn ? "إلغاء كل تقارير الفرع" : "تحديد كل تقارير الفرع"}
-                >
-                  {allOn ? "✓" : someOn ? "—" : ""}
-                </button>
-              </div>
+        if (!cardBranches.length) return null;
 
-              {/* Types list (collapsible) */}
-              {expanded && (
-                <div style={S.typeList}>
-                  {visibleTypes.map(([k, lbl]) => {
-                    const on = isPicked(branch.id, k);
-                    return (
-                      <label key={k} style={S.typeRow(on, branch.accent)}>
-                        {/* hidden native checkbox for accessibility */}
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() => togglePicked(branch.id, k)}
-                          style={S.typeChkHidden}
-                        />
-                        <span style={S.typeLbl}>{lbl}</span>
-                        {/* custom visible checkbox */}
-                        <span style={S.typeChkBox(on, branch.accent)}>
-                          {on && "✓"}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
+        return (
+          <section key={card.id} style={S.cardSection}>
+            <div style={S.cardHead}>
+              <span style={S.cardEmoji}>{card.emoji}</span>
+              <h2 style={S.cardTitle}>{card.label}</h2>
+              <span style={S.cardMeta}>{cardPicked}/{cardTotal} نوع · {branches.length} مجلد</span>
+              <span style={S.cardRule} aria-hidden="true" />
+              <button
+                type="button"
+                onClick={() => toggleCardAll(branches)}
+                style={S.cardTogAll(cardPicked === cardTotal)}
+              >
+                {cardPicked === cardTotal ? "إلغاء الكرت" : "تحديد الكرت"}
+              </button>
             </div>
-          );
-        })}
+
+            <div style={S.branchGrid}>
+              {cardBranches.map(({ branch, visibleTypes }) => {
+                const expanded = expandedBranches.has(branch.id);
+                const count = branchPickedCount(branch);
+                const total = branch.types.length;
+                const allOn = count === total;
+                const someOn = count > 0 && count < total;
+                const groups = groupsOfBranch(branch);
+
+                return (
+                  <div key={`${card.id}:${branch.id}`} style={S.branchCard(branch.accent, count > 0)}>
+                    {/* Branch header */}
+                    <div style={S.branchHead}>
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(branch.id)}
+                        style={S.branchHeadLeft}
+                        title={expanded ? "طي" : "توسيع"}
+                      >
+                        <span style={S.branchEmoji}>{branch.emoji}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={S.branchName(branch.accent)}>{branch.label}</div>
+                          <div style={S.branchCount}>
+                            {count}/{total} نوع
+                          </div>
+                        </div>
+                        <span style={S.branchChev}>{expanded ? "▾" : "▸"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleBranchAll(branch)}
+                        style={S.branchTogAll(allOn, someOn, branch.accent)}
+                        title={allOn ? "إلغاء كل تقارير الفرع" : "تحديد كل تقارير الفرع"}
+                      >
+                        {allOn ? "✓" : someOn ? "—" : ""}
+                      </button>
+                    </div>
+
+                    {/* Types list (collapsible), split by the same groups the
+                        ZIP turns into sub-folders. */}
+                    {expanded && (
+                      <div style={S.typeList}>
+                        {["", ...groups].map((g) => {
+                          const inGroup = visibleTypes.filter(([, , tg]) => (tg || "") === g);
+                          if (!inGroup.length) return null;
+                          return (
+                            <div key={g || "__root"}>
+                              {g && <div style={S.groupHead}>{g}</div>}
+                              {inGroup.map(([k, lbl]) => {
+                                const on = isPicked(branch.id, k);
+                                return (
+                                  <label key={k} style={S.typeRow(on, branch.accent)}>
+                                    {/* hidden native checkbox for accessibility */}
+                                    <input
+                                      type="checkbox"
+                                      checked={on}
+                                      onChange={() => togglePicked(branch.id, k)}
+                                      style={S.typeChkHidden}
+                                    />
+                                    <span style={S.typeLbl}>{lbl}</span>
+                                    {/* custom visible checkbox */}
+                                    <span style={S.typeChkBox(on, branch.accent)}>
+                                      {on && "✓"}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      {/* ═══ Blank forms ═══ */}
+      <div style={S.blankCard}>
+        <div style={S.blankHead}>
+          <span style={S.blankTitle}>📄 نماذج فارغة للطباعة</span>
+          <span style={S.blankSub}>
+            نفس شجرة المجلدات، بس كل ملف نموذج فاضي بترويسته وأعمدته وأسئلته — بلا بيانات.
+          </span>
+        </div>
+        <div style={S.filterRow}>
+          <label style={S.fieldLbl}>أسطر فارغة لكل نموذج</label>
+          <input
+            type="number"
+            min="1"
+            max="60"
+            value={blankRows}
+            onChange={(e) => setBlankRows(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+            style={{ ...S.dateInput, width: 90 }}
+          />
+          {[10, 15, 25, 40].map((n) => (
+            <button key={n} type="button" onClick={() => setBlankRows(n)} style={S.chip(blankRows === n)}>
+              {n}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={handleBlankForms}
+            disabled={busy || pickedCount === 0}
+            style={S.btnBlank(busy, pickedCount === 0)}
+          >
+            📄 تحميل النماذج الفارغة · {pickedCount}
+          </button>
+        </div>
       </div>
 
       {/* ═══ Action bar (sticky bottom) ═══ */}
@@ -637,9 +961,19 @@ export default function ExcelBackupTab() {
       {/* ═══ Stats ═══ */}
       {stats && !busy && (
         <div style={S.statsGrid}>
-          <Stat icon="✅" label="ملف بيانات" value={stats.filesCreated} color="#16a34a" bg="#dcfce7" />
-          <Stat icon="📭" label="ملف فارغ"   value={stats.filesEmpty}   color="#92400e" bg="#fef3c7" />
-          <Stat icon="📋" label="إجمالي السجلات" value={stats.totalRows.toLocaleString()} color="#1e40af" bg="#dbeafe" />
+          <Stat
+            icon="✅"
+            label={stats.mode === "blank" ? "نموذج فارغ" : "ملف بيانات"}
+            value={stats.filesCreated} color="#16a34a" bg="#dcfce7"
+          />
+          <Stat
+            icon="📭"
+            label={stats.mode === "blank" ? "بلا سجل يُبنى عليه" : "ملف فارغ"}
+            value={stats.filesEmpty} color="#92400e" bg="#fef3c7"
+          />
+          {stats.mode !== "blank" && (
+            <Stat icon="📋" label="إجمالي السجلات" value={stats.totalRows.toLocaleString()} color="#1e40af" bg="#dbeafe" />
+          )}
           <Stat icon="🏢" label="فرع"          value={stats.branches}    color="#7c3aed" bg="#ede9fe" />
         </div>
       )}
@@ -868,11 +1202,83 @@ const S = {
   checkBox: { width: 19, height: 19, cursor: "pointer", accentColor: "#2d5a8e" },
 
   /* ── Branch grid — wider cards ── */
+  /* ── Blank-forms panel ── */
+  blankCard: {
+    background: "#fffbeb",
+    border: "2px solid #fcd34d",
+    borderRadius: 18,
+    padding: "18px 22px",
+    marginBottom: 18,
+  },
+  blankHead: { marginBottom: 12 },
+  blankTitle: { display: "block", fontSize: 17, fontWeight: 1000, color: "#78350f" },
+  blankSub: { display: "block", fontSize: 13.5, fontWeight: 600, color: "#92400e", marginTop: 4, lineHeight: 1.7 },
+  btnBlank: (busy, none) => ({
+    marginInlineStart: "auto",
+    padding: "11px 22px",
+    borderRadius: 12,
+    border: "none",
+    background: busy || none ? "#e2e8f0" : "linear-gradient(135deg,#f59e0b,#d97706)",
+    color: busy || none ? "#94a3b8" : "#fff",
+    fontWeight: 1000,
+    fontSize: 14.5,
+    cursor: busy || none ? "not-allowed" : "pointer",
+    boxShadow: busy || none ? "none" : "0 10px 24px rgba(217,119,6,.28)",
+  }),
+
+  /* ── Card section — one per dashboard tile, mirrors the top ZIP folder ── */
+  cardSection: { marginBottom: 26 },
+  cardHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    margin: "0 0 12px",
+  },
+  cardEmoji: { fontSize: 22, lineHeight: 1 },
+  cardTitle: {
+    margin: 0,
+    fontSize: 19,
+    fontWeight: 1000,
+    color: NAVY,
+    whiteSpace: "nowrap",
+  },
+  cardMeta: {
+    fontSize: 12.5,
+    fontWeight: 800,
+    color: SLATE2,
+    background: "#f1f5f9",
+    border: `1px solid ${BORDER}`,
+    borderRadius: 999,
+    padding: "3px 12px",
+    whiteSpace: "nowrap",
+  },
+  cardRule: { flex: 1, height: 1, background: BORDER },
+  cardTogAll: (allOn) => ({
+    padding: "6px 14px",
+    borderRadius: 999,
+    border: `1.5px solid ${allOn ? "#16a34a" : BORDER}`,
+    background: allOn ? "#dcfce7" : "#fff",
+    color: allOn ? "#166534" : SLATE,
+    fontWeight: 900,
+    fontSize: 12.5,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  }),
+  groupHead: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: SLATE2,
+    letterSpacing: ".04em",
+    padding: "10px 4px 4px",
+    borderBottom: `1px dashed ${BORDER}`,
+    marginBottom: 4,
+  },
+
   branchGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
     gap: 16,
-    marginBottom: 18,
+    marginBottom: 4,
   },
   branchCard: (accent, hasSelection) => ({
     background: "#fff",

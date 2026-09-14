@@ -4,13 +4,12 @@
 import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
-  pageSetupPortrait, display,
-} from "./_lib";
+  pageSetupPortrait, display, rowsOf } from "./_lib";
 
 export default async function build(wb, record, ctx) {
   const { sheetName } = ctx;
   const p = record?.payload || {};
-  const photos = Array.isArray(p.photos) ? p.photos : [];
+  const photos = rowsOf(p.photos);
 
   const NC = 4;
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
