@@ -88,6 +88,10 @@ export const money = (v, digits = 2) =>
 
 export const nameOf = (x, isAr) => (isAr ? x?.ar : x?.en) || x?.ar || x?.en || "";
 
+/** اسم المسار بلغة الشاشة — name = إنجليزي (الحقل القديم)، nameAr = عربي. */
+export const pathwayName = (p, isAr) =>
+  (isAr ? p?.nameAr || p?.name : p?.name || p?.nameAr) || "";
+
 /** أدوار الصنف داخل الـBOM — مصفوفة (متوافقة مع `type` القديم كدور وحيد). */
 export const rolesOf = (item) => {
   const r = Array.isArray(item?.roles) ? item.roles.filter(Boolean) : [];

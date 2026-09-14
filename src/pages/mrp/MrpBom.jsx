@@ -12,7 +12,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ITEM_TYPES, activeOnly, bomCategoryById, bomKindById, bomOriginById, freshId, hasRole,
-  itemById, money, mutateConfig, nameOf, num, useMrpConfig, userName,
+  itemById, money, mutateConfig, nameOf, num, pathwayName, useMrpConfig, userName,
 } from "./mrpApi";
 import {
   Badge, Card, EmptyBox, Field, ItemPicker, Kpi, Modal, MrpNoAccess, MrpShell,
@@ -250,6 +250,8 @@ export default function MrpBom() {
   const [kindFilter, setKindFilter] = useState("");
   const [draft, setDraft] = useState(null);   // { mode: "new"|"edit", bom, dirty }
   const [historyFor, setHistoryFor] = useState("");
+  // نافذة الاسمين (عربي + إنجليزي) للتعريفات — { spec, row, resolve }
+  const [nameAsk, setNameAsk] = useState(null);
 
   const canEdit = canEditMrp();
   const toastTimer = useRef(null);
@@ -324,40 +326,39 @@ export default function MrpBom() {
    * إضافة تعريف جديد وإرجاع معرّفه لاختياره فوراً.
    * الحفظ على السيرفر مباشرة (mutateConfig) — فبيوصل لكل الأجهزة والكشك.
    */
+  /* الاسم بلغتين بنافذة وحدة. كان prompt واحد بينسخ نفس الكلمة بالحقلين،
+     فكل الأنواع والمناشئ طلعت بكشك الجزار إنجليزي حتى والشاشة عربي. */
+  const askNames = (spec, row) =>
+    new Promise((resolve) => setNameAsk({ spec, row: row || null, resolve }));
+
   const addLookup = async (spec) => {
-    const name = window.prompt(t({
-      en: `New ${spec.en.toLowerCase()} name`,
-      ar: `اسم ${spec.ar} الجديد`,
-    }));
-    const label = String(name || "").trim();
-    if (!label) return "";
-    const existing = (cfg[spec.key] || []).find((x) => sameLabel(x, label));
+    const names = await askNames(spec, null);
+    if (!names) return "";
+    const existing = (cfg[spec.key] || []).find(
+      (x) => sameLabel(x, names.ar) || sameLabel(x, names.en)
+    );
     if (existing) return existing.id;
     const id = freshId(spec.prefix);
     const ok = await commit(
       (next) => {
         if (!Array.isArray(next[spec.key])) next[spec.key] = [];
-        next[spec.key].push({ id, ar: label, en: label, active: true });
+        next[spec.key].push({ id, ar: names.ar, en: names.en, active: true });
       },
       t({ en: `${spec.en} added.`, ar: `تمت إضافة ${spec.ar}.` })
     );
     return ok ? id : "";
   };
 
-  /** إعادة تسمية تعريف — بتعدّل لغة الواجهة، وبتعبّي اللغة التانية إذا فاضية. */
+  /** إعادة تسمية تعريف — الاسمين العربي والإنجليزي سوا. */
   const renameLookup = async (spec, row) => {
-    const cur = nameOf(row, isAr) || row.en || row.ar || "";
-    const name = window.prompt(t({
-      en: `Rename ${spec.en.toLowerCase()}`,
-      ar: `إعادة تسمية ${spec.ar}`,
-    }), cur);
-    const label = String(name ?? "").trim();
-    if (!label || label === cur) return;
+    const names = await askNames(spec, row);
+    if (!names) return;
+    if (names.ar === (row.ar || "") && names.en === (row.en || "")) return;
     await commit((next) => {
       const x = (next[spec.key] || []).find((y) => y.id === row.id);
       if (!x) return;
-      if (isAr) { x.ar = label; if (!String(x.en || "").trim()) x.en = label; }
-      else { x.en = label; if (!String(x.ar || "").trim()) x.ar = label; }
+      x.ar = names.ar;
+      x.en = names.en;
     }, t({ en: "Saved.", ar: "تم الحفظ." }));
   };
 
@@ -731,6 +732,14 @@ export default function MrpBom() {
     >
       <style>{BOM_CSS}</style>
       <Toast toast={toast} busy={busy} t={t} />
+      {nameAsk && (
+        <LookupNamesDialog
+          t={t}
+          spec={nameAsk.spec}
+          row={nameAsk.row}
+          onDone={(names) => { nameAsk.resolve(names); setNameAsk(null); }}
+        />
+      )}
 
       {!draft ? (
         <Card
@@ -1407,7 +1416,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
                   title={off ? t({ en: "inactive pathway", ar: "مسار معطّل" }) : undefined}
                 >
                   <b>{pw.code}</b>
-                  {pw.name ? <span style={{ fontWeight: 700 }}>· {pw.name}</span> : null}
+                  {pathwayName(pw, isAr) ? <span style={{ fontWeight: 700 }}>· {pathwayName(pw, isAr)}</span> : null}
                   {off && <span>⏸</span>}
                 </button>
               );
@@ -1423,7 +1432,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             title={
               <span style={{ display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <Badge color="#6d28d9" bg="#f3eefe">{sel.code}</Badge>
-                {sel.name || t({ en: "Unnamed pathway", ar: "مسار بلا اسم" })}
+                {pathwayName(sel, isAr) || t({ en: "Unnamed pathway", ar: "مسار بلا اسم" })}
                 {sel.active === false && (
                   <Badge color="#b45309" bg="#fffbeb">{t({ en: "inactive", ar: "معطّل" })}</Badge>
                 )}
@@ -1440,12 +1449,24 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
                   <input style={{ ...S.input, background: "#f7f5ff", fontWeight: 900, color: "#6d28d9" }}
                     value={sel.code} readOnly />
                 </Field>
-                <Field label={t({ en: "Pathway name", ar: "اسم المسار" })}>
+                {/* name = الإنجليزي (الحقل القديم، كل البيانات الحالية فيه)،
+                    nameAr = العربي — الكشك بيعرض واحد بس حسب لغة الشاشة. */}
+                <Field label={t({ en: "Pathway name (English)", ar: "اسم المسار (إنجليزي)" })}>
                   <input
                     style={S.input}
+                    dir="ltr"
                     value={sel.name ?? ""}
                     onChange={(e) => ops.patch(sel.id, { name: e.target.value })}
-                    placeholder={t({ en: "e.g. Standard cut / Export cut", ar: "مثال: تقطيع عادي / تصدير" })}
+                    placeholder="e.g. Standard cut / Export cut"
+                  />
+                </Field>
+                <Field label={t({ en: "Pathway name (Arabic)", ar: "اسم المسار (عربي)" })}>
+                  <input
+                    style={S.input}
+                    dir="rtl"
+                    value={sel.nameAr ?? ""}
+                    onChange={(e) => ops.patch(sel.id, { nameAr: e.target.value })}
+                    placeholder="مثال: تقطيع عادي / تصدير"
                   />
                 </Field>
                 <Field label={t({ en: "Notes", ar: "ملاحظات" })}>
@@ -1730,6 +1751,78 @@ function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
         </div>
       )}
     </div>
+  );
+}
+
+/** فيه حرف عربي واحد على الأقل؟ — لتنبيه «الاسم العربي مكتوب إنجليزي». */
+const hasArabic = (s) => /[؀-ۿ]/.test(String(s || ""));
+
+/**
+ * نافذة اسم التعريف بلغتين. الكشك بيعرض لغة وحدة بالمرّة، فكل تعريف لازم
+ * يكون إله اسم عربي حقيقي واسم إنجليزي — وإلا الجزار بيشوف اللغة الغلط.
+ * اللغة الناقصة بتاخد قيمة التانية حتى ما يطلع كرت فاضي.
+ */
+function LookupNamesDialog({ t, spec, row, onDone }) {
+  const [ar, setAr] = useState(row?.ar || "");
+  const [en, setEn] = useState(row?.en || "");
+  const a = ar.trim();
+  const e = en.trim();
+  const ok = !!(a || e);
+  const submit = () => { if (ok) onDone({ ar: a || e, en: e || a }); };
+  const cancel = () => onDone(null);
+
+  return (
+    <Modal
+      icon={spec.icon}
+      title={row
+        ? t({ en: `Rename ${spec.en.toLowerCase()}`, ar: `إعادة تسمية ${spec.ar}` })
+        : t({ en: `New ${spec.en.toLowerCase()}`, ar: `${spec.ar} جديد` })}
+      onClose={cancel}
+      footer={
+        <>
+          <button type="button" style={S.btn} onClick={cancel}>
+            {t({ en: "Cancel", ar: "إلغاء" })}
+          </button>
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnPrimary, ...(ok ? null : S.btnOff) }}
+            disabled={!ok}
+            onClick={submit}
+          >
+            {t({ en: "Save", ar: "حفظ" })}
+          </button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(ev) => { ev.preventDefault(); submit(); }}
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      >
+        <Field label={t({ en: "Arabic name", ar: "الاسم بالعربي" })}>
+          <input
+            style={S.input} dir="rtl" autoFocus value={ar}
+            onChange={(ev) => setAr(ev.target.value)}
+            placeholder={t({ en: "e.g. غنم", ar: "مثال: غنم" })}
+          />
+          {a && !hasArabic(a) && (
+            <span style={{ ...S.hint, color: "#b45309", marginTop: 4 }}>
+              {t({
+                en: "⚠️ No Arabic letters — the butcher screen will show this in Arabic mode.",
+                ar: "⚠️ ما في ولا حرف عربي — هاد اللي رح يطلع للجزار لما تكون الشاشة عربي.",
+              })}
+            </span>
+          )}
+        </Field>
+        <Field label={t({ en: "English name", ar: "الاسم بالإنجليزي" })}>
+          <input
+            style={S.input} dir="ltr" value={en}
+            onChange={(ev) => setEn(ev.target.value)}
+            placeholder="e.g. SHEEP"
+          />
+        </Field>
+        <button type="submit" hidden />
+      </form>
+    </Modal>
   );
 }
 

@@ -29,13 +29,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ButcherArt, { ART_IDS } from "./ButcherIcons";
-import { BRANCHES, altNameOf, branchCodeFromLabel, nameOf, opNoLabel } from "./butcherOptions";
+import { BRANCHES, branchCodeFromLabel, nameOf, opNoLabel } from "./butcherOptions";
 import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butcherConfig";
 import {
   useMrpConfig, bomInputItem, bomLines, itemName, UNCAT,
   activeCuttingBoms, BOM_FACETS, bomFacetOptions, filterBomsByFacet, facetValueName,
   bomIsMultiPath, activePathwaysOf, bomTags, bomOriginOf, bomKindOf,
-  bomStdOn, bomStdTol, bomNeedsRawExpiry,
+  bomStdOn, bomStdTol, bomNeedsRawExpiry, pathwayName,
 } from "./butcherMrpBridge";
 import { saveOrQueue, useOutbox } from "./butcherOutbox";
 import { progressPct, useDayPlan } from "./butcherDayPlan";
@@ -193,6 +193,11 @@ function num(v) {
  * لـ3.24 وقت الكتابة — بلا ما نترك الجزار يسجّل دقّة وهمية.
  */
 const KG_DECIMALS = 2;
+
+/* تقريب لخانتين عشريتين — كل مقارنة أوزان لازم تمرق من هون. الجمع
+   بالفاصلة العائمة بيعطي 10.86 − 10.83 = 0.029999…، فكانت 0.03 تنرفض
+   كـ«أكبر من المتاح» والتطابق التام ما بيكتمل أبداً = ما في حفظ. */
+const kg2 = (v) => Math.round((Number(v) || 0) * 10 ** KG_DECIMALS) / 10 ** KG_DECIMALS;
 function cleanDecimal(v, dp = KG_DECIMALS) {
   const s = normalizeDigits(v).replace(/[^\d.]/g, "");
   const dot = s.indexOf(".");
@@ -213,6 +218,28 @@ function focusNextWeight(e) {
   const next = all[all.indexOf(e.currentTarget) + 1];
   if (next) { next.focus(); next.select?.(); } else e.currentTarget.blur();
 }
+
+/**
+ * العدد مع المعدود بالعربي: ١ مفرد، ٢ مثنّى، ٠ و٣–١٠ جمع، ١١ فما فوق مفرد.
+ * كان «7 وصفة» و«2 مسار» لأن العربي كان ياخد كلمة وحدة لكل الأعداد.
+ * الرقم بيضل ظاهر دايماً — أغلب الجزارين بيقروا الرقم مش الكلمة.
+ * forms = { one, two, many, en, enPl }
+ */
+function countLabel(n, isAr, forms) {
+  if (!isAr) return `${n} ${n === 1 ? forms.en : forms.enPl}`;
+  const word = n === 1 ? forms.one
+    : n === 2 ? forms.two
+    : (n === 0 || (n >= 3 && n <= 10)) ? forms.many
+    : forms.one;
+  return `${n} ${word}`;
+}
+const CARCASS_FORMS = { one: "ذبيحة", two: "ذبيحتان", many: "ذبائح", en: "carcass", enPl: "carcasses" };
+const RECIPE_FORMS = { one: "وصفة", two: "وصفتان", many: "وصفات", en: "recipe", enPl: "recipes" };
+const PATHWAY_FORMS = { one: "مسار", two: "مساران", many: "مسارات", en: "pathway", enPl: "pathways" };
+const PRODUCT_FORMS = {
+  one: "منتج نهائي", two: "منتجان نهائيان", many: "منتجات نهائية",
+  en: "final product", enPl: "final products",
+};
 
 /** رجّة قصيرة — إشارة لمس بدل رسالة، الجزار ماسك السكين وما بيقرأ. */
 function buzz(ms) {
@@ -751,8 +778,8 @@ export default function ButcherLog() {
   const cutCount = filled.filter((x) => x.kind === "product").length;
 
   const usedKg = cutsKg + wasteKg;
-  const remainingKg = carcassKg - usedKg;
-  const overKg = usedKg - carcassKg;
+  const remainingKg = kg2(carcassKg - usedKg);
+  const overKg = kg2(usedKg - carcassKg);
   /* وزن المادة الخام أساس كل النسب — بلاه السجل بلا معنى (تصافي ٠٪)،
      فما منسمح بالحفظ قبل إدخاله. */
   const rawMissing = !(carcassKg > 0);
@@ -793,9 +820,9 @@ export default function ButcherLog() {
 
   /* تطابق تام مطلوب لهالوصفة: الخام = النواتج + الهدر (بلا فاقد ولا زيادة) */
   const exactBalance = bom?.requireExactBalance === true;
-  const balanceDiff = carcassKg - usedKg;             // + = ناقص ، − = زايد
-  // epsilon زغير للفواصل العشرية فقط — التطابق تام
-  const balanceOff = exactBalance && (carcassKg <= 0 || Math.abs(balanceDiff) > 1e-6);
+  const balanceDiff = kg2(carcassKg - usedKg);        // + = ناقص ، − = زايد
+  // التطابق تام على مستوى الخانتين العشريتين (دقّة الميزان)
+  const balanceOff = exactBalance && (carcassKg <= 0 || balanceDiff !== 0);
 
   /* منع التجاوز فوق وزن الخام مربوط بالتطابق التام:
      - «التطابق التام» مفعّل → التجاوز ممنوع (لازم يساوي تماماً).
@@ -1026,7 +1053,7 @@ export default function ButcherLog() {
   const capFor = useCallback((cutId) => {
     if (!(carcassKg > 0)) return Infinity;
     const mine = num(values[cutId]?.w);
-    return Math.max(0, roundKg(carcassKg - usedKg + mine, RULES.roundTo));
+    return Math.max(0, kg2(roundKg(kg2(carcassKg - usedKg + mine), RULES.roundTo)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carcassKg, usedKg, values, RULES.roundTo]);
 
@@ -1040,7 +1067,7 @@ export default function ButcherLog() {
     if (error) setError("");   // رسالة فشل قديمة ما بتضل معلّقة بعد التعديل
     if (key === "w") {
       const cap = capFor(cutId);
-      if (Number.isFinite(cap) && num(v) > cap) {
+      if (Number.isFinite(cap) && kg2(num(v)) > cap) {
         /* بلا setValues: الرقم ما بينكتب. تغيير capHit بيعمل رسمة جديدة،
            وهي اللي بترجّع الخانة لقيمتها القديمة بالـDOM كمان. */
         buzz(55);   // الجزار عالجوال عينه عالميزان مش عالشاشة — الرجّة بتوصل أسرع
@@ -1155,6 +1182,7 @@ export default function ButcherLog() {
         pathwayId: pathway?.id || "",
         pathwayCode: pathway?.code || "",
         pathwayName: pathway?.name || "",
+        pathwayNameAr: pathway?.nameAr || "",
         inputItemId: bom?.inputId || "",
         inputSku: inputItem?.sku || "",
         animal: inputItem?.ar || "",              // توافق مع View/Summary القديمة
@@ -1235,7 +1263,15 @@ export default function ButcherLog() {
       setStep("done");
       dayPlan.reload();
     } catch (e) {
-      setError(e?.message || t({ en: "Save failed", ar: "فشل الحفظ" }));
+      /* رسالة السيرفر الخام («Server 500: {...}») إنجليزي وتقنية — منعرض
+         جملة بلغة الشاشة، ومنخلّي رقم الخطأ بس للمشرف لو احتاجه. */
+      const code = /^Server (\d{3})/.exec(String(e?.message || ""))?.[1];
+      setError(
+        t({
+          en: "Save failed — check the connection and try again.",
+          ar: "ما انحفظ السجل — تأكّد من الاتصال وجرّب مرّة تانية.",
+        }) + (code ? ` (${code})` : "")
+      );
     } finally {
       setSaving(false);
     }
@@ -1413,15 +1449,14 @@ export default function ButcherLog() {
             branchName={branchObj ? nameOf(branchObj, isAr) : ""}
             KG={KG}
             t={t}
+            isAr={isAr}
           />
         )}
 
         {step !== "emp" && step !== "done" && !(compact && step === "cuts") && totals && (
           <div className="bt-chip" style={S.totals}>
-            {t({ en: "Today", ar: "اليوم" })}: {totals.count}{" "}
-            {totals.count === 1
-              ? t({ en: "carcass", ar: "ذبيحة" })
-              : t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
+            {t({ en: "Today", ar: "اليوم" })}: {countLabel(totals.count, isAr, CARCASS_FORMS)}
+            {" — "}{totals.kg.toFixed(2)} {KG}
           </div>
         )}
 
@@ -1439,7 +1474,7 @@ export default function ButcherLog() {
             {bom && <span className="bt-chip" style={S.crumb}>{bom.ref}</span>}
             {pathway && (
               <span className="bt-chip" style={{ ...S.crumb, color: "#6d28d9" }}>
-                🔀 {pathway.code}{pathway.name ? ` · ${pathway.name}` : ""}
+                🔀 {pathway.code}{pathwayName(pathway, isAr) ? ` · ${pathwayName(pathway, isAr)}` : ""}
               </span>
             )}
             {inputItem && <span className="bt-chip" style={S.crumb}>{itemName(inputItem, isAr)}</span>}
@@ -1732,12 +1767,8 @@ export default function ButcherLog() {
                       )}
                       <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
                         {multi
-                          ? `🔀 ${outN} ${outN === 1
-                              ? t({ en: "pathway", ar: "مسار" })
-                              : t({ en: "pathways", ar: "مسار" })}`
-                          : `${outN} ${outN === 1
-                              ? t({ en: "final product", ar: "منتج نهائي" })
-                              : t({ en: "final products", ar: "منتج نهائي" })}`}
+                          ? `🔀 ${countLabel(outN, isAr, PATHWAY_FORMS)}`
+                          : countLabel(outN, isAr, PRODUCT_FORMS)}
                       </span>
                     </button>
                   );
@@ -2070,7 +2101,7 @@ export default function ButcherLog() {
               }}>
                 {determined ? (
                   <>
-                    <b>✓ {t({ en: "Pathway", ar: "المسار" })}: {pathway?.code}{pathway?.name ? ` · ${pathway.name}` : ""}</b>
+                    <b>✓ {t({ en: "Pathway", ar: "المسار" })}: {pathway?.code}{pathwayName(pathway, isAr) ? ` · ${pathwayName(pathway, isAr)}` : ""}</b>
                     <button type="button" className="bt-small" style={S.chg} onClick={clearWeights}>
                       ↺ {t({ en: "change pathway", ar: "تغيير المسار" })}
                     </button>
@@ -2268,7 +2299,7 @@ export default function ButcherLog() {
                 <span style={balanceOff ? S.overText : { color: "#166534", fontWeight: 900 }}>
                   {carcassKg <= 0
                     ? t({ en: "enter the raw material weight", ar: "أدخل وزن المادة الخام" })
-                    : Math.abs(balanceDiff) <= 1e-6
+                    : balanceDiff === 0
                       ? `✓ ${t({ en: "matched", ar: "مطابق تماماً" })}`
                       : balanceDiff > 0
                         ? `${t({ en: "short by", ar: "ناقص" })} ${balanceDiff.toFixed(2)} ${KG}`
@@ -2456,10 +2487,8 @@ export default function ButcherLog() {
             </div>
             {totals && (
               <div className="bt-chip" style={S.totals}>
-                {t({ en: "Today", ar: "اليوم" })}: {totals.count}{" "}
-                {totals.count === 1
-                  ? t({ en: "carcass", ar: "ذبيحة" })
-                  : t({ en: "carcasses", ar: "ذبيحة" })} — {totals.kg.toFixed(2)} {KG}
+                {t({ en: "Today", ar: "اليوم" })}: {countLabel(totals.count, isAr, CARCASS_FORMS)}
+                {" — "}{totals.kg.toFixed(2)} {KG}
               </div>
             )}
             <button className="bt-btn" onClick={newEntry} style={S.primary}>
@@ -2573,7 +2602,7 @@ function TimeAskModal({ t, dir, value, busy, onChange, onCancel, onConfirm }) {
 /* ============================ خطة اليوم ============================ */
 /* هدف الملحمة اليوم مقابل المنجز — عدّاد التنفيذات ووزن المادة الخام.
    يظهر فقط لما يكون المشرف حدّد هدفاً، وإلا لا نزحم شاشة الجزار. */
-function DayPlanBar({ plan, progress, branchName, KG, t }) {
+function DayPlanBar({ plan, progress, branchName, KG, t, isAr }) {
   const bars = [
     {
       key: "count",
@@ -2630,10 +2659,8 @@ function DayPlanBar({ plan, progress, branchName, KG, t }) {
 
       {progress.mine.count > 0 && (
         <div className="bt-lbl" style={S.planMine}>
-          {t({ en: "Your share today", ar: "نصيبك اليوم" })}: {progress.mine.count}{" "}
-          {progress.mine.count === 1
-            ? t({ en: "carcass", ar: "ذبيحة" })
-            : t({ en: "carcasses", ar: "ذبيحة" })} · {progress.mine.rawKg.toFixed(0)} {KG}
+          {t({ en: "Your share today", ar: "نصيبك اليوم" })}: {countLabel(progress.mine.count, isAr, CARCASS_FORMS)}
+          {" · "}{progress.mine.rawKg.toFixed(0)} {KG}
         </div>
       )}
       {plan.note && (
@@ -2754,10 +2781,8 @@ function ItemCard({
       <span className="bt-name" style={S.name}>
         {nameOf(item, isAr)}
       </span>
-      {/* الاسم بالّلغة الأخرى — الجزار يتعرّف على الصنف بأي لغة كُتب فيها */}
-      {altNameOf(item, isAr) && (
-        <span className="bt-lbl" style={S.altName}>{altNameOf(item, isAr)}</span>
-      )}
+      {/* لغة وحدة بالشاشة: الاسم بالّلغة التانية كان ينكتب تحته، فتطلع
+          الشاشة العربية نصّها إنجليزي. الصورة والكود هنّ اللي بيعرّفوا الصنف. */}
       {code ? <span className="bt-lbl" style={S.code}>{code}</span> : null}
       <label style={S.field}>
         <span className="bt-lbl" style={S.lbl}>{t({ en: "Weight", ar: "الوزن" })}</span>
@@ -2834,7 +2859,8 @@ function NumPad({ t, title, value, onKey, onNext, onClose, KG }) {
           ↺ {t({ en: "Clear", ar: "تفريغ" })}
         </button>
         <button type="button" className="bt-press" style={S.padNext} onClick={onNext}>
-          {t({ en: "Next", ar: "التالي" })} ➜
+          {/* السهم بيأشّر لقدّام حسب اتجاه اللغة — بالعربي قدّام يعني يسار */}
+          {t({ en: "Next ➜", ar: "التالي ⬅" })}
         </button>
       </div>
     </div>
@@ -2848,8 +2874,6 @@ function NumPad({ t, title, value, onKey, onNext, onClose, KG }) {
    «بلا …» لما يكون في وصفات ما عليها تعريف بهالبُعد. */
 function FacetStep({ dim, pick, onPick, title, t, isAr }) {
   const spec = BOM_FACETS[dim];
-  // «١ recipes» كان بيطلع بالإنجليزي — العربي ما بيصرّف العدد، الإنجليزي بيصرّف
-  const label = (n) => (isAr ? "وصفة" : n === 1 ? "recipe" : "recipes");
 
   return (
     <>
@@ -2864,7 +2888,7 @@ function FacetStep({ dim, pick, onPick, title, t, isAr }) {
             )}
             <span className="bt-name" style={S.name}>{nameOf(o, isAr) || o.id}</span>
             <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-              {o.count} {label(o.count)}
+              {countLabel(o.count, isAr, RECIPE_FORMS)}
             </span>
           </button>
         ))}
@@ -2872,7 +2896,7 @@ function FacetStep({ dim, pick, onPick, title, t, isAr }) {
           <button className="bt-press" onClick={() => onPick(UNCAT)} style={S.tile}>
             <span className="bt-name" style={S.name}>{t({ en: spec.enNone, ar: spec.arNone })}</span>
             <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-              {pick.none} {label(pick.none)}
+              {countLabel(pick.none, isAr, RECIPE_FORMS)}
             </span>
           </button>
         )}

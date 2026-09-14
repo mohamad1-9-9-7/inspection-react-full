@@ -12,7 +12,7 @@
 
 import { bomKindById, bomOriginById, itemById, num } from "../mrp/mrpApi";
 
-export { useMrpConfig } from "../mrp/mrpApi";
+export { useMrpConfig, pathwayName } from "../mrp/mrpApi";
 
 /** قوائم التقطيع الفعّالة (تفكيك: مادة خام → نواتج + هدر). */
 export function activeCuttingBoms(mrpCfg) {
