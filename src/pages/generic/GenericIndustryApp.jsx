@@ -1,15 +1,15 @@
 // src/pages/generic/GenericIndustryApp.jsx
-// المحرّك العام لأي شركة نوعها ليس 'meat'. يبني الداشبورد + قائمة السجلات +
-// نموذج الإدخال من ملف قالب النشاط (src/industries/*). لا يمسّ نظام المواشي
-// إطلاقاً؛ يُوصل إليه فقط عندما تكون الشركة الفعّالة على نشاط له قالب.
+// Generic shell for any company whose industry is not 'meat'. Home shows the
+// template's cards; opening a card shows a LEFT SIDEBAR listing that card's
+// reports, and the selected report's real page component fills the rest of the
+// screen. For sweets these components are exact copies of the QCS report
+// designs (English, sweets_* types, Al Mawashi branding stripped), so data
+// stays isolated per company (company_id at the API layer).
 //
-// كل البيانات تمرّ عبر /api/reports العادي (type + payload)، فالعزل بالشركة
-// يحصل تلقائياً: authFetch يُلحق ?company_id للسوبر أدمن، وتوكن الموظف العادي
-// يحمل شركته. لا حاجة لأي مسار سيرفر جديد.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+// URL-driven: (none)=home cards · ?card=X=that card (sidebar) · ?card=X&type=Y=report.
+import React, { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
-import logo from "../../assets/almawashi-logo.jpg";
 import { clearAppSession } from "../../utils/authFetch";
 import { getActiveCompany, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
 import { getIndustryTemplate, findReportType } from "../../industries";
@@ -17,37 +17,62 @@ import { getIndustryTemplate, findReportType } from "../../industries";
 function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
 }
+function Loading() {
+  return (
+    <div style={S.loading}>
+      <div className="gia-spin" style={S.spinner} />
+      <span>Loading…</span>
+    </div>
+  );
+}
 
 export default function GenericIndustryApp() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [now, setNow] = useState(new Date());
   const currentUser = getCurrentUser();
   const isSuperAdmin = !!currentUser.isSuperAdmin;
 
   const industry = getActiveIndustry();
   const template = getIndustryTemplate(industry);
 
-  // نوع الشركة 'meat' أو غير معروف → هذا المحرّك لا يخصّه، رجّعه لنظامه.
+  const cardId = params.get("card") || null;
+  const activeType = params.get("type") || null;
+  const card = template && cardId ? (template.cards || []).find((c) => c.id === cardId) : null;
+
   useEffect(() => {
     if (!template) navigate("/named-dashboard", { replace: true });
   }, [template, navigate]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // When a card is opened without a report, auto-select its first one.
+  useEffect(() => {
+    if (card && !activeType && card.reports?.length) {
+      setParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("type", card.reports[0].type);
+        return p;
+      }, { replace: true });
+    }
+  }, [card, activeType, setParams]);
+
   if (!template) return null;
 
-  const activeType = params.get("type") || null;
-  const mode = params.get("mode") || null; // "new" | "edit" | null
-  const editId = params.get("id") || null;
-
+  const found = activeType ? findReportType(template, activeType) : null;
   const companyName = isSuperAdmin
     ? (getActiveCompany()?.name || template.label)
     : (currentUser.displayName || template.label);
+  const monogram = (companyName || "?").trim()[0]?.toUpperCase() || "?";
 
-  const setView = (next) => {
+  const go = (next) => {
     setParams((prev) => {
       const p = new URLSearchParams(prev);
-      ["type", "mode", "id"].forEach((k) => p.delete(k));
-      if (next?.type) p.set("type", next.type);
-      if (next?.mode) p.set("mode", next.mode);
-      if (next?.id) p.set("id", next.id);
+      ["card", "type"].forEach((k) => p.delete(k));
+      Object.entries(next || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
       return p;
     });
   };
@@ -55,8 +80,7 @@ export default function GenericIndustryApp() {
   const logout = async () => {
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: currentUser.username }),
       });
     } catch {}
@@ -64,297 +88,189 @@ export default function GenericIndustryApp() {
     navigate("/", { replace: true });
   };
 
-  const found = activeType ? findReportType(template, activeType) : null;
+  let Leaf = null;
+  if (card && found) Leaf = card.kind === "viewer" ? found.report.View : found.report.Input;
+  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <main className="gia" style={S.page} dir="rtl">
-      {/* globals.css يفرض #root * {font-size:14px !important} فيسطّح كل حجم
-          inline. صنف مضاعف (.gia.gia) يتفوّق عليه فترجع الهرمية. */}
+    <main className="gia" style={S.page} dir="ltr">
       <style>{`
-        #root .gia.gia h1{font-size:24px !important}
-        #root .gia.gia h2{font-size:22px !important}
+        #root .gia.gia h1{font-size:21px !important}
         #root .gia.gia .gia-ct{font-size:17px !important}
+        @keyframes giaSpin{to{transform:rotate(360deg)}}
+        @keyframes giaIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        .gia-spin{animation:giaSpin .8s linear infinite}
+        .gia-card{animation:giaIn .3s ease both}
+        .gia-card:hover{transform:translateY(-3px)}
+        .gia-item:hover{background:#f1f5f9}
+        .gia-item.on:hover{background:linear-gradient(135deg,#be185d,#db2777)}
+        .gia-shell{display:flex;align-items:stretch;min-height:calc(100vh - 70px)}
+        .gia-side{width:264px;flex-shrink:0}
+        .gia-fab{display:none}
+        @media (max-width:860px){
+          .gia-shell{flex-direction:column}
+          .gia-side{width:auto}
+        }
       `}</style>
+
+      {/* ── Top bar ── */}
       <header style={S.hero}>
+        <div aria-hidden="true" style={S.heroGlow} />
         <div style={S.heroInner}>
           <div style={S.brand}>
-            <img src={logo} alt="" style={S.logo} />
+            <div style={S.avatar}>{monogram}</div>
             <div style={{ minWidth: 0 }}>
-              <p style={S.eyebrow}>{template.icon} {template.label}</p>
+              <p style={S.eyebrow}>{template.icon} {template.label} · {template.branch}</p>
               <h1 style={S.title}>{companyName}</h1>
             </div>
           </div>
           <div style={S.heroActions}>
-            {activeType && (
-              <button style={S.btn} onClick={() => setView(null)}>▸ كل التقارير</button>
-            )}
+            <span style={S.clock}>{timeStr}</span>
+            {card && <button style={S.btn} onClick={() => go({})}>🏠 Home</button>}
             {isSuperAdmin && (
               <button style={S.btn} onClick={() => { clearActiveCompany(); navigate("/select-company"); }}>
-                🏢 تبديل الشركة
+                🏢 Switch
               </button>
             )}
-            <button style={S.btnDanger} onClick={logout}>خروج</button>
+            <button style={S.btnDanger} onClick={logout}>Logout</button>
           </div>
         </div>
+        <div aria-hidden="true" style={S.heroLine} />
       </header>
 
-      <div style={S.body}>
-        {!activeType && <Dashboard template={template} onOpen={(t) => setView({ type: t })} />}
-        {activeType && found && !mode && (
-          <ReportList
-            def={found.report}
-            onNew={() => setView({ type: activeType, mode: "new" })}
-            onEdit={(id) => setView({ type: activeType, mode: "edit", id })}
-          />
-        )}
-        {activeType && found && (mode === "new" || mode === "edit") && (
-          <ReportForm
-            def={found.report}
-            editId={mode === "edit" ? editId : null}
-            onDone={() => setView({ type: activeType })}
-            onCancel={() => setView({ type: activeType })}
-          />
-        )}
-      </div>
-      <footer style={S.footer}>Built by Eng. Mohammed Abdullah</footer>
+      {/* ── Home: cards ── */}
+      {!card && (
+        <div style={S.homeWrap}>
+          <div style={S.homeIntro}>
+            <div style={S.introTitle}>Welcome{companyName ? `, ${companyName}` : ""}</div>
+            <div style={S.introSub}>Choose what you want to do.</div>
+          </div>
+          <div style={S.grid}>
+            {template.cards.map((c, i) => (
+              <button
+                key={c.id}
+                className="gia-card"
+                style={{ ...S.card, animationDelay: `${i * 0.05}s` }}
+                onClick={() => go({ card: c.id })}
+              >
+                <div style={S.cardTop}>
+                  <div style={{ ...S.cardIcon, background: c.grad || "#0f766e" }}>{c.icon}</div>
+                  <span style={S.cardCount}>{c.reports.length} reports</span>
+                </div>
+                <div className="gia-ct" style={S.cardTitle}>{c.label}</div>
+                {c.desc && <div style={S.cardDesc}>{c.desc}</div>}
+                <div style={S.cardFoot}>
+                  <span>{c.kind === "viewer" ? "Browse" : "Open"}</span>
+                  <span aria-hidden="true">→</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Card: sidebar + full-width report ── */}
+      {card && (
+        <div className="gia-shell">
+          <aside className="gia-side" style={S.side}>
+            <div style={S.sideHead}>
+              <span style={S.sideHeadIcon}>{card.icon}</span>
+              <div>
+                <div style={S.sideHeadTitle}>{card.label}</div>
+                <div style={S.sideHeadSub}>{card.kind === "viewer" ? "View mode" : "Data entry"}</div>
+              </div>
+            </div>
+            <div style={S.sideList}>
+              {card.reports.map((r) => {
+                const on = r.type === activeType;
+                return (
+                  <button
+                    key={r.type}
+                    className={`gia-item${on ? " on" : ""}`}
+                    style={{ ...S.sideItem, ...(on ? S.sideItemOn : null) }}
+                    onClick={() => go({ card: cardId, type: r.type })}
+                  >
+                    <span style={S.sideItemIcon}>{r.icon || "📄"}</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <section style={S.main}>
+            {found && (
+              <div style={S.mainHead}>
+                <span style={S.mainHeadIcon}>{found.report.icon || "📄"}</span>
+                <span style={S.mainHeadTitle}>{found.report.label}</span>
+                <span style={S.mainHeadTag}>{card.kind === "viewer" ? "View" : "Entry"}</span>
+              </div>
+            )}
+            <div style={S.mainBody}>
+              {Leaf ? (
+                <Suspense fallback={<Loading />}>
+                  <Leaf />
+                </Suspense>
+              ) : (
+                <div style={S.loading}>Select a report from the list.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
 
-/* ── الداشبورد: الأقسام وتحتها أنواع التقارير ── */
-function Dashboard({ template, onOpen }) {
-  return (
-    <>
-      {template.sections.map((section) => (
-        <section key={section.id} style={{ marginBottom: 26 }}>
-          <div style={S.sectionHead}>
-            <span>{section.icon} {section.label}</span>
-          </div>
-          <div style={S.grid}>
-            {section.reports.map((r) => (
-              <button key={r.type} style={S.card} onClick={() => onOpen(r.type)}>
-                <div style={{ ...S.cardIcon, background: section.grad || "#0f766e" }}>{section.icon}</div>
-                <div className="gia-ct" style={S.cardTitle}>{r.label}</div>
-                {r.desc && <div style={S.cardDesc}>{r.desc}</div>}
-                <div style={S.cardOpen}>فتح ←</div>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-    </>
-  );
-}
-
-/* ── قائمة سجلات نوع تقرير واحد ── */
-function ReportList({ def, onNew, onEdit }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr("");
-    try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(def.type)}`, { cache: "no-store" });
-      const data = await res.json();
-      const arr = Array.isArray(data) ? data : data?.data || [];
-      arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-      setRows(arr);
-    } catch {
-      setErr("تعذّر تحميل السجلات.");
-    }
-    setLoading(false);
-  }, [def.type]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const del = async (id) => {
-    if (!window.confirm("حذف هذا السجل؟")) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
-      const d = await res.json().catch(() => ({}));
-      if (res.ok && d.ok !== false) load();
-      else alert("تعذّر الحذف.");
-    } catch { alert("تعذّر الحذف."); }
-  };
-
-  // نعرض أول 4 حقول كأعمدة، حتى يبقى الجدول مقروءاً.
-  const cols = def.fields.slice(0, 4);
-
-  return (
-    <div>
-      <div style={S.listHead}>
-        <h2 style={S.listTitle}>{def.label}</h2>
-        <button style={S.btnPrimary} onClick={onNew}>+ سجل جديد</button>
-      </div>
-
-      {loading ? (
-        <div style={S.empty}>جارٍ التحميل…</div>
-      ) : err ? (
-        <div style={{ ...S.empty, color: "#b91c1c" }}>{err}</div>
-      ) : rows.length === 0 ? (
-        <div style={S.empty}>لا سجلات بعد. اضغط «سجل جديد» للبدء.</div>
-      ) : (
-        <div style={S.tableWrap}>
-          <table style={S.table}>
-            <thead>
-              <tr>
-                {cols.map((f) => <th key={f.key} style={S.th}>{f.label}</th>)}
-                <th style={S.th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  {cols.map((f) => (
-                    <td key={f.key} style={S.td}>{formatVal(row.payload?.[f.key])}</td>
-                  ))}
-                  <td style={{ ...S.td, whiteSpace: "nowrap" }}>
-                    <button style={S.linkBtn} onClick={() => onEdit(row.id)}>تعديل</button>
-                    <button style={{ ...S.linkBtn, color: "#b91c1c" }} onClick={() => del(row.id)}>حذف</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── نموذج إدخال/تعديل مبني من الحقول ── */
-function ReportForm({ def, editId, onDone, onCancel }) {
-  const [values, setValues] = useState({});
-  const [loading, setLoading] = useState(!!editId);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    if (!editId) return;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" });
-        const d = await res.json();
-        setValues(d?.report?.payload || {});
-      } catch { setErr("تعذّر تحميل السجل."); }
-      setLoading(false);
-    })();
-  }, [editId]);
-
-  const set = (k, v) => setValues((p) => ({ ...p, [k]: v }));
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setErr("");
-    for (const f of def.fields) {
-      if (f.required && !String(values[f.key] ?? "").trim()) {
-        setErr(`الحقل «${f.label}» مطلوب.`);
-        return;
-      }
-    }
-    setSaving(true);
-    try {
-      let res;
-      if (editId) {
-        res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: def.type, payload: values }),
-        });
-      } else {
-        res = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: def.type, payload: values }),
-        });
-      }
-      const d = await res.json().catch(() => ({}));
-      if (res.ok && d.ok !== false) onDone();
-      else setErr(d.error || "تعذّر الحفظ.");
-    } catch { setErr("تعذّر الاتصال بالخادم."); }
-    setSaving(false);
-  };
-
-  if (loading) return <div style={S.empty}>جارٍ التحميل…</div>;
-
-  return (
-    <form onSubmit={submit} style={S.formCard}>
-      <h2 style={S.listTitle}>{editId ? "تعديل" : "سجل جديد"} — {def.label}</h2>
-      <div style={S.formGrid}>
-        {def.fields.map((f) => (
-          <label key={f.key} style={f.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
-            <span style={S.fieldLabel}>{f.label}{f.required ? " *" : ""}</span>
-            <FieldInput field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} />
-          </label>
-        ))}
-      </div>
-      {err && <div style={S.formErr}>⚠️ {err}</div>}
-      <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-        <button type="submit" disabled={saving} style={S.btnPrimary}>
-          {saving ? "جارٍ الحفظ…" : editId ? "حفظ التعديل" : "حفظ"}
-        </button>
-        <button type="button" style={S.btn} onClick={onCancel}>إلغاء</button>
-      </div>
-    </form>
-  );
-}
-
-function FieldInput({ field, value, onChange }) {
-  const v = value ?? "";
-  if (field.type === "textarea")
-    return <textarea style={{ ...S.input, minHeight: 80, resize: "vertical" }} value={v} onChange={(e) => onChange(e.target.value)} />;
-  if (field.type === "select")
-    return (
-      <select style={S.input} value={v} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— اختر —</option>
-        {(field.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    );
-  if (field.type === "checkbox")
-    return <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} style={{ width: 20, height: 20 }} />;
-  return <input type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-                style={S.input} value={v} onChange={(e) => onChange(e.target.value)} />;
-}
-
-function formatVal(v) {
-  if (v === true) return "✓";
-  if (v === false || v == null || v === "") return "—";
-  return String(v);
-}
-
+const ACCENT = "#be185d";
 const S = {
-  page: { minHeight: "100vh", background: "linear-gradient(180deg,#f8fafc,#eef7f4 44%,#f8fafc)", color: "#0f172a", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif' },
-  hero: { background: "linear-gradient(135deg,rgba(15,23,42,.96),rgba(190,24,93,.9) 55%,rgba(219,39,119,.9))", color: "#fff", padding: "22px clamp(16px,4vw,48px)" },
-  heroInner: { width: "min(1200px,100%)", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" },
-  brand: { display: "flex", alignItems: "center", gap: 14, minWidth: 0 },
-  logo: { width: 54, height: 54, borderRadius: 8, objectFit: "cover", border: "1px solid rgba(255,255,255,.3)", background: "#fff" },
-  eyebrow: { margin: 0, fontWeight: 800, opacity: .85 },
-  title: { margin: "4px 0 0", fontWeight: 1000, fontSize: 24 },
-  heroActions: { display: "flex", gap: 8, flexWrap: "wrap" },
-  btn: { minHeight: 42, padding: "0 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.14)", color: "#fff", fontWeight: 800, cursor: "pointer" },
-  btnDanger: { minHeight: 42, padding: "0 16px", borderRadius: 8, border: "1px solid rgba(254,202,202,.35)", background: "rgba(220,38,38,.34)", color: "#fff", fontWeight: 800, cursor: "pointer" },
-  body: { width: "min(1200px,100%)", margin: "0 auto", padding: "26px clamp(16px,4vw,48px)" },
-  sectionHead: { fontWeight: 1000, color: "#334155", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,280px),1fr))", gap: 16 },
-  card: { display: "grid", gap: 10, textAlign: "start", padding: "20px 22px", borderRadius: 10, background: "#fff", border: "1px solid rgba(15,23,42,.12)", boxShadow: "0 12px 30px rgba(15,23,42,.08)", cursor: "pointer" },
-  cardIcon: { width: 48, height: 48, borderRadius: 8, display: "grid", placeItems: "center", color: "#fff", fontSize: 22 },
-  cardTitle: { fontWeight: 950, fontSize: 17 },
-  cardDesc: { color: "#64748b", fontWeight: 600, fontSize: 13, lineHeight: 1.5 },
-  cardOpen: { color: "#be185d", fontWeight: 900 },
-  listHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" },
-  listTitle: { margin: 0, fontWeight: 1000, fontSize: 22 },
-  btnPrimary: { minHeight: 44, padding: "0 20px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#be185d,#db2777)", color: "#fff", fontWeight: 950, cursor: "pointer" },
-  empty: { padding: 40, textAlign: "center", background: "#fff", border: "1px solid rgba(15,23,42,.12)", borderRadius: 10, color: "#64748b", fontWeight: 700 },
-  tableWrap: { overflowX: "auto", background: "#fff", border: "1px solid rgba(15,23,42,.12)", borderRadius: 10 },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "start", padding: "12px 14px", background: "#f8fafc", color: "#475569", fontWeight: 900, fontSize: 13, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" },
-  td: { padding: "11px 14px", borderBottom: "1px solid #f1f5f9", fontWeight: 600, color: "#1e293b" },
-  linkBtn: { border: "none", background: "none", color: "#be185d", fontWeight: 900, cursor: "pointer", padding: "4px 8px" },
-  formCard: { background: "#fff", border: "1px solid rgba(15,23,42,.12)", borderRadius: 10, padding: "24px clamp(16px,3vw,30px)", boxShadow: "0 12px 30px rgba(15,23,42,.08)" },
-  formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 },
-  fieldLabel: { display: "block", fontWeight: 800, color: "#475569", marginBottom: 6 },
-  input: { width: "100%", padding: "11px 14px", borderRadius: 8, border: "1.5px solid #dbe4ef", background: "#f8fafc", color: "#0f172a", fontFamily: "inherit", fontWeight: 700, boxSizing: "border-box" },
-  formErr: { marginTop: 14, padding: "12px 14px", borderRadius: 8, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", fontWeight: 800 },
-  footer: { textAlign: "center", padding: 24, color: "#94a3b8", fontWeight: 800 },
+  page: { minHeight: "100vh", background: "#eef2f7", color: "#0f172a", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif' },
+
+  hero: { position: "relative", overflow: "hidden", background: "linear-gradient(120deg,#1e1b2e 0%,#4c1d3d 48%,#831843 100%)", color: "#fff", padding: "14px clamp(14px,3vw,30px)" },
+  heroGlow: { position: "absolute", inset: 0, background: "radial-gradient(600px 180px at 15% 0%, rgba(236,72,153,.35), transparent 60%), radial-gradient(500px 200px at 92% 30%, rgba(8,145,178,.25), transparent 60%)", pointerEvents: "none" },
+  heroLine: { position: "absolute", left: 0, bottom: 0, width: "100%", height: 3, background: "linear-gradient(90deg,#ec4899,#f59e0b,#0891b2,#ec4899)", backgroundSize: "220% 100%", opacity: .9 },
+  heroInner: { position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" },
+  brand: { display: "flex", alignItems: "center", gap: 13, minWidth: 0 },
+  avatar: { width: 46, height: 46, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.28)", color: "#fff", fontWeight: 1000, fontSize: 20, flexShrink: 0 },
+  eyebrow: { margin: 0, fontWeight: 700, opacity: .8, fontSize: 12, letterSpacing: ".02em" },
+  title: { margin: "2px 0 0", fontWeight: 1000, fontSize: 21, lineHeight: 1.1 },
+  heroActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  clock: { fontWeight: 900, fontVariantNumeric: "tabular-nums", opacity: .9, marginInlineEnd: 4 },
+  btn: { minHeight: 40, padding: "0 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", backdropFilter: "blur(6px)" },
+  btnDanger: { minHeight: 40, padding: "0 14px", borderRadius: 10, border: "1px solid rgba(254,202,202,.3)", background: "rgba(220,38,38,.32)", color: "#fff", fontWeight: 800, cursor: "pointer" },
+
+  homeWrap: { width: "min(1080px,100%)", margin: "0 auto", padding: "34px clamp(16px,4vw,40px)" },
+  homeIntro: { marginBottom: 22 },
+  introTitle: { fontWeight: 1000, fontSize: 24, color: "#0f172a", letterSpacing: "-.01em" },
+  introSub: { marginTop: 4, color: "#64748b", fontWeight: 700 },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,280px),1fr))", gap: 18 },
+  card: { position: "relative", display: "grid", gap: 12, textAlign: "start", padding: "22px 24px 20px", borderRadius: 16, background: "#fff", border: "1px solid rgba(15,23,42,.08)", boxShadow: "0 14px 34px rgba(15,23,42,.09)", cursor: "pointer", transition: "transform .16s ease, box-shadow .16s ease", overflow: "hidden" },
+  cardTop: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  cardIcon: { width: 54, height: 54, borderRadius: 14, display: "grid", placeItems: "center", color: "#fff", fontSize: 26, boxShadow: "0 10px 22px rgba(190,24,93,.28)" },
+  cardCount: { fontSize: 12, fontWeight: 900, color: "#64748b", background: "#f1f5f9", borderRadius: 999, padding: "5px 11px" },
+  cardTitle: { fontWeight: 1000, fontSize: 18, color: "#0f172a" },
+  cardDesc: { color: "#64748b", fontWeight: 600, fontSize: 13.5, lineHeight: 1.5 },
+  cardFoot: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, paddingTop: 14, borderTop: "1px solid #f1f5f9", color: ACCENT, fontWeight: 950 },
+
+  side: { background: "#fff", borderInlineEnd: "1px solid rgba(15,23,42,.08)", padding: "14px 12px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "6px 0 24px rgba(15,23,42,.04)" },
+  sideHead: { display: "flex", alignItems: "center", gap: 10, padding: "6px 8px 12px", borderBottom: "1px solid #eef2f7" },
+  sideHeadIcon: { width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", background: "linear-gradient(135deg,#ec4899,#be185d)", color: "#fff", fontSize: 18, flexShrink: 0 },
+  sideHeadTitle: { fontWeight: 1000, fontSize: 15, color: "#0f172a" },
+  sideHeadSub: { fontSize: 11.5, fontWeight: 800, color: "#94a3b8" },
+  sideList: { display: "flex", flexDirection: "column", gap: 3 },
+  sideItem: { display: "flex", alignItems: "center", gap: 10, textAlign: "start", border: "none", background: "transparent", color: "#334155", fontWeight: 800, fontSize: 13.5, padding: "10px 11px", borderRadius: 10, cursor: "pointer", transition: "background .14s ease, color .14s ease" },
+  sideItemOn: { background: "linear-gradient(135deg,#be185d,#db2777)", color: "#fff", boxShadow: "0 8px 18px rgba(190,24,93,.28)" },
+  sideItemIcon: { fontSize: 16, flexShrink: 0 },
+
+  main: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column" },
+  mainHead: { display: "flex", alignItems: "center", gap: 10, padding: "12px clamp(10px,2vw,18px)", background: "rgba(255,255,255,.7)", borderBottom: "1px solid rgba(15,23,42,.06)", backdropFilter: "blur(6px)", position: "sticky", top: 0, zIndex: 2 },
+  mainHeadIcon: { fontSize: 18 },
+  mainHeadTitle: { fontWeight: 1000, fontSize: 16, color: "#0f172a" },
+  mainHeadTag: { marginInlineStart: "auto", fontSize: 11, fontWeight: 900, color: ACCENT, background: "#fce7f3", borderRadius: 999, padding: "4px 12px" },
+  mainBody: { flex: 1, minWidth: 0, background: "#fff", padding: "10px clamp(6px,1.4vw,14px)", overflowX: "auto" },
+
+  loading: { display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: 60, color: "#64748b", fontWeight: 800 },
+  spinner: { width: 26, height: 26, borderRadius: "50%", border: "3px solid rgba(190,24,93,.25)", borderTopColor: ACCENT },
 };

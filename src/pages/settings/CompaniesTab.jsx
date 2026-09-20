@@ -266,9 +266,10 @@ export default function CompaniesTab() {
                 ))}
               </select>
             </Field>
-            <Field label="نوع النشاط / الصناعة">
-              {/* يقرّر أي نظام تفتحه الشركة: «تصنيع لحوم» = نظام المواشي الكامل،
-                  أي نشاط آخر = نظام عام يُبنى من قالب النشاط. */}
+            <Field label="Business type / Industry">
+              {/* Decides which system the company opens: "Meat manufacturing" =
+                  the full Al Mawashi system; any other industry = the generic
+                  engine built from that industry's template. */}
               <select value={form.industry} onChange={e => setForm(f=>({...f,industry:e.target.value}))} style={inputStyle}>
                 {industryOptions().map(o => (
                   <option key={o.id} value={o.id}>{o.label}</option>

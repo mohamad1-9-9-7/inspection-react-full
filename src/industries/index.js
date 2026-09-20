@@ -29,17 +29,17 @@ export function isGenericIndustry(id) {
  *  لأنه ليس في TEMPLATES لكنه خيار صالح (النظام الافتراضي). */
 export function industryOptions() {
   return [
-    { id: "meat", label: "تصنيع لحوم (نظام المواشي)" },
-    ...Object.values(TEMPLATES).map((t) => ({ id: t.id, label: t.label })),
+    { id: "meat", label: "Meat manufacturing (Al Mawashi system)" },
+    ...Object.values(TEMPLATES).map((t) => ({ id: t.id, label: t.labelEn || t.label })),
   ];
 }
 
-/** يبحث عن تعريف نوع تقرير داخل قالب، مع قسمه. */
+/** يبحث عن تعريف نوع تقرير داخل قالب (عبر كل البطاقات). */
 export function findReportType(template, type) {
   if (!template) return null;
-  for (const section of template.sections || []) {
-    const report = (section.reports || []).find((r) => r.type === type);
-    if (report) return { section, report };
+  for (const card of template.cards || []) {
+    const report = (card.reports || []).find((r) => r.type === type);
+    if (report) return { card, report };
   }
   return null;
 }
