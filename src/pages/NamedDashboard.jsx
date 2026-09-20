@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
 import { clearAppSession } from "../utils/authFetch";
+import { getActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { useInventoryOfficer } from "./workforce/workforceAccess";
 
 /* ══════════════════════════════════════════
@@ -1054,7 +1055,9 @@ export default function NamedDashboard() {
   const permissions = currentUser.permissions || [];
   const isFullAccess = permissions.includes("*") || permissions.length === 0;
   const isAdmin = !!currentUser.isAdmin;
+  const isSuperAdmin = !!currentUser.isSuperAdmin;
   const employees = currentUser.employees || [];
+  const activeCompany = isSuperAdmin ? getActiveCompany() : null;
 
   /* «مسؤول المخزون» — نفس القاعدة تحت: الكرت بابه الوحيد. */
   const { officer: invOfficer } = useInventoryOfficer();
@@ -1259,6 +1262,16 @@ export default function NamedDashboard() {
                     Settings
                   </button>
                 )}
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    style={nd.heroButton()}
+                    title={activeCompany ? `Currently: ${activeCompany.name}` : ""}
+                    onClick={() => { clearActiveCompany(); navigate("/select-company"); }}
+                  >
+                    Switch Company
+                  </button>
+                )}
                 <button type="button" style={nd.heroButton("danger")} onClick={handleLogout}>
                   Back to Login
                 </button>
@@ -1282,6 +1295,9 @@ export default function NamedDashboard() {
             <div style={nd.chip}>{isFullAccess ? "Full Access" : "Limited Access"}</div>
             <div style={nd.chip}>{visibleRoles.length} Sections</div>
             {isAdmin && <div style={nd.chip}>Admin</div>}
+            {isSuperAdmin && (
+              <div style={nd.chip}>🏢 {activeCompany ? activeCompany.name : "All companies"}</div>
+            )}
           </div>
         </section>
 

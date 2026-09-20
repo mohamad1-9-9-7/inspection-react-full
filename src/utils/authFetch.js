@@ -88,6 +88,37 @@ function withFullLimit(url) {
 }
 
 /* ------------------------------------------------------------------
+   Multi-tenant: which company a super-admin is "inside" right now
+   ------------------------------------------------------------------
+   A regular account's company is fixed server-side by its own token —
+   nothing here changes for it. Only the platform owner (isSuperAdmin)
+   picks a company from the switcher, and that choice has to reach the
+   server on every call for it to mean anything. Doing it once here
+   covers every existing call site, the same way the token and the
+   limit=5000 above already do.
+
+   Restricted to the two endpoints the server actually reads
+   ?company_id= on today (see routes/reports.cjs and routes/admin.cjs).
+   Extending this to a new endpoint means teaching that endpoint the
+   query param first — adding a path here alone does nothing. */
+const COMPANY_SCOPED_PATHS = ["/api/reports", "/api/app-users"];
+
+function withActiveCompany(url) {
+  if (typeof url !== "string") return url;
+  try {
+    const cu = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    if (!cu.isSuperAdmin) return url; // موظف عادي — نطاقه ثابت بالتوكن أصلاً
+    const company = JSON.parse(localStorage.getItem("activeCompany") || "null");
+    if (!company?.id) return url; // بلا اختيار = بلا حصر (الوضع الحالي)
+    if (/[?&]company_id=/.test(url)) return url; // الطالب حدد وحدة يدوياً
+    if (!COMPANY_SCOPED_PATHS.some((p) => url.includes(p))) return url;
+    return url + (url.includes("?") ? "&" : "?") + `company_id=${company.id}`;
+  } catch {
+    return url;
+  }
+}
+
+/* ------------------------------------------------------------------
    Report visibility window (see utils/reportWindow.js)
    ------------------------------------------------------------------
    Non-admin accounts only see recent reports: POS 10/11/15/19 for the
@@ -163,6 +194,9 @@ window.fetch = function authFetch(input, init = {}) {
   let reqInput = input;
   if (isReportRead(url, method) && typeof input === "string") {
     reqInput = withFullLimit(input);
+  }
+  if (typeof reqInput === "string") {
+    reqInput = withActiveCompany(reqInput);
   }
 
   const token = localStorage.getItem("authToken");

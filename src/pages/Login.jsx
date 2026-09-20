@@ -60,7 +60,10 @@ function Login() {
             loginAt: Date.now(),
           })
         );
-        navigate("/named-dashboard");
+        // مالك المنصّة (سوبر أدمن) ما إلوش شركة ثابتة بالتوكن — بيختارها كل
+        // مرة من شاشة الكروت. أي حساب عادي إلو شركة ثابتة أصلاً، فبيروح
+        // مباشرة عالداشبورد متل ما كان دايمًا، بلا أي تغيير بتجربته.
+        navigate(data.user.isSuperAdmin ? "/select-company" : "/named-dashboard");
       } else {
         const errMap = {
           invalid_credentials: "Wrong username or password",

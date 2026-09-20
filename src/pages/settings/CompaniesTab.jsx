@@ -42,7 +42,10 @@ export default function CompaniesTab() {
   const [planFilter, setPlanFilter] = useState("all");
 
   const u = getUser();
-  const isSuperAdmin = u.isSuperAdmin || u.isAdmin || false;
+  // سوبر أدمن حقيقي بس — أدمن عادي (حتى لو بمستوى الأدمن) ما بيدير شركات
+  // الحساب الآخرين. كانت هون بتقبل أي isAdmin، يعني أي أدمن فرع كان يقدر
+  // يضيف/يحذف شركات كاملة.
+  const isSuperAdmin = !!u.isSuperAdmin;
 
   useEffect(() => { load(); }, []);
 
@@ -121,7 +124,13 @@ export default function CompaniesTab() {
   async function deleteCompany(id) {
     try {
       const company = companies.find((c) => c.id === id) || { id };
-      await fetch(`${API_BASE}/api/companies/${id}`, { method:"DELETE" });
+      const r = await fetch(`${API_BASE}/api/companies/${id}`, { method:"DELETE" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) {
+        setConfirm(null);
+        setMsg("❌ " + (d.error || t("failDelete")));
+        return;
+      }
       await logSettingsAudit({
         area: "companies",
         action: "delete_company",
@@ -132,7 +141,7 @@ export default function CompaniesTab() {
       });
       setConfirm(null); setMsg("✅ " + t("companyDeleted")); load();
       setTimeout(() => setMsg(""), 3000);
-    } catch { setMsg("❌ " + t("failDelete")); }
+    } catch { setConfirm(null); setMsg("❌ " + t("failDelete")); }
   }
 
   const enrichedCompanies = useMemo(() => companies.map((company) => {

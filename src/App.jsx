@@ -18,6 +18,7 @@ const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 // Lazy imports
 const Login = lazy(() => import("./pages/Login"));
 const NamedDashboard = lazy(() => import("./pages/NamedDashboard"));
+const SelectCompany = lazy(() => import("./pages/SelectCompany"));
 const Inspection = lazy(() => import("./pages/Inspection"));
 const InspectionHub = lazy(() => import("./pages/inspection/InspectionHub"));
 const InspectionAnnualPlan = lazy(() => import("./pages/inspection/InspectionAnnualPlan"));
@@ -140,6 +141,11 @@ const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
 const BrowseReturns = lazy(() => import("./pages/BrowseReturns"));
 const ReturnsMenu = lazy(() => import("./ReturnsMenu"));
+// 📨 Quality Complaints (branch + supplier) — hubs, list, form, view
+const ComplaintsHub      = lazy(() => import("./pages/complaints/ComplaintsHub"));
+const ComplaintsListPage = lazy(() => import("./pages/complaints/ComplaintsListPage"));
+const ComplaintFormPage  = lazy(() => import("./pages/complaints/ComplaintFormPage"));
+const ComplaintViewPage  = lazy(() => import("./pages/complaints/ComplaintViewPage"));
 
 // ✅🆕 ENOC Returns (Input + Browse)
 const ENOCReturnsInput = lazy(() => import("./pages/ENOC/ENOCReturnsInput"));
@@ -1475,6 +1481,38 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* 📨 Quality Complaints — full page tree, no modals */}
+          <Route path="complaints">
+            {/* /returns/complaints → default is the Browse hub */}
+            <Route
+              index
+              element={<ProtectedRoute><ComplaintsHub action="browse" /></ProtectedRoute>}
+            />
+            <Route
+              path="browse"
+              element={<ProtectedRoute><ComplaintsHub action="browse" /></ProtectedRoute>}
+            />
+            <Route
+              path="new"
+              element={<ProtectedRoute><ComplaintsHub action="new" /></ProtectedRoute>}
+            />
+            <Route
+              path="list/:target"
+              element={<ProtectedRoute><ComplaintsListPage /></ProtectedRoute>}
+            />
+            <Route
+              path="new/:target"
+              element={<ProtectedRoute><ComplaintFormPage mode="new" /></ProtectedRoute>}
+            />
+            <Route
+              path="edit/:id"
+              element={<ProtectedRoute><ComplaintFormPage mode="edit" /></ProtectedRoute>}
+            />
+            <Route
+              path="view/:id"
+              element={<ProtectedRoute><ComplaintViewPage /></ProtectedRoute>}
+            />
+          </Route>
         </Route>
 
         {/* ✅✅✅ ENOC Returns routes */}
@@ -2450,6 +2488,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <NamedDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🏢 Platform owner: pick which company to work inside */}
+        <Route
+          path="/select-company"
+          element={
+            <ProtectedRoute>
+              <SelectCompany />
             </ProtectedRoute>
           }
         />
