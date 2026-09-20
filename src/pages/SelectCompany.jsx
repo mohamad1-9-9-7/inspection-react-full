@@ -52,7 +52,10 @@ export default function SelectCompany() {
 
   function enter(company) {
     setActiveCompany(company);
-    navigate("/named-dashboard");
+    // النشاط يقرّر أي نظام يفتح: 'meat' (أو غير محدّد) = داشبورد المواشي،
+    // أي نشاط تاني = المحرّك العام المبني من قالب النشاط.
+    const industry = company.industry || "meat";
+    navigate(industry !== "meat" ? "/company-app" : "/named-dashboard");
   }
 
   function logout() {

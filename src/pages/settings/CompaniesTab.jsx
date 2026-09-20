@@ -4,10 +4,11 @@ import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
+import { industryOptions } from "../../industries";
 
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
-  plan_id:"", status:"active", start_date:"", end_date:"", notes:"",
+  plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat",
 };
 
 function getUser() {
@@ -81,6 +82,7 @@ export default function CompaniesTab() {
       start_date:    c.start_date?.substring(0,10) || "",
       end_date:      c.end_date?.substring(0,10)   || "",
       notes:         c.notes || "",
+      industry:      c.industry || "meat",
     });
     setEditing(c); setMsg("");
   }
@@ -98,6 +100,7 @@ export default function CompaniesTab() {
       plan_id: form.plan_id ? parseInt(form.plan_id) : null,
       start_date: form.start_date || null,
       end_date:   form.end_date   || null,
+      industry:   form.industry || "meat",
     };
     try {
       const isNew = editing === "new";
@@ -260,6 +263,15 @@ export default function CompaniesTab() {
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.price > 0 ? `${p.price} ${p.currency}/mo` : t("free")})
                   </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="نوع النشاط / الصناعة">
+              {/* يقرّر أي نظام تفتحه الشركة: «تصنيع لحوم» = نظام المواشي الكامل،
+                  أي نشاط آخر = نظام عام يُبنى من قالب النشاط. */}
+              <select value={form.industry} onChange={e => setForm(f=>({...f,industry:e.target.value}))} style={inputStyle}>
+                {industryOptions().map(o => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
                 ))}
               </select>
             </Field>

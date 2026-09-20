@@ -19,6 +19,7 @@ const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 const Login = lazy(() => import("./pages/Login"));
 const NamedDashboard = lazy(() => import("./pages/NamedDashboard"));
 const SelectCompany = lazy(() => import("./pages/SelectCompany"));
+const GenericIndustryApp = lazy(() => import("./pages/generic/GenericIndustryApp"));
 const Inspection = lazy(() => import("./pages/Inspection"));
 const InspectionHub = lazy(() => import("./pages/inspection/InspectionHub"));
 const InspectionAnnualPlan = lazy(() => import("./pages/inspection/InspectionAnnualPlan"));
@@ -2498,6 +2499,19 @@ export default function App() {
           element={
             <ProtectedRoute>
               <SelectCompany />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🧩 نظام عام للشركات ذات النشاط غير 'meat' (حلويات...) — يُبنى من ملف
+            قالب النشاط. لا يمسّ نظام المواشي إطلاقاً. */}
+        <Route
+          path="/company-app"
+          element={
+            <ProtectedRoute>
+              <BranchSuspense>
+                <GenericIndustryApp />
+              </BranchSuspense>
             </ProtectedRoute>
           }
         />

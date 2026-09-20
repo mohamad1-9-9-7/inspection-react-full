@@ -56,14 +56,24 @@ function Login() {
             allowedBranches: data.user.allowedBranches || [],
             isAdmin: data.user.isAdmin,
             isSuperAdmin: data.user.isSuperAdmin || false,
+            // نوع نشاط شركة الحساب — يثبّت أي نظام يفتح له (مواشي = النظام
+            // الحالي، غيره = المحرّك العام). مخزّن هنا حتى يقرأه getActiveIndustry
+            // بلا نداء إضافي.
+            companyIndustry: data.user.company?.industry || "meat",
             type: "named",
             loginAt: Date.now(),
           })
         );
         // مالك المنصّة (سوبر أدمن) ما إلوش شركة ثابتة بالتوكن — بيختارها كل
-        // مرة من شاشة الكروت. أي حساب عادي إلو شركة ثابتة أصلاً، فبيروح
-        // مباشرة عالداشبورد متل ما كان دايمًا، بلا أي تغيير بتجربته.
-        navigate(data.user.isSuperAdmin ? "/select-company" : "/named-dashboard");
+        // مرة من شاشة الكروت. الحساب العادي بيروح لنظام شركته: نشاط 'meat'
+        // = الداشبورد الحالي، أي نشاط تاني = المحرّك العام.
+        if (data.user.isSuperAdmin) {
+          navigate("/select-company");
+        } else if (data.user.company?.industry && data.user.company.industry !== "meat") {
+          navigate("/company-app");
+        } else {
+          navigate("/named-dashboard");
+        }
       } else {
         const errMap = {
           invalid_credentials: "Wrong username or password",
