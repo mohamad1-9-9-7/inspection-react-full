@@ -13,18 +13,16 @@ const IS_SAME_ORIGIN = (() => { try { return new URL(API_BASE).origin === window
 const TYPE = "sweets_pest_control";
 const MAX_EXTRA_IMAGES = 8;
 
+/* Sweets is a single-branch company (see src/industries/sweets/index.js),
+   so this is its own small location list — not the QCS/Al Mawashi POS list,
+   which has nothing a Sweets user could ever pick. */
 const LOCATIONS = [
-  "QCS Warehouse",
-  "POS 10",
-  "POS 11",
-  "POS 15",
-  "POS 19",
-  "POS 24",
-  "POS 26",
-  "FTR 1 • Mushrif Park",
-  "FTR 2 • Mamzar Park",
-  "Production (PRD)",
-  "OHC",
+  "Main Branch",
+  "Production",
+  "Packing",
+  "Cold Storage",
+  "Warehouse / Receiving",
+  "Retail / Front of House",
   "Other / أخرى",
 ];
 
@@ -76,11 +74,14 @@ async function uploadImage(file) {
 async function deleteImage(url) {
   if (!url) return;
   try {
-    await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
       method: "DELETE",
       credentials: IS_SAME_ORIGIN ? "include" : "omit",
     });
-  } catch {}
+    if (!res.ok) console.error(`deleteImage: server returned HTTP ${res.status} for ${url}`);
+  } catch (e) {
+    console.error(`deleteImage: request failed for ${url}`, e);
+  }
 }
 
 /* ===== Styles ===== */
@@ -135,7 +136,7 @@ const newStation = () => ({ id: Date.now() + Math.random(), code: "", location: 
 export default function PestControlInput() {
   // Header
   const [date, setDate] = useState(today());
-  const [location, setLocation] = useState("QCS Warehouse");
+  const [location, setLocation] = useState(LOCATIONS[0]);
   const [visitType, setVisitType] = useState(VISIT_TYPES[0]);
 
   // Company
@@ -248,7 +249,7 @@ export default function PestControlInput() {
 
   function resetForm() {
     setDate(today());
-    setLocation("QCS Warehouse");
+    setLocation(LOCATIONS[0]);
     setVisitType(VISIT_TYPES[0]);
     setCompanyName("");
     setServiceReportNo("");
@@ -303,7 +304,7 @@ export default function PestControlInput() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: IS_SAME_ORIGIN ? "include" : "omit",
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showMsg("ok", "✅ تم حفظ السجل بنجاح");

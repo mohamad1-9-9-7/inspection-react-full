@@ -30,11 +30,18 @@ import {
   payloadOf,
   reportId,
 } from "../_shared/reportApi";
-import {
-  INSPECTION_BRANCHES,
-  canonicalInspectionBranch,
-  isKnownInspectionBranch,
-} from "../../../inspection/inspectionBranches";
+
+/* Sweets is a single-branch company (see src/industries/sweets/index.js), so
+   this is its own small location list — not the QCS/Al Mawashi master branch
+   list, which has nothing a Sweets user could ever pick. */
+const SWEETS_LOCATIONS = [
+  "Main Branch",
+  "Production",
+  "Packing",
+  "Cold Storage",
+  "Warehouse / Receiving",
+  "Retail / Front of House",
+];
 
 /* =========================
    API base (CRA + Vite safe)
@@ -65,7 +72,7 @@ const IS_SAME_ORIGIN = (() => {
 /* ---- Defaults ---- */
 const LOGO_FALLBACK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const DEFAULT_TYPE = "sweets_non_conformance";
-const DEFAULT_REPORTER = "qcs";
+const DEFAULT_REPORTER = "sweets";
 const DEFAULT_HEADER_LINE = "";
 const MAX_EVIDENCE_IMAGES = 10;
 
@@ -398,6 +405,13 @@ export default function NonConformanceReportInput(props) {
   const queryReportId = searchParams.get("reportId");
 
   const evidenceInputRef = useRef(null);
+  /* Which evidence URLs are actually attached to a record already saved on
+     the server (set by applyPayload/on save) — vs. ones the user has only
+     uploaded locally this session. Only the latter are safe to delete from
+     the image server on "New NCR" / "Clear all": deleting an already-saved
+     record's images out from under it (without touching that record) would
+     leave it pointing at broken URLs. */
+  const loadedEvidenceImagesRef = useRef([]);
 
   const [header] = useState({
     documentTitle: "",
@@ -414,7 +428,7 @@ export default function NonConformanceReportInput(props) {
     isISODate(queryDate) ? queryDate : todayDubaiISO()
   );
 
-  const [location, setLocation] = useState(defaultBranch || "");
+  const [location, setLocation] = useState(defaultBranch || SWEETS_LOCATIONS[0]);
   const [refNo, setRefNo] = useState("");       // server-allocated, read-only
   const [legacyNcNo, setLegacyNcNo] = useState(""); // hand-typed number on old records
   const [issuedTo, setIssuedTo] = useState("");
@@ -485,14 +499,11 @@ export default function NonConformanceReportInput(props) {
     return m;
   }, [dateISO, location, details, closing, correctiveAction, finalQaName, finalQaDateISO, finalQaApproved]);
 
-  /* Branch options: the master list, plus whatever a legacy record already
-     carries so an old free-text location never silently disappears. */
+  /* Branch options: Sweets' own location list, plus whatever a legacy record
+     already carries so an old free-text location never silently disappears. */
   const branchOptions = useMemo(() => {
-    const list = INSPECTION_BRANCHES.map((b) => ({
-      code: b.code,
-      label: `${b.icon}  ${b.labelEn}`,
-    }));
-    if (location && !isKnownInspectionBranch(location)) {
+    const list = SWEETS_LOCATIONS.map((code) => ({ code, label: code }));
+    if (location && !SWEETS_LOCATIONS.includes(location)) {
       list.unshift({ code: location, label: `⚠️  ${location} (legacy)` });
     }
     return list;
@@ -520,8 +531,7 @@ export default function NonConformanceReportInput(props) {
       const sig = payload.signature || {};
 
       const rawLoc = payload.branch || payload.location || "";
-      const code = canonicalInspectionBranch(rawLoc);
-      setLocation(code || defaultBranch || "");
+      setLocation(rawLoc || defaultBranch || SWEETS_LOCATIONS[0]);
       setRefNo(payload.refNo || "");
       setLegacyNcNo(payload.refNo ? "" : head.ncNo || "");
       setIssuedTo(head.issuedTo || "");
@@ -537,9 +547,11 @@ export default function NonConformanceReportInput(props) {
       setImplementationOwner(extras.implementationOwner || "");
       setTargetCompletionDateISO(extras.targetCompletionDateISO || "");
       setStatus(extras.status || "Open");
-      setEvidenceImages(
-        Array.isArray(evidence.images) ? evidence.images.slice(0, MAX_EVIDENCE_IMAGES) : []
-      );
+      {
+        const loadedImages = Array.isArray(evidence.images) ? evidence.images.slice(0, MAX_EVIDENCE_IMAGES) : [];
+        setEvidenceImages(loadedImages);
+        loadedEvidenceImagesRef.current = loadedImages;
+      }
       setPerformedBy(payload.performedBy || "");
       setDepartment(payload.department || "");
       setVerification(payload.verificationOfCorrectiveAction || "Satisfactory");
@@ -647,16 +659,26 @@ export default function NonConformanceReportInput(props) {
 
   function startNewReport() {
     if (
-      details.trim() &&
+      (details.trim() || evidenceImages.length > 0) &&
       !window.confirm("Start a blank NCR? Anything not saved on this one is lost.")
     ) {
       return;
     }
+    // Only delete images that were uploaded this session and never made it
+    // into a saved record — an image already attached to a saved NCR (loaded
+    // via the same-day lookup or the Edit button) must be left alone here;
+    // this screen is only leaving it behind, not deleting it.
+    const savedImages = new Set(loadedEvidenceImagesRef.current);
+    evidenceImages.forEach((url) => {
+      if (savedImages.has(url)) return;
+      deleteImage(url).catch((e) => console.error("startNewReport: failed to delete orphaned evidence image", url, e));
+    });
+
     setDraftNew(true);
     setEditingReportId("");
     setRefNo("");
     setLegacyNcNo("");
-    setLocation(defaultBranch || "");
+    setLocation(defaultBranch || SWEETS_LOCATIONS[0]);
     setIssuedTo("");
     setIssuedBy("");
     setSources({ inhouseQC: false, customerComplaint: false, internalAudit: false, externalAudit: false });
@@ -666,6 +688,7 @@ export default function NonConformanceReportInput(props) {
     setTargetCompletionDateISO("");
     setStatus("Open");
     setEvidenceImages([]);
+    loadedEvidenceImagesRef.current = [];
     setPerformedBy("");
     setDepartment("");
     setVerification("Satisfactory");
@@ -795,6 +818,9 @@ export default function NonConformanceReportInput(props) {
       if (savedId) setEditingReportId(String(savedId));
       if (savedRef) setRefNo(String(savedRef));
       setDraftNew(false);
+      // These images are now attached to the saved record — no longer
+      // "unsaved" for the orphan-cleanup on New NCR / Clear all.
+      loadedEvidenceImagesRef.current = evidenceImages;
 
       setOpMsg(savedRef ? `Saved — ${savedRef}` : `Saved for ${dateISO}.`);
     } catch (e) {
@@ -1055,10 +1081,14 @@ export default function NonConformanceReportInput(props) {
           <button
             type="button"
             className="ncr-btn ghost small"
-            onClick={() => {
+            onClick={async () => {
               if (!evidenceImages.length) return;
               if (!window.confirm("Remove all evidence images?")) return;
+              const urls = evidenceImages;
               setEvidenceImages([]);
+              for (const url of urls) {
+                try { await deleteImage(url); } catch (e) { console.error("Clear all: failed to delete evidence image", url, e); }
+              }
             }}
           >
             Clear all

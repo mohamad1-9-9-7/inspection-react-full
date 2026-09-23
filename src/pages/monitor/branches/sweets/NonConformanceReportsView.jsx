@@ -6,7 +6,6 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
-import { getInspectionBranchLabel } from "../../../inspection/inspectionBranches";
 import EmailSendModal from "../../../shared/EmailSendModal";
 import EmailSendHistory from "../../../shared/EmailSendHistory";
 import { makeNcrEmailConfig } from "./ncrEmailConfig";
@@ -15,12 +14,9 @@ import { makeNcrEmailConfig } from "./ncrEmailConfig";
    Reports written before that still only carry the hand-typed headRow.ncNo, so
    both are read here — the server-owned one first. */
 const ncNumberOf = (p) => p?.refNo || p?.headRow?.ncNo || "";
-/* Location is a canonical branch code now ("POS 15"); show its full name, and
-   fall back to whatever free text a legacy record holds. */
-const locationOf = (p) => {
-  const code = p?.branch || p?.location || "";
-  return code ? getInspectionBranchLabel(code) : "";
-};
+/* Sweets is single-branch; location is one of its own area names (see
+   NonConformanceReportInput.jsx's SWEETS_LOCATIONS), stored as-is. */
+const locationOf = (p) => p?.branch || p?.location || "";
 
 /* Workflow state, with the colour it is shown in everywhere on this screen. */
 const STATUS_TONE = {
@@ -44,8 +40,12 @@ const IS_SAME_ORIGIN = (() => {
 
 const DEFAULT_TYPE = "sweets_non_conformance";
 const DEFAULT_HEADER_LINE = "";
-const DEFAULT_INPUT_PATH = "/monitor/qcs";
-const DEFAULT_INPUT_TAB = "nonConformance";
+/* The generic industry engine (src/pages/generic/GenericIndustryApp.jsx)
+   mounts every Sweets screen at /company-app, driven by ?card=&type=, NOT
+   the QCS app's own /monitor/qcs?tab= routing — sending an edit there would
+   land the user in the QCS company's own NCR screen. */
+const DEFAULT_INPUT_PATH = "/company-app";
+const DEFAULT_CARD = "daily";
 const LOGO_FALLBACK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 /* ===== Document card helpers ===== */
@@ -126,10 +126,11 @@ function groupByMonth(reports) {
     ]);
 }
 
-function buildEditPath(inputPath, date, tab, reportId) {
+function buildEditPath(inputPath, date, card, type, reportId) {
   const [path, query = ""] = String(inputPath || DEFAULT_INPUT_PATH).split("?");
   const params = new URLSearchParams(query);
-  if (tab) params.set("tab", tab);
+  if (card) params.set("card", card);
+  if (type) params.set("type", type);
   params.set("date", date);
   if (reportId) params.set("reportId", reportId);
   return `${path}?${params.toString()}`;
@@ -137,11 +138,11 @@ function buildEditPath(inputPath, date, tab, reportId) {
 
 /* ===== Component ===== */
 export default function NonConformanceReportsView(props) {
-  const { type: typeProp, headerLine, inputPath, inputTab } = props || {};
+  const { type: typeProp, headerLine, inputPath, inputCard } = props || {};
   const TYPE = typeProp || DEFAULT_TYPE;
   const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
   const INPUT_PATH = inputPath || DEFAULT_INPUT_PATH;
-  const INPUT_TAB = inputTab || DEFAULT_INPUT_TAB;
+  const INPUT_CARD = inputCard || DEFAULT_CARD;
   const navigate = useNavigate();
 
   const [data, setData] = useState([]);
@@ -199,7 +200,7 @@ export default function NonConformanceReportsView(props) {
   function onEdit() {
     if (!view?.headRow?.reportDate) return alert("ما في تاريخ للتقرير.");
     const date = String(view.headRow.reportDate);
-    navigate(buildEditPath(INPUT_PATH, date, INPUT_TAB, safeRouteId));
+    navigate(buildEditPath(INPUT_PATH, date, INPUT_CARD, TYPE, safeRouteId));
   }
 
   function exportXlsx() {

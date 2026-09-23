@@ -1,11 +1,17 @@
 // src/pages/monitor/branches/qcs/StaffSicknessInput.jsx
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { getReportRowByDate, payloadOf, reportId } from "../_shared/reportApi";
 import {
   useStaffDirectory,
   normalizeEmpNo,
   normalizeName,
 } from "../_shared/staffRegistry";
+
+const blankRows = () => [
+  { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+  { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+];
 
 /* ===== API base ===== */
 
@@ -109,10 +115,7 @@ const delRowBtn = {
 /* ===== Component ===== */
 export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {}) {
   const [headerDate, setHeaderDate] = useState("");
-  const [rows, setRows] = useState([
-    { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-    { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-  ]);
+  const [rows, setRows] = useState(blankRows);
   const [remarks, setRemarks] = useState("");
   const [checkedBy, setCheckedBy] = useState({ name: "", date: "" });
   const [verifiedBy, setVerifiedBy] = useState({ name: "", date: "" });
@@ -120,12 +123,65 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
+  /* True once the user has changed anything on the current date's form —
+     guards the load effect below from clobbering in-progress typing (its
+     fetch can be slow) or a save that just completed while an older,
+     now-stale fetch for the same date was still in flight. Reset whenever
+     the date itself changes, so switching dates still loads normally. */
+  const touchedRef = useRef(false);
+
+  /* Several sick-leave entries can land on the same date, so opening (or
+     saving twice under) a date that already has a record must load it
+     instead of starting blank — otherwise a second save that date would
+     overwrite the first entry rather than add to it. */
+  useEffect(() => {
+    if (!headerDate) return;
+    touchedRef.current = false;
+    let cancelled = false;
+    (async () => {
+      let existing = null;
+      try {
+        existing = await getReportRowByDate(type, headerDate);
+      } catch (e) {
+        console.error("StaffSicknessInput: failed to load existing report for", headerDate, e);
+        return;
+      }
+      if (cancelled || touchedRef.current) return;
+      const p = existing ? payloadOf(existing) : null;
+      if (p) {
+        setRows(
+          Array.isArray(p.rows) && p.rows.length
+            ? p.rows.map((r) => ({
+                employeeNo: (r || {}).employeeNo || "",
+                staffName: (r || {}).staffName || "",
+                details: (r || {}).details || "",
+                action: (r || {}).action || "",
+                dateFrom: (r || {}).dateFrom || "",
+                dateReturned: (r || {}).dateReturned || "",
+                comments: (r || {}).comments || "",
+              }))
+            : blankRows()
+        );
+        setRemarks(p.remarks || "");
+        setCheckedBy({ name: p.footer?.checkedBy?.name || "", date: p.footer?.checkedBy?.date || "" });
+        setVerifiedBy({ name: p.footer?.verifiedBy?.name || "", date: p.footer?.verifiedBy?.date || "" });
+      } else {
+        setRows(blankRows());
+        setRemarks("");
+        setCheckedBy({ name: "", date: "" });
+        setVerifiedBy({ name: "", date: "" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [type, headerDate]);
+
   /* Staff directory (Settings → Staff Directory) — filling in either the
      employee number or the name looks the other one up, so the pair always
      matches the register. */
   const { roster: staff, byNo, byName } = useStaffDirectory("sweets_staff_sickness");
 
   function setRow(idx, field, v) {
+    touchedRef.current = true;
     setRows((p) =>
       p.map((r, i) => {
         if (i !== idx) return r;
@@ -142,21 +198,12 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
     );
   }
   function addRow() {
+    touchedRef.current = true;
     setRows((p) => [...p, { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" }]);
   }
   function delRow(idx) {
+    touchedRef.current = true;
     setRows((p) => (p.length <= 1 ? p : p.filter((_, i) => i !== idx)));
-  }
-
-  function resetForm() {
-    setHeaderDate("");
-    setRows([
-      { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-      { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-    ]);
-    setRemarks("");
-    setCheckedBy({ name: "", date: "" });
-    setVerifiedBy({ name: "", date: "" });
   }
 
   async function handleSave() {
@@ -196,14 +243,25 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
     try {
       setSaving(true);
       setMsg("Saving…");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+
+      // A same-day save must UPDATE the day's one record, not file a second,
+      // disconnected report for the same date.
+      const existing = await getReportRowByDate(type, headerDate);
+      const existingId = existing ? reportId(existing) : "";
+
+      const url = existingId
+        ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`
+        : `${API_BASE}/api/reports`;
+
+      const res = await fetch(url, {
+        method: existingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter, type, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setMsg("✅ Saved successfully");
-      resetForm();
+      // Keep the just-saved rows on screen (matching the one-record-per-day
+      // load effect above) instead of wiping the form back to blank.
     } catch (e) {
       console.error(e);
       setMsg("❌ Failed to save");
@@ -368,7 +426,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
           style={textarea}
           placeholder="Enter corrective actions taken…"
           value={remarks}
-          onChange={(e) => setRemarks(e.target.value)}
+          onChange={(e) => { touchedRef.current = true; setRemarks(e.target.value); }}
         />
       </div>
 
@@ -380,9 +438,9 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
             style={{ ...input, marginBottom: 8 }}
             placeholder="Signature (type full name)"
             value={checkedBy.name}
-            onChange={(e) => setCheckedBy((p) => ({ ...p, name: e.target.value }))}
+            onChange={(e) => { touchedRef.current = true; setCheckedBy((p) => ({ ...p, name: e.target.value })); }}
           />
-          <input style={input} type="date" value={checkedBy.date} onChange={(e) => setCheckedBy((p) => ({ ...p, date: e.target.value }))} />
+          <input style={input} type="date" value={checkedBy.date} onChange={(e) => { touchedRef.current = true; setCheckedBy((p) => ({ ...p, date: e.target.value })); }} />
         </div>
         <div style={{ padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fafafa" }}>
           <span style={label}>Verified By</span>
@@ -390,9 +448,9 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
             style={{ ...input, marginBottom: 8 }}
             placeholder="Signature (type full name)"
             value={verifiedBy.name}
-            onChange={(e) => setVerifiedBy((p) => ({ ...p, name: e.target.value }))}
+            onChange={(e) => { touchedRef.current = true; setVerifiedBy((p) => ({ ...p, name: e.target.value })); }}
           />
-          <input style={input} type="date" value={verifiedBy.date} onChange={(e) => setVerifiedBy((p) => ({ ...p, date: e.target.value }))} />
+          <input style={input} type="date" value={verifiedBy.date} onChange={(e) => { touchedRef.current = true; setVerifiedBy((p) => ({ ...p, date: e.target.value })); }} />
         </div>
       </div>
 

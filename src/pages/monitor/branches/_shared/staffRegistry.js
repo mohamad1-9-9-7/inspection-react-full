@@ -55,10 +55,14 @@ export const STAFF_FORMS = [
   { key: "ftr1_personal_hygiene",  reportType: "ftr1_personal_hygiene",    site: "FTR 1",   siteAr: "حديقة المشرف",  en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "ftr2_personal_hygiene",  reportType: "ftr2_personal_hygiene",    site: "FTR 2",   siteAr: "الممزر",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "prod_personal_hygiene",  reportType: "prod_personal_hygiene",    site: "Production", siteAr: "الإنتاج",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
+  { key: "sweets_personal_hygiene", reportType: "sweets-ph",               site: "Sweets",  siteAr: "الحلويات",      en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
 
   // ── QCS people forms (pickers, not row pre-fill) ──
   { key: "qcs_staff_sickness",     reportType: "qcs_staff_sickness",           site: "QCS", siteAr: "القصيص", en: "Staff Sickness", ar: "مرض الموظفين",  autoFills: false, wired: true },
   { key: "qcs_return_to_work",     reportType: "qcs_employee_return_to_work",  site: "QCS", siteAr: "القصيص", en: "Return to Work", ar: "العودة للعمل",  autoFills: false, wired: true },
+
+  // ── Sweets people forms ──
+  { key: "sweets_staff_sickness",  reportType: "sweets_staff_sickness",        site: "Sweets", siteAr: "الحلويات", en: "Staff Sickness", ar: "مرض الموظفين", autoFills: false, wired: true },
 ];
 
 export const STAFF_FORM_KEYS = STAFF_FORMS.map((f) => f.key);

@@ -260,19 +260,25 @@ export async function fetchCoolerConfig(signal) {
       `${API_BASE}/api/reports?type=${encodeURIComponent(COOLERS_CONFIG_TYPE)}&limit=5`,
       { cache: "no-store", signal, headers: { Accept: "application/json" } }
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`fetchCoolerConfig: server returned HTTP ${res.status}; using cached/default limits for this session.`);
+      return null;
+    }
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
     const row =
       rows.find((r) => String(r?.payload?.reportDate || "") === CONFIG_KEY) || rows[0] || null;
-    if (!row?.payload) return null;
+    if (!row?.payload) return null; // nothing saved yet — not a failure
     const out = {
       coolerDefs: normalizeCoolerDefs(row.payload.coolerDefs),
       loadingDef: normalizeLoadingDef(row.payload.loadingDef),
     };
     saveDefsCache(out.coolerDefs, out.loadingDef);
     return out;
-  } catch {
+  } catch (e) {
+    if (e?.name !== "AbortError") {
+      console.error("fetchCoolerConfig: could not reach the server; using cached/default limits for this session.", e);
+    }
     return null;
   }
 }
