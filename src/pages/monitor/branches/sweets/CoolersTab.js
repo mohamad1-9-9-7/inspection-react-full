@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/CoolersTab.jsx
+// src/pages/monitor/branches/sweets/CoolersTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
@@ -265,7 +265,7 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
           <div>2) If the loading area is more than +16°C - take corrective action.</div>
           <div>3) If the preparation area is more than +10°C - take corrective action.</div>
           <div style={{ marginTop: 6, fontWeight: 700 }}>
-            Corrective action: transfer the meat to another cold room and call maintenance to check and solve the
+            Corrective action: transfer the products to another cooler and call maintenance to check and solve the
             problem.
           </div>
         </div>
@@ -651,7 +651,7 @@ export default function CoolersTab(props) {
         loadingDef,
       };
 
-      const body = { reporter: "QCS/COOLERS", type: COOLERS_TYPE, payload };
+      const body = { reporter: "sweets/coolers", type: COOLERS_TYPE, payload };
 
       if (existing?.id) {
         const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {

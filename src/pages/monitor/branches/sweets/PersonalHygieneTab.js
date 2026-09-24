@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/PersonalHygieneTab.jsx
+// src/pages/monitor/branches/sweets/PersonalHygieneTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import {
@@ -440,7 +440,7 @@ export default function PersonalHygieneTab(props) {
         },
       };
 
-      const body = { reporter: "QCS/PH", type: PH_TYPE, payload };
+      const body = { reporter: "sweets/ph", type: PH_TYPE, payload };
 
       const url = existingId
         ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`

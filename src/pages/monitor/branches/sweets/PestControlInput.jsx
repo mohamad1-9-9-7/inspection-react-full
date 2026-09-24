@@ -1,5 +1,5 @@
-// src/pages/monitor/branches/qcs/PestControlInput.jsx
-// QCS — Pest Control Log — Input form (visit details + bait stations + photos)
+// src/pages/monitor/branches/sweets/PestControlInput.jsx
+// Sweets — Pest Control Log — Input form (visit details + bait stations + photos)
 
 import React, { useRef, useState } from "react";
 
@@ -14,8 +14,7 @@ const TYPE = "sweets_pest_control";
 const MAX_EXTRA_IMAGES = 8;
 
 /* Sweets is a single-branch company (see src/industries/sweets/index.js),
-   so this is its own small location list — not the QCS/Al Mawashi POS list,
-   which has nothing a Sweets user could ever pick. */
+   so this is its own small location list. */
 const LOCATIONS = [
   "Main Branch",
   "Production",

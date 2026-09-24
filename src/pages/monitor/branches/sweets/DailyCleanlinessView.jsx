@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/DailyCleanlinessView.jsx
+// src/pages/monitor/branches/sweets/DailyCleanlinessView.jsx
 import React, { useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -11,7 +11,7 @@ import { canDelete } from "../../../../utils/perms";
 /* ===== API base (نفس أسلوب مشروعك) ===== */
 
 
-/* نوع تقرير QCS للنظافة اليومية */
+/* نوع تقرير النظافة اليومية */
 const TYPE = "sweets-clean";
 
 /* ===== أدوات عرض بسيطة ===== */
@@ -87,7 +87,7 @@ export default function DailyCleanlinessView() {
     if (h > ph) { h = ph; w = (canvas.width * h) / canvas.height; }
     pdf.addImage(img, "PNG", (pw - w) / 2, 20, w, h);
     const d = selectedReport?.payload?.reportDate || "report";
-    pdf.save(`QCS_Cleanliness_${d}.pdf`);
+    pdf.save(`Cleanliness_${d}.pdf`);
 
     if (btns) btns.style.display = "flex";
   };
@@ -124,7 +124,7 @@ export default function DailyCleanlinessView() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `QCS_Cleanliness_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+      a.download = `Cleanliness_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -271,7 +271,7 @@ export default function DailyCleanlinessView() {
 
             <h3 style={{ textAlign:"center", background:"#e5e7eb", padding:"6px", marginBottom:"1rem" }}>
                <br />
-              CLEANING CHECKLIST – WAREHOUSE
+              DAILY CLEANING CHECKLIST
             </h3>
 
             {/* جدول النظافة */}

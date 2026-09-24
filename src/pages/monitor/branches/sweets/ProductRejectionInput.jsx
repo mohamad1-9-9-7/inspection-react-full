@@ -1,5 +1,5 @@
-// src/pages/monitor/branches/qcs/ProductRejectionInput.jsx
-// QCS — Product Rejection Report — Input form
+// src/pages/monitor/branches/sweets/ProductRejectionInput.jsx
+// Sweets — Product Rejection Report — Input form
 
 import React, { useRef, useState } from "react";
 
@@ -13,12 +13,14 @@ const TYPE = "sweets_product_rejection";
 const MAX_EXTRA_IMAGES = 8;
 
 const CATEGORIES = [
-  "Meat / لحوم",
-  "Poultry / دواجن",
-  "Seafood / مأكولات بحرية",
-  "Vegetables & Fruits / خضروات وفواكه",
-  "Dairy / منتجات الألبان",
-  "Dry Goods / مواد جافة",
+  "Finished Sweets / حلويات جاهزة",
+  "Chocolate & Cocoa / شوكولاتة وكاكاو",
+  "Dairy & Cream / ألبان وقشطة",
+  "Eggs / بيض",
+  "Flour & Dry Goods / طحين ومواد جافة",
+  "Sugar & Syrups / سكر وشراب",
+  "Nuts & Dried Fruits / مكسرات وفواكه مجففة",
+  "Fresh Fruits / فواكه طازجة",
   "Packaging Material / مواد تعبئة",
   "Ingredients / مكونات",
   "Other / أخرى",

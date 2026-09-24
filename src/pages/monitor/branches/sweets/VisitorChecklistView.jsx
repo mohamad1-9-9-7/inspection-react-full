@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/VisitorChecklistView.jsx
+// src/pages/monitor/branches/sweets/VisitorChecklistView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import API_BASE from "../../../../config/api";
 import { canDelete } from "../../../../utils/perms";
@@ -340,7 +340,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             {hTop.documentTitle || "Visitor Checklist"}
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
-            Doc No: <b>{hTop.documentNo || "FF/QA/VC/1"}</b> · Rev: <b>{hTop.revisionNo || "0"}</b> · Issue: <b>26/02/2020</b> · Area: <b>{hTop.area || "QA"}</b>
+            Doc No: <b>{hTop.documentNo || "—"}</b> · Rev: <b>{hTop.revisionNo || "—"}</b> · Issue: <b>{hTop.issueDate || "—"}</b> · Area: <b>{hTop.area || "—"}</b>
           </div>
         </div>
         {canDelete("daily") && (
@@ -517,7 +517,7 @@ export default function VisitorChecklistView() {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       const res = await fetch(
-        `${API_BASE}/api/reports?reporter=qcs&type=${TYPE}`,
+        `${API_BASE}/api/reports?type=${TYPE}`,
         { cache: "no-store", signal: abortRef.current.signal }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -579,7 +579,7 @@ export default function VisitorChecklistView() {
           📋 Visitor Checklist — Records
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-          QCS · FF/QA/VC/1 · Visitor Health & Hygiene Screening
+          Visitor Health & Hygiene Screening
         </p>
       </div>
 

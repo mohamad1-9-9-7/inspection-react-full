@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/NonConformanceReportInput.jsx
+// src/pages/monitor/branches/sweets/NonConformanceReportInput.jsx
 //
 // Non-Conformance Report (NCR) — entry form.
 //
@@ -10,11 +10,10 @@
 //
 // Three rules the old form got wrong and this one gets right:
 //
-//  1. Location is a BRANCH, not free text. It is picked from the one master
-//     branch list (inspectionBranches.js) and stored as a canonical code in
-//     `payload.location` and `payload.branch`, so the reports view and every
-//     branch filter in the app can group NCRs without guessing at spelling.
-//  2. NC No. is allocated by the SERVER (`payload.refNo`, "AM-NCR-000042"),
+//  1. Location is picked, not free text: one of SWEETS_LOCATIONS below, stored
+//     in `payload.location` and `payload.branch`, so the reports view can
+//     group NCRs without guessing at spelling.
+//  2. NC No. is allocated by the SERVER (`payload.refNo`, "SW-NCR-000042"),
 //     never typed. Two people writing an NCR at the same moment can no longer
 //     hand themselves the same number. Legacy records that carry a hand-typed
 //     headRow.ncNo keep showing it.
@@ -32,8 +31,7 @@ import {
 } from "../_shared/reportApi";
 
 /* Sweets is a single-branch company (see src/industries/sweets/index.js), so
-   this is its own small location list — not the QCS/Al Mawashi master branch
-   list, which has nothing a Sweets user could ever pick. */
+   this is its own small location list. */
 const SWEETS_LOCATIONS = [
   "Main Branch",
   "Production",

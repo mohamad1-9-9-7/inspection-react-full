@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/ncrEmailConfig.js
+// src/pages/monitor/branches/sweets/ncrEmailConfig.js
 //
 // Config for the shared EmailSendModal, customised for the Non-Conformance
 // Report — same modal the Returns log uses, so recipients, templates,
@@ -10,7 +10,6 @@
 // report card happens to be rendered.
 
 import { escapeHtml } from "../../../shared/emailReportUtils";
-import { getInspectionBranchLabel } from "../../../inspection/inspectionBranches";
 
 const DEFAULT_INTRO =
   "Dear {name},\n\nPlease find attached Non-Conformance Report {ncNo} raised at {branch} on {date}.\n" +
@@ -44,7 +43,8 @@ export function ncrMeta(payload) {
   return {
     ncNo: p.refNo || head.ncNo || "—",
     branchCode,
-    branch: branchCode ? getInspectionBranchLabel(branchCode) : "—",
+    // Sweets locations are plain area names — shown as stored.
+    branch: branchCode || "—",
     date: head.reportDate || "",
     issuedTo: head.issuedTo || "",
     issuedBy: head.issuedBy || "",

@@ -60,6 +60,7 @@ function Login() {
             // الحالي، غيره = المحرّك العام). مخزّن هنا حتى يقرأه getActiveIndustry
             // بلا نداء إضافي.
             companyIndustry: data.user.company?.industry || "meat",
+            companyName: data.user.company?.name || "",
             type: "named",
             loginAt: Date.now(),
           })

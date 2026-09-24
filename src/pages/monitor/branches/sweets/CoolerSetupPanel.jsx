@@ -1,7 +1,7 @@
-// src/pages/monitor/branches/qcs/CoolerSetupPanel.jsx
+// src/pages/monitor/branches/sweets/CoolerSetupPanel.jsx
 //
 // ⚙️ لوحة إعدادات وحدة التخزين — الاسم · النوع · الحد الأدنى والأعلى.
-// The inline editor behind the ⚙️ button on every storage unit of the QCS
+// The inline editor behind the ⚙️ button on every storage unit of the
 // Temperature Control sheet. It edits ONE definition and hands the result back;
 // persisting it (server config + the report payload) is the caller's job.
 //

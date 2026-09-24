@@ -1,5 +1,5 @@
-// src/pages/monitor/branches/qcs/ProductRejectionView.jsx
-// QCS — Product Rejection Report — Records list
+// src/pages/monitor/branches/sweets/ProductRejectionView.jsx
+// Sweets — Product Rejection Report — Records list
 
 import React, { useEffect, useMemo, useState } from "react";
 import { canDelete } from "../../../../utils/perms";
