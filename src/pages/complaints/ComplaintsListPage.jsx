@@ -22,7 +22,7 @@ import {
   REPORT_TYPE, useComplaintCategories,
 } from "./complaintsCore";
 import {
-  buildEmailHtml, buildComplaintText, defaultIntro, generateComplaintPdf,
+  buildEmailHtml, buildComplaintText, complaintEmailSubject, generateComplaintPdf,
 } from "./complaintsEmail";
 
 /* Small popover to change status right on the card. */
@@ -198,9 +198,8 @@ export default function ComplaintsListPage() {
     reportTitle: "Quality Complaint",
     reportType: REPORT_TYPE,
     allowServerSend: true,
-    getSubject: (rep) =>
-      `[QA Complaint${rep?.refNo ? ` ${rep.refNo}` : ""}] ${targetLabelOf(rep)} — ${rep?.subject || ""}`.trim(),
-    getDefaultIntro: defaultIntro,
+    /* Subject = the "Short subject" typed on the entry page, word for word. */
+    getSubject: complaintEmailSubject,
     generatePdf: async (rep) => generateComplaintPdf(rep || sending),
     buildHtml: buildEmailHtml,
     buildText: buildComplaintText,

@@ -67,11 +67,14 @@ async function uploadImage(file) {
 async function deleteImage(url) {
   if (!url) return;
   try {
-    await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
       method: "DELETE",
       credentials: IS_SAME_ORIGIN ? "include" : "omit",
     });
-  } catch {}
+    if (!res.ok) console.error(`deleteImage: server returned HTTP ${res.status} for ${url}`);
+  } catch (e) {
+    console.error(`deleteImage: request failed for ${url}`, e);
+  }
 }
 
 const S = {
@@ -201,7 +204,7 @@ export default function ProductRejectionInput() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: IS_SAME_ORIGIN ? "include" : "omit",
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showMsg("ok", "✅ تم حفظ تقرير الرفض بنجاح");

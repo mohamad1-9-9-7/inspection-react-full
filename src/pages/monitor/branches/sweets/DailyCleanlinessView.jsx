@@ -130,6 +130,8 @@ export default function DailyCleanlinessView() {
     } catch (e) {
       console.error(e);
       alert("❌ Failed to export JSON.");
+    } finally {
+      setBusy(false);
     }
   };
 

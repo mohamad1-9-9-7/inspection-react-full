@@ -20,6 +20,7 @@ import {
   saveReport,
 } from "../_shared/reportApi";
 import ProductPicker from "../_shared/ProductPicker";
+import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import { canEdit } from "../../../../utils/perms";
 import {
   accentOf,
@@ -217,7 +218,10 @@ export default function CoolersView() {
 
   const reportDateText = useMemo(() => formatDMYSmart(selectedDate), [selectedDate]);
 
-  const tmpHeader = {
+  /* CoolersTab.js saves the document-control header under
+     payload.headers.tmpHeader; read it back instead of always showing blank
+     fields for a report that actually has one. */
+  const tmpHeader = report?.headers?.tmpHeader || {
     documentTitle: "",
     documentNo: "",
     issueDate: "",
@@ -259,6 +263,11 @@ export default function CoolersView() {
   const cancelEditing = () => { hydrateEdit(report); setEditing(false); };
 
   const saveEditing = async () => {
+    const matchCount = countValidMatches(editPV);
+    if (matchCount < MIN_MATCHES) {
+      alert(`⚠️ At least ${MIN_MATCHES} product matches (product + temperature) are required before saving. You currently have ${matchCount}.`);
+      return;
+    }
     try {
       const dateToSave = selectedDate || toYMD(report?.reportDate) || toYMD(report?.date);
       if (!dateToSave) { alert("⚠️ No date to save with this report."); return; }

@@ -175,7 +175,7 @@ const SECTIONS = [
         id: "billing-plans",
         Icon: FiCreditCard,
         title: "Billing & Plans",
-        desc: "Overview, subscription, plans, companies",
+        desc: "Overview, subscription, plans, companies, quotations",
         tk: "billingPlansHub",
         dk: "billingPlansHubD",
         grad: "linear-gradient(135deg,#059669,#065f46)",

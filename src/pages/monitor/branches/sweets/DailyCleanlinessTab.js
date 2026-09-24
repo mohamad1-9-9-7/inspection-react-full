@@ -34,6 +34,17 @@ const IS_SAME_ORIGIN = (() => {
 /* -------- Fallbacks / Defaults -------- */
 const LOGO_FALLBACK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
+/* new Date().toISOString() is UTC — a UAE user (UTC+4) opening this tab
+   between local midnight and ~4am would silently default to "yesterday". */
+function todayDubaiISO() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+}
+
 const defaultDCHeader = {
   documentTitle: "",
   documentNo: "",
@@ -423,7 +434,7 @@ export default function DailyCleanlinessTab({
   logoUrl,
 }) {
   // تاريخ داخل التبويب
-  const [date, setDate] = useState(() => reportDate || new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => reportDate || todayDubaiISO());
 
   // لو ما وصل rows من الأب نبدأ بالتمبلت جاهزًا
   const [localRows, setLocalRows] = useState(() =>

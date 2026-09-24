@@ -235,7 +235,7 @@ export const COMPLAINTS_CSS = `
    the project-wide font-size guard so users can read what they type. */
 .qc.qc .qc-field textarea{
   min-height: 180px; resize: vertical; line-height: 1.85;
-  direction: ltr; text-align: left;
+  text-align: start; unicode-bidi: plaintext;
   font-size: 15px !important;
   padding: 14px 16px;
   background:#f8fefd;
@@ -264,6 +264,19 @@ export const COMPLAINTS_CSS = `
   display:flex; align-items:center; gap: 6px; justify-content: space-between;
 }
 .qc.qc .qc-block h4 .qc-h4-r{ display:flex; align-items:center; gap:8px; }
+
+/* ═════ email content block (subject + text + live preview) ═════ */
+.qc.qc .qc-mail-block{ background:#ffffff; border-color:#99f6e4; border-top:3px solid var(--teal); }
+.qc.qc .qc-mail-block h4 button.qc-btn{ padding: 6px 12px; font-size: 12px; }
+.qc.qc .qc-lbl-hint{ font-weight: 700; color: var(--teal); margin-inline-start: 6px; }
+.qc.qc .qc-count{ float: right; font-weight: 700; color: var(--faint); }
+.qc.qc .qc-field input.qc-subject{
+  font-size: 17px !important; font-weight: 800; padding: 13px 15px;
+  text-align: start; unicode-bidi: plaintext; border-color:#99f6e4;
+}
+.qc.qc .qc-preview{ margin-top: 12px; border:1px solid var(--line); border-radius: 10px; overflow: hidden; background:#f1f5f9; }
+.qc.qc .qc-preview-bar{ padding: 8px 12px; background:#ffffff; border-bottom:1px solid var(--line); font-size: 13px; color: var(--muted); }
+.qc.qc .qc-preview-frame{ display:block; width:100%; height: 640px; border:0; background:#f1f5f9; }
 
 /* ═════ items table ═════ */
 .qc.qc .qc-items{ width:100%; border-collapse: collapse; }
@@ -356,7 +369,7 @@ export const COMPLAINTS_CSS = `
 /* ═════ view ═════ */
 .qc.qc .qc-view h3{ margin: 0 0 6px; font-weight: 1000; }
 .qc.qc .qc-view p{ margin: 2px 0; }
-.qc.qc .qc-view .qc-view-desc{ white-space: pre-wrap; background: #f8fafc; padding: 12px; border-radius: 10px; border:1px solid #e2e8f0; line-height: 1.85; }
+.qc.qc .qc-view .qc-view-desc{ white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; background: #f8fafc; padding: 12px; border-radius: 10px; border:1px solid #e2e8f0; line-height: 1.85; }
 
 /* ═════ radar (repeat-offender panel) ═════ */
 @media(max-width:760px){ .qc.qc .qc-radar-grid{ grid-template-columns: 1fr !important; } }

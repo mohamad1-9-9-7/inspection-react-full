@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/qcs/CoolersTab.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import {
@@ -30,12 +30,31 @@ import {
 import { canEdit, getCurrentUser } from "../../../../utils/perms";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 
+function todayDubaiISO() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+}
+
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "sweets_coolers_draft_v1";
+/* A draft left over from an earlier, unsaved session is only useful for
+   TODAY's sheet. Reusing an older one would silently load a stale date +
+   partial readings under what looks like today's tab, and saving could
+   PUT-overwrite a different day's already-submitted report. */
 const loadDraft = () => {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const draft = JSON.parse(raw);
+    if (draft && draft.date && draft.date !== todayDubaiISO()) {
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      return {};
+    }
+    return draft || {};
   } catch {
     return {};
   }
@@ -332,7 +351,7 @@ export default function CoolersTab(props) {
 
   const [date, setDate] = useState(() => {
     const d = loadDraft();
-    return d.date || new Date().toISOString().split("T")[0];
+    return d.date || todayDubaiISO();
   });
 
   /* Manager verification name (signature line) */
@@ -369,11 +388,16 @@ export default function CoolersTab(props) {
   const [savingSetup, setSavingSetup] = useState(false);
   const canEditSetup = canEdit("daily");
 
+  /* Set the moment the user applies a manual setup change, so a slower
+     initial config GET that resolves afterward can't overwrite it with the
+     pre-edit config it fetched before the edit happened. */
+  const userEditedDefsRef = useRef(false);
+
   useEffect(() => {
     const ctrl = new AbortController();
     (async () => {
       const cfg = await fetchCoolerConfig(ctrl.signal);
-      if (cfg) setDefs(cfg);
+      if (cfg && !userEditedDefsRef.current) setDefs(cfg);
     })();
     return () => ctrl.abort();
   }, []);
@@ -386,6 +410,7 @@ export default function CoolersTab(props) {
         : coolerDefs.map((d, i) => (i === Number(String(target).split("-")[1]) ? def : d));
     const nextLoading = target === "loading-area" ? normalizeLoadingDef(def) : loadingDef;
 
+    userEditedDefsRef.current = true;
     setDefs({ coolerDefs: nextCoolers, loadingDef: nextLoading });
     setSavingSetup(true);
     try {

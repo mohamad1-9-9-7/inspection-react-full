@@ -62,7 +62,7 @@ export const ST = {
   tSubscription:    { en: "Subscription",          ar: "الاشتراك" },
   tSubscriptionD:   { en: "Current plan · activation · expiry", ar: "الخطة الحالية · التفعيل · الانتهاء" },
   billingPlansHub:  { en: "Billing & Plans",       ar: "الاشتراكات والخطط" },
-  billingPlansHubD: { en: "Overview · subscription · plans · companies", ar: "نظرة عامة · الاشتراك · الخطط · الشركات" },
+  billingPlansHubD: { en: "Overview · subscription · plans · companies · quotations", ar: "نظرة عامة · الاشتراك · الخطط · الشركات · عروض الأسعار" },
   billingOverview:  { en: "Billing Overview",      ar: "نظرة عامة على الفوترة" },
   billingOverviewD: { en: "Revenue, renewals, gaps, plan usage", ar: "الإيرادات، التجديدات، النواقص، واستخدام الخطط" },
   tPlans:           { en: "Plans",                 ar: "الخطط" },

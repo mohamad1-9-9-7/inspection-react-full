@@ -24,6 +24,17 @@ const IS_SAME_ORIGIN = (() => {
 const LOGO_FALLBACK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const MIN_ROWS_FALLBACK = 21;
 
+/* new Date().toISOString() is UTC — a UAE user (UTC+4) opening this tab
+   between local midnight and ~4am would silently default to "yesterday". */
+function todayDubaiISO() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+}
+
 const defaultPHHeader = {
   documentTitle: "",
   documentNo: "",
@@ -358,7 +369,7 @@ export default function PersonalHygieneTab(props) {
     saving = false,
   } = props || {};
 
-  const [date, setDate] = useState(() => reportDate || new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => reportDate || todayDubaiISO());
 
   const useExternalRows = Array.isArray(personalHygiene) && typeof setPersonalHygiene === "function";
   const [localRows, setLocalRows] = useState(() => makeRowsFromStaff([], minRows));
