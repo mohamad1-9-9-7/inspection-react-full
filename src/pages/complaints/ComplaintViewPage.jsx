@@ -20,7 +20,7 @@ import {
   useComplaintCategories,
 } from "./complaintsCore";
 import {
-  buildEmailHtml, buildComplaintText, defaultIntro, generateComplaintPdf,
+  buildEmailHtml, buildComplaintText, complaintEmailSubject, generateComplaintPdf,
 } from "./complaintsEmail";
 
 export default function ComplaintViewPage() {
@@ -95,9 +95,8 @@ export default function ComplaintViewPage() {
     reportTitle: "Quality Complaint",
     reportType: REPORT_TYPE,
     allowServerSend: true,
-    getSubject: (rep) =>
-      `[QA Complaint${rep?.refNo ? ` ${rep.refNo}` : ""}] ${targetLabelOf(rep)} — ${rep?.subject || ""}`.trim(),
-    getDefaultIntro: defaultIntro,
+    /* Subject = the "Short subject" typed on the entry page, word for word. */
+    getSubject: complaintEmailSubject,
     generatePdf: async (rep) => generateComplaintPdf(rep || sending),
     buildHtml: buildEmailHtml,
     buildText: buildComplaintText,
@@ -183,7 +182,7 @@ export default function ComplaintViewPage() {
         </header>
 
         <div className="qc-page qc-view">
-          <h3>{complaint.subject || "—"}</h3>
+          <h3 dir="auto">{complaint.subject || "—"}</h3>
 
           <p>
             <b>Severity:</b> <span className="qc-sev" style={{ background: sev.tone }}>{sev.en}</span>
@@ -218,7 +217,7 @@ export default function ComplaintViewPage() {
           {complaint.description && (
             <>
               <p style={{ marginTop: 10 }}><b>Details:</b></p>
-              <div className="qc-view-desc">{complaint.description}</div>
+              <div className="qc-view-desc" dir="auto">{complaint.description}</div>
             </>
           )}
 

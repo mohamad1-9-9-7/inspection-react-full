@@ -20,7 +20,7 @@ import {
   sevById, REPORT_TYPE, useComplaintCategories,
 } from "./complaintsCore";
 import {
-  buildEmailHtml, buildComplaintText, defaultIntro, generateComplaintPdf,
+  buildEmailHtml, buildComplaintText, complaintEmailSubject, generateComplaintPdf,
 } from "./complaintsEmail";
 import {
   CategoriesPicker, SeverityPicker, ItemsEditor, PhotoUploader,
@@ -55,6 +55,7 @@ export default function ComplaintFormPage({ mode = "new" }) {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [sending, setSending] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   /* ═════ Load / prefill ═════ */
   useEffect(() => {
@@ -192,14 +193,20 @@ export default function ComplaintFormPage({ mode = "new" }) {
 
   const tg = targetById(form.target);
 
+  /* Live preview of the exact HTML the email will carry (the send modal may
+     still add its banners / signature around it). */
+  const previewHtml = useMemo(
+    () => (showPreview ? buildEmailHtml(form) : ""),
+    [showPreview, form]
+  );
+
   /* ═════ Email config — shared with the list page ═════ */
   const emailConfig = useMemo(() => ({
     reportTitle: "Quality Complaint",
     reportType: REPORT_TYPE,
     allowServerSend: true,
-    getSubject: (rep) =>
-      `[QA Complaint${rep?.refNo ? ` ${rep.refNo}` : ""}] ${targetLabelOf(rep)} — ${rep?.subject || ""}`.trim(),
-    getDefaultIntro: defaultIntro,
+    /* Subject = the "Short subject" typed on the entry page, word for word. */
+    getSubject: complaintEmailSubject,
     generatePdf: async (rep) => generateComplaintPdf(rep || sending),
     buildHtml: buildEmailHtml,
     buildText: buildComplaintText,
@@ -365,36 +372,64 @@ export default function ComplaintFormPage({ mode = "new" }) {
             <SeverityPicker value={form.severity} onChange={(v) => set({ severity: v })} />
           </div>
 
-          <div className="qc-field" style={{ marginTop: 12 }}>
-            <label>Short subject *</label>
-            <input
-              value={form.subject}
-              onChange={(e) => set({ subject: e.target.value })}
-              placeholder="e.g. Return of expired chicken quantity"
-            />
+          <div className="qc-block qc-mail-block">
+            <h4>
+              <span>✉️ Email content — sent exactly as written here / يُرسل كما هو مكتوب هنا</span>
+              <span className="qc-h4-r">
+                <button
+                  type="button"
+                  className={`qc-btn ${showPreview ? "teal" : "ghost"}`}
+                  onClick={() => setShowPreview((v) => !v)}
+                >
+                  👁 {showPreview ? "Hide email preview" : "Preview email"}
+                </button>
+              </span>
+            </h4>
+
+            <div className="qc-field">
+              <label>Short subject * <span className="qc-lbl-hint">= email subject / موضوع الإيميل</span></label>
+              <input
+                dir="auto"
+                className="qc-subject"
+                value={form.subject}
+                onChange={(e) => set({ subject: e.target.value })}
+                placeholder="e.g. Return of expired chicken quantity — مثال: إرجاع كمية دجاج منتهية الصلاحية"
+              />
+            </div>
+
+            <div className="qc-field" style={{ marginTop: 10 }}>
+              <label>
+                Complaint text <span className="qc-lbl-hint">= email body / نص الإيميل</span>
+                <span className="qc-count">{form.description.length} chars</span>
+              </label>
+              <textarea
+                dir="auto"
+                className="qc-longtext"
+                value={form.description}
+                onChange={(e) => set({ description: e.target.value })}
+                placeholder="Write the complaint exactly as you want the recipient to read it… Arabic, English or both — line breaks are kept."
+                rows={12}
+              />
+            </div>
+
+            {showPreview && (
+              <div className="qc-preview">
+                <div className="qc-preview-bar">
+                  <span><b>Subject:</b> <span dir="auto">{complaintEmailSubject(form)}</span></span>
+                </div>
+                <iframe
+                  title="Email preview"
+                  className="qc-preview-frame"
+                  sandbox=""
+                  srcDoc={`<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${previewHtml}</body></html>`}
+                />
+              </div>
+            )}
           </div>
 
           <div className="qc-block">
             <h4><span>📦 Items involved (name is auto-filled from the product catalog)</span></h4>
             <ItemsEditor items={form.items} onChange={(items) => set({ items })} />
-          </div>
-
-          <div className="qc-block">
-            <h4>
-              <span>📝 Complaint text</span>
-              <span className="qc-h4-r" style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                {form.description.length} chars
-              </span>
-            </h4>
-            <div className="qc-field">
-              <textarea
-                className="qc-longtext"
-                value={form.description}
-                onChange={(e) => set({ description: e.target.value })}
-                placeholder="Paste the email text here, or write the complaint details directly… multiple lines are fine."
-                rows={12}
-              />
-            </div>
           </div>
 
           <div className="qc-block">
