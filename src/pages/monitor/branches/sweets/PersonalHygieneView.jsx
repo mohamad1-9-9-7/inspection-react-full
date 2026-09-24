@@ -1,10 +1,11 @@
-// src/pages/monitor/branches/qcs/PersonalHygieneVIEW.jsx
-import React, { useRef, useState } from "react";
+// src/pages/monitor/branches/sweets/PersonalHygieneView.jsx
+import React, { useRef } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { DateTreeSidebar } from "../_shared/branchViewKit";
+import { SweetsReportActions, printNode, excelFromNode } from "./_sweetsReportKit";
 import useReportIndex from "../_shared/useReportIndex";
 import { canDelete } from "../../../../utils/perms";
 
@@ -13,22 +14,9 @@ import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "sweets-ph";
 
-/* ===== ستايل موحّد (نفس POS/QCS Viewer) ===== */
+/* ===== Shared viewer styles ===== */
 const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center", fontSize: ".9rem" };
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
-
-const btnBase = {
-  padding: "8px 14px",
-  borderRadius: "6px",
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-};
-const btnExport = { ...btnBase, background: "#27ae60" };
-const btnJson   = { ...btnBase, background: "#16a085" };
-const btnImport = { ...btnBase, background: "#f39c12" };
-const btnDelete = { ...btnBase, background: "#c0392b" };
 
 /* ===== Defaults آمنة ===== */
 const DEFAULT_HEADER = {
@@ -47,8 +35,7 @@ const DEFAULT_FOOTER = { checkedBy: "", verifiedBy: "" };
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
 export default function PersonalHygieneVIEW() {
-  /* The date tree needs one date per record, not the records themselves. The
-     full list is pulled only by "Export JSON". */
+  /* The date tree needs one date per record, not the records themselves. */
   const {
     treeItems,
     selected: selectedReport,
@@ -57,14 +44,9 @@ export default function PersonalHygieneVIEW() {
     open,
     rowForKey,
     reload: fetchReports,
-    loadAll,
-    count,
   } = useReportIndex(TYPE);
 
-  const [busy, setBusy] = useState(false);
-
   const reportRef = useRef(null);
-  const fileInputRef = useRef(null);
 
   /* === استخراج الحقول بمرونة === */
   const p   = selectedReport?.payload || {};
@@ -98,71 +80,6 @@ export default function PersonalHygieneVIEW() {
     }
   };
 
-  /* The one action that genuinely needs every record — so it is the one place
-     that downloads them. */
-  const handleExportJSON = async () => {
-    try {
-      setBusy(true);
-      const rows = await loadAll();
-      const payloads = rows.map(r => r?.payload ?? r);
-      const out = {
-        type: TYPE,
-        exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
-      };
-      const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `QCS_PersonalHygiene_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to export JSON.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const triggerImport = () => fileInputRef.current?.click();
-  const handleImportJSON = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      setBusy(true);
-      const txt = await file.text();
-      const data = JSON.parse(txt);
-      const items =
-        Array.isArray(data) ? data :
-        Array.isArray(data?.items) ? data.items :
-        Array.isArray(data?.data) ? data.data : [];
-      if (!items.length) { alert("⚠️ JSON file has no items."); return; }
-      let ok = 0, fail = 0;
-      for (const it of items) {
-        const payload = it?.payload ?? it;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
-        try {
-          const res = await fetch(`${API_BASE}/api/reports`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: TYPE, payload }),
-          });
-          if (res.ok) ok++; else fail++;
-        } catch { fail++; }
-      }
-      alert(`✅ Imported: ${ok}${fail ? ` | ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
-    } catch (e2) {
-      console.error(e2);
-      alert("❌ Invalid JSON file.");
-    } finally {
-      setBusy(false);
-      if (e?.target) e.target.value = "";
-    }
-  };
-
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
     const btns = reportRef.current.querySelector(".action-buttons");
@@ -192,7 +109,7 @@ export default function PersonalHygieneVIEW() {
       left -= H;
     }
     const d = p.reportDate || "report";
-    pdf.save(`QCS_PersonalHygiene_${d}.pdf`);
+    pdf.save(`PersonalHygiene_${d}.pdf`);
 
     if (btns) btns.style.display = "flex";
   };
@@ -228,29 +145,14 @@ export default function PersonalHygieneVIEW() {
             {/* العنوان وأزرار الإجراءات */}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"1rem" }}>
               <h3 style={{ color:"#2980b9" }}>🧼 Personal Hygiene — {p.reportDate || ""}</h3>
-              <div className="action-buttons" style={{ display:"flex", gap:".6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
-                <button onClick={handleExportJSON} style={btnJson} disabled={busy}>
-                  {busy ? "⏳ Working…" : "⬇ Export JSON"}
-                </button>
-                <button onClick={triggerImport} style={btnImport} disabled={busy}>⬆ Import JSON</button>
-                {canDelete("daily") && (
-                  <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
-                )}
+              <div className="action-buttons">
+                <SweetsReportActions
+                  onExcel={() => excelFromNode(reportRef.current, `PersonalHygiene_${p.reportDate || "report"}`, "Personal Hygiene")}
+                  onPdf={handleExportPDF}
+                  onPrint={() => printNode(reportRef.current, "Personal Hygiene")}
+                  onDelete={canDelete("daily") ? () => handleDelete(selectedReport) : undefined}
+                />
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display:"none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* شعار مبسّط */}
-            <div style={{ textAlign:"right", marginBottom:"1rem" }}>
-              <h2 style={{ margin:0, color:"darkred" }}></h2>
-              <div style={{ fontSize:".95rem", color:"#333" }}></div>
             </div>
 
             {/* ترويسة المستند */}

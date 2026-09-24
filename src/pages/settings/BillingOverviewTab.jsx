@@ -3,9 +3,9 @@ import API_BASE from "../../config/api";
 import { Button, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
-const money = (amount, currency = "USD") => {
+const money = (amount, currency = "AED") => {
   const n = Number(amount || 0);
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency || "USD"}`;
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency || "AED"}`;
 };
 
 function daysLeft(date) {
@@ -23,7 +23,7 @@ function normalizeStatus(status) {
 }
 
 export default function BillingOverviewTab() {
-  const { dir, lang, toggle: toggleLang } = useSettingsLang();
+  const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [data, setData] = useState({ subscription: null, plans: [], companies: [], invoices: [] });
@@ -72,7 +72,7 @@ export default function BillingOverviewTab() {
       activeCompanies.find((c) => c.plan_currency)?.plan_currency ||
       data.subscription?.currency ||
       data.plans.find((p) => p.currency)?.currency ||
-      "USD";
+      "AED";
 
     const planUsage = data.plans.map((plan) => {
       const used = data.companies.filter((c) => String(c.plan_name || "").toLowerCase() === String(plan.name || "").toLowerCase());
@@ -101,15 +101,13 @@ export default function BillingOverviewTab() {
   return (
     <div style={ui.page} dir={dir}>
       <PageHeader
-        eyebrow="Billing Command Center"
-        title={lang === "ar" ? "لوحة الفوترة والاشتراكات" : "Billing & Subscription Overview"}
-        subtitle={lang === "ar"
-          ? "ملخص تنفيذي للخطط، الشركات، الاشتراك، الفواتير، والتنبيهات القريبة."
-          : "Executive view for plans, companies, subscription health, invoices, and renewal risk."}
+        eyebrow={t("boEyebrow")}
+        title={t("boTitle")}
+        subtitle={t("boSubtitle")}
         actions={
           <>
             <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
-            <Button onClick={load} disabled={loading} tone="secondary">{loading ? "Loading..." : "Refresh"}</Button>
+            <Button onClick={load} disabled={loading} tone="secondary">{loading ? t("loadingDots") : t("refresh")}</Button>
           </>
         }
       />
@@ -117,24 +115,24 @@ export default function BillingOverviewTab() {
       <StatusMessage message={msg} />
 
       {loading ? (
-        <div style={sx.empty}>Loading billing data...</div>
+        <div style={sx.empty}>{t("loadingData")}</div>
       ) : (
         <>
           <div style={sx.kpiGrid}>
-            <Kpi label="Active companies" value={stats.activeCompanies.length} sub={`${stats.trialCompanies.length} trial`} color="#0f766e" />
-            <Kpi label="MRR estimate" value={money(stats.mrr, stats.currency)} sub="from active assigned plans" color="#2563eb" />
-            <Kpi label="Renewal risk" value={stats.expiringSoon.length + stats.overdue.length} sub={`${stats.overdue.length} overdue`} color="#b91c1c" />
-            <Kpi label="Invoices issued" value={data.invoices.length} sub={money(stats.invoiceTotal, stats.currency)} color="#7c3aed" />
+            <Kpi label={t("boActiveCompanies")} value={stats.activeCompanies.length} sub={`${stats.trialCompanies.length} ${t("boTrialSuffix")}`} color="#0f766e" />
+            <Kpi label={t("boMrr")} value={money(stats.mrr, stats.currency)} sub={t("boMrrSub")} color="#2563eb" />
+            <Kpi label={t("boRenewalRisk")} value={stats.expiringSoon.length + stats.overdue.length} sub={`${stats.overdue.length} ${t("boOverdueSuffix")}`} color="#b91c1c" />
+            <Kpi label={t("boInvoicesIssued")} value={data.invoices.length} sub={money(stats.invoiceTotal, stats.currency)} color="#7c3aed" />
           </div>
 
           <div style={sx.grid2}>
             <section style={ui.card}>
-              <h3 style={sx.title}>Plan utilization</h3>
-              {stats.planUsage.length === 0 ? <div style={sx.muted}>No plans yet.</div> : stats.planUsage.map((plan) => (
+              <h3 style={sx.title}>{t("boPlanUtil")}</h3>
+              {stats.planUsage.length === 0 ? <div style={sx.muted}>{t("boNoPlansYet")}</div> : stats.planUsage.map((plan) => (
                 <div key={plan.id || plan.name} style={sx.planRow}>
                   <div>
                     <div style={sx.rowTitle}>{plan.name}</div>
-                    <div style={sx.muted}>{plan.activeCompanies} active / {plan.companies} total companies</div>
+                    <div style={sx.muted}>{plan.activeCompanies} {t("boActiveTotal")} {plan.companies} {t("boTotalCompanies")}</div>
                   </div>
                   <div style={sx.rowMoney}>{money(plan.revenue, plan.currency || stats.currency)}</div>
                 </div>
@@ -142,29 +140,29 @@ export default function BillingOverviewTab() {
             </section>
 
             <section style={ui.card}>
-              <h3 style={sx.title}>Renewal watch</h3>
+              <h3 style={sx.title}>{t("boRenewalWatch")}</h3>
               {[...stats.overdue, ...stats.expiringSoon].slice(0, 8).map((c) => (
                 <div key={c.id || c.name} style={sx.watchRow(c.days < 0)}>
                   <div>
                     <div style={sx.rowTitle}>{c.name}</div>
-                    <div style={sx.muted}>{c.plan_name || "No plan"} · {c.end_date?.slice(0, 10) || "No end date"}</div>
+                    <div style={sx.muted}>{c.plan_name || t("boNoPlan")} · {c.end_date?.slice(0, 10) || t("boNoEndDate")}</div>
                   </div>
-                  <strong>{c.days < 0 ? `${Math.abs(c.days)}d overdue` : `${c.days}d left`}</strong>
+                  <strong>{c.days < 0 ? `${Math.abs(c.days)}${t("boDOverdue")}` : `${c.days}${t("boDLeft")}`}</strong>
                 </div>
               ))}
               {stats.overdue.length + stats.expiringSoon.length === 0 && (
-                <div style={sx.okBox}>No renewals due in the next 14 days.</div>
+                <div style={sx.okBox}>{t("boNoRenewals")}</div>
               )}
             </section>
           </div>
 
           <section style={ui.card}>
-            <h3 style={sx.title}>Billing data gaps</h3>
+            <h3 style={sx.title}>{t("boDataGaps")}</h3>
             <div style={sx.gapGrid}>
-              <Gap label="Companies without a plan" value={data.companies.filter((c) => !c.plan_name && !c.plan_id).length} />
-              <Gap label="Companies without contact email" value={data.companies.filter((c) => !c.contact_email).length} />
-              <Gap label="Companies without end date" value={data.companies.filter((c) => !c.end_date).length} />
-              <Gap label="Inactive plans" value={data.plans.filter((p) => !p.is_active).length} />
+              <Gap label={t("boGapNoPlan")} value={data.companies.filter((c) => !c.plan_name && !c.plan_id).length} />
+              <Gap label={t("boGapNoEmail")} value={data.companies.filter((c) => !c.contact_email).length} />
+              <Gap label={t("boGapNoEnd")} value={data.companies.filter((c) => !c.end_date).length} />
+              <Gap label={t("boGapInactive")} value={data.plans.filter((p) => !p.is_active).length} />
             </div>
           </section>
         </>

@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/CoolerSetupPanel.jsx
+// src/pages/monitor/branches/sweets/CoolerSetupPanel.jsx
 //
 // ⚙️ لوحة إعدادات وحدة التخزين — الاسم · النوع · الحد الأدنى والأعلى.
 // The inline editor behind the ⚙️ button on every storage unit of the QCS

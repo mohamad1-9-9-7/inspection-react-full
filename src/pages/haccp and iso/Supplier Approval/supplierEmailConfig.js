@@ -264,7 +264,10 @@ export const CLICHES = {
     name: { en: "Missing documents", ar: "مستندات ناقصة" },
     hint: { en: "The form came back incomplete — ask for the paperwork.", ar: "وصل النموذج ناقص المرفقات — طلب المستندات." },
     accent: "#0f766e",
-    showCta: true,
+    /* A submitted questionnaire is read-only, so asking the supplier to use
+       its old link would be misleading.  Documents are supplied by replying
+       to this e-mail (or a fresh link can be issued separately if needed). */
+    showCta: false,
     subject: (m) => `Documents required to complete your evaluation · ${m.company || ""}`.trim(),
     headline: { en: "Documents needed to finish your evaluation", ar: "مستندات مطلوبة لاستكمال تقييمكم" },
     intro: {
@@ -272,13 +275,14 @@ export const CLICHES = {
         "Dear {company} team,\n\n" +
         "Thank you for completing the self-assessment questionnaire. Before we can finalise your evaluation " +
         "we still need the supporting documents listed below.\n\n" +
-        "Please attach them as a reply to this e-mail, or upload them through your questionnaire link, " +
-        "which is still open.",
+        "Please attach them as a reply to this e-mail. If we need you to amend the questionnaire itself, " +
+        "we will issue a fresh link.",
       ar:
         "السادة {company} المحترمين،\n\n" +
         "شكراً لتعبئتكم استبيان التقييم الذاتي. لاستكمال التقييم ما زلنا بحاجة إلى المستندات المساندة " +
         "المذكورة أدناه.\n\n" +
-        "يُرجى إرفاقها بالرد على هذه الرسالة، أو رفعها عبر رابط الاستبيان الخاص بكم وهو ما زال مفتوحاً.",
+        "يُرجى إرفاقها بالرد على هذه الرسالة. وإذا احتجنا إلى تعديل الاستبيان نفسه، " +
+        "سنصدر لكم رابطاً جديداً.",
     },
   },
 };
@@ -364,9 +368,10 @@ async function qrDataUrl(text, size = 190) {
 /* ============================================================
    PDF — a one-page invitation letter, not a report
 ============================================================ */
-export async function generateSupplierLetter(payload, clicheId) {
+export async function generateSupplierLetter(payload, clicheId, { requestedDocuments = [] } = {}) {
   const m = linkMeta(payload);
   const cl = CLICHES[clicheId] || CLICHES.invite;
+  const listedDocs = documentsForCliche(m, cl, requestedDocuments);
 
   const [jspdfMod, autoTableMod, qr] = await Promise.all([
     import("jspdf"),
@@ -451,7 +456,7 @@ export async function generateSupplierLetter(payload, clicheId) {
 
   section(
     "DOCUMENTS TO PREPARE",
-    m.docs.map((d, i) => kv(String(i + 1), d.en)),
+    listedDocs.map((d, i) => kv(String(i + 1), documentText(d, "en"))),
     26
   );
 
@@ -479,11 +484,29 @@ function paraHtml(text) {
   return A(text).replace(/\n{2,}/g, "</p><p style='margin:0 0 12px'>").replace(/\n/g, "<br/>");
 }
 
-function docsListHtml(m, lang) {
-  const items = m.docs
+function documentText(doc, lang) {
+  const label = lang === "ar" ? doc?.ar || doc?.labelAr : doc?.en || doc?.label;
+  if (doc?.status === "missing") {
+    return `${label} — ${lang === "ar" ? "لم يتم إرفاقه" : "not received"}`;
+  }
+  if (doc?.status === "incomplete") {
+    return `${label} — ${lang === "ar" ? "تم إرفاقه ولكن نحتاج نسخة كاملة أو سارية" : "an attachment was received, but a complete/current version is required"}`;
+  }
+  return label || "—";
+}
+
+function documentsForCliche(m, cl, requestedDocuments) {
+  if (cl.id === "docs" && Array.isArray(requestedDocuments) && requestedDocuments.length) {
+    return requestedDocuments;
+  }
+  return m.docs;
+}
+
+function docsListHtml(docs, lang) {
+  const items = docs
     .map(
       (d) =>
-        `<li style="margin:0 0 5px">${A(lang === "ar" ? d.ar : d.en)}</li>`
+        `<li style="margin:0 0 5px">${A(documentText(d, lang))}</li>`
     )
     .join("");
   return `<ul style="margin:6px 0 0;padding-inline-start:20px;font-size:13px">${items}</ul>`;
@@ -518,7 +541,7 @@ function deadlineHtml(m, lang) {
 }
 
 /** One language block — used twice, English then Arabic. */
-function blockHtml(m, cl, lang, { note, showDocs, introOverride }) {
+function blockHtml(m, cl, lang, { note, showDocs, introOverride, docs }) {
   const rtl = lang === "ar";
   /* The composer's opening box edits the English greeting; the Arabic block
      keeps the cliché's own wording so the two never drift apart. */
@@ -533,15 +556,16 @@ function blockHtml(m, cl, lang, { note, showDocs, introOverride }) {
     <p style="margin:0 0 12px">${paraHtml(intro)}</p>
     ${ctaHtml(m, cl, lang)}
     ${deadlineHtml(m, lang)}
-    ${showDocs ? `<div style="margin-top:12px"><div style="font-weight:800;font-size:13.5px;color:#0f172a">📎 ${A(docsTitle)}</div>${docsListHtml(m, lang)}</div>` : ""}
+    ${showDocs ? `<div style="margin-top:12px"><div style="font-weight:800;font-size:13.5px;color:#0f172a">📎 ${A(docsTitle)}</div>${docsListHtml(docs, lang)}</div>` : ""}
     ${note ? `<p style="margin:14px 0 0;white-space:pre-wrap"><b>${A(noteTitle)}:</b> ${A(note)}</p>` : ""}
     <p style="margin:16px 0 0;font-size:13px;color:#334155">${sign}</p>
   </div>`;
 }
 
-function buildHtmlBody(payload, clicheId, { note, attachmentsCount, intro } = {}) {
+function buildHtmlBody(payload, clicheId, { note, attachmentsCount, intro, requestedDocuments = [] } = {}) {
   const m = linkMeta(payload);
   const cl = CLICHES[clicheId] || CLICHES.invite;
+  const docs = documentsForCliche(m, cl, requestedDocuments);
   /* A thank-you note does not need a shopping list of paperwork. */
   const showDocs = cl.id !== "thanks" && cl.id !== "expired";
 
@@ -551,8 +575,8 @@ function buildHtmlBody(payload, clicheId, { note, attachmentsCount, intro } = {}
     <div style="font-size:17px;font-weight:800">${cl.icon} ${A(cl.headline.en)}</div>
     <div style="opacity:.85;font-size:12.5px;margin-top:4px">${A(m.company || "Supplier")} · ${A(m.typeLabel.en)}${m.token ? ` · Ref ${A(m.token.slice(0, 10))}` : ""}</div>
   </div>
-  ${blockHtml(m, cl, "en", { note, showDocs, introOverride: intro })}
-  ${blockHtml(m, cl, "ar", { note, showDocs })}
+  ${blockHtml(m, cl, "en", { note, showDocs, introOverride: intro, docs })}
+  ${blockHtml(m, cl, "ar", { note, showDocs, docs })}
   <div style="padding:12px 20px 16px;color:#94a3b8;font-size:11px;border-top:1px solid #eef2f7">
     ${attachmentsCount ? `📎 ${attachmentsCount} attachment(s) — ${A(cl.showCta ? "invitation letter (PDF)" : "letter (PDF)")}.<br/>` : ""}
     Electronically issued; no signature required — صادر إلكترونياً؛ لا حاجة للتوقيع
@@ -560,9 +584,10 @@ function buildHtmlBody(payload, clicheId, { note, attachmentsCount, intro } = {}
 </div>`.trim();
 }
 
-function buildTextBody(payload, clicheId, { note, pdfUrl, intro } = {}) {
+function buildTextBody(payload, clicheId, { note, pdfUrl, intro, requestedDocuments = [] } = {}) {
   const m = linkMeta(payload);
   const cl = CLICHES[clicheId] || CLICHES.invite;
+  const docs = documentsForCliche(m, cl, requestedDocuments);
   const showDocs = cl.id !== "thanks" && cl.id !== "expired";
 
   const out = [
@@ -574,7 +599,7 @@ function buildTextBody(payload, clicheId, { note, pdfUrl, intro } = {}) {
   if (m.expiresAt) out.push("", `Deadline: ${toDMY(m.expiresAt)}`);
   if (showDocs) {
     out.push("", "Documents to prepare:");
-    m.docs.forEach((d, i) => out.push(`  ${i + 1}. ${d.en}`));
+    docs.forEach((d, i) => out.push(`  ${i + 1}. ${documentText(d, "en")}`));
   }
   out.push("", "— — —", "", fillIntro(cl.intro.ar, m, "ar"));
   if (cl.showCta && m.alive) out.push("", `الرابط: ${m.url}`);
@@ -594,8 +619,9 @@ export const SUPPLIER_EMAIL_TYPE = "supplier_self_assessment_form";
  * @param onSent    called after a successful send, so the tracker can stamp the
  *                  record's activity log with who was mailed and when
  */
-export function makeSupplierEmailConfig(clicheId, onSent) {
+export function makeSupplierEmailConfig(clicheId, onSent, { requestedDocuments = [] } = {}) {
   const cl = CLICHES[clicheId] || CLICHES.invite;
+  const exactDocuments = Array.isArray(requestedDocuments) ? requestedDocuments : [];
 
   return {
     reportTitle: `${cl.icon} ${cl.name.en}`,
@@ -613,9 +639,9 @@ export function makeSupplierEmailConfig(clicheId, onSent) {
     getDefaultIntro: (payload) => fillIntro(cl.intro.en, linkMeta(payload), "en"),
     getSubject: (payload) => cl.subject(linkMeta(payload)),
 
-    generatePdf: (payload) => generateSupplierLetter(payload, cl.id),
-    buildHtml: (payload, opts = {}) => buildHtmlBody(payload, cl.id, opts),
-    buildText: (payload, opts = {}) => buildTextBody(payload, cl.id, opts),
+    generatePdf: (payload) => generateSupplierLetter(payload, cl.id, { requestedDocuments: exactDocuments }),
+    buildHtml: (payload, opts = {}) => buildHtmlBody(payload, cl.id, { ...opts, requestedDocuments: exactDocuments }),
+    buildText: (payload, opts = {}) => buildTextBody(payload, cl.id, { ...opts, requestedDocuments: exactDocuments }),
     getImages: () => [],
 
     getSummary: (payload) => {
@@ -637,7 +663,7 @@ export function makeSupplierEmailConfig(clicheId, onSent) {
           { label: "E-mail", value: m.email || "—" },
           { label: "Sent", value: toDMY(m.sentAt) || "—" },
           { label: "Deadline", value: m.expiresAt ? toDMY(m.expiresAt) : "No expiry" },
-          { label: "Documents listed", value: `${m.docs.length}` },
+          { label: "Documents listed", value: `${documentsForCliche(m, cl, exactDocuments).length}` },
         ],
       };
     },

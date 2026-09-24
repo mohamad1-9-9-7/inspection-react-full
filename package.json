@@ -54,7 +54,46 @@
       "no-sequences": "off",
       "no-useless-escape": "off",
       "no-useless-computed-key": "off"
-    }
+    },
+    "overrides": [
+      {
+        "files": [
+          "src/industries/sweets/**",
+          "src/pages/monitor/branches/sweets/**",
+          "src/pages/sweets-*/**",
+          "src/pages/generic/**"
+        ],
+        "rules": {
+          "no-restricted-imports": [
+            "error",
+            {
+              "patterns": [
+                {
+                  "group": [
+                    "**/ohc/*",
+                    "**/qcs/*",
+                    "**/inspection/*",
+                    "**/shipment_recc/*",
+                    "**/pos*/*",
+                    "**/ftr*/*",
+                    "**/production/*",
+                    "**/butcher*/*",
+                    "**/mrp/*",
+                    "**/workforce/*",
+                    "**/_shared/staffRegistry",
+                    "**/_shared/ProductPicker",
+                    "**/_shared/TemperatureMatchingReport",
+                    "**/items.json",
+                    "**/data/items*"
+                  ],
+                  "message": "Sweets (Confectionery) code must not import the meat company's modules or data — separation rule #1. Copy what you need into the sweets folder."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
   },
   "browserslist": {
     "production": [

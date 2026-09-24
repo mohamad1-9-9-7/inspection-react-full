@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/DailyCleanlinessTab.jsx
+// src/pages/monitor/branches/sweets/DailyCleanlinessTab.js
 import React, { useMemo, useState } from "react";
 import {
   getLatestReport,
@@ -260,16 +260,16 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
 
 /* -------- Default template -------- */
 const TEMPLATE_SECTIONS = [
-  { title: "Hand Washing Area", items: ["Tissue available", "Hair Net available", "Face Masks available"] },
-  { title: "Chiller Room 1,2", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { title: "Chiller Room 5,6,7", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { title: "Freezer-1 (Room-8)", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { title: "Packaging and Ingredients store Area", items: ["Floors cleaning", "Master cartons stacking", "Proper arrangement of packing products", "Proper arrangement of ingredients"] },
-  { title: "Meat Cutting Room 3,4", items: ["Cutting Table", "Walls/Floors", "Cutting board", "Drainage", "Cutting Knife", "Waste basket", "Weighing scale", "Red crates", "Door"] },
-  { title: "Machine Cleanliness", items: ["Sasusage machines", "Mincer machine", "Ice machine", "Wrapping machine", "Bone saw machine", "Vaccum packing machine", "Burger machine", "Mixer machine(Grinder)", "Refrigerator"] },
-  { title: "Loading Area", items: ["Walls/Floors", "Trolleys"] },
-  { title: "Waste Disposal", items: ["Collection of waste", "Disposal"] },
-  { title: "Working Conditions & Cleanliness", items: ["Lights", "Fly Catchers", "Floor/wall", "Painting and Plastering", "Weighing Balance", "Tap Water"] },
+  { title: "Hand Washing Station", items: ["Soap & sanitizer available", "Paper towels available", "Hair nets / masks / gloves available", "Hot & cold water"] },
+  { title: "Raw Material & Dry Store", items: ["Floors / shelves clean", "Items off the floor (on pallets)", "Nuts & allergens stored separately and labelled", "Opened bags sealed and dated", "No spillage / pest signs"] },
+  { title: "Chillers & Freezer", items: ["Floors / walls clean", "Door gaskets clean", "Cream & dairy covered and dated", "Raw and finished products separated"] },
+  { title: "Mixing & Preparation Area", items: ["Work tables", "Walls / floors", "Mixers & bowls", "Utensils & spatulas", "Sieves", "Weighing scale", "Drainage"] },
+  { title: "Baking Area", items: ["Ovens (inside / outside)", "Baking trays & moulds", "Proofer", "Cooling racks", "Floor / walls"] },
+  { title: "Cream & Decoration Room", items: ["Tables & turntables", "Piping bags / nozzles", "Cream machines", "Room temperature controlled", "Floor / walls"] },
+  { title: "Machine Cleanliness", items: ["Planetary mixers", "Dough sheeter", "Depositor / filling machine", "Blast chiller", "Nut grinder / roaster", "Packing / sealing machine"] },
+  { title: "Packaging & Finished Goods", items: ["Packing tables", "Packaging material covered", "Labels / dates correct", "Finished products protected"] },
+  { title: "Waste Disposal", items: ["Bins covered with lids", "Waste removed on time", "Waste area clean"] },
+  { title: "Working Conditions", items: ["Lights covered / working", "Insect killers (EFK) working", "Floor / wall / ceiling condition", "No glass / brittle plastic hazard", "Toilets & changing room clean"] },
 ];
 
 // ✅ Default observation = "C" for all NON-section rows (editable later)
@@ -509,7 +509,7 @@ export default function DailyCleanlinessTab({
       };
 
       const body = {
-        reporter: "QCS",
+        reporter: "sweets",
         type: CLEAN_TYPE, // 👈 النوع الصحيح
         payload: mergedPayload,
       };

@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/NonConformanceReportInput.jsx
+// src/pages/monitor/branches/sweets/NonConformanceReportInput.jsx
 //
 // Non-Conformance Report (NCR) — entry form.
 //
@@ -14,7 +14,7 @@
 //     branch list (inspectionBranches.js) and stored as a canonical code in
 //     `payload.location` and `payload.branch`, so the reports view and every
 //     branch filter in the app can group NCRs without guessing at spelling.
-//  2. NC No. is allocated by the SERVER (`payload.refNo`, "AM-NCR-000042"),
+//  2. NC No. is allocated by the SERVER (`payload.refNo`, "NCR-000042"),
 //     never typed. Two people writing an NCR at the same moment can no longer
 //     hand themselves the same number. Legacy records that carry a hand-typed
 //     headRow.ncNo keep showing it.
@@ -30,11 +30,7 @@ import {
   payloadOf,
   reportId,
 } from "../_shared/reportApi";
-import {
-  INSPECTION_BRANCHES,
-  canonicalInspectionBranch,
-  isKnownInspectionBranch,
-} from "../../../inspection/inspectionBranches";
+import { SWEETS_AREAS, canonicalSweetsArea, isKnownSweetsArea } from "./sweetsAreas";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -65,7 +61,7 @@ const IS_SAME_ORIGIN = (() => {
 /* ---- Defaults ---- */
 const LOGO_FALLBACK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const DEFAULT_TYPE = "sweets_non_conformance";
-const DEFAULT_REPORTER = "qcs";
+const DEFAULT_REPORTER = "sweets";
 const DEFAULT_HEADER_LINE = "";
 const MAX_EVIDENCE_IMAGES = 10;
 
@@ -488,11 +484,11 @@ export default function NonConformanceReportInput(props) {
   /* Branch options: the master list, plus whatever a legacy record already
      carries so an old free-text location never silently disappears. */
   const branchOptions = useMemo(() => {
-    const list = INSPECTION_BRANCHES.map((b) => ({
+    const list = SWEETS_AREAS.map((b) => ({
       code: b.code,
       label: `${b.icon}  ${b.labelEn}`,
     }));
-    if (location && !isKnownInspectionBranch(location)) {
+    if (location && !isKnownSweetsArea(location)) {
       list.unshift({ code: location, label: `⚠️  ${location} (legacy)` });
     }
     return list;
@@ -520,7 +516,7 @@ export default function NonConformanceReportInput(props) {
       const sig = payload.signature || {};
 
       const rawLoc = payload.branch || payload.location || "";
-      const code = canonicalInspectionBranch(rawLoc);
+      const code = canonicalSweetsArea(rawLoc);
       setLocation(code || defaultBranch || "");
       setRefNo(payload.refNo || "");
       setLegacyNcNo(payload.refNo ? "" : head.ncNo || "");

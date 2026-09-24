@@ -9,6 +9,10 @@ import {
   makeSupplierEmailConfig,
   suggestCliche,
 } from "./supplierEmailConfig";
+import {
+  attachmentFieldsForSupplierType,
+  readFieldAttachments,
+} from "./supplierAttachmentFields";
 
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 
@@ -105,6 +109,32 @@ function asList(v) {
     }
   }
   return [];
+}
+
+function recordKey(rec) {
+  return String(rec?.payload?.public?.token || rec?.id || rec?._id || "");
+}
+
+function attachmentChoicesFor(rec) {
+  const payload = rec?.payload || {};
+  const type = payload?.fields?.supplier_type || payload?.public?.supplierType || "other";
+  const uploadedByField = readFieldAttachments(payload);
+  return attachmentFieldsForSupplierType(type).map((field) => ({
+    ...field,
+    files: Array.isArray(uploadedByField?.[field.key]) ? uploadedByField[field.key].filter(Boolean) : [],
+  }));
+}
+
+function requestedDocumentsFor(rec, selections) {
+  const selected = selections?.[recordKey(rec)] || {};
+  return attachmentChoicesFor(rec)
+    .filter((field) => selected[field.key] === "missing" || selected[field.key] === "incomplete")
+    .map((field) => ({
+      ...field,
+      en: field.label,
+      ar: field.labelAr,
+      status: selected[field.key],
+    }));
 }
 
 const METHOD_LABEL = {
@@ -293,6 +323,10 @@ export default function SupplierSentLinks() {
 
   const [clicheFor, setClicheFor] = useState(null); // { records: [], suggested: id }
   const [clichePick, setClichePick] = useState("");
+  /* For the "missing documents" cliché only.  Values are deliberately
+     per-record: a bulk message still gets the exact document list for each
+     supplier, never the first supplier's list copied to everybody else. */
+  const [documentSelections, setDocumentSelections] = useState({});
   const [emailCliche, setEmailCliche] = useState("");
   const [emailQueue, setEmailQueue] = useState([]);
   const emailRec = emailQueue[0] || null;
@@ -549,11 +583,45 @@ export default function SupplierSentLinks() {
     const suggested = suggestCliche(list[0]?.payload);
     setClicheFor({ records: list, suggested });
     setClichePick(suggested);
+    /* Empty upload controls are preselected as missing.  Existing uploads are
+       shown for review, but are never assumed incomplete until QA chooses it. */
+    const defaults = {};
+    list.forEach((rec) => {
+      const key = recordKey(rec);
+      if (!key) return;
+      const picks = {};
+      attachmentChoicesFor(rec).forEach((field) => {
+        if (!field.files.length) picks[field.key] = "missing";
+      });
+      defaults[key] = picks;
+    });
+    setDocumentSelections(defaults);
+  }
+
+  function setDocumentSelection(rec, fieldKey, status) {
+    const key = recordKey(rec);
+    if (!key) return;
+    setDocumentSelections((prev) => {
+      const next = { ...prev, [key]: { ...(prev[key] || {}) } };
+      if (status) next[key][fieldKey] = status;
+      else delete next[key][fieldKey];
+      return next;
+    });
   }
 
   function startEmail() {
     const list = clicheFor?.records || [];
     if (!list.length || !clichePick) return;
+    if (clichePick === "docs") {
+      const withoutSelection = list.filter((rec) => !requestedDocumentsFor(rec, documentSelections).length);
+      if (withoutSelection.length) {
+        const names = withoutSelection
+          .map((rec) => rec?.payload?.fields?.company_name || "المورد")
+          .join("، ");
+        alert(`اختر مستنداً واحداً على الأقل لكل مورد قبل الإرسال.\n${names}`);
+        return;
+      }
+    }
     setEmailCliche(clichePick);
     setClicheFor(null);
     setEmailQueue(list);
@@ -571,6 +639,10 @@ export default function SupplierSentLinks() {
       method: info?.method || "",
       to: info?.to || [],
       subject: info?.subject || "",
+      requestedDocuments:
+        emailCliche === "docs"
+          ? emailRequestedDocuments.map(({ key, label, labelAr, status }) => ({ key, label, labelAr, status }))
+          : [],
     };
     try {
       await putRecord(rec, {
@@ -590,10 +662,21 @@ export default function SupplierSentLinks() {
     return { ...p, reportDate: String(p.reportDate || "").slice(0, 10) };
   }, [emailRec]);
 
+  const emailRequestedDocuments = useMemo(
+    () => (emailRec && emailCliche === "docs" ? requestedDocumentsFor(emailRec, documentSelections) : []),
+    [emailRec, emailCliche, documentSelections]
+  );
+
   const emailConfig = useMemo(
-    () => (emailCliche ? makeSupplierEmailConfig(emailCliche, (info) => stampSent(emailRec, info)) : null),
+    () => (
+      emailCliche
+        ? makeSupplierEmailConfig(emailCliche, (info) => stampSent(emailRec, info), {
+            requestedDocuments: emailRequestedDocuments,
+          })
+        : null
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [emailCliche, emailRec]
+    [emailCliche, emailRec, emailRequestedDocuments]
   );
 
   async function putRecord(rec, payloadPatch) {
@@ -1037,8 +1120,9 @@ export default function SupplierSentLinks() {
         {/* Email note */}
         <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#eff6ff", border: "1px dashed #93c5fd", fontSize: 12, color: "#1e40af", fontWeight: 700 }}>
           💌 زر <b>📧 إيميل</b> يفتح كليشية جاهزة تناسب حالة الرابط (دعوة، تذكير، تنبيه أخير،
-          رابط منتهي، شكر، مستندات ناقصة) — مع رسالة ثنائية اللغة، قائمة المستندات المطلوبة
-          حسب نوع المورد، ورسالة PDF فيها الرابط و QR. الإرسال المباشر يعتمد على إعداد SMTP على
+          رابط منتهي، شكر، مستندات ناقصة). عند اختيار <b>مستندات ناقصة</b> تظهر فقط حقول رفع المرفقات
+          الخاصة بتقييم ذلك المورد، مع تمييز غير المرفوع و«موجود لكن غير مكتمل» داخل رسالة ثنائية اللغة وPDF.
+          الإرسال المباشر يعتمد على إعداد SMTP على
           السيرفر؛ وإلا يُنزَّل ملف ‎.eml‎ يفتح في Outlook.
         </div>
       </div>
@@ -1083,6 +1167,96 @@ export default function SupplierSentLinks() {
                 </button>
               );
             })}
+
+            {clichePick === "docs" && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 14,
+                  borderRadius: 14,
+                  border: "1.5px solid #99f6e4",
+                  background: "#f0fdfa",
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 950, color: "#115e59" }}>
+                  📎 حدّد المستندات المطلوبة من حقول الرفع في التقييم
+                </div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#475569", marginTop: 4, lineHeight: 1.55 }}>
+                  الحقول التي لا تحتوي على مرفقات محددة تلقائياً كـ«مفقود». المرفقات الموجودة لا تُطلب إلا إذا اخترت
+                  «موجود لكن غير مكتمل».
+                </div>
+
+                {clicheFor.records.map((rec) => {
+                  const recKey = recordKey(rec);
+                  const company = rec?.payload?.fields?.company_name || "—";
+                  const choices = attachmentChoicesFor(rec);
+                  return (
+                    <div
+                      key={recKey || company}
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "#fff",
+                        border: "1px solid #ccfbf1",
+                      }}
+                    >
+                      <div style={{ fontSize: 13.5, fontWeight: 950, color: "#134e4a", marginBottom: 8 }}>🏢 {company}</div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {choices.map((field) => {
+                          const selectedStatus = documentSelections?.[recKey]?.[field.key] || "";
+                          const hasFiles = field.files.length > 0;
+                          const inputId = `doc-${recKey}-${field.key}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+                          return (
+                            <div
+                              key={field.key}
+                              style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                border: `1px solid ${selectedStatus ? "#5eead4" : "#e2e8f0"}`,
+                                background: selectedStatus ? "#f0fdfa" : "#fff",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+                                <input
+                                  id={inputId}
+                                  type="checkbox"
+                                  checked={!!selectedStatus}
+                                  onChange={(e) =>
+                                    setDocumentSelection(rec, field.key, e.target.checked ? (hasFiles ? "incomplete" : "missing") : "")
+                                  }
+                                  style={{ marginTop: 4 }}
+                                />
+                                <label htmlFor={inputId} style={{ flex: "1 1 270px", cursor: "pointer" }}>
+                                  <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>{field.labelAr}</div>
+                                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b", marginTop: 2 }}>{field.label}</div>
+                                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 5, color: hasFiles ? "#047857" : "#b45309" }}>
+                                    {hasFiles
+                                      ? `✅ مرفوع: ${field.files.map((file) => file?.name || "ملف").slice(0, 2).join("، ")}${field.files.length > 2 ? ` (+${field.files.length - 2})` : ""}`
+                                      : "⚠️ لا يوجد ملف مرفوع"}
+                                  </div>
+                                </label>
+                                {selectedStatus && (
+                                  <select
+                                    aria-label={`حالة ${field.labelAr}`}
+                                    value={selectedStatus}
+                                    onChange={(e) => setDocumentSelection(rec, field.key, e.target.value)}
+                                    style={{ ...S.input, minWidth: 180, padding: "6px 8px", fontSize: 12 }}
+                                  >
+                                    <option value="missing">مفقود / لم يُرفع</option>
+                                    <option value="incomplete">موجود لكن غير مكتمل</option>
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
               <button style={S.btn("secondary")} onClick={() => setClicheFor(null)}>إلغاء</button>

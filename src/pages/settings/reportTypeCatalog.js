@@ -17,6 +17,8 @@
 // inventory screen. When a new report type is introduced, add it here in the
 // same commit.
 
+import { SWEETS_REPORT_MODULES } from "../../industries/sweets/reportTypes";
+
 /* ═══════════════════════════════════════════════════════════════
    CARDS — the dashboard tiles, in dashboard order.
    `order` drives the numeric prefix on the ZIP folder so a plain
@@ -38,6 +40,9 @@ export const CARDS = [
   { id: "inventory",        label: "Inventory",         emoji: "📦", order: 13 },
   { id: "emailCenter",      label: "Email Center",      emoji: "📨", order: 14 },
   { id: "settings",         label: "Settings",          emoji: "⚙️", order: 15 },
+  // The Confectionery tenant's own reports (company-app). Its slugs live in
+  // industries/sweets/reportTypes.js — add sweets reports THERE, not here.
+  { id: "sweets",           label: "Confectionery",     emoji: "🍰", order: 16 },
 ];
 
 const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]));
@@ -240,6 +245,7 @@ export const BRANCHES = [
       ["returns",                   "Branch Returns Reports",       "Branch Returns"],
       ["returns_changes",           "Branch Returns - Change Log",  "Branch Returns"],
       ["meat_daily",                "Meat Daily Inspection",        "Branch Returns"],
+      ["qa_complaint",              "Quality Complaints Log",       "Branch Returns"],
       ["returns_customers",         "Customer Returns",             "Customer Returns"],
       ["returns_customers_changes", "Customer Returns - Change Log", "Customer Returns"],
       ["inventory_daily_grouped",   "Inventory Daily (Grouped)",    "Inventory & ENOC"],
@@ -430,6 +436,12 @@ export const BRANCHES = [
       ["settings_audit_log",        "Settings Change Log"],
     ],
   },
+
+  /* ─────────────── Confectionery (sweets tenant) ─────────────── */
+  ...SWEETS_REPORT_MODULES.map((m) => ({
+    id: m.id, card: "sweets", label: m.label, emoji: m.emoji, accent: "#0f766e",
+    types: m.types,
+  })),
 ];
 
 /* ═══════════════════════════════════════════════════════════════
