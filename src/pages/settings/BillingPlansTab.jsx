@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { FiBarChart2, FiBriefcase, FiCreditCard, FiLayers } from "react-icons/fi";
+import { FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
 import SubscriptionTab from "../admin/SubscriptionTab";
 import BillingOverviewTab from "./BillingOverviewTab";
 import CompaniesTab from "./CompaniesTab";
 import PlansTab from "./PlansTab";
+import QuotationsTab from "./quotations/QuotationsTab";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { ui } from "./_shared/SettingsUIKit";
 
@@ -35,6 +36,13 @@ const TABS = [
     en: "Companies",
     ar: "الشركات",
     render: () => <CompaniesTab />,
+  },
+  {
+    id: "quotations",
+    Icon: FiFileText,
+    en: "Quotations",
+    ar: "عروض الأسعار",
+    render: () => <QuotationsTab />,
   },
 ];
 
