@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiAward, FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
-import SubscriptionTab from "../admin/SubscriptionTab";
+import InvoicesSection from "../admin/InvoicesSection";
 import BillingOverviewTab from "./BillingOverviewTab";
 import CompaniesTab from "./CompaniesTab";
 import PlansTab from "./PlansTab";
@@ -16,13 +16,6 @@ const TABS = [
     en: "Overview",
     ar: "نظرة عامة",
     render: () => <BillingOverviewTab />,
-  },
-  {
-    id: "subscription",
-    Icon: FiCreditCard,
-    en: "Subscription",
-    ar: "الاشتراك",
-    render: () => <SubscriptionTab />,
   },
   {
     id: "plans",
@@ -44,6 +37,13 @@ const TABS = [
     en: "Quotations",
     ar: "عروض الأسعار",
     render: () => <QuotationsTab />,
+  },
+  {
+    id: "invoices",
+    Icon: FiCreditCard,
+    en: "Invoices",
+    ar: "الفواتير",
+    render: () => <InvoicesSection />,
   },
   {
     id: "seller",

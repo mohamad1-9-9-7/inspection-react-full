@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import "./Login.css";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
+import { SUB_CACHE_KEY, writeSubscriptionCache } from "../utils/subscriptionLock";
 
 function Login() {
   const navigate = useNavigate();
@@ -61,10 +62,20 @@ function Login() {
             // بلا نداء إضافي.
             companyIndustry: data.user.company?.industry || "meat",
             companyName: data.user.company?.name || "",
+            // null = platform account (super-admin). The in-app subscription
+            // lock in App.jsx only ever judges an account by its OWN company.
+            companyId: data.user.companyId || null,
             type: "named",
             loginAt: Date.now(),
           })
         );
+        // The login response already carries the company's subscription
+        // state — seed the lock's cache from it instead of a pre-login read.
+        if (data.user.company?.id && !data.user.isSuperAdmin) {
+          writeSubscriptionCache(data.user.company.id, data.user.company);
+        } else {
+          localStorage.removeItem(SUB_CACHE_KEY);
+        }
         // مالك المنصّة (سوبر أدمن) ما إلوش شركة ثابتة بالتوكن — بيختارها كل
         // مرة من شاشة الكروت. الحساب العادي بيروح لنظام شركته: نشاط 'meat'
         // = الداشبورد الحالي، أي نشاط تاني = المحرّك العام.

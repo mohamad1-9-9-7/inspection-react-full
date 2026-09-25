@@ -8,6 +8,7 @@ import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
 import { clearAppSession } from "./utils/authFetch";
+import { isSubscriptionExpired, refreshSubscriptionCache } from "./utils/subscriptionLock";
 import { hasSection, branchAllowed } from "./utils/perms";
 import { isItemAllowed } from "./utils/sectionItems";
 import { useInventoryOfficer } from "./pages/workforce/workforceAccess";
@@ -527,38 +528,10 @@ function TokenRedirect({ to }) {
 
 const DEFAULT_SESSION_MAX_MS = 8 * 60 * 60 * 1000;
 
-/* Fetch subscription once on app init and cache it */
+/* In-app subscription lock — see utils/subscriptionLock.js. Refreshed on
+   boot for the signed-in account's own company; Login.jsx seeds it. */
 function useSubscriptionFetch() {
-  useEffect(() => {
-    const cache = (() => { try { return JSON.parse(localStorage.getItem("subscription_cache") || "{}"); } catch { return {}; } })();
-    const age   = Date.now() - (cache.fetchedAt || 0);
-    if (age < 60 * 60 * 1000) return; // fresh within 1 hour — skip
-    fetch(`${API_BASE}/api/subscription`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.ok && data.subscription) {
-          localStorage.setItem("subscription_cache", JSON.stringify({
-            status:    data.subscription.status,
-            end_date:  data.subscription.end_date,
-            plan:      data.subscription.plan,
-            fetchedAt: Date.now(),
-          }));
-        }
-      })
-      .catch(() => {}); // non-fatal
-  }, []);
-}
-
-function isSubscriptionExpired() {
-  try {
-    const cache = JSON.parse(localStorage.getItem("subscription_cache") || "{}");
-    if (!cache.status) return false; // no cache yet — allow through
-    if (cache.status === "expired" || cache.status === "suspended") return true;
-    if (cache.end_date && new Date(cache.end_date) < new Date()) return true;
-    return false;
-  } catch {
-    return false;
-  }
+  useEffect(() => { refreshSubscriptionCache(API_BASE); }, []);
 }
 
 function getSessionMaxMs() {

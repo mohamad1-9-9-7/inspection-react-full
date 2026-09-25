@@ -9,7 +9,27 @@ import { industryOptions } from "../../industries";
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
   plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat",
+  price:"", currency:"",
 };
+
+/* Server refusals → something the owner can act on. */
+const SAVE_ERRORS = {
+  name_required:    { en: "Company name is required.", ar: "اسم الشركة مطلوب." },
+  end_before_start: { en: "The end date is before the start date.", ar: "تاريخ الانتهاء قبل تاريخ البداية." },
+  status_invalid:   { en: "Unknown status.", ar: "حالة غير معروفة." },
+  price_invalid:    { en: "The price must be 0 or more.", ar: "السعر لازم يكون 0 أو أكثر." },
+  currency_invalid: { en: "Unsupported currency.", ar: "عملة غير مدعومة." },
+  plan_not_found:   { en: "That plan no longer exists — pick another.", ar: "الخطة غير موجودة — اختر غيرها." },
+  super_admin_required: { en: "Only the platform owner can change companies.", ar: "مالك المنصّة وحده يعدّل الشركات." },
+};
+
+/* What the company is really in, today — the same rule the login lock
+   applies: a stored active/trial past its end date is expired. */
+function effectiveStatus(c, days) {
+  const s = String(c.status || "active").toLowerCase();
+  if (s === "expired" || s === "suspended") return s;
+  return days !== null && days < 0 ? "expired" : s;
+}
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -24,6 +44,7 @@ function daysLeft(endDate) {
 
 export default function CompaniesTab() {
   const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
+  const L = (entry) => (lang === "ar" ? entry.ar : entry.en);
   const STATUS_META = {
     active:    { bg:"#d1fae5", text:"#065f46", label:t("stActive")    },
     trial:     { bg:"#fef3c7", text:"#92400e", label:t("stTrial")     },
@@ -83,14 +104,20 @@ export default function CompaniesTab() {
       end_date:      c.end_date?.substring(0,10)   || "",
       notes:         c.notes || "",
       industry:      c.industry || "meat",
+      price:         c.price != null ? String(Number(c.price)) : "",
+      currency:      c.currency || "",
     });
     setEditing(c); setMsg("");
   }
 
   async function save() {
     if (!form.name.trim()) { setMsg("❌ " + t("companyNameReq")); return; }
-    if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
-      setMsg("❌ End date cannot be before start date");
+    if (form.start_date && form.end_date && form.end_date < form.start_date) {
+      setMsg("❌ " + L(SAVE_ERRORS.end_before_start));
+      return;
+    }
+    if (form.price !== "" && !(Number(form.price) >= 0)) {
+      setMsg("❌ " + L(SAVE_ERRORS.price_invalid));
       return;
     }
     setSaving(true); setMsg("");
@@ -101,6 +128,9 @@ export default function CompaniesTab() {
       start_date: form.start_date || null,
       end_date:   form.end_date   || null,
       industry:   form.industry || "meat",
+      // "" = no custom price → the plan's price applies.
+      price:      form.price === "" ? null : Number(form.price),
+      currency:   form.currency || null,
     };
     try {
       const isNew = editing === "new";
@@ -119,7 +149,7 @@ export default function CompaniesTab() {
         });
         setEditing(null); setMsg(`✅ "${body.name}" ${t("companySaved")}`);
         load(); setTimeout(() => setMsg(""), 3000);
-      } else setMsg("❌ " + t("failSave"));
+      } else setMsg("❌ " + (SAVE_ERRORS[d.error] ? L(SAVE_ERRORS[d.error]) : t("failSave")));
     } catch { setMsg("❌ " + t("connError")); }
     setSaving(false);
   }
@@ -149,7 +179,7 @@ export default function CompaniesTab() {
 
   const enrichedCompanies = useMemo(() => companies.map((company) => {
     const days = daysLeft(company.end_date);
-    const status = String(company.status || "active").toLowerCase();
+    const status = effectiveStatus(company, days);
     const plan = plans.find((p) =>
       String(p.id || "") === String(company.plan_id || "") ||
       String(p.name || "").toLowerCase() === String(company.plan_name || "").toLowerCase()
@@ -160,7 +190,10 @@ export default function CompaniesTab() {
       status,
       planDisplay: company.plan_name || plan?.name || "",
       planKey: String(company.plan_id || plan?.id || company.plan_name || ""),
-      monthlyValue: Number(company.plan_price || plan?.price || 0),
+      // A custom price on the company wins over its plan's list price.
+      customPrice: company.price != null,
+      monthlyValue: Number(company.price ?? company.plan_price ?? plan?.price ?? 0),
+      currencyShown: company.currency || company.plan_currency || plan?.currency || "AED",
       risk: days !== null && days <= 14,
     };
   }), [companies, plans]);
@@ -296,6 +329,23 @@ export default function CompaniesTab() {
                 <option value="suspended">{t("stSuspended")}</option>
               </select>
             </Field>
+            <Field label={lang === "ar" ? "سعر خاص / شهرياً (اختياري)" : "Custom monthly price (optional)"}>
+              {(() => {
+                const plan = plans.find(p => String(p.id) === String(form.plan_id));
+                return (
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" min="0" step="any" value={form.price}
+                      onChange={e => setForm(f=>({...f,price:e.target.value}))}
+                      placeholder={plan ? `${plan.price} (${lang === "ar" ? "سعر الخطة" : "plan price"})` : "—"}
+                      style={{ ...inputStyle, flex:1 }} />
+                    <select value={form.currency} onChange={e => setForm(f=>({...f,currency:e.target.value}))} style={{ ...inputStyle, width:110 }}>
+                      <option value="">{plan?.currency || "AED"}</option>
+                      {["AED","SAR","USD","EUR","GBP"].filter(c => c !== (plan?.currency || "AED")).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                );
+              })()}
+            </Field>
             <Field label={t("startDate")}>
               <input type="date" value={form.start_date} onChange={e => setForm(f=>({...f,start_date:e.target.value}))} style={inputStyle} />
             </Field>
@@ -351,10 +401,12 @@ export default function CompaniesTab() {
                       <span style={{ fontWeight:800, fontSize:20, color:"#1e293b" }}>{c.name}</span>
                       <span style={{ fontSize:14, fontWeight:700, background:sc.bg, color:sc.text,
                                      borderRadius:20, padding:"3px 12px" }}>{sc.label}</span>
-                      {c.plan_name && (
+                      {(c.plan_name || c.customPrice) && (
                         <span style={{ fontSize:14, fontWeight:700, background:"#ede9fe", color:"#5b21b6",
                                        borderRadius:20, padding:"3px 12px" }}>
-                          💳 {c.plan_name}{c.plan_price > 0 ? ` · ${c.plan_price} ${c.plan_currency}/mo` : ""}
+                          💳 {c.plan_name || (lang === "ar" ? "بدون خطة" : "No plan")}
+                          {c.monthlyValue > 0 ? ` · ${c.monthlyValue.toLocaleString()} ${c.currencyShown}/mo` : ""}
+                          {c.customPrice && <span style={{ marginInlineStart:6, color:"#b45309" }}>· {lang === "ar" ? "سعر خاص" : "custom"}</span>}
                         </span>
                       )}
                     </div>

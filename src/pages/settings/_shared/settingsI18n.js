@@ -545,7 +545,7 @@ export const ST = {
   amDeleteConfirm2: { en: "This action cannot be undone.", ar: "لا يمكن التراجع عن هذا الإجراء." },
   amDismiss:        { en: "Dismiss", ar: "إغلاق" },
 
-  /* ═══ Invoices section (inside SubscriptionTab) ═══ */
+  /* ═══ Invoices tab ═══ */
   // Section header
   invSectionTitle:   { en: "Invoices", ar: "الفواتير" },
   invSectionDesc:    { en: "Issue invoices and view past billing history.", ar: "أصدر الفواتير واستعرض سجل الفوترة السابق." },

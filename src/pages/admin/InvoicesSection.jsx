@@ -1,5 +1,5 @@
 // src/pages/admin/InvoicesSection.jsx
-// Invoices section embedded inside SubscriptionTab.
+// Invoices — a tab of its own under Settings → Billing & Plans.
 // - Lists past invoices (newest first) from /api/invoices
 // - "Issue New Invoice" → modal pre-filled from current subscription + counts
 // - "Billing Settings" → modal to edit single-row buyer info (/api/billing-profile)

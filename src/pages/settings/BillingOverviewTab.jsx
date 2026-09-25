@@ -22,24 +22,34 @@ function normalizeStatus(status) {
   return String(status || "active").toLowerCase();
 }
 
+/* What a company is really in today — the login lock's rule: a stored
+   active/trial whose end date has passed counts as expired. */
+function statusOf(c) {
+  const s = statusOf(c);
+  if (s === "expired" || s === "suspended") return s;
+  const d = daysLeft(c.end_date);
+  return d !== null && d < 0 ? "expired" : s;
+}
+
+/* A company's monthly price: its own custom price, else its plan's. */
+const priceOf = (c) => Number(c.price ?? c.plan_price ?? 0);
+
 export default function BillingOverviewTab() {
   const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
-  const [data, setData] = useState({ subscription: null, plans: [], companies: [], invoices: [] });
+  const [data, setData] = useState({ plans: [], companies: [], invoices: [] });
 
   async function load() {
     setLoading(true);
     setMsg(null);
     try {
-      const [subRes, plansRes, companiesRes, invoicesRes] = await Promise.all([
-        fetch(`${API_BASE}/api/subscription`).then((r) => r.json()).catch(() => ({})),
+      const [plansRes, companiesRes, invoicesRes] = await Promise.all([
         fetch(`${API_BASE}/api/plans`).then((r) => r.json()).catch(() => ({})),
         fetch(`${API_BASE}/api/companies`).then((r) => r.json()).catch(() => ({})),
         fetch(`${API_BASE}/api/invoices`).then((r) => r.json()).catch(() => ({})),
       ]);
       setData({
-        subscription: subRes.ok ? subRes.subscription : null,
         plans: plansRes.ok && Array.isArray(plansRes.plans) ? plansRes.plans : [],
         companies: companiesRes.ok && Array.isArray(companiesRes.companies) ? companiesRes.companies : [],
         invoices: invoicesRes.ok && Array.isArray(invoicesRes.invoices) ? invoicesRes.invoices : [],
@@ -54,10 +64,10 @@ export default function BillingOverviewTab() {
   useEffect(() => { load(); }, []);
 
   const stats = useMemo(() => {
-    const activeCompanies = data.companies.filter((c) => normalizeStatus(c.status) === "active");
-    const trialCompanies = data.companies.filter((c) => normalizeStatus(c.status) === "trial");
-    const expiredCompanies = data.companies.filter((c) => normalizeStatus(c.status) === "expired");
-    const suspendedCompanies = data.companies.filter((c) => normalizeStatus(c.status) === "suspended");
+    const activeCompanies = data.companies.filter((c) => statusOf(c) === "active");
+    const trialCompanies = data.companies.filter((c) => statusOf(c) === "trial");
+    const expiredCompanies = data.companies.filter((c) => statusOf(c) === "expired");
+    const suspendedCompanies = data.companies.filter((c) => statusOf(c) === "suspended");
     const expiringSoon = data.companies
       .map((c) => ({ ...c, days: daysLeft(c.end_date) }))
       .filter((c) => c.days !== null && c.days >= 0 && c.days <= 14)
@@ -66,11 +76,10 @@ export default function BillingOverviewTab() {
       .map((c) => ({ ...c, days: daysLeft(c.end_date) }))
       .filter((c) => c.days !== null && c.days < 0)
       .sort((a, b) => a.days - b.days);
-    const mrr = activeCompanies.reduce((sum, c) => sum + Number(c.plan_price || 0), 0);
+    const mrr = activeCompanies.reduce((sum, c) => sum + priceOf(c), 0);
     const invoiceTotal = data.invoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
     const currency =
       activeCompanies.find((c) => c.plan_currency)?.plan_currency ||
-      data.subscription?.currency ||
       data.plans.find((p) => p.currency)?.currency ||
       "AED";
 
@@ -79,8 +88,8 @@ export default function BillingOverviewTab() {
       return {
         ...plan,
         companies: used.length,
-        activeCompanies: used.filter((c) => normalizeStatus(c.status) === "active").length,
-        revenue: used.filter((c) => normalizeStatus(c.status) === "active").reduce((sum, c) => sum + Number(c.plan_price || plan.price || 0), 0),
+        activeCompanies: used.filter((c) => statusOf(c) === "active").length,
+        revenue: used.filter((c) => statusOf(c) === "active").reduce((sum, c) => sum + (c.price != null || c.plan_price != null ? priceOf(c) : Number(plan.price || 0)), 0),
       };
     }).sort((a, b) => b.companies - a.companies);
 
