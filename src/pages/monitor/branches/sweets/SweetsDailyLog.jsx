@@ -47,7 +47,7 @@ const listOf = (col, v) => (Array.isArray(v) ? v : v && col.parseText ? col.pars
 const cellFilled = (col, v) =>
   col.type === "list" ? listOf(col, v).some((it) => itemFilled(col, it)) : !!String(v ?? "").trim();
 const isRowEmpty = (table, row) =>
-  table.columns.every((c) => c.type === "computed" || c.autoNow || !cellFilled(c, row?.[c.key]));
+  table.columns.every((c) => c.type === "computed" || c.autoNow || c.autoDate || !cellFilled(c, row?.[c.key]));
 const withComputed = (table, row) => {
   const out = { ...row };
   table.columns.forEach((c) => {
@@ -134,6 +134,72 @@ function useLotSuggestions(type, active) {
     return () => ctl.abort();
   }, [type, active]);
   return lots;
+}
+
+/* ───────── lookup columns (pick a value recorded in another log) ─────────
+   `lookup: { from, days, pick(row) → { value, label, patch } | null }` on a
+   text column suggests values from recent sheets of another type; typing or
+   picking one of them fills the row with its `patch`. */
+function useLookupOptions(col) {
+  const [opts, setOpts] = useState([]);
+  useEffect(() => {
+    if (!col?.lookup) return undefined;
+    const { from, days = 60, pick } = col.lookup;
+    const ctl = new AbortController();
+    (async () => {
+      try {
+        const rows = await listReports(from, { signal: ctl.signal });
+        const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+        const seen = new Set();
+        const out = [];
+        rows
+          .filter((r) => reportDateOf(r) >= since)
+          .sort((a, b) => reportDateOf(b).localeCompare(reportDateOf(a)))
+          .forEach((r) => (r.payload?.rows || []).forEach((x) => {
+            const o = pick(x);
+            if (!o || seen.has(o.value)) return;
+            seen.add(o.value);
+            out.push(o);
+          }));
+        if (!ctl.signal.aborted) setOpts(out);
+      } catch { /* suggestions are optional */ }
+    })();
+    return () => ctl.abort();
+  }, [col]);
+  return opts;
+}
+
+/* ───────── rows still open on earlier sheets (e.g. a thaw over night) ─────────
+   `openItems: { days, isOpen(row), label(row) }` on a table. Reads the sheets
+   of the previous `days` days one by one (targeted, not a full list). */
+const shiftISO = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+function useOpenItems(schema, date, active) {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const tables = schema.tables.filter((t) => t.openItems);
+    if (!active || !date || !tables.length) { setItems([]); return undefined; }
+    const ctl = new AbortController();
+    const days = Math.max(...tables.map((t) => t.openItems.days || 3));
+    const dates = Array.from({ length: days }, (_, i) => shiftISO(date, -(i + 1)));
+    Promise.all(dates.map((d) => getReportRowByDate(schema.type, d, { signal: ctl.signal }).catch(() => null)))
+      .then((rows) => {
+        if (ctl.signal.aborted) return;
+        const out = [];
+        rows.forEach((row, i) => {
+          if (!row) return;
+          tables.forEach((t) => (row.payload?.[t.key] || []).forEach((r) => {
+            if (i < (t.openItems.days || 3) && t.openItems.isOpen(r)) out.push({ day: dates[i], text: t.openItems.label(r) });
+          }));
+        });
+        setItems(out);
+      });
+    return () => ctl.abort();
+  }, [schema, date, active]);
+  return items;
 }
 
 /* ───────── allergen matrix → production allergens ───────── */
@@ -246,7 +312,7 @@ function Cell({ col, value, row, onChange, lotOptions, listId }) {
       type={type}
       step={type === "number" ? "any" : undefined}
       value={value ?? ""}
-      list={col.options || col.matrix ? listId : undefined}
+      list={col.options || col.matrix || col.lookup ? listId : undefined}
       onChange={(e) => onChange(e.target.value)}
     />
   );
@@ -266,6 +332,10 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
   const lotsType = schema.tables.flatMap((t) => t.columns).find((c) => c.lotsFrom)?.lotsFrom || null;
   const lotOptions = useLotSuggestions(lotsType, !!lotsType);
   const matrixProducts = useMatrixProducts(schema.tables.some((t) => t.columns.some((c) => c.matrix)));
+  const lookupCol = schema.tables.flatMap((t) => t.columns).find((c) => c.lookup) || null;
+  const lookupOptions = useLookupOptions(lookupCol);
+  const openPrev = useOpenItems(schema, date, !record);
+  const dirtyRef = useRef(false);
 
   const hydrate = useCallback((payload) => {
     const p = payload || {};
@@ -284,6 +354,7 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
       next[t.key] = [...saved, ...Array.from({ length: pad }, () => blankRow(t))];
     });
     setTables(next);
+    dirtyRef.current = false;
   }, [schema]);
 
   // Load the sheet for the chosen day (or start a blank one).
@@ -313,13 +384,25 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
       const rows = [...(prev[tKey] || [])];
       const was = rows[i];
       const col = t.columns.find((c) => c.key === cKey);
-      const row = { ...was, [cKey]: v, ...(col?.fill ? col.fill(v, was) : {}), ...matrixPatch(col, v, matrixProducts) };
-      // Stamp the time the first time a row gets data.
-      if (isRowEmpty(t, was)) t.columns.forEach((c) => { if (c.autoNow && !row[c.key] && c.key !== cKey) row[c.key] = nowHHMM(); });
+      const hit = col?.lookup ? lookupOptions.find((o) => o.value === v) : null;
+      // Stamp the time / sheet date the first time a row gets data — before
+      // `fill`, which may read them.
+      const base = { ...was };
+      if (isRowEmpty(t, was)) t.columns.forEach((c) => {
+        if (c.key === cKey || base[c.key]) return;
+        if (c.autoNow) base[c.key] = nowHHMM();
+        if (c.autoDate) base[c.key] = date;
+      });
+      const row = { ...base, [cKey]: v, ...(col?.fill ? col.fill(v, base) : {}), ...matrixPatch(col, v, matrixProducts), ...(hit ? hit.patch : {}) };
       rows[i] = row;
       return { ...prev, [tKey]: rows };
     });
+    dirtyRef.current = true;
     setMsg(null);
+  };
+  const openDay = (d) => {
+    if (dirtyRef.current && !window.confirm(`Open the sheet of ${fmtDate(d)}? Unsaved changes on this sheet will be lost.`)) return;
+    setDate(d);
   };
   // Lists that repeat every day (registers, display units, equipment) start
   // from the newest saved sheet — only the table's carry keys are copied.
@@ -371,6 +454,7 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json().catch(() => null);
       const saved = json?.report || null;
+      dirtyRef.current = false;
       setExistingId(saved ? reportId(saved) : id);
       const s = payload.summary;
       setMsg({
@@ -398,6 +482,25 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
       {msg && (
         <div style={{ ...S.card, padding: "10px 14px", background: TONE[msg.level].bg, border: `1px solid ${TONE[msg.level].bd}`, color: TONE[msg.level].fg, fontWeight: 700 }}>
           {msg.text}
+        </div>
+      )}
+
+      {openPrev.length > 0 && (
+        <div style={{ ...S.card, background: TONE.warn.bg, border: `1px solid ${TONE.warn.bd}` }}>
+          <div style={{ fontWeight: 900, color: TONE.warn.fg, marginBottom: 8 }}>
+            ⏳ Still open on earlier sheets ({openPrev.length}) — close them on the sheet where they started
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {openPrev.map((o, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 800, color: "#334155", minWidth: 90 }}>{fmtDate(o.day)}</span>
+                <span style={{ flex: "1 1 240px", color: "#475569", fontWeight: 600 }}>{o.text}</span>
+                <button onClick={() => openDay(o.day)} style={{ ...S.btn("#fff", TONE.warn.fg), border: `1px solid ${TONE.warn.bd}`, padding: "5px 12px" }}>
+                  Open that sheet →
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -439,6 +542,11 @@ function LogForm({ schema, record = null, onSaved, onCancel }) {
             {t.columns.filter((c) => (c.options && c.type !== "select") || c.matrix).map((c) => (
               <datalist key={c.key} id={`dl-${schema.type}-${t.key}-${c.key}`}>
                 {(c.matrix ? matrixProducts.map((p) => p.name) : c.options).map((o) => <option key={o} value={o} />)}
+              </datalist>
+            ))}
+            {t.columns.filter((c) => c.lookup).map((c) => (
+              <datalist key={c.key} id={`dl-${schema.type}-${t.key}-${c.key}`}>
+                {lookupOptions.map((o) => <option key={o.value} value={o.value} label={o.label} />)}
               </datalist>
             ))}
             <div style={{ overflowX: "auto" }}>

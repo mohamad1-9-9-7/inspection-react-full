@@ -449,8 +449,184 @@ const preventiveMaintenance = {
   ],
 };
 
+/* ───────────────────────── 7. Thawing (defrosting) ───────────────────────── */
+// Modelled on the meat company's Production Defrosting Record
+// (production/PRDDefrostingRecordInput.jsx): item + lot + dates, start and end
+// each with date · time · °C, and the ≤ 5 °C limit. A thaw often runs over
+// night, so the row lives on the sheet of the day it STARTED and is closed
+// there later — the form lists every thaw still open from the last days.
+//
+// Added for sweets: the lot is picked from Raw Material Receiving (frozen
+// deliveries fill item / supplier / expiry), the method decides which limit
+// applies, the hours are counted across midnight, and the use-by after
+// thawing is worked out from the item's risk class.
+export const THAW_MATERIALS = [
+  "Butter", "Puff pastry dough", "Filo dough", "Kataifi (kunafa) dough", "Croissant dough",
+  "Frozen cake bases / sponges", "Whipping cream", "Fresh cream", "Cream cheese",
+  "Akkawi cheese", "Nabulsi cheese", "Mozzarella", "Qishta / ashta", "Custard / fillings",
+  "Liquid egg", "Egg whites", "Frozen berries / fruit", "Fruit purée",
+];
+export const THAW_METHODS = {
+  chiller: "Chiller (≤ 5 °C)",
+  water: "Cold running water (≤ 21 °C)",
+  microwave: "Microwave — use at once",
+  cook: "Cooked / baked from frozen",
+  ambient: "Room temperature",
+};
+// Dairy, egg, cheese and fillings grow bacteria fast once thawed: 24 h after
+// thawing. Butter, doughs, sponges and fruit: 72 h. House rule — change here
+// (and in the guide) if the company SOP says otherwise.
+const HIGH_RISK_THAW = /cream|cheese|akkawi|nabulsi|mozzarella|qishta|ashta|custard|filling|egg|milk|dairy/i;
+const thawRisk = (r) => (HIGH_RISK_THAW.test(r.material || "") ? "high" : "low");
+const USE_WITHIN_H = { high: 24, low: 72 };
+
+const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const stamp = (date, time) => {
+  if (!date || !time) return null;
+  const d = new Date(`${date}T${time}`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+// End date left blank = same day as the start.
+const thawHours = (r) => {
+  const a = stamp(r.startDate, r.startTime);
+  const b = stamp(r.endDate || r.startDate, r.endTime);
+  if (!a || !b) return null;
+  const h = (b - a) / 36e5;
+  return h >= 0 ? Math.round(h * 10) / 10 : null;
+};
+const thawUseBy = (r) => {
+  const end = stamp(r.endDate || r.startDate, r.endTime);
+  if (!end || thawHours(r) === null) return "";
+  if (r.method === THAW_METHODS.microwave || r.method === THAW_METHODS.cook) return "Use at once";
+  const hours = USE_WITHIN_H[thawRisk(r)];
+  const d = new Date(end.getTime() + hours * 36e5);
+  const [y, m, day] = localISO(d).split("-");
+  return `${day}/${m}/${y} (${hours} h)`;
+};
+
+const thawing = {
+  type: "sweets_thawing",
+  icon: "🧊",
+  label: "Thawing (Defrosting)",
+  desc: "Frozen dough, butter, cream & cheese — method, time, temperatures",
+  title: "Thawing (Defrosting) Record",
+  header: COMMON_HEADER,
+  tables: [
+    {
+      key: "rows",
+      title: "Items thawed",
+      defaultRows: 3,
+      // A thaw started on an earlier sheet and not finished yet.
+      openItems: {
+        days: 5,
+        isOpen: (r) => !!(r.material || r.lot || r.startTime) && !r.endTime && r.status !== "Discarded",
+        label: (r) => [r.material || "Item", r.lot && `lot ${r.lot}`, r.qty && `${r.qty} ${r.unit || ""}`.trim(), r.startTime && `started ${r.startTime}`]
+          .filter(Boolean).join(" · "),
+      },
+      columns: [
+        {
+          key: "lot", label: "Lot No.", width: 130, hint: "pick a frozen lot received",
+          // Frozen lots from Raw Material Receiving — picking one fills the item.
+          lookup: {
+            from: "sweets_raw_receiving",
+            days: 90,
+            pick: (x) => (x.lot && x.storage === "Frozen" && x.decision !== "Rejected"
+              ? {
+                value: x.lot,
+                label: [x.material, x.supplier, x.expDate && `exp ${x.expDate}`].filter(Boolean).join(" · "),
+                patch: { material: x.material || "", supplier: x.supplier || "", expDate: x.expDate || "", ...(["kg", "g", "L", "pcs", "box", "tray", "carton"].includes(x.unit) ? { unit: x.unit } : {}) },
+              }
+              : null),
+          },
+        },
+        { key: "material", label: "Item", options: THAW_MATERIALS, width: 170 },
+        { key: "supplier", label: "Supplier / Brand", width: 130 },
+        { key: "qty", label: "Qty", type: "number", width: 70 },
+        { key: "unit", label: "Unit", type: "select", options: ["kg", "g", "L", "pcs", "box", "tray", "carton"], width: 80 },
+        { key: "expDate", label: "Expiry Date", type: "date", width: 130 },
+        { key: "method", label: "Thaw Method", type: "select", options: Object.values(THAW_METHODS), width: 175 },
+        { key: "location", label: "Chiller / Place", width: 120 },
+        { key: "mediumTemp", label: "Chiller / Water °C", type: "number", width: 90, hint: "chiller ≤ 5 · water ≤ 21" },
+        { key: "startDate", label: "Start Date", type: "date", autoDate: true, width: 130 },
+        { key: "startTime", label: "Start Time", type: "time", autoNow: true, width: 90 },
+        { key: "startTemp", label: "Start °C", type: "number", width: 75, hint: "≤ −18" },
+        {
+          key: "endTime", label: "End Time", type: "time", width: 90,
+          // Closing a thaw on a later day fills that day as its end date
+          // (same day stays blank = start day).
+          fill: (v, was) => {
+            const today = localISO(new Date());
+            return v && !was?.endDate && was?.startDate && today > was.startDate ? { endDate: today } : {};
+          },
+        },
+        { key: "endDate", label: "End Date", type: "date", width: 130, hint: "blank = start day" },
+        { key: "endTemp", label: "End Core °C", type: "number", width: 80, hint: "≤ 5" },
+        {
+          key: "hours", label: "Thaw Time (h)", type: "computed", width: 80,
+          compute: (r) => { const h = thawHours(r); return h === null ? "" : String(h); },
+        },
+        { key: "useBy", label: "Use By", type: "computed", width: 125, compute: thawUseBy },
+        { key: "covered", label: "Covered / Drip Tray", type: "select", options: YES_NO, width: 95 },
+        { key: "labelled", label: "Labelled (thaw date)", type: "select", options: YES_NO, width: 95 },
+        { key: "refrozen", label: "Refrozen?", type: "select", options: ["No", "Yes"], width: 85, hint: "never" },
+        { key: "status", label: "Status", type: "select", options: ["Thawing", "Used", "In chiller (thawed)", "Discarded"], width: 125 },
+        { key: "usedIn", label: "Used In (product / batch)", width: 170 },
+        { key: "action", label: "Corrective Action", width: 170 },
+      ],
+      check(r) {
+        const issues = [];
+        const m = r.method;
+        const med = num(r.mediumTemp);
+        const t0 = num(r.startTemp);
+        const t1 = num(r.endTemp);
+        const hrs = thawHours(r);
+        const high = thawRisk(r) === "high";
+
+        if (r.refrozen === "Yes") issues.push(fail("Refrozen after thawing"));
+        if (r.expDate && r.startDate && r.expDate < r.startDate) issues.push(fail("Expired before thawing"));
+        if (t0 !== null && t0 > 5) issues.push(fail(`Not frozen at start (${t0}°C)`));
+        else if (t0 !== null && t0 > -18) issues.push(warn(`Start ${t0}°C (> −18)`));
+
+        if (!m) issues.push(warn("Method missing"));
+        if (m === THAW_METHODS.chiller) {
+          if (med !== null && med > 5) issues.push(fail(`Chiller at ${med}°C (> 5)`));
+          if (med === null) issues.push(warn("Chiller temp missing"));
+          if (hrs !== null && hrs > 72) issues.push(warn(`Thawing ${hrs} h (> 72)`));
+        }
+        if (m === THAW_METHODS.water) {
+          if (med !== null && med > 21) issues.push(fail(`Water at ${med}°C (> 21)`));
+          if (hrs !== null && hrs > 4) issues.push(fail(`In water ${hrs} h (> 4)`));
+        }
+        if (m === THAW_METHODS.ambient) {
+          if (high) issues.push(fail("High-risk item thawed at room temperature"));
+          else if (hrs !== null && hrs > 4) issues.push(warn(`${hrs} h at room temperature (> 4)`));
+        }
+        const coldMethod = m === THAW_METHODS.chiller || m === THAW_METHODS.water;
+        if (coldMethod && t1 !== null && t1 > 5) issues.push(fail(`Core ${t1}°C at end (> 5)`));
+        if (hrs === null && r.endTime && r.startTime) issues.push(fail("End is before start — check dates"));
+
+        if (r.covered === "No") issues.push(fail("Not covered / no drip tray"));
+        if (r.labelled === "No") issues.push(fail("Not labelled with thaw date"));
+        if (!r.lot) issues.push(warn("Lot no. missing"));
+
+        if (!r.endTime && r.status !== "Discarded") issues.push(warn("Still thawing"));
+        else if (r.endTime) {
+          if (coldMethod && t1 === null) issues.push(warn("End core temp missing"));
+          if (!r.labelled) issues.push(warn("Label not recorded"));
+          if (r.status === "Used" && !String(r.usedIn || "").trim()) issues.push(warn("Used in — not recorded"));
+        }
+
+        const worst = firstIssue(issues);
+        if (worst.level === "fail" && r.action) return warn(`${worst.text} — action taken`);
+        return worst;
+      },
+    },
+  ],
+};
+
 export const DAILY_LOG_SCHEMAS = [
   rawReceiving,
+  thawing,
   bakingCooking,
   coolingDisplay,
   productionBatches,

@@ -200,6 +200,33 @@ export const SWEETS_GUIDES = {
   },
 
   /* ───────────── Baking & cooking ───────────── */
+  sweets_thawing: {
+    purpose: t("Thaw frozen dough, butter, cream and cheese safely, and know when each thawed item must be used.",
+      "إذابة العجين والزبدة والكريمة والأجبان المجمّدة بطريقة آمنة ومعرفة متى يجب استخدام كل صنف بعد إذابته."),
+    when: t("Every time a frozen item is taken out to thaw — the row stays on the sheet of the day it started until it is closed.",
+      "كل مرة يُخرَج فيها صنف مجمّد للإذابة — يبقى السطر على ورقة يوم البدء حتى يُغلَق."),
+    steps: [
+      t("Type or pick the Lot No. — frozen lots from Raw Material Receiving fill item, supplier and expiry.", "اكتب أو اختر رقم الدفعة — دفعات المجمّد من سجل الاستلام تعبّئ الصنف والمورد والانتهاء."),
+      t("Choose the method and read the chiller / water temperature; probe the item's start temperature.", "اختر طريقة الإذابة وسجّل حرارة البراد أو الماء؛ وقِس حرارة الصنف عند البدء."),
+      t("Start date and time fill themselves on the first entry.", "تاريخ ووقت البدء يُعبَّآن تلقائياً عند أول إدخال."),
+      t("When thawing ends, enter End Time and the core temperature — the hours and Use By are calculated.", "عند انتهاء الإذابة أدخل وقت الانتهاء وحرارة اللب — تُحسب الساعات وتاريخ «يُستخدم قبل» تلقائياً."),
+      t("Thaws still open from earlier days are listed at the top — open that sheet to close them.", "الإذابات المفتوحة من أيام سابقة تظهر أعلى الصفحة — افتح ورقتها لإغلاقها."),
+      t("Label the item with thaw date + use by, then record where it was used.", "ضع ملصقاً بتاريخ الإذابة و«يُستخدم قبل» ثم سجّل أين استُخدم."),
+    ],
+    limits: [
+      L(t("Chiller thawing", "الإذابة في البراد"), t("Chiller ≤ 5 °C, item core ≤ 5 °C at end", "البراد 5 °م أو أقل، ولب الصنف 5 °م أو أقل عند الانتهاء"), t("> 5 °C", "أعلى من 5 °م"), t("Move to a working chiller; assess / discard high-risk items", "النقل لبراد سليم؛ تقييم أو إتلاف الأصناف عالية الخطورة")),
+      L(t("Cold running water", "الماء البارد الجاري"), t("Water ≤ 21 °C, max 4 h, sealed pack", "الماء 21 °م أو أقل، 4 ساعات كحد أقصى، عبوة مغلقة"), t("> 21 °C or > 4 h", "أعلى من 21 °م أو أكثر من 4 ساعات"), t("Use at once or discard", "الاستخدام فوراً أو الإتلاف")),
+      L(t("Room temperature", "حرارة الغرفة"), t("Low-risk only (butter, dough, fruit), ≤ 4 h", "للأصناف منخفضة الخطورة فقط (زبدة، عجين، فواكه)، 4 ساعات كحد أقصى"), t("Cream, cheese, egg, fillings at room temp", "الكريمة أو الأجبان أو البيض أو الحشوات على حرارة الغرفة"), t("Discard + NCR", "إتلاف + تقرير عدم مطابقة")),
+      L(t("Use after thawing", "الاستخدام بعد الإذابة"), t("Cream, cheese, egg, fillings 24 h · butter, dough, fruit 72 h", "الكريمة والأجبان والبيض والحشوات 24 ساعة · الزبدة والعجين والفواكه 72 ساعة"), t("Past use by", "تجاوز «يُستخدم قبل»"), t("Discard", "إتلاف")),
+      L(t("Refreezing", "إعادة التجميد"), t("Never", "ممنوع"), t("Thawed item refrozen", "إعادة تجميد صنف مُذاب"), t("Discard", "إتلاف")),
+      L(t("Storage while thawing", "التخزين أثناء الإذابة"), t("Covered, on a drip tray, bottom shelf", "مغطى، على صينية تصريف، في الرف السفلي"), t("Uncovered / dripping on other food", "مكشوف أو يقطر على أغذية أخرى"), t("Cover + move; check food below", "التغطية والنقل؛ فحص الأغذية تحته")),
+    ],
+    notes: [
+      t("Microwave thawing or baking from frozen means the item is used at once — no Use By is given.", "الإذابة بالمايكرويف أو الخَبز مباشرة من التجميد تعني الاستخدام الفوري — بدون «يُستخدم قبل»."),
+      t("The 24 h / 72 h use-by is the company rule — ask QA to change it if your SOP differs.", "مدة 24 / 72 ساعة قاعدة الشركة — اطلب من الجودة تعديلها إذا اختلف الإجراء المعتمد."),
+    ],
+  },
+
   sweets_baking_cooking: {
     purpose: t("Prove every batch was baked / cooked enough to be safe.", "إثبات أن كل دفعة خُبزت أو طُبخت بما يكفي لتكون آمنة."),
     when: t("Every batch.", "كل دفعة."),
