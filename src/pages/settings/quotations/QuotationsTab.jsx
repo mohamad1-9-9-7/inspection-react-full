@@ -411,7 +411,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
 
   const addPlan = (p) => addLines([emptyLine({
     kind: "recurring", titleEn: `${p.name} plan`, titleAr: `باقة ${p.name}`,
-    details: [p.description, p.max_branches ? `Up to ${p.max_branches} branches` : "", p.max_users ? `${p.max_users} users` : ""].filter(Boolean).join(" · "),
+    details: p.description || "",
     qty: 1, unit: "service", unitPrice: p.price ?? "", source: `plan:${p.id}`,
   })]);
 

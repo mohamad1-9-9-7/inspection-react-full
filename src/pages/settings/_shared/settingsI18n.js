@@ -153,8 +153,6 @@ export const ST = {
   moShort:       { en: "mo", ar: "شهر" },
   assigned:      { en: "Assigned", ar: "مُسندة" },
   revenue:       { en: "Revenue", ar: "الإيراد" },
-  maxBranches:   { en: "Max Branches (blank = unlimited)", ar: "أقصى عدد فروع (فارغ = غير محدود)" },
-  maxUsers:      { en: "Max Users (blank = unlimited)",    ar: "أقصى عدد مستخدمين (فارغ = غير محدود)" },
   description:   { en: "Description", ar: "الوصف" },
   planActive:    { en: "Active (visible to companies)", ar: "مُفعّلة (ظاهرة للشركات)" },
   savePlan:      { en: "Save Plan", ar: "حفظ الخطة" },

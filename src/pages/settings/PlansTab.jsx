@@ -7,7 +7,7 @@ import { logSettingsAudit } from "../../utils/settingsAudit";
 
 const CURRENCIES = ["AED", "SAR", "USD", "EUR", "GBP"];
 
-const emptyForm = { name:"", price:"", currency:"AED", setup_fee:"", max_branches:"", max_users:"", description:"", is_active:true };
+const emptyForm = { name:"", price:"", currency:"AED", setup_fee:"", description:"", is_active:true };
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -61,8 +61,6 @@ export default function PlansTab() {
       price:        plan.price,
       currency:     plan.currency,
       setup_fee:    plan.setup_fee || "",
-      max_branches: plan.max_branches === -1 ? "" : plan.max_branches,
-      max_users:    plan.max_users    === -1 ? "" : plan.max_users,
       description:  plan.description,
       is_active:    plan.is_active,
     });
@@ -74,16 +72,12 @@ export default function PlansTab() {
     if (!form.name.trim()) { setMsg("❌ " + t("planNameReq")); return; }
     if (Number(form.price || 0) < 0) { setMsg("❌ Price cannot be negative"); return; }
     if (Number(form.setup_fee || 0) < 0) { setMsg("❌ Setup fee cannot be negative"); return; }
-    if (form.max_branches !== "" && Number(form.max_branches) < 0) { setMsg("❌ Branch limit cannot be negative"); return; }
-    if (form.max_users !== "" && Number(form.max_users) < 0) { setMsg("❌ User limit cannot be negative"); return; }
     setSaving(true); setMsg("");
     const body = {
       name:         form.name.trim(),
       price:        parseFloat(form.price) || 0,
       currency:     form.currency,
       setup_fee:    parseFloat(form.setup_fee) || 0,
-      max_branches: form.max_branches === "" ? -1 : parseInt(form.max_branches),
-      max_users:    form.max_users    === "" ? -1 : parseInt(form.max_users),
       description:  form.description,
       is_active:    form.is_active,
     };
@@ -234,14 +228,6 @@ export default function PlansTab() {
                 placeholder="0" style={inputStyle} />
               <div style={{ fontSize:13, color:"#94a3b8", marginTop:5 }}>{t("setupFeeHint")}</div>
             </Field>
-            <Field label={t("maxBranches")}>
-              <input type="number" value={form.max_branches} onChange={e => setForm(f=>({...f,max_branches:e.target.value}))}
-                placeholder="∞" style={inputStyle} />
-            </Field>
-            <Field label={t("maxUsers")}>
-              <input type="number" value={form.max_users} onChange={e => setForm(f=>({...f,max_users:e.target.value}))}
-                placeholder="∞" style={inputStyle} />
-            </Field>
             <Field label={t("description")} style={{ gridColumn:"1 / -1" }}>
               <input value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))}
                 placeholder="" style={{ ...inputStyle, width:"100%" }} />
@@ -300,8 +286,6 @@ export default function PlansTab() {
                     <div style={{ fontSize:16, color:"#64748b", marginTop:4 }}>{plan.description}</div>
                   )}
                   <div style={{ display:"flex", gap:18, marginTop:8, flexWrap:"wrap" }}>
-                    <LimitChip icon="🏪" label={t("branches")} val={plan.max_branches} />
-                    <LimitChip icon="👤" label={t("users")}    val={plan.max_users}    />
                     {Number(plan.setup_fee) > 0 && (
                       <LimitChip icon="🧾" label={t("setupFee")} val={`${plan.setup_fee} ${plan.currency || "AED"} · ${t("oneTime")}`} />
                     )}
