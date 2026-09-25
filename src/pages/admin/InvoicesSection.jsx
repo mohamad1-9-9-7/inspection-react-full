@@ -25,7 +25,7 @@ function fmtDate(d) {
 }
 function fmtMoney(amount, currency) {
   const n = Number(amount || 0);
-  return `${n.toFixed(2)} ${currency || "USD"}`;
+  return `${n.toFixed(2)} ${currency || "AED"}`;
 }
 function today() { return new Date().toISOString().slice(0, 10); }
 function addYear(d) {
@@ -293,7 +293,7 @@ function IssueInvoiceModal({ profile, subscription, accountsCount, branchesCount
       accounts_count: accountsCount,
       branches_count: branchesCount,
       amount:        subscription?.price || "",
-      currency:      subscription?.currency || "USD",
+      currency:      subscription?.currency || "AED",
       notes:         profile?.notes || "",
     };
   });
@@ -400,7 +400,7 @@ function IssueInvoiceModal({ profile, subscription, accountsCount, branchesCount
             <label style={ui.label}>{t("invFieldCurrency")}</label>
             <select style={ui.input} value={form.currency}
               onChange={e => set("currency", e.target.value)}>
-              <option>USD</option><option>AED</option><option>EUR</option><option>GBP</option>
+              <option>AED</option><option>SAR</option><option>USD</option><option>EUR</option><option>GBP</option>
             </select>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>

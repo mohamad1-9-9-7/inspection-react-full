@@ -279,6 +279,38 @@ function numberFromCell(v) {
   return Number.isFinite(n) && n > 0 ? String(n) : "";
 }
 
+/* ===== Smart row selection =====
+   Turns "10-20, 25, 30-32" typed by hand into a set of 0-based row indexes.
+   The SL.NO the user reads is 1-based, so a "10" means row index 9. A range
+   may be written with a dash, dots, "to" or the Arabic الى/إلى, and a reversed
+   range (20-10) is taken the right way round. Numbers outside the table are
+   dropped silently - a range that overshoots the last row just stops there. */
+function parseRowRanges(text, count) {
+  const nums = new Set();
+  String(text || "")
+    .split(/[,،]/) // comma or Arabic comma
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .forEach((part) => {
+      const m = part.match(/^(\d+)\s*(?:-|–|—|\.\.+|to|إلى|الى|ل)\s*(\d+)$/i);
+      if (m) {
+        let a = parseInt(m[1], 10);
+        let b = parseInt(m[2], 10);
+        if (a > b) [a, b] = [b, a];
+        for (let n = a; n <= b; n++) nums.add(n);
+      } else if (/^\d+$/.test(part)) {
+        nums.add(parseInt(part, 10));
+      }
+    });
+
+  const idx = new Set();
+  nums.forEach((n) => {
+    const i = n - 1;
+    if (i >= 0 && i < count) idx.add(i);
+  });
+  return idx;
+}
+
 /* ========= Draft storage key ========= */
 const DRAFT_KEY = "returns_draft_v1";
 const DRAFT_DATE_KEY = "returns_draft_date_v1";
@@ -1476,6 +1508,256 @@ function DocumentControl({ reportDate }) {
   );
 }
 
+/* ═══════════════ Bulk-edit toolbar ═══════════════
+   Appears the moment a row is ticked. One value, one Apply button per field,
+   so a whole transfer note's worth of rows takes their date / action / remark /
+   branch / transfer number in a single click each instead of row by row. It
+   owns only its own draft inputs; the actual change is done by the callbacks,
+   which mutate the report and clear the matching save marks. */
+function BulkEditBar({
+  count,
+  onDate,
+  onAction,
+  onRemarks,
+  onBranch,
+  onTransferNo,
+  onClear,
+  onDelete,
+}) {
+  const [date, setDate] = useState("");
+  const [action, setAction] = useState("");
+  const [customAction, setCustomAction] = useState("");
+  const [remark, setRemark] = useState("");
+  const [customRemark, setCustomRemark] = useState("");
+  const [branch, setBranch] = useState("");
+  const [customBranch, setCustomBranch] = useState("");
+  const [trn, setTrn] = useState("");
+
+  const fieldWrap = { display: "flex", flexDirection: "column", gap: 5, minWidth: 172 };
+  const label = {
+    fontSize: 11,
+    fontWeight: 900,
+    color: "#6b21a8",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  };
+  const ctl = {
+    ...inputBase,
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "8px 10px",
+    fontSize: "0.92em",
+  };
+  const applyBtn = (on) => ({
+    background: on ? "#7c3aed" : "#e9d5ff",
+    color: on ? "#fff" : "#a78bca",
+    border: "none",
+    borderRadius: 9,
+    fontWeight: 800,
+    cursor: on ? "pointer" : "not-allowed",
+    padding: "8px 12px",
+    whiteSpace: "nowrap",
+  });
+  const miniBtn = (on) => ({ ...applyBtn(on), padding: "8px 10px", fontSize: "0.85em" });
+
+  const remarkValue = remark === "__other__" ? customRemark.trim() : remark;
+
+  return (
+    <div
+      style={{
+        background: "linear-gradient(180deg, #faf5ff, #f3e8ff)",
+        border: "1.5px solid #c4b5fd",
+        borderRadius: 14,
+        padding: "12px 16px",
+        marginBottom: 12,
+        boxShadow: "0 6px 18px rgba(124,58,237,.15)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 10,
+        }}
+      >
+        <span style={{ fontWeight: 900, color: "#5b21b6", fontSize: "1.02em" }}>
+          ✓ {count} row{count === 1 ? "" : "s"} selected — apply to all of them
+        </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={onClear} style={{ ...btnGhost, padding: "7px 14px" }}>
+          Clear selection
+        </button>
+        <button
+          onClick={onDelete}
+          style={{
+            background: "#ef4444",
+            color: "#fff",
+            border: "none",
+            borderRadius: 10,
+            fontWeight: 900,
+            cursor: "pointer",
+            padding: "7px 14px",
+          }}
+          title="Delete every selected row"
+        >
+          🗑 Delete selected
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+        {/* EXPIRY DATE */}
+        <div style={fieldWrap}>
+          <span style={label}>Expiry date</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="date"
+              style={ctl}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            <button
+              style={applyBtn(!!date)}
+              disabled={!date}
+              onClick={() => onDate(date)}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+
+        {/* ACTION */}
+        <div style={fieldWrap}>
+          <span style={label}>Action</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <select
+              style={{ ...ctl, appearance: "auto" }}
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+            >
+              <option value="">Select action</option>
+              {ACTIONS.map((a) => (
+                <option key={a} value={a}>{`${ACTION_STYLE[a].mark} ${a}`}</option>
+              ))}
+            </select>
+            <button
+              style={applyBtn(!!action && (action !== "Other..." || !!customAction.trim()))}
+              disabled={!action || (action === "Other..." && !customAction.trim())}
+              onClick={() => onAction(action, customAction.trim())}
+            >
+              Apply
+            </button>
+          </div>
+          {action === "Other..." && (
+            <input
+              style={ctl}
+              placeholder="Custom action"
+              value={customAction}
+              onChange={(e) => setCustomAction(e.target.value)}
+            />
+          )}
+        </div>
+
+        {/* REMARKS */}
+        <div style={{ ...fieldWrap, minWidth: 210 }}>
+          <span style={label}>Remark</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <select
+              style={{ ...ctl, appearance: "auto" }}
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+            >
+              <option value="">Select remark</option>
+              {REMARK_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+              <option value="__other__">Other…</option>
+            </select>
+            <button
+              style={miniBtn(!!remarkValue)}
+              disabled={!remarkValue}
+              onClick={() => onRemarks(remarkValue, "set")}
+              title="Replace the remark on every selected row"
+            >
+              Set
+            </button>
+            <button
+              style={miniBtn(!!remarkValue)}
+              disabled={!remarkValue}
+              onClick={() => onRemarks(remarkValue, "add")}
+              title="Add this remark, keeping any the rows already have"
+            >
+              + Add
+            </button>
+          </div>
+          {remark === "__other__" && (
+            <input
+              style={ctl}
+              placeholder="Type a remark"
+              value={customRemark}
+              onChange={(e) => setCustomRemark(e.target.value)}
+            />
+          )}
+        </div>
+
+        {/* BRANCH */}
+        <div style={fieldWrap}>
+          <span style={label}>Branch</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <select
+              style={{ ...ctl, appearance: "auto" }}
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+            >
+              <option value="">Select branch</option>
+              {BRANCHES.map((b) => (
+                <option key={b} value={b}>{enLabel(b)}</option>
+              ))}
+            </select>
+            <button
+              style={applyBtn(!!branch && (branch !== OTHER_BRANCH || !!customBranch.trim()))}
+              disabled={!branch || (branch === OTHER_BRANCH && !customBranch.trim())}
+              onClick={() => onBranch(branch, customBranch.trim())}
+            >
+              Apply
+            </button>
+          </div>
+          {branch === OTHER_BRANCH && (
+            <input
+              style={ctl}
+              placeholder="Branch name"
+              value={customBranch}
+              onChange={(e) => setCustomBranch(e.target.value)}
+            />
+          )}
+        </div>
+
+        {/* TRANSFER NO */}
+        <div style={fieldWrap}>
+          <span style={label}>Transfer no</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              style={ctl}
+              inputMode="numeric"
+              placeholder="e.g. 02323"
+              value={trn}
+              onChange={(e) => setTrn(e.target.value)}
+            />
+            <button
+              style={applyBtn(!!trn.trim())}
+              disabled={!trn.trim()}
+              onClick={() => onTransferNo(trn.trim())}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Returns() {
   const navigate = useNavigate();
 
@@ -2127,6 +2409,7 @@ export default function Returns() {
       setConfirmDelete({ show: true, idx: index });
     } else {
       // Empty row — delete immediately
+      setSelected(new Set());
       setRows((prev) => prev.filter((_, i) => i !== index));
     }
   };
@@ -2134,6 +2417,7 @@ export default function Returns() {
   const confirmRemoveRow = () => {
     const { idx } = confirmDelete;
     setConfirmDelete({ show: false, idx: -1 });
+    setSelected(new Set());
     const orphans = safeArr(rows?.[idx]?.images);
     setRows((prev) => prev.filter((_, i) => i !== idx));
     // fire-and-forget: the row is gone from the report either way
@@ -2146,6 +2430,15 @@ export default function Returns() {
 
   /* ===== Validation ===== */
   const [rowErrors, setRowErrors] = useState({});
+
+  /* ═════════════════════ Bulk edit ═════════════════════
+     Tick several rows, change their date / action / remark / branch / transfer
+     number in ONE move. A whole transfer note is usually the same branch, the
+     same expiry and the same action, so editing each row on its own is exactly
+     the tedium this removes. Selection is by row index: it is transient (a
+     select → apply → done gesture) and every structural change - a delete, a
+     merge - clears it so an index can never point at the wrong row. */
+  const [selected, setSelected] = useState(() => new Set());
 
   const validateBeforeSave = (preparedRows) => {
     const errors = {};
@@ -2221,6 +2514,150 @@ export default function Returns() {
     });
 
   };
+
+  /* Which rows can be ticked: only the ones that carry data. The trailing
+     empty line is the box you type into, not a row you act on. */
+  const dataRowIdx = useMemo(
+    () => rows.map((r, i) => (rowHasData(r) ? i : -1)).filter((i) => i >= 0),
+    [rows]
+  );
+  const allSelected = dataRowIdx.length > 0 && dataRowIdx.every((i) => selected.has(i));
+  const selectedCount = useMemo(
+    () => [...selected].filter((i) => i < rows.length && rowHasData(rows[i])).length,
+    [selected, rows]
+  );
+
+  const toggleSelectRow = (idx) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+
+  const toggleSelectAll = () =>
+    setSelected(allSelected ? new Set() : new Set(dataRowIdx));
+
+  const clearSelection = () => setSelected(new Set());
+
+  /* Smart select: type row numbers / ranges ("10-20, 25") and tick exactly
+     those, ignoring any that fall on the empty trailing line. Add mode ORs the
+     typed rows onto whatever is already ticked. */
+  const [rangeText, setRangeText] = useState("");
+  const selectByRange = (add = false) => {
+    const parsed = parseRowRanges(rangeText, rows.length);
+    const wanted = [...parsed].filter((i) => rowHasData(rows[i]));
+    if (!wanted.length) {
+      setSaveMsg(`⚠️ No filled rows matched "${rangeText.trim()}".`);
+      setTimeout(() => setSaveMsg(""), 2600);
+      return;
+    }
+    setSelected((prev) => {
+      const next = add ? new Set(prev) : new Set();
+      wanted.forEach((i) => next.add(i));
+      return next;
+    });
+    setSaveMsg(`✅ ${add ? "Added" : "Selected"} ${wanted.length} row(s).`);
+    setTimeout(() => setSaveMsg(""), 2600);
+  };
+
+  /* Merge one patch into every selected row in a SINGLE pass, then clear the
+     save-error marks the change just answered, and keep the trailing empty
+     line. Selection is kept on purpose: a note is usually action AND remark AND
+     date on the same rows, applied one after another. */
+  const applyBulk = (mapFn, changedFields = []) => {
+    if (!selected.size) return;
+    setRows((prev) => {
+      const next = prev.map((r, i) =>
+        selected.has(i) && rowHasData(r) ? { ...r, ...mapFn(r) } : r
+      );
+      if (next.length && rowHasData(next[next.length - 1])) next.push(makeEmptyRow());
+      return next;
+    });
+    if (changedFields.length) {
+      setRowErrors((prev) => {
+        const next = { ...prev };
+        selected.forEach((i) => {
+          if (!next[i]) return;
+          next[i] = { ...next[i] };
+          changedFields.forEach((f) => delete next[i][f]);
+          if (!Object.keys(next[i]).length) delete next[i];
+        });
+        return next;
+      });
+    }
+  };
+
+  const flashBulk = (msg) => {
+    setSaveMsg(`✅ ${msg} on ${selectedCount} row(s).`);
+    setTimeout(() => setSaveMsg(""), 3000);
+  };
+
+  const bulkSetDate = (date) => {
+    applyBulk(() => ({ expiry: date }), ["expiry"]);
+    flashBulk("Expiry date set");
+  };
+  const bulkSetAction = (action, customAction = "") => {
+    applyBulk(
+      () =>
+        action === "Other..."
+          ? { action, customAction }
+          : { action, customAction: "" },
+      ["action"]
+    );
+    flashBulk("Action set");
+  };
+  /* mode: "set" replaces the remark, "add" merges without dropping what a row
+     already carries (deduped, case-blind - the same list logic the picker uses). */
+  const bulkSetRemarks = (value, mode = "set") => {
+    if (mode === "add") {
+      applyBulk((r) => {
+        const list = splitRemarks(r.remarks);
+        splitRemarks(value).forEach((x) => {
+          if (!list.some((y) => y.toLowerCase() === x.toLowerCase())) list.push(x);
+        });
+        return { remarks: joinRemarks(list) };
+      }, ["remarks"]);
+      flashBulk("Remark added");
+    } else {
+      applyBulk(() => ({ remarks: value }), ["remarks"]);
+      flashBulk("Remark set");
+    }
+  };
+  const bulkSetBranch = (branch, customButchery = "") => {
+    applyBulk(
+      () =>
+        branch === OTHER_BRANCH
+          ? { butchery: branch, customButchery }
+          : { butchery: branch, customButchery: "" },
+      ["butchery"]
+    );
+    flashBulk("Branch set");
+  };
+  const bulkSetTransferNo = (transferNo) => {
+    applyBulk(() => ({ transferNo }), ["transferNo"]);
+    flashBulk("Transfer no set");
+  };
+
+  const deleteSelected = () => {
+    if (!selected.size) return;
+    const orphans = [];
+    const kept = rows.filter((r, i) => {
+      if (selected.has(i) && rowHasData(r)) {
+        safeArr(r.images).forEach((u) => orphans.push(u));
+        return false;
+      }
+      return true;
+    });
+    if (!kept.length || rowHasData(kept[kept.length - 1])) kept.push(makeEmptyRow());
+    setRows(kept);
+    setRowErrors({});
+    clearSelection();
+    orphans.forEach((url) => deleteImage(url).catch(() => {}));
+    setSaveMsg("🗑 Removed the selected rows.");
+    setTimeout(() => setSaveMsg(""), 2800);
+  };
+
   /* ===== Images ===== */
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
@@ -2301,6 +2738,7 @@ export default function Returns() {
 
     setRows(merged);
     setRowErrors({});
+    setSelected(new Set());
     setSaveMsg(
       `✅ Merged ${drop.size} duplicate row(s) into ${dupGroups.length} line(s) — the quantities were added up.`
     );
@@ -2798,6 +3236,85 @@ export default function Returns() {
         </div>
       )}
 
+      {/* The selection toolbar follows the report: it sticks to the top of the
+          screen so a bulk edit can be applied from anywhere in a long sheet.
+          (Only works because of the overflow-x:clip rule in RET_CSS.) */}
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "#f8f5ff", paddingTop: 6 }}>
+      {/* Smart select — type row numbers / ranges to tick them without scrolling */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          background: "rgba(255,255,255,.75)",
+          border: "1px solid #e9d5ff",
+          borderRadius: 12,
+          padding: "8px 12px",
+          marginBottom: 12,
+        }}
+      >
+        <span style={{ fontWeight: 900, color: "#6b21a8", whiteSpace: "nowrap" }}>
+          🎯 Smart select
+        </span>
+        <input
+          value={rangeText}
+          onChange={(e) => setRangeText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              selectByRange(e.ctrlKey || e.metaKey);
+            }
+          }}
+          placeholder="Rows, e.g.  10-20, 25, 30-32"
+          title="Type row numbers (the SL.NO column). Ranges like 10-20, single rows and commas all work. Enter = Select, Ctrl+Enter = Add."
+          style={{ ...inputBase, flex: "1 1 240px", minWidth: 200, padding: "8px 10px" }}
+        />
+        <button
+          onClick={() => selectByRange(false)}
+          disabled={!rangeText.trim()}
+          style={{
+            background: rangeText.trim() ? "#7c3aed" : "#e9d5ff",
+            color: rangeText.trim() ? "#fff" : "#a78bca",
+            border: "none",
+            borderRadius: 9,
+            fontWeight: 800,
+            cursor: rangeText.trim() ? "pointer" : "not-allowed",
+            padding: "8px 16px",
+          }}
+        >
+          Select
+        </button>
+        <button
+          onClick={() => selectByRange(true)}
+          disabled={!rangeText.trim()}
+          style={{ ...btnGhost, padding: "8px 14px", opacity: rangeText.trim() ? 1 : 0.5 }}
+          title="Add these rows to the current selection"
+        >
+          + Add
+        </button>
+        {selectedCount > 0 && (
+          <span style={{ color: "#5b21b6", fontWeight: 800, whiteSpace: "nowrap" }}>
+            {selectedCount} selected
+          </span>
+        )}
+      </div>
+
+      {/* Bulk-edit toolbar — appears once any row is ticked */}
+      {selectedCount > 0 && (
+        <BulkEditBar
+          count={selectedCount}
+          onDate={bulkSetDate}
+          onAction={bulkSetAction}
+          onRemarks={bulkSetRemarks}
+          onBranch={bulkSetBranch}
+          onTransferNo={bulkSetTransferNo}
+          onClear={clearSelection}
+          onDelete={deleteSelected}
+        />
+      )}
+      </div>
+
       {/* Table */}
       <div
         style={{
@@ -2825,7 +3342,16 @@ export default function Returns() {
           }}
         >
           <thead>
-            <tr style={{ background: "linear-gradient(180deg, #f3e8ff, #e9d5ff)", color: "#512e5f", position: "sticky", top: 0, zIndex: 5 }}>
+            <tr style={{ background: "linear-gradient(180deg, #f3e8ff, #e9d5ff)", color: "#512e5f" }}>
+              <th style={th("56px")}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  title={allSelected ? "Unselect all" : "Select all filled rows"}
+                  style={{ width: 34, height: 34, cursor: "pointer", accentColor: "#7c3aed" }}
+                />
+              </th>
               <th style={th("70px")}>SL.NO</th>
               <th style={th("150px")}>ITEM CODE</th>
               <th style={th("280px")}>PRODUCT NAME</th>
@@ -2854,6 +3380,7 @@ export default function Returns() {
               // a box is marked when it is empty OR when a save complained
               const bad = { ...missing, ...err };
               const dup = dupMarks.get(idx) || null;
+              const isSel = selected.has(idx) && hasData;
               return (
                 <tr
                   key={idx}
@@ -2862,7 +3389,8 @@ export default function Returns() {
                     "rt-row" +
                     (Object.keys(err).length ? " rt-err" : "") +
                     (done ? " rt-done" : "") +
-                    (dup ? " rt-dup" : "")
+                    (dup ? " rt-dup" : "") +
+                    (isSel ? " rt-sel" : "")
                   }
                   style={{
                     background: Object.keys(err).length
@@ -2874,8 +3402,22 @@ export default function Returns() {
                       : idx % 2
                       ? "#faf5ff"
                       : "#fff",
+                    boxShadow: isSel ? "inset 4px 0 0 #7c3aed" : undefined,
                   }}
                 >
+                  {/* Row selector for bulk edit — only on rows that carry data */}
+                  <td style={td}>
+                    {hasData && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(idx)}
+                        onChange={() => toggleSelectRow(idx)}
+                        title="Select this row for bulk edit"
+                        style={{ width: 34, height: 34, cursor: "pointer", accentColor: "#7c3aed" }}
+                      />
+                    )}
+                  </td>
+
                   {/* SL.NO doubles as the row's state: a finished row gets the
                       emerald tick, a started one an amber count of the boxes it
                       is still waiting for. Both are small on purpose - the rail
@@ -3347,6 +3889,14 @@ export default function Returns() {
 /* globals.css forces `#root *` to 14px and `#root table *` to 12px with !important,
    so the sizes below have to be re-stated through a doubled page class. */
 const RET_CSS = `
+/* position:sticky is dead app-wide because globals.css puts overflow-x:hidden
+   on html/body/#root, which turns them into (never-scrolling) scroll
+   containers. Re-enable it just for this page with overflow-x:clip, which
+   clips the same horizontal overflow WITHOUT making a scroll container, so the
+   sticky selection toolbar (and the table header) can pin to the top. Old
+   browsers drop the line and the toolbar degrades to a normal block. */
+html:has(.rt), body:has(.rt), #root:has(.rt) { overflow-x: clip; }
+
 #root .rt.rt .rt-title { font-size: 22px !important; }
 #root .rt.rt .rt-sub { font-size: 13px !important; }
 #root .rt.rt .rt-brand { font-size: 14px !important; }

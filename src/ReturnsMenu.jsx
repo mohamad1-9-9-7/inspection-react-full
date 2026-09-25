@@ -10,6 +10,7 @@ import {
   FiFilePlus,
   FiFolder,
   FiHome,
+  FiMail,
   FiPackage,
   FiSearch,
   FiTrash2,
@@ -29,6 +30,7 @@ const browseLinks = [
   { perm: "enoc.browse", to: "/enoc-returns/browse-view", Icon: FiTruck, label: "Browse ENOC Returns", ar: "عرض مرتجعات ENOC", tone: "orange" },
   { perm: "destruction.browse", to: "/destruction/browse", Icon: FiTrash2, label: "Browse Condemnations", ar: "عرض سجلات الإعدام", tone: "red" },
   { perm: "disposalLog.compare", to: "/disposal-log/compare", Icon: FiCheckSquare, label: "Disposal vs Branch Returns", ar: "مطابقة الإعدام مع مرتجعات الفروع", aria: "Compare the Odoo disposal log with the branch returns day by day", tone: "red" },
+  { perm: "qaComplaints.browse", to: "/returns/complaints/browse", Icon: FiMail, label: "Browse Complaints", ar: "عرض شكاوي الجودة (فروع وموردين)", aria: "Browse quality complaints — pick branch or supplier", tone: "cyan" },
 ];
 
 const createLinks = [
@@ -39,6 +41,7 @@ const createLinks = [
   { perm: "enoc.create", to: "/enoc-returns/input", Icon: FiTruck, label: "Create ENOC Returns Report", ar: "إنشاء تقرير ENOC", aria: "Create ENOC returns report", tone: "teal" },
   { perm: "destruction.create", to: "/destruction/input", Icon: FiTrash2, label: "Record Condemnation", ar: "تسجيل إعدام", aria: "Create condemnation and disposal record", tone: "red" },
   { perm: "disposalLog.import", to: "/disposal-log/import", Icon: FiUploadCloud, label: "Import Odoo Disposal Log", ar: "استيراد سجل الإعدام الشهري", aria: "Import the monthly Odoo disposal log", tone: "slate" },
+  { perm: "qaComplaints.create", to: "/returns/complaints/new", Icon: FiFilePlus, label: "Create Complaint", ar: "إنشاء شكوى جودة جديدة", aria: "Start a new complaint — pick branch or supplier", tone: "cyan" },
 ];
 
 function getCurrentUser() {
@@ -53,18 +56,16 @@ function ModuleCard({ item, action }) {
   const Icon = item.Icon;
   return (
     <Link to={item.to} className="rm-card" aria-label={item.aria || item.label}>
-      <div className={`rm-cardIcon rm-tone-${item.tone}`}>
-        <Icon size={18} />
+      <div className="rm-cardTop">
+        <div className={`rm-cardIcon rm-tone-${item.tone}`}><Icon size={19} /></div>
+        <span className="rm-chip">{action === "Create" ? "NEW REPORT" : "RECORDS"}</span>
       </div>
       <div className="rm-cardBody">
-        <div className="rm-cardTop">
-          <span className="rm-chip">{action}</span>
-        </div>
         <h3>{item.label}</h3>
         <p dir="rtl">{item.ar}</p>
       </div>
       <div className="rm-cardFoot">
-        <span>{action === "Create" ? "Open form" : "Open reports"}</span>
+        <span>{action === "Create" ? "ابدأ الآن" : "عرض السجل"}</span>
         <FiArrowRight size={14} />
       </div>
     </Link>
@@ -369,6 +370,17 @@ export default function ReturnsMenu() {
           .rm-grid{grid-template-columns:1fr}
           .rm-card{min-height:142px}
         }
+        /* Returns workspace redesign */
+        .rm-page{background:linear-gradient(145deg,#f8fafc 0%,#eef6f4 50%,#f5f7ff 100%);padding:26px clamp(16px,3vw,42px) 42px}
+        .rm-shell{width:min(1320px,100%)}
+        .rm-hero{border-radius:26px;padding:28px 30px;background:linear-gradient(120deg,#10263a,#0f766e 62%,#1492a8);box-shadow:0 22px 52px rgba(15,38,58,.19)}
+        .rm-logo{width:64px;height:64px;border-radius:18px;border:2px solid rgba(255,255,255,.4)}
+        .rm-title{font-size:25px}.rm-sub{font-size:14px;max-width:640px}.rm-userBox,.rm-topLink{border-radius:13px;min-height:44px}
+        .rm-toolbar{grid-template-columns:minmax(260px,1fr) auto auto;margin:20px 0 22px;gap:12px}.rm-search,.rm-stat{border-radius:14px;min-height:48px;padding:10px 14px;box-shadow:0 8px 22px rgba(15,23,42,.045)}
+        .rm-section{margin-top:26px}.rm-sectionHead{align-items:center;margin-bottom:14px}.rm-sectionHead h2{font-size:20px}.rm-sectionHead span{background:#e6f6f1;color:#0f766e;padding:6px 10px;border-radius:999px;font-size:12px}
+        .rm-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.rm-card{min-height:190px;border-radius:20px;padding:17px;gap:14px;box-shadow:0 8px 22px rgba(15,23,42,.045);border-color:#e5ecea}.rm-card:hover{transform:translateY(-4px);border-color:#79c5b8;box-shadow:0 18px 32px rgba(15,23,42,.11)}
+        .rm-cardTop{margin:0;display:flex;align-items:center;justify-content:space-between}.rm-cardIcon{width:44px;height:44px;border-radius:14px}.rm-chip{font-size:10px;letter-spacing:.07em;background:#f1f5f9}.rm-card h3{font-size:16px;margin:0 0 7px}.rm-card p{font-size:13px}.rm-cardFoot{padding-top:12px;font-size:13px}
+        @media(max-width:1100px){.rm-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:760px){.rm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rm-hero{padding:22px}.rm-title{font-size:21px}}@media(max-width:520px){.rm-page{padding:12px}.rm-grid{grid-template-columns:1fr}.rm-toolbar{grid-template-columns:1fr}.rm-search{grid-column:auto}.rm-stat{width:auto}.rm-hero{border-radius:20px}.rm-userPanel{width:100%}}
       `}</style>
 
       <div className="rm-shell">
@@ -376,9 +388,9 @@ export default function ReturnsMenu() {
           <div className="rm-brand">
             <img className="rm-logo" src={logo} alt="Al Mawashi" />
             <div className="rm-titleBlock">
-              <div className="rm-kicker">AL MAWASHI QMS</div>
-              <h1 className="rm-title">Returns & Daily Status</h1>
-              <p className="rm-sub">Returns, customer returns, meat status, inventory, and ENOC reports</p>
+              <div className="rm-kicker">AL MAWASHI · OPERATIONS HUB</div>
+              <h1 className="rm-title">Returns & Quality Operations</h1>
+              <p className="rm-sub" dir="rtl">مركز موحّد للمرتجعات، التقارير اليومية، الإعدام، وشكاوى الجودة.</p>
             </div>
           </div>
 

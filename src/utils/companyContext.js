@@ -55,3 +55,15 @@ export function getActiveIndustry() {
     return "meat";
   }
 }
+
+/** اسم الشركة الفعّالة الآن (سوبر أدمن: المختارة؛ حساب عادي: من تسجيل الدخول).
+ *  يُعرض في رؤوس تقارير الشركات غير 'meat' بدل أي اسم ثابت. "" إن لم يُعرف. */
+export function getActiveCompanyName() {
+  try {
+    const cu = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    if (cu.isSuperAdmin) return getActiveCompany()?.name || "";
+    return cu.companyName || "";
+  } catch {
+    return "";
+  }
+}

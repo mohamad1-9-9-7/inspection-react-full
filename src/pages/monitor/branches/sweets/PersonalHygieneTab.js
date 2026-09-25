@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/PersonalHygieneTab.jsx
+// src/pages/monitor/branches/sweets/PersonalHygieneTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import {
@@ -6,11 +6,8 @@ import {
   getReportRowByDate,
   reportId,
 } from "../_shared/reportApi";
-import {
-  useStaffDirectory,
-  normalizeEmpNo,
-  normalizeName,
-} from "../_shared/staffRegistry";
+import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
+import SweetsStaffManager from "./SweetsStaffManager";
 
 const IS_SAME_ORIGIN = (() => {
   try {
@@ -348,8 +345,6 @@ const sel = (w) => ({
    Server helpers (PH only)
 ========================= */
 const PH_TYPE = "sweets-ph";
-/* Which Staff Directory assignment fills this sheet. */
-const PH_FORM_KEY = "sweets_personal_hygiene";
 
 /* ================================================================== */
 /*                        PersonalHygieneTab                           */
@@ -390,12 +385,11 @@ export default function PersonalHygieneTab(props) {
   const [loadingLast, setLoadingLast] = useState(false);
   const [note, setNote] = useState("");
 
-  /* ===== Staff directory (Settings → Staff Directory) =====
-     `roster` is only the people assigned to this form, so the daily sheet lists
-     exactly who is supposed to be on it. `all` still backs the lookups, so a
-     name typed for someone outside the roster is still matched to a number. */
-  const { roster: staff, staff: allStaff, loading: staffLoading, byNo, byName } =
-    useStaffDirectory(PH_FORM_KEY);
+  /* ===== Staff list (this company only — sweetsStaff.js) =====
+     `roster` = active people, one sheet row each. `all` also backs the
+     lookups, so a name typed for an inactive person still finds the number. */
+  const { roster: staff, staff: allStaff, loading: staffLoading, byNo, byName } = useSweetsStaff();
+  const [staffOpen, setStaffOpen] = useState(false);
 
   /* Seed the table from the directory once it arrives — but only while the
      user has not typed anything, so a reload never wipes work in progress. */
@@ -440,7 +434,7 @@ export default function PersonalHygieneTab(props) {
         },
       };
 
-      const body = { reporter: "QCS/PH", type: PH_TYPE, payload };
+      const body = { reporter: "sweets", type: PH_TYPE, payload };
 
       const url = existingId
         ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`
@@ -504,8 +498,8 @@ export default function PersonalHygieneTab(props) {
     if (!staff.length) {
       setNote(
         allStaff.length
-          ? "ℹ️ No employee is assigned to Personal Hygiene yet — tick that form for them in Settings → Staff Directory."
-          : "ℹ️ The staff directory is empty — import employees in Settings → Staff Directory."
+          ? "ℹ️ Nobody on the staff list is active — open 👥 Staff list to activate people."
+          : "ℹ️ The staff list is empty — open 👥 Staff list to add your employees."
       );
       return;
     }
@@ -642,6 +636,7 @@ export default function PersonalHygieneTab(props) {
         </label>
       </div>
 
+      <SweetsStaffManager open={staffOpen} onClose={() => setStaffOpen(false)} />
       <PHEntryHeader header={header} date={date} logoUrl={logoUrl} />
       <PHHeaderEditor header={header} setHeader={setHeader} footer={footer} setFooter={setFooter} />
 
@@ -652,9 +647,12 @@ export default function PersonalHygieneTab(props) {
         <button
           onClick={fillFromDirectory}
           style={btnBase}
-          title="Employees assigned to Personal Hygiene in Settings → Staff Directory"
+          title="Every active person on the staff list"
         >
           👥 Load roster{staff.length ? ` (${staff.length})` : ""}
+        </button>
+        <button onClick={() => setStaffOpen(true)} style={btnBase} title="Add / edit the company's employees">
+          ✏️ Staff list
         </button>
         <button onClick={fillAllConform} style={btnBase}>
           ✅ Mark all C

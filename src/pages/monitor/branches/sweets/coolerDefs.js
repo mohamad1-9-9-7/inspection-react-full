@@ -1,7 +1,7 @@
-// src/pages/monitor/branches/qcs/coolerDefs.js
+// src/pages/monitor/branches/sweets/coolerDefs.js
 //
-// 🧊 تعريف وحدات التخزين في QCS — الاسم · النوع · الحد الأدنى/الأعلى.
-// Storage-unit definitions for the QCS Temperature Control record: what each
+// 🧊 تعريف وحدات التخزين — الاسم · النوع · الحد الأدنى/الأعلى.
+// Storage-unit definitions for the Temperature Control record: what each
 // unit is called, what KIND of storage it is (chiller / freezer / production
 // room / dry store) and the acceptable temperature band for it.
 //
@@ -27,6 +27,7 @@
 // localStorage is a first-paint cache only — never a standalone store.
 
 import API_BASE from "../../../../config/api";
+import { companyScopedKey } from "./sweetsRecord";
 
 export const COOLERS_CONFIG_TYPE = "sweets_coolers_config";
 const CONFIG_KEY = "config";
@@ -185,7 +186,7 @@ export function rangeLabel(def) {
  *
  * A dry store holds ambient goods, so the product is judged against the room's
  * own band — the old blanket "0 to 5°C" would fail every legitimate reading.
- * Chilled and production rooms keep the cold-chain limit for the meat inside
+ * Chilled and production rooms keep the cold-chain limit for the products inside
  * them, which is not the same as the room's air temperature.
  */
 export function productLimitFor(def) {
@@ -225,7 +226,7 @@ export function storageOptions(coolerDefs, loadingDef) {
 
 export function loadDefsCache() {
   try {
-    const raw = localStorage.getItem(COOLERS_CONFIG_CACHE_KEY);
+    const raw = localStorage.getItem(companyScopedKey(COOLERS_CONFIG_CACHE_KEY));
     const parsed = raw ? JSON.parse(raw) : null;
     if (!parsed) return null;
     return {
@@ -240,7 +241,7 @@ export function loadDefsCache() {
 export function saveDefsCache(coolerDefs, loadingDef) {
   try {
     localStorage.setItem(
-      COOLERS_CONFIG_CACHE_KEY,
+      companyScopedKey(COOLERS_CONFIG_CACHE_KEY),
       JSON.stringify({
         coolerDefs: normalizeCoolerDefs(coolerDefs),
         loadingDef: normalizeLoadingDef(loadingDef),

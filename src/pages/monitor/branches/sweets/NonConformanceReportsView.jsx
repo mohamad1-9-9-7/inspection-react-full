@@ -1,22 +1,27 @@
-// src/pages/monitor/branches/qcs/NonConformanceReportsView.jsx
+// src/pages/monitor/branches/sweets/NonConformanceReportsView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
+import { printNode } from "./_sweetsReportKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { sweetsAreaLabel } from "./sweetsAreas";
 import EmailSendModal from "../../../shared/EmailSendModal";
 import EmailSendHistory from "../../../shared/EmailSendHistory";
 import { makeNcrEmailConfig } from "./ncrEmailConfig";
 
-/* The NC number is allocated by the server as `payload.refNo` ("AM-NCR-000042").
+/* The NC number is allocated by the server as `payload.refNo` ("NCR-000042").
    Reports written before that still only carry the hand-typed headRow.ncNo, so
    both are read here — the server-owned one first. */
 const ncNumberOf = (p) => p?.refNo || p?.headRow?.ncNo || "";
-/* Sweets is single-branch; location is one of its own area names (see
-   NonConformanceReportInput.jsx's SWEETS_LOCATIONS), stored as-is. */
-const locationOf = (p) => p?.branch || p?.location || "";
+/* Location is a factory-area code (sweetsAreas.js); show its label, and
+   fall back to whatever free text a legacy record holds. */
+const locationOf = (p) => {
+  const code = p?.branch || p?.location || "";
+  return code ? sweetsAreaLabel(code) : "";
+};
 
 /* Workflow state, with the colour it is shown in everywhere on this screen. */
 const STATUS_TONE = {
@@ -155,12 +160,11 @@ export default function NonConformanceReportsView(props) {
   const sheetRef = useRef(null);
   const { openImage, lightbox } = useLightbox();
 
-  /* POS 19 mounts this same view under its own report type; the e-mail log has
-     to stay separated the same way the reports are. */
+  /* The e-mail log is keyed by report type, same as the reports. */
   const emailConfig = useMemo(
     () => makeNcrEmailConfig({
       reportType: TYPE,
-      reportTitle: TYPE.startsWith("pos19") ? "POS 19 Non-Conformance Report" : "Non-Conformance Report",
+      reportTitle: "Non-Conformance Report",
     }),
     [TYPE]
   );
@@ -327,7 +331,8 @@ export default function NonConformanceReportsView(props) {
                 )}
                 <button disabled={busy} onClick={() => setEmailOpen(true)} style={btn("#2563eb")}>📧 Send by Email</button>
                 <button disabled={busy} onClick={exportXlsx} style={btn("#059669")}>📄 Export XLSX</button>
-                <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>🖨️ Export PDF</button>
+                <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>📄 Export PDF</button>
+                <button disabled={busy} onClick={() => printNode(sheetRef.current, "Non-Conformance Report")} style={btn("#0f766e")}>🖨️ Print</button>
                 {canDelete("daily") && (
                   <button disabled={busy} onClick={onDelete} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
                 )}

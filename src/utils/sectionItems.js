@@ -31,6 +31,10 @@ export const SECTION_ITEMS = {
         { id: "customerReturns.browse",  icon: "👤", label: "Browse" },
         { id: "customerReturns.create",  icon: "✍️", label: "Create" },
       ]},
+      { id: "qaComplaints", icon: "📨", label: "Quality Complaints", subItems: [
+        { id: "qaComplaints.browse", icon: "📨", label: "Browse" },
+        { id: "qaComplaints.create", icon: "📨", label: "Create" },
+      ]},
       { id: "inventory",       icon: "📦", label: "Inventory Daily", subItems: [
         { id: "inventory.browse",  icon: "📦", label: "Browse" },
         { id: "inventory.create",  icon: "🧮", label: "Create" },

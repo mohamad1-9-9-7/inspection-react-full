@@ -429,6 +429,27 @@ export default function SettingsPage() {
     </button>
   );
 
+  /* Billing & Plans runs full-screen: no hero, no side panel — the whole
+     viewport belongs to the tool (quotations need the room). */
+  if (active === "billing-plans" && activeItem) {
+    return (
+      <main className="settings-new-page" style={styles.fullPage} dir={dir}>
+        <div style={styles.fullBar}>
+          <button type="button" onClick={() => setActive(null)} style={styles.fullBack}>
+            <FiArrowLeft aria-hidden="true" />
+            <span>{t("allTools")}</span>
+          </button>
+          <div style={styles.fullTitleWrap}>
+            <span style={styles.fullIcon(activeItem)}><activeItem.Icon aria-hidden="true" size={22} /></span>
+            <span className="settings-full-title" style={styles.fullTitle}>{t(activeItem.tk)}</span>
+          </div>
+          <LangToggle lang={lang} toggle={toggle} style={styles.fullLang} />
+        </div>
+        <BillingPlansTab fullScreen />
+      </main>
+    );
+  }
+
   if (active === "accounts-mgmt") {
     return (
       <main className="settings-new-page" style={styles.page} dir={dir}>
@@ -953,6 +974,43 @@ const styles = {
     color: "#64748b",
     fontWeight: 850,
   },
+  fullPage: {
+    minHeight: "100vh",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px clamp(8px, 1vw, 16px) 16px",
+    background: "radial-gradient(1200px 500px at 100% -10%, rgba(8,145,178,.10), transparent 60%), radial-gradient(900px 420px at -10% 0%, rgba(15,118,110,.10), transparent 60%), #f5f8fb",
+    color: "#0f172a",
+    fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Cairo, sans-serif',
+  },
+  fullBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    flexWrap: "wrap",
+    marginBottom: 14,
+  },
+  fullBack: {
+    minHeight: 46,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "0 16px",
+    borderRadius: 12,
+    border: "1px solid rgba(15,23,42,0.10)",
+    background: "#fff",
+    color: "#0f172a",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "0 6px 18px rgba(15,23,42,0.06)",
+  },
+  fullTitleWrap: { display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
+  fullIcon: (item) => ({
+    width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center",
+    color: "#fff", background: item.grad, boxShadow: `0 10px 22px ${item.glow}`,
+  }),
+  fullTitle: { fontWeight: 1000, color: "#0f172a" },
+  fullLang: { minHeight: 46 },
   panelShell: {
     marginTop: 22,
     display: "grid",

@@ -1,12 +1,14 @@
 // src/pages/settings/quotations/quotationCore.js
 // -----------------------------------------------------------------------------
-// Quotations (عروض الأسعار) — data model, storage, maths and the module
-// catalogue that feeds "add cards from a company".
+// Quotations (عروض الأسعار) — data model, storage, maths, smart helpers and
+// the module catalogue that feeds "add cards from a company".
 //
-// Storage: the generic /api/reports store, type "billing_quotation". Every call
-// pins company_id=1 (the platform owner) so a super-admin who is currently
-// "inside" another company still reads and writes the one shared quotation
-// book — authFetch leaves a URL alone once it already carries company_id.
+// Storage: the generic /api/reports store — type "billing_quotation" for the
+// quotations, "billing_quotation_config" for the single settings row (price
+// book, logo, default terms). Every call pins company_id=1 (the platform
+// owner) so a super-admin who is currently "inside" another company still
+// reads and writes the one shared quotation book — authFetch leaves a URL
+// alone once it already carries company_id.
 // -----------------------------------------------------------------------------
 
 import API_BASE from "../../../config/api";
@@ -14,14 +16,17 @@ import { getIndustryTemplate } from "../../../industries";
 import { activeCards, branchesOfCard } from "../reportTypeCatalog";
 
 export const QUOTE_TYPE = "billing_quotation";
+export const CONFIG_TYPE = "billing_quotation_config";
+const CONFIG_KEY = "billing_quotation_config";
 const OWNER_COMPANY_ID = 1;
 
 export const CURRENCIES = ["AED", "USD", "SAR", "EUR", "GBP"];
 
 export const BILLING_CYCLES = [
-  { id: "monthly",  en: "Monthly",  ar: "شهري",       perEn: "/ month", perAr: "/ شهرياً", months: 1 },
-  { id: "yearly",   en: "Yearly",   ar: "سنوي",       perEn: "/ year",  perAr: "/ سنوياً", months: 12 },
-  { id: "one_time", en: "One-time", ar: "مرة واحدة",  perEn: "",        perAr: "",         months: 0 },
+  { id: "monthly",   en: "Monthly",   ar: "شهري",       perEn: "/ month",   perAr: "/ شهرياً",   months: 1 },
+  { id: "quarterly", en: "Quarterly", ar: "ربع سنوي",   perEn: "/ quarter", perAr: "/ كل 3 أشهر", months: 3 },
+  { id: "yearly",    en: "Yearly",    ar: "سنوي",       perEn: "/ year",    perAr: "/ سنوياً",   months: 12 },
+  { id: "one_time",  en: "One-time",  ar: "مرة واحدة",  perEn: "",          perAr: "",           months: 0 },
 ];
 export const cycleById = (id) => BILLING_CYCLES.find((c) => c.id === id) || BILLING_CYCLES[0];
 
@@ -40,18 +45,142 @@ export const UNITS = [
   { id: "module",  en: "Module",  ar: "وحدة" },
   { id: "service", en: "Service", ar: "خدمة" },
   { id: "hour",    en: "Hour",    ar: "ساعة" },
+  { id: "day",     en: "Day",     ar: "يوم" },
   { id: "item",    en: "Item",    ar: "بند" },
 ];
 export const unitById = (id) => UNITS.find((u) => u.id === id) || UNITS[UNITS.length - 1];
 
 /* Line kinds: "recurring" lines are billed every cycle; "one_time" lines
-   (setup, training, data migration…) are billed once on top. */
+   (setup, training, data migration…) are billed once on top. A line flagged
+   `optional` is shown as an add-on and kept OUT of every total. */
 export const LINE_KINDS = [
   { id: "recurring", en: "Recurring", ar: "متكرر" },
   { id: "one_time",  en: "One-time",  ar: "مرة واحدة" },
 ];
 
-export const DEFAULT_TERMS = [
+/* Document colour themes — `a` is the main colour, `b` the accent. */
+export const THEMES = [
+  { id: "teal",     en: "Teal",     ar: "فيروزي",  a: "#0f766e", b: "#0891b2", soft: "#f0fdfa", line: "#99f6e4" },
+  { id: "navy",     en: "Navy",     ar: "كحلي",    a: "#1e3a8a", b: "#2563eb", soft: "#eff6ff", line: "#bfdbfe" },
+  { id: "violet",   en: "Violet",   ar: "بنفسجي",  a: "#5b21b6", b: "#db2777", soft: "#f5f3ff", line: "#ddd6fe" },
+  { id: "graphite", en: "Graphite & gold", ar: "فحمي وذهبي", a: "#111827", b: "#b45309", soft: "#fafaf9", line: "#e7e5e4" },
+  { id: "emerald",  en: "Emerald",  ar: "زمردي",   a: "#047857", b: "#65a30d", soft: "#f0fdf4", line: "#bbf7d0" },
+  { id: "crimson",  en: "Crimson",  ar: "قرمزي",   a: "#9f1239", b: "#ea580c", soft: "#fff1f2", line: "#fecdd3" },
+];
+export const themeById = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
+
+/* ═══════════════════════════ Terms library ═══════════════════════════
+   Each term is a sentence with {placeholders}. Numbers the user can tune
+   live in `params`; {vat}, {cycle}/{cycleAr} and {validUntil} come from the
+   quotation itself so they never drift from the numbers above them. */
+
+export const TERM_GROUPS = [
+  { id: "payment",  en: "Payment",            ar: "الدفع" },
+  { id: "contract", en: "Contract & renewal", ar: "العقد والتجديد" },
+  { id: "service",  en: "Service & support",  ar: "الخدمة والدعم" },
+  { id: "data",     en: "Data & legal",       ar: "البيانات والقانون" },
+];
+
+export const TERM_LIBRARY = [
+  { key: "vat", group: "payment", on: true,
+    en: "Prices exclude VAT; VAT at {vat}% is added to every invoice.",
+    ar: "الأسعار لا تشمل الضريبة، وتُضاف ضريبة القيمة المضافة بنسبة {vat}% على كل فاتورة." },
+  { key: "billing", group: "payment", on: true,
+    en: "The subscription is invoiced in advance at the start of each {cycle} period.",
+    ar: "يُفوتر الاشتراك مقدّماً في بداية كل فترة ({cycleAr})." },
+  { key: "payment_days", group: "payment", on: true, params: [{ k: "days", v: 15, en: "days", ar: "يوم" }],
+    en: "Payment is due within {days} days of the invoice date.",
+    ar: "يُستحق الدفع خلال {days} يوماً من تاريخ الفاتورة." },
+  { key: "deposit", group: "payment", on: false, params: [{ k: "pct", v: 50, en: "%", ar: "%" }],
+    en: "{pct}% of the one-time fees is payable on signing and the balance on go-live.",
+    ar: "تُدفع {pct}% من الرسوم لمرة واحدة عند التوقيع، والباقي عند التشغيل." },
+  { key: "late_fee", group: "payment", on: false, params: [{ k: "pct", v: 2, en: "%", ar: "%" }, { k: "days", v: 30, en: "days", ar: "يوم" }],
+    en: "Late payments may incur {pct}% per month, and the service may be suspended after {days} days overdue.",
+    ar: "قد تُفرض غرامة تأخير {pct}% شهرياً، ويجوز إيقاف الخدمة بعد تأخّر {days} يوماً." },
+  { key: "min_term", group: "contract", on: true, params: [{ k: "months", v: 3, en: "months", ar: "شهر" }],
+    en: "The minimum subscription period is {months} months.",
+    ar: "الحد الأدنى لمدة الاشتراك {months} أشهر." },
+  { key: "notice", group: "contract", on: true, params: [{ k: "days", v: 30, en: "days", ar: "يوم" }],
+    en: "After the minimum period the subscription renews automatically and can be cancelled with {days} days' written notice.",
+    ar: "بعد الحد الأدنى يتجدد الاشتراك تلقائياً، ويمكن إلغاؤه بإشعار خطي قبل {days} يوماً." },
+  { key: "price_lock", group: "contract", on: false, params: [{ k: "months", v: 12, en: "months", ar: "شهر" }, { k: "pct", v: 5, en: "%", ar: "%" }],
+    en: "Prices are fixed for {months} months; any later increase will not exceed {pct}% per year.",
+    ar: "الأسعار ثابتة لمدة {months} شهراً، وأي زيادة لاحقة لا تتجاوز {pct}% سنوياً." },
+  { key: "onboarding", group: "service", on: false, params: [{ k: "days", v: 10, en: "working days", ar: "يوم عمل" }],
+    en: "Go-live within {days} working days from signing and receipt of the required data.",
+    ar: "التشغيل خلال {days} يوم عمل من التوقيع واستلام البيانات المطلوبة." },
+  { key: "training", group: "service", on: false, params: [{ k: "hours", v: 4, en: "hours", ar: "ساعة" }],
+    en: "Includes {hours} hours of staff training (online or on-site).",
+    ar: "يشمل {hours} ساعات تدريب للموظفين (عن بُعد أو حضورياً)." },
+  { key: "support", group: "service", on: true, params: [{ k: "days", v: 6, en: "days / week", ar: "أيام / أسبوع" }, { k: "hours", v: 4, en: "hours", ar: "ساعة" }],
+    en: "Technical support is available {days} days a week, with a first response within {hours} working hours.",
+    ar: "الدعم الفني متاح {days} أيام في الأسبوع، مع استجابة أولى خلال {hours} ساعات عمل." },
+  { key: "uptime", group: "service", on: false, params: [{ k: "pct", v: 99.5, en: "%", ar: "%" }],
+    en: "Target platform availability is {pct}% per month, excluding planned maintenance.",
+    ar: "نسبة توفّر المنصة المستهدفة {pct}% شهرياً، باستثناء الصيانة المجدولة." },
+  { key: "updates", group: "service", on: false,
+    en: "All platform updates and new standard features are included at no extra cost.",
+    ar: "جميع تحديثات المنصة والميزات القياسية الجديدة مشمولة بدون تكلفة إضافية." },
+  { key: "data", group: "data", on: true, params: [{ k: "days", v: 30, en: "days", ar: "يوم" }],
+    en: "Company data is isolated per company and remains the client's property; a full export is provided within {days} days of termination.",
+    ar: "بيانات كل شركة معزولة وتبقى ملكاً للعميل، وتُسلَّم نسخة كاملة منها خلال {days} يوماً من انتهاء العقد." },
+  { key: "backup", group: "data", on: false, params: [{ k: "days", v: 30, en: "days", ar: "يوم" }],
+    en: "Data is backed up automatically every day and backups are kept for {days} days.",
+    ar: "تُؤخذ نسخة احتياطية من البيانات يومياً وتُحفظ لمدة {days} يوماً." },
+  { key: "scope", group: "data", on: true,
+    en: "Any report or feature outside the listed scope is quoted separately.",
+    ar: "أي تقرير أو ميزة خارج النطاق المذكور تُسعَّر بشكل منفصل." },
+  { key: "confidential", group: "data", on: false,
+    en: "Both parties keep this offer and all shared information confidential.",
+    ar: "يلتزم الطرفان بسرية هذا العرض وجميع المعلومات المتبادلة." },
+  { key: "law", group: "data", on: false,
+    en: "This agreement is governed by the laws of the United Arab Emirates.",
+    ar: "تخضع هذه الاتفاقية لقوانين دولة الإمارات العربية المتحدة." },
+];
+export const termTemplate = (key) => TERM_LIBRARY.find((t) => t.key === key) || null;
+
+let _seq = 0;
+const uid = (p) => `${p}${Date.now().toString(36)}${(++_seq).toString(36)}`;
+
+export function makeTerm(key, patch = {}) {
+  const tpl = termTemplate(key);
+  const params = {};
+  (tpl?.params || []).forEach((p) => { params[p.k] = p.v; });
+  return { id: uid("T"), key, on: tpl ? tpl.on : true, params, en: "", ar: "", ...patch };
+}
+
+export const makeCustomTerm = (en = "", ar = "") => ({ id: uid("T"), key: null, on: true, params: {}, en, ar });
+
+export const defaultTermsList = () => TERM_LIBRARY.map((t) => makeTerm(t.key));
+
+/* Sentence for one term, in one language, with every placeholder filled. */
+export function termText(term, q, lang = "en") {
+  const tpl = term.key ? termTemplate(term.key) : null;
+  const raw = (lang === "ar" ? term.ar : term.en) || (tpl ? tpl[lang] : "") || "";
+  const cyc = cycleById(q?.cycle);
+  const vars = {
+    vat: fmtNum(q?.vatPct),
+    cycle: cyc.en.toLowerCase(),
+    cycleAr: cyc.ar,
+    validUntil: dmy(validUntil(q)),
+    currency: q?.currency || "",
+    ...Object.fromEntries(Object.entries(term.params || {}).map(([k, v]) => [k, fmtNum(v)])),
+  };
+  return raw.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+}
+
+/* Old quotations stored terms as one text block — turn it into a list. */
+export function termsListOf(q) {
+  if (Array.isArray(q?.termsList)) return q.termsList;
+  const text = String(q?.terms || "").trim();
+  if (!text || text === LEGACY_DEFAULT_TERMS) return defaultTermsList();
+  return text.split(/\n+/).map((s) => s.trim()).filter(Boolean).map((line) => {
+    const i = line.search(/\s\/\s(?=[^/]*[؀-ۿ])/);
+    return i > 0 ? makeCustomTerm(line.slice(0, i), line.slice(i + 3)) : makeCustomTerm(line, "");
+  });
+}
+
+const LEGACY_DEFAULT_TERMS = [
   "Prices are exclusive of VAT unless stated; VAT is added at the rate shown. / الأسعار لا تشمل الضريبة إلا إذا ذُكر ذلك، وتُضاف الضريبة بالنسبة الموضّحة.",
   "Subscription is billed in advance for each billing period; payment is due within 15 days of the invoice. / يُفوتر الاشتراك مقدّماً عن كل فترة، والدفع خلال 15 يوماً من تاريخ الفاتورة.",
   "Minimum subscription period is 3 months, then renews automatically until cancelled with 30 days' written notice. / الحد الأدنى للاشتراك 3 أشهر، ويتجدد تلقائياً حتى الإلغاء بإشعار خطي قبل 30 يوماً.",
@@ -84,17 +213,19 @@ export const num = (v) => {
 
 export const round2 = (n) => Math.round((num(n) + Number.EPSILON) * 100) / 100;
 
+const fmtNum = (v) => String(round2(v)).replace(/\.0+$/, "");
+
 export function fmtMoney(n, currency) {
   const v = round2(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return currency ? `${v} ${currency}` : v;
 }
 
-let _lineSeq = 0;
-export const newLineId = () => `L${Date.now().toString(36)}${(++_lineSeq).toString(36)}`;
+export const newLineId = () => uid("L");
 
 export const emptyLine = (patch = {}) => ({
   id: newLineId(),
   kind: "recurring",
+  optional: false,
   titleEn: "",
   titleAr: "",
   details: "",
@@ -102,11 +233,11 @@ export const emptyLine = (patch = {}) => ({
   unit: "item",
   unitPrice: "",
   discountPct: "",
-  source: "",       // e.g. "card:daily" / "report:sweets-ph" / "plan:3" — for de-duplication
+  source: "",       // e.g. "card:daily" / "report:sweets-ph" / "svc:setup" — de-dupe + price book key
   ...patch,
 });
 
-export const emptyQuote = () => ({
+export const emptyQuote = (defaults = {}) => ({
   id: null,
   number: "",
   status: "draft",
@@ -129,21 +260,26 @@ export const emptyQuote = () => ({
   issuerTaxId: "",
   issuerEmail: "",
   issuerPhone: "",
+  preparedBy: "",
   // body
   title: "Food Safety & Quality Management System",
+  titleAr: "نظام إدارة سلامة الغذاء والجودة",
   intro: "",
   lines: [],
   discountPct: 0,
   vatPct: 5,
-  terms: DEFAULT_TERMS,
+  termsList: defaultTermsList(),
   notes: "",
   showArabic: true,
+  theme: "teal",
+  showLogo: true,
+  ...defaults,
 });
 
 /* ═══════════════════════════ Maths ═══════════════════════════
    One function, used by the editor, the preview, the PDF and the list, so
    every screen shows the same numbers. Excel re-derives them with live
-   formulas from the same inputs. */
+   formulas from the same inputs. Optional lines never count. */
 
 export function lineTotal(l) {
   const gross = num(l.qty) * num(l.unitPrice);
@@ -151,9 +287,11 @@ export function lineTotal(l) {
 }
 
 export function computeTotals(q) {
-  const lines = q?.lines || [];
+  const all = q?.lines || [];
+  const lines = all.filter((l) => !l.optional);
   const recurring = round2(lines.filter((l) => l.kind !== "one_time").reduce((s, l) => s + lineTotal(l), 0));
   const oneTime = round2(lines.filter((l) => l.kind === "one_time").reduce((s, l) => s + lineTotal(l), 0));
+  const optional = round2(all.filter((l) => l.optional).reduce((s, l) => s + lineTotal(l), 0));
   const dPct = num(q?.discountPct) / 100;
   const vPct = num(q?.vatPct) / 100;
 
@@ -171,11 +309,13 @@ export function computeTotals(q) {
   const months = Math.max(0, Math.round(num(q?.contractMonths)));
   const periods = cyc.months > 0 ? months / cyc.months : 0;
   const contractValue = round2(recurringTotal * periods + oneTimeTotal);
+  const monthlyEquivalent = cyc.months > 0 ? round2(recurringTotal / cyc.months) : 0;
+  const savings = round2((recurring + oneTime) * dPct + all.reduce((s, l) => s + (l.optional ? 0 : num(l.qty) * num(l.unitPrice) - lineTotal(l)), 0));
 
   return {
     recurring, recurringDiscount, recurringNet, recurringVat, recurringTotal,
     oneTime, oneTimeDiscount, oneTimeNet, oneTimeVat, oneTimeTotal,
-    periods, contractValue,
+    optional, periods, contractValue, monthlyEquivalent, savings,
     firstInvoice: round2(recurringTotal + oneTimeTotal),
   };
 }
@@ -185,6 +325,13 @@ export const validUntil = (q) => addDaysISO(q?.issueDate, q?.validDays);
 export function isExpired(q) {
   const vu = validUntil(q);
   return !!vu && vu < todayISO() && !["accepted", "rejected"].includes(q?.status);
+}
+
+export function daysLeft(q) {
+  const vu = validUntil(q);
+  if (!vu) return null;
+  const a = new Date(`${todayISO()}T00:00:00`), b = new Date(`${vu}T00:00:00`);
+  return Math.round((b - a) / 86400000);
 }
 
 /* Next number in the Q-YYYY-NNN series, based on what is already stored. */
@@ -198,6 +345,67 @@ export function nextQuoteNumber(existing = [], issueDate = todayISO()) {
   return `Q-${year}-${String(max + 1).padStart(3, "0")}`;
 }
 
+/* ═══════════════════════════ Smart checks ═══════════════════════════
+   Plain-language hints shown next to the editor. level: err | warn | tip. */
+
+export function quoteInsights(q) {
+  const out = [];
+  const add = (level, en, ar) => out.push({ level, en, ar });
+  const lines = q?.lines || [];
+  const t = computeTotals(q);
+
+  if (!String(q?.clientName || "").trim()) add("err", "Client name is missing.", "اسم العميل ناقص.");
+  if (!lines.length) add("err", "No items yet — add the company's cards or use Smart build.", "لا توجد بنود — أضف كروت الشركة أو استخدم البناء الذكي.");
+  const zero = lines.filter((l) => !num(l.unitPrice));
+  if (zero.length) add("warn", `${zero.length} line(s) have no price.`, `${zero.length} بند بدون سعر.`);
+  const noTitle = lines.filter((l) => !String(l.titleEn || l.titleAr).trim());
+  if (noTitle.length) add("err", `${noTitle.length} line(s) have no description.`, `${noTitle.length} بند بدون وصف.`);
+  if (!String(q?.clientEmail || "").trim()) add("tip", "Add the client's e-mail so the quotation can be sent.", "أضف إيميل العميل لإرسال العرض.");
+  if (isExpired(q)) add("warn", "The validity date has passed — extend it before sending.", "انتهت صلاحية العرض — مدّدها قبل الإرسال.");
+  const dl = daysLeft(q);
+  if (dl != null && dl >= 0 && dl <= 3 && q?.status !== "accepted") add("tip", `Valid for only ${dl} more day(s).`, `صالح لـ ${dl} يوم فقط.`);
+  if (num(q?.discountPct) > 25) add("warn", `Overall discount is ${num(q.discountPct)}% — double-check it.`, `الخصم الإجمالي ${num(q.discountPct)}% — تأكد منه.`);
+  const bigLineDisc = lines.filter((l) => num(l.discountPct) > 40);
+  if (bigLineDisc.length) add("warn", `${bigLineDisc.length} line(s) discounted over 40%.`, `${bigLineDisc.length} بند خصمه أكثر من 40%.`);
+  const terms = termsListOf(q);
+  const minTerm = terms.find((x) => x.on && x.key === "min_term");
+  const cyc = cycleById(q?.cycle);
+  if (minTerm && cyc.months > 0 && num(minTerm.params?.months) > num(q?.contractMonths)) {
+    add("warn", "Minimum period in the terms is longer than the contract term.", "الحد الأدنى بالشروط أطول من مدة العقد.");
+  }
+  if (!terms.some((x) => x.on)) add("tip", "No terms are enabled.", "لا توجد شروط مفعّلة.");
+  const seen = new Set();
+  const dupes = lines.filter((l) => { const k = (l.source || l.titleEn || "").toLowerCase(); if (!k) return false; if (seen.has(k)) return true; seen.add(k); return false; });
+  if (dupes.length) add("tip", `${dupes.length} duplicated line(s).`, `${dupes.length} بند مكرر.`);
+  if (t.recurring > 0 && cyc.id === "monthly" && num(q?.contractMonths) >= 12 && !num(q?.discountPct)) {
+    add("tip", "12+ month contract — consider a small loyalty discount or yearly billing.", "عقد 12 شهر أو أكثر — فكّر بخصم بسيط أو فوترة سنوية.");
+  }
+  if (!out.some((x) => x.level !== "tip")) add("ok", "Ready to send.", "جاهز للإرسال.");
+  return out;
+}
+
+/* Short text version — for WhatsApp / e-mail body / clipboard. */
+export function quoteSummaryText(q, lang = "en") {
+  const t = computeTotals(q);
+  const cyc = cycleById(q.cycle);
+  const ar = lang === "ar";
+  const rows = (q.lines || []).filter((l) => !l.optional).map((l, i) =>
+    `${i + 1}. ${(ar && l.titleAr) || l.titleEn} — ${fmtNum(l.qty)} × ${fmtMoney(l.unitPrice)} = ${fmtMoney(lineTotal(l), q.currency)}`);
+  return [
+    `${ar ? "عرض سعر" : "Quotation"} ${q.number} — ${q.clientName}`,
+    `${ar ? "التاريخ" : "Date"}: ${dmy(q.issueDate)} · ${ar ? "صالح حتى" : "Valid until"}: ${dmy(validUntil(q))}`,
+    "",
+    ...rows,
+    "",
+    t.recurring ? `${ar ? "الإجمالي" : "Total"} ${ar ? cyc.perAr : cyc.perEn}: ${fmtMoney(t.recurringTotal, q.currency)}` : "",
+    t.oneTime ? `${ar ? "رسوم لمرة واحدة" : "One-time"}: ${fmtMoney(t.oneTimeTotal, q.currency)}` : "",
+    t.recurring && cyc.months ? `${ar ? "قيمة العقد" : "Contract value"} (${fmtNum(q.contractMonths)} ${ar ? "شهر" : "months"}): ${fmtMoney(t.contractValue, q.currency)}` : "",
+    num(q.vatPct) ? (ar ? `(شامل ضريبة ${fmtNum(q.vatPct)}%)` : `(incl. ${fmtNum(q.vatPct)}% VAT)`) : "",
+    "",
+    q.issuerName || "",
+  ].filter((x, i, a) => x !== "" || (a[i - 1] !== "" && i > 0)).join("\n").trim();
+}
+
 /* ═══════════════════════════ Storage ═══════════════════════════ */
 
 const scoped = (path) => `${API_BASE}${path}${path.includes("?") ? "&" : "?"}company_id=${OWNER_COMPANY_ID}`;
@@ -209,17 +417,17 @@ function unwrapRows(data) {
 
 export function quoteFromRecord(rec) {
   const p = rec?.payload || {};
-  const base = emptyQuote();
-  const q = { ...base, ...p };
+  const q = { ...emptyQuote(), ...p };
   q.id = rec?.id ?? null;
   q.lines = Array.isArray(p.lines) ? p.lines.map((l) => ({ ...emptyLine(), ...l, id: l.id || newLineId() })) : [];
+  q.termsList = termsListOf(p);
   q.createdAt = rec?.created_at || rec?.createdAt || null;
   q.updatedAt = p._clientSavedAt || rec?.updated_at || null;
   return q;
 }
 
 function toPayload(q) {
-  const { id, createdAt, updatedAt, ...rest } = q; // eslint-disable-line no-unused-vars
+  const { id, createdAt, updatedAt, terms, ...rest } = q; // eslint-disable-line no-unused-vars
   return {
     ...rest,
     // unique per row: the reports table is unique on (company, type, reportDate)
@@ -257,6 +465,65 @@ export async function apiDeleteQuote(id) {
   const res = await fetch(scoped(`/api/reports/${Number(id)}`), { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error(`Delete failed (${res.status})`);
   return true;
+}
+
+/* ─────────── Settings row: price book, logo, defaults ─────────── */
+
+export const emptyConfig = () => ({ priceBook: {}, logo: "", defaults: {} });
+
+export async function apiLoadConfig() {
+  try {
+    const res = await fetch(scoped(`/api/reports?type=${CONFIG_TYPE}&limit=20`), { cache: "no-store" });
+    if (!res.ok) return emptyConfig();
+    const rows = unwrapRows(await res.json());
+    const rec = rows.find((r) => r?.payload && (r.payload.priceBook || r.payload.defaults || r.payload.logo));
+    return rec ? { ...emptyConfig(), ...rec.payload } : emptyConfig();
+  } catch {
+    return emptyConfig();
+  }
+}
+
+export async function apiSaveConfig(cfg) {
+  const payload = { ...emptyConfig(), ...cfg, reportDate: CONFIG_KEY, _clientSavedAt: Date.now() };
+  const res = await fetch(scoped(`/api/reports`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter: "billing", type: CONFIG_TYPE, payload, companyId: OWNER_COMPANY_ID }),
+  });
+  await readJson(res, "Save failed");
+  return payload;
+}
+
+/* The key a line's price is remembered under. */
+export const priceKey = (l) => l?.source || (l?.titleEn ? `title:${String(l.titleEn).trim().toLowerCase()}` : "");
+
+export const priceFor = (priceBook, key) => {
+  const v = priceBook?.[key];
+  const n = typeof v === "object" ? v?.price : v;
+  return n === undefined || n === null || n === "" ? "" : num(n);
+};
+
+/* Shrink an uploaded logo to ≤ 360px so it can live in the settings row. */
+export function readLogoFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) { reject(new Error("Please choose an image file.")); return; }
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("Could not read the file."));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not open the image."));
+      img.onload = () => {
+        const max = 360;
+        const k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
 }
 
 /* ═══════════════════════════ Module catalogue ═══════════════════════════
@@ -328,11 +595,51 @@ export function moduleCatalog(industry) {
 
 /* Extra platform services that are not tied to a card. */
 export const SERVICE_PRESETS = [
-  { key: "svc:branch",   kind: "recurring", unit: "branch",  titleEn: "Platform subscription — per branch / site", titleAr: "اشتراك المنصة — لكل فرع / موقع" },
-  { key: "svc:users",    kind: "recurring", unit: "user",    titleEn: "Additional user accounts",                  titleAr: "حسابات مستخدمين إضافية" },
-  { key: "svc:hosting",  kind: "recurring", unit: "service", titleEn: "Cloud hosting, daily backups & e-mail sending", titleAr: "الاستضافة السحابية والنسخ الاحتياطي اليومي وإرسال الإيميلات" },
-  { key: "svc:support",  kind: "recurring", unit: "service", titleEn: "Technical support & maintenance",           titleAr: "الدعم الفني والصيانة" },
-  { key: "svc:setup",    kind: "one_time",  unit: "service", titleEn: "Setup, configuration & data migration",     titleAr: "التجهيز والإعداد وترحيل البيانات" },
-  { key: "svc:training", kind: "one_time",  unit: "hour",    titleEn: "On-site / online staff training",           titleAr: "تدريب الموظفين (حضوري / عن بعد)" },
-  { key: "svc:custom",   kind: "one_time",  unit: "item",    titleEn: "Custom report / form development",          titleAr: "تطوير تقرير / نموذج مخصص" },
+  { key: "svc:branch",    kind: "recurring", unit: "branch",  icon: "🏬", titleEn: "Platform subscription — per branch / site", titleAr: "اشتراك المنصة — لكل فرع / موقع" },
+  { key: "svc:users",     kind: "recurring", unit: "user",    icon: "👥", titleEn: "Additional user accounts",                  titleAr: "حسابات مستخدمين إضافية" },
+  { key: "svc:hosting",   kind: "recurring", unit: "service", icon: "☁️", titleEn: "Cloud hosting, daily backups & e-mail sending", titleAr: "الاستضافة السحابية والنسخ الاحتياطي اليومي وإرسال الإيميلات" },
+  { key: "svc:support",   kind: "recurring", unit: "service", icon: "🛟", titleEn: "Technical support & maintenance",           titleAr: "الدعم الفني والصيانة" },
+  { key: "svc:whatsapp",  kind: "recurring", unit: "service", icon: "💬", titleEn: "Automatic e-mail / WhatsApp alerts",        titleAr: "تنبيهات تلقائية بالإيميل / واتساب" },
+  { key: "svc:setup",     kind: "one_time",  unit: "service", icon: "🧰", titleEn: "Setup, configuration & data migration",     titleAr: "التجهيز والإعداد وترحيل البيانات" },
+  { key: "svc:training",  kind: "one_time",  unit: "hour",    icon: "🎓", titleEn: "On-site / online staff training",           titleAr: "تدريب الموظفين (حضوري / عن بعد)" },
+  { key: "svc:custom",    kind: "one_time",  unit: "item",    icon: "🧩", titleEn: "Custom report / form development",          titleAr: "تطوير تقرير / نموذج مخصص" },
+  { key: "svc:branding",  kind: "one_time",  unit: "service", icon: "🎨", titleEn: "Company branding (logo, colours, PDF headers)", titleAr: "هوية الشركة (الشعار والألوان وترويسة التقارير)" },
+  { key: "svc:tablet",    kind: "one_time",  unit: "item",    icon: "📱", titleEn: "Tablet device for data entry",             titleAr: "جهاز تابلت لإدخال البيانات" },
 ];
+
+/* ═══════════════════════════ Smart build ═══════════════════════════
+   One form → a complete, priced set of lines. Prices come from the price
+   book; anything without a remembered price is left blank (yellow in the
+   editor) rather than guessed. */
+
+export function smartBuildLines({ industry, branches = 1, users = 0, modules = "lines", hosting = true, support = true, setup = true, trainingHours = 0, priceBook = {} }) {
+  const out = [];
+  const pb = (key) => priceFor(priceBook, key);
+  const preset = (key, patch = {}) => {
+    const p = SERVICE_PRESETS.find((x) => x.key === key);
+    return emptyLine({ kind: p.kind, unit: p.unit, titleEn: p.titleEn, titleAr: p.titleAr, source: p.key, unitPrice: pb(p.key), ...patch });
+  };
+
+  if (num(branches) > 0) out.push(preset("svc:branch", { qty: num(branches) }));
+
+  const cat = moduleCatalog(industry || "meat");
+  if (modules === "lines") {
+    cat.forEach((m) => out.push(emptyLine({
+      kind: "recurring", unit: "module", titleEn: m.titleEn, titleAr: m.titleAr, details: m.details,
+      source: m.key, unitPrice: pb(m.key),
+    })));
+  } else if (modules === "bundle" && cat.length) {
+    const key = `bundle:${industry || "meat"}`;
+    out.push(emptyLine({
+      kind: "recurring", unit: "service", titleEn: `System modules package (${cat.length} modules)`, titleAr: `باقة وحدات النظام (${cat.length} وحدة)`,
+      details: cat.map((m) => m.titleEn).join(" · "), source: key, unitPrice: pb(key),
+    }));
+  }
+
+  if (num(users) > 0) out.push(preset("svc:users", { qty: num(users) }));
+  if (hosting) out.push(preset("svc:hosting"));
+  if (support) out.push(preset("svc:support"));
+  if (setup) out.push(preset("svc:setup"));
+  if (num(trainingHours) > 0) out.push(preset("svc:training", { qty: num(trainingHours) }));
+  return out;
+}

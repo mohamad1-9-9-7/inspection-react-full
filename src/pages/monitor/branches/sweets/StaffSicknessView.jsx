@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/StaffSicknessView.jsx
+// src/pages/monitor/branches/sweets/StaffSicknessView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
@@ -317,7 +317,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             {hTop.documentTitle || "Staff Sickness Form"}
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
-            Doc No: <b>{hTop.documentNo || "AM/BK/CK/SS/1"}</b> · Issue: <b>05/05/2022</b> · Area: <b>{hTop.area || "Central Kitchen"}</b>
+            Doc No: <b>{hTop.documentNo || "SW-QA-SS-01"}</b> · Area: <b>{hTop.area || "QA"}</b>
           </div>
         </div>
         {canDelete("daily") && (
@@ -460,7 +460,7 @@ function SignBox({ title, name, date }) {
 }
 
 /* ===== Main ===== */
-export default function StaffSicknessView({ type = TYPE, reporter = "qcs" } = {}) {
+export default function StaffSicknessView({ type = TYPE, reporter = "sweets" } = {}) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
@@ -476,7 +476,7 @@ export default function StaffSicknessView({ type = TYPE, reporter = "qcs" } = {}
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       const res = await fetch(
-        `${API_BASE}/api/reports?reporter=${encodeURIComponent(reporter)}&type=${encodeURIComponent(type)}`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
         { cache: "no-store", signal: abortRef.current.signal }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -542,7 +542,7 @@ export default function StaffSicknessView({ type = TYPE, reporter = "qcs" } = {}
           🩺 Staff Sickness — Records
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-          Central Kitchen · AM/BK/CK/SS/1 · Staff Sickness / Occupational Injury Record
+          Staff Sickness / Occupational Injury Record
         </p>
       </div>
 

@@ -16,6 +16,7 @@ import {
   listReports,
   payloadOf,
   reportId,
+  REPORTS_MAX_LIMIT,
 } from "../_shared/reportApi";
 
 const REPORT_TYPE_KEY = "pos_al_qusais_fresh_chicken_receiving";
@@ -187,7 +188,7 @@ export default function FreshChickenReportsView() {
   async function loadReports() {
     try {
       setLoading(true);
-      const rows = (await listReports(REPORT_TYPE_KEY)).map((r) => ({
+      const rows = (await listReports(REPORT_TYPE_KEY, { limit: REPORTS_MAX_LIMIT })).map((r) => ({
         id: reportId(r),
         payload: payloadOf(r),
       }));
