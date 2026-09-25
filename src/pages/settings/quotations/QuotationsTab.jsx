@@ -23,10 +23,17 @@ import {
   apiDeleteQuote, apiListQuotes, apiLoadConfig, apiSaveConfig, apiSaveQuote, computeTotals, cycleById,
   daysLeft, defaultTermsList, dmy, emptyConfig, emptyLine, emptyQuote, fmtMoney, isExpired, lineTotal,
   makeCustomTerm, makeTerm, moduleCatalog, newLineId, nextQuoteNumber, num, priceFor, priceKey,
-  quoteInsights, quoteSummaryText, readLogoFile, smartBuildLines, statusById, termTemplate, termText,
+  quoteInsights, quoteSummaryText, smartBuildLines, statusById, termTemplate, termText,
   termsListOf, themeById, todayISO, validUntil,
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
+import { allowedVatPct, loadSeller, normalizeSeller } from "../_shared/sellerProfile";
+
+/* The logo on every quotation is INSPECT PRO's, from its profile. The old
+   per-quotation upload kept a base64 image inside the report row, which the
+   server now refuses — a URL left over from it is still honoured. */
+const logoOf = (seller, config) =>
+  seller?.logoUrl || (/^https?:///i.test(config?.logo || "") ? config.logo : "");
 
 /* ═══════════════════════════ Root ═══════════════════════════ */
 
@@ -45,7 +52,7 @@ export default function QuotationsTab() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [plans, setPlans] = useState([]);
-  const [profile, setProfile] = useState(null);
+  const [seller, setSeller] = useState(() => normalizeSeller(null));
   const [config, setConfig] = useState(emptyConfig());
 
   const flash = useCallback((text, kind = "ok") => {
@@ -60,13 +67,13 @@ export default function QuotationsTab() {
       apiListQuotes().catch((e) => { flash(e.message, "err"); return []; }),
       fetch(`${API_BASE}/api/companies`).then((r) => r.json()).catch(() => ({})),
       fetch(`${API_BASE}/api/plans`).then((r) => r.json()).catch(() => ({})),
-      fetch(`${API_BASE}/api/billing-profile`).then((r) => r.json()).catch(() => ({})),
+      loadSeller().catch(() => normalizeSeller(null)),
       apiLoadConfig(),
     ]);
     setQuotes(q);
     setCompanies(c?.ok ? c.companies || [] : []);
     setPlans(p?.ok ? (p.plans || []).filter((x) => x.is_active !== false) : []);
-    setProfile(bp?.profile || bp?.data || null);
+    setSeller(bp);
     setConfig(cfg);
     setLoading(false);
   }, [flash]);
@@ -84,7 +91,7 @@ export default function QuotationsTab() {
     const has = (v) => v !== undefined && v !== null && v !== "";
     const q = emptyQuote({
       ...(has(d.currency) ? { currency: d.currency } : {}),
-      ...(has(d.vatPct) ? { vatPct: d.vatPct } : {}),
+
       ...(has(d.validDays) ? { validDays: d.validDays } : {}),
       ...(has(d.theme) ? { theme: d.theme } : {}),
       ...(has(d.cycle) ? { cycle: d.cycle } : {}),
@@ -94,11 +101,13 @@ export default function QuotationsTab() {
     return {
       ...q,
       number: nextQuoteNumber(quotes),
-      issuerName: profile?.company_name || "",
-      issuerAddress: profile?.company_address || "",
-      issuerTaxId: profile?.tax_id || "",
-      issuerEmail: profile?.contact_email || "",
-      issuerPhone: profile?.contact_phone || "",
+      // Not VAT-registered → 0 %, whatever the saved default says.
+      vatPct: allowedVatPct(seller, has(d.vatPct) ? d.vatPct : 5),
+      issuerName: seller.name,
+      issuerAddress: seller.address,
+      issuerTaxId: seller.vatRegistered ? seller.trn : "",
+      issuerEmail: seller.email,
+      issuerPhone: seller.phone,
     };
   };
 
@@ -144,6 +153,7 @@ export default function QuotationsTab() {
           plans={plans}
           existing={quotes}
           config={config}
+          seller={seller}
           saveConfig={saveConfig}
           startSmart={openSmart}
           onCancel={() => setEditing(null)}
@@ -169,7 +179,7 @@ export default function QuotationsTab() {
       )}
 
       {settingsOpen && (
-        <SettingsModal config={config} onClose={() => setSettingsOpen(false)} onSave={async (c) => { if (await saveConfig(c)) { setSettingsOpen(false); flash(t({ en: "Settings saved", ar: "تم حفظ الإعدادات" })); } }} />
+        <SettingsModal config={config} seller={seller} onClose={() => setSettingsOpen(false)} onSave={async (c) => { if (await saveConfig(c)) { setSettingsOpen(false); flash(t({ en: "Settings saved", ar: "تم حفظ الإعدادات" })); } }} />
       )}
       <Toast toast={toast} />
     </div>
@@ -213,7 +223,7 @@ function QuoteList({ quotes, loading, config, onNew, onSmart, onSettings, onOpen
   }, [quotes]);
 
   const run = async (key, fn) => { setBusy(key); try { await fn(); } catch (e) { flash(e?.message || String(e), "err"); } setBusy(""); };
-  const opts = { logo: config.logo };
+  const opts = { logo: logoOf(seller, config) };
 
   return (
     <>
@@ -361,7 +371,7 @@ function useIsWide(min = 1280) {
   return wide;
 }
 
-function QuoteEditor({ initial, companies, plans, existing, config, saveConfig, startSmart, onCancel, onSaved, onDuplicate, flash }) {
+function QuoteEditor({ initial, companies, plans, existing, config, seller, saveConfig, startSmart, onCancel, onSaved, onDuplicate, flash }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
   const [q, setQ] = useState(() => ({ ...initial, termsList: termsListOf(initial) }));
@@ -380,13 +390,14 @@ function QuoteEditor({ initial, companies, plans, existing, config, saveConfig, 
   const addLines = (lines) => set((cur) => ({ lines: [...cur.lines, ...lines] }));
 
   const totals = useMemo(() => computeTotals(q), [q]);
-  const insights = useMemo(() => quoteInsights(q), [q]);
+  const insights = useMemo(() => quoteInsights(q, seller), [q, seller]);
   const cyc = cycleById(q.cycle);
   const th = themeById(q.theme);
   const company = companies.find((c) => String(c.id) === String(q.companyId)) || null;
   const plan = company ? plans.find((p) => String(p.id) === String(company.plan_id)) : null;
   const priceBook = config.priceBook || {};
-  const opts = useMemo(() => ({ logo: config.logo }), [config.logo]);
+  const logo = logoOf(seller, config);
+  const opts = useMemo(() => ({ logo }), [logo]);
 
   const pickCompany = (id) => {
     const c = companies.find((x) => String(x.id) === String(id));
@@ -618,7 +629,13 @@ function QuoteEditor({ initial, companies, plans, existing, config, saveConfig, 
                 <Stepper value={q.discountPct} step={0.5} max={100} onChange={(v) => set({ discountPct: v })} presets={[0, 5, 10, 15, 20]} suffix="%" />
               </Field>
               <Field label={L("VAT %", "الضريبة %")}>
-                <Stepper value={q.vatPct} step={0.5} max={100} onChange={(v) => set({ vatPct: v })} presets={[0, 5, 15]} suffix="%" />
+                {seller?.vatRegistered || num(q.vatPct) ? (
+                  <Stepper value={q.vatPct} step={0.5} max={100} onChange={(v) => set({ vatPct: seller?.vatRegistered ? v : Math.min(v, num(q.vatPct)) })} presets={seller?.vatRegistered ? [0, 5] : [0]} suffix="%" />
+                ) : (
+                  <div className="bpx-sm" style={S.vatLocked} title={L("Turn on VAT registration in the INSPECT PRO profile tab first.", "فعّل التسجيل بالضريبة من تبويب هوية INSPECT PRO أولاً.")}>
+                    0 % · {L("not VAT registered", "غير مسجّل بالضريبة")}
+                  </div>
+                )}
               </Field>
             </div>
             <div style={S.totalsRow}>
@@ -670,10 +687,10 @@ function QuoteEditor({ initial, companies, plans, existing, config, saveConfig, 
                 <Segmented value={q.showArabic === false ? "en" : "both"} onChange={(v) => set({ showArabic: v === "both" })} options={[{ id: "both", label: "EN + ع" }, { id: "en", label: "English" }]} />
               </Field>
               <Field label={L("Logo on the document", "الشعار على المستند")}>
-                <Segmented value={q.showLogo === false ? "off" : "on"} onChange={(v) => set({ showLogo: v === "on" })} options={[{ id: "on", label: config.logo ? L("Show", "إظهار") : L("Initials", "الأحرف") }, { id: "off", label: L("Hide", "إخفاء") }]} />
+                <Segmented value={q.showLogo === false ? "off" : "on"} onChange={(v) => set({ showLogo: v === "on" })} options={[{ id: "on", label: logo ? L("Show", "إظهار") : L("Initials", "الأحرف") }, { id: "off", label: L("Hide", "إخفاء") }]} />
               </Field>
-              <Field label={L("Upload logo (all quotations)", "رفع شعار (لكل العروض)")}>
-                <LogoUpload logo={config.logo} onChange={async (logo) => { if (await saveConfig({ ...config, logo })) flash(logo ? L("Logo saved", "تم حفظ الشعار") : L("Logo removed", "تم حذف الشعار")); }} flash={flash} />
+              <Field label={L("Logo", "الشعار")}>
+                <LogoFromProfile logo={logo} />
               </Field>
             </div>
             <div style={{ ...S.grid2, marginTop: 12 }}>
@@ -685,10 +702,10 @@ function QuoteEditor({ initial, companies, plans, existing, config, saveConfig, 
                 placeholder={L("e.g. Thank you for your interest. Please find our offer below…", "مثال: نشكركم على اهتمامكم، نرفق لكم عرضنا أدناه…")} />
             </Field>
             <details style={{ marginTop: 14 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 900, color: "#0f766e" }}>🏢 {L("Issued by (from Billing Settings)", "صادر عن (من إعدادات الفوترة)")}</summary>
+              <summary style={{ cursor: "pointer", fontWeight: 900, color: "#0f766e" }}>🏢 {L("Issued by (from the INSPECT PRO profile)", "صادر عن (من هوية INSPECT PRO)")}</summary>
               <div style={{ ...S.grid2, marginTop: 10 }}>
                 <Field label={L("Company", "الشركة")}><input style={S.input} value={q.issuerName} onChange={(e) => set({ issuerName: e.target.value })} /></Field>
-                <Field label={L("Tax / TRN", "الرقم الضريبي")}><input style={S.input} value={q.issuerTaxId} onChange={(e) => set({ issuerTaxId: e.target.value })} /></Field>
+                {(seller?.vatRegistered || q.issuerTaxId) && <Field label={L("Tax / TRN", "الرقم الضريبي")}><input style={S.input} value={q.issuerTaxId} onChange={(e) => set({ issuerTaxId: e.target.value })} /></Field>}
                 <Field label={L("Email", "الإيميل")}><input style={S.input} value={q.issuerEmail} onChange={(e) => set({ issuerEmail: e.target.value })} /></Field>
                 <Field label={L("Phone", "الهاتف")}><input style={S.input} value={q.issuerPhone} onChange={(e) => set({ issuerPhone: e.target.value })} /></Field>
               </div>
@@ -1184,7 +1201,7 @@ function PreviewModal({ q, opts, busy, onClose, onPdf, onXlsx, onPrint }) {
   );
 }
 
-function SettingsModal({ config, onClose, onSave }) {
+function SettingsModal({ config, seller, onClose, onSave }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
   const [c, setC] = useState(() => ({ ...emptyConfig(), ...config, defaults: { ...(config.defaults || {}) }, priceBook: { ...(config.priceBook || {}) } }));
@@ -1205,14 +1222,18 @@ function SettingsModal({ config, onClose, onSave }) {
           <div style={{ fontWeight: 1000, marginBottom: 10 }}>🧭 {L("Defaults", "القيم الافتراضية")}</div>
           <div style={S.grid2}>
             <Field label={L("Currency", "العملة")}><select style={S.input} value={d.currency || "AED"} onChange={(e) => setD({ currency: e.target.value })}>{CURRENCIES.map((x) => <option key={x}>{x}</option>)}</select></Field>
-            <Field label={L("VAT %", "الضريبة %")}><input type="number" step="any" style={S.input} value={d.vatPct ?? 5} onChange={(e) => setD({ vatPct: e.target.value })} /></Field>
+            <Field label={L("VAT %", "الضريبة %")}>
+              {seller?.vatRegistered
+                ? <input type="number" step="any" style={S.input} value={d.vatPct ?? 5} onChange={(e) => setD({ vatPct: e.target.value })} />
+                : <div className="bpx-sm" style={S.vatLocked}>0 % · {L("not VAT registered", "غير مسجّل بالضريبة")}</div>}
+            </Field>
             <Field label={L("Valid for (days)", "الصلاحية (يوم)")}><input type="number" style={S.input} value={d.validDays ?? 30} onChange={(e) => setD({ validDays: e.target.value })} /></Field>
             <Field label={L("Contract (months)", "مدة العقد")}><input type="number" style={S.input} value={d.contractMonths ?? 12} onChange={(e) => setD({ contractMonths: e.target.value })} /></Field>
             <Field label={L("Billing cycle", "دورة الفوترة")}><select style={S.input} value={d.cycle || "monthly"} onChange={(e) => setD({ cycle: e.target.value })}>{BILLING_CYCLES.map((x) => <option key={x.id} value={x.id}>{lang === "ar" ? x.ar : x.en}</option>)}</select></Field>
             <Field label={L("Theme", "اللون")}><select style={S.input} value={d.theme || "teal"} onChange={(e) => setD({ theme: e.target.value })}>{THEMES.map((x) => <option key={x.id} value={x.id}>{lang === "ar" ? x.ar : x.en}</option>)}</select></Field>
           </div>
           <Field label={L("Logo", "الشعار")} style={{ marginTop: 12 }}>
-            <LogoUpload logo={c.logo} onChange={(logo) => setC((cur) => ({ ...cur, logo }))} />
+            <LogoFromProfile logo={logoOf(seller, c)} />
           </Field>
         </div>
 
@@ -1247,22 +1268,18 @@ function SettingsModal({ config, onClose, onSave }) {
 
 /* ═══════════════════════════ Small pieces ═══════════════════════════ */
 
-function LogoUpload({ logo, onChange, flash }) {
+/* The logo belongs to INSPECT PRO's profile; quotations only show it. */
+function LogoFromProfile({ logo }) {
   const { t } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
-  const ref = useRef(null);
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
       <div style={{ width: 54, height: 54, borderRadius: 12, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff" }}>
         {logo ? <img src={logo} alt="" style={{ maxWidth: 48, maxHeight: 48 }} /> : <span style={{ color: "#94a3b8" }}>—</span>}
       </div>
-      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
-        try { onChange(await readLogoFile(file)); } catch (err) { if (flash) flash(err.message, "err"); else window.alert(err.message); }
-      }} />
-      <Btn tone="soft" onClick={() => ref.current?.click()}>⬆ {logo ? L("Change", "تغيير") : L("Upload", "رفع")}</Btn>
-      {logo && <button type="button" style={{ ...S.linkBtn, color: "#b91c1c" }} onClick={() => onChange("")}>{L("Remove", "حذف")}</button>}
+      <span className="bpx-xs" style={{ color: "#64748b", fontWeight: 700 }}>
+        {L("Change it in the “INSPECT PRO profile” tab.", "بتغيّره من تبويب «هوية INSPECT PRO».")}
+      </span>
     </div>
   );
 }
@@ -1450,6 +1467,7 @@ const S = {
   addBar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
   bulkBar: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", padding: "8px 12px", borderRadius: 12, background: "#f8fafc", border: "1px dashed #cbd5e1", marginBottom: 12 },
   countPill: { display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "#f1f5f9", color: "#334155", fontWeight: 900 },
+  vatLocked: { minHeight: 48, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", fontWeight: 900 },
   empty: { padding: 22, textAlign: "center", color: "#94a3b8", fontWeight: 800, border: "1px dashed #cbd5e1", borderRadius: 14 },
   emptyBig: { padding: "34px 20px", textAlign: "center", color: "#475569", border: "2px dashed #cbd5e1", borderRadius: 18, background: "#f8fafc", marginBottom: 12 },
   line: (l) => ({

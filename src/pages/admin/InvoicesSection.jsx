@@ -178,104 +178,6 @@ function downloadInvoicePdf(inv) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   BILLING SETTINGS MODAL
-═════════════════════════════════════════════════════════════ */
-function BillingSettingsModal({ profile, onClose, onSaved }) {
-  const { t, dir } = useSettingsLang();
-  const [form, setForm] = useState(() => ({
-    company_name:    profile?.company_name    || "",
-    company_address: profile?.company_address || "",
-    tax_id:          profile?.tax_id          || "",
-    contact_email:   profile?.contact_email   || "",
-    contact_phone:   profile?.contact_phone   || "",
-    notes:           profile?.notes           || "",
-  }));
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  async function save() {
-    setSaving(true); setErr("");
-    try {
-      const r = await fetch(`${API_BASE}/api/billing-profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const d = await r.json();
-      if (d.ok) {
-        await logSettingsAudit({
-          area: "billing_profile",
-          action: "update_billing_profile",
-          target: form.company_name || "billing profile",
-          before: profile,
-          after: d.profile || form,
-          reason: "Billing profile updated",
-        });
-        onSaved(d.profile);
-      }
-      else setErr(t("invBpSaveFail"));
-    } catch {
-      setErr(t("invBpSaveFail"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={ui.overlay} onClick={onClose}>
-      <div style={ui.modal} dir={dir} onClick={e => e.stopPropagation()}>
-        <h3 style={{ ...ui.h3, marginBottom: 6 }}>⚙️ {t("invBpTitle")}</h3>
-        <p style={ui.desc}>{t("invBpDesc")}</p>
-
-        {err && <div style={{ ...ui.msg(false), marginTop: 14 }}>{err}</div>}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 16 }}>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={ui.label}>{t("invBpCompanyName")} *</label>
-            <input style={ui.input} value={form.company_name}
-              onChange={e => set("company_name", e.target.value)} />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={ui.label}>{t("invBpAddress")}</label>
-            <input style={ui.input} value={form.company_address}
-              onChange={e => set("company_address", e.target.value)} />
-          </div>
-          <div>
-            <label style={ui.label}>{t("invBpTaxId")}</label>
-            <input style={ui.input} value={form.tax_id}
-              onChange={e => set("tax_id", e.target.value)} />
-          </div>
-          <div>
-            <label style={ui.label}>{t("invBpPhone")}</label>
-            <input style={ui.input} value={form.contact_phone}
-              onChange={e => set("contact_phone", e.target.value)} dir="ltr" />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={ui.label}>{t("invBpEmail")}</label>
-            <input style={ui.input} value={form.contact_email}
-              onChange={e => set("contact_email", e.target.value)} dir="ltr" />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={ui.label}>{t("invBpNotes")}</label>
-            <textarea style={{ ...ui.input, minHeight: 70, resize: "vertical" }}
-              value={form.notes} onChange={e => set("notes", e.target.value)} />
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={ui.btnSecondary}>{t("cancel")}</button>
-          <button onClick={save} disabled={saving} style={ui.btnPrimary}>
-            {saving ? t("saving") : `💾 ${t("save")}`}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
    ISSUE INVOICE MODAL
 ═════════════════════════════════════════════════════════════ */
 function IssueInvoiceModal({ profile, subscription, accountsCount, branchesCount, onClose, onIssued }) {
@@ -595,7 +497,6 @@ export default function InvoicesSection({ subscription }) {
   const [msg, setMsg] = useState(null); // { ok:bool, text }
 
   const [showIssue, setShowIssue]     = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [viewInvoice, setViewInvoice]   = useState(null);
 
   const load = useCallback(async () => {
@@ -642,9 +543,6 @@ export default function InvoicesSection({ subscription }) {
             <p style={ui.desc}>{t("invSectionDesc")}</p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => setShowSettings(true)} style={ui.btnGhost}>
-              ⚙️ {t("invBillingSettings")}
-            </button>
             <button onClick={() => setShowIssue(true)} style={ui.btnPrimary}>
               ➕ {t("invIssueNew")}
             </button>
@@ -708,13 +606,6 @@ export default function InvoicesSection({ subscription }) {
       </div>
 
       {/* Modals */}
-      {showSettings && (
-        <BillingSettingsModal
-          profile={profile}
-          onClose={() => setShowSettings(false)}
-          onSaved={(p) => { setProfile(p); setShowSettings(false); flash(true, t("invBpSaved")); }}
-        />
-      )}
       {showIssue && (
         <IssueInvoiceModal
           profile={profile}

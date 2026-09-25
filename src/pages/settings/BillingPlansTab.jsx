@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
+import { FiAward, FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
 import SubscriptionTab from "../admin/SubscriptionTab";
 import BillingOverviewTab from "./BillingOverviewTab";
 import CompaniesTab from "./CompaniesTab";
 import PlansTab from "./PlansTab";
 import QuotationsTab from "./quotations/QuotationsTab";
+import SellerProfileTab from "./SellerProfileTab";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { ui } from "./_shared/SettingsUIKit";
 
@@ -43,6 +44,13 @@ const TABS = [
     en: "Quotations",
     ar: "عروض الأسعار",
     render: () => <QuotationsTab />,
+  },
+  {
+    id: "seller",
+    Icon: FiAward,
+    en: "INSPECT PRO profile",
+    ar: "هوية INSPECT PRO",
+    render: () => <SellerProfileTab />,
   },
 ];
 

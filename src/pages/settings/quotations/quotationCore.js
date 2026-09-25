@@ -5,7 +5,7 @@
 //
 // Storage: the generic /api/reports store — type "billing_quotation" for the
 // quotations, "billing_quotation_config" for the single settings row (price
-// book, logo, default terms). Every call pins company_id=1 (the platform
+// book, default terms; the logo now lives in the INSPECT PRO profile). Every call pins company_id=1 (the platform
 // owner) so a super-admin who is currently "inside" another company still
 // reads and writes the one shared quotation book — authFetch leaves a URL
 // alone once it already carries company_id.
@@ -348,9 +348,17 @@ export function nextQuoteNumber(existing = [], issueDate = todayISO()) {
 /* ═══════════════════════════ Smart checks ═══════════════════════════
    Plain-language hints shown next to the editor. level: err | warn | tip. */
 
-export function quoteInsights(q) {
+export function quoteInsights(q, seller) {
   const out = [];
   const add = (level, en, ar) => out.push({ level, en, ar });
+  /* VAT is a legal matter, not a preference: only a registered seller may
+     charge it, and a registered one must show its TRN. */
+  if (seller && !seller.vatRegistered && num(q?.vatPct) > 0) {
+    add("err", "INSPECT PRO is not VAT registered — set VAT to 0 %.", "INSPECT PRO غير مسجّل بالضريبة — خلّي الضريبة 0٪.");
+  }
+  if (seller?.vatRegistered && num(q?.vatPct) > 0 && !String(q?.issuerTaxId || "").trim()) {
+    add("warn", "VAT is charged but no TRN is shown on the quotation.", "في ضريبة بس الرقم الضريبي مش ظاهر على العرض.");
+  }
   const lines = q?.lines || [];
   const t = computeTotals(q);
 
@@ -502,29 +510,6 @@ export const priceFor = (priceBook, key) => {
   const n = typeof v === "object" ? v?.price : v;
   return n === undefined || n === null || n === "" ? "" : num(n);
 };
-
-/* Shrink an uploaded logo to ≤ 360px so it can live in the settings row. */
-export function readLogoFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file || !/^image\//.test(file.type)) { reject(new Error("Please choose an image file.")); return; }
-    const fr = new FileReader();
-    fr.onerror = () => reject(new Error("Could not read the file."));
-    fr.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("Could not open the image."));
-      img.onload = () => {
-        const max = 360;
-        const k = Math.min(1, max / Math.max(img.width, img.height));
-        const c = document.createElement("canvas");
-        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL("image/png"));
-      };
-      img.src = fr.result;
-    };
-    fr.readAsDataURL(file);
-  });
-}
 
 /* ═══════════════════════════ Module catalogue ═══════════════════════════
    What a company actually runs, turned into quotation lines:
