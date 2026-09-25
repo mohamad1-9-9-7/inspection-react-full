@@ -58,20 +58,25 @@ const TAB_KEY = "billing_plans_tab";
 export const BILLING_CSS = `
 html:has(.bpx.bpx), html:has(.bpx.bpx) body, html:has(.bpx.bpx) #root{ overflow-x: clip !important; }
 #root .settings-new-page .settings-full-title{ font-size: 24px !important; }
-#root .bpx.bpx, #root .bpx.bpx *{ font-size: 18px !important; }
-#root .bpx.bpx{ font-weight: 700; line-height: 1.55; }
+#root .bpx.bpx, #root .bpx.bpx *{ font-size: 19px !important; }
+#root .bpx.bpx{ font-weight: 700; line-height: 1.6; color: #0f172a; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+#root .bpx.bpx [style*="color: rgb(148, 163, 184)"]{ color: #475569 !important; }
+#root .bpx.bpx [style*="color: rgb(100, 116, 139)"]{ color: #334155 !important; }
 #root .bpx.bpx .bpx-xxl, #root .bpx.bpx .bpx-xxl *{ font-size: 34px !important; }
 #root .bpx.bpx .bpx-xl,  #root .bpx.bpx .bpx-xl *{ font-size: 28px !important; }
 #root .bpx.bpx .bpx-lg,  #root .bpx.bpx .bpx-lg *{ font-size: 22px !important; }
-#root .bpx.bpx .bpx-sm,  #root .bpx.bpx .bpx-sm *{ font-size: 15px !important; }
-#root .bpx.bpx .bpx-xs,  #root .bpx.bpx .bpx-xs *{ font-size: 13px !important; }
+#root .bpx.bpx .bpx-sm,  #root .bpx.bpx .bpx-sm *{ font-size: 17px !important; }
+#root .bpx.bpx .bpx-xs,  #root .bpx.bpx .bpx-xs *{ font-size: 15px !important; }
 #root .bpx.bpx input, #root .bpx.bpx select, #root .bpx.bpx textarea{ font-weight: 700; }
 #root .bpx.bpx input:focus, #root .bpx.bpx select:focus, #root .bpx.bpx textarea:focus{
   outline: none; border-color: #0d9488 !important; box-shadow: 0 0 0 4px rgba(13,148,136,.16) !important;
 }
-#root .bpx.bpx ::placeholder{ color:#94a3b8; font-weight: 600; }
+#root .bpx.bpx ::placeholder{ color:#64748b; font-weight: 600; }
 #root .bpx.bpx button{ transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
 #root .bpx.bpx button:not(:disabled):active{ transform: translateY(1px); }
+/* card lists tile across the whole width instead of one stacked column */
+#root .bpx.bpx .bpx-cards{ display: grid !important; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 14px !important; }
+#root .bpx.bpx .bpx-cards > *{ margin-bottom: 0 !important; min-width: 0; }
 @keyframes bpxIn { from { opacity: 0; } to { opacity: 1; } }
 #root .bpx.bpx .bpx-in{ animation: bpxIn .28s ease both; }
 `;
@@ -118,12 +123,14 @@ export default function BillingPlansTab({ fullScreen = false }) {
 
 const styles = {
   fullShell: {
-    minHeight: "calc(100vh - 90px)",
-    background: "rgba(255,255,255,0.72)",
+    width: "100%",
+    boxSizing: "border-box",
+    minHeight: "calc(100vh - 76px)",
+    background: "rgba(255,255,255,0.78)",
     border: "1px solid rgba(15,23,42,0.08)",
-    borderRadius: 18,
-    padding: "16px clamp(12px, 1.6vw, 26px) 26px",
-    boxShadow: "0 30px 80px rgba(15,23,42,0.08)",
+    borderRadius: 14,
+    padding: "12px clamp(10px, 1.2vw, 22px) 22px",
+    boxShadow: "0 20px 60px rgba(15,23,42,0.07)",
     /* no transform / filter / backdrop-filter here: any of them would trap the
        tabs' position:fixed modals inside this box instead of the viewport. */
   },
@@ -144,6 +151,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    flex: "1 1 auto",
     padding: "10px 20px",
     borderRadius: 10,
     border: "none",

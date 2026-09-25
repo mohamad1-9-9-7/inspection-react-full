@@ -976,7 +976,9 @@ const styles = {
   },
   fullPage: {
     minHeight: "100vh",
-    padding: "14px clamp(10px, 1.6vw, 28px) 28px",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px clamp(8px, 1vw, 16px) 16px",
     background: "radial-gradient(1200px 500px at 100% -10%, rgba(8,145,178,.10), transparent 60%), radial-gradient(900px 420px at -10% 0%, rgba(15,118,110,.10), transparent 60%), #f5f8fb",
     color: "#0f172a",
     fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Cairo, sans-serif',

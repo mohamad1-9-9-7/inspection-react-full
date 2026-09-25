@@ -175,7 +175,7 @@ export default function SubscriptionTab() {
     </div>
   );
   if (!sub) return (
-    <div style={{ padding:40, maxWidth:500, margin:"0 auto", fontFamily:"Cairo, sans-serif" }} dir={dir}>
+    <div style={{ padding:"24px 0", fontFamily:"Cairo, sans-serif" }} dir={dir}>
       <div style={{
         background:"#fef3c7", border:"1px solid #fde68a", borderRadius:12,
         padding:"20px 24px", color:"#92400e",
@@ -356,7 +356,7 @@ export default function SubscriptionTab() {
       {plans.length > 0 && (
         <div style={{ marginTop:28 }}>
           <h3 style={{ fontSize:18, fontWeight:700, color:"#475569", marginBottom:14 }}>{t("subAvailPlans")}</h3>
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(plans.length, 3)},1fr)`, gap:12 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:12 }}>
             {plans.map((p, idx) => {
               const c        = planColor(idx);
               const isActive = currentPlan && p.id === currentPlan.id;

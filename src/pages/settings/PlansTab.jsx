@@ -259,7 +259,7 @@ export default function PlansTab() {
       ) : planRows.length === 0 ? (
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>No plans match the current filters.</div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div className="bpx-cards" style={{ display:"flex", flexDirection:"column", gap:12 }}>
           {planRows.map(plan => {
             const sc = STATUS_COLORS[String(plan.is_active)];
             return (

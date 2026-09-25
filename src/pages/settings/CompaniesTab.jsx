@@ -328,7 +328,7 @@ export default function CompaniesTab() {
           No companies match the current filters.
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div className="bpx-cards" style={{ display:"flex", flexDirection:"column", gap:12 }}>
           {visibleCompanies.map(c => {
             const sc   = STATUS_META[c.status] || STATUS_META.active;
             const days = c.days;
