@@ -92,6 +92,24 @@ export default function BillingPlansTab({ fullScreen = false }) {
   };
   const current = TABS.find((tab) => tab.id === active) || TABS[0];
 
+  /* SettingsPage already hides this tool from everyone but the platform
+     owner; this is the second lock, for any future place that mounts it. */
+  const isSuperAdmin = (() => {
+    try { return !!JSON.parse(localStorage.getItem("currentUser") || "{}").isSuperAdmin; }
+    catch { return false; }
+  })();
+  if (!isSuperAdmin) {
+    return (
+      <div className="bpx bpx" style={ui.page} dir={dir}>
+        <div style={{ ...ui.card, textAlign: "center", color: "#475569", fontWeight: 850 }}>
+          {lang === "ar"
+            ? "هذه الصفحة خاصة بمالك المنصّة (INSPECT PRO)."
+            : "This page belongs to the platform owner (INSPECT PRO)."}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bpx bpx" style={{ ...ui.page, ...(fullScreen ? styles.fullShell : null) }} dir={dir}>
       <style>{BILLING_CSS}</style>

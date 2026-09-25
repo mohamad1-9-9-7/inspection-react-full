@@ -173,6 +173,9 @@ const SECTIONS = [
     items: [
       {
         id: "billing-plans",
+        // INSPECT PRO's own books (customers, prices, invoices) — the platform
+        // owner's, never a tenant admin's. The server enforces the same rule.
+        superOnly: true,
         Icon: FiCreditCard,
         title: "Billing & Plans",
         desc: "Overview, subscription, plans, companies, quotations",
@@ -346,6 +349,7 @@ export default function SettingsPage() {
 
   const visibleSections = useMemo(() => {
     const canAccessItem = (item) => {
+      if (item.superOnly) return isSuperAdmin;
       if (isAdmin || isSuperAdmin || isFullAccess) return true;
       if (!permissions.includes("settings")) return false;
       // الأقسام الإدارية (الحسابات · الفوترة · الأمان · أدوات المدير) للأدمن وبس.

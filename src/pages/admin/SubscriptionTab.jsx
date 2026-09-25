@@ -75,7 +75,9 @@ export default function SubscriptionTab() {
   const [form,    setForm]    = useState({});
 
   const user        = getUser();
-  const isSuperAdmin = user.isSuperAdmin || user.isAdmin || false;
+  // Platform owner only — a company admin editing this would be extending
+  // its own subscription. The server refuses it too (superOnly).
+  const isSuperAdmin = !!user.isSuperAdmin;
 
   useEffect(() => { load(); }, []);
 

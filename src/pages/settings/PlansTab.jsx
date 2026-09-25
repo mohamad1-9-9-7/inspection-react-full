@@ -31,7 +31,8 @@ export default function PlansTab() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const u = getUser();
-  const isSuperAdmin = u.isSuperAdmin || u.isAdmin || false;
+  // Pricing is INSPECT PRO's decision, not a tenant admin's (server: superOnly).
+  const isSuperAdmin = !!u.isSuperAdmin;
 
   useEffect(() => { load(); }, []);
 
