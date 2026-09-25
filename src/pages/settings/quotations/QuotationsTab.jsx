@@ -33,7 +33,7 @@ import { allowedVatPct, loadSeller, normalizeSeller } from "../_shared/sellerPro
    per-quotation upload kept a base64 image inside the report row, which the
    server now refuses — a URL left over from it is still honoured. */
 const logoOf = (seller, config) =>
-  seller?.logoUrl || (/^https?:///i.test(config?.logo || "") ? config.logo : "");
+  seller?.logoUrl || (/^https?:\/\//i.test(config?.logo || "") ? config.logo : "");
 
 /* ═══════════════════════════ Root ═══════════════════════════ */
 
@@ -166,6 +166,7 @@ export default function QuotationsTab() {
           quotes={quotes}
           loading={loading}
           config={config}
+          seller={seller}
           onNew={() => startNew(false)}
           onSmart={() => startNew(true)}
           onSettings={() => setSettingsOpen(true)}
@@ -188,7 +189,7 @@ export default function QuotationsTab() {
 
 /* ═══════════════════════════ List ═══════════════════════════ */
 
-function QuoteList({ quotes, loading, config, onNew, onSmart, onSettings, onOpen, onDuplicate, onDelete, onStatus, onRefresh, flash }) {
+function QuoteList({ quotes, loading, config, seller, onNew, onSmart, onSettings, onOpen, onDuplicate, onDelete, onStatus, onRefresh, flash }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
   const [query, setQuery] = useState("");

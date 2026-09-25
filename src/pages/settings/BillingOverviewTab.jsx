@@ -25,7 +25,7 @@ function normalizeStatus(status) {
 /* What a company is really in today — the login lock's rule: a stored
    active/trial whose end date has passed counts as expired. */
 function statusOf(c) {
-  const s = statusOf(c);
+  const s = normalizeStatus(c.status);
   if (s === "expired" || s === "suspended") return s;
   const d = daysLeft(c.end_date);
   return d !== null && d < 0 ? "expired" : s;
