@@ -103,7 +103,7 @@ export default function SubscriptionTab() {
           start_date: s.start_date?.substring(0,10) || "",
           end_date:   s.end_date?.substring(0,10)   || "",
           price:      s.price    || "",
-          currency:   s.currency || "USD",
+          currency:   s.currency || "AED",
           notes:      s.notes    || "",
         });
       }
@@ -267,7 +267,10 @@ export default function SubscriptionTab() {
               <Row label={t("status")}        value={statusMeta.label} />
               <Row label={t("startDate")}     value={sub.start_date?.substring(0,10) || "—"} />
               <Row label={t("endDate")}       value={sub.end_date?.substring(0,10) || "—"} />
-              <Row label={t("price")}         value={sub.price ? `${sub.price} ${sub.currency || "USD"} ${t("subPerMonth")}` : "—"} />
+              <Row label={t("price")}         value={sub.price ? `${sub.price} ${sub.currency || "AED"} ${t("subPerMonth")}` : "—"} />
+              {currentPlan && Number(currentPlan.setup_fee) > 0 && (
+                <Row label={t("setupFee")}    value={`${currentPlan.setup_fee} ${currentPlan.currency || "AED"} · ${t("oneTime")}`} />
+              )}
               <Row label={t("subPlanLimits")} value={
                 currentPlan
                   ? `${fmtLimit(currentPlan.max_branches)} ${t("branches")} · ${fmtLimit(currentPlan.max_users)} ${t("users")}`
@@ -326,7 +329,7 @@ export default function SubscriptionTab() {
                     placeholder="0.00" style={{ ...inputStyle, flex:1 }} />
                   <select value={form.currency} onChange={e => setForm(f => ({...f, currency: e.target.value}))}
                     style={{ ...selectStyle, width:90 }}>
-                    <option>USD</option><option>AED</option><option>EUR</option><option>GBP</option>
+                    <option>AED</option><option>SAR</option><option>USD</option><option>EUR</option><option>GBP</option>
                   </select>
                 </div>
               </Field>
@@ -369,7 +372,13 @@ export default function SubscriptionTab() {
                   <div style={{ fontWeight:800, color:c, fontSize:19 }}>{p.name}</div>
                   <div style={{ fontSize:26, fontWeight:900, color:"#1e293b", margin:"10px 0 6px" }}>
                     {p.price > 0 ? `${p.price} ${p.currency}` : t("free")}
+                    {p.price > 0 && <span style={{ fontSize:14, fontWeight:600, color:"#94a3b8" }}> / {t("moShort")}</span>}
                   </div>
+                  {Number(p.setup_fee) > 0 && (
+                    <div style={{ fontSize:13.5, color:"#94a3b8", marginBottom:6 }}>
+                      + {p.setup_fee} {p.currency} {t("setupFee")}
+                    </div>
+                  )}
                   <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_branches)} {t("branches")}</div>
                   <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_users)} {t("users")}</div>
                   {isActive && (

@@ -10,6 +10,7 @@
 // report card happens to be rendered.
 
 import { escapeHtml } from "../../../shared/emailReportUtils";
+import { sweetsAreaLabel } from "./sweetsAreas";
 
 const DEFAULT_INTRO =
   "Dear {name},\n\nPlease find attached Non-Conformance Report {ncNo} raised at {branch} on {date}.\n" +
@@ -43,8 +44,7 @@ export function ncrMeta(payload) {
   return {
     ncNo: p.refNo || head.ncNo || "—",
     branchCode,
-    // Sweets locations are plain area names — shown as stored.
-    branch: branchCode || "—",
+    branch: branchCode ? sweetsAreaLabel(branchCode) : "—",
     date: head.reportDate || "",
     issuedTo: head.issuedTo || "",
     issuedBy: head.issuedBy || "",

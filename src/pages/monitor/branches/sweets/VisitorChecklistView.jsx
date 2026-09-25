@@ -340,7 +340,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             {hTop.documentTitle || "Visitor Checklist"}
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
-            Doc No: <b>{hTop.documentNo || "—"}</b> · Rev: <b>{hTop.revisionNo || "—"}</b> · Issue: <b>{hTop.issueDate || "—"}</b> · Area: <b>{hTop.area || "—"}</b>
+            Doc No: <b>{hTop.documentNo || "SW-QA-VC-01"}</b> · Rev: <b>{hTop.revisionNo || "0"}</b> · Area: <b>{hTop.area || "QA"}</b>
           </div>
         </div>
         {canDelete("daily") && (

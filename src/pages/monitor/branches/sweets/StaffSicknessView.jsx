@@ -317,7 +317,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             {hTop.documentTitle || "Staff Sickness Form"}
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
-            Doc No: <b>{hTop.documentNo || "—"}</b> · Issue: <b>{hTop.issueDate || "—"}</b> · Area: <b>{hTop.area || "—"}</b>
+            Doc No: <b>{hTop.documentNo || "SW-QA-SS-01"}</b> · Area: <b>{hTop.area || "QA"}</b>
           </div>
         </div>
         {canDelete("daily") && (
@@ -476,7 +476,7 @@ export default function StaffSicknessView({ type = TYPE, reporter = "sweets" } =
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       const res = await fetch(
-        `${API_BASE}/api/reports?reporter=${encodeURIComponent(reporter)}&type=${encodeURIComponent(type)}`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
         { cache: "no-store", signal: abortRef.current.signal }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

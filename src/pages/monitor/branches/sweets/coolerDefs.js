@@ -27,6 +27,7 @@
 // localStorage is a first-paint cache only — never a standalone store.
 
 import API_BASE from "../../../../config/api";
+import { companyScopedKey } from "./sweetsRecord";
 
 export const COOLERS_CONFIG_TYPE = "sweets_coolers_config";
 const CONFIG_KEY = "config";
@@ -225,7 +226,7 @@ export function storageOptions(coolerDefs, loadingDef) {
 
 export function loadDefsCache() {
   try {
-    const raw = localStorage.getItem(COOLERS_CONFIG_CACHE_KEY);
+    const raw = localStorage.getItem(companyScopedKey(COOLERS_CONFIG_CACHE_KEY));
     const parsed = raw ? JSON.parse(raw) : null;
     if (!parsed) return null;
     return {
@@ -240,7 +241,7 @@ export function loadDefsCache() {
 export function saveDefsCache(coolerDefs, loadingDef) {
   try {
     localStorage.setItem(
-      COOLERS_CONFIG_CACHE_KEY,
+      companyScopedKey(COOLERS_CONFIG_CACHE_KEY),
       JSON.stringify({
         coolerDefs: normalizeCoolerDefs(coolerDefs),
         loadingDef: normalizeLoadingDef(loadingDef),

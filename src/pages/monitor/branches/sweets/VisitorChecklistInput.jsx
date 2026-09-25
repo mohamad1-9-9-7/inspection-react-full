@@ -12,8 +12,8 @@ const TYPE = "sweets_visitor_checklist";
 
 const DOC_META = {
   docTitle: "Visitor Checklist",
-  docNo: "",
-  revision: "",
+  docNo: "SW-QA-VC-01",
+  revision: "0",
   issueDate: "",
   area: "",
   issuedBy: "",
@@ -34,7 +34,7 @@ const Q_ADDITIONAL = [
 ];
 
 const DECLARATION_TEXT =
-  "I/We will follow the food safety procedures of TELT & will use the mask/hair net/coat/shoe covers and remove all loose personal articles (Jewelry) that might come into contact with food/machines.";
+  "I/We will follow the food safety procedures of the company & will use the mask/hair net/coat/shoe covers and remove all loose personal articles (Jewelry) that might come into contact with food/machines.";
 
 /* ===== UI helpers ===== */
 const card = {
@@ -300,8 +300,8 @@ export default function VisitorChecklistInput() {
           <div style={{ fontSize: 13, opacity: 0.9 }}>{DOC_META.docTitle}</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo || "—"}</b></div>
-          <div>Rev: <b>{DOC_META.revision || "—"}</b> — Issue: <b>{DOC_META.issueDate || "—"}</b></div>
+          <div>Doc No: <b>{DOC_META.docNo}</b></div>
+          <div>Rev: <b>{DOC_META.revision}</b></div>
           <div>Area: <b>{DOC_META.area}</b></div>
         </div>
       </div>

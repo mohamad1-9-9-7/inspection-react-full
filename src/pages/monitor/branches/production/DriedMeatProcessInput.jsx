@@ -220,7 +220,38 @@ export default function DriedMeatProcessInput() {
     })();
   }, [reportDate]); // eslint-disable-line
 
-  /* ── Save ── */
+  /* ── Save ──
+     One report per business date. We NEVER delete-then-recreate: a swallowed
+     delete failure (or a POST that runs anyway) is what produced the duplicate
+     rows this type suffered from. Instead:
+       • existing id  → PUT /api/reports/:id  (in-place update, keeps the refNo)
+       • no id        → POST /api/reports     (create)
+     If the one-per-day guard rejects a create with 409 (a row already exists for
+     this date — e.g. saved from another tab, or our id went stale), we look the
+     real record up and update it in place instead of leaving a duplicate. */
+
+  // Resolve the server id of the report already stored for this date, if any.
+  async function fetchExistingId() {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${TYPE}&reportDate=${encodeURIComponent(reportDate)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const arr = Array.isArray(data) ? data : data?.data ?? [];
+      if (!arr.length) return null;
+      arr.sort((a, b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0));
+      const latest = arr[0];
+      return latest?._id || latest?.id || null;
+    } catch { return null; }
+  }
+
+  function idFromSave(saved) {
+    const r = saved?.report || saved;
+    return r?._id || r?.id || null;
+  }
+
   async function save() {
     if (!reportDate) return alert(isAr ? "الرجاء تحديد التاريخ" : "Please select a date");
     setSaving(true);
@@ -248,25 +279,32 @@ export default function DriedMeatProcessInput() {
         savedAt: Date.now(),
       };
 
-      if (existingReport?.id) {
-        try {
-          await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}`, { method: "DELETE" });
-        } catch (e) { console.warn("Delete old failed:", e); }
+      const body = JSON.stringify({ reporter: "production", type: TYPE, payload });
+      const headers = { "Content-Type": "application/json" };
+
+      const putById = (id) =>
+        fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "PUT", headers, body });
+
+      let targetId = existingReport?.id || null;
+      let res = targetId
+        ? await putById(targetId)
+        : await fetch(`${API_BASE}/api/reports`, { method: "POST", headers, body });
+
+      // One-per-day guard hit on a create → adopt the real row and update it.
+      if (res.status === 409 && !targetId) {
+        const realId = await fetchExistingId();
+        if (realId) { targetId = realId; res = await putById(realId); }
       }
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "production", type: TYPE, payload }),
-      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const saved = await res.json().catch(() => null);
+      const wasUpdate = !!targetId;
       setExistingReport({
-        id: saved?._id || saved?.id || existingReport?.id || null,
+        id: idFromSave(saved) || targetId || null,
         savedAt: payload.savedAt,
       });
-      setLoadMsg(`✅ ${existingReport?.id ? t("status_updated") : t("status_saved")}`);
+      setLoadMsg(`✅ ${wasUpdate ? t("status_updated") : t("status_saved")}`);
       setTimeout(() => setLoadMsg(""), 2500);
     } catch (e) {
       console.error(e);

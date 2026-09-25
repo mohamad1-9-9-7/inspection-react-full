@@ -3,11 +3,8 @@ import React, { useEffect, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { getActiveCompanyName } from "../../../../utils/companyContext";
 import { getReportRowByDate, payloadOf, reportId } from "../_shared/reportApi";
-import {
-  useStaffDirectory,
-  normalizeEmpNo,
-  normalizeName,
-} from "../_shared/staffRegistry";
+import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
+import SweetsStaffManager from "./SweetsStaffManager";
 
 const blankRows = () => [
   { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
@@ -22,7 +19,7 @@ const TYPE = "sweets_staff_sickness";
 
 const DOC_META = {
   docTitle: "Staff Sickness Form",
-  docNo: "",
+  docNo: "SW-QA-SS-01",
   issueDate: "",
   area: "",
   controllingOfficer: "",
@@ -176,10 +173,10 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
     return () => { cancelled = true; };
   }, [type, headerDate]);
 
-  /* Staff directory (Settings → Staff Directory) — filling in either the
-     employee number or the name looks the other one up, so the pair always
-     matches the register. */
-  const { roster: staff, byNo, byName } = useStaffDirectory("sweets_staff_sickness");
+  /* Staff list (this company only) — filling in either the employee number or
+     the name looks the other one up, so the pair always matches the list. */
+  const { roster: staff, byNo, byName } = useSweetsStaff();
+  const [staffOpen, setStaffOpen] = useState(false);
 
   function setRow(idx, field, v) {
     touchedRef.current = true;
@@ -293,12 +290,11 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".5px" }}>
              <span style={{ opacity: 0.85, fontWeight: 700 }}>{getActiveCompanyName()}</span>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.9 }}>{DOC_META.docTitle}</div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>Quality Assurance</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo || "—"}</b></div>
-          <div>Issue: <b>{DOC_META.issueDate || "—"}</b></div>
-          <div>Area: <b>{DOC_META.area}</b></div>
+          <div>Doc No: <b>{DOC_META.docNo}</b></div>
+                    <div>Area: <b>{DOC_META.area}</b></div>
         </div>
       </div>
 
@@ -328,10 +324,17 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
       </div>
 
       {/* ===== Header Date ===== */}
-      <div style={{ marginBottom: 14, maxWidth: 360 }}>
-        <span style={label}>Date</span>
-        <input style={input} type="date" value={headerDate} onChange={(e) => setHeaderDate(e.target.value)} />
+      <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ maxWidth: 360, flex: 1 }}>
+          <span style={label}>Date</span>
+          <input style={input} type="date" value={headerDate} onChange={(e) => setHeaderDate(e.target.value)} />
+        </div>
+        <button type="button" onClick={() => setStaffOpen(true)}
+          style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid #cbd5e1", background: "#fff", fontWeight: 800, cursor: "pointer" }}>
+          ✏️ Staff list ({staff.length})
+        </button>
       </div>
+      <SweetsStaffManager open={staffOpen} onClose={() => setStaffOpen(false)} />
 
       {/* Directory-backed suggestions for both employee columns */}
       <datalist id="staff-empno-options">

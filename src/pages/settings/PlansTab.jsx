@@ -5,9 +5,9 @@ import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 
-const CURRENCIES = ["USD", "AED", "EUR", "GBP", "SAR"];
+const CURRENCIES = ["AED", "SAR", "USD", "EUR", "GBP"];
 
-const emptyForm = { name:"", price:"", currency:"USD", max_branches:"", max_users:"", description:"", is_active:true };
+const emptyForm = { name:"", price:"", currency:"AED", setup_fee:"", max_branches:"", max_users:"", description:"", is_active:true };
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -59,6 +59,7 @@ export default function PlansTab() {
       name:         plan.name,
       price:        plan.price,
       currency:     plan.currency,
+      setup_fee:    plan.setup_fee || "",
       max_branches: plan.max_branches === -1 ? "" : plan.max_branches,
       max_users:    plan.max_users    === -1 ? "" : plan.max_users,
       description:  plan.description,
@@ -71,6 +72,7 @@ export default function PlansTab() {
   async function save() {
     if (!form.name.trim()) { setMsg("❌ " + t("planNameReq")); return; }
     if (Number(form.price || 0) < 0) { setMsg("❌ Price cannot be negative"); return; }
+    if (Number(form.setup_fee || 0) < 0) { setMsg("❌ Setup fee cannot be negative"); return; }
     if (form.max_branches !== "" && Number(form.max_branches) < 0) { setMsg("❌ Branch limit cannot be negative"); return; }
     if (form.max_users !== "" && Number(form.max_users) < 0) { setMsg("❌ User limit cannot be negative"); return; }
     setSaving(true); setMsg("");
@@ -78,6 +80,7 @@ export default function PlansTab() {
       name:         form.name.trim(),
       price:        parseFloat(form.price) || 0,
       currency:     form.currency,
+      setup_fee:    parseFloat(form.setup_fee) || 0,
       max_branches: form.max_branches === "" ? -1 : parseInt(form.max_branches),
       max_users:    form.max_users    === "" ? -1 : parseInt(form.max_users),
       description:  form.description,
@@ -153,9 +156,9 @@ export default function PlansTab() {
   return (
     <div style={ui.page} dir={dir}>
       <PageHeader
-        eyebrow="Billing"
+        eyebrow={t("plansEyebrow")}
         title={t("plansTitle")}
-        subtitle="Create plans, pricing, and account limits used by companies and the subscription panel."
+        subtitle={t("plansSubtitle")}
         actions={
           <>
           <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
@@ -169,17 +172,17 @@ export default function PlansTab() {
       <StatusMessage message={msg ? { kind: msg.startsWith("✅") ? "ok" : "err", text: msg } : null} />
 
       <div style={kpiGridStyle}>
-        <MetricCard label="Total plans" value={plans.length} />
-        <MetricCard label="Active plans" value={totals.activePlans} />
-        <MetricCard label="Assigned companies" value={totals.assigned} />
-        <MetricCard label="MRR estimate" value={totals.mrr.toLocaleString()} />
+        <MetricCard label={t("totalPlans")} value={plans.length} />
+        <MetricCard label={t("activePlans")} value={totals.activePlans} />
+        <MetricCard label={t("assignedCompanies")} value={totals.assigned} />
+        <MetricCard label={t("mrrEstimate")} value={totals.mrr.toLocaleString()} />
       </div>
 
       <div style={toolbarStyle}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search plans"
+          placeholder={t("searchPlans")}
           style={{ ...inputStyle, flex: "1 1 260px", minWidth: 0, fontSize: 16 }}
         />
         <select
@@ -187,9 +190,9 @@ export default function PlansTab() {
           onChange={(e) => setStatusFilter(e.target.value)}
           style={{ ...inputStyle, width: 170, fontSize: 16 }}
         >
-          <option value="all">All statuses</option>
-          <option value="active">Active only</option>
-          <option value="inactive">Inactive only</option>
+          <option value="all">{t("allStatuses")}</option>
+          <option value="active">{t("activeOnly")}</option>
+          <option value="inactive">{t("inactiveOnly")}</option>
         </select>
       </div>
 
@@ -215,15 +218,20 @@ export default function PlansTab() {
               <input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))}
                 placeholder="e.g. Enterprise Plus" style={inputStyle} />
             </Field>
-            <Field label={t("price")}>
+            <Field label={t("priceMonthly")}>
               <div style={{ display:"flex", gap:8 }}>
                 <input type="number" value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))}
-                  placeholder="0" style={{ ...inputStyle, flex:1 }} />
+                  placeholder="1500" style={{ ...inputStyle, flex:1 }} />
                 <select value={form.currency} onChange={e => setForm(f=>({...f,currency:e.target.value}))}
                   style={{ ...inputStyle, width:90 }}>
                   {CURRENCIES.map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
+            </Field>
+            <Field label={t("setupFee")}>
+              <input type="number" value={form.setup_fee} onChange={e => setForm(f=>({...f,setup_fee:e.target.value}))}
+                placeholder="0" style={inputStyle} />
+              <div style={{ fontSize:13, color:"#94a3b8", marginTop:5 }}>{t("setupFeeHint")}</div>
             </Field>
             <Field label={t("maxBranches")}>
               <input type="number" value={form.max_branches} onChange={e => setForm(f=>({...f,max_branches:e.target.value}))}
@@ -253,11 +261,11 @@ export default function PlansTab() {
 
       {/* Plans list */}
       {loading ? (
-        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>Loading…</div>
+        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>{t("loadingDots")}</div>
       ) : plans.length === 0 ? (
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>{t("noPlans")}</div>
       ) : planRows.length === 0 ? (
-        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>No plans match the current filters.</div>
+        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>{t("noPlansMatch")}</div>
       ) : (
         <div className="bpx-cards" style={{ display:"flex", flexDirection:"column", gap:12 }}>
           {planRows.map(plan => {
@@ -277,7 +285,7 @@ export default function PlansTab() {
                   <div style={{ fontSize:20, fontWeight:900 }}>
                     {plan.price > 0 ? `${plan.price}` : t("free")}
                   </div>
-                  {plan.price > 0 && <div style={{ fontSize:13, opacity:.85 }}>{plan.currency}/mo</div>}
+                  {plan.price > 0 && <div style={{ fontSize:13, opacity:.85 }}>{plan.currency}/{t("moShort")}</div>}
                 </div>
 
                 {/* Info */}
@@ -290,11 +298,14 @@ export default function PlansTab() {
                   {plan.description && (
                     <div style={{ fontSize:16, color:"#64748b", marginTop:4 }}>{plan.description}</div>
                   )}
-                  <div style={{ display:"flex", gap:18, marginTop:8 }}>
+                  <div style={{ display:"flex", gap:18, marginTop:8, flexWrap:"wrap" }}>
                     <LimitChip icon="🏪" label={t("branches")} val={plan.max_branches} />
                     <LimitChip icon="👤" label={t("users")}    val={plan.max_users}    />
-                    <LimitChip icon="Companies" label="Assigned" val={`${plan.activeAssignedCount}/${plan.assignedCount}`} />
-                    <LimitChip icon="MRR" label="Revenue" val={`${plan.mrr} ${plan.currency || "USD"}`} />
+                    {Number(plan.setup_fee) > 0 && (
+                      <LimitChip icon="🧾" label={t("setupFee")} val={`${plan.setup_fee} ${plan.currency || "AED"} · ${t("oneTime")}`} />
+                    )}
+                    <LimitChip icon="Companies" label={t("assigned")} val={`${plan.activeAssignedCount}/${plan.assignedCount}`} />
+                    <LimitChip icon="MRR" label={t("revenue")} val={`${plan.mrr} ${plan.currency || "AED"}`} />
                   </div>
                 </div>
 

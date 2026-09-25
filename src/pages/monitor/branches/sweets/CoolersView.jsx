@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/sweets/CoolersView.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActionBar,
   ActionButton,
@@ -10,17 +10,11 @@ import {
 } from "../_shared/branchViewKit";
 import {
   deleteReportByDate,
-  downloadReportsJson,
   getReportPayloadByDate,
-  importReportPayloads,
   listReportDates,
-  listReports,
-  parseJsonImport,
   reportDateOf,
   saveReport,
 } from "../_shared/reportApi";
-import ProductPicker from "../_shared/ProductPicker";
-import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import { canEdit } from "../../../../utils/perms";
 import {
   accentOf,
@@ -35,6 +29,17 @@ import {
 } from "./coolerDefs";
 
 const TYPE_COOLERS = "sweets-coolers";
+
+/* Product matching rule — same as CoolersTab: at least MIN_MATCHES products
+   with a numeric temperature. Kept local so this sheet depends on no other
+   company's module. */
+const MIN_MATCHES = 2;
+const isValidMatch = (r) =>
+  !!String(r?.productName || "").trim() &&
+  r?.productTemp !== "" &&
+  r?.productTemp != null &&
+  !Number.isNaN(Number(r.productTemp));
+const countValidMatches = (pvs) => (Array.isArray(pvs) ? pvs.filter(isValidMatch).length : 0);
 
 /* ===== Constants / helpers (design mirrors the input page) ===== */
 const LOGO_URL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
@@ -129,7 +134,7 @@ function TMPPrintHeader({ header, reportDate }) {
           <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
           <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
           <div style={{ marginTop: 6, fontWeight: 700 }}>
-            Corrective action: Transfer the products to another cooler and call maintenance department to check and solve the problem.
+            Corrective action: Transfer the products to another cold room and call maintenance department to check and solve the problem.
           </div>
         </div>
         <div style={{ borderTop: "1px solid #000" }}>
@@ -156,8 +161,6 @@ export default function CoolersView() {
   const [editCoolers, setEditCoolers] = useState([]);
   const [editLoadingArea, setEditLoadingArea] = useState({ temps: {}, remarks: "" });
   const [editPV, setEditPV] = useState([]);
-
-  const fileInputRef = useRef(null);
 
   async function refreshList() {
     setLoadingList(true);
@@ -309,37 +312,6 @@ export default function CoolersView() {
       alert("❌ Failed to delete.");
     }
   };
-  const handleExportJSON = async () => {
-    try {
-      const rows = await listReports(TYPE_COOLERS);
-      downloadReportsJson(TYPE_COOLERS, rows, "Coolers_ALL");
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to export JSON.");
-    }
-  };
-  const handleImportTrigger = () => fileInputRef.current?.click();
-  const handleImportJSON = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      setLoadingList(true);
-      const txt = await file.text();
-      const data = JSON.parse(txt);
-      const items = parseJsonImport(data);
-      if (!items.length) { alert("⚠️ JSON file has no items."); return; }
-      const { ok, fail } = await importReportPayloads(TYPE_COOLERS, items);
-      alert(`✅ Imported: ${ok}${fail ? ` | ❌ Failed: ${fail}` : ""}`);
-      await refreshList();
-    } catch (e2) {
-      console.error(e2);
-      alert("❌ Invalid JSON file.");
-    } finally {
-      setLoadingList(false);
-      if (e?.target) e.target.value = "";
-    }
-  };
-
   const treeItems = useMemo(() => {
     return allRows
       .map((row, idx) => {
@@ -445,14 +417,9 @@ export default function CoolersView() {
                   </div>
 
                   <div style={{ ...mField, flex: "1 1 220px", minWidth: 200 }}>
-                    <span style={mLabel}>Product {row.itemCode ? `· ${row.itemCode}` : ""}</span>
+                    <span style={mLabel}>Product</span>
                     {editing ? (
-                      <ProductPicker
-                        value={row.productName}
-                        itemCode={row.itemCode}
-                        accent={accent}
-                        onPick={(it) => setEditPV((prev) => prev.map((r, i) => (i === idx ? { ...r, productName: it.description, itemCode: it.item_code } : r)))}
-                      />
+                      <input value={row.productName || ""} onChange={(e) => updatePV(idx, "productName", e.target.value)} placeholder="Product name…" style={mInput} />
                     ) : <div style={{ ...mReadOnly, textAlign: "left", minWidth: 0 }}>{row.productName || "—"}</div>}
                   </div>
 
@@ -537,15 +504,12 @@ export default function CoolersView() {
       actions={
         <ReportActions
           onRefresh={refreshList}
-          onJson={handleExportJSON}
-          onImport={handleImportTrigger}
           onDelete={handleDeleteCurrent}
           refreshing={loadingList}
           deleteDisabled={!selectedDate}
         />
       }
     >
-      <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
       <ResponsiveReportLayout
         sidebar={
           <DateTreeSidebar

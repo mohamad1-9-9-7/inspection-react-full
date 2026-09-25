@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { uploadImage, deleteImage, thumbUrl } from "../utils/imageUpload";
 import { API_BASE } from "../config/api";
 import { forgetFiledDate, moveFiledDate } from "../utils/filedDates";
+import CodeSuggest from "./shared/CodeSuggest";
+import { fetchServerItems } from "./monitor/branches/_shared/ProductPicker";
 
 /* Left date-tree panel: remember whether the user folded it away (UI preference only). */
 const TREE_HIDDEN_KEY = "returnView.treeHidden";
@@ -664,6 +666,105 @@ export default function ReturnView() {
     reloadFromServer();
     // eslint-disable-next-line
   }, []);
+
+  /* ===== Item catalog (items.json) — the item code owns the product name =====
+     Same source the main /returns input page uses, so typing a code on the
+     view/edit rows fills the product name (and origin) exactly as it does there. */
+  const [fileItems, setFileItems] = useState([]);   // static /data/items.json
+  const [serverItems, setServerItems] = useState([]); // codes added through the app catalog
+  useEffect(() => {
+    let alive = true;
+    // 1) the static file
+    (async () => {
+      const tryUrls = ["/data/items.json", `${API_BASE}/data/items.json`];
+      for (const url of tryUrls) {
+        try {
+          const r = await fetch(url, { cache: "no-cache" });
+          if (!r.ok) continue;
+          const json = await r.json();
+          const list = Array.isArray(json) ? json : (json?.items || json?.data || []);
+          if (alive && Array.isArray(list) && list.length) { setFileItems(list); return; }
+        } catch { /* try next */ }
+      }
+    })();
+    // 2) the server catalog — this is where codes added via "Add item" live, so
+    //    without it the newly-added codes never show up on the view page.
+    (async () => {
+      try {
+        const s = await fetchServerItems();
+        if (alive && Array.isArray(s)) setServerItems(s);
+      } catch { /* file catalog is enough */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const normCode = useCallback(
+    (v) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, "").replace(/[-_()\/\\]/g, ""),
+    []
+  );
+
+  /* One merged catalog: static file first, server items win on a code clash
+     (a code the user just edited should read back its new name). */
+  const catalogItems = useMemo(() => {
+    const map = new Map();
+    const push = (it) => {
+      const code = String(it?.item_code ?? it?.itemCode ?? "").trim();
+      const name = String(it?.description ?? it?.productName ?? it?.name ?? "").trim();
+      if (!code || !name) return;
+      const key = normCode(code);
+      if (!key) return;
+      map.set(key, { item_code: code, description: name, origin: String(it?.origin ?? "").trim() });
+    };
+    fileItems.forEach(push);
+    serverItems.forEach(push); // overwrite → server value wins
+    return Array.from(map.values());
+  }, [fileItems, serverItems, normCode]);
+
+  const catalogByCode = useMemo(() => {
+    const m = new Map();
+    for (const it of catalogItems) {
+      const key = normCode(it.item_code);
+      if (key) m.set(key, it);
+    }
+    return m;
+  }, [catalogItems, normCode]);
+
+  /* Suggestion search: by code or name, code-prefix matches first. */
+  const catalogSearch = useCallback((q) => {
+    const s = normCode(q);
+    const nameQ = String(q ?? "").trim().toLowerCase();
+    if (!s && !nameQ) return catalogItems.slice(0, 20);
+    const scored = [];
+    for (const it of catalogItems) {
+      const code = normCode(it.item_code);
+      const name = String(it.description || "").toLowerCase();
+      let rank = -1;
+      if (s && code.startsWith(s)) rank = 0;
+      else if (s && code.includes(s)) rank = 1;
+      else if (nameQ && name.includes(nameQ)) rank = 2;
+      if (rank >= 0) scored.push({ it, rank });
+    }
+    scored.sort((a, b) => a.rank - b.rank);
+    return scored.slice(0, 20).map((x) => x.it);
+  }, [catalogItems, normCode]);
+
+  /* Everything the item code owns. productName/origin mirror the code strictly
+     (a stale value must not survive a code change); an unmatched code clears them. */
+  const codePatch = useCallback((code) => {
+    const key = normCode(code);
+    const hit = key ? catalogByCode.get(key) : null;
+    if (!hit) return {}; // unknown code: leave any hand-typed name/origin untouched
+    const patch = { productName: hit.description || hit.item_name || hit.name || "" };
+    if (hit.origin) patch.origin = hit.origin;
+    return patch;
+  }, [catalogByCode, normCode]);
+
+  /* Build the field update for an item-code edit: set the code and, when it
+     matches the catalog, fill the product name (and origin) from it. */
+  const codeFieldPatch = useCallback(
+    (code) => ({ itemCode: code, ...codePatch(code) }),
+    [codePatch]
+  );
 
   // ✅ Auto-expand current year + month on first load
   useEffect(() => {
@@ -1882,7 +1983,14 @@ export default function ReturnView() {
                           {/* ITEM CODE */}
                           <td style={tdS}>
                             {editing ? (
-                              <input style={cellInputStyle} value={draft.itemCode || ""} onChange={(e) => upd({ itemCode: e.target.value })} placeholder="ITEM CODE" />
+                              <CodeSuggest
+                                style={cellInputStyle}
+                                placeholder="ITEM CODE"
+                                value={draft.itemCode || ""}
+                                onChange={(v) => upd(codeFieldPatch(v))}
+                                onPick={(it) => upd({ itemCode: it.item_code, productName: it.description || "", ...(it.origin ? { origin: it.origin } : {}) })}
+                                search={catalogSearch}
+                              />
                             ) : row.itemCode || ""}
                           </td>
 
@@ -2009,7 +2117,16 @@ export default function ReturnView() {
                     {addingRow && editRowIdx === (selectedReport.items || []).length && (
                       <tr style={{ background: "#fefce8" }}>
                         <td style={tdS}>{(selectedReport.items || []).length + 1}</td>
-                        <td style={tdS}><input style={cellInputStyle} value={editRowData.itemCode} onChange={(e) => setEditRowData((s) => ({ ...s, itemCode: e.target.value }))} placeholder="ITEM CODE" /></td>
+                        <td style={tdS}>
+                          <CodeSuggest
+                            style={cellInputStyle}
+                            placeholder="ITEM CODE"
+                            value={editRowData.itemCode || ""}
+                            onChange={(v) => setEditRowData((s) => ({ ...s, ...codeFieldPatch(v) }))}
+                            onPick={(it) => setEditRowData((s) => ({ ...s, itemCode: it.item_code, productName: it.description || "", ...(it.origin ? { origin: it.origin } : {}) }))}
+                            search={catalogSearch}
+                          />
+                        </td>
                         <td style={tdS}><input style={cellInputStyle} value={editRowData.productName} onChange={(e) => setEditRowData((s) => ({ ...s, productName: e.target.value }))} placeholder="PRODUCT NAME" /></td>
                         <td style={tdS}><input style={cellInputStyle} value={editRowData.origin} onChange={(e) => setEditRowData((s) => ({ ...s, origin: e.target.value }))} placeholder="ORIGIN" /></td>
                         <td style={tdS}>

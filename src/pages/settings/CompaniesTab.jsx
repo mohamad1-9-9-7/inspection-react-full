@@ -193,7 +193,7 @@ export default function CompaniesTab() {
       <PageHeader
         eyebrow="Billing"
         title={t("companiesTitle")}
-        subtitle="Connect companies to plans, contacts, status, and subscription dates."
+        subtitle={t("companiesSubtitle")}
         actions={
         <>
           <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
@@ -207,29 +207,29 @@ export default function CompaniesTab() {
       <StatusMessage message={msg ? { kind: msg.startsWith("✅") ? "ok" : "err", text: msg } : null} />
 
       <div style={kpiGridStyle}>
-        <MetricCard label="Active companies" value={companyStats.active} />
-        <MetricCard label="Trial" value={companyStats.trial} />
-        <MetricCard label="Renewal risk" value={companyStats.renewalRisk} />
-        <MetricCard label="No plan" value={companyStats.withoutPlan} />
-        <MetricCard label="MRR estimate" value={companyStats.mrr.toLocaleString()} />
+        <MetricCard label={t("boActiveCompanies")} value={companyStats.active} />
+        <MetricCard label={t("stTrial")} value={companyStats.trial} />
+        <MetricCard label={t("boRenewalRisk")} value={companyStats.renewalRisk} />
+        <MetricCard label={t("boNoPlan")} value={companyStats.withoutPlan} />
+        <MetricCard label={t("mrrEstimate")} value={companyStats.mrr.toLocaleString()} />
       </div>
 
       <div style={toolbarStyle}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search companies"
+          placeholder={t("searchCompanies")}
           style={{ ...inputStyle, flex: "1 1 260px", minWidth: 0, fontSize: 16 }}
         />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, width: 170, fontSize: 16 }}>
-          <option value="all">All statuses</option>
+          <option value="all">{t("allStatuses")}</option>
           <option value="active">{t("stActive")}</option>
           <option value="trial">{t("stTrial")}</option>
           <option value="expired">{t("stExpired")}</option>
           <option value="suspended">{t("stSuspended")}</option>
         </select>
         <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} style={{ ...inputStyle, width: 190, fontSize: 16 }}>
-          <option value="all">All plans</option>
+          <option value="all">{t("allPlans")}</option>
           {plans.map((plan) => <option key={plan.id} value={String(plan.id)}>{plan.name}</option>)}
         </select>
       </div>
@@ -266,7 +266,7 @@ export default function CompaniesTab() {
                 ))}
               </select>
             </Field>
-            <Field label="Business type / Industry">
+            <Field label={t("businessType")}>
               {/* Decides which system the company opens: "Meat manufacturing" =
                   the full Al Mawashi system; any other industry = the generic
                   engine built from that industry's template. */}
@@ -318,14 +318,14 @@ export default function CompaniesTab() {
 
       {/* List */}
       {loading ? (
-        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>Loading…</div>
+        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>{t("loadingDots")}</div>
       ) : companies.length === 0 ? (
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>
           {t("noCompanies")}
         </div>
       ) : visibleCompanies.length === 0 ? (
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>
-          No companies match the current filters.
+          {t("noCompaniesMatch")}
         </div>
       ) : (
         <div className="bpx-cards" style={{ display:"flex", flexDirection:"column", gap:12 }}>

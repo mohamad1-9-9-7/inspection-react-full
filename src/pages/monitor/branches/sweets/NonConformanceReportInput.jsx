@@ -10,10 +10,11 @@
 //
 // Three rules the old form got wrong and this one gets right:
 //
-//  1. Location is picked, not free text: one of SWEETS_LOCATIONS below, stored
-//     in `payload.location` and `payload.branch`, so the reports view can
-//     group NCRs without guessing at spelling.
-//  2. NC No. is allocated by the SERVER (`payload.refNo`, "SW-NCR-000042"),
+//  1. Location is a BRANCH, not free text. It is picked from the one master
+//     branch list (inspectionBranches.js) and stored as a canonical code in
+//     `payload.location` and `payload.branch`, so the reports view and every
+//     branch filter in the app can group NCRs without guessing at spelling.
+//  2. NC No. is allocated by the SERVER (`payload.refNo`, "NCR-000042"),
 //     never typed. Two people writing an NCR at the same moment can no longer
 //     hand themselves the same number. Legacy records that carry a hand-typed
 //     headRow.ncNo keep showing it.
@@ -29,17 +30,7 @@ import {
   payloadOf,
   reportId,
 } from "../_shared/reportApi";
-
-/* Sweets is a single-branch company (see src/industries/sweets/index.js), so
-   this is its own small location list. */
-const SWEETS_LOCATIONS = [
-  "Main Branch",
-  "Production",
-  "Packing",
-  "Cold Storage",
-  "Warehouse / Receiving",
-  "Retail / Front of House",
-];
+import { SWEETS_AREAS, canonicalSweetsArea, isKnownSweetsArea } from "./sweetsAreas";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -426,7 +417,7 @@ export default function NonConformanceReportInput(props) {
     isISODate(queryDate) ? queryDate : todayDubaiISO()
   );
 
-  const [location, setLocation] = useState(defaultBranch || SWEETS_LOCATIONS[0]);
+  const [location, setLocation] = useState(defaultBranch || "");
   const [refNo, setRefNo] = useState("");       // server-allocated, read-only
   const [legacyNcNo, setLegacyNcNo] = useState(""); // hand-typed number on old records
   const [issuedTo, setIssuedTo] = useState("");
@@ -500,8 +491,11 @@ export default function NonConformanceReportInput(props) {
   /* Branch options: Sweets' own location list, plus whatever a legacy record
      already carries so an old free-text location never silently disappears. */
   const branchOptions = useMemo(() => {
-    const list = SWEETS_LOCATIONS.map((code) => ({ code, label: code }));
-    if (location && !SWEETS_LOCATIONS.includes(location)) {
+    const list = SWEETS_AREAS.map((b) => ({
+      code: b.code,
+      label: `${b.icon}  ${b.labelEn}`,
+    }));
+    if (location && !isKnownSweetsArea(location)) {
       list.unshift({ code: location, label: `⚠️  ${location} (legacy)` });
     }
     return list;
@@ -529,7 +523,8 @@ export default function NonConformanceReportInput(props) {
       const sig = payload.signature || {};
 
       const rawLoc = payload.branch || payload.location || "";
-      setLocation(rawLoc || defaultBranch || SWEETS_LOCATIONS[0]);
+      const code = canonicalSweetsArea(rawLoc);
+      setLocation(code || defaultBranch || "");
       setRefNo(payload.refNo || "");
       setLegacyNcNo(payload.refNo ? "" : head.ncNo || "");
       setIssuedTo(head.issuedTo || "");
@@ -676,7 +671,7 @@ export default function NonConformanceReportInput(props) {
     setEditingReportId("");
     setRefNo("");
     setLegacyNcNo("");
-    setLocation(defaultBranch || SWEETS_LOCATIONS[0]);
+    setLocation(defaultBranch || "");
     setIssuedTo("");
     setIssuedBy("");
     setSources({ inhouseQC: false, customerComplaint: false, internalAudit: false, externalAudit: false });

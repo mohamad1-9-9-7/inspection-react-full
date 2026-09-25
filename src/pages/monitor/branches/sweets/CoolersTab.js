@@ -1,7 +1,5 @@
 // src/pages/monitor/branches/sweets/CoolersTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import ProductPicker from "../_shared/ProductPicker";
-import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import {
   getLatestReport,
   getReportRowByDate,
@@ -38,6 +36,23 @@ function todayDubaiISO() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 }
+
+/* Product matching rule — at least MIN_MATCHES products with a numeric
+   temperature. Kept local so this sheet depends on no other company's module. */
+const MIN_MATCHES = 2;
+const isValidMatch = (r) =>
+  !!String(r?.productName || "").trim() &&
+  r?.productTemp !== "" &&
+  r?.productTemp != null &&
+  !Number.isNaN(Number(r.productTemp));
+const countValidMatches = (pvs) => (Array.isArray(pvs) ? pvs.filter(isValidMatch).length : 0);
+
+/* Product suggestions are the sweets company's own — never the other company's catalog. */
+const SWEETS_PRODUCTS = [
+  "Fresh cream cake", "Cheesecake", "Chocolate cake", "Tiramisu", "Mousse cake", "Eclairs",
+  "Cream puffs", "Fruit tart", "Kunafa (cream)", "Muhallabia", "Umm Ali", "Fresh cream",
+  "Whipping cream", "Butter", "Cream cheese", "Milk", "Eggs", "Custard filling",
+];
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "sweets_coolers_draft_v1";
@@ -265,7 +280,7 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
           <div>2) If the loading area is more than +16°C - take corrective action.</div>
           <div>3) If the preparation area is more than +10°C - take corrective action.</div>
           <div style={{ marginTop: 6, fontWeight: 700 }}>
-            Corrective action: transfer the products to another cooler and call maintenance to check and solve the
+            Corrective action: transfer the products to another cold room and call maintenance to check and solve the
             problem.
           </div>
         </div>
@@ -651,7 +666,7 @@ export default function CoolersTab(props) {
         loadingDef,
       };
 
-      const body = { reporter: "sweets/coolers", type: COOLERS_TYPE, payload };
+      const body = { reporter: "sweets", type: COOLERS_TYPE, payload };
 
       if (existing?.id) {
         const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
@@ -882,25 +897,19 @@ export default function CoolersTab(props) {
                   </label>
 
                   <label style={{ ...mField, flex: "1 1 220px", minWidth: 200 }}>
-                    <span style={mLabel}>Product {row.itemCode ? `· ${row.itemCode}` : ""}</span>
-                    <ProductPicker
-                      value={row.productName}
-                      itemCode={row.itemCode}
-                      accent={accent}
-                      placeholder="Search code or product…"
-                      onPick={(it) => {
-                        setProductVerifications((prev) => {
-                          const next = [...(prev || [])];
-                          next[idx] = {
-                            ...makeProductVerificationRow(),
-                            ...(next[idx] || {}),
-                            productName: it.description,
-                            itemCode: it.item_code,
-                          };
-                          return next;
-                        });
-                      }}
-                    />
+                    <span style={mLabel}>Product</span>
+                    <>
+                      <input
+                        list="sweets-cooler-products"
+                        value={row.productName || ""}
+                        placeholder="Product name…"
+                        style={mInput}
+                        onChange={(e) => updateProductVerification(idx, "productName", e.target.value)}
+                      />
+                      <datalist id="sweets-cooler-products">
+                        {SWEETS_PRODUCTS.map((p) => <option key={p} value={p} />)}
+                      </datalist>
+                    </>
                   </label>
 
                   <label style={{ ...mField, width: 130 }}>

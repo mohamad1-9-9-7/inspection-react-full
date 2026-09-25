@@ -16,6 +16,7 @@ export const REF_PREFIX = {
   destruction_record: "CND",
   returns: "RET",
   returns_customers: "CRT",
+  qa_complaint:       "CMP",
 };
 
 export const REF_PAD = 6;

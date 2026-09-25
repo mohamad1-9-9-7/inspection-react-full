@@ -1,13 +1,14 @@
 // src/pages/monitor/branches/sweets/PestControlView.jsx
-// Sweets — Pest Control Log — Records list (with month filter, search, KPIs)
+// Pest Control Log — records list (month filter, search, KPIs, next-visit tracker).
 
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
-import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { deleteReport, listReports, reportId } from "../_shared/reportApi";
 import { pdfSafeText } from "./pdfImageUtils";
 import { canDelete } from "../../../../utils/perms";
+import { businessDateOf, enLabel } from "./sweetsRecord";
 
 const TYPE = "sweets_pest_control";
 
@@ -23,15 +24,20 @@ const S = {
   kpi: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, textAlign: "center" },
   kpiLabel: { fontSize: 11, fontWeight: 900, color: "#64748b", textTransform: "uppercase" },
   kpiValue: { fontSize: 26, fontWeight: 950, marginTop: 4 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 18, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
-  th: { padding: "12px 14px", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 15 },
-  td: { padding: "11px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle", fontSize: 18 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
+  th: { padding: "12px 14px", background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" },
+  td: { padding: "11px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle", fontSize: 14 },
   empty: { textAlign: "center", padding: 40, color: "#64748b", fontWeight: 800 },
   imgThumb: { width: 70, height: 70, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0", cursor: "zoom-in" },
   pillTag: (color) => ({ display: "inline-block", padding: "3px 10px", borderRadius: 999, background: `${color}22`, color, fontWeight: 800, fontSize: 14, marginInlineEnd: 4, marginBottom: 2 }),
 };
 
-function fmtDate(s) { if (!s) return "—"; try { const d = new Date(s); if (isNaN(d.getTime())) return s; return d.toLocaleDateString(); } catch { return s; } }
+function fmtDate(s) {
+  if (!s) return "—";
+  const [y, m, d] = String(s).slice(0, 10).split("-");
+  return d ? `${d}/${m}/${y}` : String(s);
+}
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 function buildPestPDF(records) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -46,22 +52,22 @@ function buildPestPDF(records) {
   doc.text("Pest Control Log", pw / 2, 10, { align: "center" });
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(`Generated: ${new Date().toLocaleString("en-GB")} | Records: ${records.length}`, pw / 2, 17, { align: "center" });
+  doc.text(`Pest Control Log | Generated: ${new Date().toLocaleString("en-GB")} | Records: ${records.length}`, pw / 2, 17, { align: "center" });
 
   autoTable(doc, {
     startY: 30,
     head: [["#", "Date", "Location", "Company", "Technician", "Visit Type", "Targeted", "Stations", "Inspector", "Next Visit"]],
     body: records.map((row, index) => {
       const p = row?.payload || {};
-      const targeted = Array.isArray(p.pestsTargeted) ? p.pestsTargeted.map((x) => String(x).split("/")[0].trim()).join(", ") : "";
+      const targeted = Array.isArray(p.pestsTargeted) ? p.pestsTargeted.map(enLabel).join(", ") : "";
       const stations = Array.isArray(p.stations) ? p.stations.length : 0;
       return [
         index + 1,
-        fmtDate(p.reportDate),
-        pdfSafeText(p.location),
+        fmtDate(businessDateOf(p)),
+        pdfSafeText(enLabel(p.location)),
         pdfSafeText(p.company?.name),
         pdfSafeText(p.technician),
-        pdfSafeText(p.visitType),
+        pdfSafeText(enLabel(p.visitType)),
         pdfSafeText(targeted),
         stations,
         pdfSafeText(p.inspector),
@@ -91,7 +97,7 @@ export default function PestControlView() {
     setLoading(true);
     try {
       const arr = await listReports(TYPE);
-      arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
+      arr.sort((a, b) => String(b?.payload?.reportDate || "").localeCompare(String(a?.payload?.reportDate || "")));
       setItems(arr);
     } catch (e) {
       console.error("Pest control load failed:", e);
@@ -105,18 +111,18 @@ export default function PestControlView() {
 
   async function deleteRecord(id) {
     if (!id) return;
-    if (!window.confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
+    if (!window.confirm("Delete this record permanently?")) return;
     try {
       await deleteReport(id);
       await load();
     } catch (e) {
-      alert("فشل الحذف: " + (e?.message || e));
+      alert(`Delete failed: ${e?.message || e}`);
     }
   }
 
   const locations = useMemo(() => {
     const set = new Set();
-    items.forEach((r) => { const l = r?.payload?.location; if (l) set.add(l); });
+    items.forEach((r) => { const l = enLabel(r?.payload?.location); if (l) set.add(l); });
     return ["all", ...Array.from(set)];
   }, [items]);
 
@@ -124,10 +130,10 @@ export default function PestControlView() {
     return items.filter((r) => {
       const p = r?.payload || {};
       if (month) {
-        const d = String(p.reportDate || "").slice(0, 7);
+        const d = businessDateOf(p).slice(0, 7);
         if (d !== month) return false;
       }
-      if (locationFilter !== "all" && p.location !== locationFilter) return false;
+      if (locationFilter !== "all" && enLabel(p.location) !== locationFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const hay = [
@@ -145,15 +151,25 @@ export default function PestControlView() {
   const totalVisits = filtered.length;
   const thisMonth = useMemo(() => {
     const m = new Date().toISOString().slice(0, 7);
-    return items.filter((r) => String(r?.payload?.reportDate || "").slice(0, 7) === m).length;
+    return items.filter((r) => businessDateOf(r?.payload).slice(0, 7) === m).length;
   }, [items]);
   const totalStations = useMemo(() => filtered.reduce((s, r) => s + (Array.isArray(r?.payload?.stations) ? r.payload.stations.length : 0), 0), [filtered]);
   const activitySpotted = useMemo(() => filtered.filter((r) => {
     const stations = r?.payload?.stations || [];
-    return stations.some((st) => /captur|نشاط|صيد/i.test(String(st?.status || ""))) || /نشاط|capture|rodent|fly|pest/i.test(String(r?.payload?.findings || ""));
+    return stations.some((st) => /captur/i.test(enLabel(st?.status))) || /capture|rodent|fly|pest|activity/i.test(String(r?.payload?.findings || ""));
   }).length, [filtered]);
 
-  const exportJSON = () => downloadReportsJson(TYPE, filtered, "Pest_Control");
+  /* The contractor's promised next visit, from the newest record that set one.
+     Shown red once the date has passed with no newer visit logged. */
+  const nextVisit = useMemo(() => {
+    const withNext = items.find((r) => r?.payload?.nextVisitDate);
+    if (!withNext) return { label: "—", color: "#64748b" };
+    const due = String(withNext.payload.nextVisitDate).slice(0, 10);
+    const newer = items.some((r) => businessDateOf(r?.payload) >= due);
+    const overdue = !newer && due < todayISO();
+    return { label: overdue ? `${fmtDate(due)} · overdue` : fmtDate(due), color: overdue ? "#dc2626" : "#0f766e" };
+  }, [items]);
+
   const exportPDF = async () => {
     if (!filtered.length) return;
     setExportingPDF(true);
@@ -174,7 +190,6 @@ export default function PestControlView() {
       actions={
         <ReportActions
           onPdf={exportPDF}
-          onJson={exportJSON}
           onRefresh={load}
           exportingPdf={exportingPDF}
           refreshing={loading}
@@ -189,17 +204,17 @@ export default function PestControlView() {
         <div style={S.filters}>
           <input
             style={S.input}
-            placeholder="🔍 بحث (شركة، فني، مفتش، آفة...)"
+            placeholder="🔍 Search company, technician, inspector, pest…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <input type="month" style={S.input} value={month} onChange={(e) => setMonth(e.target.value)} />
           <select style={S.input} value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
-            {locations.map((l) => <option key={l} value={l}>{l === "all" ? "جميع المواقع" : l}</option>)}
+            {locations.map((l) => <option key={l} value={l}>{l === "all" ? "All locations" : l}</option>)}
           </select>
           {(search || month || locationFilter !== "all") && (
             <button style={S.btn} onClick={() => { setSearch(""); setMonth(""); setLocationFilter("all"); }}>
-              مسح المرشحات
+              ✖ Clear filters
             </button>
           )}
         </div>
@@ -208,33 +223,34 @@ export default function PestControlView() {
       {/* KPIs */}
       <KpiGrid
         items={[
-          { label: "إجمالي الزيارات", value: totalVisits, color: "#7c3aed" },
-          { label: "هذا الشهر", value: thisMonth, color: "#0ea5e9" },
-          { label: "محطات الطعم", value: totalStations, color: "#16a34a" },
-          { label: "زيارات بنشاط", value: activitySpotted, color: "#dc2626" },
+          { label: "Visits", value: totalVisits, color: "#7c3aed" },
+          { label: "This month", value: thisMonth, color: "#0ea5e9" },
+          { label: "Bait stations", value: totalStations, color: "#16a34a" },
+          { label: "Visits with activity", value: activitySpotted, color: "#dc2626" },
+          { label: "Next visit due", value: nextVisit.label, color: nextVisit.color },
         ]}
       />
 
       {/* Records table */}
       {loading ? (
-        <div style={S.empty}>⏳ جاري التحميل...</div>
+        <div style={S.empty}>⏳ Loading…</div>
       ) : filtered.length === 0 ? (
-        <div style={S.empty}>لا توجد سجلات.</div>
+        <div style={S.empty}>No records.</div>
       ) : (
         <ResponsiveTableWrap>
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>التاريخ</th>
-                <th style={S.th}>الموقع</th>
-                <th style={S.th}>الشركة</th>
-                <th style={S.th}>الفني</th>
-                <th style={S.th}>نوع الزيارة</th>
-                <th style={S.th}>الآفات</th>
-                <th style={S.th}>المحطات</th>
-                <th style={S.th}>المفتش</th>
-                <th style={S.th}>التقرير</th>
-                <th style={S.th}>الزيارة القادمة</th>
+                <th style={S.th}>Date</th>
+                <th style={S.th}>Location</th>
+                <th style={S.th}>Company</th>
+                <th style={S.th}>Technician</th>
+                <th style={S.th}>Visit Type</th>
+                <th style={S.th}>Pests</th>
+                <th style={S.th}>Stations</th>
+                <th style={S.th}>Inspector</th>
+                <th style={S.th}>Report</th>
+                <th style={S.th}>Next Visit</th>
                 <th style={S.th}></th>
               </tr>
             </thead>
@@ -245,16 +261,16 @@ export default function PestControlView() {
                 const pests = Array.isArray(p.pestsTargeted) ? p.pestsTargeted : [];
                 return (
                   <tr key={reportId(r) || `${p.savedAt}-${p.reportDate}`}>
-                    <td style={S.td}>{fmtDate(p.reportDate)}</td>
-                    <td style={S.td}>{p.location || "—"}</td>
+                    <td style={S.td}>{fmtDate(businessDateOf(p))}</td>
+                    <td style={S.td}>{enLabel(p.location) || "—"}</td>
                     <td style={S.td}>
                       <div>{p.company?.name || "—"}</div>
                       {p.company?.serviceReportNo && <div style={{ fontSize: 11, color: "#64748b" }}>SR: {p.company.serviceReportNo}</div>}
                     </td>
                     <td style={S.td}>{p.technician || "—"}</td>
-                    <td style={S.td}>{p.visitType || "—"}</td>
+                    <td style={S.td}>{enLabel(p.visitType) || "—"}</td>
                     <td style={S.td}>
-                      {pests.length === 0 ? "—" : pests.map((x, i) => <span key={i} style={S.pillTag("#dc2626")}>{x.split("/")[0].trim()}</span>)}
+                      {pests.length === 0 ? "—" : pests.map((x, i) => <span key={i} style={S.pillTag("#dc2626")}>{enLabel(x)}</span>)}
                     </td>
                     <td style={S.td}>{stations.length}</td>
                     <td style={S.td}>{p.inspector || "—"}</td>
@@ -271,7 +287,7 @@ export default function PestControlView() {
                     <td style={S.td}>{fmtDate(p.nextVisitDate)}</td>
                     <td style={S.td}>
                       {canDelete("daily") && (
-                        <button style={S.btnDanger} onClick={() => deleteRecord(reportId(r))} data-delete-action="true">حذف</button>
+                        <button style={S.btnDanger} onClick={() => deleteRecord(reportId(r))} data-delete-action="true">🗑️ Delete</button>
                       )}
                     </td>
                   </tr>

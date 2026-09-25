@@ -649,7 +649,14 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   async function logEmailSent({ methodUsed, attachmentCount }) {
     try {
       const { default: API_BASE } = await import("../../config/api");
-      const reportDate = payload?.reportDate || null;
+      /* report_date is a DATE column on the server. Several report families use a
+         unique NON-date key as payload.reportDate (e.g. "CMP-2026-09-19-…"),
+         which Postgres rejects — the whole audit row then 500s and silently
+         never lands, so the send history stays empty. Let a page hand over the
+         real calendar date via getReportDate, and never send anything that
+         isn't a plain YYYY-MM-DD. */
+      const rawDate = config?.getReportDate?.(payload) ?? payload?.reportDate ?? null;
+      const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(String(rawDate || "")) ? rawDate : null;
       let me = "";
       try { me = JSON.parse(localStorage.getItem("currentUser") || "{}").username || ""; } catch {}
       await fetch(`${API_BASE}/api/email-history`, {

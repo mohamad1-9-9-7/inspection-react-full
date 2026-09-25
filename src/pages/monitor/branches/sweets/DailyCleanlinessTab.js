@@ -273,15 +273,16 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
    Confectionery premises (one branch, see src/industries/sweets/index.js).
    Only a NEW sheet starts from this list; a saved report keeps its own rows. */
 const TEMPLATE_SECTIONS = [
-  { title: "Hand Washing Area", items: ["Soap available", "Tissue available", "Sanitizer available", "Hair Net available", "Face Masks available"] },
-  { title: "Production Area", items: ["Work tables", "Walls/Floors", "Drainage", "Utensils & moulds", "Cutting boards", "Waste basket", "Weighing scale", "Door"] },
-  { title: "Machine Cleanliness", items: ["Mixers", "Ovens", "Chocolate tempering machine", "Dough sheeter", "Filling / depositing machine", "Packing / sealing machine", "Refrigerator"] },
-  { title: "Coolers & Freezer", items: ["Floors", "Shelves", "Proper arrangement of Products", "Door seals"] },
-  { title: "Display & Sales Area", items: ["Display chillers", "Counters", "Trays & tongs", "Glass / showcases"] },
-  { title: "Packaging and Ingredients Store Area", items: ["Floors cleaning", "Master cartons stacking", "Proper arrangement of packing materials", "Proper arrangement of ingredients"] },
-  { title: "Loading / Receiving Area", items: ["Walls/Floors", "Trolleys"] },
-  { title: "Waste Disposal", items: ["Collection of waste", "Disposal"] },
-  { title: "Working Conditions & Cleanliness", items: ["Lights", "Fly Catchers", "Floor/wall", "Painting and Plastering", "Tap Water"] },
+  { title: "Hand Washing Station", items: ["Soap & sanitizer available", "Paper towels available", "Hair nets / masks / gloves available", "Hot & cold water"] },
+  { title: "Raw Material & Dry Store", items: ["Floors / shelves clean", "Items off the floor (on pallets)", "Nuts & allergens stored separately and labelled", "Opened bags sealed and dated", "No spillage / pest signs"] },
+  { title: "Chillers & Freezer", items: ["Floors / walls clean", "Door gaskets clean", "Cream & dairy covered and dated", "Raw and finished products separated"] },
+  { title: "Mixing & Preparation Area", items: ["Work tables", "Walls / floors", "Mixers & bowls", "Utensils & spatulas", "Sieves", "Weighing scale", "Drainage"] },
+  { title: "Baking Area", items: ["Ovens (inside / outside)", "Baking trays & moulds", "Proofer", "Cooling racks", "Floor / walls"] },
+  { title: "Cream & Decoration Room", items: ["Tables & turntables", "Piping bags / nozzles", "Cream machines", "Room temperature controlled", "Floor / walls"] },
+  { title: "Machine Cleanliness", items: ["Planetary mixers", "Dough sheeter", "Depositor / filling machine", "Blast chiller", "Nut grinder / roaster", "Packing / sealing machine"] },
+  { title: "Packaging & Finished Goods", items: ["Packing tables", "Packaging material covered", "Labels / dates correct", "Finished products protected"] },
+  { title: "Waste Disposal", items: ["Bins covered with lids", "Waste removed on time", "Waste area clean"] },
+  { title: "Working Conditions", items: ["Lights covered / working", "Insect killers (EFK) working", "Floor / wall / ceiling condition", "No glass / brittle plastic hazard", "Toilets & changing room clean"] },
 ];
 
 // ✅ Default observation = "C" for all NON-section rows (editable later)
