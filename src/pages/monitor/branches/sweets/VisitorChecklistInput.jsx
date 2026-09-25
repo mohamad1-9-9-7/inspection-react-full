@@ -1,5 +1,6 @@
-// src/pages/monitor/branches/qcs/VisitorChecklistInput.jsx
+// src/pages/monitor/branches/sweets/VisitorChecklistInput.jsx
 import React, { useMemo, useState } from "react";
+import { getActiveCompanyName } from "../../../../utils/companyContext";
 import API_BASE from "../../../../config/api";
 import { getLatestReport } from "../_shared/reportApi";
 
@@ -11,8 +12,8 @@ const TYPE = "sweets_visitor_checklist";
 
 const DOC_META = {
   docTitle: "Visitor Checklist",
-  docNo: "FF/QA/VC/1",
-  revision: "0",
+  docNo: "",
+  revision: "",
   issueDate: "",
   area: "",
   issuedBy: "",
@@ -261,7 +262,7 @@ export default function VisitorChecklistInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setMsg("✅ Saved successfully");
@@ -294,13 +295,13 @@ export default function VisitorChecklistInput() {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".5px" }}>
-             <span style={{ opacity: 0.85, fontWeight: 700 }}>المواشي</span>
+             <span style={{ opacity: 0.85, fontWeight: 700 }}>{getActiveCompanyName()}</span>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.9 }}></div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>{DOC_META.docTitle}</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo}</b></div>
-          <div>Rev: <b>{DOC_META.revision}</b> — Issue: <b>26/02/2020</b></div>
+          <div>Doc No: <b>{DOC_META.docNo || "—"}</b></div>
+          <div>Rev: <b>{DOC_META.revision || "—"}</b> — Issue: <b>{DOC_META.issueDate || "—"}</b></div>
           <div>Area: <b>{DOC_META.area}</b></div>
         </div>
       </div>

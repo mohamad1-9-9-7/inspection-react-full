@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/NonConformanceReportsView.jsx
+// src/pages/monitor/branches/sweets/NonConformanceReportsView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
@@ -10,7 +10,7 @@ import EmailSendModal from "../../../shared/EmailSendModal";
 import EmailSendHistory from "../../../shared/EmailSendHistory";
 import { makeNcrEmailConfig } from "./ncrEmailConfig";
 
-/* The NC number is allocated by the server as `payload.refNo` ("AM-NCR-000042").
+/* The NC number is allocated by the server as `payload.refNo` ("SW-NCR-000042").
    Reports written before that still only carry the hand-typed headRow.ncNo, so
    both are read here — the server-owned one first. */
 const ncNumberOf = (p) => p?.refNo || p?.headRow?.ncNo || "";
@@ -155,12 +155,11 @@ export default function NonConformanceReportsView(props) {
   const sheetRef = useRef(null);
   const { openImage, lightbox } = useLightbox();
 
-  /* POS 19 mounts this same view under its own report type; the e-mail log has
-     to stay separated the same way the reports are. */
+  /* The e-mail log is keyed by report type, same as the reports. */
   const emailConfig = useMemo(
     () => makeNcrEmailConfig({
       reportType: TYPE,
-      reportTitle: TYPE.startsWith("pos19") ? "POS 19 Non-Conformance Report" : "Non-Conformance Report",
+      reportTitle: "Non-Conformance Report",
     }),
     [TYPE]
   );

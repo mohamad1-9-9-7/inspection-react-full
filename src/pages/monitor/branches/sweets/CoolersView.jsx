@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/CoolersView.jsx
+// src/pages/monitor/branches/sweets/CoolersView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionBar,
@@ -129,7 +129,7 @@ function TMPPrintHeader({ header, reportDate }) {
           <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
           <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
           <div style={{ marginTop: 6, fontWeight: 700 }}>
-            Corrective action: Transfer the meat to another cold room and call maintenance department to check and solve the problem.
+            Corrective action: Transfer the products to another cooler and call maintenance department to check and solve the problem.
           </div>
         </div>
         <div style={{ borderTop: "1px solid #000" }}>
@@ -312,7 +312,7 @@ export default function CoolersView() {
   const handleExportJSON = async () => {
     try {
       const rows = await listReports(TYPE_COOLERS);
-      downloadReportsJson(TYPE_COOLERS, rows, "QCS_Coolers_ALL");
+      downloadReportsJson(TYPE_COOLERS, rows, "Coolers_ALL");
     } catch (e) {
       console.error(e);
       alert("❌ Failed to export JSON.");

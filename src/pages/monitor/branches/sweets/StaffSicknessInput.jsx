@@ -1,6 +1,7 @@
-// src/pages/monitor/branches/qcs/StaffSicknessInput.jsx
+// src/pages/monitor/branches/sweets/StaffSicknessInput.jsx
 import React, { useEffect, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { getActiveCompanyName } from "../../../../utils/companyContext";
 import { getReportRowByDate, payloadOf, reportId } from "../_shared/reportApi";
 import {
   useStaffDirectory,
@@ -21,7 +22,7 @@ const TYPE = "sweets_staff_sickness";
 
 const DOC_META = {
   docTitle: "Staff Sickness Form",
-  docNo: "AM/BK/CK/SS/1",
+  docNo: "",
   issueDate: "",
   area: "",
   controllingOfficer: "",
@@ -113,7 +114,7 @@ const delRowBtn = {
 };
 
 /* ===== Component ===== */
-export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {}) {
+export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } = {}) {
   const [headerDate, setHeaderDate] = useState("");
   const [rows, setRows] = useState(blankRows);
   const [remarks, setRemarks] = useState("");
@@ -290,13 +291,13 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
       >
         <div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".5px" }}>
-             <span style={{ opacity: 0.85, fontWeight: 700 }}>المواشي</span>
+             <span style={{ opacity: 0.85, fontWeight: 700 }}>{getActiveCompanyName()}</span>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.9 }}>Central Kitchen — QA</div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>{DOC_META.docTitle}</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo}</b></div>
-          <div>Issue: <b>05/05/2022</b></div>
+          <div>Doc No: <b>{DOC_META.docNo || "—"}</b></div>
+          <div>Issue: <b>{DOC_META.issueDate || "—"}</b></div>
           <div>Area: <b>{DOC_META.area}</b></div>
         </div>
       </div>

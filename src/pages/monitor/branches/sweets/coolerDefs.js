@@ -1,7 +1,7 @@
-// src/pages/monitor/branches/qcs/coolerDefs.js
+// src/pages/monitor/branches/sweets/coolerDefs.js
 //
-// 🧊 تعريف وحدات التخزين في QCS — الاسم · النوع · الحد الأدنى/الأعلى.
-// Storage-unit definitions for the QCS Temperature Control record: what each
+// 🧊 تعريف وحدات التخزين — الاسم · النوع · الحد الأدنى/الأعلى.
+// Storage-unit definitions for the Temperature Control record: what each
 // unit is called, what KIND of storage it is (chiller / freezer / production
 // room / dry store) and the acceptable temperature band for it.
 //
@@ -185,7 +185,7 @@ export function rangeLabel(def) {
  *
  * A dry store holds ambient goods, so the product is judged against the room's
  * own band — the old blanket "0 to 5°C" would fail every legitimate reading.
- * Chilled and production rooms keep the cold-chain limit for the meat inside
+ * Chilled and production rooms keep the cold-chain limit for the products inside
  * them, which is not the same as the room's air temperature.
  */
 export function productLimitFor(def) {

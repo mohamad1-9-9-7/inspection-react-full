@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/qcs/PersonalHygieneVIEW.jsx
+// src/pages/monitor/branches/sweets/PersonalHygieneView.jsx
 import React, { useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -13,7 +13,7 @@ import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "sweets-ph";
 
-/* ===== ستايل موحّد (نفس POS/QCS Viewer) ===== */
+/* ===== ستايل موحّد ===== */
 const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center", fontSize: ".9rem" };
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
 
@@ -115,7 +115,7 @@ export default function PersonalHygieneVIEW() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `QCS_PersonalHygiene_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+      a.download = `PersonalHygiene_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -192,7 +192,7 @@ export default function PersonalHygieneVIEW() {
       left -= H;
     }
     const d = p.reportDate || "report";
-    pdf.save(`QCS_PersonalHygiene_${d}.pdf`);
+    pdf.save(`PersonalHygiene_${d}.pdf`);
 
     if (btns) btns.style.display = "flex";
   };
@@ -276,7 +276,6 @@ export default function PersonalHygieneVIEW() {
             </table>
 
             <h3 style={{ textAlign:"center", background:"#e5e7eb", padding:"6px", marginBottom:"1rem" }}>
-               — AL QUSAIS <br />
               PERSONAL HYGIENE CHECKLIST
             </h3>
 

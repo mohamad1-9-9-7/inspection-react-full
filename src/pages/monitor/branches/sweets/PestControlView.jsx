@@ -1,5 +1,5 @@
-// src/pages/monitor/branches/qcs/PestControlView.jsx
-// QCS — Pest Control Log — Records list (with month filter, search, KPIs)
+// src/pages/monitor/branches/sweets/PestControlView.jsx
+// Sweets — Pest Control Log — Records list (with month filter, search, KPIs)
 
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
@@ -46,7 +46,7 @@ function buildPestPDF(records) {
   doc.text("Pest Control Log", pw / 2, 10, { align: "center" });
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(`QCS | Generated: ${new Date().toLocaleString("en-GB")} | Records: ${records.length}`, pw / 2, 17, { align: "center" });
+  doc.text(`Generated: ${new Date().toLocaleString("en-GB")} | Records: ${records.length}`, pw / 2, 17, { align: "center" });
 
   autoTable(doc, {
     startY: 30,
@@ -153,7 +153,7 @@ export default function PestControlView() {
     return stations.some((st) => /captur|نشاط|صيد/i.test(String(st?.status || ""))) || /نشاط|capture|rodent|fly|pest/i.test(String(r?.payload?.findings || ""));
   }).length, [filtered]);
 
-  const exportJSON = () => downloadReportsJson(TYPE, filtered, "QCS_Pest_Control");
+  const exportJSON = () => downloadReportsJson(TYPE, filtered, "Pest_Control");
   const exportPDF = async () => {
     if (!filtered.length) return;
     setExportingPDF(true);

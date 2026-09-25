@@ -11,7 +11,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { clearAppSession } from "../../utils/authFetch";
-import { getActiveCompany, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
+import { getActiveCompany, getActiveCompanyName, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
 import { getIndustryTemplate, findReportType } from "../../industries";
 
 function getCurrentUser() {
@@ -65,7 +65,7 @@ export default function GenericIndustryApp() {
   const found = activeType ? findReportType(template, activeType) : null;
   const companyName = isSuperAdmin
     ? (getActiveCompany()?.name || template.label)
-    : (currentUser.displayName || template.label);
+    : (getActiveCompanyName() || currentUser.displayName || template.label);
   const monogram = (companyName || "?").trim()[0]?.toUpperCase() || "?";
 
   const go = (next) => {
