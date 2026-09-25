@@ -1,3 +1,4 @@
+
 // src/pages/haccp and iso/AuditTrail/AuditTrailView.jsx
 // 🕵️ Audit Trail — ADMIN ONLY.
 // Every edit & delete across the whole system (all report types):
