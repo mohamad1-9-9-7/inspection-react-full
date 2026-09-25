@@ -1,7 +1,3 @@
-// config/api.js reads import.meta, which CRA's Jest cannot parse; nothing
-// here touches the network, so a stub base URL is all it needs.
-jest.mock("../../../config/api", () => ({ __esModule: true, default: "", API_BASE: "", IMAGE_API_BASE: "" }));
-
 import {
   allowedVatPct,
   invoiceTitle,
@@ -11,6 +7,11 @@ import {
   sellerToRow,
 } from "./sellerProfile";
 import { quoteInsights } from "../quotations/quotationCore";
+
+// config/api.js reads import.meta, which CRA's Jest cannot parse. Nothing
+// here touches the network, so a stub base URL is all it needs (babel-jest
+// hoists this above the imports).
+jest.mock("../../../config/api", () => ({ __esModule: true, default: "", API_BASE: "", IMAGE_API_BASE: "" }));
 
 const freelancer = normalizeSeller({ company_name: "INSPECT PRO", owner_name: "M. Abdullah" });
 const registered = normalizeSeller({ company_name: "INSPECT PRO", vat_registered: true, tax_id: "100123456700003" });

@@ -3,22 +3,18 @@
 // Quotations (عروض الأسعار) — data model, storage, maths, smart helpers and
 // the module catalogue that feeds "add cards from a company".
 //
-// Storage: the generic /api/reports store — type "billing_quotation" for the
-// quotations, "billing_quotation_config" for the single settings row (price
-// book, default terms; the logo now lives in the INSPECT PRO profile). Every call pins company_id=1 (the platform
-// owner) so a super-admin who is currently "inside" another company still
-// reads and writes the one shared quotation book — authFetch leaves a URL
-// alone once it already carries company_id.
+// Storage: INSPECT PRO's own tables, never a tenant's data —
+//   /api/quotations                       the quotations (super-admin only)
+//   /api/platform-settings/quotation_config  price book, defaults, default terms
+// They used to live in /api/reports pinned to company 1 (Al Mawashi); the
+// server moved them on boot. The logo lives in the INSPECT PRO profile.
 // -----------------------------------------------------------------------------
 
 import API_BASE from "../../../config/api";
 import { getIndustryTemplate } from "../../../industries";
 import { activeCards, branchesOfCard } from "../reportTypeCatalog";
 
-export const QUOTE_TYPE = "billing_quotation";
-export const CONFIG_TYPE = "billing_quotation_config";
-const CONFIG_KEY = "billing_quotation_config";
-const OWNER_COMPANY_ID = 1;
+const SETTINGS_URL = `${API_BASE}/api/platform-settings/quotation_config`;
 
 export const CURRENCIES = ["AED", "USD", "SAR", "EUR", "GBP"];
 
@@ -416,12 +412,6 @@ export function quoteSummaryText(q, lang = "en") {
 
 /* ═══════════════════════════ Storage ═══════════════════════════ */
 
-const scoped = (path) => `${API_BASE}${path}${path.includes("?") ? "&" : "?"}company_id=${OWNER_COMPANY_ID}`;
-
-function unwrapRows(data) {
-  if (Array.isArray(data)) return data;
-  return data?.data || data?.reports || data?.rows || data?.items || [];
-}
 
 export function quoteFromRecord(rec) {
   const p = rec?.payload || {};
@@ -436,10 +426,9 @@ export function quoteFromRecord(rec) {
 
 function toPayload(q) {
   const { id, createdAt, updatedAt, terms, ...rest } = q; // eslint-disable-line no-unused-vars
+  const { reportDate, ...clean } = rest; // eslint-disable-line no-unused-vars
   return {
-    ...rest,
-    // unique per row: the reports table is unique on (company, type, reportDate)
-    reportDate: q.reportDate || `QUOTE-${q.number || "X"}-${Date.now().toString(36)}`,
+    ...clean,
     totals: computeTotals(q),
     _clientSavedAt: Date.now(),
   };
@@ -452,54 +441,52 @@ async function readJson(res, fallback) {
 }
 
 export async function apiListQuotes() {
-  const res = await fetch(scoped(`/api/reports?type=${QUOTE_TYPE}&limit=5000`), { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const rows = unwrapRows(await res.json());
-  return rows.map(quoteFromRecord).sort((a, b) =>
+  const res = await fetch(`${API_BASE}/api/quotations`, { cache: "no-store" });
+  const j = await readJson(res, "Could not load quotations");
+  return (j.quotations || []).map(quoteFromRecord).sort((a, b) =>
     String(b.issueDate).localeCompare(String(a.issueDate)) || String(b.number).localeCompare(String(a.number)));
 }
 
+/* The server owns numbering: a number already taken is replaced with the
+   next free one, and the saved quotation comes back with it. */
 export async function apiSaveQuote(q) {
-  const payload = toPayload(q);
-  const body = JSON.stringify({ reporter: "billing", type: QUOTE_TYPE, payload, companyId: OWNER_COMPANY_ID });
+  const body = JSON.stringify({ payload: toPayload(q) });
   const res = q.id
-    ? await fetch(scoped(`/api/reports/${Number(q.id)}`), { method: "PUT", headers: { "Content-Type": "application/json" }, body })
-    : await fetch(scoped(`/api/reports`), { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    ? await fetch(`${API_BASE}/api/quotations/${Number(q.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body })
+    : await fetch(`${API_BASE}/api/quotations`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
   const j = await readJson(res, "Save failed");
-  return quoteFromRecord(j?.report || j?.data || { id: q.id, payload });
+  return quoteFromRecord(j.quotation);
 }
 
 export async function apiDeleteQuote(id) {
-  const res = await fetch(scoped(`/api/reports/${Number(id)}`), { method: "DELETE" });
-  if (!res.ok && res.status !== 204) throw new Error(`Delete failed (${res.status})`);
+  const res = await fetch(`${API_BASE}/api/quotations/${Number(id)}`, { method: "DELETE" });
+  await readJson(res, "Delete failed");
   return true;
 }
 
-/* ─────────── Settings row: price book, logo, defaults ─────────── */
+/* ─────────── Settings row: price book, defaults, default terms ─────────── */
 
-export const emptyConfig = () => ({ priceBook: {}, logo: "", defaults: {} });
+export const emptyConfig = () => ({ priceBook: {}, defaults: {} });
 
 export async function apiLoadConfig() {
   try {
-    const res = await fetch(scoped(`/api/reports?type=${CONFIG_TYPE}&limit=20`), { cache: "no-store" });
-    if (!res.ok) return emptyConfig();
-    const rows = unwrapRows(await res.json());
-    const rec = rows.find((r) => r?.payload && (r.payload.priceBook || r.payload.defaults || r.payload.logo));
-    return rec ? { ...emptyConfig(), ...rec.payload } : emptyConfig();
+    const res = await fetch(SETTINGS_URL, { cache: "no-store" });
+    const j = await res.json().catch(() => null);
+    return res.ok && j?.value ? { ...emptyConfig(), ...j.value } : emptyConfig();
   } catch {
     return emptyConfig();
   }
 }
 
 export async function apiSaveConfig(cfg) {
-  const payload = { ...emptyConfig(), ...cfg, reportDate: CONFIG_KEY, _clientSavedAt: Date.now() };
-  const res = await fetch(scoped(`/api/reports`), {
+  const { logo, ...rest } = { ...emptyConfig(), ...cfg }; // eslint-disable-line no-unused-vars
+  const res = await fetch(SETTINGS_URL, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reporter: "billing", type: CONFIG_TYPE, payload, companyId: OWNER_COMPANY_ID }),
+    body: JSON.stringify({ payload: rest }),
   });
-  await readJson(res, "Save failed");
-  return payload;
+  const j = await readJson(res, "Save failed");
+  return j.value;
 }
 
 /* The key a line's price is remembered under. */

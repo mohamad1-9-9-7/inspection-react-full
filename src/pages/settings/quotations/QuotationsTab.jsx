@@ -115,7 +115,7 @@ export default function QuotationsTab() {
 
   const duplicate = (q) => {
     setEditing({
-      ...q, id: null, reportDate: undefined, number: nextQuoteNumber(quotes), status: "draft", issueDate: todayISO(),
+      ...q, id: null, number: nextQuoteNumber(quotes), status: "draft", issueDate: todayISO(),
       lines: q.lines.map((l) => ({ ...l, id: newLineId() })),
       termsList: termsListOf(q).map((x) => ({ ...x, id: makeTerm(x.key || "scope").id })),
     });
