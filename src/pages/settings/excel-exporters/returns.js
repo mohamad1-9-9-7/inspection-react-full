@@ -125,7 +125,7 @@ export default async function build(wb, record, ctx) {
           } else if (/send to market/i.test(action)) {
             c.font = { bold: true, color: { argb: COLORS.AMBER }, size: 10 };
             c.fill = fillSolid(COLORS.AMBER_BG);
-          } else if (/production|kitchen|use in/i.test(action)) {
+          } else if (/production|kitchen|use in|return to stock/i.test(action)) {
             c.font = { bold: true, color: { argb: COLORS.GREEN }, size: 10 };
             c.fill = fillSolid(COLORS.GREEN_BG);
           }

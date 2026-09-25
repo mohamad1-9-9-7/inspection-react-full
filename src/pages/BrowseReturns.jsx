@@ -151,6 +151,8 @@ function formatChangeDatePDF(ch) {
 }
 function isCondemnation(s) { return (s ?? "").toString().trim().toLowerCase() === "condemnation"; }
 function isSendToMarket(s) { return (s ?? "").toString().trim().toLowerCase() === "send to market"; }
+/* Back on the shelf for its original use - not reworked, not sold off. */
+function isReturnToStock(s) { return (s ?? "").toString().trim().toLowerCase() === "return to stock"; }
 function isDisposed(s) {
   const v = (s ?? "").toString().trim().toLowerCase();
   return v === "disposed" || v === "desposed";
@@ -1985,6 +1987,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
     let returnsCount = 0, totalKg = 0, totalPcs = 0;
     let condCount = 0, condKg = 0;
     let useProd = 0, market = 0, marketKg = 0, disposed = 0, disposedKg = 0, sepExp = 0;
+    let toStock = 0, toStockKg = 0;
     const posMap = {}, originMap = {}, actionMap = {}, expiryMap = {};
     const dailyData = new Map();
     let totalAcrossAllTime = 0;
@@ -2014,6 +2017,10 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         if (isSendToMarket(act)) {
           market += 1;
           if (isKgType(it.qtyType)) marketKg += q;
+        }
+        if (isReturnToStock(act)) {
+          toStock += 1;
+          if (isKgType(it.qtyType)) toStockKg += q;
         }
         if (isDisposed(act)) {
           disposed += 1;
@@ -2059,6 +2066,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
       condKg: Math.round(condKg * 100) / 100,
       useProd, sepExp,
       market, marketKg: Math.round(marketKg * 100) / 100,
+      toStock, toStockKg: Math.round(toStockKg * 100) / 100,
       disposed, disposedKg: Math.round(disposedKg * 100) / 100,
       posTop: Object.entries(posMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       originTop: Object.entries(originMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
@@ -2369,6 +2377,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
               sub={`${insights.sepExp} sep. expired`} color={T.purple} bg={T.purpleS} />
             <StatChip icon={FiTrendingUp} label="Send to market" value={insights.market}
               sub={`${insights.marketKg} kg`} color={T.success} bg={T.successS} />
+            <StatChip icon={FiPackage} label="Return to stock" value={insights.toStock}
+              sub={`${insights.toStockKg} kg`} color={T.success} bg={T.successS} />
             <StatChip icon={FiTrash2} label="Disposed" value={insights.disposed}
               sub={`${insights.disposedKg} kg`} color={T.warning} bg={T.warningS} />
           </div>
@@ -5758,7 +5768,7 @@ export default function BrowseReturns() {
       const GREEN = [5, 150, 105], AMBER = [217, 119, 6], CYAN = [8, 145, 178], PURPLE = [124, 58, 237], BLUE = [37, 99, 235];
       const PALETTE = [NAVY, BLUE, GREEN, AMBER, RED, PURPLE, CYAN, [100, 116, 139]];
       const ACTION_COLORS = {
-        "condemnation": RED, "send to market": GREEN, "disposed": AMBER, "desposed": AMBER,
+        "condemnation": RED, "send to market": GREEN, "return to stock": [16, 185, 129], "disposed": AMBER, "desposed": AMBER,
         "use in production": CYAN, "separated expired shelf": PURPLE,
       };
       const colorForAction = (name, i) => ACTION_COLORS[(name || "").toLowerCase()] || PALETTE[i % PALETTE.length];

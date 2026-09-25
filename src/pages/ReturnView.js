@@ -136,6 +136,7 @@ const ACTIONS = [
   "Condemnation / Cooking",
   "Use in kitchen",
   "Send to market",
+  "Return to stock",
   "Disposed",
   "Separated expired shelf",
   "إجراء آخر...",
