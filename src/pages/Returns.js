@@ -3107,89 +3107,93 @@ export default function Returns() {
           reported under it. Messages come and go, and a strip that grows a line
           every time one appears moves the buttons under the cursor. */}
       <div className="rt-bar">
-        <label className="rt-bar-date">
-          <span aria-hidden="true">📅</span>
-          <span>Report date</span>
-          <input
-            type="date"
-            value={reportDate}
-            onChange={(e) => setReportDate(e.target.value)}
-          />
-        </label>
+        {/* 1 · The day, and the one button that files it */}
+        <div className="rt-bar-group">
+          <label className="rt-bar-date">
+            <span aria-hidden="true">📅</span>
+            <span>Report date</span>
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+            />
+          </label>
 
-        <span className="rt-bar-sep" aria-hidden="true" />
+          <button
+            onClick={() => handleSave()}
+            disabled={saving}
+            className={`rt-btn is-save${dateAlreadyFiled ? " is-replace" : ""}`}
+            title={
+              dateAlreadyFiled
+                ? "This date already has a report — you will be asked to confirm"
+                : "Save this report"
+            }
+          >
+            {saving ? "⏳ Saving…" : dateAlreadyFiled ? "💾 Save (replaces)" : "💾 Save"}
+          </button>
+        </div>
 
-        <button
-          onClick={() => handleSave()}
-          disabled={saving}
-          className={`rt-btn is-save${dateAlreadyFiled ? " is-replace" : ""}`}
-          title={
-            dateAlreadyFiled
-              ? "This date already has a report — you will be asked to confirm"
-              : "Save this report"
-          }
-        >
-          {saving ? "⏳ Saving…" : dateAlreadyFiled ? "💾 Save (replaces)" : "💾 Save"}
-        </button>
+        {/* 2 · Every way a line gets INTO the table */}
+        <div className="rt-bar-seg" role="group" aria-label="Fill the table">
+          <button
+            onClick={() => setScanOpen(true)}
+            className="rt-seg-btn"
+            title="Read the item codes and the branch from photos of the return notes"
+          >
+            📷 Scan notes
+          </button>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="rt-seg-btn"
+            title="Load a note that was already read — as a file, or pasted in"
+          >
+            📥 Import note
+          </button>
+          <button
+            onClick={() => {
+              setAddItemError("");
+              setAddItemOpen(true);
+            }}
+            className="rt-seg-btn"
+            title="Add an item code the catalog does not have yet"
+          >
+            ➕ Add item
+          </button>
+        </div>
 
-        <button
-          onClick={() => setScanOpen(true)}
-          className="rt-btn is-scan"
-          title="Read the item codes and the branch from photos of the return notes"
-        >
-          📷 Scan notes
-        </button>
+        {/* 3 · How the table looks, what it knows, and the way out to the archive */}
+        <div className="rt-bar-group">
+          <button
+            onClick={() => setCompact((v) => !v)}
+            className={`rt-btn is-ghost${compact ? " is-on" : ""}`}
+            aria-pressed={compact}
+            title="Tighter rows, so more of the report fits on one screen"
+          >
+            ↔️ Compact
+          </button>
 
-        <button
-          onClick={() => setImportOpen(true)}
-          className="rt-btn is-import"
-          title="Load a note that was already read — as a file, or pasted in"
-        >
-          📥 Import note
-        </button>
+          <span
+            className="rt-bar-info"
+            title={`${allItems.length} item codes loaded — ${itemsAll.length} from the catalog file, ${customItems.length} added here`}
+          >
+            🗂️ {allItems.length} items
+          </span>
 
-        <button
-          onClick={() => navigate("/returns/view")}
-          className="rt-btn is-view"
-          title="Open the saved returns reports"
-        >
-          📋 View reports
-        </button>
+          <span
+            className="rt-bar-info"
+            title="Copy a block of cells in Excel (item code in the first column, quantity in the second) and paste it onto any row. Enter moves down the same column; Ctrl+D copies the row above."
+          >
+            ⌨️ Excel paste ⓘ
+          </span>
 
-        <span className="rt-bar-sep" aria-hidden="true" />
-
-        <button
-          onClick={() => {
-            setAddItemError("");
-            setAddItemOpen(true);
-          }}
-          className="rt-btn is-ghost"
-          title="Add an item code the catalog does not have yet"
-        >
-          ➕ Add item
-        </button>
-
-        <button
-          onClick={() => setCompact((v) => !v)}
-          className={`rt-btn is-ghost${compact ? " is-on" : ""}`}
-          title="Tighter rows, so more of the report fits on one screen"
-        >
-          ↔️ Compact
-        </button>
-
-        <span
-          className="rt-bar-info"
-          title={`${allItems.length} item codes loaded — ${itemsAll.length} from the catalog file, ${customItems.length} added here`}
-        >
-          🗂️ {allItems.length}
-        </span>
-
-        <span
-          className="rt-bar-info"
-          title="Copy a block of cells in Excel (item code in the first column, quantity in the second) and paste it onto any row. Enter moves down the same column; Ctrl+D copies the row above."
-        >
-          ⌨️ Excel paste
-        </span>
+          <button
+            onClick={() => navigate("/returns/view")}
+            className="rt-btn is-view"
+            title="Open the saved returns reports"
+          >
+            📋 View reports
+          </button>
+        </div>
       </div>
 
       {/* Everything the strip refuses to carry: what just happened, and what is
@@ -4283,29 +4287,56 @@ html:has(.rt), body:has(.rt), #root:has(.rt) { overflow-x: clip; }
 #root .rt.rt .rt-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px 14px;
   margin-bottom: 12px;
   padding: 10px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, .82);
+  background: rgba(255, 255, 255, .88);
   border: 1px solid rgba(216, 199, 231, .85);
   box-shadow: 0 8px 22px rgba(81, 46, 95, .10);
   backdrop-filter: blur(6px);
 }
-#root .rt.rt .rt-bar-sep {
-  width: 1px;
-  height: 26px;
-  background: #e4d8ee;
-  margin: 0 4px;
+#root .rt.rt .rt-bar-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
+/* The three "fill" actions share one outlined pill, so they read as one set */
+#root .rt.rt .rt-bar-seg {
+  display: inline-flex;
+  align-items: stretch;
+  height: 38px;
+  border: 1.5px solid #ddd0e8;
+  border-radius: 11px;
+  background: #fff;
+  overflow: hidden;
+}
+#root .rt.rt .rt-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: none;
+  background: transparent;
+  color: #512e5f;
+  font-weight: 800;
+  font-size: 13px !important;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s ease;
+}
+#root .rt.rt .rt-seg-btn + .rt-seg-btn { border-left: 1.5px solid #ece3f3; }
+#root .rt.rt .rt-seg-btn:hover { background: #f8f3ff; }
+#root .rt.rt .rt-seg-btn:active { background: #efe5f8; }
 #root .rt.rt .rt-bar-date {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   height: 38px;
-  padding: 0 12px;
+  padding: 0 6px 0 12px;
   border-radius: 11px;
   background: linear-gradient(135deg, #512e5f, #884ea0);
   color: #fff;
@@ -4343,9 +4374,7 @@ html:has(.rt), body:has(.rt), #root:has(.rt) { overflow-x: clip; }
 #root .rt.rt .rt-btn:disabled { cursor: not-allowed; filter: grayscale(.35); transform: none; }
 #root .rt.rt .rt-btn.is-save { background: linear-gradient(135deg, #16a34a, #22c55e); box-shadow: 0 3px 10px rgba(22, 163, 74, .30); }
 #root .rt.rt .rt-btn.is-save.is-replace { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 3px 10px rgba(217, 119, 6, .30); }
-#root .rt.rt .rt-btn.is-scan { background: linear-gradient(135deg, #2563eb, #60a5fa); box-shadow: 0 3px 10px rgba(37, 99, 235, .28); }
-#root .rt.rt .rt-btn.is-import { background: linear-gradient(135deg, #0e7490, #22d3ee); box-shadow: 0 3px 10px rgba(14, 116, 144, .28); }
-#root .rt.rt .rt-btn.is-view { background: linear-gradient(135deg, #884ea0, #a855f7); box-shadow: 0 3px 10px rgba(136, 78, 160, .30); }
+#root .rt.rt .rt-btn.is-view { background: linear-gradient(135deg, #512e5f, #884ea0); box-shadow: 0 3px 10px rgba(136, 78, 160, .30); }
 #root .rt.rt .rt-btn.is-ghost {
   background: #fff;
   color: #512e5f;
