@@ -422,7 +422,7 @@ const sx = {
   seg: { display: "inline-flex", padding: 4, gap: 4, borderRadius: 12, background: "#f1f5f9", border: "1px solid #e2e8f0", flexWrap: "wrap" },
   segBtn: (on) => ({
     minHeight: 42, padding: "0 18px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 900,
-    background: on ? "#fff" : "transparent", color: on ? "#0f766e" : "#475569", boxShadow: on ? "0 4px 12px rgba(15,23,42,.10)" : "none",
+    background: on ? "#0f766e" : "transparent", color: on ? "#fff" : "#475569", boxShadow: on ? "0 4px 12px rgba(15,118,110,.25)" : "none",
   }),
   previewLabel: { color: "#64748b", fontWeight: 900, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" },
   gapList: { margin: 0, paddingInlineStart: 20, color: "#92400e", fontWeight: 800, lineHeight: 1.8 },

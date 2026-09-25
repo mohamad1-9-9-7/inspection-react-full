@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiAward, FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
-import InvoicesSection from "../admin/InvoicesSection";
+import InvoicesTab from "./invoices/InvoicesTab";
 import BillingOverviewTab from "./BillingOverviewTab";
 import CompaniesTab from "./CompaniesTab";
 import PlansTab from "./PlansTab";
@@ -43,7 +43,7 @@ const TABS = [
     Icon: FiCreditCard,
     en: "Invoices",
     ar: "الفواتير",
-    render: () => <InvoicesSection />,
+    render: (go) => <InvoicesTab onOpenProfile={() => go("seller")} />,
   },
   {
     id: "seller",
@@ -141,7 +141,7 @@ export default function BillingPlansTab({ fullScreen = false }) {
       </div>
 
       <div style={styles.panel} role="tabpanel" className="bpx-in" key={current.id}>
-        {current.render()}
+        {current.render(setActive)}
       </div>
     </div>
   );

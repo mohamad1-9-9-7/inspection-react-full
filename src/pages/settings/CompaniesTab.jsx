@@ -244,7 +244,7 @@ export default function CompaniesTab() {
         <MetricCard label={t("stTrial")} value={companyStats.trial} />
         <MetricCard label={t("boRenewalRisk")} value={companyStats.renewalRisk} />
         <MetricCard label={t("boNoPlan")} value={companyStats.withoutPlan} />
-        <MetricCard label={t("mrrEstimate")} value={companyStats.mrr.toLocaleString()} />
+        <MetricCard label={t("mrrEstimate")} value={companyStats.mrr.toLocaleString("en-US")} />
       </div>
 
       <div style={toolbarStyle}>
@@ -405,7 +405,7 @@ export default function CompaniesTab() {
                         <span style={{ fontSize:14, fontWeight:700, background:"#ede9fe", color:"#5b21b6",
                                        borderRadius:20, padding:"3px 12px" }}>
                           💳 {c.plan_name || (lang === "ar" ? "بدون خطة" : "No plan")}
-                          {c.monthlyValue > 0 ? ` · ${c.monthlyValue.toLocaleString()} ${c.currencyShown}/mo` : ""}
+                          {c.monthlyValue > 0 ? ` · ${c.monthlyValue.toLocaleString("en-US")} ${c.currencyShown}/mo` : ""}
                           {c.customPrice && <span style={{ marginInlineStart:6, color:"#b45309" }}>· {lang === "ar" ? "سعر خاص" : "custom"}</span>}
                         </span>
                       )}

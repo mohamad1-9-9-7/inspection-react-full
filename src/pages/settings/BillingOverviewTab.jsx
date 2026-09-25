@@ -5,7 +5,7 @@ import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
 const money = (amount, currency = "AED") => {
   const n = Number(amount || 0);
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency || "AED"}`;
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency || "AED"}`;
 };
 
 function daysLeft(date) {
@@ -77,7 +77,9 @@ export default function BillingOverviewTab() {
       .filter((c) => c.days !== null && c.days < 0)
       .sort((a, b) => a.days - b.days);
     const mrr = activeCompanies.reduce((sum, c) => sum + priceOf(c), 0);
-    const invoiceTotal = data.invoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    // A void invoice was never owed — it counts neither as issued nor as revenue.
+    const liveInvoices = data.invoices.filter((inv) => inv.status !== "void");
+    const invoiceTotal = liveInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
     const currency =
       activeCompanies.find((c) => c.plan_currency)?.plan_currency ||
       data.plans.find((p) => p.currency)?.currency ||
@@ -102,6 +104,7 @@ export default function BillingOverviewTab() {
       overdue,
       mrr,
       invoiceTotal,
+      invoiceCount: liveInvoices.length,
       currency,
       planUsage,
     };
@@ -131,7 +134,7 @@ export default function BillingOverviewTab() {
             <Kpi label={t("boActiveCompanies")} value={stats.activeCompanies.length} sub={`${stats.trialCompanies.length} ${t("boTrialSuffix")}`} color="#0f766e" />
             <Kpi label={t("boMrr")} value={money(stats.mrr, stats.currency)} sub={t("boMrrSub")} color="#2563eb" />
             <Kpi label={t("boRenewalRisk")} value={stats.expiringSoon.length + stats.overdue.length} sub={`${stats.overdue.length} ${t("boOverdueSuffix")}`} color="#b91c1c" />
-            <Kpi label={t("boInvoicesIssued")} value={data.invoices.length} sub={money(stats.invoiceTotal, stats.currency)} color="#7c3aed" />
+            <Kpi label={t("boInvoicesIssued")} value={stats.invoiceCount} sub={money(stats.invoiceTotal, stats.currency)} color="#7c3aed" />
           </div>
 
           <div style={sx.grid2}>

@@ -176,7 +176,7 @@ export default function PlansTab() {
         <MetricCard label={t("totalPlans")} value={plans.length} />
         <MetricCard label={t("activePlans")} value={totals.activePlans} />
         <MetricCard label={t("assignedCompanies")} value={totals.assigned} />
-        <MetricCard label={t("mrrEstimate")} value={totals.mrr.toLocaleString()} />
+        <MetricCard label={t("mrrEstimate")} value={totals.mrr.toLocaleString("en-US")} />
       </div>
 
       <div style={toolbarStyle}>
