@@ -1168,7 +1168,7 @@ function RemarksPicker({ value, onChange, invalid = false }) {
 }
 
 /* ===== Confirm Delete Modal ===== */
-function ConfirmDeleteModal({ show, rowNum, imageCount = 0, onConfirm, onCancel }) {
+function ConfirmDeleteModal({ show, rowNum, imageCount = 0, onConfirm, onCancel, title, message }) {
   if (!show) return null;
   return (
     <div style={{ ...galleryBack, zIndex: 3000 }}>
@@ -1186,10 +1186,10 @@ function ConfirmDeleteModal({ show, rowNum, imageCount = 0, onConfirm, onCancel 
       >
         <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
         <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
-          Delete row {rowNum}?
+          {title || `Delete row ${rowNum}?`}
         </div>
         <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>
-          This row contains data. Are you sure you want to delete it?
+          {message || "This row contains data. Are you sure you want to delete it?"}
           {imageCount > 0 && (
             <>
               <br />
@@ -2561,6 +2561,49 @@ export default function Returns() {
     setTimeout(() => setSaveMsg(""), 2600);
   };
 
+  /* Smart select by what is missing: the same checks Save runs, so ticking
+     "incomplete" rows and bulk-filling them clears exactly the red marks
+     Save would raise. */
+  const INCOMPLETE_KINDS = [
+    { key: "any", label: "Any missing field" },
+    { key: "itemCode", label: "No item code / product" },
+    { key: "butchery", label: "No branch" },
+    { key: "quantity", label: "No quantity" },
+    { key: "action", label: "No action" },
+    { key: "remarks", label: "Condemnation without remark" },
+  ];
+  const incompleteByKind = useMemo(() => {
+    const errs = validateBeforeSave(rows);
+    const out = Object.fromEntries(INCOMPLETE_KINDS.map((k) => [k.key, []]));
+    Object.entries(errs).forEach(([idx, e]) => {
+      const i = Number(idx);
+      out.any.push(i);
+      Object.keys(e).forEach((field) => out[field] && out[field].push(i));
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+  const selectIncomplete = (kind, add = false) => {
+    const wanted = incompleteByKind[kind] || [];
+    const label = INCOMPLETE_KINDS.find((k) => k.key === kind)?.label || kind;
+    if (!wanted.length) {
+      setSaveMsg(`✅ No rows match "${label}".`);
+      setTimeout(() => setSaveMsg(""), 2600);
+      return;
+    }
+    setSelected((prev) => {
+      const next = add ? new Set(prev) : new Set();
+      wanted.forEach((i) => next.add(i));
+      return next;
+    });
+    setSaveMsg(`⚠️ ${add ? "Added" : "Selected"} ${wanted.length} incomplete row(s): ${label}.`);
+    setTimeout(() => setSaveMsg(""), 3200);
+  };
+
+  /* Bulk delete always asks first — it can take many rows (and their photos)
+     in one click. */
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
   /* Merge one patch into every selected row in a SINGLE pass, then clear the
      save-error marks the change just answered, and keep the trailing empty
      line. Selection is kept on purpose: a note is usually action AND remark AND
@@ -3293,6 +3336,33 @@ export default function Returns() {
         >
           + Add
         </button>
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) selectIncomplete(e.target.value); }}
+          disabled={!incompleteByKind.any.length}
+          title="Tick the rows Save would reject, by what they are missing"
+          style={{
+            ...inputBase,
+            width: "auto",
+            padding: "8px 10px",
+            fontWeight: 800,
+            color: incompleteByKind.any.length ? "#b45309" : "#94a3b8",
+            borderColor: incompleteByKind.any.length ? "#fcd34d" : undefined,
+            background: incompleteByKind.any.length ? "#fffbeb" : "#f8fafc",
+            cursor: incompleteByKind.any.length ? "pointer" : "not-allowed",
+          }}
+        >
+          <option value="">
+            {incompleteByKind.any.length
+              ? `⚠️ Select incomplete (${incompleteByKind.any.length})`
+              : "✅ All rows complete"}
+          </option>
+          {INCOMPLETE_KINDS.filter((k) => incompleteByKind[k.key].length).map((k) => (
+            <option key={k.key} value={k.key}>
+              {k.label} ({incompleteByKind[k.key].length})
+            </option>
+          ))}
+        </select>
         {selectedCount > 0 && (
           <span style={{ color: "#5b21b6", fontWeight: 800, whiteSpace: "nowrap" }}>
             {selectedCount} selected
@@ -3310,7 +3380,7 @@ export default function Returns() {
           onBranch={bulkSetBranch}
           onTransferNo={bulkSetTransferNo}
           onClear={clearSelection}
-          onDelete={deleteSelected}
+          onDelete={() => setConfirmBulkDelete(true)}
         />
       )}
       </div>
@@ -3857,6 +3927,23 @@ export default function Returns() {
         onConfirm={confirmRemoveRow}
         onCancel={cancelRemoveRow}
       />
+
+      {/* Confirm before deleting every selected row */}
+      {(() => {
+        const idxs = [...selected].filter((i) => i < rows.length && rowHasData(rows[i])).sort((a, b) => a - b);
+        const photos = idxs.reduce((n, i) => n + safeArr(rows[i]?.images).length, 0);
+        const nums = idxs.slice(0, 15).map((i) => i + 1).join(", ") + (idxs.length > 15 ? ", …" : "");
+        return (
+          <ConfirmDeleteModal
+            show={confirmBulkDelete && idxs.length > 0}
+            title={`Delete ${idxs.length} selected row${idxs.length === 1 ? "" : "s"}?`}
+            message={<>Rows: <b style={{ color: "#0f172a" }}>{nums}</b><br />This cannot be undone.</>}
+            imageCount={photos}
+            onCancel={() => setConfirmBulkDelete(false)}
+            onConfirm={() => { setConfirmBulkDelete(false); deleteSelected(); }}
+          />
+        );
+      })()}
 
       {/* The chosen day is already on file — confirm before replacing it */}
       <ReplaceDayModal
