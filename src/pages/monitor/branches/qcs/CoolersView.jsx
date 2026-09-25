@@ -18,6 +18,7 @@ import {
   parseJsonImport,
   reportDateOf,
   saveReport,
+  REPORTS_MAX_LIMIT,
 } from "../_shared/reportApi";
 import ProductPicker from "../_shared/ProductPicker";
 import { canEdit } from "../../../../utils/perms";
@@ -47,7 +48,10 @@ const COOLER_TIMES = [
 function tempInputStyle(temp, def) {
   const t = Number(temp);
   const base = {
-    width: 80, padding: "6px 8px", borderRadius: 8, border: "1.7px solid #94a3b8",
+    // Longhand (not the `border` shorthand) so the conditional variants below
+    // can toggle borderColor without React warning about a shorthand/longhand mix.
+    width: 80, padding: "6px 8px", borderRadius: 8,
+    borderWidth: "1.7px", borderStyle: "solid", borderColor: "#94a3b8",
     textAlign: "center", fontWeight: 600, color: "#111827", background: "#fff",
   };
   if (Number.isNaN(t) || temp === "") return base;
@@ -302,7 +306,7 @@ export default function CoolersView() {
   };
   const handleExportJSON = async () => {
     try {
-      const rows = await listReports(TYPE_COOLERS);
+      const rows = await listReports(TYPE_COOLERS, { limit: REPORTS_MAX_LIMIT });
       downloadReportsJson(TYPE_COOLERS, rows, "QCS_Coolers_ALL");
     } catch (e) {
       console.error(e);

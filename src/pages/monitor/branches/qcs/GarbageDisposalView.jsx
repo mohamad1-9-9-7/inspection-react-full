@@ -6,7 +6,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { addFullPageImage, pdfSafeText } from "./pdfImageUtils";
 import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
-import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { deleteReport, downloadReportsJson, listReports, reportId, REPORTS_MAX_LIMIT } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "qcs_garbage_disposal";
@@ -222,7 +222,7 @@ export default function GarbageDisposalView() {
   async function load() {
     setLoading(true);
     try {
-      const arr = await listReports(TYPE);
+      const arr = await listReports(TYPE, { limit: REPORTS_MAX_LIMIT });
       arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setItems(arr);
     } catch { setItems([]); }
