@@ -5,6 +5,25 @@ import React, { useEffect, useMemo, useState } from "react";
 import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
 import { eventReportDate } from "../../monitor/branches/sweets/sweetsRecord";
 import { BlankFormPrintButton } from "../../monitor/branches/_shared/blankFormPrint";
+import { Bi, bi } from "../../monitor/branches/sweets/bilingual";
+
+/* Arabic twins for the on-screen sheet only — the printed blank form and the
+   saved payload stay English. */
+const CHECK_AR = {
+  trafficControlSpotter: "تنظيم الحركة / مرشد",
+  vehicleSecured: "تأمين المركبة (فرامل + مصدات)",
+  loadSecured: "تأمين الحمولة (أحزمة + فحص)",
+  areaSafe: "المنطقة آمنة (إنارة / مانع انزلاق / ممر)",
+  manualHandlingControls: "ضوابط المناولة اليدوية",
+  floorSealingIntact: "عزل الأرضية سليم",
+  floorCleaning: "نظافة الأرضية",
+  pestActivites: "نشاط حشرات",
+  plasticCurtain: "الستارة البلاستيكية متوفرة / نظيفة",
+  badOdour: "رائحة كريهة",
+  ppeAvailable: "معدات الوقاية متوفرة",
+};
+const GROUP_AR = { "Loading safety": "سلامة التحميل", "Vehicle hygiene": "نظافة المركبة" };
+const DEST_AR = { BRANCH: "فرع", "CUSTOMER DELIVERY": "توصيل عميل", "EVENT / CATERING": "مناسبة / تموين", WHOLESALE: "جملة", OTHER: "أخرى" };
 
 /**
  * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
@@ -300,7 +319,7 @@ export default function LoadingLog() {
     // prevent duplicates (case-insensitive)
     const exists = currentList.some((x) => normKey(x) === normKey(value));
     if (exists) {
-      setMsg(`${label} already exists.`);
+      setMsg(`${label} already exists. · موجود مسبقاً.`);
       setTimeout(() => setMsg(""), 2200);
       const match = currentList.find((x) => normKey(x) === normKey(value));
       const field = isVehicle ? "vehicleNo" : "driverName";
@@ -310,7 +329,7 @@ export default function LoadingLog() {
 
     try {
       setLookupBusy(true);
-      setMsg(`Saving new ${label}...`);
+      setMsg(`Saving new ${label}... · جارٍ الحفظ…`);
       await saveLookupValue(isVehicle ? LOOKUP_VEHICLES_TYPE : LOOKUP_DRIVERS_TYPE, value);
 
       // update global options => appears in ALL rows dropdowns automatically
@@ -322,11 +341,11 @@ export default function LoadingLog() {
       const field = isVehicle ? "vehicleNo" : "driverName";
       if (!String(rows[rowIndex]?.[field] || "").trim()) setRow(rowIndex, field, value);
 
-      setMsg(`${label} saved.`);
+      setMsg(`${label} saved. · تم الحفظ.`);
       setTimeout(() => setMsg(""), 1800);
     } catch (e) {
       console.error(e);
-      setMsg(`Failed to save ${label}.`);
+      setMsg(`Failed to save ${label}. · فشل الحفظ.`);
       setTimeout(() => setMsg(""), 2500);
     } finally {
       setLookupBusy(false);
@@ -389,20 +408,20 @@ export default function LoadingLog() {
 
     if (!validCleanRows.length) {
       setErrors(errorMap);
-      setMsg("Add at least one vehicle row.");
+      setMsg("Add at least one vehicle row. · أضف مركبة واحدة على الأقل.");
       setTimeout(() => setMsg(""), 2500);
       return;
     }
 
     if (Object.keys(errorMap).length) {
       setErrors(errorMap);
-      setMsg("Please complete required fields:\n" + messages.join(" | "));
+      setMsg("Please complete required fields · أكمل الحقول المطلوبة:\n" + messages.join(" | "));
       return;
     }
 
     try {
       setBusy(true);
-      setMsg("Saving to server...");
+      setMsg("Saving to server... · جارٍ الحفظ…");
       const id =
         typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 
@@ -418,12 +437,12 @@ export default function LoadingLog() {
         rows: validCleanRows,
       });
 
-      setMsg("Saved successfully.");
+      setMsg("Saved successfully. · تم الحفظ بنجاح.");
       setRows([newRow()]);
       setErrors({});
     } catch (err) {
       console.error(err);
-      setMsg("Save failed. Please try again.");
+      setMsg("Save failed. Please try again. · فشل الحفظ، حاول مجدداً.");
     } finally {
       setBusy(false);
       setTimeout(() => setMsg(""), 3000);
@@ -655,12 +674,12 @@ export default function LoadingLog() {
     <form onSubmit={handleSave}>
       <IsoShell
         icon="🚚"
-        title="Visual Inspection — Outbound Checklist"
+        title={<Bi en="Visual Inspection — Outbound Checklist" ar="الفحص البصري — قائمة التحميل الصادر" />}
         subtitle={`${header.documentNo} · Rev ${header.revisionNo} · ${header.area}`}
         actions={
           <>
             <label style={{ ...ISO_UI.metaBadge, marginBottom: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
-              Report date
+              <Bi en="Report date" ar="تاريخ التقرير" />
               <input
                 type="date"
                 value={reportDate}
@@ -668,10 +687,10 @@ export default function LoadingLog() {
                 style={{ ...field, minHeight: 34, padding: "6px 10px", width: 168 }}
               />
             </label>
-            <button type="button" onClick={addRow} style={ISO_UI.btn("secondary")}>+ Vehicle</button>
+            <button type="button" onClick={addRow} style={ISO_UI.btn("secondary")}><Bi en="+ Vehicle" ar="+ مركبة" /></button>
             <BlankFormPrintButton spec={blankFormSpec} />
             <button type="submit" disabled={busy} style={ISO_UI.btn("success", busy)}>
-              {busy ? "Saving…" : "💾 Save report"}
+              {busy ? <Bi en="Saving…" /> : <>💾 <Bi en="Save report" ar="حفظ التقرير" /></>}
             </button>
           </>
         }
@@ -685,16 +704,16 @@ export default function LoadingLog() {
             <span style={ISO_UI.metaBadge}>Rev {header.revisionNo}</span>
             <span style={ISO_UI.metaBadge}>Issued {header.issueDate}</span>
             <button type="button" onClick={() => setDocOpen((v) => !v)} style={miniBtn}>
-              {docOpen ? "▴ Hide document control" : "▾ Document control"}
+              {docOpen ? <>▴ <Bi en="Hide document control" ar="إخفاء ضبط الوثيقة" /></> : <>▾ <Bi en="Document control" ar="ضبط الوثيقة" /></>}
             </button>
 
             {/* catalog actions — they belong to the sheet, not to one row */}
             <span style={{ width: 1, alignSelf: "stretch", background: "#e2e8f0", margin: "0 2px" }} />
             <button type="button" style={miniBtn} disabled={lookupBusy} onClick={() => addLookupAndSelect("vehicle")}>
-              + Add vehicle no.
+              <Bi en="+ Add vehicle no." ar="+ رقم مركبة" />
             </button>
             <button type="button" style={miniBtn} disabled={lookupBusy} onClick={() => addLookupAndSelect("driver")}>
-              + Add driver name
+              <Bi en="+ Add driver name" ar="+ اسم سائق" />
             </button>
           </div>
 
@@ -716,7 +735,7 @@ export default function LoadingLog() {
                 ["Approved by", header.approvedBy],
               ].map(([k, v]) => (
                 <div key={k}>
-                  <span style={label}>{k}</span>
+                  <span style={label}><Bi en={k} ar={{ "Area": "المنطقة", "Issued by": "أصدر بواسطة", "Controlling officer": "المسؤول المراقب", "Approved by": "اعتمد بواسطة" }[k]} /></span>
                   <div style={{ ...field, background: "#f1f5f9", fontWeight: 700, display: "flex", alignItems: "center" }}>
                     {v}
                   </div>
@@ -730,13 +749,13 @@ export default function LoadingLog() {
         <div style={{ ...cardStyle, padding: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             <span style={{ ...ISO_UI.band, margin: 0, flex: 1, minWidth: 220 }}>
-              VISUAL INSPECTION (OUTBOUND CHECKLIST)
+              <Bi en="VISUAL INSPECTION (OUTBOUND CHECKLIST)" ar="الفحص البصري (قائمة التحميل الصادر)" />
             </span>
             <span style={{ ...ISO_UI.metaBadge, marginBottom: 0 }}>
-              {rows.length} vehicle{rows.length === 1 ? "" : "s"}
+              {rows.length} vehicle{rows.length === 1 ? "" : "s"} · مركبة
             </span>
             <span style={{ ...ISO_UI.metaBadge, marginBottom: 0, color: "#64748b" }}>
-              ⇄ scroll sideways for the checks
+              ⇄ <Bi en="scroll sideways for the checks" ar="اسحب أفقياً لرؤية الفحوصات" />
             </span>
           </div>
 
@@ -745,29 +764,29 @@ export default function LoadingLog() {
               <thead>
                 {/* grouped band, so eleven look-alike columns read as two families */}
                 <tr>
-                  <th style={thGroup("#0284c7")} colSpan={3}>VEHICLE</th>
-                  <th style={thGroup("#0369a1")} colSpan={3}>TIMES &amp; TEMPERATURE</th>
+                  <th style={thGroup("#0284c7")} colSpan={3}><Bi en="VEHICLE" ar="المركبة" /></th>
+                  <th style={thGroup("#0369a1")} colSpan={3}><Bi en="TIMES & TEMPERATURE" ar="الأوقات والحرارة" /></th>
                   <th style={thGroup("#0891b2")} colSpan={CHECK_GROUPS[0].items.length}>
-                    {CHECK_GROUPS[0].title.toUpperCase()}
+                    <Bi en={CHECK_GROUPS[0].title.toUpperCase()} ar={GROUP_AR[CHECK_GROUPS[0].title]} />
                   </th>
                   <th style={thGroup("#16a34a")} colSpan={CHECK_GROUPS[1].items.length}>
-                    {CHECK_GROUPS[1].title.toUpperCase()}
+                    <Bi en={CHECK_GROUPS[1].title.toUpperCase()} ar={GROUP_AR[CHECK_GROUPS[1].title]} />
                   </th>
-                  <th style={thGroup("#475569")} colSpan={3}>NOTES</th>
+                  <th style={thGroup("#475569")} colSpan={3}><Bi en="NOTES" ar="ملاحظات" /></th>
                 </tr>
                 <tr>
-                  <th style={th({ minWidth: 234, left: 0, zIndex: 5 })}>VEHICLE NO</th>
-                  <th style={th({ minWidth: 150 })}>DRIVER NAME</th>
-                  <th style={th({ minWidth: 140 })}>DESTINATION</th>
-                  <th style={th({ minWidth: 110 })}>TIME START</th>
-                  <th style={th({ minWidth: 110 })}>TIME END</th>
-                  <th style={th({ minWidth: 105 })}>TRUCK{"\n"}TEMP (≤ 5 °C)</th>
+                  <th style={th({ minWidth: 234, left: 0, zIndex: 5 })}><Bi en="VEHICLE NO" ar="رقم المركبة" stack /></th>
+                  <th style={th({ minWidth: 150 })}><Bi en="DRIVER NAME" ar="اسم السائق" stack /></th>
+                  <th style={th({ minWidth: 140 })}><Bi en="DESTINATION" ar="الوجهة" stack /></th>
+                  <th style={th({ minWidth: 110 })}><Bi en="TIME START" ar="وقت البدء" stack /></th>
+                  <th style={th({ minWidth: 110 })}><Bi en="TIME END" ar="وقت الانتهاء" stack /></th>
+                  <th style={th({ minWidth: 105 })}>TRUCK{"\n"}TEMP (≤ 5 °C)<div className="bi-ar" lang="ar" dir="rtl">حرارة الشاحنة</div></th>
                   {CHECK_COLUMNS.map(([k, text]) => (
-                    <th key={k} style={th({ minWidth: 104 })}>{text}</th>
+                    <th key={k} style={th({ minWidth: 104 })}>{text}<div className="bi-ar" lang="ar" dir="rtl" style={{ whiteSpace: "normal" }}>{CHECK_AR[k]}</div></th>
                   ))}
-                  <th style={th({ minWidth: 130 })}>INFORMED TO{"\n"}(OPTIONAL)</th>
-                  <th style={th({ minWidth: 160 })}>REMARKS</th>
-                  <th style={th({ minWidth: 132 })}>ROW</th>
+                  <th style={th({ minWidth: 130 })}>INFORMED TO{"\n"}(OPTIONAL)<div className="bi-ar" lang="ar" dir="rtl">أُبلغ إلى (اختياري)</div></th>
+                  <th style={th({ minWidth: 160 })}><Bi en="REMARKS" ar="ملاحظات" stack /></th>
+                  <th style={th({ minWidth: 132 })}><Bi en="ROW" ar="السطر" stack /></th>
                 </tr>
               </thead>
 
@@ -789,12 +808,12 @@ export default function LoadingLog() {
                             {i + 1}
                           </span>
                           <select style={fieldOf(i, "vehicleNo")} value={r.vehicleNo} onChange={(e) => setRow(i, "vehicleNo", e.target.value)}>
-                            <option value="">Select…</option>
+                            <option value="">{bi("Select…")}</option>
                             {vehicleOptions.map((v) => <option key={v} value={v}>{v}</option>)}
                           </select>
                           {dev > 0 && (
                             <span
-                              title={`${dev} answer${dev === 1 ? "" : "s"} away from the compliant one`}
+                              title={`${dev} answer${dev === 1 ? "" : "s"} away from the compliant one · ${dev} إجابة غير مطابقة`}
                               style={{
                                 flex: "0 0 auto",
                                 fontSize: 11, fontWeight: 900, color: "#9a3412",
@@ -810,15 +829,15 @@ export default function LoadingLog() {
 
                       <td style={td({ background: zebra })}>
                         <select style={fieldOf(i, "driverName")} value={r.driverName} onChange={(e) => setRow(i, "driverName", e.target.value)}>
-                          <option value="">Select…</option>
+                          <option value="">{bi("Select…")}</option>
                           {driverOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                         </select>
                       </td>
 
                       <td style={td({ background: zebra })}>
                         <select style={fieldOf(i, "destination")} value={r.destination} onChange={(e) => setRow(i, "destination", e.target.value)}>
-                          <option value="">Select…</option>
-                          {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                          <option value="">{bi("Select…")}</option>
+                          {DESTINATIONS.map((d) => <option key={d} value={d}>{bi(d, DEST_AR[d])}</option>)}
                         </select>
                       </td>
 
@@ -835,7 +854,7 @@ export default function LoadingLog() {
                           type="number"
                           step="0.1"
                           style={tempTooHigh(r.tempCheck) ? { ...fieldOf(i, "tempCheck"), ...TEMP_HOT } : fieldOf(i, "tempCheck")}
-                          title={tempTooHigh(r.tempCheck) ? "Above 5 °C — chilled cream products must travel at ≤ 5 °C" : "Chilled limit ≤ 5 °C"}
+                          title={tempTooHigh(r.tempCheck) ? "Above 5 °C — chilled cream products must travel at ≤ 5 °C · أعلى من 5 °م — منتجات الكريمة تُنقل على ≤ 5 °م" : "Chilled limit ≤ 5 °C · حد التبريد ≤ 5 °م"}
                           placeholder="≤ 5"
                           value={r.tempCheck}
                           onChange={(e) => setRow(i, "tempCheck", e.target.value)}
@@ -854,15 +873,15 @@ export default function LoadingLog() {
                             })}
                           >
                             <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                              <button type="button" style={toggle(r[k] === "yes", "yes")} onClick={() => setRow(i, k, "yes")}>YES</button>
-                              <button type="button" style={toggle(r[k] === "no", "no")} onClick={() => setRow(i, k, "no")}>NO</button>
+                              <button type="button" style={toggle(r[k] === "yes", "yes")} onClick={() => setRow(i, k, "yes")}><Bi en="YES" ar="نعم" stack center /></button>
+                              <button type="button" style={toggle(r[k] === "no", "no")} onClick={() => setRow(i, k, "no")}><Bi en="NO" ar="لا" stack center /></button>
                             </div>
                           </td>
                         );
                       })}
 
                       <td style={td({ background: zebra })}>
-                        <input style={field} value={r.informedTo} onChange={(e) => setRow(i, "informedTo", e.target.value)} placeholder="Optional" />
+                        <input style={field} value={r.informedTo} onChange={(e) => setRow(i, "informedTo", e.target.value)} placeholder="Optional · اختياري" />
                       </td>
 
                       <td style={td({ background: zebra })}>
@@ -871,10 +890,10 @@ export default function LoadingLog() {
 
                       <td style={td({ background: zebra, textAlign: "center" })}>
                         <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                          <button type="button" style={iconBtn()} onClick={() => setAllCompliant(i)} title="Set every check to its compliant answer">
+                          <button type="button" style={iconBtn()} onClick={() => setAllCompliant(i)} title="Set every check to its compliant answer · ضبط كل الفحوصات على الإجابة المطابقة">
                             ✓
                           </button>
-                          <button type="button" style={iconBtn()} onClick={() => duplicateRow(i)} title="Copy this vehicle's checks to a new row">
+                          <button type="button" style={iconBtn()} onClick={() => duplicateRow(i)} title="Copy this vehicle's checks to a new row · نسخ فحوصات المركبة لسطر جديد">
                             ⧉
                           </button>
                           {rows.length > 1 && (
@@ -882,7 +901,7 @@ export default function LoadingLog() {
                               type="button"
                               onClick={() => removeRow(i)}
                               style={iconBtn({ color: "#b91c1c", borderColor: "#fecaca", background: "#fef2f2" })}
-                              title="Remove this vehicle"
+                              title="Remove this vehicle · حذف المركبة"
                             >
                               ✕
                             </button>
@@ -897,7 +916,7 @@ export default function LoadingLog() {
           </div>
 
           <button type="button" onClick={addRow} style={{ ...ISO_UI.btn("primary"), width: "100%", padding: "11px", marginTop: 10 }}>
-            + Add vehicle
+            <Bi en="+ Add vehicle" ar="+ إضافة مركبة" />
           </button>
         </div>
 
@@ -905,11 +924,11 @@ export default function LoadingLog() {
         <div style={{ ...cardStyle, padding: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
             <div>
-              <span style={label}>Inspected by</span>
+              <span style={label}><Bi en="Inspected by" ar="فحص بواسطة" /></span>
               <input style={field} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
             </div>
             <div>
-              <span style={label}>Verified by</span>
+              <span style={label}><Bi en="Verified by" ar="اعتمد بواسطة" /></span>
               <input style={field} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
             </div>
           </div>
@@ -936,7 +955,7 @@ export default function LoadingLog() {
         >
           {msg && <strong style={{ marginRight: "auto", color: "#0c4a6e", fontSize: 13, whiteSpace: "pre-wrap" }}>{msg}</strong>}
           <button type="submit" disabled={busy} style={ISO_UI.btn("success", busy)}>
-            {busy ? "Saving…" : "💾 Save report"}
+            {busy ? <Bi en="Saving…" /> : <>💾 <Bi en="Save report" ar="حفظ التقرير" /></>}
           </button>
         </div>
       </IsoShell>

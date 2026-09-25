@@ -6,6 +6,7 @@
 //
 // Edits a working copy; nothing is written until "Save list".
 
+import { Bi } from "./bilingual";
 import React, { useEffect, useState } from "react";
 import {
   fetchSweetsStaff,
@@ -28,11 +29,11 @@ export default function SweetsStaffManager({ open, onClose }) {
   useEffect(() => {
     if (!open) return;
     const ctrl = new AbortController();
-    setMsg("Loading…");
+    setMsg("Loading… · جارٍ التحميل…");
     fetchSweetsStaff(ctrl.signal).then((server) => {
       if (ctrl.signal.aborted) return;
       if (Array.isArray(server)) { setList(server); setMsg(""); }
-      else setMsg("⚠️ Could not reach the server — try again before editing.");
+      else setMsg("⚠️ Could not reach the server — try again before editing. · تعذّر الوصول للخادم — حاول مجدداً.");
       setDirty(false);
     });
     return () => ctrl.abort();
@@ -58,7 +59,7 @@ export default function SweetsStaffManager({ open, onClose }) {
       const saved = await saveSweetsStaff(list);
       setList(saved);
       setDirty(false);
-      setMsg(`✅ Saved — ${saved.length} people.`);
+      setMsg(`✅ Saved — ${saved.length} people. · تم الحفظ.`);
     } catch (e) {
       setMsg(`❌ ${e.message}`);
     } finally {
@@ -67,7 +68,7 @@ export default function SweetsStaffManager({ open, onClose }) {
   };
 
   const close = () => {
-    if (dirty && !window.confirm("Close without saving the staff list?")) return;
+    if (dirty && !window.confirm("Close without saving the staff list? · إغلاق دون حفظ القائمة؟")) return;
     onClose?.();
   };
 
@@ -81,50 +82,50 @@ export default function SweetsStaffManager({ open, onClose }) {
       <div style={S.box} onClick={(e) => e.stopPropagation()}>
         <div style={S.head}>
           <div>
-            <div style={S.title}>👥 Staff List</div>
+            <div style={S.title}>👥 <Bi en="Staff List" /></div>
             <div style={S.sub}>
-              Active people fill the Personal Hygiene sheet and the Sick Employee pickers.
+              <Bi en="Active people fill the Personal Hygiene sheet and the Sick Employee pickers." ar="الموظفون النشطون يظهرون في ورقة النظافة الشخصية واختيار الموظف المريض." />
             </div>
           </div>
           <button type="button" style={S.x} onClick={close} aria-label="Close">✕</button>
         </div>
 
         <div style={S.form}>
-          <input style={S.in} placeholder="Emp. No." value={draft.empNo}
+          <input style={S.in} placeholder="Emp. No. · الرقم الوظيفي" value={draft.empNo}
             onChange={(e) => setDraft({ ...draft, empNo: e.target.value })} />
-          <input style={{ ...S.in, flex: 2 }} placeholder="Full name" value={draft.name}
+          <input style={{ ...S.in, flex: 2 }} placeholder="Full name · الاسم الكامل" value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <input style={{ ...S.in, flex: 1.4 }} placeholder="Job title" value={draft.job}
+          <input style={{ ...S.in, flex: 1.4 }} placeholder="Job title · المسمى الوظيفي" value={draft.job}
             onChange={(e) => setDraft({ ...draft, job: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter") apply(); }} />
           <button type="button" style={S.primary} onClick={apply}>
-            {editingNo ? "Update" : "＋ Add"}
+            {editingNo ? <Bi en="Update" /> : <>＋ <Bi en="Add" /></>}
           </button>
           {editingNo && (
             <button type="button" style={S.ghost} onClick={() => { setDraft(blank); setEditingNo(""); }}>
-              Cancel
+              <Bi en="Cancel" />
             </button>
           )}
         </div>
 
-        <input style={{ ...S.in, width: "100%", margin: "0 0 10px" }} placeholder="🔎 Search…"
+        <input style={{ ...S.in, width: "100%", margin: "0 0 10px" }} placeholder="🔎 Search… · بحث…"
           value={q} onChange={(e) => setQ(e.target.value)} />
 
         <div style={S.tableWrap}>
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>Emp. No.</th>
-                <th style={S.th}>Name</th>
-                <th style={S.th}>Job</th>
-                <th style={S.th}>Active</th>
+                <th style={S.th}><Bi en="Emp. No." stack /></th>
+                <th style={S.th}><Bi en="Name" stack /></th>
+                <th style={S.th}><Bi en="Job" stack /></th>
+                <th style={S.th}><Bi en="Active" ar="نشط" stack /></th>
                 <th style={S.th} />
               </tr>
             </thead>
             <tbody>
               {shown.length === 0 && (
                 <tr><td style={{ ...S.td, textAlign: "center", color: "#64748b" }} colSpan={5}>
-                  {list.length ? "No match." : "No staff yet — add the first person above."}
+                  {list.length ? <Bi en="No match." ar="لا توجد نتيجة." /> : <Bi en="No staff yet — add the first person above." ar="لا يوجد موظفون — أضف أول شخص أعلاه." />}
                 </td></tr>
               )}
               {shown.map((s) => (
@@ -138,13 +139,13 @@ export default function SweetsStaffManager({ open, onClose }) {
                   </td>
                   <td style={{ ...S.td, whiteSpace: "nowrap", textAlign: "end" }}>
                     <button type="button" style={S.mini}
-                      onClick={() => { setDraft(s); setEditingNo(s.empNo); }}>Edit</button>
+                      onClick={() => { setDraft(s); setEditingNo(s.empNo); }}><Bi en="Edit" /></button>
                     <button type="button" style={{ ...S.mini, color: "#b91c1c" }}
                       onClick={() => {
-                        if (!window.confirm(`Remove ${s.name} from the list?`)) return;
+                        if (!window.confirm(`Remove ${s.name} from the list? · حذف من القائمة؟`)) return;
                         setList((l) => removeSweetsStaff(l, s.empNo));
                         setDirty(true);
-                      }}>Remove</button>
+                      }}><Bi en="Remove" /></button>
                   </td>
                 </tr>
               ))}
@@ -153,11 +154,11 @@ export default function SweetsStaffManager({ open, onClose }) {
         </div>
 
         <div style={S.foot}>
-          <span style={S.msg}>{msg || (dirty ? "Unsaved changes" : `${list.length} people`)}</span>
-          <button type="button" style={S.ghost} onClick={close}>Close</button>
+          <span style={S.msg}>{msg || (dirty ? "Unsaved changes · تغييرات غير محفوظة" : `${list.length} people · موظف`)}</span>
+          <button type="button" style={S.ghost} onClick={close}><Bi en="Close" /></button>
           <button type="button" style={{ ...S.primary, opacity: busy || !dirty ? 0.6 : 1 }}
             disabled={busy || !dirty} onClick={save}>
-            {busy ? "Saving…" : "💾 Save list"}
+            {busy ? <Bi en="Saving…" /> : <>💾 <Bi en="Save list" ar="حفظ القائمة" /></>}
           </button>
         </div>
       </div>

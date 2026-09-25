@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from "react";
 import { STORAGE_TYPES, normalizeDef, storageType } from "./coolerDefs";
+import { Bi } from "./bilingual";
 
 const field = { display: "flex", flexDirection: "column", gap: 4 };
 const label = {
@@ -81,14 +82,14 @@ export default function CoolerSetupPanel({ def, accent = "#2563eb", onApply, onC
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: "1rem" }}>⚙️</span>
-        <strong style={{ color: "#0f172a" }}>Storage setup</strong>
+        <strong style={{ color: "#0f172a" }}><Bi en="Storage setup" ar="إعداد وحدة التخزين" /></strong>
         <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: ".82rem" }} dir="rtl">
           الاسم · النوع · الحد الأدنى والأعلى
         </span>
       </div>
 
       {/* Kind */}
-      <span style={{ ...label, display: "block", marginBottom: 6 }}>Type</span>
+      <span style={{ ...label, display: "block", marginBottom: 6 }}><Bi en="Type" /></span>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {STORAGE_TYPES.map((t) => {
           const on = t.key === draft.type;
@@ -122,17 +123,17 @@ export default function CoolerSetupPanel({ def, accent = "#2563eb", onApply, onC
       {/* Name + band */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <label style={{ ...field, flex: "1 1 220px", minWidth: 180 }}>
-          <span style={label}>Name shown on the sheet</span>
+          <span style={label}><Bi en="Name shown on the sheet" ar="الاسم الظاهر في الورقة" /></span>
           <input
             value={draft.label}
             onChange={(e) => set("label", e.target.value)}
-            placeholder="e.g. Dry Store 1"
+            placeholder="e.g. Dry Store 1 · مثال: مخزن جاف 1"
             style={input}
           />
         </label>
 
         <label style={{ ...field, width: 120 }}>
-          <span style={label}>Min °C</span>
+          <span style={label}><Bi en="Min °C" ar="الأدنى °م" /></span>
           <input
             type="number"
             step="0.1"
@@ -143,7 +144,7 @@ export default function CoolerSetupPanel({ def, accent = "#2563eb", onApply, onC
         </label>
 
         <label style={{ ...field, width: 120 }}>
-          <span style={label}>Max °C</span>
+          <span style={label}><Bi en="Max °C" ar="الأعلى °م" /></span>
           <input
             type="number"
             step="0.1"
@@ -168,13 +169,13 @@ export default function CoolerSetupPanel({ def, accent = "#2563eb", onApply, onC
               cursor: busy ? "wait" : "pointer",
             }}
           >
-            Cancel
+            <Bi en="Cancel" />
           </button>
           <button
             type="button"
             onClick={() => onApply(normalizeDef(draft))}
             disabled={busy || invalid}
-            title={invalid ? "Give the unit a name and a min that is not above the max" : "Apply and save"}
+            title={invalid ? "Give the unit a name and a min that is not above the max · أدخل اسماً وحداً أدنى لا يتجاوز الأعلى" : "Apply and save · تطبيق وحفظ"}
             style={{
               padding: "9px 18px",
               borderRadius: 10,
@@ -185,14 +186,13 @@ export default function CoolerSetupPanel({ def, accent = "#2563eb", onApply, onC
               cursor: busy ? "wait" : invalid ? "not-allowed" : "pointer",
             }}
           >
-            {busy ? "⏳ Saving…" : "✔ Apply"}
+            {busy ? <>⏳ <Bi en="Saving…" /></> : <>✔ <Bi en="Apply" ar="تطبيق" /></>}
           </button>
         </div>
       </div>
 
       <div style={{ marginTop: 10, color: "#64748b", fontWeight: 600, fontSize: ".82rem", lineHeight: 1.6 }}>
-        The new limits apply from now on. Reports already saved keep the limits they were recorded
-        against, so an old sheet never changes its verdict.
+        <Bi en="The new limits apply from now on. Reports already saved keep the limits they were recorded against, so an old sheet never changes its verdict." ar="الحدود الجديدة تُطبَّق من الآن؛ التقارير المحفوظة تحتفظ بحدودها فلا تتغير نتيجتها." />
       </div>
     </div>
   );

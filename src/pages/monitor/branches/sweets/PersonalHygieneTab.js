@@ -8,6 +8,7 @@ import {
 } from "../_shared/reportApi";
 import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
 import SweetsStaffManager from "./SweetsStaffManager";
+import { Bi, bi } from "./bilingual";
 
 const IS_SAME_ORIGIN = (() => {
   try {
@@ -61,7 +62,7 @@ function RowKV({ label, value }) {
           fontWeight: 700,
         }}
       >
-        {label}
+        <Bi en={label} />
       </div>
       <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
@@ -129,11 +130,11 @@ function PHEntryHeader({ header, date, logoUrl }) {
             borderBottom: "1px solid #000",
           }}
         >
-          PERSONAL HYGIENE CHECKLIST
+          <Bi en="PERSONAL HYGIENE CHECKLIST" ar="قائمة فحص النظافة الشخصية" />
         </div>
         {date ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
-            <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
+            <span style={{ fontWeight: 900, textDecoration: "underline" }}><Bi en="Date:" /></span>
             <span>{date}</span>
           </div>
         ) : null}
@@ -156,10 +157,10 @@ function PHEntryFooter({ footer }) {
   return (
     <div style={{ border: "1px solid #000", marginTop: 8 }}>
       <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
-        REMARKS / CORRECTIVE ACTIONS:
+        <Bi en="REMARKS / CORRECTIVE ACTIONS:" ar="الملاحظات / الإجراءات التصحيحية:" />
       </div>
       <div style={{ padding: "8px", borderBottom: "1px solid #000", minHeight: 40 }}>
-        <em>*(C - Conform &nbsp;&nbsp; N/C - Non Conform)</em>
+        <em>*(C - Conform &nbsp;&nbsp; N/C - Non Conform)</em> <Bi en="" ar="(C = مطابق · N/C = غير مطابق)" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ display: "flex" }}>
@@ -171,7 +172,7 @@ function PHEntryFooter({ footer }) {
               fontWeight: 700,
             }}
           >
-            Checked By:
+            <Bi en="Checked By:" />
           </div>
           <div style={sigCellStyle}>{f.checkedBy || " "}</div>
         </div>
@@ -184,7 +185,7 @@ function PHEntryFooter({ footer }) {
               fontWeight: 700,
             }}
           >
-            Verified By:
+            <Bi en="Verified By:" />
           </div>
           <div style={sigCellStyle}>{f.verifiedBy || " "}</div>
         </div>
@@ -204,24 +205,24 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
 
   return (
     <details style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: 12, margin: "10px 0" }}>
-      <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ Edit Header & Footer (Personal Hygiene)</summary>
+      <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ <Bi en="Edit Header & Footer (Personal Hygiene)" ar="تعديل الترويسة والتذييل (النظافة الشخصية)" /></summary>
 
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
           <label style={row}>
-            <span>Document Title</span>
+            <span><Bi en="Document Title" /></span>
             <input style={input} value={h.documentTitle} onChange={(e) => updateHeader("documentTitle", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Issue Date</span>
+            <span><Bi en="Issue Date" /></span>
             <input style={input} value={h.issueDate} onChange={(e) => updateHeader("issueDate", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Area</span>
+            <span><Bi en="Area" /></span>
             <input style={input} value={h.area} onChange={(e) => updateHeader("area", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Controlling Officer</span>
+            <span><Bi en="Controlling Officer" /></span>
             <input
               style={input}
               value={h.controllingOfficer}
@@ -232,19 +233,19 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
 
         <div>
           <label style={row}>
-            <span>Document No</span>
+            <span><Bi en="Document No" /></span>
             <input style={input} value={h.documentNo} onChange={(e) => updateHeader("documentNo", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Revision No</span>
+            <span><Bi en="Revision No" /></span>
             <input style={input} value={h.revisionNo} onChange={(e) => updateHeader("revisionNo", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Issued By</span>
+            <span><Bi en="Issued By" /></span>
             <input style={input} value={h.issuedBy} onChange={(e) => updateHeader("issuedBy", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Approved By</span>
+            <span><Bi en="Approved By" /></span>
             <input style={input} value={h.approvedBy} onChange={(e) => updateHeader("approvedBy", e.target.value)} />
           </label>
         </div>
@@ -252,11 +253,11 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <label style={row}>
-          <span>Checked By</span>
+          <span><Bi en="Checked By" /></span>
           <input style={input} value={f.checkedBy} onChange={(e) => updateFooter("checkedBy", e.target.value)} />
         </label>
         <label style={row}>
-          <span>Verified By</span>
+          <span><Bi en="Verified By" /></span>
           <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
         </label>
       </div>
@@ -413,7 +414,7 @@ export default function PersonalHygieneTab(props) {
   /* ===== Save ===== */
   async function savePHToServer() {
     if (!date) {
-      setNote("⚠️ Pick a report date first.");
+      setNote("⚠️ Pick a report date first. · اختر تاريخ التقرير أولاً.");
       return;
     }
     try {
@@ -450,9 +451,9 @@ export default function PersonalHygieneTab(props) {
         throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
       }
 
-      setNote(`✅ Personal Hygiene saved for ${date}.`);
+      setNote(`✅ Personal Hygiene saved for ${date}. · تم حفظ النظافة الشخصية.`);
     } catch (e) {
-      setNote(`❌ Failed to save: ${e.message || e}`);
+      setNote(`❌ Failed to save · فشل الحفظ: ${e.message || e}`);
     } finally {
       setSavingLocal(false);
     }
@@ -464,10 +465,10 @@ export default function PersonalHygieneTab(props) {
   async function loadFromLast() {
     try {
       setLoadingLast(true);
-      setNote("⏳ Loading the last report…");
+      setNote("⏳ Loading the last report… · جارٍ تحميل آخر تقرير…");
       const hit = await getLatestReport(PH_TYPE);
       if (!hit) {
-        setNote("ℹ️ No previous Personal Hygiene report found.");
+        setNote("ℹ️ No previous Personal Hygiene report found. · لا يوجد تقرير سابق.");
         return;
       }
       const p = hit.payload || {};
@@ -482,9 +483,9 @@ export default function PersonalHygieneTab(props) {
       }
       setDate(""); // the day must be chosen deliberately
       seededRef.current = true;
-      setNote(`✅ Loaded from ${hit.reportDate}. Pick the date for today's record.`);
+      setNote(`✅ Loaded from ${hit.reportDate}. Pick the date for today's record. · تم التحميل — اختر تاريخ سجل اليوم.`);
     } catch (e) {
-      setNote(`❌ Could not load the last report: ${e.message || e}`);
+      setNote(`❌ Could not load the last report · تعذّر تحميل آخر تقرير: ${e.message || e}`);
     } finally {
       setLoadingLast(false);
     }
@@ -498,13 +499,13 @@ export default function PersonalHygieneTab(props) {
     if (!staff.length) {
       setNote(
         allStaff.length
-          ? "ℹ️ Nobody on the staff list is active — open 👥 Staff list to activate people."
-          : "ℹ️ The staff list is empty — open 👥 Staff list to add your employees."
+          ? "ℹ️ Nobody on the staff list is active — open 👥 Staff list to activate people. · لا يوجد موظف نشط — افتح قائمة الموظفين."
+          : "ℹ️ The staff list is empty — open 👥 Staff list to add your employees. · قائمة الموظفين فارغة — افتحها لإضافة الموظفين."
       );
       return;
     }
     setRows(makeRowsFromStaff(staff, minRows));
-    setNote(`✅ Loaded ${staff.length} employees from the directory.`);
+    setNote(`✅ Loaded ${staff.length} employees from the directory. · تم تحميل ${staff.length} موظف.`);
   };
 
   const ensureMin = () => {
@@ -620,9 +621,9 @@ export default function PersonalHygieneTab(props) {
           flexWrap: "wrap",
         }}
       >
-        <h3 style={{ margin: 0 }}>🧼 Personal Hygiene</h3>
+        <h3 style={{ margin: 0 }}>🧼 <Bi en="Personal Hygiene" /></h3>
         <label style={{ fontWeight: 700 }}>
-          Date:{" "}
+          <Bi en="Date:" />{" "}
           <input
             type="date"
             value={date}
@@ -642,26 +643,26 @@ export default function PersonalHygieneTab(props) {
 
       <div style={toolbar}>
         <button onClick={loadFromLast} disabled={loadingLast} style={btnBase}>
-          {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+          {loadingLast ? <>⏳ <Bi en="Loading…" /></> : <>📋 <Bi en="Load from last report" ar="تحميل من آخر تقرير" /></>}
         </button>
         <button
           onClick={fillFromDirectory}
           style={btnBase}
-          title="Every active person on the staff list"
+          title={bi("Every active person on the staff list", "كل موظف نشط في القائمة")}
         >
-          👥 Load roster{staff.length ? ` (${staff.length})` : ""}
+          👥 <Bi en={`Load roster${staff.length ? ` (${staff.length})` : ""}`} ar="تحميل الموظفين" />
         </button>
-        <button onClick={() => setStaffOpen(true)} style={btnBase} title="Add / edit the company's employees">
-          ✏️ Staff list
+        <button onClick={() => setStaffOpen(true)} style={btnBase} title={bi("Add / edit the company's employees", "إضافة / تعديل موظفي الشركة")}>
+          ✏️ <Bi en="Staff list" ar="قائمة الموظفين" />
         </button>
         <button onClick={fillAllConform} style={btnBase}>
-          ✅ Mark all C
+          ✅ <Bi en="Mark all C" ar="الكل مطابق" />
         </button>
         <button onClick={ensureMin} style={btnBase}>
-          Autofill to {minRows || MIN_ROWS_FALLBACK} rows
+          <Bi en={`Autofill to ${minRows || MIN_ROWS_FALLBACK} rows`} ar={`تعبئة حتى ${minRows || MIN_ROWS_FALLBACK} سطر`} />
         </button>
         <button onClick={addRow} style={btnBase}>
-          ➕ Add Row
+          ➕ <Bi en="Add Row" />
         </button>
       </div>
 
@@ -699,12 +700,12 @@ export default function PersonalHygieneTab(props) {
       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
-            <th style={th(50)}>S.No</th>
-            <th style={th(110)}>Employee No</th>
-            <th style={th(180)}>Employee Name</th>
+            <th style={th(50)}><Bi en="S.No" ar="م" stack center /></th>
+            <th style={th(110)}><Bi en="Employee No" stack center /></th>
+            <th style={th(180)}><Bi en="Employee Name" stack center /></th>
             {COLUMNS.map((c, i) => (
               <th key={i} style={th(150)}>
-                {c.label}
+                <Bi en={c.label} stack center />
                 <div style={{ marginTop: 4, display: "flex", gap: 4, justifyContent: "center" }}>
                   <button
                     type="button"
@@ -743,8 +744,8 @@ export default function PersonalHygieneTab(props) {
                 </div>
               </th>
             ))}
-            <th style={th(240)}>Remarks and Corrective Actions</th>
-            <th style={th(70)}>Actions</th>
+            <th style={th(240)}><Bi en="Remarks and Corrective Actions" ar="الملاحظات والإجراءات التصحيحية" stack center /></th>
+            <th style={th(70)}><Bi en="Actions" stack center /></th>
           </tr>
         </thead>
         <tbody>
@@ -769,7 +770,7 @@ export default function PersonalHygieneTab(props) {
                       ...inp(110),
                       borderColor: unknown ? "#f59e0b" : "#cbd5e1",
                     }}
-                    placeholder="No."
+                    placeholder="No. · رقم"
                   />
                 </td>
 
@@ -782,7 +783,7 @@ export default function PersonalHygieneTab(props) {
                       ...inp(180),
                       borderColor: unknown ? "#f59e0b" : "#cbd5e1",
                     }}
-                    title={unknown ? "Not in the staff directory" : ""}
+                    title={unknown ? "Not in the staff directory · غير موجود في قائمة الموظفين" : ""}
                   />
                 </td>
 
@@ -821,7 +822,7 @@ export default function PersonalHygieneTab(props) {
           {rows.length === 0 && (
             <tr>
               <td colSpan={COLUMNS.length + 5} style={{ ...td(), textAlign: "center", color: "#6b7280" }}>
-                No rows yet. Use “Load roster” or “Add Row”.
+                <Bi en="No rows yet. Use “Load roster” or “Add Row”." ar="لا توجد أسطر — استخدم «تحميل الموظفين» أو «إضافة سطر»." />
               </td>
             </tr>
           )}
@@ -837,7 +838,7 @@ export default function PersonalHygieneTab(props) {
           disabled={saving || savingLocal}
           style={btnPrimary}
         >
-          {saving || savingLocal ? "⏳ Saving..." : "💾 Save Personal Hygiene"}
+          {saving || savingLocal ? <>⏳ <Bi en="Saving..." /></> : <>💾 <Bi en="Save Personal Hygiene" ar="حفظ النظافة الشخصية" /></>}
         </button>
       </div>
     </div>

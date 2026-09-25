@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/sweets/InternalAuditInput.jsx
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { Bi, bi } from "./bilingual";
+import { AUDIT_Q_AR, AUDIT_TITLE_AR } from "./internalAuditAr";
 
 /* ===== API base ===== */
 
@@ -456,7 +458,7 @@ export default function InternalAuditInput() {
   function setRec(idx, field, v){ setRecs(p => p.map((r,i)=> i===idx ? { ...r, [field]: v } : r)); }
 
   async function handleSave(){
-    if (!meta.dateOfAudit) return alert("يرجى إدخال Date Of Audit.");
+    if (!meta.dateOfAudit) return alert("Please enter the Date Of Audit. · يرجى إدخال تاريخ التدقيق.");
     const payload = {
       headerTop: {
         documentTitle: DOC_META.docTitle,
@@ -489,17 +491,17 @@ export default function InternalAuditInput() {
     };
 
     try{
-      setSaving(true); setMsg("Saving…");
+      setSaving(true); setMsg("Saving… · جارٍ الحفظ…");
       const res = await fetch(`${API_BASE}/api/reports`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ reporter:"sweets", type: TYPE, payload }),
       });
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMsg("✅ Saved successfully");
+      setMsg("✅ Saved successfully · تم الحفظ بنجاح");
     }catch(e){
       console.error(e);
-      setMsg("❌ Failed to save");
+      setMsg("❌ Failed to save · فشل الحفظ");
     }finally{
       setSaving(false);
       setTimeout(()=>setMsg(""), 3000);
@@ -510,7 +512,7 @@ export default function InternalAuditInput() {
     <div style={card}>
       {/* Header */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-        <div style={{ fontWeight:900, fontSize:18 }}>INTERNAL AUDIT — Input</div>
+        <div style={{ fontWeight:900, fontSize:18 }}><Bi en="INTERNAL AUDIT — Input" ar="التدقيق الداخلي — إدخال" /></div>
         <div style={{ color:"#64748b", fontWeight:700 }}>
           DOC: {DOC_META.docNo} • Issue No: {DOC_META.issueNo} • Revision: {DOC_META.revision} • Issue Date: 01/11/2025
         </div>
@@ -520,17 +522,17 @@ export default function InternalAuditInput() {
       <table style={{ ...table, marginBottom:12 }}>
         <tbody>
           <tr>
-            <td style={{ ...th, width:160 }}>Conducted By</td>
+            <td style={{ ...th, width:160 }}><Bi en="Conducted By" ar="نفّذه" /></td>
             <td style={td}><input style={input} value={meta.conductedBy} onChange={e=>setMetaVal("conductedBy", e.target.value)} /></td>
-            <td style={{ ...th, width:160 }}>Verified By</td>
+            <td style={{ ...th, width:160 }}><Bi en="Verified By" /></td>
             <td style={td}><input style={input} value={meta.verifiedBy} onChange={e=>setMetaVal("verifiedBy", e.target.value)} /></td>
           </tr>
           <tr>
-            <td style={th}>Date Of Audit</td>
+            <td style={th}><Bi en="Date Of Audit" ar="تاريخ التدقيق" /></td>
             <td style={td}>
               <input type="date" style={input} value={meta.dateOfAudit} onChange={e=>setMetaVal("dateOfAudit", e.target.value)} />
             </td>
-            <td style={th}>Area</td>
+            <td style={th}><Bi en="Area" /></td>
             <td style={td}><input style={input} value={meta.area} onChange={e=>setMetaVal("area", e.target.value)} /></td>
           </tr>
         </tbody>
@@ -540,7 +542,7 @@ export default function InternalAuditInput() {
       {GROUPS.map((g, gi) => (
         <div key={gi} style={{ marginBottom: 14 }}>
           <div style={{ fontWeight:900, background:"#e5e7eb", padding:"6px 8px", border:"1px solid #cbd5e1" }}>
-            {g.title}
+            <Bi en={g.title} ar={AUDIT_TITLE_AR[g.title]} />
           </div>
           <table style={table}>
             <colgroup>
@@ -553,9 +555,9 @@ export default function InternalAuditInput() {
             <thead>
               <tr>
                 <th style={th}>#</th>
-                <th style={th}>Area / Question</th>
-                <th style={th}>Status</th>
-                <th style={th}>Remarks</th>
+                <th style={th}><Bi en="Area / Question" ar="المنطقة / السؤال" stack center /></th>
+                <th style={th}><Bi en="Status" stack center /></th>
+                <th style={th}><Bi en="Remarks" stack center /></th>
                 <th style={th}>—</th>
               </tr>
             </thead>
@@ -563,7 +565,10 @@ export default function InternalAuditInput() {
               {g.items.map((it) => (
                 <tr key={it.code}>
                   <td style={td}>{it.code}</td>
-                  <td style={td}><div style={{ whiteSpace:"pre-wrap" }}>{it.text}</div></td>
+                  <td style={td}>
+                    <div style={{ whiteSpace:"pre-wrap" }}>{it.text}</div>
+                    {AUDIT_Q_AR[it.code] ? <div lang="ar" dir="rtl" style={{ whiteSpace:"pre-wrap", color:"#64748b", marginTop:3, fontFamily:"var(--font-arabic, Cairo, sans-serif)" }}>{AUDIT_Q_AR[it.code]}</div> : null}
+                  </td>
                   <td style={td}>
                     <select
                       style={select}
@@ -571,7 +576,7 @@ export default function InternalAuditInput() {
                       onChange={e=>setCell(it.code, "status", e.target.value)}
                     >
                       <option value=""></option>
-                      {OPTS.map(o => <option key={o} value={o}>{o}</option>)}
+                      {OPTS.map(o => <option key={o} value={o}>{bi(o, o === "NA" ? "لا ينطبق" : undefined)}</option>)}
                     </select>
                   </td>
                   <td style={td}>
@@ -579,11 +584,11 @@ export default function InternalAuditInput() {
                       style={input}
                       value={checklist[it.code]?.remarks || ""}
                       onChange={e=>setCell(it.code, "remarks", e.target.value)}
-                      placeholder="Remarks"
+                      placeholder="Remarks · ملاحظات"
                     />
                   </td>
                   <td style={td}>
-                    <span style={{ color:"#94a3b8" }}>optional</span>
+                    <span style={{ color:"#94a3b8" }}><Bi en="optional" ar="اختياري" /></span>
                   </td>
                 </tr>
               ))}
@@ -594,19 +599,19 @@ export default function InternalAuditInput() {
 
       {/* Audit Recommendation */}
       <div style={{ fontWeight:900, background:"#e5e7eb", padding:"6px 8px", border:"1px solid #cbd5e1", marginTop:16 }}>
-        AUDIT RECOMMENDATION
+        <Bi en="AUDIT RECOMMENDATION" ar="توصيات التدقيق" />
       </div>
       <div style={{ overflowX:"auto" }}>
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>S/N</th>
-              <th style={th}>Audit Finding</th>
-              <th style={th}>Finding Type</th>
-              <th style={th}>Action to be taken</th>
-              <th style={th}>Responsibility</th>
-              <th style={th}>Target Date</th>
-              <th style={th}>Status</th>
+              <th style={th}><Bi en="S/N" ar="م" stack center /></th>
+              <th style={th}><Bi en="Audit Finding" ar="ملاحظة التدقيق" stack center /></th>
+              <th style={th}><Bi en="Finding Type" ar="نوع الملاحظة" stack center /></th>
+              <th style={th}><Bi en="Action to be taken" ar="الإجراء المطلوب" stack center /></th>
+              <th style={th}><Bi en="Responsibility" ar="المسؤولية" stack center /></th>
+              <th style={th}><Bi en="Target Date" stack center /></th>
+              <th style={th}><Bi en="Status" stack center /></th>
               <th style={th}>—</th>
             </tr>
           </thead>
@@ -622,21 +627,21 @@ export default function InternalAuditInput() {
                 <td style={td}>
                   <select style={select} value={r.status} onChange={e=>setRec(i,"status",e.target.value)}>
                     <option value=""></option>
-                    <option>OPEN</option>
-                    <option>IN PROGRESS</option>
-                    <option>CLOSED</option>
-                    <option>ON HOLD</option>
+                    <option value="OPEN">OPEN · مفتوح</option>
+                    <option value="IN PROGRESS">IN PROGRESS · قيد التنفيذ</option>
+                    <option value="CLOSED">CLOSED · مغلق</option>
+                    <option value="ON HOLD">ON HOLD · معلّق</option>
                   </select>
                 </td>
                 <td style={td}>
-                  <button onClick={()=>delRec(i)} style={btn("#ef4444")}>Delete</button>
+                  <button onClick={()=>delRec(i)} style={btn("#ef4444")}><Bi en="Delete" /></button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         <div style={{ marginTop:8 }}>
-          <button onClick={addRec} style={btn("#0b132b")}>+ Add Row</button>
+          <button onClick={addRec} style={btn("#0b132b")}><Bi en="+ Add Row" /></button>
         </div>
       </div>
 
@@ -644,9 +649,9 @@ export default function InternalAuditInput() {
       <table style={{ ...table, marginTop:16 }}>
         <tbody>
           <tr>
-            <td style={{ ...th, width:160 }}>Auditor Name</td>
+            <td style={{ ...th, width:160 }}><Bi en="Auditor Name" ar="اسم المدقق" /></td>
             <td style={td}><input style={input} value={meta.auditorName} onChange={e=>setMetaVal("auditorName", e.target.value)} /></td>
-            <td style={{ ...th, width:160 }}>Date</td>
+            <td style={{ ...th, width:160 }}><Bi en="Date" /></td>
             <td style={td}><input type="date" style={input} value={meta.auditorSignDate} onChange={e=>setMetaVal("auditorSignDate", e.target.value)} /></td>
           </tr>
         </tbody>
@@ -655,7 +660,7 @@ export default function InternalAuditInput() {
       {/* Actions */}
       <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:12 }}>
         <button onClick={handleSave} disabled={saving} style={btn("#2563eb")}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? <Bi en="Saving…" /> : <Bi en="Save" />}
         </button>
         {msg && <span style={{ alignSelf:"center", fontWeight:800, color:"#334155" }}>{msg}</span>}
       </div>

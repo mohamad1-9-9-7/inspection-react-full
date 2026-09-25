@@ -8,6 +8,7 @@ import React, { useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { uploadImage, deleteImage } from "../../../../utils/imageUpload";
 import { eventReportDate } from "./sweetsRecord";
+import { Bi, bi } from "./bilingual";
 
 const TYPE = "sweets_product_rejection";
 const MAX_EXTRA_IMAGES = 8;
@@ -84,7 +85,7 @@ export default function ProductRejectionInput() {
     const files = Array.from(fileList || []).filter((f) => String(f.type || "").startsWith("image/"));
     if (!files.length) return;
     const remaining = MAX_EXTRA_IMAGES - photos.length;
-    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} photos.`); return; }
+    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} photos. · الحد الأقصى ${MAX_EXTRA_IMAGES} صور.`); return; }
     try {
       setBusy(true);
       const urls = [];
@@ -93,9 +94,9 @@ export default function ProductRejectionInput() {
       }
       if (urls.length) {
         setPhotos((prev) => [...prev, ...urls].slice(0, MAX_EXTRA_IMAGES));
-        showMsg("ok", `✅ ${urls.length} photo(s) uploaded.`);
+        showMsg("ok", `✅ ${urls.length} photo(s) uploaded. · تم رفع ${urls.length} صورة.`);
       } else {
-        showMsg("err", "No photo could be uploaded.");
+        showMsg("err", "No photo could be uploaded. · تعذّر رفع الصور.");
       }
     } finally {
       setBusy(false);
@@ -126,10 +127,10 @@ export default function ProductRejectionInput() {
   }
 
   async function save() {
-    if (!date) return showMsg("err", "Pick the date.");
-    if (!productName.trim()) return showMsg("err", "Enter the product name.");
-    if (!(Number(quantity) > 0)) return showMsg("err", "Enter the rejected quantity.");
-    if (!inspectedBy.trim()) return showMsg("err", "Enter the inspector's name.");
+    if (!date) return showMsg("err", "Pick the date. · اختر التاريخ.");
+    if (!productName.trim()) return showMsg("err", "Enter the product name. · أدخل اسم المنتج.");
+    if (!(Number(quantity) > 0)) return showMsg("err", "Enter the rejected quantity. · أدخل الكمية المرفوضة.");
+    if (!inspectedBy.trim()) return showMsg("err", "Enter the inspector's name. · أدخل اسم المفتش.");
 
     const payload = {
       date,
@@ -151,17 +152,17 @@ export default function ProductRejectionInput() {
 
     try {
       setBusy(true);
-      showMsg("info", "Saving…", 0);
+      showMsg("info", "Saving… · جارٍ الحفظ…", 0);
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showMsg("ok", "✅ Rejection report saved.");
+      showMsg("ok", "✅ Rejection report saved. · تم حفظ تقرير الرفض.");
       resetForm();
     } catch (e) {
-      showMsg("err", `❌ Save failed: ${e?.message || e}`);
+      showMsg("err", `❌ Save failed · فشل الحفظ: ${e?.message || e}`);
     } finally {
       setBusy(false);
     }
@@ -170,60 +171,60 @@ export default function ProductRejectionInput() {
   return (
     <div style={S.page}>
       <div style={S.card}>
-        <h2 style={S.title}>🚫 Product Rejection Report</h2>
-        <div style={S.sub}>Record the rejected product, why it was rejected and what was done with it.</div>
+        <h2 style={S.title}>🚫 <Bi en="Product Rejection Report" ar="تقرير رفض المنتج" /></h2>
+        <div style={S.sub}><Bi en="Record the rejected product, why it was rejected and what was done with it." ar="سجّل المنتج المرفوض وسبب الرفض وما تم بشأنه." /></div>
 
         <div style={S.grid}>
           <Field label="Date *">
             <input type="date" style={S.input} value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
           <Field label="Product Name *">
-            <input style={S.input} value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="e.g. Pistachio baklava" />
+            <input style={S.input} value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="e.g. Pistachio baklava · مثال: بقلاوة فستق" />
           </Field>
           <Field label="Category">
             <select style={S.input} value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {CATEGORIES.map((c) => <option key={c} value={c}>{bi(c)}</option>)}
             </select>
           </Field>
           <Field label="Batch / Lot No.">
             <input style={S.input} value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="LOT-…" />
           </Field>
           <Field label="Supplier">
-            <input style={S.input} value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Supplier name" />
+            <input style={S.input} value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Supplier name · اسم المورد" />
           </Field>
           <Field label="Qty Rejected *">
             <div style={{ display: "flex", gap: 6 }}>
               <input type="number" min="0" step="0.01" style={{ ...S.input, flex: 1 }} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               <select style={{ ...S.input, width: 92 }} value={unit} onChange={(e) => setUnit(e.target.value)}>
-                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                {UNITS.map((u) => <option key={u} value={u}>{bi(u)}</option>)}
               </select>
             </div>
           </Field>
           <Field label="Rejection Reason *">
             <select style={S.input} value={reason} onChange={(e) => setReason(e.target.value)}>
-              {REJECTION_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              {REJECTION_REASONS.map((r) => <option key={r} value={r}>{bi(r)}</option>)}
             </select>
           </Field>
           <Field label="Disposition *">
             <select style={S.input} value={disposition} onChange={(e) => setDisposition(e.target.value)}>
-              {DISPOSITIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              {DISPOSITIONS.map((d) => <option key={d} value={d}>{bi(d)}</option>)}
             </select>
           </Field>
           <Field label="Inspected By *">
-            <input style={S.input} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} placeholder="Inspector name" />
+            <input style={S.input} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} placeholder="Inspector name · اسم المفتش" />
           </Field>
           <Field label="Approved By">
-            <input style={S.input} value={approvedBy} onChange={(e) => setApprovedBy(e.target.value)} placeholder="Supervisor / manager" />
+            <input style={S.input} value={approvedBy} onChange={(e) => setApprovedBy(e.target.value)} placeholder="Supervisor / manager · المشرف / المدير" />
           </Field>
         </div>
 
-        <label style={S.label}>Notes</label>
-        <textarea style={S.textarea} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="More detail on the reason or the product's condition…" />
+        <label style={S.label}><Bi en="Notes" /></label>
+        <textarea style={S.textarea} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="More detail on the reason or the product's condition… · تفاصيل إضافية عن السبب أو حالة المنتج…" />
       </div>
 
       <div style={S.card}>
-        <h3 style={S.title}>📷 Product Photos</h3>
-        <div style={S.sub}>Upload photos that show the reason for rejection (up to {MAX_EXTRA_IMAGES}).</div>
+        <h3 style={S.title}>📷 <Bi en="Product Photos" ar="صور المنتج" /></h3>
+        <div style={S.sub}><Bi en={`Upload photos that show the reason for rejection (up to ${MAX_EXTRA_IMAGES}).`} ar={`ارفع صوراً توضح سبب الرفض (حتى ${MAX_EXTRA_IMAGES}).`} /></div>
 
         <input
           ref={photosRef}
@@ -251,9 +252,9 @@ export default function ProductRejectionInput() {
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}>Reset</button>
+        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}><Bi en="Reset" /></button>
         <button style={S.btnPrimary} onClick={save} disabled={busy}>
-          {busy ? "⏳ Saving…" : "💾 Save"}
+          {busy ? <>⏳ <Bi en="Saving…" /></> : <>💾 <Bi en="Save" /></>}
         </button>
       </div>
 
@@ -265,7 +266,7 @@ export default function ProductRejectionInput() {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={S.label}>{label}</label>
+      <label style={S.label}><Bi en={label} /></label>
       {children}
     </div>
   );

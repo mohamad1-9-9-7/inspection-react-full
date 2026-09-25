@@ -5,6 +5,7 @@ import { getActiveCompanyName } from "../../../../utils/companyContext";
 import { getReportRowByDate, payloadOf, reportId } from "../_shared/reportApi";
 import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
 import SweetsStaffManager from "./SweetsStaffManager";
+import { Bi } from "./bilingual";
 
 const blankRows = () => [
   { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
@@ -205,9 +206,9 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
   }
 
   async function handleSave() {
-    if (!headerDate) return alert("Please select the header date.");
+    if (!headerDate) return alert("Please select the header date. · اختر التاريخ.");
     const filledRows = rows.filter((r) => (r.staffName || r.details || r.action || r.dateFrom || r.dateReturned || r.comments));
-    if (filledRows.length === 0) return alert("Please fill at least one row.");
+    if (filledRows.length === 0) return alert("Please fill at least one row. · عبّئ سطراً واحداً على الأقل.");
 
     const payload = {
       headerTop: {
@@ -240,7 +241,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
 
     try {
       setSaving(true);
-      setMsg("Saving…");
+      setMsg("Saving… · جارٍ الحفظ…");
 
       // A same-day save must UPDATE the day's one record, not file a second,
       // disconnected report for the same date.
@@ -257,12 +258,12 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
         body: JSON.stringify({ reporter, type, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMsg("✅ Saved successfully");
+      setMsg("✅ Saved successfully · تم الحفظ بنجاح");
       // Keep the just-saved rows on screen (matching the one-record-per-day
       // load effect above) instead of wiping the form back to blank.
     } catch (e) {
       console.error(e);
-      setMsg("❌ Failed to save");
+      setMsg("❌ Failed to save · فشل الحفظ");
     } finally {
       setSaving(false);
       setTimeout(() => setMsg(""), 3000);
@@ -290,11 +291,11 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".5px" }}>
              <span style={{ opacity: 0.85, fontWeight: 700 }}>{getActiveCompanyName()}</span>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.9 }}>Quality Assurance</div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}><Bi en="Quality Assurance" ar="ضمان الجودة" /></div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo}</b></div>
-                    <div>Area: <b>{DOC_META.area}</b></div>
+          <div><Bi en="Doc No:" ar="رقم الوثيقة:" /> <b>{DOC_META.docNo}</b></div>
+                    <div><Bi en="Area:" /> <b>{DOC_META.area}</b></div>
         </div>
       </div>
 
@@ -302,15 +303,15 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
       <table style={{ ...table, marginBottom: 12 }}>
         <tbody>
           <tr>
-            <td style={{ ...th, width: 180, color: "#fff" }}>Controlling Officer</td>
+            <td style={{ ...th, width: 180, color: "#fff" }}><Bi en="Controlling Officer" /></td>
             <td style={td}>{DOC_META.controllingOfficer}</td>
-            <td style={{ ...th, width: 180, color: "#fff" }}>Document</td>
+            <td style={{ ...th, width: 180, color: "#fff" }}><Bi en="Document" ar="الوثيقة" /></td>
             <td style={td}>{DOC_META.docTitle}</td>
           </tr>
           <tr>
-            <td style={th}>Issued by</td>
+            <td style={th}><Bi en="Issued by" ar="أصدر بواسطة" /></td>
             <td style={td}>{DOC_META.issuedBy}</td>
-            <td style={th}>Approved by</td>
+            <td style={th}><Bi en="Approved by" ar="اعتمد بواسطة" /></td>
             <td style={td}>{DOC_META.approvedBy}</td>
           </tr>
         </tbody>
@@ -319,19 +320,19 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
       {/* ===== Title ===== */}
       <div style={{ textAlign: "center", marginBottom: 14 }}>
         <div style={{ fontStyle: "italic", color: "#0b5236", fontWeight: 800, fontSize: 17 }}>
-          Staff Sickness / Occupational Injury Record
+          <Bi en="Staff Sickness / Occupational Injury Record" ar="سجل مرض الموظفين / إصابات العمل" />
         </div>
       </div>
 
       {/* ===== Header Date ===== */}
       <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div style={{ maxWidth: 360, flex: 1 }}>
-          <span style={label}>Date</span>
+          <span style={label}><Bi en="Date" /></span>
           <input style={input} type="date" value={headerDate} onChange={(e) => setHeaderDate(e.target.value)} />
         </div>
         <button type="button" onClick={() => setStaffOpen(true)}
           style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid #cbd5e1", background: "#fff", fontWeight: 800, cursor: "pointer" }}>
-          ✏️ Staff list ({staff.length})
+          ✏️ <Bi en={`Staff list (${staff.length})`} ar="قائمة الموظفين" />
         </button>
       </div>
       <SweetsStaffManager open={staffOpen} onClose={() => setStaffOpen(false)} />
@@ -360,14 +361,14 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
           </colgroup>
           <thead>
             <tr>
-              <th style={th}>S.No</th>
-              <th style={th}>Employee No</th>
-              <th style={th}>Staff Name</th>
-              <th style={th}>Details of Sickness</th>
-              <th style={th}>Action Taken</th>
-              <th style={th}>Date From</th>
-              <th style={th}>Date Returned</th>
-              <th style={th}>Comments</th>
+              <th style={th}><Bi en="S.No" stack center /></th>
+              <th style={th}><Bi en="Employee No" stack center /></th>
+              <th style={th}><Bi en="Staff Name" ar="اسم الموظف" stack center /></th>
+              <th style={th}><Bi en="Details of Sickness" ar="تفاصيل المرض" stack center /></th>
+              <th style={th}><Bi en="Action Taken" ar="الإجراء المتخذ" stack center /></th>
+              <th style={th}><Bi en="Date From" ar="من تاريخ" stack center /></th>
+              <th style={th}><Bi en="Date Returned" ar="تاريخ العودة" stack center /></th>
+              <th style={th}><Bi en="Comments" stack center /></th>
               <th style={th}>—</th>
             </tr>
           </thead>
@@ -379,7 +380,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
                   <input
                     style={input}
                     list="staff-empno-options"
-                    placeholder="No."
+                    placeholder="No. · رقم"
                     value={r.employeeNo || ""}
                     onChange={(e) => setRow(i, "employeeNo", e.target.value)}
                   />
@@ -388,16 +389,16 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
                   <input
                     style={input}
                     list="staff-empname-options"
-                    placeholder="Name"
+                    placeholder="Name · الاسم"
                     value={r.staffName}
                     onChange={(e) => setRow(i, "staffName", e.target.value)}
                   />
                 </td>
                 <td style={td}>
-                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Details…" value={r.details} onChange={(e) => setRow(i, "details", e.target.value)} />
+                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Details… · التفاصيل…" value={r.details} onChange={(e) => setRow(i, "details", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Action…" value={r.action} onChange={(e) => setRow(i, "action", e.target.value)} />
+                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Action… · الإجراء…" value={r.action} onChange={(e) => setRow(i, "action", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input} type="date" value={r.dateFrom} onChange={(e) => setRow(i, "dateFrom", e.target.value)} />
@@ -406,7 +407,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
                   <input style={input} type="date" value={r.dateReturned} onChange={(e) => setRow(i, "dateReturned", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Comments…" value={r.comments} onChange={(e) => setRow(i, "comments", e.target.value)} />
+                  <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Comments… · تعليقات…" value={r.comments} onChange={(e) => setRow(i, "comments", e.target.value)} />
                 </td>
                 <td style={{ ...td, textAlign: "center" }}>
                   <button type="button" onClick={() => delRow(i)} style={delRowBtn} disabled={rows.length <= 1}>
@@ -420,15 +421,15 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
       </div>
 
       <button type="button" onClick={addRow} style={addRowBtn}>
-        ＋ Add Row
+        ＋ <Bi en="Add Row" />
       </button>
 
       {/* ===== Remarks ===== */}
       <div style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 12, background: "#f8fafc" }}>
-        <span style={label}>Remarks / Corrective Actions</span>
+        <span style={label}><Bi en="Remarks / Corrective Actions" ar="الملاحظات / الإجراءات التصحيحية" /></span>
         <textarea
           style={textarea}
-          placeholder="Enter corrective actions taken…"
+          placeholder="Enter corrective actions taken… · أدخل الإجراءات التصحيحية المتخذة…"
           value={remarks}
           onChange={(e) => { touchedRef.current = true; setRemarks(e.target.value); }}
         />
@@ -437,20 +438,20 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
       {/* ===== Sign-off ===== */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginTop: 14 }}>
         <div style={{ padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fafafa" }}>
-          <span style={label}>Checked By</span>
+          <span style={label}><Bi en="Checked By" /></span>
           <input
             style={{ ...input, marginBottom: 8 }}
-            placeholder="Signature (type full name)"
+            placeholder="Signature (type full name) · التوقيع (الاسم الكامل)"
             value={checkedBy.name}
             onChange={(e) => { touchedRef.current = true; setCheckedBy((p) => ({ ...p, name: e.target.value })); }}
           />
           <input style={input} type="date" value={checkedBy.date} onChange={(e) => { touchedRef.current = true; setCheckedBy((p) => ({ ...p, date: e.target.value })); }} />
         </div>
         <div style={{ padding: 14, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fafafa" }}>
-          <span style={label}>Verified By</span>
+          <span style={label}><Bi en="Verified By" /></span>
           <input
             style={{ ...input, marginBottom: 8 }}
-            placeholder="Signature (type full name)"
+            placeholder="Signature (type full name) · التوقيع (الاسم الكامل)"
             value={verifiedBy.name}
             onChange={(e) => { touchedRef.current = true; setVerifiedBy((p) => ({ ...p, name: e.target.value })); }}
           />
@@ -460,7 +461,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "sweets" } 
 
       {/* ===== Submit ===== */}
       <button onClick={handleSave} disabled={saving} style={submitBtn(saving)}>
-        {saving ? "Saving…" : "📝 Submit Record"}
+        {saving ? <Bi en="Saving…" /> : <>📝 <Bi en="Submit Record" ar="إرسال السجل" /></>}
       </button>
       {msg && (
         <div style={{ textAlign: "center", marginTop: 10, fontWeight: 800, color: msg.startsWith("✅") ? "#16a34a" : msg.startsWith("❌") ? "#dc2626" : "#334155" }}>

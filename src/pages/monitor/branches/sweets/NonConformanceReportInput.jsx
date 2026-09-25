@@ -31,6 +31,7 @@ import {
   reportId,
 } from "../_shared/reportApi";
 import { SWEETS_AREAS, canonicalSweetsArea, isKnownSweetsArea } from "./sweetsAreas";
+import { Bi, bi } from "./bilingual";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -575,7 +576,7 @@ export default function NonConformanceReportInput(props) {
       applyPayload(existing?.payload || {});
       if (existing?.id) {
         setEditingReportId(existing.id);
-        setOpMsg(`Loaded the report saved on ${dateISO}.`);
+        setOpMsg(`Loaded the report saved on ${dateISO}. · تم تحميل التقرير المحفوظ.`);
         setTimeout(() => setOpMsg(""), 2500);
       }
     })();
@@ -596,7 +597,7 @@ export default function NonConformanceReportInput(props) {
     if (!files.length) return;
 
     const remaining = MAX_EVIDENCE_IMAGES - evidenceImages.length;
-    if (remaining <= 0) return alert(`Maximum ${MAX_EVIDENCE_IMAGES} images.`);
+    if (remaining <= 0) return alert(`Maximum ${MAX_EVIDENCE_IMAGES} images. · الحد الأقصى ${MAX_EVIDENCE_IMAGES} صور.`);
 
     const toUpload = files.slice(0, remaining);
 
@@ -653,7 +654,7 @@ export default function NonConformanceReportInput(props) {
   function startNewReport() {
     if (
       (details.trim() || evidenceImages.length > 0) &&
-      !window.confirm("Start a blank NCR? Anything not saved on this one is lost.")
+      !window.confirm("Start a blank NCR? Anything not saved on this one is lost. · بدء تقرير فارغ؟ سيضيع أي شيء غير محفوظ.")
     ) {
       return;
     }
@@ -700,7 +701,7 @@ export default function NonConformanceReportInput(props) {
     setResponsiblePerson("");
     setResponsibleSignature("");
     setTouched(false);
-    setOpMsg("New blank NCR — it gets its number when you save.");
+    setOpMsg("New blank NCR — it gets its number when you save. · تقرير جديد — يأخذ رقمه عند الحفظ.");
     setTimeout(() => setOpMsg(""), 3000);
   }
 
@@ -710,13 +711,13 @@ export default function NonConformanceReportInput(props) {
     if (keys.length) {
       setTouched(true);
       const first = {
-        date: "Pick the report date.",
-        location: "Pick the branch.",
-        details: "Describe the non-conformance.",
-        correctiveAction: "Closing an NCR needs the corrective action written down.",
-        finalQaName: "Closing an NCR needs the QA name.",
-        finalQaDate: "Closing an NCR needs the closure date.",
-        finalQaApproved: "Closing an NCR needs the QA approval ticked.",
+        date: "Pick the report date. · اختر تاريخ التقرير.",
+        location: "Pick the branch. · اختر الفرع.",
+        details: "Describe the non-conformance. · اشرح عدم المطابقة.",
+        correctiveAction: "Closing an NCR needs the corrective action written down. · الإغلاق يتطلب كتابة الإجراء التصحيحي.",
+        finalQaName: "Closing an NCR needs the QA name. · الإغلاق يتطلب اسم الجودة.",
+        finalQaDate: "Closing an NCR needs the closure date. · الإغلاق يتطلب تاريخ الإغلاق.",
+        finalQaApproved: "Closing an NCR needs the QA approval ticked. · الإغلاق يتطلب اعتماد الجودة.",
       }[keys[0]];
       alert(first);
       return;
@@ -775,7 +776,7 @@ export default function NonConformanceReportInput(props) {
 
     try {
       setSaving(true);
-      setOpMsg("Saving…");
+      setOpMsg("Saving… · جارٍ الحفظ…");
 
       // A blank sheet always creates; anything else updates the row it loaded.
       const existing = draftNew
@@ -815,10 +816,10 @@ export default function NonConformanceReportInput(props) {
       // "unsaved" for the orphan-cleanup on New NCR / Clear all.
       loadedEvidenceImagesRef.current = evidenceImages;
 
-      setOpMsg(savedRef ? `Saved — ${savedRef}` : `Saved for ${dateISO}.`);
+      setOpMsg(savedRef ? `Saved — ${savedRef} · تم الحفظ` : `Saved for ${dateISO}. · تم الحفظ`);
     } catch (e) {
       console.error(e);
-      setOpMsg(`Failed: ${e.message || e}`);
+      setOpMsg(`Failed · فشل: ${e.message || e}`);
     } finally {
       setSaving(false);
       setTimeout(() => setOpMsg(""), 3500);
@@ -839,8 +840,8 @@ export default function NonConformanceReportInput(props) {
           <small>تقرير عدم المطابقة</small>
         </div>
 
-        <div className={`ncr-ref${refNo ? "" : " is-pending"}`} title="NC No. — allocated by the server">
-          {refNo || legacyNcNo || "No. assigned on save"}
+        <div className={`ncr-ref${refNo ? "" : " is-pending"}`} title="NC No. — allocated by the server · رقم التقرير يُخصَّص من الخادم">
+          {refNo || legacyNcNo || bi("No. assigned on save", "يُخصَّص الرقم عند الحفظ")}
         </div>
 
         <div className="ncr-steps">
@@ -862,10 +863,10 @@ export default function NonConformanceReportInput(props) {
         <div className="ncr-spacer" />
 
         <button type="button" className="ncr-btn ghost small" onClick={startNewReport}>
-          ➕ New NCR
+          ➕ <Bi en="New NCR" ar="تقرير جديد" />
         </button>
         <button type="button" className="ncr-btn" onClick={saveNCToServer} disabled={saving}>
-          {saving ? "Saving…" : "💾 Save"}
+          {saving ? <Bi en="Saving…" /> : <>💾 <Bi en="Save" /></>}
         </button>
 
         {opMsg ? <div className="ncr-msg" style={{ width: "100%" }}>{opMsg}</div> : null}
@@ -883,17 +884,17 @@ export default function NonConformanceReportInput(props) {
           <span>
             {HEADER_LINE} · {header.documentNo} · Rev {header.revisionNo}
           </span>
-          <span style={{ marginInlineStart: "auto", color: "#64748b" }}>Document control ▾</span>
+          <span style={{ marginInlineStart: "auto", color: "#64748b" }}><Bi en="Document control" ar="ضبط الوثيقة" /> ▾</span>
         </summary>
         <div className="ncr-doc-kv">
-          <div><span>Document Title</span><span>{header.documentTitle}</span></div>
-          <div><span>Document No</span><span>{header.documentNo}</span></div>
-          <div><span>Issue Date</span><span>{header.issueDate}</span></div>
-          <div><span>Revision No</span><span>{header.revisionNo}</span></div>
-          <div><span>Area</span><span>{header.area}</span></div>
-          <div><span>Issued By</span><span>{header.issuedBy}</span></div>
-          <div><span>Controlling Officer</span><span>{header.controllingOfficer}</span></div>
-          <div><span>Approved By</span><span>{header.approvedBy}</span></div>
+          <div><span><Bi en="Document Title" /></span><span>{header.documentTitle}</span></div>
+          <div><span><Bi en="Document No" /></span><span>{header.documentNo}</span></div>
+          <div><span><Bi en="Issue Date" /></span><span>{header.issueDate}</span></div>
+          <div><span><Bi en="Revision No" /></span><span>{header.revisionNo}</span></div>
+          <div><span><Bi en="Area" /></span><span>{header.area}</span></div>
+          <div><span><Bi en="Issued By" /></span><span>{header.issuedBy}</span></div>
+          <div><span><Bi en="Controlling Officer" /></span><span>{header.controllingOfficer}</span></div>
+          <div><span><Bi en="Approved By" /></span><span>{header.approvedBy}</span></div>
         </div>
       </details>
 
@@ -915,7 +916,7 @@ export default function NonConformanceReportInput(props) {
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             >
-              <option value="">— pick a branch —</option>
+              <option value="">{bi("— pick a branch —", "— اختر الفرع —")}</option>
               {branchOptions.map((b) => (
                 <option key={b.code} value={b.code}>{b.label}</option>
               ))}
@@ -933,9 +934,9 @@ export default function NonConformanceReportInput(props) {
           <Field
             en="NC No."
             ar="رقم عدم المطابقة"
-            hint={refNo ? "Allocated by the server — cannot be edited." : "Allocated automatically when you save."}
+            hint={refNo ? bi("Allocated by the server — cannot be edited.", "مخصص من الخادم — لا يمكن تعديله.") : bi("Allocated automatically when you save.", "يُخصَّص تلقائياً عند الحفظ.")}
           >
-            <input type="text" readOnly value={refNo || legacyNcNo || "— on save —"} />
+            <input type="text" readOnly value={refNo || legacyNcNo || "— on save · عند الحفظ —"} />
           </Field>
 
           <Field en="Issued to" ar="موجّه إلى">
@@ -943,7 +944,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={issuedTo}
               onChange={(e) => setIssuedTo(e.target.value)}
-              placeholder="Name / Department"
+              placeholder="Name / Department · الاسم / القسم"
             />
           </Field>
 
@@ -952,7 +953,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={issuedBy}
               onChange={(e) => setIssuedBy(e.target.value)}
-              placeholder="Name"
+              placeholder="Name · الاسم"
             />
           </Field>
         </div>
@@ -976,19 +977,19 @@ export default function NonConformanceReportInput(props) {
       </Card>
 
       {/* ─── ② description ─── */}
-      <Card n="2" en="What went wrong" ar="وصف عدم المطابقة" badge="Required" >
+      <Card n="2" en="What went wrong" ar="وصف عدم المطابقة" badge={bi("Required", "مطلوب")} >
         <div className="ncr-grid wide">
           <Field
             en="Nonconformance / Report Details"
             ar="تفاصيل عدم المطابقة"
             required
             missing={show("details")}
-            hint="What happened, where, when, which product or area, and what was done immediately to contain it."
+            hint={bi("What happened, where, when, which product or area, and what was done immediately to contain it.", "ماذا حدث، أين، متى، أي منتج أو منطقة، وما الإجراء الفوري للاحتواء.")}
           >
             <textarea
               value={details}
               onChange={(e) => setDetails(e.target.value)}
-              placeholder="Write details here…"
+              placeholder="Write details here… · اكتب التفاصيل هنا…"
             />
           </Field>
         </div>
@@ -999,7 +1000,7 @@ export default function NonConformanceReportInput(props) {
         n="3"
         en="Corrective Action"
         ar="الإجراء التصحيحي"
-        badge={closing ? "Required to close" : "Fill as work progresses"}
+        badge={closing ? bi("Required to close", "مطلوب للإغلاق") : bi("Fill as work progresses", "يُعبّأ مع تقدم العمل")}
         badgeCalm={!closing}
       >
         <div className="ncr-grid wide">
@@ -1008,12 +1009,12 @@ export default function NonConformanceReportInput(props) {
             ar="الإجراء التصحيحي"
             required={closing}
             missing={show("correctiveAction")}
-            hint="Remove the cause, not only the symptom."
+            hint={bi("Remove the cause, not only the symptom.", "أزل السبب لا العَرَض فقط.")}
           >
             <textarea
               value={correctiveAction}
               onChange={(e) => setCorrectiveAction(e.target.value)}
-              placeholder="Corrective action…"
+              placeholder="Corrective action… · الإجراء التصحيحي…"
               style={{ minHeight: 100 }}
             />
           </Field>
@@ -1025,7 +1026,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={implementationOwner}
               onChange={(e) => setImplementationOwner(e.target.value)}
-              placeholder="Responsible person"
+              placeholder="Responsible person · الشخص المسؤول"
             />
           </Field>
           <Field en="Target Completion Date" ar="تاريخ الإنجاز المستهدف">
@@ -1040,7 +1041,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={performedBy}
               onChange={(e) => setPerformedBy(e.target.value)}
-              placeholder="Name"
+              placeholder="Name · الاسم"
             />
           </Field>
           <Field en="Department" ar="القسم">
@@ -1048,7 +1049,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
-              placeholder="Department"
+              placeholder="Department · القسم"
             />
           </Field>
         </div>
@@ -1059,7 +1060,7 @@ export default function NonConformanceReportInput(props) {
         n="4"
         en="Evidence"
         ar="الأدلة والمرفقات"
-        badge={`${evidenceImages.length}/${MAX_EVIDENCE_IMAGES} images`}
+        badge={`${evidenceImages.length}/${MAX_EVIDENCE_IMAGES} images · صور`}
         badgeCalm
       >
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -1069,14 +1070,14 @@ export default function NonConformanceReportInput(props) {
             onClick={() => evidenceInputRef.current?.click()}
             disabled={evidenceBusy || evidenceImages.length >= MAX_EVIDENCE_IMAGES}
           >
-            ⬆️ Upload images
+            ⬆️ <Bi en="Upload images" ar="رفع الصور" />
           </button>
           <button
             type="button"
             className="ncr-btn ghost small"
             onClick={async () => {
               if (!evidenceImages.length) return;
-              if (!window.confirm("Remove all evidence images?")) return;
+              if (!window.confirm("Remove all evidence images? · حذف كل صور الأدلة؟")) return;
               const urls = evidenceImages;
               setEvidenceImages([]);
               for (const url of urls) {
@@ -1084,7 +1085,7 @@ export default function NonConformanceReportInput(props) {
               }
             }}
           >
-            Clear all
+            <Bi en="Clear all" ar="مسح الكل" />
           </button>
           <input
             ref={evidenceInputRef}
@@ -1117,14 +1118,14 @@ export default function NonConformanceReportInput(props) {
       </Card>
 
       {/* ─── ⑤ QA verification ─── */}
-      <Card n="5" en="QA Verification" ar="التحقق من الجودة" badge="Quality only" badgeCalm>
+      <Card n="5" en="QA Verification" ar="التحقق من الجودة" badge={bi("Quality only", "للجودة فقط")} badgeCalm>
         <div className="ncr-grid">
           <Field en="Verified by (QA)" ar="تحقق بواسطة الجودة">
             <input
               type="text"
               value={verifiedByQA}
               onChange={(e) => setVerifiedByQA(e.target.value)}
-              placeholder="Name"
+              placeholder="Name · الاسم"
             />
           </Field>
           <Field en="Verification Date" ar="تاريخ التحقق">
@@ -1193,7 +1194,7 @@ export default function NonConformanceReportInput(props) {
                 type="text"
                 value={followupActionsRequired}
                 onChange={(e) => setFollowupActionsRequired(e.target.value)}
-                placeholder="Write actions…"
+                placeholder="Write actions… · اكتب الإجراءات…"
               />
             </Field>
             <Field en="Follow-up Responsible" ar="مسؤول المتابعة">
@@ -1201,7 +1202,7 @@ export default function NonConformanceReportInput(props) {
                 type="text"
                 value={followupResponsible}
                 onChange={(e) => setFollowupResponsible(e.target.value)}
-                placeholder="Name"
+                placeholder="Name · الاسم"
               />
             </Field>
             <Field en="Follow-up Target Date" ar="تاريخ المتابعة المستهدف">
@@ -1221,7 +1222,7 @@ export default function NonConformanceReportInput(props) {
         en="Final QA Closure"
         ar="الإغلاق النهائي من الجودة"
         locked={!closing}
-        badge={closing ? "Required" : "Only when status = Closed"}
+        badge={closing ? bi("Required", "مطلوب") : bi("Only when status = Closed", "فقط عند الحالة = مغلق")}
         badgeCalm={!closing}
       >
         {!closing ? (
@@ -1252,7 +1253,7 @@ export default function NonConformanceReportInput(props) {
               type="text"
               value={finalQaName}
               onChange={(e) => setFinalQaName(e.target.value)}
-              placeholder="QA name"
+              placeholder="QA name · اسم الجودة"
             />
           </Field>
           <Field

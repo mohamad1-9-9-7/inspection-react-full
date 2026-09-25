@@ -7,6 +7,7 @@ import React, { useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { uploadImage as uploadImageRaw, deleteImage as deleteImageRaw } from "../../../../utils/imageUpload";
 import { eventReportDate } from "./sweetsRecord";
+import { Bi, bi } from "./bilingual";
 
 const TYPE = "sweets_pest_control";
 const MAX_EXTRA_IMAGES = 8;
@@ -156,7 +157,7 @@ export default function PestControlInput() {
   async function pickServiceReportImage(file) {
     if (!file) return;
     if (!String(file.type || "").startsWith("image/")) {
-      showMsg("err", "The file must be an image.");
+      showMsg("err", "The file must be an image. · يجب أن يكون الملف صورة.");
       return;
     }
     try {
@@ -164,9 +165,9 @@ export default function PestControlInput() {
       if (serviceReportImage) await deleteImage(serviceReportImage);
       const url = await uploadImage(file);
       setServiceReportImage(url);
-      showMsg("ok", "✅ Service report uploaded.");
+      showMsg("ok", "✅ Service report uploaded. · تم رفع تقرير الخدمة.");
     } catch (e) {
-      showMsg("err", `Upload failed: ${e?.message || e}`);
+      showMsg("err", `Upload failed · فشل الرفع: ${e?.message || e}`);
     } finally {
       setBusy(false);
       if (reportRef.current) reportRef.current.value = "";
@@ -184,7 +185,7 @@ export default function PestControlInput() {
     const files = Array.from(fileList || []).filter((f) => String(f.type || "").startsWith("image/"));
     if (!files.length) return;
     const remaining = MAX_EXTRA_IMAGES - extraImages.length;
-    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} photos.`); return; }
+    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} photos. · الحد الأقصى ${MAX_EXTRA_IMAGES} صور.`); return; }
     try {
       setBusy(true);
       const urls = [];
@@ -193,9 +194,9 @@ export default function PestControlInput() {
       }
       if (urls.length) {
         setExtraImages((prev) => [...prev, ...urls].slice(0, MAX_EXTRA_IMAGES));
-        showMsg("ok", `✅ ${urls.length} photo(s) uploaded.`);
+        showMsg("ok", `✅ ${urls.length} photo(s) uploaded. · تم رفع ${urls.length} صورة.`);
       } else {
-        showMsg("err", "No photo could be uploaded.");
+        showMsg("err", "No photo could be uploaded. · تعذّر رفع الصور.");
       }
     } finally {
       setBusy(false);
@@ -241,10 +242,10 @@ export default function PestControlInput() {
   }
 
   async function save() {
-    if (!date) { showMsg("err", "Pick the date."); return; }
-    if (!companyName.trim()) { showMsg("err", "Enter the pest control company."); return; }
-    if (!technician.trim()) { showMsg("err", "Enter the technician name."); return; }
-    if (!inspector.trim()) { showMsg("err", "Enter the inspector name."); return; }
+    if (!date) { showMsg("err", "Pick the date. · اختر التاريخ."); return; }
+    if (!companyName.trim()) { showMsg("err", "Enter the pest control company. · أدخل شركة المكافحة."); return; }
+    if (!technician.trim()) { showMsg("err", "Enter the technician name. · أدخل اسم الفني."); return; }
+    if (!inspector.trim()) { showMsg("err", "Enter the inspector name. · أدخل اسم المفتش."); return; }
 
     const payload = {
       date,
@@ -270,17 +271,17 @@ export default function PestControlInput() {
 
     try {
       setBusy(true);
-      showMsg("info", "Saving…", 0);
+      showMsg("info", "Saving… · جارٍ الحفظ…", 0);
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showMsg("ok", "✅ Pest control visit saved.");
+      showMsg("ok", "✅ Pest control visit saved. · تم حفظ زيارة المكافحة.");
       resetForm();
     } catch (e) {
-      showMsg("err", `❌ Save failed: ${e?.message || e}`);
+      showMsg("err", `❌ Save failed · فشل الحفظ: ${e?.message || e}`);
     } finally {
       setBusy(false);
     }
@@ -290,24 +291,24 @@ export default function PestControlInput() {
     <div style={S.page}>
       {/* ===== Visit Info ===== */}
       <div style={S.card}>
-        <h2 style={S.title}>🐀 Pest Control Log</h2>
-        <div style={S.sub}>Record the contractor's visit, the treatment and the bait stations.</div>
+        <h2 style={S.title}>🐀 <Bi en="Pest Control Log" ar="سجل مكافحة الحشرات" /></h2>
+        <div style={S.sub}><Bi en="Record the contractor's visit, the treatment and the bait stations." ar="سجّل زيارة المقاول والمعالجة ومحطات الطُعم." /></div>
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>Date *</label>
+            <label style={S.label}><Bi en="Date *" /></label>
             <input type="date" style={S.input} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>Location</label>
+            <label style={S.label}><Bi en="Location" /></label>
             <select style={S.input} value={location} onChange={(e) => setLocation(e.target.value)}>
-              {LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
+              {LOCATIONS.map((loc) => <option key={loc} value={loc}>{bi(loc)}</option>)}
             </select>
           </div>
           <div>
-            <label style={S.label}>Visit Type</label>
+            <label style={S.label}><Bi en="Visit Type" /></label>
             <select style={S.input} value={visitType} onChange={(e) => setVisitType(e.target.value)}>
-              {VISIT_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
+              {VISIT_TYPES.map((v) => <option key={v} value={v}>{bi(v)}</option>)}
             </select>
           </div>
         </div>
@@ -315,30 +316,30 @@ export default function PestControlInput() {
 
       {/* ===== Company / Technician ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>🏢 Pest Control Company</h3>
+        <h3 style={S.title}>🏢 <Bi en="Pest Control Company" /></h3>
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>Company Name *</label>
-            <input style={S.input} value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="National Pest Control..." />
+            <label style={S.label}><Bi en="Company Name *" /></label>
+            <input style={S.input} value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="National Pest Control... · اسم الشركة" />
           </div>
           <div>
-            <label style={S.label}>Service Report No.</label>
+            <label style={S.label}><Bi en="Service Report No." /></label>
             <input style={S.input} value={serviceReportNo} onChange={(e) => setServiceReportNo(e.target.value)} placeholder="SR-..." />
           </div>
           <div>
-            <label style={S.label}>License No.</label>
+            <label style={S.label}><Bi en="License No." /></label>
             <input style={S.input} value={licenseNo} onChange={(e) => setLicenseNo(e.target.value)} />
           </div>
         </div>
 
         <div style={S.row2}>
           <div>
-            <label style={S.label}>Technician Name *</label>
+            <label style={S.label}><Bi en="Technician Name *" /></label>
             <input style={S.input} value={technician} onChange={(e) => setTechnician(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>Next Visit Date</label>
+            <label style={S.label}><Bi en="Next Visit Date" /></label>
             <input type="date" style={S.input} value={nextVisitDate} onChange={(e) => setNextVisitDate(e.target.value)} />
           </div>
         </div>
@@ -346,9 +347,9 @@ export default function PestControlInput() {
 
       {/* ===== Treatment ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>💊 Treatment</h3>
+        <h3 style={S.title}>💊 <Bi en="Treatment" /></h3>
 
-        <label style={S.label}>Pests Targeted</label>
+        <label style={S.label}><Bi en="Pests Targeted" /></label>
         <div style={S.pillBox}>
           {PEST_TYPES.map((p) => (
             <button
@@ -357,12 +358,12 @@ export default function PestControlInput() {
               onClick={() => togglePill(p, pestsTargeted, setPestsTargeted)}
               style={S.pill(pestsTargeted.includes(p), "#dc2626")}
             >
-              {p}
+              <Bi en={p} />
             </button>
           ))}
         </div>
 
-        <label style={S.label}>Treatment Methods</label>
+        <label style={S.label}><Bi en="Treatment Methods" /></label>
         <div style={S.pillBox}>
           {TREATMENT_METHODS.map((m) => (
             <button
@@ -371,92 +372,92 @@ export default function PestControlInput() {
               onClick={() => togglePill(m, methods, setMethods)}
               style={S.pill(methods.includes(m), "#2563eb")}
             >
-              {m}
+              <Bi en={m} />
             </button>
           ))}
         </div>
 
-        <label style={S.label}>Chemicals Used</label>
-        <textarea style={S.textarea} value={chemicals} onChange={(e) => setChemicals(e.target.value)} placeholder="Product name, concentration, quantity…" />
+        <label style={S.label}><Bi en="Chemicals Used" /></label>
+        <textarea style={S.textarea} value={chemicals} onChange={(e) => setChemicals(e.target.value)} placeholder="Product name, concentration, quantity… · اسم المنتج، التركيز، الكمية…" />
 
-        <label style={S.label}>Areas Treated</label>
-        <textarea style={S.textarea} value={areasTreated} onChange={(e) => setAreasTreated(e.target.value)} placeholder="Store, production hall, outside corridors…" />
+        <label style={S.label}><Bi en="Areas Treated" /></label>
+        <textarea style={S.textarea} value={areasTreated} onChange={(e) => setAreasTreated(e.target.value)} placeholder="Store, production hall, outside corridors… · المخزن، صالة الإنتاج، الممرات الخارجية…" />
       </div>
 
       {/* ===== Bait Stations ===== */}
       <div style={S.card}>
         <div style={S.stationHead}>
-          <h3 style={S.title}>📍 Bait Stations</h3>
+          <h3 style={S.title}>📍 <Bi en="Bait Stations" /></h3>
           <button type="button" style={S.btnSmall} onClick={() => setStations([...stations, newStation()])}>
-            + Add station
+            <Bi en="+ Add station" ar="+ إضافة محطة" />
           </button>
         </div>
 
         {stations.length === 0 && (
-          <div style={{ ...S.sub, fontStyle: "italic" }}>No stations yet. Press "Add station" to record a bait station or trap.</div>
+          <div style={{ ...S.sub, fontStyle: "italic" }}><Bi en='No stations yet. Press "Add station" to record a bait station or trap.' ar="لا توجد محطات — اضغط «إضافة محطة» لتسجيل محطة طُعم أو مصيدة." /></div>
         )}
 
         {stations.map((st, idx) => (
           <div key={st.id} style={S.stationCard}>
             <div style={S.stationHead}>
-              <span style={{ fontWeight: 900, fontSize: 13 }}>Station #{idx + 1}</span>
-              <button type="button" style={S.btnDanger} onClick={() => removeStation(st.id)}>Remove</button>
+              <span style={{ fontWeight: 900, fontSize: 13 }}><Bi en={`Station #${idx + 1}`} ar={`محطة #${idx + 1}`} /></span>
+              <button type="button" style={S.btnDanger} onClick={() => removeStation(st.id)}><Bi en="Remove" /></button>
             </div>
             <div style={S.row3}>
               <div>
-                <label style={S.label}>Code</label>
+                <label style={S.label}><Bi en="Code" /></label>
                 <input style={S.input} value={st.code} onChange={(e) => updateStation(st.id, "code", e.target.value)} placeholder="BS-001" />
               </div>
               <div>
-                <label style={S.label}>Location</label>
-                <input style={S.input} value={st.location} onChange={(e) => updateStation(st.id, "location", e.target.value)} placeholder="Store back door" />
+                <label style={S.label}><Bi en="Location" /></label>
+                <input style={S.input} value={st.location} onChange={(e) => updateStation(st.id, "location", e.target.value)} placeholder="Store back door · الباب الخلفي للمخزن" />
               </div>
               <div>
-                <label style={S.label}>Status</label>
+                <label style={S.label}><Bi en="Status" /></label>
                 <select style={S.input} value={st.status} onChange={(e) => updateStation(st.id, "status", e.target.value)}>
-                  {STATION_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {STATION_STATUSES.map((s) => <option key={s} value={s}>{bi(s)}</option>)}
                 </select>
               </div>
             </div>
-            <label style={S.label}>Captures / Activity</label>
-            <input style={S.input} value={st.captures} onChange={(e) => updateStation(st.id, "captures", e.target.value)} placeholder="e.g. 2 mice, or no activity" />
+            <label style={S.label}><Bi en="Captures / Activity" /></label>
+            <input style={S.input} value={st.captures} onChange={(e) => updateStation(st.id, "captures", e.target.value)} placeholder="e.g. 2 mice, or no activity · مثال: فأران، أو لا نشاط" />
           </div>
         ))}
       </div>
 
       {/* ===== Findings & Actions ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>📝 Findings & Actions</h3>
+        <h3 style={S.title}>📝 <Bi en="Findings & Actions" /></h3>
 
-        <label style={S.label}>Findings</label>
-        <textarea style={S.textarea} value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="Activity level, entry points, gaps and cracks…" />
+        <label style={S.label}><Bi en="Findings" /></label>
+        <textarea style={S.textarea} value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="Activity level, entry points, gaps and cracks… · مستوى النشاط، نقاط الدخول، الفتحات والشقوق…" />
 
-        <label style={S.label}>Corrective Actions</label>
-        <textarea style={S.textarea} value={correctiveActions} onChange={(e) => setCorrectiveActions(e.target.value)} placeholder="Seal gaps, repair door sweeps, clean-down…" />
+        <label style={S.label}><Bi en="Corrective Actions" /></label>
+        <textarea style={S.textarea} value={correctiveActions} onChange={(e) => setCorrectiveActions(e.target.value)} placeholder="Seal gaps, repair door sweeps, clean-down… · سد الفتحات، إصلاح عوازل الأبواب، التنظيف…" />
 
-        <label style={S.label}>Recommendations for the next visit</label>
+        <label style={S.label}><Bi en="Recommendations for the next visit" /></label>
         <textarea style={S.textarea} value={recommendations} onChange={(e) => setRecommendations(e.target.value)} placeholder="..." />
       </div>
 
       {/* ===== Sign-off ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>✍️ Sign-off</h3>
+        <h3 style={S.title}>✍️ <Bi en="Sign-off" /></h3>
         <div style={S.row2}>
           <div>
-            <label style={S.label}>Inspector *</label>
-            <input style={S.input} value={inspector} onChange={(e) => setInspector(e.target.value)} placeholder="Inspector name" />
+            <label style={S.label}><Bi en="Inspector *" /></label>
+            <input style={S.input} value={inspector} onChange={(e) => setInspector(e.target.value)} placeholder="Inspector name · اسم المفتش" />
           </div>
           <div>
-            <label style={S.label}>Supervisor</label>
-            <input style={S.input} value={supervisor} onChange={(e) => setSupervisor(e.target.value)} placeholder="Supervisor name" />
+            <label style={S.label}><Bi en="Supervisor" /></label>
+            <input style={S.input} value={supervisor} onChange={(e) => setSupervisor(e.target.value)} placeholder="Supervisor name · اسم المشرف" />
           </div>
         </div>
       </div>
 
       {/* ===== Service Report Photo ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>📄 Service Report Photo</h3>
-        <div style={S.sub}>Photo of the contractor's service report / invoice.</div>
+        <h3 style={S.title}>📄 <Bi en="Service Report Photo" /></h3>
+        <div style={S.sub}><Bi en="Photo of the contractor's service report / invoice." ar="صورة تقرير خدمة المقاول / الفاتورة." /></div>
 
         {!serviceReportImage && (
           <input
@@ -473,15 +474,15 @@ export default function PestControlInput() {
             <a href={serviceReportImage} target="_blank" rel="noreferrer">
               <img src={serviceReportImage} alt="Service Report" style={{ ...S.imgPreview, height: 220 }} />
             </a>
-            <button type="button" onClick={clearServiceReportImage} style={S.imgRemove} title="Remove">✕</button>
+            <button type="button" onClick={clearServiceReportImage} style={S.imgRemove} title="Remove · إزالة">✕</button>
           </div>
         )}
       </div>
 
       {/* ===== Extra Photos ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>📷 Extra Photos (optional)</h3>
-        <div style={S.sub}>Stations, pests found, entry points… (up to {MAX_EXTRA_IMAGES} photos)</div>
+        <h3 style={S.title}>📷 <Bi en="Extra Photos (optional)" /></h3>
+        <div style={S.sub}><Bi en={`Stations, pests found, entry points… (up to ${MAX_EXTRA_IMAGES} photos)`} ar={`المحطات، الحشرات، نقاط الدخول… (حتى ${MAX_EXTRA_IMAGES} صور)`} /></div>
 
         <input
           ref={extrasRef}
@@ -509,9 +510,9 @@ export default function PestControlInput() {
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}>Reset</button>
+        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}><Bi en="Reset" /></button>
         <button style={S.btnPrimary} onClick={save} disabled={busy}>
-          {busy ? "⏳ Saving…" : "💾 Save"}
+          {busy ? <>⏳ <Bi en="Saving…" /></> : <>💾 <Bi en="Save" /></>}
         </button>
       </div>
 

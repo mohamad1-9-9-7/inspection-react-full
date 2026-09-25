@@ -2,6 +2,14 @@
 // Confectionery copy of the truck daily cleaning checklist — same design,
 // own sweets_* report types, no data from any other company.
 import React, { useEffect, useMemo, useState } from "react";
+import { Bi, bi } from "../../monitor/branches/sweets/bilingual";
+
+/* Arabic twins of the table heads (screen only; the payload keys are unchanged). */
+const TRUCK_COL_AR = {
+  "Truck No.": "رقم الشاحنة", "Truck floor": "أرضية الشاحنة", "Air Curtain": "الستارة الهوائية", "Truck body": "هيكل الشاحنة",
+  "Truck door": "باب الشاحنة", "Shelves / tray racks": "الرفوف / حوامل الصواني", "Truck pallets": "طبليات الشاحنة",
+  "Cake boxes / crates": "علب الكيك / الصناديق", "Informed to": "أُبلغ إلى", "Remarks": "ملاحظات",
+};
 
 /* ================= API base (CRA + Vite + window override) ================= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -138,7 +146,7 @@ export default function Cleaning() {
     if (key === "truckNo") {
       const v = normNo(val);
       if (v && isDuplicateTruck(v, i)) {
-        setMsg(`Truck No. "${v}" is already used for this date. Only one row per truck per day.`);
+        setMsg(`Truck No. "${v}" is already used for this date. Only one row per truck per day. · رقم الشاحنة مستخدم لهذا اليوم.`);
         return;
       }
     }
@@ -224,23 +232,23 @@ export default function Cleaning() {
 
     if (!s) return;
     if (!/^\d{3,}$/.test(s)) {
-      setMsg("Truck number must be digits only (min 3).");
+      setMsg("Truck number must be digits only (min 3). · رقم الشاحنة أرقام فقط (3 على الأقل).");
       return;
     }
     if (truckOptions.includes(s)) {
-      setMsg(`Truck No. "${s}" already exists in the list.`);
+      setMsg(`Truck No. "${s}" already exists in the list. · الرقم موجود في القائمة.`);
       // اختياري: خليه يختاره بالسطر الأول لو موجود
       setCell(0, "truckNo", s);
       return;
     }
     if (isDuplicateTruck(s, 0)) {
-      setMsg(`Truck No. "${s}" is already used in another row.`);
+      setMsg(`Truck No. "${s}" is already used in another row. · الرقم مستخدم في سطر آخر.`);
       return;
     }
 
     try {
       setLookupBusy(true);
-      setMsg("Saving truck number...");
+      setMsg("Saving truck number... · جارٍ حفظ رقم الشاحنة…");
       await saveTruckToServer(s);
 
       setTruckOptions((prev) => uniqSorted([...prev, s]));
@@ -249,7 +257,7 @@ export default function Cleaning() {
       setCell(0, "truckNo", s);
 
       setNewTruckNo("");
-      setMsg("Truck number saved.");
+      setMsg("Truck number saved. · تم حفظ رقم الشاحنة.");
       setTimeout(() => setMsg(""), 1800);
     } catch (e) {
       setMsg(String(e.message || e));
@@ -262,18 +270,18 @@ export default function Cleaning() {
     try {
       setMsg("");
       if (!date) {
-        setMsg("Select date.");
+        setMsg("Select date. · اختر التاريخ.");
         return;
       }
       if (validRows.length === 0) {
-        setMsg("Add at least one truck.");
+        setMsg("Add at least one truck. · أضف شاحنة واحدة على الأقل.");
         return;
       }
 
       for (const r of validRows) {
         const no = normNo(r.truckNo);
         if (!truckOptions.includes(no)) {
-          setMsg(`Truck No. "${no}" is not in the list.`);
+          setMsg(`Truck No. "${no}" is not in the list. · الرقم غير موجود في القائمة.`);
           return;
         }
       }
@@ -282,7 +290,7 @@ export default function Cleaning() {
       for (const r of validRows) {
         const no = normNo(r.truckNo);
         if (seen.has(no)) {
-          setMsg(`Truck No. "${no}" is duplicated for this date. Only one row per truck per day.`);
+          setMsg(`Truck No. "${no}" is duplicated for this date. Only one row per truck per day. · الرقم مكرر لهذا اليوم.`);
           return;
         }
         seen.add(no);
@@ -319,7 +327,7 @@ export default function Cleaning() {
       // The server is the only store — no local copy of saved reports.
       void res;
 
-      setMsg("Saved successfully.");
+      setMsg("Saved successfully. · تم الحفظ بنجاح.");
       clearAll();
     } catch (e) {
       setMsg(String(e.message || e));
@@ -496,7 +504,7 @@ export default function Cleaning() {
         <div style={{ ...cardPad, background: "#f8fafc" }}>
           <div style={headerGrid}>
             <div>
-              <div style={label}>Document Title:</div>
+              <div style={label}><Bi en="Document Title:" /></div>
               <input
                 style={input}
                 value={hdr.documentTitle}
@@ -504,7 +512,7 @@ export default function Cleaning() {
               />
             </div>
             <div>
-              <div style={label}>Document No.:</div>
+              <div style={label}><Bi en="Document No.:" /></div>
               <input
                 style={input}
                 value={hdr.documentNo}
@@ -512,11 +520,11 @@ export default function Cleaning() {
               />
             </div>
             <div>
-              <div style={label}>Issue Date:</div>
+              <div style={label}><Bi en="Issue Date:" /></div>
               <div style={readOnlyBox}>12/04/2025</div>
             </div>
             <div>
-              <div style={label}>Revision No.:</div>
+              <div style={label}><Bi en="Revision No.:" /></div>
               <input
                 style={input}
                 value={hdr.revisionNo}
@@ -525,11 +533,11 @@ export default function Cleaning() {
             </div>
 
             <div>
-              <div style={label}>Area:</div>
+              <div style={label}><Bi en="Area:" /></div>
               <input style={input} value={hdr.area} onChange={(e) => setHdr({ ...hdr, area: e.target.value })} />
             </div>
             <div>
-              <div style={label}>Issued By:</div>
+              <div style={label}><Bi en="Issued By:" /></div>
               <input
                 style={input}
                 value={hdr.issuedBy}
@@ -537,7 +545,7 @@ export default function Cleaning() {
               />
             </div>
             <div>
-              <div style={label}>Controlling Officer:</div>
+              <div style={label}><Bi en="Controlling Officer:" /></div>
               <input
                 style={input}
                 value={hdr.controllingOfficer}
@@ -545,7 +553,7 @@ export default function Cleaning() {
               />
             </div>
             <div>
-              <div style={label}>Approved By:</div>
+              <div style={label}><Bi en="Approved By:" /></div>
               <input
                 style={input}
                 value={hdr.approvedBy}
@@ -554,23 +562,23 @@ export default function Cleaning() {
             </div>
           </div>
 
-          <h2 style={topTitle}>CONFECTIONERY</h2>
-          <h3 style={subTitle}>TRUCK DAILY CLEANING CHECKLIST</h3>
+          <h2 style={topTitle}><Bi en="CONFECTIONERY" ar="الحلويات" /></h2>
+          <h3 style={subTitle}><Bi en="TRUCK DAILY CLEANING CHECKLIST" ar="قائمة التنظيف اليومي للشاحنات" /></h3>
 
           {/* ===== Date + Add Truck (TOP, above table) ===== */}
           <div style={topControlsRow}>
             <div style={block}>
-              <div style={{ fontWeight: 900 }}>Date</div>
+              <div style={{ fontWeight: 900 }}><Bi en="Date" /></div>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...input, marginTop: 6 }} />
               {lookupBusy && (
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: "#64748b" }}>Loading trucks…</div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: "#64748b" }}><Bi en="Loading trucks…" ar="جارٍ تحميل الشاحنات…" /></div>
               )}
             </div>
 
             <div style={block}>
-              <div style={{ fontWeight: 900 }}>Add new truck number (saved to server)</div>
+              <div style={{ fontWeight: 900 }}><Bi en="Add new truck number (saved to server)" ar="إضافة رقم شاحنة جديد (يُحفظ على الخادم)" /></div>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginTop: 4 }}>
-                This will auto-select in Row 1 and appear in all dropdowns.
+                <Bi en="This will auto-select in Row 1 and appear in all dropdowns." ar="يُختار تلقائياً في السطر الأول ويظهر في كل القوائم." />
               </div>
 
               <div style={inlineGrid}>
@@ -578,7 +586,7 @@ export default function Cleaning() {
                   value={newTruckNo}
                   onChange={(e) => setNewTruckNo(e.target.value)}
                   style={input}
-                  placeholder="Digits only (e.g. 12345)"
+                  placeholder="Digits only (e.g. 12345) · أرقام فقط"
                   inputMode="numeric"
                 />
                 <button
@@ -598,12 +606,12 @@ export default function Cleaning() {
                       : "Add"
                   }
                 >
-                  + Add
+                  <Bi en="+ Add" ar="+ إضافة" />
                 </button>
               </div>
 
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: "#334155" }}>
-                No duplicates • Stored permanently
+                <Bi en="No duplicates • Stored permanently" ar="بدون تكرار • يُحفظ بشكل دائم" />
               </div>
             </div>
           </div>
@@ -642,7 +650,7 @@ export default function Cleaning() {
                   "",
                 ].map((h) => (
                   <th key={h} style={th}>
-                    {h}
+                    <Bi en={h} ar={TRUCK_COL_AR[h]} stack center />
                   </th>
                 ))}
               </tr>
@@ -658,7 +666,7 @@ export default function Cleaning() {
                       style={select}
                       disabled={lookupBusy && truckOptions.length === 0}
                     >
-                      <option value="">{lookupBusy ? "Loading..." : "Select..."}</option>
+                      <option value="">{lookupBusy ? bi("Loading...", "جارٍ التحميل…") : bi("Select...", "اختر…")}</option>
                       {truckOptions.map((no) => (
                         <option key={no} value={no}>
                           {no}
@@ -684,8 +692,8 @@ export default function Cleaning() {
 
                   <td style={{ ...td, whiteSpace: "nowrap" }}>
                     {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} style={btnDanger} title="Delete this row">
-                        🗑 Delete
+                      <button type="button" onClick={() => removeRow(i)} style={btnDanger} title="Delete this row · حذف السطر">
+                        🗑 <Bi en="Delete" />
                       </button>
                     )}
                   </td>
@@ -698,41 +706,41 @@ export default function Cleaning() {
         {/* ===== Actions ===== */}
         <div style={{ padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" onClick={addRow} style={btnGhost}>
-            ＋ Add Row
+            ＋ <Bi en="Add Row" />
           </button>
 
           <button type="button" onClick={onSave} disabled={saving} style={btnPrimary}>
-            {saving ? "Saving…" : "Save Report"}
+            {saving ? <Bi en="Saving…" /> : <Bi en="Save Report" />}
           </button>
 
           <button type="button" onClick={clearAll} style={btnGhost}>
-            Clear
+            <Bi en="Clear" />
           </button>
         </div>
 
         {/* ===== Remarks block ===== */}
         <div style={{ borderTop: "1px solid #e5eaf3", background: "#f8fafc" }}>
           <div style={{ padding: "12px 14px", fontWeight: 900, borderBottom: "1px solid #e5eaf3" }}>
-            REMARKS/CORRECTIVE ACTIONS:
+            <Bi en="REMARKS/CORRECTIVE ACTIONS:" ar="الملاحظات / الإجراءات التصحيحية:" />
           </div>
 
           <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <div style={label}>Checked By :</div>
+              <div style={label}><Bi en="Checked By:" /></div>
               <input style={input} value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
             </div>
             <div>
-              <div style={label}>Verified By :</div>
+              <div style={label}><Bi en="Verified By:" /></div>
               <input style={input} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
             </div>
 
             <div style={{ gridColumn: "1 / -1" }}>
-              <div style={label}>Chemical used:</div>
+              <div style={label}><Bi en="Chemical used:" /></div>
               <input style={input} value={chemicalUsed} onChange={(e) => setChemicalUsed(e.target.value)} />
             </div>
 
             <div style={{ gridColumn: "1 / -1" }}>
-              <div style={label}>Cleaning Procedure:</div>
+              <div style={label}><Bi en="Cleaning Procedure:" /></div>
               <textarea
                 rows={3}
                 style={{ ...input, resize: "vertical" }}
@@ -742,12 +750,12 @@ export default function Cleaning() {
             </div>
 
             <div style={{ gridColumn: "1 / -1" }}>
-              <div style={label}>Remark:</div>
+              <div style={label}><Bi en="Remark:" /></div>
               <input style={input} value={frequencyRemark} onChange={(e) => setFrequencyRemark(e.target.value)} />
             </div>
 
             <div style={{ gridColumn: "1 / -1", fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-              *(C = Conform, N/C = Non-conform)
+              *(C = Conform, N/C = Non-conform) <Bi en="" ar="(C = مطابق · N/C = غير مطابق)" />
             </div>
           </div>
         </div>
@@ -776,7 +784,7 @@ function Select({ val, onChange, styleObj }) {
     <select value={val} onChange={(e) => onChange(e.target.value)} style={styleObj}>
       {STATUS.map((s) => (
         <option key={s} value={s}>
-          {s}
+          {bi(s)}
         </option>
       ))}
     </select>

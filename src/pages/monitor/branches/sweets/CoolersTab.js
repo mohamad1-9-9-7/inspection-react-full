@@ -27,6 +27,7 @@ import {
 } from "./coolerDefs";
 import { canEdit, getCurrentUser } from "../../../../utils/perms";
 import { notifyOutOfRange } from "../../../../utils/notifications";
+import { Bi, bi } from "./bilingual";
 
 function todayDubaiISO() {
   try {
@@ -224,7 +225,7 @@ function RowKV({ label, value }) {
           fontWeight: 700,
         }}
       >
-        {label}
+        <Bi en={label} />
       </div>
       <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
@@ -272,16 +273,15 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
           
         </div>
         <div style={{ textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
-          TEMPERATURE CONTROL CHECKLIST (CCP)
+          <Bi en="TEMPERATURE CONTROL CHECKLIST (CCP)" ar="قائمة فحص التحكم بالحرارة (نقطة تحكم حرجة)" />
         </div>
 
         <div style={{ padding: "8px 10px", lineHeight: 1.6 }}>
-          <div>1) If the temp is +5°C or more, check product temperature - take corrective action.</div>
-          <div>2) If the loading area is more than +16°C - take corrective action.</div>
-          <div>3) If the preparation area is more than +10°C - take corrective action.</div>
+          <div><Bi en="1) If the temp is +5°C or more, check product temperature - take corrective action." ar="1) إذا كانت الحرارة +5 °م أو أكثر افحص حرارة المنتج واتخذ إجراءً تصحيحياً." /></div>
+          <div><Bi en="2) If the loading area is more than +16°C - take corrective action." ar="2) إذا تجاوزت منطقة التحميل +16 °م اتخذ إجراءً تصحيحياً." /></div>
+          <div><Bi en="3) If the preparation area is more than +10°C - take corrective action." ar="3) إذا تجاوزت منطقة التحضير +10 °م اتخذ إجراءً تصحيحياً." /></div>
           <div style={{ marginTop: 6, fontWeight: 700 }}>
-            Corrective action: transfer the products to another cold room and call maintenance to check and solve the
-            problem.
+            <Bi en="Corrective action: transfer the products to another cold room and call maintenance to check and solve the problem." ar="الإجراء التصحيحي: انقل المنتجات إلى غرفة تبريد أخرى واستدعِ الصيانة لفحص المشكلة وحلها." />
           </div>
         </div>
 
@@ -289,7 +289,7 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
         <div style={{ borderTop: "1px solid #000" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 170, fontWeight: 700 }}>
-              Report Date:
+              <Bi en="Report Date:" ar="تاريخ التقرير:" />
             </div>
             <div style={{ padding: "6px 8px", flex: 1, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontWeight: 800 }}>{reportDate || "—"}</span>
@@ -432,7 +432,7 @@ export default function CoolersTab(props) {
       await saveCoolerConfig(nextCoolers, nextLoading, getCurrentUser()?.username || "");
       setSetupOpen(null);
     } catch (e) {
-      alert(`❌ The limits were applied here but could not be saved for next time: ${e.message || e}`);
+      alert(`❌ The limits were applied here but could not be saved for next time · طُبّقت الحدود هنا لكن تعذّر حفظها: ${e.message || e}`);
     } finally {
       setSavingSetup(false);
     }
@@ -595,7 +595,7 @@ export default function CoolersTab(props) {
       setLoadingLast(true);
       const hit = await getLatestReport(COOLERS_TYPE);
       if (!hit) {
-        alert("ℹ️ No previous Coolers report found.");
+        alert("ℹ️ No previous Coolers report found. · لا يوجد تقرير برادات سابق.");
         return;
       }
       const p = hit.payload || {};
@@ -630,10 +630,10 @@ export default function CoolersTab(props) {
 
       setDate("");
       alert(
-        `✅ Loaded the layout from ${hit.reportDate}. Temperatures were left blank — pick today's date and record the readings.`
+        `✅ Loaded the layout from ${hit.reportDate}. Temperatures were left blank — pick today's date and record the readings. · تم تحميل التخطيط وتُركت الحرارة فارغة — اختر تاريخ اليوم وسجّل القراءات.`
       );
     } catch (e) {
-      alert(`❌ Could not load the last report: ${e.message || e}`);
+      alert(`❌ Could not load the last report · تعذّر تحميل آخر تقرير: ${e.message || e}`);
     } finally {
       setLoadingLast(false);
     }
@@ -642,13 +642,13 @@ export default function CoolersTab(props) {
   async function saveCoolersToServer() {
     const matchCount = countValidMatches(productVerifications);
     if (matchCount < MIN_MATCHES) {
-      alert(`⚠️ At least ${MIN_MATCHES} product matches (product + temperature) are required before saving. You currently have ${matchCount}.`);
+      alert(`⚠️ At least ${MIN_MATCHES} product matches (product + temperature) are required before saving. You currently have ${matchCount}. · مطلوب ${MIN_MATCHES} مطابقات منتج على الأقل قبل الحفظ، والموجود حالياً ${matchCount}.`);
       return;
     }
     try {
       setSaving(true);
       if (!date) {
-        alert("⚠️ Pick a report date first.");
+        alert("⚠️ Pick a report date first. · اختر تاريخ التقرير أولاً.");
         return;
       }
       const existing = await fetchExistingByDate(date);
@@ -687,9 +687,9 @@ export default function CoolersTab(props) {
       }
 
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert(`✅ Coolers saved for ${date}.`);
+      alert(`✅ Coolers saved for ${date}. · تم حفظ البرادات.`);
     } catch (e) {
-      alert(`❌ Failed to save: ${e.message || e}`);
+      alert(`❌ Failed to save · فشل الحفظ: ${e.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -803,7 +803,7 @@ export default function CoolersTab(props) {
     <button
       type="button"
       onClick={() => setSetupOpen((cur) => (cur === key ? null : key))}
-      title="Change this unit's name, type and temperature limits"
+      title={bi("Change this unit's name, type and temperature limits", "تغيير اسم الوحدة ونوعها وحدود الحرارة")}
       style={{
         padding: "5px 11px",
         borderRadius: 999,
@@ -816,7 +816,7 @@ export default function CoolersTab(props) {
         whiteSpace: "nowrap",
       }}
     >
-      ⚙️ Limits & type
+      ⚙️ <Bi en="Limits & type" ar="الحدود والنوع" />
     </button>
   );
 
@@ -837,19 +837,19 @@ export default function CoolersTab(props) {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: "1rem" }}>🔗</span>
-            <strong style={{ color: "#0f172a" }}>Product Match</strong>
+            <strong style={{ color: "#0f172a" }}><Bi en="Product Match" ar="مطابقة المنتج" /></strong>
             <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: ".82rem" }}>
-              {list.length ? `${list.length} check${list.length === 1 ? "" : "s"}` : "optional"}
+              {list.length ? `${list.length} check${list.length === 1 ? "" : "s"} · فحص` : "optional · اختياري"}
             </span>
           </div>
           <button type="button" onClick={() => addProductVerificationFor(storageKey)} style={addMatchBtn(accent)}>
-            + Add product
+            <Bi en="+ Add product" ar="+ إضافة منتج" />
           </button>
         </div>
 
         {list.length === 0 ? (
           <div style={{ color: "#94a3b8", fontWeight: 600, fontSize: ".86rem", paddingBottom: 4 }}>
-            No product matched yet — add a check to compare a product against the recorded temperature.
+            <Bi en="No product matched yet — add a check to compare a product against the recorded temperature." ar="لا توجد مطابقة بعد — أضف فحصاً لمقارنة منتج بالحرارة المسجلة." />
           </div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
@@ -890,19 +890,19 @@ export default function CoolersTab(props) {
                   </span>
 
                   <label style={{ ...mField, width: 100 }}>
-                    <span style={mLabel}>Time</span>
+                    <span style={mLabel}><Bi en="Time" /></span>
                     <select value={row.time} onChange={(e) => updateProductVerification(idx, "time", e.target.value)} style={mInput}>
                       {TIMES.map((time) => <option key={time} value={time}>{time}</option>)}
                     </select>
                   </label>
 
                   <label style={{ ...mField, flex: "1 1 220px", minWidth: 200 }}>
-                    <span style={mLabel}>Product</span>
+                    <span style={mLabel}><Bi en="Product" /></span>
                     <>
                       <input
                         list="sweets-cooler-products"
                         value={row.productName || ""}
-                        placeholder="Product name…"
+                        placeholder="Product name… · اسم المنتج…"
                         style={mInput}
                         onChange={(e) => updateProductVerification(idx, "productName", e.target.value)}
                       />
@@ -913,17 +913,17 @@ export default function CoolersTab(props) {
                   </label>
 
                   <label style={{ ...mField, width: 130 }}>
-                    <span style={mLabel}>Country</span>
+                    <span style={mLabel}><Bi en="Country" ar="البلد" /></span>
                     <input
                       value={row.country || row.batchNo || ""}
                       onChange={(e) => updateProductVerification(idx, "country", e.target.value)}
-                      placeholder="Origin"
+                      placeholder="Origin · المنشأ"
                       style={mInput}
                     />
                   </label>
 
                   <label style={{ ...mField, width: 92 }}>
-                    <span style={mLabel}>Product °C</span>
+                    <span style={mLabel}><Bi en="Product °C" ar="المنتج °م" /></span>
                     <input
                       type="number"
                       step="0.1"
@@ -935,33 +935,33 @@ export default function CoolersTab(props) {
                   </label>
 
                   <div style={{ ...mField, width: 92 }}>
-                    <span style={mLabel}>Room °C</span>
+                    <span style={mLabel}><Bi en="Room °C" ar="الغرفة °م" /></span>
                     <div style={{ ...mReadOnly, color: roomTemp === "" ? "#94a3b8" : "#0f172a" }}>
                       {roomTemp === "" ? "—" : `${roomTemp}°C`}
                     </div>
                   </div>
 
                   <div style={{ ...mField, width: 92 }}>
-                    <span style={mLabel}>Limit</span>
+                    <span style={mLabel}><Bi en="Limit" ar="الحد" /></span>
                     <div style={{ ...mReadOnly, color: "#475569", fontSize: ".82rem" }}>{status.limit || "—"}</div>
                   </div>
 
                   <div style={{ ...mField }}>
-                    <span style={mLabel}>Status</span>
+                    <span style={mLabel}><Bi en="Status" /></span>
                     <span style={statusChip(status)}>{status.text}</span>
                   </div>
 
                   <label style={{ ...mField, flex: "1 1 200px", minWidth: 180 }}>
-                    <span style={mLabel}>Remarks / Corrective</span>
+                    <span style={mLabel}><Bi en="Remarks / Corrective" ar="ملاحظات / إجراء تصحيحي" /></span>
                     <input
                       value={row.remarks}
                       onChange={(e) => updateProductVerification(idx, "remarks", e.target.value)}
-                      placeholder={status.text === "FAIL" ? "Corrective action required" : "Remarks"}
+                      placeholder={status.text === "FAIL" ? "Corrective action required · مطلوب إجراء تصحيحي" : "Remarks · ملاحظات"}
                       style={mInput}
                     />
                   </label>
 
-                  <button type="button" onClick={() => removeProductVerification(idx)} style={delBtn} title="Remove product check">
+                  <button type="button" onClick={() => removeProductVerification(idx)} style={delBtn} title="Remove product check · حذف الفحص">
                     ✕
                   </button>
                 </div>
@@ -1012,17 +1012,17 @@ export default function CoolersTab(props) {
       {/* KPI */}
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", marginBottom: 16 }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-          <div style={{ color: "#7c3aed", fontWeight: 700 }}>Average Temp</div>
+          <div style={{ color: "#7c3aed", fontWeight: 700 }}><Bi en="Average Temp" ar="متوسط الحرارة" /></div>
           <div style={{ fontSize: "1.25rem", fontWeight: 800, color: safeKPI.outOfRange > 0 ? "#b91c1c" : "#16a34a" }}>
             {safeKPI.avg}<span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
           </div>
         </div>
         <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-          <div style={{ color: "#b91c1c", fontWeight: 700 }}>Out of Range</div>
+          <div style={{ color: "#b91c1c", fontWeight: 700 }}><Bi en="Out of Range" ar="خارج النطاق" /></div>
           <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{safeKPI.outOfRange}</div>
         </div>
         <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-          <div style={{ color: "#0ea5e9", fontWeight: 700 }}>Min / Max</div>
+          <div style={{ color: "#0ea5e9", fontWeight: 700 }}><Bi en="Min / Max" ar="الأدنى / الأعلى" /></div>
           <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
             <span style={{ color: "#0369a1" }}>{safeKPI.min}</span>
             <span style={{ color: "#94a3b8" }}> / </span>
@@ -1031,12 +1031,12 @@ export default function CoolersTab(props) {
           </div>
         </div>
         <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-          <div style={{ color: "#0f766e", fontWeight: 700 }}>Product Match</div>
+          <div style={{ color: "#0f766e", fontWeight: 700 }}><Bi en="Product Match" ar="مطابقة المنتج" /></div>
           <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
             <span style={{ color: "#16a34a" }}>{productKpi.pass} ✓</span>
             <span style={{ color: "#94a3b8" }}> · </span>
             <span style={{ color: productKpi.fail ? "#b91c1c" : "#94a3b8" }}>{productKpi.fail} ✗</span>
-            {productKpi.pending ? <span style={{ color: "#64748b", fontSize: ".8em" }}> · {productKpi.pending} pending</span> : null}
+            {productKpi.pending ? <span style={{ color: "#64748b", fontSize: ".8em" }}> · {productKpi.pending} pending · معلّق</span> : null}
           </div>
         </div>
       </div>
@@ -1044,10 +1044,10 @@ export default function CoolersTab(props) {
       {/* Section intro */}
       <div style={{ textAlign: "center", marginBottom: "1rem" }}>
         <h4 style={{ color: "#2980b9", margin: 0, fontWeight: 900 }}>
-          Temperatures & Product Matching
+          <Bi en="Temperatures & Product Matching" ar="الحرارة ومطابقة المنتج" />
         </h4>
         <div style={{ color: "#64748b", fontWeight: 600, marginTop: 4 }}>
-          4 AM — 8 PM (every 2 hours) · record each storage temperature and match a product right beside it.
+          <Bi en="4 AM — 8 PM (every 2 hours) · record each storage temperature and match a product right beside it." ar="4 ص — 8 م (كل ساعتين) · سجّل حرارة كل وحدة وطابق منتجاً بجانبها." />
         </div>
       </div>
 
@@ -1093,16 +1093,16 @@ export default function CoolersTab(props) {
               />
             ) : null}
 
-            <span style={sectionSubLabel}>Temperatures (°C)</span>
+            <span style={sectionSubLabel}><Bi en="Temperatures (°C)" ar="درجات الحرارة (°م)" /></span>
             {renderTempGrid(cooler?.temps, (time, val) => handleCoolerChange(i, time, val), (t) => tempInputStyle(t, def), "#34495e", (v) => alertOutOfRange(def, v))}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
-              <span style={{ fontWeight: 600, color: "#475569" }}>Remarks</span>
+              <span style={{ fontWeight: 600, color: "#475569" }}><Bi en="Remarks" /></span>
               <input
                 type="text"
                 value={cooler?.remarks || ""}
                 onChange={(e) => handleCoolerRemarksChange(i, e.target.value)}
-                placeholder="Notes / observations"
+                placeholder="Notes / observations · ملاحظات"
                 style={remarksInputStyle}
               />
             </label>
@@ -1152,16 +1152,16 @@ export default function CoolersTab(props) {
               />
             ) : null}
 
-            <span style={{ ...sectionSubLabel, color: "#a16207" }}>Temperatures (°C)</span>
+            <span style={{ ...sectionSubLabel, color: "#a16207" }}><Bi en="Temperatures (°C)" ar="درجات الحرارة (°م)" /></span>
             {renderTempGrid(loadingArea?.temps, handleLoadingChange, (t) => tempInputStyle(t, loadingDef), "#92400e", (v) => alertOutOfRange(loadingDef, v))}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
-              <span style={{ fontWeight: 600, color: "#92400e" }}>Remarks</span>
+              <span style={{ fontWeight: 600, color: "#92400e" }}><Bi en="Remarks" /></span>
               <input
                 type="text"
                 value={loadingArea?.remarks || ""}
                 onChange={(e) => handleLoadingRemarksChange(e.target.value)}
-                placeholder="Notes / observations"
+                placeholder="Notes / observations · ملاحظات"
                 style={remarksInputStyle}
               />
             </label>
@@ -1184,14 +1184,14 @@ export default function CoolersTab(props) {
           lineHeight: 1.6,
         }}
       >
-        Verification statement: a product was checked from the same storage area and compared with the recorded room/cooler temperature.
+        <Bi en="Verification statement: a product was checked from the same storage area and compared with the recorded room/cooler temperature." ar="بيان التحقق: تم فحص منتج من نفس منطقة التخزين ومقارنته بحرارة الغرفة / البراد المسجلة." />
       </div>
 
       <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
         <button
           onClick={loadFromLast}
           disabled={loadingLast}
-          title="Bring back the products and layout from the last report — temperatures stay blank"
+          title={bi("Bring back the products and layout from the last report — temperatures stay blank", "استرجاع المنتجات والتخطيط من آخر تقرير — تبقى الحرارة فارغة")}
           style={{
             padding: "11px 18px",
             borderRadius: 10,
@@ -1201,20 +1201,20 @@ export default function CoolersTab(props) {
             cursor: loadingLast ? "wait" : "pointer",
           }}
         >
-          {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+          {loadingLast ? <>⏳ <Bi en="Loading…" /></> : <>📋 <Bi en="Load from last report" ar="تحميل من آخر تقرير" /></>}
         </button>
 
         <button onClick={saveCoolersToServer} disabled={saving} style={btnSave}>
-          {saving ? "⏳ Saving..." : "💾 Save Coolers"}
+          {saving ? <>⏳ <Bi en="Saving..." /></> : <>💾 <Bi en="Save Coolers" ar="حفظ البرادات" /></>}
         </button>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 700 }}>Verified by:</span>
+          <span style={{ fontWeight: 700 }}><Bi en="Verified by:" /></span>
           <input
             type="text"
             value={verifiedByManager}
             onChange={(e) => setVerifiedByManager(e.target.value)}
-            placeholder="Manager name / signature"
+            placeholder="Manager name / signature · اسم المدير / التوقيع"
             style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 260, fontWeight: 700 }}
           />
         </label>

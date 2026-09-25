@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { getActiveCompanyName } from "../../../../utils/companyContext";
 import API_BASE from "../../../../config/api";
 import { getLatestReport } from "../_shared/reportApi";
+import { Bi } from "./bilingual";
 
 /* ===== API base ===== */
 
@@ -22,17 +23,19 @@ const DOC_META = {
 };
 
 const Q1_ITEMS = [
-  { code: "i",   text: "Diarrhoea, Vomiting, food poisoning or any stomach or bowel disorders" },
-  { code: "ii",  text: "Fever, pneumonia, sore throat or very bad cold / flu" },
-  { code: "iii", text: "Hepatitis / Jaundice" },
-  { code: "iv",  text: "Typhoid / Paratyphoid fever" },
+  { code: "i",   text: "Diarrhoea, Vomiting, food poisoning or any stomach or bowel disorders", ar: "إسهال، تقيؤ، تسمم غذائي أو أي اضطراب في المعدة أو الأمعاء" },
+  { code: "ii",  text: "Fever, pneumonia, sore throat or very bad cold / flu", ar: "حمى، التهاب رئوي، التهاب حلق أو زكام / إنفلونزا شديدة" },
+  { code: "iii", text: "Hepatitis / Jaundice", ar: "التهاب الكبد / اليرقان" },
+  { code: "iv",  text: "Typhoid / Paratyphoid fever", ar: "حمى التيفوئيد / نظيرة التيفوئيد" },
 ];
 
 const Q_ADDITIONAL = [
-  { code: "Q2", text: "Have you any naked cut, wound, burn or abrasions?" },
-  { code: "Q3", text: "Are you suffering from any skin disease (boils / lesion / rash / eczema) etc?" },
+  { code: "Q2", text: "Have you any naked cut, wound, burn or abrasions?", ar: "هل لديك جرح مكشوف أو حرق أو خدش؟" },
+  { code: "Q3", text: "Are you suffering from any skin disease (boils / lesion / rash / eczema) etc?", ar: "هل تعاني من مرض جلدي (دمامل / تقرحات / طفح / إكزيما) وغيرها؟" },
 ];
 
+const DECLARATION_AR =
+  "سألتزم / سنلتزم بإجراءات سلامة الغذاء في الشركة، وارتداء الكمامة وغطاء الشعر والمعطف وأغطية الأحذية، وخلع كل المقتنيات الشخصية (المجوهرات) التي قد تلامس الغذاء أو الآلات.";
 const DECLARATION_TEXT =
   "I/We will follow the food safety procedures of the company & will use the mask/hair net/coat/shoe covers and remove all loose personal articles (Jewelry) that might come into contact with food/machines.";
 
@@ -139,8 +142,8 @@ const submitBtn = (disabled) => ({
 function YesNo({ value, onChange }) {
   return (
     <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-      <button type="button" style={ynBtn(value === "Yes", "yes")} onClick={() => onChange("Yes")}>Yes</button>
-      <button type="button" style={ynBtn(value === "No", "no")} onClick={() => onChange("No")}>No</button>
+      <button type="button" style={ynBtn(value === "Yes", "yes")} onClick={() => onChange("Yes")}><Bi en="Yes" /></button>
+      <button type="button" style={ynBtn(value === "No", "no")} onClick={() => onChange("No")}><Bi en="No" /></button>
     </div>
   );
 }
@@ -178,10 +181,10 @@ export default function VisitorChecklistInput() {
   async function loadFromLast() {
     try {
       setLoadingLast(true);
-      setMsg("Loading the last visitor record…");
+      setMsg("Loading the last visitor record… · جارٍ تحميل آخر سجل زائر…");
       const hit = await getLatestReport(TYPE);
       if (!hit) {
-        setMsg("ℹ️ No previous visitor record found.");
+        setMsg("ℹ️ No previous visitor record found. · لا يوجد سجل زائر سابق.");
         return;
       }
       const p = hit.payload || {};
@@ -191,10 +194,10 @@ export default function VisitorChecklistInput() {
         purposeOfVisit: String(p?.visitor?.purposeOfVisit || ""),
       }));
       setManagerSignature(String(p?.signatures?.managerSignature || ""));
-      setMsg("✅ Company, purpose and manager filled in — enter the visitor's own details.");
+      setMsg("✅ Company, purpose and manager filled in — enter the visitor's own details. · تمت تعبئة الشركة والغرض والمدير — أدخل بيانات الزائر.");
     } catch (e) {
       console.error(e);
-      setMsg("❌ Could not load the last record");
+      setMsg("❌ Could not load the last record · تعذّر تحميل آخر سجل");
     } finally {
       setLoadingLast(false);
       setTimeout(() => setMsg(""), 4000);
@@ -215,9 +218,9 @@ export default function VisitorChecklistInput() {
   }
 
   async function handleSave() {
-    if (!meta.visitorName.trim()) return alert("Please enter the visitor name.");
-    if (!meta.visitDate)            return alert("Please pick the visit date.");
-    if (!decision)                  return alert("Please choose Allowed / Not Allowed.");
+    if (!meta.visitorName.trim()) return alert("Please enter the visitor name. · أدخل اسم الزائر.");
+    if (!meta.visitDate)            return alert("Please pick the visit date. · اختر تاريخ الزيارة.");
+    if (!decision)                  return alert("Please choose Allowed / Not Allowed. · اختر مسموح / غير مسموح.");
 
     const payload = {
       headerTop: {
@@ -258,18 +261,18 @@ export default function VisitorChecklistInput() {
 
     try {
       setSaving(true);
-      setMsg("Saving…");
+      setMsg("Saving… · جارٍ الحفظ…");
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "sweets", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMsg("✅ Saved successfully");
+      setMsg("✅ Saved successfully · تم الحفظ بنجاح");
       resetForm();
     } catch (e) {
       console.error(e);
-      setMsg("❌ Failed to save");
+      setMsg("❌ Failed to save · فشل الحفظ");
     } finally {
       setSaving(false);
       setTimeout(() => setMsg(""), 3000);
@@ -300,9 +303,9 @@ export default function VisitorChecklistInput() {
           <div style={{ fontSize: 13, opacity: 0.9 }}>{DOC_META.docTitle}</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12, opacity: 0.95, lineHeight: 1.7 }}>
-          <div>Doc No: <b>{DOC_META.docNo}</b></div>
-          <div>Rev: <b>{DOC_META.revision}</b></div>
-          <div>Area: <b>{DOC_META.area}</b></div>
+          <div><Bi en="Doc No:" ar="رقم الوثيقة:" /> <b>{DOC_META.docNo}</b></div>
+          <div><Bi en="Rev:" ar="المراجعة:" /> <b>{DOC_META.revision}</b></div>
+          <div><Bi en="Area:" /> <b>{DOC_META.area}</b></div>
         </div>
       </div>
 
@@ -310,15 +313,15 @@ export default function VisitorChecklistInput() {
       <table style={{ ...table, marginBottom: 12 }}>
         <tbody>
           <tr>
-            <td style={{ ...th, width: 180 }}>Issued by</td>
+            <td style={{ ...th, width: 180 }}><Bi en="Issued by" ar="أصدر بواسطة" /></td>
             <td style={td}>{DOC_META.issuedBy}</td>
-            <td style={{ ...th, width: 180 }}>Approved by</td>
+            <td style={{ ...th, width: 180 }}><Bi en="Approved by" ar="اعتمد بواسطة" /></td>
             <td style={td}>{DOC_META.approvedBy}</td>
           </tr>
           <tr>
-            <td style={th}>Controlling Officer</td>
+            <td style={th}><Bi en="Controlling Officer" /></td>
             <td style={td}>{DOC_META.controllingOfficer}</td>
-            <td style={th}>Document</td>
+            <td style={th}><Bi en="Document" ar="الوثيقة" /></td>
             <td style={td}>{DOC_META.docTitle}</td>
           </tr>
         </tbody>
@@ -330,7 +333,7 @@ export default function VisitorChecklistInput() {
           
         </div>
         <div style={{ fontStyle: "italic", color: "#0b5236", fontWeight: 700, marginTop: 2 }}>
-          Visitor Checklist
+          <Bi en="Visitor Checklist" />
         </div>
       </div>
 
@@ -340,7 +343,7 @@ export default function VisitorChecklistInput() {
           type="button"
           onClick={loadFromLast}
           disabled={loadingLast}
-          title="Fill in company, purpose and manager from the last visitor record"
+          title="Fill in company, purpose and manager from the last visitor record · تعبئة الشركة والغرض والمدير من آخر زيارة"
           style={{
             padding: "8px 14px",
             borderRadius: 10,
@@ -350,35 +353,35 @@ export default function VisitorChecklistInput() {
             cursor: loadingLast ? "wait" : "pointer",
           }}
         >
-          {loadingLast ? "⏳ Loading…" : "📋 Repeat visit — load company & purpose"}
+          {loadingLast ? <>⏳ <Bi en="Loading…" /></> : <>📋 <Bi en="Repeat visit — load company & purpose" ar="زيارة متكررة — تحميل الشركة والغرض" /></>}
         </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
         <div>
-          <span style={label}>Visitor Name</span>
-          <input style={input} placeholder="Full name" value={meta.visitorName} onChange={(e) => setMetaVal("visitorName", e.target.value)} />
+          <span style={label}><Bi en="Visitor Name" ar="اسم الزائر" /></span>
+          <input style={input} placeholder="Full name · الاسم الكامل" value={meta.visitorName} onChange={(e) => setMetaVal("visitorName", e.target.value)} />
         </div>
         <div>
-          <span style={label}>Date</span>
+          <span style={label}><Bi en="Date" /></span>
           <input style={input} type="date" value={meta.visitDate} onChange={(e) => setMetaVal("visitDate", e.target.value)} />
         </div>
         <div>
-          <span style={label}>Company Name</span>
-          <input style={input} placeholder="Organization / Company" value={meta.companyName} onChange={(e) => setMetaVal("companyName", e.target.value)} />
+          <span style={label}><Bi en="Company Name" ar="اسم الشركة" /></span>
+          <input style={input} placeholder="Organization / Company · الجهة / الشركة" value={meta.companyName} onChange={(e) => setMetaVal("companyName", e.target.value)} />
         </div>
         <div>
-          <span style={label}>Mobile Number</span>
+          <span style={label}><Bi en="Mobile Number" ar="رقم الجوال" /></span>
           <input style={input} placeholder="+971 …" value={meta.mobileNumber} onChange={(e) => setMetaVal("mobileNumber", e.target.value)} />
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
-        <span style={label}>Purpose Of Visit</span>
-        <input style={input} placeholder="Reason for visit" value={meta.purposeOfVisit} onChange={(e) => setMetaVal("purposeOfVisit", e.target.value)} />
+        <span style={label}><Bi en="Purpose Of Visit" ar="الغرض من الزيارة" /></span>
+        <input style={input} placeholder="Reason for visit · سبب الزيارة" value={meta.purposeOfVisit} onChange={(e) => setMetaVal("purposeOfVisit", e.target.value)} />
       </div>
 
       {/* ===== Q1 ===== */}
-      <div style={sectionTitle}>Q.1 — Do you suffer from any of the following now or during the last 2 weeks?</div>
+      <div style={sectionTitle}><Bi en="Q.1 — Do you suffer from any of the following now or during the last 2 weeks?" ar="س1 — هل تعاني من أي مما يلي الآن أو خلال الأسبوعين الماضيين؟" /></div>
       <div style={{ display: "grid", gap: 8 }}>
         {Q1_ITEMS.map((it) => (
           <div
@@ -396,7 +399,7 @@ export default function VisitorChecklistInput() {
           >
             <div style={{ fontSize: 14, color: "#0f172a" }}>
               <b style={{ marginRight: 6 }}>{it.code})</b>
-              {it.text}
+              <Bi en={it.text} ar={it.ar} />
             </div>
             <YesNo value={answers[it.code]} onChange={(v) => setAnswer(it.code, v)} />
           </div>
@@ -404,7 +407,7 @@ export default function VisitorChecklistInput() {
       </div>
 
       {/* ===== Additional ===== */}
-      <div style={sectionTitle}>Additional Health Questions</div>
+      <div style={sectionTitle}><Bi en="Additional Health Questions" ar="أسئلة صحية إضافية" /></div>
       <div style={{ display: "grid", gap: 8 }}>
         {Q_ADDITIONAL.map((it) => (
           <div
@@ -422,7 +425,7 @@ export default function VisitorChecklistInput() {
           >
             <div style={{ fontSize: 14, color: "#0f172a" }}>
               <b style={{ marginRight: 6 }}>{it.code} —</b>
-              {it.text}
+              <Bi en={it.text} ar={it.ar} />
             </div>
             <YesNo value={answers[it.code]} onChange={(v) => setAnswer(it.code, v)} />
           </div>
@@ -439,23 +442,24 @@ export default function VisitorChecklistInput() {
           background: "#f8fafc",
         }}
       >
-        <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>DECLARATION BY VISITOR/S</div>
+        <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}><Bi en="DECLARATION BY VISITOR/S" ar="إقرار الزائر / الزوار" /></div>
         <div style={{ fontStyle: "italic", color: "#334155", lineHeight: 1.7 }}>{`"${DECLARATION_TEXT}"`}</div>
+        <div lang="ar" dir="rtl" style={{ color: "#64748b", lineHeight: 1.7, marginTop: 4 }}>{DECLARATION_AR}</div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontWeight: 700, color: "#0f172a" }}>
           <input type="checkbox" checked={declarationAccepted} onChange={(e) => setDeclarationAccepted(e.target.checked)} />
-          I/We agree to the declaration above
+          <Bi en="I/We agree to the declaration above" ar="أوافق / نوافق على الإقرار أعلاه" />
         </label>
       </div>
 
       {/* ===== Signatures + remarks ===== */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginTop: 16 }}>
         <div>
-          <span style={label}>Visitor's Signature</span>
-          <input style={input} placeholder="Sign here (type full name)" value={visitorSignature} onChange={(e) => setVisitorSignature(e.target.value)} />
+          <span style={label}><Bi en="Visitor's Signature" ar="توقيع الزائر" /></span>
+          <input style={input} placeholder="Sign here (type full name) · وقّع هنا (الاسم الكامل)" value={visitorSignature} onChange={(e) => setVisitorSignature(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Management Remarks</span>
-          <textarea style={textarea} placeholder="Remarks…" value={managementRemarks} onChange={(e) => setManagementRemarks(e.target.value)} />
+          <span style={label}><Bi en="Management Remarks" ar="ملاحظات الإدارة" /></span>
+          <textarea style={textarea} placeholder="Remarks… · ملاحظات…" value={managementRemarks} onChange={(e) => setManagementRemarks(e.target.value)} />
         </div>
       </div>
 
@@ -473,25 +477,25 @@ export default function VisitorChecklistInput() {
         }}
       >
         <div>
-          <span style={label}>Management Decision</span>
+          <span style={label}><Bi en="Management Decision" ar="قرار الإدارة" /></span>
           <div style={{ display: "flex", gap: 10 }}>
             <button type="button" style={decisionBtn(decision === "Allowed", "allowed")} onClick={() => setDecision("Allowed")}>
-              ✓ Allowed
+              ✓ <Bi en="Allowed" ar="مسموح" />
             </button>
             <button type="button" style={decisionBtn(decision === "Not Allowed", "not")} onClick={() => setDecision("Not Allowed")}>
-              ✗ Not Allowed
+              ✗ <Bi en="Not Allowed" ar="غير مسموح" />
             </button>
           </div>
         </div>
         <div>
-          <span style={label}>Manager Signature</span>
-          <input style={input} placeholder="Sign here (type full name)" value={managerSignature} onChange={(e) => setManagerSignature(e.target.value)} />
+          <span style={label}><Bi en="Manager Signature" ar="توقيع المدير" /></span>
+          <input style={input} placeholder="Sign here (type full name) · وقّع هنا (الاسم الكامل)" value={managerSignature} onChange={(e) => setManagerSignature(e.target.value)} />
         </div>
       </div>
 
       {/* ===== Submit ===== */}
       <button onClick={handleSave} disabled={saving} style={submitBtn(saving)}>
-        {saving ? "Saving…" : "📝 Submit Visitor Checklist"}
+        {saving ? <Bi en="Saving…" /> : <>📝 <Bi en="Submit Visitor Checklist" ar="إرسال قائمة الزائر" /></>}
       </button>
       {msg && (
         <div style={{ textAlign: "center", marginTop: 10, fontWeight: 800, color: msg.startsWith("✅") ? "#16a34a" : msg.startsWith("❌") ? "#dc2626" : "#334155" }}>

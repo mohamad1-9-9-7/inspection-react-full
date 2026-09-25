@@ -8,6 +8,7 @@
 import React, { useState } from "react";
 import API_BASE from "../../../../config/api";
 import { uploadImage } from "../../../../utils/imageUpload";
+import { Bi, bi } from "./bilingual";
 
 const STATUS_OPTIONS = ["", "Compliant", "Non-Compliant", "Pending Review"];
 
@@ -43,18 +44,18 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
     if (!file) return;
     const okType = /^image\//.test(file.type) || file.type === "application/pdf";
     if (!okType) {
-      setMsg({ type: "error", text: "Please select an image or a PDF file." });
+      setMsg({ type: "error", text: "Please select an image or a PDF file. · اختر صورة أو ملف PDF." });
       e.target.value = "";
       return;
     }
     try {
-      setMsg({ type: "", text: "⏳ Uploading file…" });
+      setMsg({ type: "", text: "⏳ Uploading file… · جارٍ رفع الملف…" });
       const url = await uploadImage(file, reportType);
       setFileUrl(url);
       setFileMeta({ name: file.name, type: file.type });
       setMsg({ type: "", text: "" });
     } catch (err) {
-      setMsg({ type: "error", text: `Upload failed: ${err?.message || err}` });
+      setMsg({ type: "error", text: `Upload failed · فشل الرفع: ${err?.message || err}` });
     } finally {
       e.target.value = "";
     }
@@ -67,7 +68,7 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
 
   async function handleSave() {
     if (!String(form.date || "").trim()) {
-      setMsg({ type: "error", text: "Please set a date before saving." });
+      setMsg({ type: "error", text: "Please set a date before saving. · حدد التاريخ قبل الحفظ." });
       return;
     }
     setBusy(true);
@@ -96,18 +97,18 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
       if (!ok) {
         setMsg({
           type: "error",
-          text: `Failed to save (HTTP ${status}). ${data?.message || "Please try again."}`,
+          text: `Failed to save (HTTP ${status}). ${data?.message || "Please try again."} · فشل الحفظ`,
         });
         return;
       }
-      setMsg({ type: "ok", text: "✅ Saved successfully." });
+      setMsg({ type: "ok", text: "✅ Saved successfully. · تم الحفظ بنجاح." });
       setForm({ refTitle: "", date: new Date().toISOString().slice(0, 10), status: "", remarks: "" });
       setFileUrl("");
       setFileMeta({ name: "", type: "" });
       onSaved && onSaved();
     } catch (err) {
       setBusy(false);
-      setMsg({ type: "error", text: "Network error while contacting the server." });
+      setMsg({ type: "error", text: "Network error while contacting the server. · خطأ في الاتصال بالخادم." });
     }
   }
 
@@ -121,8 +122,8 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
       <div style={S.head}>
         <div style={S.headIcon}>{icon}</div>
         <div>
-          <div style={S.headEyebrow}>HACCP · Manual Record</div>
-          <div style={S.headTitle}>{title}</div>
+          <div style={S.headEyebrow}><Bi en="HACCP · Manual Record" ar="الهاسب · سجل يدوي" /></div>
+          <div style={S.headTitle}><Bi en={title} /></div>
         </div>
       </div>
 
@@ -140,17 +141,17 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
       )}
 
       <div style={S.grid}>
-        <Field label="Title / Reference" value={form.refTitle} onChange={(v) => setField("refTitle", v)} placeholder="e.g. supplier name, document name, inspector…" />
+        <Field label="Title / Reference" value={form.refTitle} onChange={(v) => setField("refTitle", v)} placeholder="e.g. supplier name, document name, inspector… · مثال: اسم المورد، اسم الوثيقة، المفتش…" />
         <DateField label="Date" value={form.date} onChange={(v) => setField("date", v)} />
         <Select
           label="Status (optional)"
           value={form.status}
           onChange={(v) => setField("status", v)}
-          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s || "-- Not set --" }))}
+          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s ? bi(s) : bi("-- Not set --", "-- غير محدد --") }))}
         />
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={S.label}>
-            Remarks / Notes
+            <Bi en="Remarks / Notes" />
             <textarea
               className="hri-in"
               value={form.remarks}
@@ -162,17 +163,17 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={S.label}>
-            Attachment — photo or PDF of the report (optional)
+            <Bi en="Attachment — photo or PDF of the report (optional)" ar="مرفق — صورة أو PDF للتقرير (اختياري)" />
             <input type="file" accept="image/*,application/pdf" onChange={handleFileSelect} style={S.fileInput} />
           </label>
           {fileUrl && (
             <div style={S.fileRow}>
               {fileMeta.type === "application/pdf" ? (
-                <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={S.fileLink}>📄 {fileMeta.name || "View PDF"}</a>
+                <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={S.fileLink}>📄 {fileMeta.name || bi("View PDF", "عرض PDF")}</a>
               ) : (
                 <img src={fileUrl} alt="Attachment preview" style={S.filePreview} />
               )}
-              <button type="button" onClick={removeFile} style={S.removeBtn}>Remove</button>
+              <button type="button" onClick={removeFile} style={S.removeBtn}><Bi en="Remove" /></button>
             </div>
           )}
         </div>
@@ -180,7 +181,7 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
 
       <div style={S.actions}>
         <button type="button" disabled={busy} onClick={handleSave} style={S.save}>
-          {busy ? "Saving…" : "💾 Save Record"}
+          {busy ? <Bi en="Saving…" /> : <>💾 <Bi en="Save Record" ar="حفظ السجل" /></>}
         </button>
       </div>
     </div>
@@ -190,7 +191,7 @@ export default function HaccpRecordInput({ reportType, title, icon, onSaved }) {
 function Field({ label, value, onChange, placeholder }) {
   return (
     <label style={S.label}>
-      {label}
+      <Bi en={label} />
       <input className="hri-in" type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} style={S.input} />
     </label>
   );
@@ -198,7 +199,7 @@ function Field({ label, value, onChange, placeholder }) {
 function DateField({ label, value, onChange }) {
   return (
     <label style={S.label}>
-      {label}
+      <Bi en={label} />
       <input className="hri-in" type="date" value={value} max="2099-12-31" onChange={(e) => onChange(e.target.value)} style={S.input} />
     </label>
   );
@@ -206,7 +207,7 @@ function DateField({ label, value, onChange }) {
 function Select({ label, value, onChange, options }) {
   return (
     <label style={S.label}>
-      {label}
+      <Bi en={label} />
       <select className="hri-in" value={value} onChange={(e) => onChange(e.target.value)} style={S.input}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>

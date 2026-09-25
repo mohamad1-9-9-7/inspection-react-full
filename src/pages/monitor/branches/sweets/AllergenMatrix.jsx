@@ -5,6 +5,7 @@
 // Opens in view mode; Edit turns cells into click-to-cycle toggles. Data and
 // label logic live in allergenMatrixData.js (shared with the production log).
 
+import { Bi, bi } from "./bilingual";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { canEdit } from "../../../../utils/perms";
 import { SweetsReportActions, excelFromNode, pdfFromNode, printNode } from "./_sweetsReportKit";
@@ -47,9 +48,9 @@ export default function AllergenMatrix() {
         setProducts(Array.isArray(p?.products) ? p.products : []);
         setMeta({ reviewedBy: p?.reviewedBy || "", reviewDate: p?.reviewDate || "" });
         setSavedAt(p?.savedAt || "");
-        if (!p) setMsg({ tone: "warn", text: "No matrix yet — press Edit and add your products." });
+        if (!p) setMsg({ tone: "warn", text: "No matrix yet — press Edit and add your products. · لا توجد مصفوفة بعد — اضغط تعديل وأضف منتجاتك." });
       } catch {
-        if (!ctl.signal.aborted) setMsg({ tone: "fail", text: "Could not load the allergen matrix." });
+        if (!ctl.signal.aborted) setMsg({ tone: "fail", text: "Could not load the allergen matrix. · تعذّر تحميل المصفوفة." });
       } finally {
         if (!ctl.signal.aborted) setLoading(false);
       }
@@ -75,9 +76,9 @@ export default function AllergenMatrix() {
     const clean = products.filter((p) => p.name.trim());
     const names = clean.map((p) => p.name.trim().toLowerCase());
     const dup = names.find((n, i) => names.indexOf(n) !== i);
-    if (dup) return setMsg({ tone: "fail", text: `Product "${dup}" is listed twice.` });
+    if (dup) return setMsg({ tone: "fail", text: `Product "${dup}" is listed twice. · المنتج مكرر.` });
     const nutsNoType = clean.find((p) => p.cells?.treeNuts === "C" && !String(p.nutTypes || "").trim());
-    if (nutsNoType) return setMsg({ tone: "fail", text: `"${nutsNoType.name}" contains tree nuts — name the nut type(s) for the label.` });
+    if (nutsNoType) return setMsg({ tone: "fail", text: `"${nutsNoType.name}" contains tree nuts — name the nut type(s) for the label. · يحتوي مكسرات — حدد نوعها للملصق.` });
     setSaving(true);
     try {
       const at = new Date().toISOString();
@@ -86,9 +87,9 @@ export default function AllergenMatrix() {
       setMeta((m) => ({ ...m, reviewDate: m.reviewDate || todayISO() }));
       setSavedAt(at);
       setEditing(false);
-      setMsg({ tone: "ok", text: `Saved — ${clean.length} product(s).` });
+      setMsg({ tone: "ok", text: `Saved — ${clean.length} product(s). · تم الحفظ.` });
     } catch (e) {
-      setMsg({ tone: "fail", text: `Failed to save: ${e.message || e}` });
+      setMsg({ tone: "fail", text: `Failed to save · فشل الحفظ: ${e.message || e}` });
     } finally {
       setSaving(false);
     }
@@ -117,15 +118,15 @@ export default function AllergenMatrix() {
     <div style={S.wrap}>
       <div style={S.head}>
         <div>
-          <h2 style={S.h2}>🥜 Allergen Matrix</h2>
+          <h2 style={S.h2}>🥜 <Bi en="Allergen Matrix" /></h2>
           <p style={S.sub}>
             Last saved {savedAt ? fmt(savedAt) : "—"} · Reviewed by {meta.reviewedBy || "—"} on {fmt(meta.reviewDate)}
           </p>
         </div>
         {editing ? (
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={cancelEdit} style={S.btn("#e2e8f0", "#334155")}>Cancel</button>
-            <button onClick={save} disabled={saving} style={S.btn("#0f766e")}>{saving ? "Saving…" : "💾 Save Matrix"}</button>
+            <button onClick={cancelEdit} style={S.btn("#e2e8f0", "#334155")}><Bi en="Cancel" /></button>
+            <button onClick={save} disabled={saving} style={S.btn("#0f766e")}>{saving ? <Bi en="Saving…" /> : <>💾 <Bi en="Save Matrix" ar="حفظ المصفوفة" /></>}</button>
           </div>
         ) : (
           <SweetsReportActions
@@ -140,23 +141,23 @@ export default function AllergenMatrix() {
 
       {msg && <div style={{ ...S.msg, ...S.tone[msg.tone] }}>{msg.text}</div>}
       {!editing && reviewAge !== null && reviewAge > REVIEW_DAYS && (
-        <div style={{ ...S.msg, ...S.tone.warn }}>⚠️ Last review was {reviewAge} days ago — review the matrix at least once a year and whenever a recipe or supplier changes.</div>
+        <div style={{ ...S.msg, ...S.tone.warn }}>⚠️ <Bi en={`Last review was ${reviewAge} days ago — review the matrix at least once a year and whenever a recipe or supplier changes.`} ar={`آخر مراجعة قبل ${reviewAge} يوم — راجع المصفوفة سنوياً وعند تغيير أي وصفة أو مورد.`} /></div>
       )}
 
       {!editing && (
         <div style={S.tiles}>
-          {[["Products", stats.total, "#0f766e"], ["Contain nuts", stats.nuts, "#b91c1c"], ["Nut-free", stats.nutFree, "#047857"], ["With «may contain»", stats.may, "#b45309"]].map(([k, v, c]) => (
-            <div key={k} style={S.tile}><div style={{ ...S.tileV, color: c }}>{v}</div><div style={S.tileK}>{k}</div></div>
+          {[["Products", stats.total, "#0f766e", "المنتجات"], ["Contain nuts", stats.nuts, "#b91c1c", "تحتوي مكسرات"], ["Nut-free", stats.nutFree, "#047857", "خالية من المكسرات"], ["With «may contain»", stats.may, "#b45309", "«قد يحتوي»"]].map(([k, v, c, a]) => (
+            <div key={k} style={S.tile}><div style={{ ...S.tileV, color: c }}>{v}</div><div style={S.tileK}><Bi en={k} ar={a} /></div></div>
           ))}
         </div>
       )}
 
       {!editing && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
-          <input style={{ ...S.input, flex: "1 1 240px" }} placeholder="🔍 Search product, code, category…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input style={{ ...S.input, flex: "1 1 240px" }} placeholder="🔍 Search product, code, category… · ابحث بالمنتج أو الرمز أو الفئة…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select style={{ ...S.input, flex: "0 0 220px" }} value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="">All products</option>
-            <option value="nutfree">Nut-free only</option>
+            <option value="">{bi("All products")}</option>
+            <option value="nutfree">{bi("Nut-free only")}</option>
             {ALLERGEN_COLS.map((c) => <option key={c.key} value={c.key}>With {c.en}</option>)}
           </select>
         </div>
@@ -164,9 +165,9 @@ export default function AllergenMatrix() {
 
       {editing && (
         <div style={{ ...S.card, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
-          <label><span style={S.label}>Reviewed By (HACCP team leader)</span><input style={S.input} value={meta.reviewedBy} onChange={(e) => setMeta({ ...meta, reviewedBy: e.target.value })} /></label>
-          <label><span style={S.label}>Review Date</span><input type="date" style={S.input} value={meta.reviewDate} onChange={(e) => setMeta({ ...meta, reviewDate: e.target.value })} /></label>
-          <div style={{ alignSelf: "end", color: "#475569", fontWeight: 700 }}>Click a cell to cycle: <b style={{ color: CELL.C.fg }}>C</b> contains → <b style={{ color: CELL.M.fg }}>M</b> may contain → – free</div>
+          <label><span style={S.label}><Bi en="Reviewed By (HACCP team leader)" /></span><input style={S.input} value={meta.reviewedBy} onChange={(e) => setMeta({ ...meta, reviewedBy: e.target.value })} /></label>
+          <label><span style={S.label}><Bi en="Review Date" /></span><input type="date" style={S.input} value={meta.reviewDate} onChange={(e) => setMeta({ ...meta, reviewDate: e.target.value })} /></label>
+          <div style={{ alignSelf: "end", color: "#475569", fontWeight: 700 }}>Click a cell to cycle: <b style={{ color: CELL.C.fg }}>C</b> contains → <b style={{ color: CELL.M.fg }}>M</b> may contain → – free <Bi en="" ar="(اضغط الخلية للتبديل: يحتوي ← قد يحتوي ← خالٍ)" /></div>
         </div>
       )}
 
@@ -229,7 +230,7 @@ export default function AllergenMatrix() {
           </div>
         )}
         {editing && (
-          <button type="button" onClick={() => setProducts((l) => [...l, blankProduct()])} style={{ ...S.btn("#0f766e"), marginTop: 10 }}>+ Add Product</button>
+          <button type="button" onClick={() => setProducts((l) => [...l, blankProduct()])} style={{ ...S.btn("#0f766e"), marginTop: 10 }}><Bi en="+ Add Product" /></button>
         )}
 
         {!editing && order.length > 0 && (

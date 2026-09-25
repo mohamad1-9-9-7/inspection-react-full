@@ -11,6 +11,7 @@ import HaccpRecordView from "./HaccpRecordView";
 import AllergenMatrix from "./AllergenMatrix";
 import ReportGuide from "../../../generic/ReportGuide";
 import { guideFor } from "./sweetsReportGuides";
+import { Bi } from "./bilingual";
 
 const MODULES = [
   {
@@ -143,15 +144,15 @@ export default function HaccpHub() {
               <div className="hhx-hero-inner" style={S.heroInner}>
                 <div style={S.heroIcon}>🛡️</div>
                 <div style={{ minWidth: 0 }}>
-                  <p className="hhx hhx-eyebrow" style={S.eyebrow}>Confectionery · Food Safety</p>
-                  <h1 className="hhx hhx-title" style={S.title}>HACCP</h1>
+                  <p className="hhx hhx-eyebrow" style={S.eyebrow}><Bi en="Confectionery · Food Safety" ar="الحلويات · سلامة الغذاء" /></p>
+                  <h1 className="hhx hhx-title" style={S.title}><Bi en="HACCP" /></h1>
                   <p className="hhx hhx-subtitle" style={S.subtitle}>
-                    Central access to HACCP modules. Records are added manually.
+                    <Bi en="Central access to HACCP modules. Records are added manually." ar="وصول مركزي لوحدات الهاسب — تُضاف السجلات يدوياً." />
                   </p>
                 </div>
                 <div style={S.stat}>
                   <div className="hhx hhx-stat-value" style={S.statValue}>{MODULES.length}</div>
-                  <div className="hhx hhx-stat-label" style={S.statLabel}>Modules</div>
+                  <div className="hhx hhx-stat-label" style={S.statLabel}><Bi en="Modules" ar="وحدات" /></div>
                 </div>
               </div>
             </section>
@@ -162,13 +163,13 @@ export default function HaccpHub() {
               ))}
             </div>
 
-            <div className="hhx hhx-footer" style={S.footer}>Confectionery — Food Safety System</div>
+            <div className="hhx hhx-footer" style={S.footer}><Bi en="Confectionery — Food Safety System" ar="الحلويات — نظام سلامة الغذاء" /></div>
           </>
         )}
 
         {ActivePage && (
           <div style={S.pageWrap}>
-            <button type="button" style={S.back} onClick={backToHub}>← Back to HACCP</button>
+            <button type="button" style={S.back} onClick={backToHub}>← <Bi en="Back to HACCP" ar="رجوع للهاسب" /></button>
             <ReportGuide id={active.type} guide={guideFor(active.type)} />
             <div style={{ marginTop: 12 }}><ActivePage /></div>
           </div>
@@ -176,15 +177,15 @@ export default function HaccpHub() {
 
         {active && !ActivePage && !mode && (
           <div style={S.moduleWrap}>
-            <button type="button" style={S.back} onClick={backToHub}>← Back to HACCP</button>
+            <button type="button" style={S.back} onClick={backToHub}>← <Bi en="Back to HACCP" ar="رجوع للهاسب" /></button>
             <div style={S.moduleIntro}>
-              <div style={S.moduleTitle}>{active.icon} {active.title}</div>
-              <div style={S.moduleSub}>{active.subtitle}</div>
+              <div style={S.moduleTitle}>{active.icon} <Bi en={active.title} /></div>
+              <div style={S.moduleSub}><Bi en={active.subtitle} /></div>
             </div>
             <div style={S.grid}>
               {[
-                { m: "input", label: "Add Record", desc: "Type or upload a new record", icon: "➕" },
-                { m: "view", label: "View Records", desc: "Browse saved records", icon: "🗂️" },
+                { m: "input", label: "Add Record", ar: "إضافة سجل", desc: "Type or upload a new record", descAr: "اكتب أو ارفع سجلاً جديداً", icon: "➕" },
+                { m: "view", label: "View Records", ar: "عرض السجلات", desc: "Browse saved records", descAr: "تصفح السجلات المحفوظة", icon: "🗂️" },
               ].map((x) => (
                 <button
                   key={x.m}
@@ -196,10 +197,10 @@ export default function HaccpHub() {
                   <div style={S.cardTop}>
                     <div style={S.cardIcon}>{x.icon}</div>
                   </div>
-                  <div className="hhx hhx-card-title" style={S.cardTitle}>{x.label}</div>
-                  <div className="hhx hhx-card-sub" style={S.cardSub}>{x.desc}</div>
+                  <div className="hhx hhx-card-title" style={S.cardTitle}><Bi en={x.label} ar={x.ar} /></div>
+                  <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={x.desc} ar={x.descAr} /></div>
                   <div className="hhx hhx-card-foot" style={S.cardFoot}>
-                    <span>Open</span>
+                    <span><Bi en="Open" ar="فتح" /></span>
                     <span aria-hidden="true">→</span>
                   </div>
                 </button>
@@ -210,7 +211,7 @@ export default function HaccpHub() {
 
         {active && !ActivePage && mode && (
           <div style={S.moduleWrap}>
-            <button type="button" style={S.back} onClick={backToModule}>← Back to {active.title}</button>
+            <button type="button" style={S.back} onClick={backToModule}>← <Bi en={`Back to ${active.title}`} ar="رجوع" /></button>
             {mode === "input" ? (
               <HaccpRecordInput reportType={active.type} title={active.title} icon={active.icon} onSaved={backToModule} />
             ) : (
@@ -240,14 +241,14 @@ function HubCard({ m, onOpen }) {
       <span aria-hidden="true" style={S.cardAccent(hover)} />
       <div style={S.cardTop}>
         <div style={S.cardIcon}>{m.icon}</div>
-        <span className="hhx hhx-pill" style={S.pill}>Module</span>
+        <span className="hhx hhx-pill" style={S.pill}><Bi en="Module" ar="وحدة" /></span>
       </div>
       <div>
-        <h2 className="hhx hhx-card-title" style={S.cardTitle}>{m.title}</h2>
-        <div className="hhx hhx-card-sub" style={S.cardSub}>{m.subtitle}</div>
+        <h2 className="hhx hhx-card-title" style={S.cardTitle}><Bi en={m.title} /></h2>
+        <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={m.subtitle} /></div>
       </div>
       <div className="hhx hhx-card-foot" style={S.cardFoot}>
-        <span>Open</span>
+        <span><Bi en="Open" ar="فتح" /></span>
         <span aria-hidden="true">→</span>
       </div>
     </button>

@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { uploadImage } from "../../utils/imageUpload";
+import { Bi } from "../monitor/branches/sweets/bilingual";
 
 /* ========= API ========= */
 
@@ -206,7 +207,7 @@ export default function OHCUpload() {
       if (!String(form[k] || "").trim()) {
         setMsg({
           type: "error",
-          text: "Please complete all required fields before saving.",
+          text: "Please complete all required fields before saving. · أكمل كل الحقول المطلوبة قبل الحفظ.",
         });
         return;
       }
@@ -218,7 +219,7 @@ export default function OHCUpload() {
     const todayStr = new Date().toISOString().slice(0, 10);
     if (expiryDate < todayStr) {
       const cont = window.confirm(
-        "This OHC certificate appears to be expired already.\nDo you still want to save it?"
+        "This OHC certificate appears to be expired already.\nDo you still want to save it?\n\nيبدو أن الشهادة منتهية — هل تريد حفظها؟"
       );
       if (!cont) return;
     }
@@ -226,7 +227,7 @@ export default function OHCUpload() {
     if (!trimmedAppNo) {
       setMsg({
         type: "error",
-        text: "Invalid Employee Number format.",
+        text: "Invalid Employee Number format. · صيغة الرقم الوظيفي غير صحيحة.",
       });
       return;
     }
@@ -240,13 +241,13 @@ export default function OHCUpload() {
         setBusy(false);
         setMsg({
           type: "error",
-          text: `Duplicate Employee Number: "${trimmedAppNo}". A certificate with this number already exists.`,
+          text: `Duplicate Employee Number: "${trimmedAppNo}". A certificate with this number already exists. · الرقم الوظيفي مكرر — توجد شهادة بهذا الرقم.`,
         });
         return;
       }
 
       const okConfirm = window.confirm(
-        "Save this OHC certificate to the server?"
+        "Save this OHC certificate to the server? · حفظ الشهادة الصحية على الخادم؟"
       );
       if (!okConfirm) {
         setBusy(false);
@@ -288,12 +289,12 @@ export default function OHCUpload() {
 
         setMsg({
           type: "error",
-          text: `Failed to save to server (HTTP ${status}). ${serverMsg}`,
+          text: `Failed to save to server (HTTP ${status}). ${serverMsg} · فشل الحفظ.`,
         });
         return;
       }
 
-      setMsg({ type: "ok", text: "✅ Saved to server successfully." });
+      setMsg({ type: "ok", text: "✅ Saved to server successfully. · تم الحفظ بنجاح." });
 
       setForm({
         appNo: "",
@@ -311,7 +312,7 @@ export default function OHCUpload() {
       setBusy(false);
       setMsg({
         type: "error",
-        text: "Network error while contacting the server. Please check your connection and try again.",
+        text: "Network error while contacting the server. Please check your connection and try again. · خطأ في الاتصال بالخادم.",
       });
     }
   }
@@ -320,12 +321,12 @@ export default function OHCUpload() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!/^image\//.test(file.type)) {
-      setMsg({ type: "error", text: "Please select an image file." });
+      setMsg({ type: "error", text: "Please select an image file. · اختر ملف صورة." });
       e.target.value = "";
       return;
     }
     try {
-      setMsg({ type: "", text: "⏳ Uploading image…" });
+      setMsg({ type: "", text: "⏳ Uploading image… · جارٍ رفع الصورة…" });
       const url = await uploadImage(file, TYPE);
       setImageData(url);
       setImageMeta({ name: file.name, type: file.type || "image/jpeg" });
@@ -333,7 +334,7 @@ export default function OHCUpload() {
     } catch (err) {
       setMsg({
         type: "error",
-        text: `Image upload failed: ${err?.message || err}`,
+        text: `Image upload failed · فشل رفع الصورة: ${err?.message || err}`,
       });
     } finally {
       e.target.value = "";
@@ -424,13 +425,13 @@ export default function OHCUpload() {
                   }}
                 >
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80", boxShadow: "0 0 0 3px rgba(74,222,128,.28)" }} />
-                  OHC Register
+                  <Bi en="OHC Register" ar="سجل الشهادات الصحية" />
                 </div>
                 <h2 style={{ margin: "8px 0 3px", color: "#fff", fontWeight: 1000, fontSize: 23, letterSpacing: 0.2 }}>
-                  OHC Certificate Entry
+                  <Bi en="OHC Certificate Entry" ar="إدخال شهادة صحية" />
                 </h2>
                 <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.78)", fontWeight: 600, maxWidth: 460, lineHeight: 1.5 }}>
-                  Server-based record for employee OHC certificates with image attachment and expiry tracking.
+                  <Bi en="Server-based record for employee OHC certificates with image attachment and expiry tracking." ar="سجل على الخادم للشهادات الصحية للموظفين مع مرفق صورة ومتابعة الانتهاء." />
                 </div>
               </div>
             </div>
@@ -443,9 +444,9 @@ export default function OHCUpload() {
               }}
             >
               <div style={{ fontWeight: 900, color: "#fff" }}>
-                Mode: <span style={{ color: "#6ee7b7" }}>Server Save Only</span>
+                <Bi en="Mode:" ar="الوضع:" /> <span style={{ color: "#6ee7b7" }}><Bi en="Server Save Only" ar="حفظ على الخادم فقط" /></span>
               </div>
-              <div>Duplicates blocked by Employee Number.</div>
+              <div><Bi en="Duplicates blocked by Employee Number." ar="يُمنع التكرار حسب الرقم الوظيفي." /></div>
             </div>
           </div>
         </div>
@@ -511,7 +512,7 @@ export default function OHCUpload() {
                 border: "1px solid #fbcfe8",
               }}
             >
-              Employee Details
+              <Bi en="Employee Details" ar="بيانات الموظف" />
             </span>
             <span
               style={{
@@ -523,7 +524,7 @@ export default function OHCUpload() {
                 border: "1px solid #a5f3fc",
               }}
             >
-              Certificate & Branch
+              <Bi en="Certificate & Branch" ar="الشهادة والفرع" />
             </span>
             <span
               style={{
@@ -535,7 +536,7 @@ export default function OHCUpload() {
                 border: "1px solid #e2e8f0",
               }}
             >
-              Attachment (Optional)
+              <Bi en="Attachment (Optional)" ar="مرفق (اختياري)" />
             </span>
           </div>
 
@@ -587,7 +588,7 @@ export default function OHCUpload() {
                 fontSize: 13,
               }}
             >
-              <span>Result</span>
+              <span><Bi en="Result" /></span>
               <div
                 style={{
                   display: "inline-flex",
@@ -604,7 +605,7 @@ export default function OHCUpload() {
                   minHeight: 32,
                 }}
               >
-                FIT
+                FIT · لائق
               </div>
             </div>
 
@@ -633,7 +634,7 @@ export default function OHCUpload() {
                   fontSize: 13,
                 }}
               >
-                Certificate Image (Optional)
+                <Bi en="Certificate Image (Optional)" ar="صورة الشهادة (اختياري)" />
                 <div
                   style={{
                     display: "flex",
@@ -698,7 +699,7 @@ export default function OHCUpload() {
                         fontWeight: 700,
                       }}
                     >
-                      Remove Image
+                      <Bi en="Remove Image" ar="حذف الصورة" />
                     </button>
                   </div>
                 </div>
@@ -733,7 +734,7 @@ export default function OHCUpload() {
                 gap: 6,
               }}
             >
-              📋 View All Certificates
+              📋 <Bi en="View All Certificates" ar="عرض كل الشهادات" />
             </button>
 
             <button
@@ -760,7 +761,7 @@ export default function OHCUpload() {
                 opacity: busy ? 0.9 : 1,
               }}
             >
-              {busy ? "Saving..." : "💾 Save to Server"}
+              {busy ? <Bi en="Saving..." /> : <>💾 <Bi en="Save to Server" ar="حفظ على الخادم" /></>}
             </button>
           </div>
         </div>
@@ -782,7 +783,7 @@ function Field({ label, value, onChange }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <input
         className="ohc-in"
         type="text"
@@ -813,7 +814,7 @@ function DateField({ label, value, onChange }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <input
         className="ohc-in"
         type="date"
@@ -845,7 +846,7 @@ function Select({ label, value, onChange, options }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <select
         className="ohc-in"
         value={value}

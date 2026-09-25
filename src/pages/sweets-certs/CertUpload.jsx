@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { uploadImage as uploadImageToServer } from "../../utils/imageUpload";
+import { Bi, bi } from "../monitor/branches/sweets/bilingual";
 
 /* ========= API ========= */
 
@@ -134,16 +135,16 @@ const EMPLOYEES = {};
 
 /* ====== Course types + مدد الشهادة ====== */
 const COURSE_TYPES = [
-  { value: "", label: "-- Select Course Type --" },
-  { value: "BFS", label: "Basic Food Safety (BFS)" },
-  { value: "PIC", label: "Person In Charge (PIC)" },
+  { value: "", label: "-- Select Course Type -- · -- اختر نوع الدورة --" },
+  { value: "BFS", label: "Basic Food Safety (BFS) · سلامة الغذاء الأساسية" },
+  { value: "PIC", label: "Person In Charge (PIC) · الشخص المسؤول" },
   { value: "EFST", label: "EFST" },
-  { value: "HACCP", label: "HACCP" },
-  { value: "HALAL", label: "شهادة الحلال" },
-  { value: "FIRST_AID", label: "الإسعافات الأولية" },
-  { value: "EMERGENCY", label: "الطوارئ" },
-  { value: "ISO22000_AUDIT", label: "التدقيق الداخلي ايزو 22000" },
-  { value: "OTHER", label: "Other / Custom (manual)" },
+  { value: "HACCP", label: "HACCP · الهاسب" },
+  { value: "HALAL", label: "Halal Certificate · شهادة الحلال" },
+  { value: "FIRST_AID", label: "First Aid · الإسعافات الأولية" },
+  { value: "EMERGENCY", label: "Emergency · الطوارئ" },
+  { value: "ISO22000_AUDIT", label: "ISO 22000 Internal Audit · التدقيق الداخلي ايزو 22000" },
+  { value: "OTHER", label: "Other / Custom (manual) · أخرى / مخصص (يدوي)" },
 ];
 
 const COURSE_DURATION_YEARS = {
@@ -266,7 +267,7 @@ export default function TrainingCertificatesBFS() {
       if (!String(employee[k] || "").trim()) {
         setMsg({
           type: "error",
-          text: "Please complete employee details before saving.",
+          text: "Please complete employee details before saving. · أكمل بيانات الموظف قبل الحفظ.",
         });
         return;
       }
@@ -274,7 +275,7 @@ export default function TrainingCertificatesBFS() {
 
     // منع الحفظ إذا صورة لسه بتُرفع
     if (certs.some((c) => c.imageUrl === "__uploading__")) {
-      setMsg({ type: "error", text: "Please wait — image upload still in progress." });
+      setMsg({ type: "error", text: "Please wait — image upload still in progress. · انتظر — رفع الصورة جارٍ." });
       return;
     }
 
@@ -288,7 +289,7 @@ export default function TrainingCertificatesBFS() {
       setMsg({
         type: "error",
         text:
-          "Please add at least one certificate with course type and issue date.",
+          "Please add at least one certificate with course type and issue date. · أضف شهادة واحدة على الأقل بنوع الدورة وتاريخ الإصدار.",
       });
       return;
     }
@@ -344,14 +345,14 @@ export default function TrainingCertificatesBFS() {
 
         setMsg({
           type: "error",
-          text: `Some certificates failed to save (HTTP ${failed.status}). ${serverMsg}`,
+          text: `Some certificates failed to save (HTTP ${failed.status}). ${serverMsg} · تعذّر حفظ بعض الشهادات.`,
         });
         return;
       }
 
       setMsg({
         type: "ok",
-        text: `✅ Saved ${results.length} certificate(s) successfully.`,
+        text: `✅ Saved ${results.length} certificate(s) successfully. · تم حفظ ${results.length} شهادة.`,
       });
 
       setEmployee({
@@ -368,7 +369,7 @@ export default function TrainingCertificatesBFS() {
       setMsg({
         type: "error",
         text:
-          "Network error while contacting the server. Please check your connection and try again.",
+          "Network error while contacting the server. Please check your connection and try again. · خطأ في الاتصال بالخادم، تحقق من الاتصال وحاول مجدداً.",
       });
     }
   }
@@ -378,7 +379,7 @@ export default function TrainingCertificatesBFS() {
     if (!file) return;
 
     if (!/^image\//.test(file.type)) {
-      setMsg({ type: "error", text: "Please select an image file." });
+      setMsg({ type: "error", text: "Please select an image file. · اختر ملف صورة." });
       e.target.value = "";
       return;
     }
@@ -405,7 +406,7 @@ export default function TrainingCertificatesBFS() {
         next[index] = { ...next[index], imageUrl: "", imageName: "" };
         return next;
       });
-      setMsg({ type: "error", text: "Image upload to Cloudinary failed. Try again." });
+      setMsg({ type: "error", text: "Image upload to Cloudinary failed. Try again. · فشل رفع الصورة، حاول مجدداً." });
     } finally {
       e.target.value = "";
     }
@@ -491,7 +492,7 @@ export default function TrainingCertificatesBFS() {
                       "radial-gradient(circle, #22c55e 0%, #166534 60%, #052e16 100%)",
                   }}
                 />
-                Training Certificates
+                <Bi en="Training Certificates" />
               </div>
               <h2
                 style={{
@@ -502,12 +503,10 @@ export default function TrainingCertificatesBFS() {
                   letterSpacing: 0.2,
                 }}
               >
-                🎓 BFS / PIC / EFST / HACCP Certificates
+                🎓 <Bi en="BFS / PIC / EFST / HACCP Certificates" ar="شهادات BFS / PIC / EFST / HACCP" />
               </h2>
               <div style={{ fontSize: 13, color: "#4b5563" }}>
-                Multiple training certificates per employee, with auto expiry
-                calculation for BFS / PIC / EFST, and manual options for HACCP /
-                custom.
+                <Bi en="Multiple training certificates per employee, with auto expiry calculation for BFS / PIC / EFST, and manual options for HACCP / custom." ar="عدة شهادات لكل موظف، مع حساب تلقائي للانتهاء لـ BFS / PIC / EFST، وإدخال يدوي للهاسب / المخصص." />
               </div>
             </div>
             <div
@@ -520,7 +519,7 @@ export default function TrainingCertificatesBFS() {
               <div style={{ fontWeight: 600, color: "#111827" }}>
                 Mode:{" "}
                 <span style={{ color: "#15803d" }}>
-                  Server Save Only (Multi-certificate per employee)
+                  <Bi en="Server Save Only (Multi-certificate per employee)" ar="حفظ على الخادم فقط (عدة شهادات لكل موظف)" />
                 </span>
               </div>
             </div>
@@ -583,7 +582,7 @@ export default function TrainingCertificatesBFS() {
                 fontWeight: 600,
               }}
             >
-              Employee Details
+              <Bi en="Employee Details" ar="بيانات الموظف" />
             </span>
           </div>
 
@@ -621,7 +620,7 @@ export default function TrainingCertificatesBFS() {
               value={employee.nationality}
               onChange={(v) => setEmpField("nationality", v)}
               options={[
-                { value: "", label: "-- Select Nationality --" },
+                { value: "", label: "-- Select Nationality -- · -- اختر الجنسية --" },
                 ...NATIONALITIES.map((n) => ({ value: n, label: n })),
               ]}
             />
@@ -648,7 +647,7 @@ export default function TrainingCertificatesBFS() {
                 letterSpacing: 0.6,
               }}
             >
-              Training Certificates (BFS / PIC / EFST / HACCP / Custom)
+              <Bi en="Training Certificates (BFS / PIC / EFST / HACCP / Custom)" ar="شهادات التدريب" />
             </span>
             <button
               type="button"
@@ -666,7 +665,7 @@ export default function TrainingCertificatesBFS() {
                 boxShadow: "0 8px 18px rgba(22,163,74,0.4)",
               }}
             >
-              ➕ Add Certificate
+              ➕ <Bi en="Add Certificate" />
             </button>
           </div>
 
@@ -705,7 +704,7 @@ export default function TrainingCertificatesBFS() {
                       color: "#0f172a",
                     }}
                   >
-                    Certificate #{index + 1}
+                    <Bi en={`Certificate #${index + 1}`} ar={`شهادة #${index + 1}`} />
                   </div>
                   <button
                     type="button"
@@ -727,8 +726,8 @@ export default function TrainingCertificatesBFS() {
                     disabled={certs.length === 1}
                   >
                     {certs.length === 1
-                      ? "Cannot remove last"
-                      : "Remove"}
+                      ? bi("Cannot remove last", "لا يمكن حذف الأخيرة")
+                      : bi("Remove")}
                   </button>
                 </div>
 
@@ -809,7 +808,7 @@ export default function TrainingCertificatesBFS() {
                       fontSize: 13,
                     }}
                   >
-                    Certificate Image (Optional)
+                    <Bi en="Certificate Image (Optional)" ar="صورة الشهادة (اختياري)" />
                     <div
                       style={{
                         display: "flex",
@@ -839,7 +838,7 @@ export default function TrainingCertificatesBFS() {
 
                   {cert.imageUrl === "__uploading__" && (
                     <div style={{ marginTop: 8, fontSize: 12, color: "#0369a1", fontWeight: 600 }}>
-                      ⏳ Uploading to Cloudinary…
+                      ⏳ <Bi en="Uploading…" ar="جارٍ الرفع…" />
                     </div>
                   )}
 
@@ -886,7 +885,7 @@ export default function TrainingCertificatesBFS() {
                             fontWeight: 700,
                           }}
                         >
-                          Remove Image
+                          <Bi en="Remove Image" ar="حذف الصورة" />
                         </button>
                       </div>
                     </div>
@@ -924,7 +923,7 @@ export default function TrainingCertificatesBFS() {
                 gap: 6,
               }}
             >
-              ← Back
+              ← <Bi en="Back" />
             </button>
             {/* زر عرض الشهادات */}
             <button
@@ -947,7 +946,7 @@ export default function TrainingCertificatesBFS() {
                 gap: 6,
               }}
             >
-              📋 View Certificates
+              📋 <Bi en="View Certificates" />
             </button>
 
             <button
@@ -973,7 +972,7 @@ export default function TrainingCertificatesBFS() {
                 opacity: busy ? 0.9 : 1,
               }}
             >
-              {busy ? "Saving..." : "💾 Save Certificates"}
+              {busy ? <Bi en="Saving..." /> : <>💾 <Bi en="Save Certificates" ar="حفظ الشهادات" /></>}
             </button>
           </div>
         </div>
@@ -995,7 +994,7 @@ function Field({ label, value, onChange }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <input
         type="text"
         value={value}
@@ -1026,12 +1025,12 @@ function ReadOnlyField({ label, value }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <input
         type="text"
         value={value}
         readOnly
-        placeholder="Auto-calculated / N/A"
+        placeholder="Auto-calculated / N/A · يُحسب تلقائياً"
         style={{
           padding: "8px 10px",
           borderRadius: 10,
@@ -1059,7 +1058,7 @@ function DateField({ label, value, onChange }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <input
         type="date"
         value={value}
@@ -1091,7 +1090,7 @@ function Select({ label, value, onChange, options }) {
         fontSize: 13,
       }}
     >
-      <span>{label}</span>
+      <span><Bi en={label} /></span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

@@ -15,6 +15,7 @@
 import { lazy } from "react";
 import { DAILY_LOG_SCHEMAS } from "../../pages/monitor/branches/sweets/dailyLogSchemas";
 import { guideFor } from "../../pages/monitor/branches/sweets/sweetsReportGuides";
+import { arOf } from "../../pages/monitor/branches/sweets/bilingual";
 
 const REPORT_PAGES = [
   {
@@ -96,11 +97,47 @@ const REPORT_PAGES = [
 
 // Every report carries its bilingual fill-in guide (sweetsReportGuides.js);
 // the shell shows it above the input page and, limits only, above the view.
-const REPORTS = REPORT_PAGES.map((r) => ({ ...r, guide: guideFor(r.type) }));
+// labelAr/descAr come from the shared EN→AR dictionary (sweets/bilingual.jsx);
+// `group` places the report under a heading in the card's sidebar.
+const GROUP_OF = {
+  "sweets-ph": "hygiene", "sweets-clean": "hygiene", sweets_sanitizer_chemicals: "hygiene",
+  sweets_raw_receiving: "receiving", "sweets-coolers": "receiving", sweets_thawing: "receiving",
+  sweets_baking_cooking: "production", sweets_cooling_display: "production", sweets_production_batch: "production",
+  sweets_visitor_checklist: "people", sweets_staff_sickness: "people",
+  sweets_non_conformance: "quality", sweets_product_rejection: "quality", sweets_pest_control: "quality",
+  sweets_preventive_maintenance: "quality",
+};
+const REPORT_GROUPS = [
+  { id: "hygiene", icon: "🧼", label: "Hygiene & Cleaning" },
+  { id: "receiving", icon: "📦", label: "Receiving & Storage" },
+  { id: "production", icon: "🏭", label: "Production" },
+  { id: "people", icon: "👥", label: "People" },
+  { id: "quality", icon: "✅", label: "Quality & Maintenance" },
+].map((g) => ({ ...g, labelAr: arOf(g.label) }));
+
+const REPORTS = REPORT_PAGES.map((r) => ({
+  ...r,
+  labelAr: arOf(r.label),
+  descAr: arOf(r.desc),
+  group: GROUP_OF[r.type] || null,
+  guide: guideFor(r.type),
+}));
+
+// Arabic twins for every card text the shell shows.
+const withAr = (c) => ({
+  ...c,
+  labelAr: arOf(c.label),
+  descAr: arOf(c.desc),
+  ...(c.inputLabel ? { inputLabelAr: arOf(c.inputLabel), inputDescAr: arOf(c.inputDesc) } : {}),
+  ...(c.viewLabel ? { viewLabelAr: arOf(c.viewLabel), viewDescAr: arOf(c.viewDesc) } : {}),
+  ...(c.reports ? { groups: REPORT_GROUPS } : {}),
+});
 
 const sweets = {
   id: "sweets",
   label: "Confectionery",
+  labelAr: arOf("Confectionery"),
+  branchAr: arOf("Main Branch"),
   labelEn: "Confectionery",
   icon: "🍰",
   branch: "Main Branch", // single branch; stamped where relevant
@@ -221,5 +258,7 @@ const sweets = {
     },
   ],
 };
+
+sweets.cards = sweets.cards.map(withAr);
 
 export default sweets;

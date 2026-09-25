@@ -1,4 +1,5 @@
 // src/pages/monitor/branches/sweets/DailyCleanlinessTab.js
+import { Bi } from "./bilingual";
 import React, { useMemo, useState } from "react";
 import {
   getLatestReport,
@@ -75,7 +76,7 @@ function RowKV({ label, value }) {
           fontWeight: 700,
         }}
       >
-        {label}
+        <Bi en={label} />
       </div>
       <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
@@ -138,11 +139,11 @@ function DCEntryHeader({ header, date, logoUrl }) {
             borderBottom: "1px solid #000",
           }}
         >
-          DAILY CLEANING CHECKLIST
+          <Bi en="DAILY CLEANING CHECKLIST" ar="قائمة فحص التنظيف اليومي" />
         </div>
         {date ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
-            <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
+            <span style={{ fontWeight: 900, textDecoration: "underline" }}><Bi en="Date:" /></span>
             <span>{date}</span>
           </div>
         ) : null}
@@ -156,7 +157,7 @@ function DCEntryFooter({ footer }) {
   return (
     <div style={{ border: "1px solid #000", marginTop: 8 }}>
       <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
-        REMARKS / CORRECTIVE ACTIONS:
+        <Bi en="REMARKS / CORRECTIVE ACTIONS:" ar="الملاحظات / الإجراءات التصحيحية:" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
@@ -171,7 +172,7 @@ function DCEntryFooter({ footer }) {
             }}
           >
             {/* ✅ label only */}
-            CHECKED BY:
+            <Bi en="CHECKED BY:" />
           </div>
           <div style={{ padding: "6px 8px", flex: 1 }}>{f.checkedBy || "\u00A0"}</div>
         </div>
@@ -185,15 +186,15 @@ function DCEntryFooter({ footer }) {
               textDecoration: "underline",
             }}
           >
-            VERIFIED BY:
+            <Bi en="VERIFIED BY:" />
           </div>
           <div style={{ padding: "6px 8px", flex: 1 }}>{f.verifiedBy || "\u00A0"}</div>
         </div>
       </div>
 
       <div style={{ padding: "8px 10px", lineHeight: 1.6 }}>
-        <div>Remark: Frequency — Daily</div>
-        <div>* (C = Conform &nbsp;&nbsp; N/C - Non Conform)</div>
+        <div><Bi en="Remark: Frequency — Daily" ar="ملاحظة: التكرار — يومي" /></div>
+        <div>* (C = Conform &nbsp;&nbsp; N/C - Non Conform) <Bi en="" ar="(C = مطابق · N/C = غير مطابق)" /></div>
       </div>
     </div>
   );
@@ -210,23 +211,23 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
 
   return (
     <details style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: 12, margin: "10px 0" }}>
-      <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ Edit Header & Footer (Cleaning)</summary>
+      <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ <Bi en="Edit Header & Footer (Cleaning)" ar="تعديل الترويسة والتذييل (التنظيف)" /></summary>
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
           <label style={row}>
-            <span>Document Title</span>
+            <span><Bi en="Document Title" /></span>
             <input style={input} value={h.documentTitle} onChange={(e) => updateHeader("documentTitle", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Issue Date</span>
+            <span><Bi en="Issue Date" /></span>
             <input style={input} value={h.issueDate} onChange={(e) => updateHeader("issueDate", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Area</span>
+            <span><Bi en="Area" /></span>
             <input style={input} value={h.area} onChange={(e) => updateHeader("area", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Controlling Officer</span>
+            <span><Bi en="Controlling Officer" /></span>
             <input
               style={input}
               value={h.controllingOfficer}
@@ -236,19 +237,19 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
         </div>
         <div>
           <label style={row}>
-            <span>Document No</span>
+            <span><Bi en="Document No" /></span>
             <input style={input} value={h.documentNo} onChange={(e) => updateHeader("documentNo", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Revision No</span>
+            <span><Bi en="Revision No" /></span>
             <input style={input} value={h.revisionNo} onChange={(e) => updateHeader("revisionNo", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Issued By</span>
+            <span><Bi en="Issued By" /></span>
             <input style={input} value={h.issuedBy} onChange={(e) => updateHeader("issuedBy", e.target.value)} />
           </label>
           <label style={row}>
-            <span>Approved By</span>
+            <span><Bi en="Approved By" /></span>
             <input style={input} value={h.approvedBy} onChange={(e) => updateHeader("approvedBy", e.target.value)} />
           </label>
         </div>
@@ -257,11 +258,11 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
       {/* ✅ auto-filled but editable */}
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <label style={row}>
-          <span>Checked By</span>
+          <span><Bi en="Checked By" /></span>
           <input style={input} value={f.checkedBy} onChange={(e) => updateFooter("checkedBy", e.target.value)} />
         </label>
         <label style={row}>
-          <span>Verified By</span>
+          <span><Bi en="Verified By" /></span>
           <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
         </label>
       </div>
@@ -340,19 +341,19 @@ function DailyCleanlinessTable({ rows, setRows }) {
   return (
     <div>
       <div style={toolbar}>
-        <button onClick={loadTemplate} style={btn}>📋 Load Default Template</button>
-        <button onClick={addRow} style={btn}>➕ Add Row</button>
+        <button onClick={loadTemplate} style={btn}>📋 <Bi en="Load Default Template" ar="تحميل القالب الافتراضي" /></button>
+        <button onClick={addRow} style={btn}>➕ <Bi en="Add Row" /></button>
       </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
           <tr style={{ background: "#d9d9d9", color: "#000" }}>
-            <th style={th(70)}>SI-No</th>
-            <th style={th(360)}>General Cleaning</th>
-            <th style={th(110)}>Observation</th>
-            <th style={th(240)}>Informed to</th>
-            <th style={th(320)}>Remarks &amp; CA</th>
-            <th style={th(80)}>Actions</th>
+            <th style={th(70)}><Bi en="SI-No" ar="م" stack center /></th>
+            <th style={th(360)}><Bi en="General Cleaning" ar="التنظيف العام" stack center /></th>
+            <th style={th(110)}><Bi en="Observation" stack center /></th>
+            <th style={th(240)}><Bi en="Informed to" ar="أُبلغ إلى" stack center /></th>
+            <th style={th(320)}><Bi en="Remarks & CA" ar="الملاحظات والإجراء التصحيحي" stack center /></th>
+            <th style={th(80)}><Bi en="Actions" stack center /></th>
           </tr>
         </thead>
         <tbody>
@@ -361,7 +362,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
               return (
                 <tr key={`sec-${i}`} style={{ background: "#f3f4f6", fontWeight: 800 }}>
                   <td style={tdCenter()}>—</td>
-                  <td style={{ ...tdLeft(), fontWeight: 800 }}>{r.section || ""}</td>
+                  <td style={{ ...tdLeft(), fontWeight: 800 }}><Bi en={r.section || ""} /></td>
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>—</td>
@@ -379,7 +380,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
 
                 {/* ثابت نصّياً مثل النموذج */}
                 <td style={tdLeft()}>
-                  <div style={textCell()} title={r?.general || ""}>{r?.general || ""}</div>
+                  <div style={textCell()} title={r?.general || ""}><Bi en={r?.general || ""} nowrap /></div>
                 </td>
 
                 {/* Observation: default "C" (editable) */}
@@ -414,7 +415,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
           {list.length === 0 && (
             <tr>
               <td colSpan={6} style={{ ...tdCenter(), color: "#6b7280" }}>
-                No rows. Use “Load Default Template” or “Add Row”.
+                <Bi en="No rows. Use “Load Default Template” or “Add Row”." ar="لا توجد أسطر — استخدم «تحميل القالب» أو «إضافة سطر»." />
               </td>
             </tr>
           )}
@@ -482,7 +483,7 @@ export default function DailyCleanlinessTab({
       setLoadingLast(true);
       const hit = await getLatestReport(CLEAN_TYPE);
       if (!hit) {
-        alert("ℹ️ No previous Daily Cleanliness report found.");
+        alert("ℹ️ No previous Daily Cleanliness report found. · لا يوجد تقرير سابق.");
         return;
       }
       const p = hit.payload || {};
@@ -492,9 +493,9 @@ export default function DailyCleanlinessTab({
       if (p.headers?.dcHeader) setHeader({ ...defaultDCHeader, ...p.headers.dcHeader });
       if (p.headers?.dcFooter) setFooter({ ...defaultDCFooter, ...p.headers.dcFooter });
       setDate("");
-      alert(`✅ Loaded from ${hit.reportDate}. Now pick the date for today's record.`);
+      alert(`✅ Loaded from ${hit.reportDate}. Now pick the date for today's record. · تم التحميل — اختر تاريخ سجل اليوم.`);
     } catch (e) {
-      alert(`❌ Could not load the last report: ${e.message || e}`);
+      alert(`❌ Could not load the last report · تعذّر تحميل آخر تقرير: ${e.message || e}`);
     } finally {
       setLoadingLast(false);
     }
@@ -502,7 +503,7 @@ export default function DailyCleanlinessTab({
 
   async function saveDailyCleanliness() {
     if (!date) {
-      alert("⚠️ Pick a report date first.");
+      alert("⚠️ Pick a report date first. · اختر تاريخ التقرير أولاً.");
       return;
     }
     try {
@@ -545,9 +546,9 @@ export default function DailyCleanlinessTab({
         if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create report");
       }
 
-      alert(`✅ Daily Cleanliness saved for ${date}.`);
+      alert(`✅ Daily Cleanliness saved for ${date}. · تم حفظ النظافة اليومية.`);
     } catch (e) {
-      alert(`❌ Failed to save: ${e.message || e}`);
+      alert(`❌ Failed to save · فشل الحفظ: ${e.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -565,7 +566,7 @@ export default function DailyCleanlinessTab({
     <div>
       {/* شريط عنوان صغير مع تاريخ الإدخال داخل التبويب */}
       <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0 }}>🧹 Daily Cleanliness</h3>
+        <h3 style={{ margin: 0 }}>🧹 <Bi en="Daily Cleanliness" /></h3>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={loadFromLast}
@@ -579,10 +580,10 @@ export default function DailyCleanlinessTab({
               cursor: loadingLast ? "wait" : "pointer",
             }}
           >
-            {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+            {loadingLast ? <>⏳ <Bi en="Loading…" /></> : <>📋 <Bi en="Load from last report" ar="تحميل من آخر تقرير" /></>}
           </button>
           <label style={{ fontWeight: 700 }}>
-            Date:{" "}
+            <Bi en="Date:" />{" "}
             <input
               type="date"
               value={date}
@@ -599,7 +600,7 @@ export default function DailyCleanlinessTab({
 
       <DCEntryHeader header={header} date={date} logoUrl={logoUrl || LOGO_FALLBACK} />
       <DCHeaderEditor header={header} setHeader={setHeader} footer={footer} setFooter={setFooter} />
-      <h4 style={{ marginTop: 0 }}>Daily Cleanliness</h4>
+      <h4 style={{ marginTop: 0 }}><Bi en="Daily Cleanliness" /></h4>
 
       <DailyCleanlinessTable rows={rows} setRows={updateRows} />
 
@@ -620,7 +621,7 @@ export default function DailyCleanlinessTab({
             cursor: "pointer",
           }}
         >
-          {saving ? "⏳ Saving..." : "💾 Save Daily Cleanliness"}
+          {saving ? <>⏳ <Bi en="Saving..." /></> : <>💾 <Bi en="Save Daily Cleanliness" ar="حفظ النظافة اليومية" /></>}
         </button>
       </div>
     </div>
