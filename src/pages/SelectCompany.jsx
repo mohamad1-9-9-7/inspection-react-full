@@ -5,7 +5,7 @@
 //                           follows the account's company (AccountsManagementTab)
 //   💳 Billing              companies (disable / re-enable), plans, invoices,
 //                           quotations, seller profile (BillingPlansTab)
-//   🛡️ Security & Server    security controls, server health, image cleanup
+//   🛡️ Security & Server    security controls, image cleanup
 // None of these live in a company's own Settings any more.
 //
 // Companies tab — one card per company, shown right after
@@ -30,14 +30,13 @@ import { clearAppSession } from "../utils/authFetch";
 const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
 const SecurityControlsTab   = lazy(() => import("./settings/SecurityControlsTab"));
-const ServerHealth          = lazy(() => import("./settings/tools/ServerHealth"));
 const ImageMigration        = lazy(() => import("./admin/ImageMigration"));
 
 const CENTER_TABS = [
   { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it" },
   { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open" },
   { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Plans, invoices, quotations and company status" },
-  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Security controls, server health and image cleanup" },
+  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Security controls and image cleanup" },
 ];
 
 const STATUS_META = {
@@ -267,7 +266,6 @@ export default function SelectCompany() {
                 {tab === "security" && (
                   <div style={{ display: "grid", gap: 22 }}>
                     <SecurityControlsTab />
-                    <ServerHealth />
                     <ImageMigration />
                   </div>
                 )}
