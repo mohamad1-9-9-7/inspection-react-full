@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useParams, useLocation } from "react-router-do
 import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
+import ThemeToggle from "./components/ThemeToggle";
 import GlobalTimePicker from "./components/GlobalTimePicker";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
@@ -799,6 +800,7 @@ export default function App() {
       <NotificationManager />
       <GlobalDatePicker />
       <GlobalTimePicker />
+      <ThemeToggle />
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />

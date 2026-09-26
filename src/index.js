@@ -3,7 +3,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 import './styles/globals.css';
+import './styles/theme-dark.css';
 import './utils/authFetch';
+import { applyTheme } from './utils/theme';
+
+// Day / night mode before the first paint, so a night-mode user never
+// sees a white flash.
+applyTheme();
 
 // لما نشتغل داخل Electron (file://) لازم HashRouter لأن BrowserRouter بيكسر
 const isElectron =

@@ -1,0 +1,49 @@
+/* ═══════════════════════════════════════════════════════════════
+   Night mode — <html data-theme="dark"> (utils/theme.js).
+
+   The app's colours are inline styles on hundreds of pages, so instead of
+   restyling each one, the whole page goes through ONE filter on the root:
+   invert the lightness, then rotate the hue back by 180°. Net effect:
+     white backgrounds  → calm near-black (not pure black: invert < 1)
+     dark text          → soft white
+     blue stays blue, green / teal stays green — only lightness flips
+   and saturate(<1) takes the edge off every accent so it is easy on the
+   eyes. Status colours (red / amber) keep their meaning.
+
+   Photos, logos, uploaded images and videos are flipped BACK so they keep
+   their real colours. Anything else that must stay untouched can carry
+   class="theme-keep".
+
+   Screen only: printing, and the PDF / Excel exports (built from the DOM's
+   own styles, not from this filter), stay in the normal light design.
+   The filter sits on the root element, so position:fixed keeps working.
+   ═══════════════════════════════════════════════════════════════ */
+@media screen {
+  html[data-theme="dark"] {
+    background: #ffffff; /* becomes the dark page colour through the filter */
+    filter: invert(0.9) hue-rotate(180deg) saturate(0.8);
+  }
+
+  html[data-theme="dark"] img,
+  html[data-theme="dark"] video,
+  html[data-theme="dark"] picture,
+  html[data-theme="dark"] iframe,
+  html[data-theme="dark"] [style*="url("],
+  html[data-theme="dark"] .theme-keep {
+    filter: invert(1) hue-rotate(180deg) saturate(1.25);
+  }
+
+  /* An image inside an element that was already flipped back must not be
+     flipped a second time. */
+  html[data-theme="dark"] [style*="url("] img,
+  html[data-theme="dark"] [style*="url("] video,
+  html[data-theme="dark"] .theme-keep img,
+  html[data-theme="dark"] .theme-keep video,
+  html[data-theme="dark"] picture img {
+    filter: none;
+  }
+}
+
+@media print {
+  .theme-toggle-btn { display: none !important; }
+}

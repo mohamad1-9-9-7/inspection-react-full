@@ -13,7 +13,7 @@ const API_ORIGINS = [API_BASE, IMAGE_API_BASE].filter(Boolean);
 // on logout, the next login on the same browser — a different account, or a
 // different company entirely — would still see that stale cached data. So
 // logout/session-expiry must wipe everything except pure UI prefs.
-const PRESERVE_KEYS = ["settings_lang"];
+const PRESERVE_KEYS = ["settings_lang", "ui_theme"];
 
 export function clearAppSession() {
   try {
