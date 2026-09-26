@@ -157,7 +157,8 @@ function addEmptySheet(wb, typeLabel) {
 
 async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records, opts = {}) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = opts.blankForm ? "Al Mawashi — Blank Forms" : "Al Mawashi — Excel Backup";
+  const brand = opts.brand || "Al Mawashi";
+  wb.creator = opts.blankForm ? `${brand} — Blank Forms` : `${brand} — Excel Backup`;
   wb.created = new Date();
 
   const exporter = getExporter(typeKey);
@@ -208,14 +209,31 @@ async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records, 
 /* ═══════════════════════════════════════════════════════════════
    COMPONENT
    ═══════════════════════════════════════════════════════════════ */
-export default function ExcelBackupTab() {
+/* Props (both optional — Settings uses neither and gets the whole catalog):
+ *   cardIds — only these catalog cards (e.g. ["sweets"] inside the
+ *             Confectionery company-app), so a tenant sees its own reports only.
+ *   brand   — company name on the ZIP file name, README and workbook creator. */
+export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } = {}) {
+  const cardKey = cardIds ? cardIds.join("|") : "";
+  const scopeBranches = useMemo(
+    () => (cardIds ? BRANCHES.filter((b) => cardIds.includes(b.card)) : BRANCHES),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cardKey]
+  );
+  const scopeCards = useMemo(
+    () => (cardIds ? activeCards().filter((c) => cardIds.includes(c.id)) : activeCards()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cardKey]
+  );
+  const fileBrand = brand.replace(/[^A-Za-z0-9]+/g, "") || "Backup";
+
   // Selection state: Set of "branchId::typeKey" strings (type-level granularity)
   const [picked, setPicked] = useState(() => {
     const all = new Set();
-    BRANCHES.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
+    scopeBranches.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
     return all;
   });
-  const [expandedBranches, setExpandedBranches] = useState(() => new Set(BRANCHES.map((b) => b.id)));
+  const [expandedBranches, setExpandedBranches] = useState(() => new Set(scopeBranches.map((b) => b.id)));
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
   const [stats, setStats] = useState(null);
@@ -244,8 +262,8 @@ export default function ExcelBackupTab() {
 
   /* ─── Derived: counts & filter ─── */
   const totalTypes = useMemo(
-    () => BRANCHES.reduce((s, b) => s + b.types.length, 0),
-    []
+    () => scopeBranches.reduce((s, b) => s + b.types.length, 0),
+    [scopeBranches]
   );
   const pickedCount = picked.size;
   const filterQ = query.trim().toLowerCase();
@@ -255,11 +273,11 @@ export default function ExcelBackupTab() {
      ناقصة واسمها كاملة. منحسبها من الأنواع المختارة فعلياً. */
   const windowWarning = useMemo(() => {
     const types = [];
-    BRANCHES.forEach((b) => b.types.forEach(([k]) => {
+    scopeBranches.forEach((b) => b.types.forEach(([k]) => {
       if (picked.has(`${b.id}::${k}`)) types.push(k);
     }));
     return visibilityWarningText(types);
-  }, [picked]);
+  }, [picked, scopeBranches]);
 
   function isPicked(branchId, typeKey) {
     return picked.has(`${branchId}::${typeKey}`);
@@ -303,7 +321,7 @@ export default function ExcelBackupTab() {
   function selectAll(on) {
     if (on) {
       const all = new Set();
-      BRANCHES.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
+      scopeBranches.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
       setPicked(all);
     } else {
       setPicked(new Set());
@@ -410,7 +428,7 @@ export default function ExcelBackupTab() {
         }
 
         const folder = folderFor(zip, segments, folderCache);
-        const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records);
+        const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records, { brand });
         const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
 
         const empty = records.length === 0;
@@ -460,6 +478,7 @@ export default function ExcelBackupTab() {
         filterLabel: filterLabel(filter),
         rows: manifest,
         notes,
+        brand,
       }));
 
       const today = new Date().toISOString().slice(0, 10);
@@ -469,7 +488,7 @@ export default function ExcelBackupTab() {
         compressionOptions: { level: 6 },
       });
 
-      downloadBlob(blob, `AlMawashi_Excel_Backup_${today}${filterSuffix(filter)}.zip`);
+      downloadBlob(blob, `${fileBrand}_Excel_Backup_${today}${filterSuffix(filter)}.zip`);
 
       setStats({ mode: "backup", filesCreated, filesEmpty, totalRows, branches: new Set(manifest.map((m) => m.branch)).size });
       const heavyNote = heavyTypes.length > 0
@@ -547,7 +566,7 @@ export default function ExcelBackupTab() {
           : [makeBlankRecord(template, blankRows)];
 
         const wb = await buildWorkbook(
-          ExcelJS, branch.label, typeKey, typeLabel, payload, { blankForm: true }
+          ExcelJS, branch.label, typeKey, typeLabel, payload, { blankForm: true, brand }
         );
         const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
 
@@ -574,7 +593,7 @@ export default function ExcelBackupTab() {
       const generatedAt = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
       zip.file("00 INDEX.csv", manifestCsv(manifest));
       zip.file("00 README.txt", blankReadmeText({
-        generatedAt, rowCount: blankRows, rows: manifest, missing,
+        generatedAt, rowCount: blankRows, rows: manifest, missing, brand,
       }));
 
       const blob = await zip.generateAsync({
@@ -583,7 +602,7 @@ export default function ExcelBackupTab() {
         compressionOptions: { level: 6 },
       });
       const today = new Date().toISOString().slice(0, 10);
-      downloadBlob(blob, `AlMawashi_Blank_Forms_${today}.zip`);
+      downloadBlob(blob, `${fileBrand}_Blank_Forms_${today}.zip`);
 
       setStats({ mode: "blank", filesCreated: made, filesEmpty: missing.length, totalRows: 0, branches: new Set(manifest.map((m) => m.branch)).size });
       setMsg({
@@ -666,7 +685,7 @@ export default function ExcelBackupTab() {
           <button onClick={() => selectAll(true)}  style={S.btnGhost}>تحديد الكل</button>
           <button onClick={() => selectAll(false)} style={S.btnGhost}>إلغاء الكل</button>
           <button
-            onClick={() => setExpandedBranches(new Set(BRANCHES.map((b) => b.id)))}
+            onClick={() => setExpandedBranches(new Set(scopeBranches.map((b) => b.id)))}
             style={S.btnGhost}
           >
             توسيع
@@ -783,7 +802,7 @@ export default function ExcelBackupTab() {
       {/* ═══ Card → branch → group tree ═══
            نفس شجرة المجلدات اللي بتطلع بالـZIP، فاللي بيختار من هون بيعرف
            سلفاً وين رح يلاقي الملف. */}
-      {activeCards().map((card) => {
+      {scopeCards.map((card) => {
         const branches = branchesOfCard(card.id);
         const cardTotal  = branches.reduce((s, b) => s + b.types.length, 0);
         const cardPicked = branches.reduce((s, b) => s + branchPickedCount(b), 0);

@@ -112,13 +112,13 @@ export function manifestCsv(rows) {
 }
 
 /** Plain-text README dropped at the ZIP root, in Arabic. */
-export function readmeText({ generatedAt, filterLabel, rows, notes = [] }) {
+export function readmeText({ generatedAt, filterLabel, rows, notes = [], brand = "Al Mawashi" }) {
   const totalRecords = rows.reduce((s, r) => s + (Number(r.count) || 0), 0);
   const byCard = new Map();
   for (const r of rows) byCard.set(r.card, (byCard.get(r.card) || 0) + 1);
 
   const lines = [
-    "نسخة احتياطية — Al Mawashi QMS",
+    `نسخة احتياطية — ${brand} QMS`,
     "=".repeat(60),
     "",
     `تاريخ الإنشاء : ${generatedAt}`,
@@ -150,9 +150,9 @@ export function readmeText({ generatedAt, filterLabel, rows, notes = [] }) {
 }
 
 /** Same README, worded for the blank-forms ZIP. */
-export function blankReadmeText({ generatedAt, rowCount, rows, missing = [] }) {
+export function blankReadmeText({ generatedAt, rowCount, rows, missing = [], brand = "Al Mawashi" }) {
   const lines = [
-    "نماذج فارغة للطباعة — Al Mawashi QMS",
+    `نماذج فارغة للطباعة — ${brand} QMS`,
     "=".repeat(60),
     "",
     `تاريخ الإنشاء   : ${generatedAt}`,

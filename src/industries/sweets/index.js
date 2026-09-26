@@ -252,6 +252,20 @@ const sweets = {
       grad: "linear-gradient(135deg,#0f766e,#0891b2)",
       Hub: lazy(() => import("../../pages/monitor/branches/sweets/HaccpHub")),
     },
+    {
+      // Company settings — admins only (GenericIndustryApp hides adminOnly
+      // cards from everyone else). First tool: Excel export of every sweets
+      // report, the same exporter Al Mawashi's Settings uses, scoped to the
+      // catalog's "sweets" card.
+      id: "settings",
+      kind: "hub",
+      adminOnly: true,
+      label: "Settings",
+      desc: "Company tools — export all reports to Excel",
+      icon: "⚙️",
+      grad: "linear-gradient(135deg,#475569,#0f766e)",
+      Hub: lazy(() => import("../../pages/sweets-settings/SweetsSettingsHub")),
+    },
   ],
 };
 

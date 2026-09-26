@@ -172,16 +172,20 @@ export default function GenericIndustryApp() {
 
   const industry = getActiveIndustry();
   const template = getIndustryTemplate(industry);
+  /* adminOnly cards (e.g. company Settings) are hidden — and unreachable by
+     URL — for anyone who is not an admin or the platform super-admin. */
+  const isAdmin = !!currentUser.isAdmin || isSuperAdmin;
+  const cards = (template?.cards || []).filter((c) => !c.adminOnly || isAdmin);
 
   const cardId = params.get("card") || null;
   const activeType = params.get("type") || null;
   const mode = params.get("mode") || null; // for "pair" cards: "input" | "view"
-  const card = template && cardId ? (template.cards || []).find((c) => c.id === cardId) : null;
+  const card = template && cardId ? cards.find((c) => c.id === cardId) : null;
   const isPair = card?.kind === "pair";
   const isHub = card?.kind === "hub";
   // The card showing the same reports in the other mode (Daily ↔ View).
   const twinCard = card?.reports
-    ? (template?.cards || []).find((c) => c.id !== card.id && c.reports && (c.kind === "viewer") !== (card.kind === "viewer"))
+    ? cards.find((c) => c.id !== card.id && c.reports && (c.kind === "viewer") !== (card.kind === "viewer"))
     : null;
 
   useEffect(() => {
@@ -248,7 +252,7 @@ export default function GenericIndustryApp() {
   const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
   const q = query.trim().toLowerCase();
-  const homeCards = (template.cards || []).filter(
+  const homeCards = cards.filter(
     (c) => !q || [c.label, c.desc, c.labelAr, c.descAr].some((x) => String(x || "").toLowerCase().includes(q))
   );
 
@@ -427,7 +431,7 @@ export default function GenericIndustryApp() {
               />
             </label>
             <div className="gia-summary" style={S.summary}>
-              <div style={S.chip}><Two en={`${(template.cards || []).length} Modules`} ar={`${(template.cards || []).length} وحدات`} /></div>
+              <div style={S.chip}><Two en={`${cards.length} Modules`} ar={`${cards.length} وحدات`} /></div>
               {isSuperAdmin && <div style={S.chip}>🏢 {companyName}</div>}
             </div>
           </section>

@@ -294,6 +294,26 @@ const CUSTOM = {
   "enoc_returns":                           enoc_returns,
   "destruction_record":                     destruction_record,
   "odoo_disposal_log":                      odoo_disposal_log,
+
+  /* Confectionery (sweets tenant) — its pages are copies of the QCS / fleet /
+     training pages and save the SAME payload shape under sweets_* slugs, so
+     they reuse those designed sheets instead of the generic dump. (Coolers
+     carry their own unit definitions in the payload; reportDate's "#…"
+     event suffix is ignored by extractDate.) sweets_ohc_certificate is NOT
+     aliased — its upload page diverged from ohc/ — so it stays generic. */
+  "sweets-ph":                              qcs_ph,
+  "sweets-clean":                           qcs_clean,
+  "sweets-coolers":                         qcs_coolers,
+  "sweets_visitor_checklist":               qcs_visitor_checklist,
+  "sweets_staff_sickness":                  qcs_staff_sickness,
+  "sweets_non_conformance":                 qcs_non_conformance,
+  "sweets_product_rejection":               qcs_product_rejection,
+  "sweets_pest_control":                    qcs_pest_control,
+  "sweets_internal_audit":                  qcs_internal_audit,
+  "sweets_training_certificate":            training_certificate,
+  "sweets_training_session":                training_session,
+  "sweets_cars_loading_inspection":         cars_loading_inspection,
+  "sweets_truck_daily_cleaning":            truck_daily_cleaning,
 };
 
 /* ═══════════════════════════════════════════════════════════════

@@ -118,6 +118,8 @@ export const AR = {
   "Internal Training": "التدريب الداخلي", "Training sessions & attendance": "جلسات التدريب والحضور", "Sessions, quizzes, certificates & annual plan": "الجلسات والاختبارات والشهادات والخطة السنوية", "New Training": "تدريب جديد",
   "Record a training session": "تسجيل جلسة تدريب", "View Trainings": "عرض التدريبات", "Browse training records": "تصفح سجلات التدريب",
   "Vehicles": "المركبات", "Loading checks & truck cleaning": "فحص التحميل وتنظيف الشاحنات", "HACCP": "الهاسب", "Food safety modules": "وحدات سلامة الغذاء",
+  "Settings": "الإعدادات",
+  "Company tools — export all reports to Excel": "أدوات الشركة — تصدير كل التقارير إلى Excel",
   "Personal Hygiene": "النظافة الشخصية", "Personal hygiene checklist": "قائمة فحص النظافة الشخصية",
   "Daily Cleanliness": "النظافة اليومية", "Daily cleaning checklist": "قائمة فحص التنظيف اليومي",
   "Cooler Temperatures": "حرارة البرادات", "5 coolers + freezer temperature log": "سجل حرارة 5 برادات + فريزر",
