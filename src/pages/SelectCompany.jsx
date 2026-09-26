@@ -14,7 +14,13 @@
 // scoped API call, and sends the owner into the normal dashboard "as" that
 // company. Regular accounts never see this screen — their company is fixed
 // by their own login token, so App.jsx never routes them here.
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+//
+// Layout: a full-viewport app shell (sidebar + scrolling main area) that
+// fills the screen at any size; below 900px the sidebar folds into a top bar.
+// Styling lives in PC_CSS, not inline styles: globals.css forces
+// `#root * { font-size:14px !important }`, so sizes need the doubled-class
+// `#root .pc.pc` escape (see ProductTracePage.jsx for the same pattern).
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import logo from "../assets/almawashi-logo.jpg";
@@ -28,10 +34,10 @@ const ServerHealth          = lazy(() => import("./settings/tools/ServerHealth")
 const ImageMigration        = lazy(() => import("./admin/ImageMigration"));
 
 const CENTER_TABS = [
-  { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات" },
-  { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات" },
-  { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة" },
-  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر" },
+  { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it" },
+  { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open" },
+  { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Plans, invoices, quotations and company status" },
+  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Security controls, server health and image cleanup" },
 ];
 
 const STATUS_META = {
@@ -49,10 +55,10 @@ const statusKey = (c) => (c.disabled_at ? "disabled" : String(c.status || "activ
 function industryMeta(raw) {
   const k = String(raw || "meat").toLowerCase();
   if (k.includes("sweet") || k.includes("confection") || k.includes("bakery") || k.includes("dessert"))
-    return { key: "sweets", icon: "🍬", label: "Confectionery", opens: "Generic app", grad: "linear-gradient(135deg,#ec4899,#be185d)", glow: "rgba(190,24,93,.4)" };
+    return { key: "sweets", icon: "🍬", label: "Confectionery", opens: "Generic app", grad: "linear-gradient(135deg,#ec4899,#be185d)", glow: "rgba(190,24,93,.35)", tint: "#be185d" };
   if (k === "meat" || k === "")
-    return { key: "meat", icon: "🥩", label: "Meat / Al Mawashi", opens: "Al Mawashi QMS", grad: "linear-gradient(135deg,#0f766e,#0891b2)", glow: "rgba(15,118,110,.4)" };
-  return { key: "generic", icon: "🏭", label: raw || "General", opens: "Generic app", grad: "linear-gradient(135deg,#6366f1,#4f46e5)", glow: "rgba(99,102,241,.4)" };
+    return { key: "meat", icon: "🥩", label: "Meat / Al Mawashi", opens: "Al Mawashi QMS", grad: "linear-gradient(135deg,#0f766e,#0891b2)", glow: "rgba(15,118,110,.35)", tint: "#0f766e" };
+  return { key: "generic", icon: "🏭", label: raw || "General", opens: "Generic app", grad: "linear-gradient(135deg,#6366f1,#4f46e5)", glow: "rgba(99,102,241,.35)", tint: "#4f46e5" };
 }
 
 const SORTS = {
@@ -61,10 +67,15 @@ const SORTS = {
   plan:   { label: "Plan",       cmp: (a, b) => (a.plan_name || "~").localeCompare(b.plan_name || "~") || (a.name || "").localeCompare(b.name || "") },
 };
 
+function readView() {
+  try { return localStorage.getItem("pc_view") === "list" ? "list" : "grid"; } catch { return "grid"; }
+}
+
 export default function SelectCompany() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = CENTER_TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "companies";
+  const tabMeta = CENTER_TABS.find((x) => x.id === tab);
   const setTab = (id) => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", id); return n; }, { replace: true });
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +86,9 @@ export default function SelectCompany() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState("name");
-  const [hovered, setHovered] = useState(null);
+  const [view, setViewState] = useState(readView);
+  const searchRef = useRef(null);
+  const setView = (v) => { setViewState(v); try { localStorage.setItem("pc_view", v); } catch { /* per-viewer convenience only */ } };
 
   const currentUser = (() => {
     try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -112,6 +125,19 @@ export default function SelectCompany() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "/" jumps to the search box on the Companies tab (unless already typing).
+  useEffect(() => {
+    if (tab !== "companies") return undefined;
+    const onKey = (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (e.key === "/" && !typing) { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === "Escape" && t === searchRef.current) { setQuery(""); searchRef.current?.blur(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tab]);
+
   // status counts for the stat tiles + filter chips
   const counts = useMemo(() => {
     const c = { all: companies.length, active: 0, trial: 0, expired: 0, suspended: 0, disabled: 0 };
@@ -147,13 +173,18 @@ export default function SelectCompany() {
   }
 
   const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const ownerName = currentUser.displayName || currentUser.name || currentUser.username || "Owner";
 
+  const pct = (n) => (counts.all ? Math.round((n / counts.all) * 100) : 0);
   const STAT_TILES = [
-    { key: "all",     label: "Companies", val: counts.all,     tint: "#0f766e" },
-    { key: "active",  label: "Active",    val: counts.active,  tint: "#10b981" },
-    { key: "trial",   label: "Trial",     val: counts.trial,   tint: "#f59e0b" },
-    { key: "expired", label: "Expired",   val: counts.expired, tint: "#ef4444" },
+    { key: "all",      icon: "🏢", label: "All companies", val: counts.all,      tint: "#0f766e", share: 100 },
+    { key: "active",   icon: "✅", label: "Active",        val: counts.active,   tint: "#10b981", share: pct(counts.active) },
+    { key: "trial",    icon: "⏳", label: "Trial",         val: counts.trial,    tint: "#f59e0b", share: pct(counts.trial) },
+    { key: "expired",  icon: "⚠️", label: "Expired",       val: counts.expired,  tint: "#ef4444", share: pct(counts.expired) },
+    { key: "disabled", icon: "⛔", label: "Disabled",      val: counts.disabled, tint: "#334155", share: pct(counts.disabled) },
   ];
   const FILTERS = [
     { key: "all", label: "All", n: counts.all },
@@ -163,287 +194,471 @@ export default function SelectCompany() {
     { key: "suspended", label: "Suspended", n: counts.suspended },
     { key: "disabled", label: "Disabled", n: counts.disabled },
   ];
+  const filtered = query.trim() || statusFilter !== "all";
 
   return (
-    <main style={S.page}>
-      <style>{`
-        @keyframes scSpin{to{transform:rotate(360deg)}}
-        @keyframes scIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-        @keyframes scSweep{0%{transform:translateX(-18%);opacity:.45}50%{opacity:.95}100%{transform:translateX(118%);opacity:.45}}
-        @keyframes scPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.72);opacity:.48}}
-        @keyframes scGlow{0%,100%{opacity:.4}50%{opacity:.92}}
-        .sc-spin{animation:scSpin .8s linear infinite}
-        .sc-card{animation:scIn .32s ease both}
-        .sc-pulse{animation:scPulse 2.1s ease-in-out infinite}
-        @media (max-width:900px){
-          .sc-hero-inner{grid-template-columns:1fr !important}
-          .sc-toolbar{grid-template-columns:1fr !important}
-        }
-      `}</style>
+    <div className="pc pc-shell">
+      <style>{PC_CSS}</style>
 
-      <div style={S.layout}>
-        {/* ── Hero ── */}
-        <section style={S.hero}>
-          <div aria-hidden="true" style={S.heroGlow} />
-          <div aria-hidden="true" style={S.heroSweep} />
-          <div className="sc-hero-inner" style={S.heroInner}>
-            <div style={S.brand}>
-              <img src={logo} alt="Al Mawashi" style={S.logo} />
-              <div style={{ minWidth: 0 }}>
-                <p style={S.eyebrow}>INSPECT PRO · Platform Owner</p>
-                <h1 style={S.title}>Platform Center</h1>
-                <p style={S.subtitle}>
-                  Everything above the companies — accounts and permissions, subscriptions,
-                  security. Enter a company from the Companies tab.
-                </p>
-                <div style={S.badge}>
-                  <span className="sc-pulse" style={S.badgeDot} />
-                  <span>{counts.all} companies · {counts.active} active</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={S.heroActions}>
-              <button type="button" style={S.ghostBtn} title={dateStr}>🕑 {timeStr}</button>
-              <button type="button" style={S.ghostBtn} onClick={load} disabled={loading}>
-                {loading ? "…" : "↻"} Refresh
-              </button>
-              <button type="button" style={S.ghostBtn} onClick={() => setTab("billing")}>💳 Billing</button>
-              <button type="button" style={S.dangerBtn} onClick={logout}>🚪 Back to Login</button>
-            </div>
+      {/* ── Sidebar ── */}
+      <aside className="pc-side">
+        <div aria-hidden="true" className="pc-side-glow" />
+        <div className="pc-brand">
+          <img src={logo} alt="Al Mawashi" className="pc-logo" />
+          <div className="pc-brand-txt">
+            <span className="pc-eyebrow">INSPECT PRO</span>
+            <span className="pc-brand-name">Platform Center</span>
           </div>
-          <div aria-hidden="true" style={S.heroLine} />
-        </section>
+        </div>
 
-        {/* ── Center tabs ── */}
-        <nav style={S.tabs} role="tablist">
+        <nav className="pc-nav" role="tablist" aria-label="Platform Center">
           {CENTER_TABS.map((x) => (
             <button key={x.id} type="button" role="tab" aria-selected={tab === x.id}
               onClick={() => setTab(x.id)}
-              style={{ ...S.tabBtn, ...(tab === x.id ? S.tabOn : null) }}>
-              <span aria-hidden="true">{x.icon}</span> {x.label}
-              <span style={S.tabAr} lang="ar">{x.ar}</span>
+              className={`pc-nav-btn${tab === x.id ? " on" : ""}`}>
+              <span aria-hidden="true" className="pc-nav-ico">{x.icon}</span>
+              <span className="pc-nav-txt">
+                <span className="pc-nav-label">{x.label}</span>
+                <span className="pc-nav-ar" lang="ar">{x.ar}</span>
+              </span>
+              {x.id === "companies" && <span className="pc-nav-n">{counts.all}</span>}
             </button>
           ))}
         </nav>
 
-        {tab !== "companies" && (
-          <section style={S.panel}>
-            <Suspense fallback={<div style={S.panelLoading}>Loading…</div>}>
-              {tab === "accounts" && <AccountsManagementTab />}
-              {tab === "billing" && <BillingPlansTab />}
-              {tab === "security" && (
-                <div style={{ display: "grid", gap: 22 }}>
-                  <SecurityControlsTab />
-                  <ServerHealth />
-                  <ImageMigration />
+        <div className="pc-side-fill" />
+
+        <div className="pc-clock" title={dateStr}>
+          <span className="pc-clock-time">{timeStr}</span>
+          <span className="pc-clock-date">{dateStr}</span>
+          <span className="pc-live"><span className="pc-pulse" /> {counts.active} of {counts.all} companies active</span>
+        </div>
+
+        <button type="button" className="pc-logout" onClick={logout}>🚪 Back to Login</button>
+        <div className="pc-credit">Built by Eng. Mohammed Abdullah</div>
+      </aside>
+
+      {/* ── Main ── */}
+      <main className="pc-main">
+        <header className="pc-top">
+          <div className="pc-top-txt">
+            <span className="pc-crumb">Platform Center <span aria-hidden="true">›</span> {tabMeta.label}</span>
+            <h1 className="pc-h1"><span aria-hidden="true">{tabMeta.icon}</span> {tab === "companies" ? `${greeting}, ${ownerName}` : tabMeta.label}</h1>
+            <p className="pc-sub">{tabMeta.hint}</p>
+          </div>
+          <div className="pc-top-actions">
+            {tab === "companies" && (
+              <button type="button" className="pc-btn" onClick={load} disabled={loading}>
+                <span className={loading ? "pc-spin-inline" : ""} aria-hidden="true">↻</span> Refresh
+              </button>
+            )}
+            {tab !== "billing" && (
+              <button type="button" className="pc-btn" onClick={() => setTab("billing")}>💳 Billing</button>
+            )}
+          </div>
+        </header>
+
+        <div className="pc-content">
+          {tab !== "companies" && (
+            <section className="pc-panel" key={tab}>
+              <Suspense fallback={<div className="pc-empty"><span className="pc-spinner" /> Loading…</div>}>
+                {tab === "accounts" && <AccountsManagementTab />}
+                {tab === "billing" && <BillingPlansTab />}
+                {tab === "security" && (
+                  <div style={{ display: "grid", gap: 22 }}>
+                    <SecurityControlsTab />
+                    <ServerHealth />
+                    <ImageMigration />
+                  </div>
+                )}
+              </Suspense>
+            </section>
+          )}
+
+          {tab === "companies" && (<>
+            {/* ── Stat tiles ── */}
+            <section className="pc-stats">
+              {STAT_TILES.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setStatusFilter(t.key)}
+                  className={`pc-stat${statusFilter === t.key ? " on" : ""}`}
+                  style={{ "--tint": t.tint }}
+                >
+                  <span className="pc-stat-head">
+                    <span className="pc-stat-ico" aria-hidden="true">{t.icon}</span>
+                    <span className="pc-stat-label">{t.label}</span>
+                  </span>
+                  <span className="pc-stat-val">{loading ? "–" : t.val}</span>
+                  <span className="pc-stat-bar"><span style={{ width: `${loading ? 0 : t.share}%` }} /></span>
+                  <span className="pc-stat-pct">{loading ? "" : t.key === "all" ? "total" : `${t.share}% of all`}</span>
+                </button>
+              ))}
+            </section>
+
+            {/* ── Toolbar: search · filters · sort · view ── */}
+            <section className="pc-toolbar">
+              <label className="pc-search">
+                <span aria-hidden="true">🔎</span>
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search by name, plan, contact or industry…"
+                  className="pc-search-in"
+                />
+                {query
+                  ? <button type="button" className="pc-clear" onClick={() => setQuery("")} aria-label="Clear search">✕</button>
+                  : <kbd className="pc-kbd" title="Press / to search">/</kbd>}
+              </label>
+
+              <div className="pc-chips">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setStatusFilter(f.key)}
+                    className={`pc-chip${statusFilter === f.key ? " on" : ""}`}
+                  >
+                    {f.label}<span className="pc-chip-n">{f.n}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pc-tool-end">
+                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="pc-select" aria-label="Sort">
+                  {Object.entries(SORTS).map(([k, v]) => (
+                    <option key={k} value={k}>Sort: {v.label}</option>
+                  ))}
+                </select>
+                <div className="pc-seg" role="group" aria-label="View">
+                  <button type="button" className={view === "grid" ? "on" : ""} onClick={() => setView("grid")} title="Cards">▦</button>
+                  <button type="button" className={view === "list" ? "on" : ""} onClick={() => setView("list")} title="List">☰</button>
                 </div>
-              )}
-            </Suspense>
-          </section>
-        )}
+              </div>
+            </section>
 
-        {tab === "companies" && (<>
-        {/* ── Stat tiles ── */}
-        <section style={S.stats}>
-          {STAT_TILES.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setStatusFilter(t.key)}
-              style={{ ...S.stat, borderColor: statusFilter === t.key ? t.tint : "rgba(15,23,42,.1)" }}
-            >
-              <span style={{ ...S.statBar, background: t.tint }} />
-              <span style={S.statVal}>{t.val}</span>
-              <span style={S.statLabel}>{t.label}</span>
-            </button>
-          ))}
-        </section>
+            {!loading && !err && companies.length > 0 && (
+              <div className="pc-result">
+                Showing <b>{visible.length}</b> of {companies.length}
+                {filtered && (
+                  <button type="button" className="pc-reset" onClick={() => { setQuery(""); setStatusFilter("all"); }}>Clear filters</button>
+                )}
+              </div>
+            )}
 
-        {/* ── Toolbar: search · filters · sort ── */}
-        <section className="sc-toolbar" style={S.toolbar}>
-          <label style={S.searchWrap}>
-            <span aria-hidden="true">🔎</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, plan, contact or industry…"
-              style={S.searchInput}
-            />
-            {query && <button type="button" style={S.clearBtn} onClick={() => setQuery("")}>✕</button>}
-          </label>
+            {/* ── Body ── */}
+            {loading ? (
+              <div className={view === "list" ? "pc-list" : "pc-grid"}>
+                {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className={`pc-skel${view === "list" ? " row" : ""}`} />)}
+              </div>
+            ) : err ? (
+              <div className="pc-empty err">
+                <span className="pc-empty-ico">📡</span>
+                {err}
+                <button type="button" className="pc-btn light" onClick={load}>↻ Retry</button>
+              </div>
+            ) : companies.length === 0 ? (
+              <div className="pc-empty">
+                <span className="pc-empty-ico">🏗️</span>
+                No companies yet. Add one from Billing &amp; Subscriptions.
+                <button type="button" className="pc-btn light" onClick={() => setTab("billing")}>💳 Open Billing</button>
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="pc-empty">
+                <span className="pc-empty-ico">🔍</span>
+                <b>No matches</b>
+                Try another search term or clear the filter.
+              </div>
+            ) : view === "list" ? (
+              <div className="pc-list">
+                {visible.map((c, i) => {
+                  const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
+                  const ind = industryMeta(c.industry);
+                  return (
+                    <button key={c.id} type="button" className="pc-row" onClick={() => enter(c)}
+                      style={{ "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.03}s` }}>
+                      <span className="pc-ava sm" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
+                      <span className="pc-row-name">{c.name}<span className="pc-row-ind">{ind.icon} {ind.label}</span></span>
+                      <span className="pc-row-meta"><span className="pc-k">Plan</span>{c.plan_name || "—"}</span>
+                      <span className="pc-row-meta"><span className="pc-k">Contact</span>{c.contact_name || "—"}</span>
+                      <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
+                        <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                      </span>
+                      <span className="pc-enter">Enter →</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="pc-grid">
+                {visible.map((c, i) => {
+                  const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
+                  const ind = industryMeta(c.industry);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="pc-card"
+                      style={{ "--grad": ind.grad, "--glow": ind.glow, "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.04}s` }}
+                      onClick={() => enter(c)}
+                    >
+                      <span className="pc-card-band" aria-hidden="true" />
+                      <span className="pc-card-top">
+                        <span className="pc-ava" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
+                        <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
+                          <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                        </span>
+                      </span>
 
-          <div style={S.rightTools}>
-            <div style={S.filters}>
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setStatusFilter(f.key)}
-                  style={{ ...S.filterChip, ...(statusFilter === f.key ? S.filterChipOn : null) }}
-                >
-                  {f.label}<span style={S.filterN}>{f.n}</span>
-                </button>
-              ))}
-            </div>
-            <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} style={S.sortSel}>
-              {Object.entries(SORTS).map(([k, v]) => (
-                <option key={k} value={k}>Sort: {v.label}</option>
-              ))}
-            </select>
-          </div>
-        </section>
+                      <span className="pc-card-name">{c.name}</span>
+                      <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {ind.label}</span>
 
-        {/* ── Body ── */}
-        {loading ? (
-          <div style={S.empty}><span className="sc-spin" style={S.spinner} /> Loading companies…</div>
-        ) : err ? (
-          <div style={{ ...S.empty, color: "#991b1b" }}>
-            {err}
-            <button type="button" style={{ ...S.ghostBtn, marginTop: 14, color: "#991b1b", borderColor: "#fca5a5" }} onClick={load}>↻ Retry</button>
-          </div>
-        ) : companies.length === 0 ? (
-          <div style={S.empty}>No companies yet. Add one from Settings → Companies.</div>
-        ) : visible.length === 0 ? (
-          <div style={S.empty}>
-            <div style={{ fontWeight: 1000, marginBottom: 6 }}>No matches</div>
-            <div>Try another search term or clear the filter.</div>
-          </div>
-        ) : (
-          <div style={S.grid}>
-            {visible.map((c, i) => {
-              const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
-              const ind = industryMeta(c.industry);
-              const on = hovered === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="sc-card"
-                  style={{
-                    ...S.card,
-                    animationDelay: `${i * 0.04}s`,
-                    borderColor: on ? ind.glow.replace(/[\d.]+\)$/, ".5)") : "rgba(15,23,42,.1)",
-                    boxShadow: on ? `0 24px 52px ${ind.glow}` : "0 12px 30px rgba(15,23,42,.08)",
-                    transform: on ? "translateY(-3px)" : "none",
-                  }}
-                  onClick={() => enter(c)}
-                  onMouseEnter={() => setHovered(c.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  onFocus={() => setHovered(c.id)}
-                  onBlur={() => setHovered(null)}
-                >
-                  <div style={S.cardTop}>
-                    <div style={{ ...S.avatar, background: ind.grad, boxShadow: `0 12px 24px ${ind.glow}` }}>
-                      {c.name?.[0]?.toUpperCase() || "?"}
-                    </div>
-                    <span style={{ ...S.badge2, background: meta.bg, color: meta.text }}>
-                      <span style={{ ...S.badgeDot2, background: meta.dot }} />{meta.label}
-                    </span>
-                  </div>
+                      <span className="pc-meta">
+                        <span className="pc-meta-row"><span className="pc-k">Plan</span><span className="pc-v">{c.plan_name || "—"}</span></span>
+                        <span className="pc-meta-row"><span className="pc-k">Contact</span><span className="pc-v">{c.contact_name || "—"}</span></span>
+                      </span>
 
-                  <div style={S.cardName}>{c.name}</div>
-                  <div style={S.indTag}><span>{ind.icon}</span> {ind.label}</div>
-
-                  <div style={S.metaRows}>
-                    {c.plan_name && <div style={S.metaRow}><span style={S.metaK}>Plan</span><span style={S.metaV}>{c.plan_name}</span></div>}
-                    {c.contact_name && <div style={S.metaRow}><span style={S.metaK}>Contact</span><span style={S.metaV}>{c.contact_name}</span></div>}
-                  </div>
-
-                  <div style={S.cardFoot}>
-                    <span style={S.opensTag}>Opens {ind.opens}</span>
-                    <span style={S.enterTag}>Enter <span aria-hidden="true">→</span></span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        </>)}
-
-        <footer style={S.footer}>Built by Eng. Mohammed Abdullah</footer>
-      </div>
-    </main>
+                      <span className="pc-card-foot">
+                        <span className="pc-opens">Opens {ind.opens}</span>
+                        <span className="pc-enter">Enter <span aria-hidden="true" className="pc-arrow">→</span></span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>)}
+        </div>
+      </main>
+    </div>
   );
 }
 
-const S = {
-  page: {
-    minHeight: "100vh",
-    padding: "26px clamp(16px, 3.5vw, 56px) 40px",
-    background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
-    color: "#0f172a",
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  },
-  layout: { width: "min(1240px, 100%)", margin: "0 auto" },
+const PC_CSS = `
+@keyframes pcSpin{to{transform:rotate(360deg)}}
+@keyframes pcIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes pcPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.7);opacity:.45}}
+@keyframes pcShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
 
-  /* center tabs */
-  tabs: { marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 },
-  tabBtn: { display: "inline-flex", alignItems: "center", gap: 8, minHeight: 46, padding: "8px 16px", borderRadius: 12, border: "1px solid rgba(15,23,42,.12)", background: "#fff", color: "#0f172a", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 6px 16px rgba(15,23,42,.05)" },
-  tabOn: { background: "#0f766e", color: "#fff", borderColor: "#0f766e", boxShadow: "0 10px 22px rgba(15,118,110,.28)" },
-  tabAr: { fontWeight: 800, opacity: .75, fontSize: 12 },
-  panel: { marginTop: 16, borderRadius: 16, background: "#fff", border: "1px solid rgba(15,23,42,.08)", padding: "clamp(8px,1.4vw,18px)", minHeight: 300 },
-  panelLoading: { padding: 40, textAlign: "center", color: "#64748b", fontWeight: 800 },
+.pc.pc-shell{
+  position:relative; display:grid; grid-template-columns:272px minmax(0,1fr);
+  width:100%; height:100vh; height:100dvh; overflow:hidden;
+  background:#f1f5f9; color:#0f172a;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.pc button{font-family:inherit}
 
-  /* hero */
-  hero: {
-    position: "relative", overflow: "hidden", borderRadius: 18,
-    padding: "26px clamp(22px, 4vw, 48px)",
-    background: "linear-gradient(135deg, rgba(15,23,42,.96), rgba(15,118,110,.94) 52%, rgba(8,145,178,.92))",
-    color: "#fff", border: "1px solid rgba(255,255,255,.2)", boxShadow: "0 24px 64px rgba(15,23,42,.22)",
-  },
-  heroGlow: { position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(760px 260px at 12% 0%, rgba(45,212,191,.28), transparent 62%), radial-gradient(700px 300px at 90% 20%, rgba(125,211,252,.22), transparent 60%)" },
-  heroSweep: { position: "absolute", left: "-22%", top: 0, width: "42%", height: 5, pointerEvents: "none", background: "linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent)", animation: "scSweep 5.8s ease-in-out infinite" },
-  heroLine: { position: "absolute", left: 0, bottom: 0, width: "100%", height: 6, background: "linear-gradient(90deg,#22c55e,#06b6d4,#f59e0b,#22c55e)", backgroundSize: "220% 100%", opacity: .86, animation: "scGlow 2.8s ease-in-out infinite" },
-  heroInner: { position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 22, alignItems: "center" },
-  brand: { display: "flex", alignItems: "flex-start", gap: 16, minWidth: 0 },
-  logo: { width: 68, height: 68, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(255,255,255,.34)", background: "#fff", boxShadow: "0 16px 30px rgba(0,0,0,.25)", flexShrink: 0 },
-  eyebrow: { margin: 0, fontWeight: 900, fontSize: 12, color: "rgba(255,255,255,.78)", letterSpacing: ".08em", textTransform: "uppercase" },
-  title: { margin: "6px 0 0", fontWeight: 1000, fontSize: 28, lineHeight: 1.05 },
-  subtitle: { margin: "8px 0 0", maxWidth: 620, color: "rgba(255,255,255,.82)", lineHeight: 1.45, fontWeight: 700, fontSize: 14 },
-  badge: { display: "inline-flex", alignItems: "center", gap: 10, minHeight: 38, padding: "6px 14px", marginTop: 14, borderRadius: 10, color: "#ecfeff", background: "rgba(14,165,233,.18)", border: "1px solid rgba(125,211,252,.34)", fontWeight: 950, fontSize: 13 },
-  badgeDot: { width: 11, height: 11, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 16px rgba(34,197,94,.82)" },
-  heroActions: { display: "flex", flexWrap: "wrap", gap: 10, alignContent: "flex-start" },
-  ghostBtn: { minHeight: 44, padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,.24)", background: "rgba(255,255,255,.13)", color: "#fff", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", backdropFilter: "blur(6px)" },
-  dangerBtn: { minHeight: 44, padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(254,202,202,.35)", background: "rgba(220,38,38,.34)", color: "#fff", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" },
+/* ── sidebar ── */
+.pc .pc-side{
+  position:relative; overflow:hidden auto; display:flex; flex-direction:column; gap:18px;
+  padding:22px 16px 72px; color:#fff;
+  background:linear-gradient(170deg,#0b1220 0%,#0f2e35 45%,#0f766e 100%);
+  border-right:1px solid rgba(255,255,255,.08);
+}
+.pc .pc-side-glow{position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(420px 260px at 0% 0%,rgba(45,212,191,.22),transparent 65%),radial-gradient(360px 300px at 100% 100%,rgba(125,211,252,.18),transparent 60%)}
+.pc .pc-side > *{position:relative}
+.pc .pc-brand{display:flex; align-items:center; gap:12px; padding:4px 6px 16px; border-bottom:1px solid rgba(255,255,255,.1)}
+.pc .pc-logo{width:48px; height:48px; border-radius:12px; object-fit:cover; background:#fff; box-shadow:0 10px 24px rgba(0,0,0,.35); flex-shrink:0}
+.pc .pc-brand-txt{display:grid; gap:2px; min-width:0}
+.pc .pc-nav{display:grid; gap:6px}
+.pc .pc-nav-btn{display:flex; align-items:center; gap:12px; width:100%; text-align:start; padding:11px 12px; border-radius:12px;
+  border:1px solid transparent; background:transparent; color:rgba(255,255,255,.78); cursor:pointer; transition:background .15s, color .15s, border-color .15s}
+.pc .pc-nav-btn:hover{background:rgba(255,255,255,.08); color:#fff}
+.pc .pc-nav-btn.on{background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.22); color:#fff; box-shadow:inset 3px 0 0 #2dd4bf, 0 10px 22px rgba(0,0,0,.18)}
+.pc .pc-nav-ico{width:34px; height:34px; border-radius:10px; display:grid; place-items:center; background:rgba(255,255,255,.1); flex-shrink:0}
+.pc .pc-nav-btn.on .pc-nav-ico{background:linear-gradient(135deg,#14b8a6,#0891b2)}
+.pc .pc-nav-txt{display:grid; gap:1px; min-width:0; flex:1}
+.pc .pc-nav-label{font-weight:800; line-height:1.2}
+.pc .pc-nav-ar{opacity:.65; font-weight:700}
+.pc .pc-nav-n{min-width:26px; text-align:center; padding:2px 8px; border-radius:999px; background:rgba(45,212,191,.25); font-weight:900}
+.pc .pc-side-fill{flex:1}
+.pc .pc-clock{display:grid; gap:4px; padding:14px; border-radius:14px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12)}
+.pc .pc-clock-time{font-weight:900; letter-spacing:.02em; line-height:1}
+.pc .pc-clock-date{color:rgba(255,255,255,.7); font-weight:700}
+.pc .pc-live{display:flex; align-items:center; gap:8px; margin-top:6px; color:#a7f3d0; font-weight:800}
+.pc .pc-pulse{width:9px; height:9px; border-radius:999px; background:#22c55e; box-shadow:0 0 12px rgba(34,197,94,.9); animation:pcPulse 2.1s ease-in-out infinite; flex-shrink:0}
+.pc .pc-logout{min-height:44px; border-radius:12px; border:1px solid rgba(254,202,202,.3); background:rgba(220,38,38,.28); color:#fff; font-weight:800; cursor:pointer}
+.pc .pc-logout:hover{background:rgba(220,38,38,.45)}
+.pc .pc-credit{text-align:center; color:rgba(255,255,255,.5); font-weight:700}
 
-  /* stat tiles */
-  stats: { marginTop: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 },
-  stat: { position: "relative", overflow: "hidden", textAlign: "start", display: "grid", gap: 2, padding: "16px 18px", borderRadius: 14, background: "#fff", border: "1px solid rgba(15,23,42,.1)", boxShadow: "0 10px 24px rgba(15,23,42,.06)", cursor: "pointer" },
-  statBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 5 },
-  statVal: { fontWeight: 1000, fontSize: 26, color: "#0f172a", lineHeight: 1 },
-  statLabel: { fontWeight: 800, fontSize: 12.5, color: "#64748b" },
+/* ── main ── */
+.pc .pc-main{display:flex; flex-direction:column; min-width:0; min-height:0; overflow:auto;
+  background:radial-gradient(1200px 500px at 100% -10%,rgba(20,184,166,.10),transparent 60%),linear-gradient(180deg,#f8fafc,#eef4f7)}
+.pc .pc-top{display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px;
+  padding:26px clamp(18px,3vw,44px) 18px}
+.pc .pc-top-txt{display:grid; gap:4px; min-width:0}
+.pc .pc-crumb{color:#64748b; font-weight:800}
+.pc .pc-h1{margin:0; font-weight:900; line-height:1.15; color:#0f172a}
+.pc .pc-sub{margin:0; color:#64748b; font-weight:600}
+.pc .pc-top-actions{display:flex; gap:10px; flex-wrap:wrap}
+.pc .pc-btn{min-height:42px; padding:0 16px; border-radius:11px; border:1px solid rgba(15,23,42,.12); background:#fff; color:#0f172a; font-weight:800; cursor:pointer;
+  box-shadow:0 6px 16px rgba(15,23,42,.06); display:inline-flex; align-items:center; gap:8px; transition:transform .12s, box-shadow .12s}
+.pc .pc-btn:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 10px 22px rgba(15,23,42,.1)}
+.pc .pc-btn:disabled{opacity:.6; cursor:default}
+.pc .pc-spin-inline{display:inline-block; animation:pcSpin .8s linear infinite}
+.pc .pc-content{flex:1; display:flex; flex-direction:column; gap:16px; padding:0 clamp(18px,3vw,44px) 32px}
 
-  /* toolbar */
-  toolbar: { margin: "18px 0", display: "grid", gridTemplateColumns: "minmax(260px,1fr) auto", gap: 14, alignItems: "center" },
-  searchWrap: { display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, background: "#fff", border: "1px solid rgba(15,23,42,.13)", boxShadow: "0 12px 28px rgba(15,23,42,.08)" },
-  searchInput: { flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", color: "#0f172a", fontWeight: 800, fontFamily: "inherit", fontSize: 14 },
-  clearBtn: { border: "none", background: "#f1f5f9", color: "#64748b", borderRadius: 8, width: 26, height: 26, cursor: "pointer", fontWeight: 900, flexShrink: 0 },
-  rightTools: { display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "flex-end", alignItems: "center" },
-  filters: { display: "flex", flexWrap: "wrap", gap: 6, background: "#fff", padding: 5, borderRadius: 12, border: "1px solid rgba(15,23,42,.1)", boxShadow: "0 10px 20px rgba(15,23,42,.06)" },
-  filterChip: { display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "#475569", fontWeight: 900, fontSize: 13, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit" },
-  filterChipOn: { background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", boxShadow: "0 6px 14px rgba(15,118,110,.3)" },
-  filterN: { fontSize: 11, fontWeight: 900, opacity: .8, background: "rgba(15,23,42,.08)", borderRadius: 999, padding: "1px 7px" },
-  sortSel: { minHeight: 44, padding: "0 12px", borderRadius: 10, border: "1px solid rgba(15,23,42,.13)", background: "#fff", color: "#334155", fontWeight: 900, fontFamily: "inherit", cursor: "pointer" },
+.pc .pc-panel{flex:1; border-radius:18px; background:#fff; border:1px solid rgba(15,23,42,.08); box-shadow:0 14px 34px rgba(15,23,42,.06);
+  padding:clamp(10px,1.6vw,22px); animation:pcIn .25s ease both}
 
-  /* grid + cards */
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 },
-  card: { position: "relative", minHeight: 210, display: "grid", gridTemplateRows: "auto auto auto 1fr auto", gap: 10, textAlign: "start", padding: "20px 22px", borderRadius: 16, cursor: "pointer", background: "#fff", border: "1px solid rgba(15,23,42,.1)", boxShadow: "0 12px 30px rgba(15,23,42,.08)", transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease", overflow: "hidden" },
-  cardTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  avatar: { width: 52, height: 52, borderRadius: 13, display: "grid", placeItems: "center", color: "#fff", fontWeight: 1000, fontSize: 21, flexShrink: 0 },
-  badge2: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 900, borderRadius: 999, padding: "4px 11px" },
-  badgeDot2: { width: 7, height: 7, borderRadius: 999 },
-  cardName: { fontWeight: 1000, fontSize: 19, color: "#0f172a", lineHeight: 1.2 },
-  indTag: { display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 900, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "5px 12px", width: "fit-content" },
-  metaRows: { display: "grid", gap: 5, alignContent: "start" },
-  metaRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13 },
-  metaK: { color: "#94a3b8", fontWeight: 800 },
-  metaV: { color: "#334155", fontWeight: 900, textAlign: "end", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  cardFoot: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 12, borderTop: "1px solid #f1f5f9" },
-  opensTag: { fontSize: 11.5, fontWeight: 800, color: "#94a3b8" },
-  enterTag: { fontWeight: 1000, color: "#0f766e", fontSize: 14 },
+/* stat tiles */
+.pc .pc-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px}
+.pc .pc-stat{position:relative; display:grid; gap:8px; text-align:start; padding:16px 18px; border-radius:16px; background:#fff; cursor:pointer;
+  border:1px solid rgba(15,23,42,.08); box-shadow:0 10px 26px rgba(15,23,42,.06); transition:transform .15s, box-shadow .15s, border-color .15s; overflow:hidden}
+.pc .pc-stat::before{content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--tint)}
+.pc .pc-stat:hover{transform:translateY(-2px); box-shadow:0 16px 32px rgba(15,23,42,.1)}
+.pc .pc-stat.on{border-color:var(--tint); box-shadow:0 0 0 3px color-mix(in srgb,var(--tint) 18%,transparent),0 16px 32px rgba(15,23,42,.1)}
+.pc .pc-stat-head{display:flex; align-items:center; gap:8px}
+.pc .pc-stat-ico{width:30px; height:30px; border-radius:9px; display:grid; place-items:center; background:color-mix(in srgb,var(--tint) 12%,#fff)}
+.pc .pc-stat-label{color:#475569; font-weight:800}
+.pc .pc-stat-val{font-weight:900; line-height:1; color:#0f172a}
+.pc .pc-stat-bar{height:6px; border-radius:999px; background:#eef2f6; overflow:hidden}
+.pc .pc-stat-bar > span{display:block; height:100%; border-radius:999px; background:var(--tint); transition:width .6s ease}
+.pc .pc-stat-pct{color:#94a3b8; font-weight:700}
 
-  empty: { padding: 46, textAlign: "center", borderRadius: 14, background: "#fff", border: "1px solid rgba(15,23,42,.12)", color: "#64748b", fontWeight: 850, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 },
-  spinner: { width: 26, height: 26, borderRadius: "50%", border: "3px solid rgba(15,118,110,.25)", borderTopColor: "#0f766e", display: "inline-block" },
-  footer: { marginTop: 28, textAlign: "center", color: "#64748b", fontWeight: 800, fontSize: 13 },
-};
+/* toolbar */
+.pc .pc-toolbar{position:sticky; top:0; z-index:5; display:grid; grid-template-columns:minmax(240px,1.2fr) auto auto; gap:12px; align-items:center;
+  padding:10px; margin:0 -10px; border-radius:16px; background:rgba(241,245,249,.86); backdrop-filter:blur(10px)}
+.pc .pc-search{display:flex; align-items:center; gap:10px; min-height:46px; padding:0 14px; border-radius:12px; background:#fff; border:1px solid rgba(15,23,42,.12);
+  box-shadow:0 8px 20px rgba(15,23,42,.06); transition:border-color .15s, box-shadow .15s}
+.pc .pc-search:focus-within{border-color:#14b8a6; box-shadow:0 0 0 3px rgba(20,184,166,.18)}
+.pc .pc-search-in{flex:1; min-width:0; border:none; outline:none; background:transparent; color:#0f172a; font-weight:700; font-family:inherit}
+.pc .pc-clear{border:none; background:#f1f5f9; color:#64748b; border-radius:8px; width:26px; height:26px; cursor:pointer; font-weight:900; flex-shrink:0}
+.pc .pc-kbd{border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:6px; padding:0 7px; color:#64748b; background:#f8fafc; font-family:inherit; font-weight:800}
+.pc .pc-chips{display:flex; flex-wrap:wrap; gap:4px; padding:4px; border-radius:12px; background:#fff; border:1px solid rgba(15,23,42,.1)}
+.pc .pc-chip{display:inline-flex; align-items:center; gap:6px; border:none; background:transparent; color:#475569; font-weight:800; padding:8px 11px; border-radius:9px; cursor:pointer}
+.pc .pc-chip:hover{background:#f1f5f9}
+.pc .pc-chip.on{background:linear-gradient(135deg,#0f766e,#0891b2); color:#fff; box-shadow:0 6px 14px rgba(15,118,110,.3)}
+.pc .pc-chip-n{font-weight:900; opacity:.85; background:rgba(15,23,42,.08); border-radius:999px; padding:0 7px}
+.pc .pc-chip.on .pc-chip-n{background:rgba(255,255,255,.22)}
+.pc .pc-tool-end{display:flex; gap:8px; align-items:center; justify-content:flex-end}
+.pc .pc-select{min-height:46px; padding:0 12px; border-radius:12px; border:1px solid rgba(15,23,42,.12); background:#fff; color:#334155; font-weight:800; font-family:inherit; cursor:pointer}
+.pc .pc-seg{display:flex; padding:4px; gap:2px; border-radius:12px; background:#fff; border:1px solid rgba(15,23,42,.1)}
+.pc .pc-seg button{width:38px; height:36px; border:none; border-radius:9px; background:transparent; color:#64748b; cursor:pointer; font-weight:900}
+.pc .pc-seg button.on{background:#0f766e; color:#fff}
+.pc .pc-result{display:flex; align-items:center; gap:12px; color:#64748b; font-weight:700; margin-top:-6px}
+.pc .pc-result b{color:#0f172a}
+.pc .pc-reset{border:none; background:none; color:#0f766e; font-weight:800; cursor:pointer; text-decoration:underline; padding:0}
+
+/* cards */
+.pc .pc-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr)); gap:18px}
+.pc .pc-card{position:relative; display:flex; flex-direction:column; gap:10px; text-align:start; padding:22px 22px 18px; min-height:236px; border-radius:18px;
+  background:#fff; border:1px solid rgba(15,23,42,.08); box-shadow:0 12px 30px rgba(15,23,42,.07); cursor:pointer; overflow:hidden;
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; animation:pcIn .32s ease both}
+.pc .pc-card-band{position:absolute; inset:0 0 auto 0; height:84px; background:var(--grad); opacity:.1; transition:opacity .18s}
+.pc .pc-card:hover, .pc .pc-card:focus-visible{transform:translateY(-4px); border-color:var(--tint); box-shadow:0 26px 50px var(--glow); outline:none}
+.pc .pc-card:hover .pc-card-band, .pc .pc-card:focus-visible .pc-card-band{opacity:.18}
+.pc .pc-card > span{position:relative}
+.pc .pc-card-top{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.pc .pc-ava{width:54px; height:54px; border-radius:15px; display:grid; place-items:center; color:#fff; font-weight:900; flex-shrink:0; box-shadow:0 12px 24px var(--glow, rgba(15,23,42,.2))}
+.pc .pc-ava.sm{width:42px; height:42px; border-radius:12px; box-shadow:none}
+.pc .pc-badge{display:inline-flex; align-items:center; gap:6px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap}
+.pc .pc-badge-dot{width:7px; height:7px; border-radius:999px}
+.pc .pc-card-name{font-weight:900; color:#0f172a; line-height:1.2; margin-top:4px}
+.pc .pc-ind{display:inline-flex; align-items:center; gap:7px; width:fit-content; font-weight:800; color:var(--tint); background:color-mix(in srgb,var(--tint) 9%,#fff); border-radius:999px; padding:4px 12px}
+.pc .pc-meta{flex:1; display:grid; gap:6px; align-content:start; padding-top:4px}
+.pc .pc-meta-row{display:flex; justify-content:space-between; gap:10px}
+.pc .pc-k{color:#94a3b8; font-weight:700}
+.pc .pc-v{color:#334155; font-weight:800; text-align:end; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pc .pc-card-foot{display:flex; align-items:center; justify-content:space-between; gap:10px; padding-top:12px; border-top:1px dashed #e2e8f0}
+.pc .pc-opens{color:#94a3b8; font-weight:700}
+.pc .pc-enter{font-weight:900; color:var(--tint, #0f766e); white-space:nowrap}
+.pc .pc-arrow{display:inline-block; transition:transform .18s}
+.pc .pc-card:hover .pc-arrow{transform:translateX(4px)}
+
+/* list view */
+.pc .pc-list{display:grid; gap:8px}
+.pc .pc-row{display:grid; grid-template-columns:auto minmax(180px,1.6fr) minmax(110px,1fr) minmax(110px,1fr) auto 90px; gap:16px; align-items:center;
+  text-align:start; padding:12px 18px; border-radius:14px; background:#fff; border:1px solid rgba(15,23,42,.08); cursor:pointer;
+  box-shadow:0 6px 16px rgba(15,23,42,.04); transition:border-color .15s, box-shadow .15s, transform .15s; animation:pcIn .28s ease both}
+.pc .pc-row:hover, .pc .pc-row:focus-visible{border-color:var(--tint); box-shadow:0 12px 28px rgba(15,23,42,.1); transform:translateX(3px); outline:none}
+.pc .pc-row-name{display:grid; gap:2px; font-weight:900; color:#0f172a; min-width:0}
+.pc .pc-row-ind{color:#64748b; font-weight:700}
+.pc .pc-row-meta{display:grid; gap:1px; color:#334155; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pc .pc-row .pc-enter{text-align:end}
+
+/* states */
+.pc .pc-empty{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:56px 20px; text-align:center;
+  border-radius:18px; background:#fff; border:1px dashed #cbd5e1; color:#64748b; font-weight:700}
+.pc .pc-empty.err{color:#991b1b; border-color:#fca5a5; background:#fff7f7}
+.pc .pc-empty b{color:#0f172a}
+.pc .pc-empty-ico{line-height:1}
+.pc .pc-btn.light{margin-top:6px}
+.pc .pc-spinner{width:26px; height:26px; border-radius:50%; border:3px solid rgba(15,118,110,.25); border-top-color:#0f766e; display:inline-block; animation:pcSpin .8s linear infinite}
+.pc .pc-skel{height:236px; border-radius:18px; border:1px solid rgba(15,23,42,.06);
+  background:linear-gradient(90deg,#fff 0%,#eef2f6 50%,#fff 100%); background-size:800px 100%; animation:pcShimmer 1.3s linear infinite}
+.pc .pc-skel.row{height:68px; border-radius:14px}
+
+/* type scale — must out-rank globals.css #root * {font-size:14px !important} */
+#root .pc.pc .pc-eyebrow{font-size:11px !important; font-weight:900; letter-spacing:.12em; color:#5eead4}
+#root .pc.pc .pc-brand-name{font-size:18px !important; font-weight:900; line-height:1.1}
+#root .pc.pc .pc-nav-ico{font-size:17px !important}
+#root .pc.pc .pc-nav-label{font-size:14px !important}
+#root .pc.pc .pc-nav-ar{font-size:12px !important}
+#root .pc.pc .pc-nav-n{font-size:12px !important}
+#root .pc.pc .pc-clock-time{font-size:30px !important}
+#root .pc.pc .pc-clock-date, #root .pc.pc .pc-live{font-size:12.5px !important}
+#root .pc.pc .pc-credit{font-size:11.5px !important}
+#root .pc.pc .pc-crumb{font-size:12.5px !important}
+#root .pc.pc .pc-h1, #root .pc.pc .pc-h1 *{font-size:clamp(22px,2.2vw,30px) !important}
+#root .pc.pc .pc-sub{font-size:14.5px !important}
+#root .pc.pc .pc-stat-ico{font-size:15px !important}
+#root .pc.pc .pc-stat-label{font-size:13px !important}
+#root .pc.pc .pc-stat-val{font-size:32px !important}
+#root .pc.pc .pc-stat-pct{font-size:12px !important}
+#root .pc.pc .pc-search-in{font-size:15px !important}
+#root .pc.pc .pc-chip{font-size:13px !important}
+#root .pc.pc .pc-chip-n, #root .pc.pc .pc-kbd{font-size:11.5px !important}
+#root .pc.pc .pc-seg button{font-size:16px !important}
+#root .pc.pc .pc-result, #root .pc.pc .pc-result *{font-size:13px !important}
+#root .pc.pc .pc-ava{font-size:22px !important}
+#root .pc.pc .pc-ava.sm{font-size:17px !important}
+#root .pc.pc .pc-badge{font-size:12px !important}
+#root .pc.pc .pc-card-name{font-size:20px !important}
+#root .pc.pc .pc-ind, #root .pc.pc .pc-ind *{font-size:12.5px !important}
+#root .pc.pc .pc-k{font-size:12.5px !important}
+#root .pc.pc .pc-v{font-size:13.5px !important}
+#root .pc.pc .pc-opens{font-size:12px !important}
+#root .pc.pc .pc-enter, #root .pc.pc .pc-enter *{font-size:14.5px !important}
+#root .pc.pc .pc-row-name{font-size:16px !important}
+#root .pc.pc .pc-row-ind{font-size:12.5px !important}
+#root .pc.pc .pc-row-meta{font-size:13.5px !important}
+#root .pc.pc .pc-row-meta .pc-k{font-size:11.5px !important}
+#root .pc.pc .pc-empty, #root .pc.pc .pc-empty b{font-size:15px !important}
+#root .pc.pc .pc-empty-ico{font-size:40px !important}
+
+/* ── wide screens: more room for cards ── */
+@media (min-width:1700px){
+  .pc.pc-shell{grid-template-columns:300px minmax(0,1fr)}
+  .pc .pc-grid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+}
+
+/* ── tablets: toolbar wraps ── */
+@media (max-width:1280px){
+  .pc .pc-toolbar{grid-template-columns:1fr auto}
+  .pc .pc-chips{grid-column:1 / -1; grid-row:2}
+  .pc .pc-row{grid-template-columns:auto minmax(160px,1.6fr) minmax(100px,1fr) auto 80px}
+  .pc .pc-row .pc-row-meta:nth-of-type(4){display:none}
+}
+
+/* ── phones: sidebar folds into a top bar, page scrolls normally ── */
+@media (max-width:900px){
+  .pc.pc-shell{display:block; height:auto; min-height:100vh; overflow:visible}
+  .pc .pc-side{flex-direction:row; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 14px; overflow:visible}
+  .pc .pc-brand{border:none; padding:0; flex:1}
+  .pc .pc-logo{width:40px; height:40px}
+  .pc .pc-nav{order:3; width:100%; display:flex; overflow-x:auto; gap:6px; padding-bottom:2px}
+  .pc .pc-nav-btn{width:auto; flex-shrink:0; padding:8px 10px}
+  .pc .pc-nav-ar, .pc .pc-side-fill, .pc .pc-clock, .pc .pc-credit{display:none}
+  .pc .pc-logout{min-height:38px; padding:0 12px}
+  .pc .pc-main{overflow:visible}
+  .pc .pc-toolbar{grid-template-columns:1fr; position:static}
+  .pc .pc-chips{grid-row:auto}
+  .pc .pc-tool-end{justify-content:space-between}
+  .pc .pc-row{grid-template-columns:auto minmax(0,1fr) auto}
+  .pc .pc-row .pc-row-meta, .pc .pc-row .pc-enter{display:none}
+}
+`;
