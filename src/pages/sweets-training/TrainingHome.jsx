@@ -21,8 +21,12 @@ const cards = [
     label: "Create New Training",
     ar: "إنشاء تدريب جديد",
     desc: "Create a session, attach the question bank, and save it online.",
+    descAr: "أنشئ جلسة، أرفق بنك الأسئلة، واحفظها على السيرفر.",
+    open: "Open section",
+    openAr: "فتح القسم",
     tone: "teal",
     action: "Create",
+    actionAr: "إنشاء",
   },
   {
     to: "/training/sessions",
@@ -30,8 +34,12 @@ const cards = [
     label: "Training Library",
     ar: "مكتبة التدريب",
     desc: "Browse sessions, add participants, run quizzes, and track KPIs.",
+    descAr: "تصفّح الجلسات، أضف المشاركين، شغّل الاختبارات، وتابع المؤشرات.",
+    open: "Open reports",
+    openAr: "فتح السجلات",
     tone: "blue",
     action: "Browse",
+    actionAr: "تصفّح",
   },
   {
     to: "/training/annual-plan",
@@ -39,8 +47,12 @@ const cards = [
     label: "Annual Training Plan",
     ar: "الخطة السنوية للتدريب",
     desc: "Plan required training per branch and month.",
+    descAr: "خطّط التدريب المطلوب لكل منطقة وشهر، مع ملخص المنفّذ والناقص.",
+    open: "Open section",
+    openAr: "فتح القسم",
     tone: "green",
     action: "Plan",
+    actionAr: "تخطيط",
   },
   {
     to: "/training/admin",
@@ -48,8 +60,12 @@ const cards = [
     label: "Training Admin",
     ar: "إدارة التدريب",
     desc: "Manage modules, questions, references, and settings.",
+    descAr: "إدارة المواد والأسئلة والمراجع والإعدادات.",
+    open: "Open section",
+    openAr: "فتح القسم",
     tone: "cyan",
     action: "Admin",
+    actionAr: "إدارة",
   },
   {
     to: "/training/gap-analysis",
@@ -57,8 +73,12 @@ const cards = [
     label: "Training Gap Analysis",
     ar: "تحليل فجوات التدريب",
     desc: "Review missing sessions, participant coverage, and pass rates.",
+    descAr: "راجع الجلسات الناقصة وتغطية المشاركين ونسب النجاح.",
+    open: "Open section",
+    openAr: "فتح القسم",
     tone: "orange",
     action: "Analyze",
+    actionAr: "تحليل",
   },
 ];
 
@@ -86,7 +106,7 @@ export default function TrainingHome() {
     const q = query.trim().toLowerCase();
     if (!q) return cards;
     return cards.filter((item) =>
-      `${item.label} ${item.ar} ${item.desc}`.toLowerCase().includes(q)
+      `${item.label} ${item.ar} ${item.desc} ${item.descAr}`.toLowerCase().includes(q)
     );
   }, [query]);
 
@@ -168,13 +188,14 @@ export default function TrainingHome() {
         .tm-tone-cyan{background:linear-gradient(135deg,#0891b2,#06b6d4)}
         .tm-tone-orange{background:linear-gradient(135deg,#f97316,#ea580c)}
         .tm-cardBody{flex:1}
-        .tm-cardTop{display:flex;justify-content:flex-end;margin-top:-42px;pointer-events:none}
-        [dir="rtl"] .tm-cardTop{justify-content:flex-start}
+        /* icon and chip share one row — works in both directions (the old
+           negative-margin chip landed on the icon in RTL) */
+        .tm-cardTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
         .tm-chip{
           background:#f1f5f9;color:#334155;border-radius:999px;padding:5px 9px;
           font-size:12px;line-height:1;font-weight:1000;
         }
-        .tm-card h3{margin:10px 0 6px;font-size:16px;line-height:1.35;font-weight:1000;color:#0f172a}
+        .tm-card h3{margin:0 0 6px;font-size:16px;line-height:1.35;font-weight:1000;color:#0f172a}
         .tm-card p{margin:0;color:#475569;font-size:14px;line-height:1.5;font-weight:700}
         .tm-cardFoot{
           border-top:1px solid #e5ecea;padding-top:10px;display:flex;justify-content:space-between;
@@ -233,7 +254,7 @@ export default function TrainingHome() {
               <span>{isAr ? "الرئيسية" : "Dashboard Home"}</span>
             </button>
             <button className="tm-topBtn" onClick={() => navigate(-1)}>
-              <FiArrowLeft size={15} />
+              {isAr ? <FiArrowRight size={15} /> : <FiArrowLeft size={15} />}
               <span>{isAr ? "رجوع" : "Back"}</span>
             </button>
           </div>
@@ -248,7 +269,7 @@ export default function TrainingHome() {
               placeholder={isAr ? "ابحث في صفحات التدريب..." : "Find a training section..."}
             />
           </label>
-          <div className="tm-stat">{cards.length} Sections</div>
+          <div className="tm-stat">{isAr ? `${cards.length} أقسام` : `${cards.length} Sections`}</div>
           <div className="tm-stat">{isAr ? "وصول التدريب" : "Training Access"}</div>
         </div>
 
@@ -272,19 +293,19 @@ export default function TrainingHome() {
                     onClick={() => navigate(item.to)}
                     aria-label={item.label}
                   >
-                    <div className={`tm-cardIcon ${toneClass(item.tone)}`}>
-                      <Icon size={18} />
+                    <div className="tm-cardTop">
+                      <div className={`tm-cardIcon ${toneClass(item.tone)}`}>
+                        <Icon size={18} />
+                      </div>
+                      <span className="tm-chip">{isAr ? item.actionAr : item.action}</span>
                     </div>
                     <div className="tm-cardBody">
-                      <div className="tm-cardTop">
-                        <span className="tm-chip">{item.action}</span>
-                      </div>
                       <h3>{isAr ? item.ar : item.label}</h3>
-                      <p>{item.desc}</p>
+                      <p>{isAr ? item.descAr : item.desc}</p>
                     </div>
                     <div className="tm-cardFoot">
-                      <span>{item.action === "Browse" ? "Open reports" : "Open section"}</span>
-                      <FiArrowRight size={14} />
+                      <span>{isAr ? item.openAr : item.open}</span>
+                      {isAr ? <FiArrowLeft size={14} /> : <FiArrowRight size={14} />}
                     </div>
                   </button>
                 );

@@ -1068,10 +1068,8 @@ export default function TrainingSessionsList() {
       const arr = normalizeToArray(data).slice().sort(sortByNewest);
       setRows(arr);
 
-      const meta = Array.isArray(data)
-        ? "API returned Array"
-        : `API returned Object keys: ${Object.keys(data || {}).join(", ") || "none"}`;
-      setInfo(`${meta} — Loaded: ${arr.length}`);
+      // A user-facing count, not the raw API shape (that was a debug line).
+      setInfo(`${arr.length} session(s)`);
 
       if (selected) {
         const sid = getId(selected);
