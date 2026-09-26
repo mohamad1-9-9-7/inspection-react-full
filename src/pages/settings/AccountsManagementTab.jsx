@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
+import { permissionSectionsFor } from "../../industries";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 import {
@@ -128,6 +129,13 @@ const CRUD_OPS = [
    window). Elsewhere the column renders a muted dash so it isn't misleading. */
 const HISTORY_SECTIONS = new Set(["daily", "returns"]);
 
+/* A company on the generic engine (e.g. sweets) is permissioned per CARD of
+   its own template — rows come from industries/permissionSectionsFor, keyed
+   "sweets:daily". Its app only gates whether a card opens, so only the
+   access (view) column is offered: add / edit / delete there would be boxes
+   that nothing checks. Al Mawashi ('meat') keeps SECTIONS + CRUD_OPS. */
+const ACCESS_ONLY_OPS = CRUD_OPS.filter(o => o.id === "view");
+
 const EMPTY_FORM = {
   username: "", displayName: "", password: "", confirmPassword: "",
   isAdmin: false, isFullAccess: false, crudPerms: {}, employees: [], allowedBranches: {},
@@ -235,8 +243,9 @@ const avatarGrad = (username) =>
 /* ═══════════════════════════════════════════════════════
    CRUD PERMISSIONS TABLE (light — inside white form card)
 ═══════════════════════════════════════════════════════ */
-function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
-  const { t } = useSettingsLang();
+function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange, sections = SECTIONS, ops: OPS = CRUD_OPS }) {
+  const { t, lang } = useSettingsLang();
+  const secName = (sec) => sec.nameKey ? t(sec.nameKey) : ((lang === "ar" && sec.labelAr) || sec.label);
   const toggleSection = (sectionId) => {
     const next = { ...crudPerms };
     if (next[sectionId]) delete next[sectionId];
@@ -257,10 +266,10 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
   };
   const selectAllOps = (sectionId) => {
     const ops = crudPerms[sectionId] || [];
-    const allSelected = CRUD_OPS.every(o => ops.includes(o.id));
-    onChange({ ...crudPerms, [sectionId]: allSelected ? ["view"] : CRUD_OPS.map(o => o.id) });
+    const allSelected = OPS.every(o => ops.includes(o.id));
+    onChange({ ...crudPerms, [sectionId]: allSelected ? ["view"] : OPS.map(o => o.id) });
   };
-  const allSectionsOn = SECTIONS.every(s => crudPerms[s.id]?.length > 0);
+  const allSectionsOn = sections.every(s => crudPerms[s.id]?.length > 0);
 
   return (
     <div style={fs.permBox}>
@@ -278,7 +287,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
           {!isFullAccess && (
             <button type="button" onClick={() => {
               const next = {};
-              SECTIONS.forEach(s => { next[s.id] = allSectionsOn ? ["view"] : CRUD_OPS.map(o => o.id); });
+              sections.forEach(s => { next[s.id] = allSectionsOn ? ["view"] : OPS.map(o => o.id); });
               onChange(next);
             }} style={fs.btnSelectAll}>
               {allSectionsOn ? `⬇️ ${t("amAllViewOnly")}` : `⬆️ ${t("amAllFullAccess")}`}
@@ -297,7 +306,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
             <thead>
               <tr>
                 <th style={{ ...fs.permTh, textAlign:"start", minWidth:250 }}>{t("amColSection")}</th>
-                {CRUD_OPS.map(op => (
+                {OPS.map(op => (
                   <th key={op.id} style={{ ...fs.permTh, color:op.color, minWidth:78 }}>
                     <span style={{ fontSize:17, display:"block", lineHeight:1.4 }}>{op.icon}</span>
                     {t(op.nameKey)}
@@ -307,7 +316,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
               </tr>
             </thead>
             <tbody>
-              {SECTIONS.map((sec, i) => {
+              {sections.map((sec, i) => {
                 const hasAccess = !!(crudPerms[sec.id]?.length > 0);
                 const ops = crudPerms[sec.id] || [];
                 const theme = BRANCH_THEMES[sec.id] || BRANCH_THEMES.daily;
@@ -337,11 +346,11 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                         />
                         <span style={{ fontSize: 19, lineHeight: 1 }}>{sec.icon}</span>
                         <span style={{ fontWeight: 900, fontSize: 15, color: hasAccess ? "#0f172a" : "#64748b" }}>
-                          {t(sec.nameKey)}
+                          {secName(sec)}
                         </span>
                       </label>
                     </td>
-                    {CRUD_OPS.map(op => {
+                    {OPS.map(op => {
                       const inert = op.id === "history" && !HISTORY_SECTIONS.has(sec.id);
                       const locked = !hasAccess || (op.id !== "view" && !ops.includes("view"));
                       const on = ops.includes(op.id);
@@ -374,7 +383,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                       {hasAccess && (
                         <button type="button" onClick={() => selectAllOps(sec.id)}
                           style={fs.btnAllOps} title={t("amToggleAllOps")}>
-                          {CRUD_OPS.every(o => ops.includes(o.id)) ? "🔓" : "🔒"}
+                          {OPS.every(o => ops.includes(o.id)) ? "🔓" : "🔒"}
                         </button>
                       )}
                     </td>
@@ -635,11 +644,24 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
    ACCOUNT FORM (white card — inside dark panel)
 ═══════════════════════════════════════════════════════ */
 function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companies }) {
-  const { t } = useSettingsLang();
+  const { t, lang } = useSettingsLang();
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [err, setErr]   = useState("");
   const isEdit = !!initial?.id;
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  /* The permission list follows the company the account belongs to: Al
+     Mawashi's sections, or the cards of that company's own system. */
+  const industryOf = (companyId) =>
+    (companies || []).find(c => String(c.id) === String(companyId))?.industry || "meat";
+  const industry = industryOf(form.companyId);
+  const cardSections = permissionSectionsFor(industry); // null = Al Mawashi
+  /* Switching to a company of ANOTHER system wipes the permissions: a
+     section of one system means nothing in the other. */
+  const changeCompany = (companyId) => setForm(f => {
+    if (industryOf(companyId) === industryOf(f.companyId)) return { ...f, companyId };
+    return { ...f, companyId, crudPerms: {}, isFullAccess: false, allowedBranches: {} };
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -651,9 +673,13 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
       if (str?.level === "weak") return setErr(`${t("amPasswordTooWeak")} ${str.needs}`);
       if (form.password !== form.confirmPassword) return setErr(t("amPasswordsNoMatch"));
     }
-    if (!form.isFullAccess && Object.keys(form.crudPerms).length === 0)
+    /* Keep only the permissions of THIS company's system (an account moved
+       from Al Mawashi must not carry its old section keys along). */
+    const valid = new Set((cardSections || SECTIONS).map(s => s.id));
+    const crudPerms = Object.fromEntries(Object.entries(form.crudPerms || {}).filter(([k]) => valid.has(k)));
+    if (!form.isFullAccess && Object.keys(crudPerms).length === 0)
       return setErr(t("amGrantOne"));
-    onSave(form);
+    onSave({ ...form, crudPerms, ...(cardSections ? { allowedBranches: {} } : {}) });
   };
 
   return (
@@ -679,7 +705,7 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
         <label style={{ ...fs.field, marginBottom: 18 }}>
           <span style={fs.label}>🏢 {t("amCompany")}</span>
           <select style={fs.input} value={form.companyId}
-            onChange={e => set("companyId", e.target.value)}>
+            onChange={e => changeCompany(e.target.value)}>
             <option value="">— {t("amPlatformLevel")} —</option>
             {companies.map(c => (
               <option key={c.id} value={String(c.id)}>{c.name}</option>
@@ -726,13 +752,22 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
         </span>
       </label>
 
+      {cardSections && (
+        <div style={{ marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: "#ecfeff", border: "1px solid #a5f3fc", color: "#155e75", fontWeight: 800, fontSize: 14 }}>
+          🏢 {lang === "ar"
+            ? "صلاحيات نظام هذه الشركة — كل سطر كرت من كروتها، والحساب يرى فقط الكروت المختارة."
+            : "This company's own system — one row per card; the account sees only the cards ticked here."}
+        </div>
+      )}
+
       <CrudTable isFullAccess={form.isFullAccess} crudPerms={form.crudPerms}
-        onChange={v => set("crudPerms", v)} onFullAccessChange={v => set("isFullAccess", v)} />
+        onChange={v => set("crudPerms", v)} onFullAccessChange={v => set("isFullAccess", v)}
+        sections={cardSections || SECTIONS} ops={cardSections ? ACCESS_ONLY_OPS : CRUD_OPS} />
 
-      <EmployeesList employees={form.employees} onChange={v => set("employees", v)} />
+      {!cardSections && <EmployeesList employees={form.employees} onChange={v => set("employees", v)} />}
 
-      {/* Per-section access control */}
-      {(() => {
+      {/* Per-section access control (Al Mawashi sections only) */}
+      {!cardSections && (() => {
         const access = form.allowedBranches || {};
         const activeSections = SECTIONS.filter(sec => {
           const cfg = SECTION_ITEMS[sec.id];
@@ -856,6 +891,11 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
           </span>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:7, alignItems:"center" }}>
+          {/* Which company the account belongs to — the Platform Center lists
+              every company's accounts together. */}
+          <span className="acm-chip" style={ac.chip(TK.teal, TK.tealSoft)}>
+            🏢 {user.is_super_admin ? "Platform" : (user.company_name || "—")}
+          </span>
           {user.is_admin && (
             <span className="acm-chip" style={ac.chip(TK.amber, TK.amberSoft)}>👑 {t("adminTag")}</span>
           )}
@@ -2016,7 +2056,7 @@ export default function AccountsManagementTab({ onClose }) {
   const [companies, setCompanies] = useState([]);
   /* Grouping: "none" | "branch" (derived from allowed_branches, zero setup)
      | "custom" (the admin's own buckets, stored server-side). */
-  const [groupBy, setGroupBy]   = useState("none");
+  const [groupBy, setGroupBy]   = useState("company"); // Platform Center: every company together
   const [sortBy, setSortBy]     = useState("name");
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [showGroups, setShowGroups] = useState(false);
@@ -2252,7 +2292,17 @@ export default function AccountsManagementTab({ onClose }) {
 
   const buckets = React.useMemo(() => {
     let list = null;
-    if (groupBy === "branch") {
+    if (groupBy === "company") {
+      const map = new Map();
+      sortedUsers.forEach(u => {
+        const key = u.is_super_admin ? "__platform__" : String(u.company_id ?? "__none__");
+        const label = u.is_super_admin ? "🛡️ Platform" : `🏢 ${u.company_name || "—"}`;
+        if (!map.has(key)) map.set(key, { key, label, users: [] });
+        map.get(key).users.push(u);
+      });
+      list = [...map.values()].sort((a, b) =>
+        (a.key === "__platform__" ? -1 : b.key === "__platform__" ? 1 : String(a.label).localeCompare(String(b.label))));
+    } else if (groupBy === "branch") {
       list = autoGroupByBranch(sortedUsers, { fullAccessLabel: t("amGroupAllAccess") });
     } else if (groupBy === "custom") {
       list = groupByCustom(sortedUsers, groups, { ungroupedLabel: t("amGroupUngrouped") });
@@ -2484,6 +2534,7 @@ export default function AccountsManagementTab({ onClose }) {
                 <select value={groupBy} onChange={e => setGroupBy(e.target.value)}
                   style={p.toolSelect} title={t("amGroupBy")}>
                   <option value="none">▤ {t("amGroupNone")}</option>
+                  <option value="company">🏢 {t("amCompany")}</option>
                   <option value="branch">🏬 {t("amGroupBranch")}</option>
                   <option value="custom">🏷️ {t("amGroupCustom")}{groups.length ? ` (${groups.length})` : ""}</option>
                 </select>

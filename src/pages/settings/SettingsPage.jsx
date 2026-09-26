@@ -9,18 +9,13 @@ import {
   FiBell,
   FiBox,
   FiCalendar,
-  FiCreditCard,
   FiDatabase,
   FiDownloadCloud,
   FiGrid,
   FiHardDrive,
-  FiHeart,
-  FiImage,
   FiSearch,
-  FiShield,
   FiSliders,
   FiUserCheck,
-  FiUsers,
 } from "react-icons/fi";
 import logo from "../../assets/almawashi-logo.jpg";
 
@@ -30,16 +25,12 @@ import ProductsTab from "./ProductsTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
 import NotificationsTab from "./NotificationsTab";
 import DataInventory from "./tools/DataInventory";
-import ServerHealth from "./tools/ServerHealth";
 import BulkExport from "./tools/BulkExport";
 import DateTree from "./tools/DateTree";
 import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
-import ImageMigration from "../admin/ImageMigration";
 import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
 import ReferenceNumberBackfill from "../admin/ReferenceNumberBackfill";
-import AccountsManagementTab from "./AccountsManagementTab";
-import SecurityControlsTab, { getSecuritySettings } from "./SecurityControlsTab";
-import BillingPlansTab from "./BillingPlansTab";
+import { getSecuritySettings } from "./SecurityControlsTab";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
 import { isItemAllowed } from "../../utils/sectionItems";
@@ -149,75 +140,14 @@ const SECTIONS = [
       },
     ],
   },
-  {
-    id: "accounts",
-    label: "Accounts",
-    lk: "secAccounts",
-    items: [
-      {
-        id: "accounts-mgmt",
-        Icon: FiUsers,
-        title: "Account Management",
-        desc: "Users, permissions, activity log",
-        tk: "tAccounts",
-        dk: "tAccountsD",
-        grad: "linear-gradient(135deg,#7c3aed,#6d28d9)",
-        glow: "rgba(124,58,237,.30)",
-      },
-    ],
-  },
-  {
-    id: "billing",
-    label: "Billing & Plans",
-    lk: "secBilling",
-    items: [
-      {
-        id: "billing-plans",
-        // INSPECT PRO's own books (customers, prices, invoices) — the platform
-        // owner's, never a tenant admin's. The server enforces the same rule.
-        superOnly: true,
-        Icon: FiCreditCard,
-        title: "Billing & Plans",
-        desc: "Overview, subscription, plans, companies, quotations",
-        tk: "billingPlansHub",
-        dk: "billingPlansHubD",
-        grad: "linear-gradient(135deg,#059669,#065f46)",
-        glow: "rgba(5,150,105,.30)",
-      },
-    ],
-  },
-  {
-    id: "security",
-    label: "Security",
-    lk: "secSecurity",
-    items: [
-      {
-        id: "security-controls",
-        Icon: FiShield,
-        title: "Security Controls",
-        desc: "Delete permissions, read-only mode, session timeout",
-        tk: "tSecurity",
-        dk: "tSecurityD",
-        grad: "linear-gradient(135deg,#dc2626,#9f1239)",
-        glow: "rgba(220,38,38,.30)",
-      },
-    ],
-  },
+  /* Accounts & permissions, Billing & plans, Security controls, Image
+     cleanup and Server health are PLATFORM tools, not a company's: they live
+     in the super-admin's Platform Center (/select-company) now. */
   {
     id: "admin",
     label: "Admin Tools",
     lk: "secAdmin",
     items: [
-      {
-        id: "image-migration",
-        Icon: FiImage,
-        title: "Image Cleanup",
-        desc: "Convert base64 to Cloudinary URLs",
-        tk: "tImageMigration",
-        dk: "tImageMigrationD",
-        grad: "linear-gradient(135deg,#ec4899,#db2777)",
-        glow: "rgba(236,72,153,.30)",
-      },
       {
         id: "complaint-numbers",
         Icon: FiGrid,
@@ -237,16 +167,6 @@ const SECTIONS = [
         dk: "tReferenceNumbersD",
         grad: "linear-gradient(135deg,#0f766e,#14b8a6)",
         glow: "rgba(15,118,110,.30)",
-      },
-      {
-        id: "server-health",
-        Icon: FiHeart,
-        title: "Server Health",
-        desc: "Ping + latency monitor",
-        tk: "tServerHealth",
-        dk: "tServerHealthD",
-        grad: "linear-gradient(135deg,#ef4444,#dc2626)",
-        glow: "rgba(239,68,68,.30)",
       },
     ],
   },
@@ -279,18 +199,10 @@ function toolComponent(active) {
       return <ProductsTab />;
     case "staff-directory":
       return <StaffDirectoryTab />;
-    case "image-migration":
-      return <ImageMigration />;
     case "complaint-numbers":
       return <ComplaintNumberBackfill />;
     case "reference-numbers":
       return <ReferenceNumberBackfill />;
-    case "server-health":
-      return <ServerHealth />;
-    case "billing-plans":
-      return <BillingPlansTab />;
-    case "security-controls":
-      return <SecurityControlsTab />;
     default:
       return null;
   }
@@ -432,36 +344,6 @@ export default function SettingsPage() {
       <span>{t("allTools")}</span>
     </button>
   );
-
-  /* Billing & Plans runs full-screen: no hero, no side panel — the whole
-     viewport belongs to the tool (quotations need the room). */
-  if (active === "billing-plans" && activeItem) {
-    return (
-      <main className="settings-new-page" style={styles.fullPage} dir={dir}>
-        <div style={styles.fullBar}>
-          <button type="button" onClick={() => setActive(null)} style={styles.fullBack}>
-            <FiArrowLeft aria-hidden="true" />
-            <span>{t("allTools")}</span>
-          </button>
-          <div style={styles.fullTitleWrap}>
-            <span style={styles.fullIcon(activeItem)}><activeItem.Icon aria-hidden="true" size={22} /></span>
-            <span className="settings-full-title" style={styles.fullTitle}>{t(activeItem.tk)}</span>
-          </div>
-          <LangToggle lang={lang} toggle={toggle} style={styles.fullLang} />
-        </div>
-        <BillingPlansTab fullScreen />
-      </main>
-    );
-  }
-
-  if (active === "accounts-mgmt") {
-    return (
-      <main className="settings-new-page" style={styles.page} dir={dir}>
-        <AccountsManagementTab onClose={() => setActive(null)} />
-        {backFab}
-      </main>
-    );
-  }
 
   return (
     <main className="settings-new-page" style={styles.page} dir={dir}>

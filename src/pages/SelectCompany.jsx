@@ -1,16 +1,38 @@
 // src/pages/SelectCompany.jsx
-// Platform-owner landing screen: one card per company, shown right after
+// PLATFORM CENTER — the super-admin's home, OUTSIDE every company. Tabs:
+//   🏢 Companies            enter a company (below)
+//   👥 Accounts & Perms     every company's accounts; the permission list
+//                           follows the account's company (AccountsManagementTab)
+//   💳 Billing              companies (disable / re-enable), plans, invoices,
+//                           quotations, seller profile (BillingPlansTab)
+//   🛡️ Security & Server    security controls, server health, image cleanup
+// None of these live in a company's own Settings any more.
+//
+// Companies tab — one card per company, shown right after
 // login for a super-admin account only. Picking one sets the active company
 // context (utils/companyContext.js) that authFetch.js then attaches to every
 // scoped API call, and sends the owner into the normal dashboard "as" that
 // company. Regular accounts never see this screen — their company is fixed
 // by their own login token, so App.jsx never routes them here.
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import logo from "../assets/almawashi-logo.jpg";
-import { setActiveCompany } from "../utils/companyContext";
+import { setActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { clearAppSession } from "../utils/authFetch";
+
+const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
+const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
+const SecurityControlsTab   = lazy(() => import("./settings/SecurityControlsTab"));
+const ServerHealth          = lazy(() => import("./settings/tools/ServerHealth"));
+const ImageMigration        = lazy(() => import("./admin/ImageMigration"));
+
+const CENTER_TABS = [
+  { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات" },
+  { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات" },
+  { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة" },
+  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر" },
+];
 
 const STATUS_META = {
   active:    { bg: "#d1fae5", text: "#065f46", dot: "#10b981", label: "Active" },
@@ -41,6 +63,9 @@ const SORTS = {
 
 export default function SelectCompany() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = CENTER_TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "companies";
+  const setTab = (id) => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", id); return n; }, { replace: true });
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -77,6 +102,10 @@ export default function SelectCompany() {
       navigate("/named-dashboard", { replace: true });
       return;
     }
+    // The center is OUTSIDE every company: no active company, so the account
+    // list and the rest read across all of them (authFetch adds ?company_id
+    // only while one is picked).
+    clearActiveCompany();
     load();
     const id = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(id);
@@ -161,11 +190,11 @@ export default function SelectCompany() {
             <div style={S.brand}>
               <img src={logo} alt="Al Mawashi" style={S.logo} />
               <div style={{ minWidth: 0 }}>
-                <p style={S.eyebrow}>Al Mawashi QMS · Platform Owner</p>
-                <h1 style={S.title}>Choose a company</h1>
+                <p style={S.eyebrow}>INSPECT PRO · Platform Owner</p>
+                <h1 style={S.title}>Platform Center</h1>
                 <p style={S.subtitle}>
-                  You're signed in as the platform owner. Pick a company to work inside it —
-                  switch to another anytime from the dashboard.
+                  Everything above the companies — accounts and permissions, subscriptions,
+                  security. Enter a company from the Companies tab.
                 </p>
                 <div style={S.badge}>
                   <span className="sc-pulse" style={S.badgeDot} />
@@ -179,13 +208,42 @@ export default function SelectCompany() {
               <button type="button" style={S.ghostBtn} onClick={load} disabled={loading}>
                 {loading ? "…" : "↻"} Refresh
               </button>
-              <button type="button" style={S.ghostBtn} onClick={() => navigate("/settings")}>🏢 Manage</button>
+              <button type="button" style={S.ghostBtn} onClick={() => setTab("billing")}>💳 Billing</button>
               <button type="button" style={S.dangerBtn} onClick={logout}>🚪 Back to Login</button>
             </div>
           </div>
           <div aria-hidden="true" style={S.heroLine} />
         </section>
 
+        {/* ── Center tabs ── */}
+        <nav style={S.tabs} role="tablist">
+          {CENTER_TABS.map((x) => (
+            <button key={x.id} type="button" role="tab" aria-selected={tab === x.id}
+              onClick={() => setTab(x.id)}
+              style={{ ...S.tabBtn, ...(tab === x.id ? S.tabOn : null) }}>
+              <span aria-hidden="true">{x.icon}</span> {x.label}
+              <span style={S.tabAr} lang="ar">{x.ar}</span>
+            </button>
+          ))}
+        </nav>
+
+        {tab !== "companies" && (
+          <section style={S.panel}>
+            <Suspense fallback={<div style={S.panelLoading}>Loading…</div>}>
+              {tab === "accounts" && <AccountsManagementTab />}
+              {tab === "billing" && <BillingPlansTab />}
+              {tab === "security" && (
+                <div style={{ display: "grid", gap: 22 }}>
+                  <SecurityControlsTab />
+                  <ServerHealth />
+                  <ImageMigration />
+                </div>
+              )}
+            </Suspense>
+          </section>
+        )}
+
+        {tab === "companies" && (<>
         {/* ── Stat tiles ── */}
         <section style={S.stats}>
           {STAT_TILES.map((t) => (
@@ -301,6 +359,7 @@ export default function SelectCompany() {
             })}
           </div>
         )}
+        </>)}
 
         <footer style={S.footer}>Built by Eng. Mohammed Abdullah</footer>
       </div>
@@ -317,6 +376,14 @@ const S = {
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
   layout: { width: "min(1240px, 100%)", margin: "0 auto" },
+
+  /* center tabs */
+  tabs: { marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 },
+  tabBtn: { display: "inline-flex", alignItems: "center", gap: 8, minHeight: 46, padding: "8px 16px", borderRadius: 12, border: "1px solid rgba(15,23,42,.12)", background: "#fff", color: "#0f172a", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 6px 16px rgba(15,23,42,.05)" },
+  tabOn: { background: "#0f766e", color: "#fff", borderColor: "#0f766e", boxShadow: "0 10px 22px rgba(15,118,110,.28)" },
+  tabAr: { fontWeight: 800, opacity: .75, fontSize: 12 },
+  panel: { marginTop: 16, borderRadius: 16, background: "#fff", border: "1px solid rgba(15,23,42,.08)", padding: "clamp(8px,1.4vw,18px)", minHeight: 300 },
+  panelLoading: { padding: 40, textAlign: "center", color: "#64748b", fontWeight: 800 },
 
   /* hero */
   hero: {

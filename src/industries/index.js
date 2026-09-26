@@ -34,6 +34,32 @@ export function industryOptions() {
   ];
 }
 
+/** مفتاح صلاحية بطاقة داخل نشاط عام: "sweets:daily". مسبوق باسم النشاط كي
+ *  لا يختلط أبداً بأقسام المواشي ذات الأسماء نفسها (daily, ohc, cars...). */
+export const cardPermKey = (industry, cardId) => `${industry}:${cardId}`;
+
+/** صفوف جدول الصلاحيات لحساب تابع لهذا النشاط: صف لكل بطاقة في قالبه.
+ *  null لـ 'meat' (له قائمة SECTIONS الخاصة في AccountsManagementTab).
+ *  بطاقات adminOnly لا تظهر — هي للأدمن فقط ولا تُمنح لموظف. */
+export function permissionSectionsFor(id) {
+  const t = isGenericIndustry(id) ? TEMPLATES[id] : null;
+  if (!t) return null;
+  return (t.cards || [])
+    .filter((c) => !c.adminOnly)
+    .map((c) => ({ id: cardPermKey(id, c.id), icon: c.icon, label: c.label, labelAr: c.labelAr }));
+}
+
+/** هل يرى هذا الحساب هذه البطاقة؟ أدمن الشركة / السوبر أدمن / "*" = الكل.
+ *  غير ذلك: فقط البطاقات الممنوحة صراحةً — حساب بلا صلاحيات لهذا النشاط لا
+ *  يرى أي بطاقة (قرار المالك: تُقفل حتى تُمنح). */
+export function canSeeCard(user, industry, card) {
+  const isAdmin = !!user?.isAdmin || !!user?.isSuperAdmin;
+  if (card.adminOnly) return isAdmin;
+  if (isAdmin) return true;
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  return perms.includes("*") || perms.includes(cardPermKey(industry, card.id));
+}
+
 /** يبحث عن تعريف نوع تقرير داخل قالب (عبر كل البطاقات). */
 export function findReportType(template, type) {
   if (!template) return null;

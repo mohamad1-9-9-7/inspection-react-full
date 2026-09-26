@@ -12,7 +12,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { clearAppSession } from "../../utils/authFetch";
 import { getActiveCompany, getActiveCompanyName, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
-import { getIndustryTemplate, findReportType } from "../../industries";
+import { getIndustryTemplate, findReportType, canSeeCard } from "../../industries";
 import ReportGuide from "./ReportGuide";
 
 function getCurrentUser() {
@@ -172,10 +172,11 @@ export default function GenericIndustryApp() {
 
   const industry = getActiveIndustry();
   const template = getIndustryTemplate(industry);
-  /* adminOnly cards (e.g. company Settings) are hidden — and unreachable by
-     URL — for anyone who is not an admin or the platform super-admin. */
-  const isAdmin = !!currentUser.isAdmin || isSuperAdmin;
-  const cards = (template?.cards || []).filter((c) => !c.adminOnly || isAdmin);
+  /* Only the cards this account was granted (Platform Center → Accounts):
+     "<industry>:<cardId>" in its permissions. Admins and the super-admin see
+     all; adminOnly cards (company Settings) are for admins only. A hidden
+     card is unreachable by URL too — `card` below is looked up in this list. */
+  const cards = (template?.cards || []).filter((c) => canSeeCard(currentUser, industry, c));
 
   const cardId = params.get("card") || null;
   const activeType = params.get("type") || null;
@@ -438,8 +439,17 @@ export default function GenericIndustryApp() {
 
           {homeCards.length === 0 ? (
             <div style={S.emptyBox}>
-              <div style={{ fontWeight: 1000, marginBottom: 6 }}>No modules found</div>
-              <div>Try another search term.</div>
+              {cards.length === 0 ? (
+                <>
+                  <div style={{ fontWeight: 1000, marginBottom: 6 }}><Two en="No modules assigned to your account" ar="لا توجد وحدات مخصّصة لحسابك" /></div>
+                  <div><Two en="Ask the platform administrator to grant you access." ar="اطلب من مسؤول المنصة منحك الصلاحيات." /></div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 1000, marginBottom: 6 }}>No modules found</div>
+                  <div>Try another search term.</div>
+                </>
+              )}
             </div>
           ) : (
             <div style={S.grid}>
