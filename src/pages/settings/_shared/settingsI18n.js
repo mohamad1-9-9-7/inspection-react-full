@@ -71,8 +71,6 @@ export const ST = {
   tCompaniesD:      { en: "Clients · assign plans · track", ar: "العملاء · تعيين الخطط · المتابعة" },
   tSecurity:        { en: "Security Controls",     ar: "ضوابط الأمان" },
   tSecurityD:       { en: "Delete permissions · read-only mode · session timeout", ar: "صلاحيات الحذف · وضع القراءة فقط · مهلة الجلسة" },
-  tImageMigration:  { en: "Image Cleanup",         ar: "تنظيف الصور" },
-  tImageMigrationD: { en: "Convert base64 → Cloudinary URLs", ar: "تحويل base64 → روابط Cloudinary" },
   tComplaintNumbers:  { en: "Complaint Numbers",   ar: "أرقام الشكاوى" },
   tComplaintNumbersD: { en: "Backfill missing complaint No.", ar: "تعبئة أرقام الشكاوى الناقصة" },
   tReferenceNumbers:  { en: "Reference Numbers",   ar: "الأرقام المرجعية" },

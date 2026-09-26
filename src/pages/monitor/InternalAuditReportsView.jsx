@@ -423,7 +423,7 @@ export default function InternalAuditReportsView() {
       setData(arr);
       setHasLoaded(true);
     } catch (e) {
-      setError(e?.message || "Failed to load reports. The server may be out of memory (try /admin/image-migration first).");
+      setError(e?.message || "Failed to load reports.");
     } finally {
       setLoading(false);
     }

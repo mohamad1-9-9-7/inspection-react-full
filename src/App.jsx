@@ -126,7 +126,6 @@ const FTR2ReportView = lazy(() =>
 const OHCHub = lazy(() => import("./pages/ohc/OHCHub"));
 const OHCUploadPage = lazy(() => import("./pages/ohc/OHCUploadPage"));
 const OHCViewPage = lazy(() => import("./pages/ohc/OHCViewPage"));
-const ImageMigration = lazy(() => import("./pages/admin/ImageMigration"));
 const ComplaintNumberBackfill = lazy(() => import("./pages/admin/ComplaintNumberBackfill"));
 const AIAssistant    = lazy(() => import("./pages/AIAssistant"));
 
@@ -1399,15 +1398,6 @@ export default function App() {
           />
         </Route>
 
-        {/* 🖼️ Admin: base64 → Cloudinary URL migration — kept for direct access; also embedded in Settings */}
-        <Route
-          path="/admin/image-migration"
-          element={
-            <AdminRoute>
-              <ImageMigration />
-            </AdminRoute>
-          }
-        />
 
         {/* 🔢 Admin: backfill missing customer-complaint numbers */}
         <Route
