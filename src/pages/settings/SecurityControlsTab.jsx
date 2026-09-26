@@ -1,7 +1,12 @@
 // src/pages/settings/SecurityControlsTab.jsx
-// Security & Access Controls — manages appSecuritySettings in localStorage
+// Security & Access Controls — platform-wide, edited in the Platform Center.
+// The SERVER is the source of truth (GET/PUT /api/security-settings, key
+// 'security_controls'); localStorage "appSecuritySettings" is only the
+// cache every screen reads synchronously (getSecuritySettings). The app
+// refreshes that cache from the server (App.jsx → refreshSecuritySettings).
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
+import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { BRANCHES, BRANCH_TYPE_META } from "../../config/branches";
 import { Button, ConfirmModal } from "./_shared/SettingsUIKit";
@@ -46,9 +51,41 @@ export function isDeleteAllowedForBranch(branchId) {
   return s.allowDeleteRecords === true;
 }
 
-function saveSecuritySettings(settings) {
+/* Cache only — what the screens read. */
+function writeSecurityCache(settings) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
   try { window.dispatchEvent(new CustomEvent("app:security-settings-changed", { detail: settings })); } catch { /* ignore */ }
+}
+
+/** Pull the platform's settings from the server into the cache.
+ *  Resolves to the server value, or null when the server has none yet /
+ *  the call failed (the cache is then left as it was). */
+export async function refreshSecuritySettings() {
+  try {
+    if (!localStorage.getItem("authToken")) return null;
+    const r = await fetch(`${API_BASE}/api/security-settings`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok || !d.value) return null;
+    const merged = { ...SEC_DEFAULTS, ...d.value, deleteBranchOverrides: { ...(d.value.deleteBranchOverrides || {}) } };
+    writeSecurityCache(merged);
+    return merged;
+  } catch {
+    return null;
+  }
+}
+
+/* Save to the SERVER first; the cache follows only when it was accepted. */
+async function saveSecuritySettings(settings) {
+  const r = await fetch(`${API_BASE}/api/security-settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: settings }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  const stored = { ...SEC_DEFAULTS, ...d.value, deleteBranchOverrides: { ...(d.value?.deleteBranchOverrides || {}) } };
+  writeSecurityCache(stored);
+  return stored;
 }
 
 /* ── small helpers ── */
@@ -95,15 +132,39 @@ export default function SecurityControlsTab() {
   const [branchOpen, setBranchOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
 
   const savedTimer = useRef(null);
 
-  // Auto-save: persist to localStorage immediately so every switch/choice
-  // "sticks" the moment it's flipped — no separate Save click needed.
+  /* Load the server's value. If the server has never stored one but this
+     browser still holds settings from the old local-only days, push them up
+     once so nothing the owner chose is lost. */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const server = await refreshSecuritySettings();
+      if (!alive) return;
+      if (server) { setS(server); return; }
+      let hadLocal = false;
+      try { hadLocal = !!localStorage.getItem(STORAGE_KEY); } catch { /* ignore */ }
+      if (hadLocal) {
+        try { const stored = await saveSecuritySettings(getSecuritySettings()); if (alive) setS(stored); }
+        catch { /* not signed in as super-admin / offline — keep showing the cache */ }
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Auto-save: every switch is sent to the server the moment it's flipped —
+  // no separate Save click. If the server refuses, the switch flips back.
   const persist = (next, reason) => {
     const before = getSecuritySettings();
     setS(next);
-    saveSecuritySettings(next);
+    setSaveErr("");
+    saveSecuritySettings(next).catch(() => {
+      setS(before);
+      setSaveErr(lang === "ar" ? "لم يُحفظ على السيرفر — أُعيد الإعداد السابق." : "Not saved on the server — the previous setting was restored.");
+    });
     logSettingsAudit({
       area: "security",
       action: "update_security_controls",
@@ -162,7 +223,13 @@ export default function SecurityControlsTab() {
   const doReset = async () => {
     const before = getSecuritySettings();
     setS({ ...SEC_DEFAULTS });
-    saveSecuritySettings({ ...SEC_DEFAULTS });
+    try { await saveSecuritySettings({ ...SEC_DEFAULTS }); }
+    catch {
+      setS(before);
+      setConfirmReset(false);
+      setSaveErr(lang === "ar" ? "لم يُحفظ على السيرفر — أُعيد الإعداد السابق." : "Not saved on the server — the previous setting was restored.");
+      return;
+    }
     await logSettingsAudit({
       area: "security",
       action: "reset_security_controls",
@@ -381,9 +448,14 @@ export default function SecurityControlsTab() {
           color: saved ? "#15803d" : "#94a3b8",
           transition: "color .2s",
         }}>
-          {saved ? "✅" : "☁️"} {lang === "ar" ? "يُحفظ تلقائياً" : "Auto-saved"}
+          {saved && !saveErr ? "✅" : "☁️"} {lang === "ar" ? "يُحفظ تلقائياً على السيرفر" : "Auto-saved to the server"}
         </span>
       </div>
+      {saveErr && (
+        <div role="alert" style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontWeight: 800, fontSize: 14 }}>
+          ⚠️ {saveErr}
+        </div>
+      )}
 
       <ConfirmModal
         open={confirmReset}

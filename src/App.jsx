@@ -7,7 +7,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import GlobalTimePicker from "./components/GlobalTimePicker";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
-import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
+import { getSecuritySettings, isDeleteAllowedForBranch, refreshSecuritySettings } from "./pages/settings/SecurityControlsTab";
 import { clearAppSession } from "./utils/authFetch";
 import { isSubscriptionExpired, refreshSubscriptionCache } from "./utils/subscriptionLock";
 import { hasSection, branchAllowed } from "./utils/perms";
@@ -538,6 +538,23 @@ function useSubscriptionFetch() {
   useEffect(() => { refreshSubscriptionCache(API_BASE); }, []);
 }
 
+/* Platform security controls come from the server; the local copy is a
+   cache. Refreshed on navigation at most every 10 minutes (and right after
+   sign-in, when the cache was wiped) — user-driven, never a timer, so an
+   idle tab never keeps the database awake. */
+const SECURITY_REFRESH_MS = 10 * 60 * 1000;
+let lastSecurityRefresh = 0;
+function useSecuritySettingsFetch() {
+  const location = useLocation();
+  useEffect(() => {
+    let cached = null;
+    try { cached = localStorage.getItem("appSecuritySettings"); } catch { /* ignore */ }
+    if (cached && Date.now() - lastSecurityRefresh < SECURITY_REFRESH_MS) return;
+    lastSecurityRefresh = Date.now();
+    refreshSecuritySettings();
+  }, [location.pathname]);
+}
+
 function getSessionMaxMs() {
   try {
     const hours = Number(getSecuritySettings().sessionTimeoutHours);
@@ -789,6 +806,7 @@ function useSecurityGuard() {
 export default function App() {
   useSecurityGuard();
   useSubscriptionFetch();
+  useSecuritySettingsFetch();
   return (
     <Suspense
       fallback={
