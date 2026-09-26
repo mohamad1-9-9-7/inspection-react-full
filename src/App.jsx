@@ -467,6 +467,9 @@ const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"))
 
 // ✅🆕 Certificate Verification (public QR scan page)
 const TrainingCertVerify = lazy(() => import("./pages/training/TrainingCertVerify"));
+// 🍰 Confectionery's own copies (public quiz + certificate check)
+const SweetsTrainingQuizLink = lazy(() => import("./pages/sweets-training/TrainingQuizLink"));
+const SweetsTrainingCertVerify = lazy(() => import("./pages/sweets-training/TrainingCertVerify"));
 // ✅🆕 Training Gap Analysis
 const TrainingGapAnalysis = lazy(() => import("./pages/training/TrainingGapAnalysis"));
 // 🛠️ Training Admin
@@ -1016,6 +1019,11 @@ export default function App() {
 
         {/* ✅🆕 Certificate Verification (public — scanned from QR) */}
         <Route path="/training/verify" element={<TrainingCertVerify />} />
+
+        {/* 🍰 Confectionery training — public trainee pages (no login). The
+            rest of that company's training lives inside /company-app. */}
+        <Route path="/sweets-training/quiz/:token" element={<SweetsTrainingQuizLink />} />
+        <Route path="/sweets-training/verify" element={<SweetsTrainingCertVerify />} />
 
         {/* ✅🆕 Training Gap Analysis (protected) */}
         <Route

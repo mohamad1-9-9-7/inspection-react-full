@@ -115,7 +115,7 @@ export const AR = {
   "New Audit": "تدقيق جديد", "Fill a new internal audit": "تعبئة تدقيق داخلي جديد", "View Audits": "عرض التدقيقات", "Browse saved audits": "تصفح التدقيقات المحفوظة",
   "Training Certificates": "شهادات التدريب", "BFS / PIC / EFST / HACCP certificates": "شهادات BFS / PIC / EFST / HACCP",
   "Upload a training certificate": "رفع شهادة تدريب", "Browse training certificates": "تصفح شهادات التدريب",
-  "Internal Training": "التدريب الداخلي", "Training sessions & attendance": "جلسات التدريب والحضور", "New Training": "تدريب جديد",
+  "Internal Training": "التدريب الداخلي", "Training sessions & attendance": "جلسات التدريب والحضور", "Sessions, quizzes, certificates & annual plan": "الجلسات والاختبارات والشهادات والخطة السنوية", "New Training": "تدريب جديد",
   "Record a training session": "تسجيل جلسة تدريب", "View Trainings": "عرض التدريبات", "Browse training records": "تصفح سجلات التدريب",
   "Vehicles": "المركبات", "Loading checks & truck cleaning": "فحص التحميل وتنظيف الشاحنات", "HACCP": "الهاسب", "Food safety modules": "وحدات سلامة الغذاء",
   "Personal Hygiene": "النظافة الشخصية", "Personal hygiene checklist": "قائمة فحص النظافة الشخصية",

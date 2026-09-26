@@ -215,22 +215,18 @@ const sweets = {
       View: lazy(() => import("../../pages/sweets-certs/CertView")),
     },
     {
-      // Internal Training — one session per record (topic, trainer, attendees).
-      // Isolated under the sweets_training_record report type.
+      // Internal Training — the full training system (sessions, quiz links,
+      // certificates, annual plan & yearly summary, gap analysis, settings),
+      // copied from the other company's structure into pages/sweets-training
+      // with its own sweets_training_* types and confectionery modules.
+      // (The earlier single-record sweets_training_record stays in backups.)
       id: "training",
-      kind: "pair",
+      kind: "hub",
       label: "Internal Training",
-      desc: "Training sessions & attendance",
+      desc: "Sessions, quizzes, certificates & annual plan",
       icon: "🎓",
       grad: "linear-gradient(135deg,#16a34a,#15803d)",
-      inputLabel: "New Training",
-      inputDesc: "Record a training session",
-      inputIcon: "➕",
-      viewLabel: "View Trainings",
-      viewDesc: "Browse training records",
-      viewIcon: "🗂️",
-      Input: lazy(() => import("../../pages/monitor/branches/sweets/TrainingRecordInput")),
-      View: lazy(() => import("../../pages/monitor/branches/sweets/TrainingRecordView")),
+      Hub: lazy(() => import("../../pages/sweets-training/SweetsTrainingHub")),
     },
     {
       // Vehicles hub — loading checks (truck temp ≤ 5 °C) + daily truck

@@ -1,0 +1,696 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import html2canvas from "html2canvas";
+import { QRCodeCanvas } from "qrcode.react";
+import {
+  useGlobalLang,
+  getModuleName,
+  LANG_STORAGE_KEY,
+} from "./TrainingSessionsList.helpers";
+
+/* ===== API base (same pattern) ===== */
+const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+const API_BASE = String(
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
+    API_ROOT_DEFAULT
+).replace(/\/$/, "");
+
+/* ===== small helpers ===== */
+function norm(s) {
+  return String(s ?? "").trim();
+}
+function makeParticipantKey({ employeeId, name }) {
+  const eid = norm(employeeId);
+  const nm = norm(name).toLowerCase();
+  if (eid) return `emp:${eid}`; // align with backend key style
+  if (nm) return `name:${nm}`;
+  return "";
+}
+
+/* ===== fetch helpers ===== */
+async function fetchJson(url, options) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    ...options,
+  });
+
+  const txt = await res.text().catch(() => "");
+  let data;
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = txt;
+  }
+
+  if (!res.ok) {
+    const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+async function fetchJsonNoThrow(url, options) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    ...options,
+  });
+
+  const txt = await res.text().catch(() => "");
+  let data;
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = txt;
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/* ✅ token is TEXT */
+function getInfoEndpoint(token) {
+  return `${API_BASE}/api/training-session/by-token/${encodeURIComponent(token)}`;
+}
+function getSubmitEndpoint(token) {
+  return `${API_BASE}/api/training-session/by-token/${encodeURIComponent(token)}/submit`;
+}
+
+export default function TrainingQuizLink() {
+  const { token } = useParams();
+
+  const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState(null);
+  // ✅ Unified lang via localStorage (qcs_training_lang) — shared across all training pages
+  const [langLower, setLangLower] = useGlobalLang(); // "en" | "ar"
+  const lang = langLower === "ar" ? "AR" : "EN";
+  const setLang = (v) => setLangLower(v === "AR" || v === "ar" ? "ar" : "en");
+  const [answers, setAnswers] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  // ✅ trainee identity fields
+  const [pName, setPName] = useState("");
+  const [pDesignation, setPDesignation] = useState("");
+  const [pEmployeeId, setPEmployeeId] = useState("");
+
+  // ✅ QR helpers
+  const qrWrapRef = useRef(null);
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const u = new URL(window.location.href);
+      // رابط نظيف بدون query/hash
+      return `${u.origin}${u.pathname}`;
+    } catch {
+      // fallback
+      return window.location.href;
+    }
+  }, [token]);
+
+  const copyLink = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setMsg("✅ Link copied");
+        return;
+      }
+    } catch {}
+    // fallback
+    try {
+      window.prompt("Copy link:", shareUrl);
+    } catch {}
+  };
+
+  const downloadQR = async () => {
+    if (!qrWrapRef.current) return;
+    try {
+      const canvas = await html2canvas(qrWrapRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const png = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = png;
+      a.download = `training-quiz-qr-${token || "link"}.png`;
+      a.click();
+    } catch (e) {
+      setMsg(String(e?.message || e));
+    }
+  };
+
+  const printQR = async () => {
+    if (!qrWrapRef.current) return;
+    try {
+      const canvas = await html2canvas(qrWrapRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const png = canvas.toDataURL("image/png");
+      const w = window.open("", "_blank");
+      if (!w) {
+        setMsg("Popup blocked. Please allow popups to print.");
+        return;
+      }
+      w.document.write(`
+        <html>
+          <head><title>Print QR</title></head>
+          <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;">
+            <img src="${png}" style="max-width:90vw;max-height:90vh;" />
+            <script>
+              window.onload = function(){ window.focus(); window.print(); };
+            </script>
+          </body>
+        </html>
+      `);
+      w.document.close();
+    } catch (e) {
+      setMsg(String(e?.message || e));
+    }
+  };
+
+  // localStorage key
+  const LS_KEY = useMemo(() => `training_participant_${token}`, [token]);
+
+  // ✅ load participant info from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      setPName(norm(obj?.name));
+      setPDesignation(norm(obj?.designation));
+      setPEmployeeId(norm(obj?.employeeId));
+    } catch {
+      // ignore
+    }
+  }, [LS_KEY]);
+
+  // ✅ persist participant info
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        LS_KEY,
+        JSON.stringify({
+          name: norm(pName),
+          designation: norm(pDesignation),
+          employeeId: norm(pEmployeeId),
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [LS_KEY, pName, pDesignation, pEmployeeId]);
+
+  const participantKey = useMemo(
+    () => makeParticipantKey({ employeeId: pEmployeeId, name: pName }),
+    [pEmployeeId, pName]
+  );
+
+  // ✅ عند إدخال الرقم الوظيفي نبحث في جدول الموظفين ونعبّي الاسم والمسمى تلقائياً (مثل مبدأ OHC)
+  const handleEmployeeIdChange = (v) => {
+    setPEmployeeId(v);
+  };
+
+  // ✅ tolerate server shapes
+  const quiz = useMemo(() => {
+    const q =
+      info?.quiz ||
+      info?.data?.quiz ||
+      info?.payload?.quiz ||
+      info?.report?.quiz;
+    return q || {};
+  }, [info]);
+
+  const questions = useMemo(() => {
+    const qs = quiz?.questions || info?.questions || [];
+    return Array.isArray(qs) ? qs : [];
+  }, [quiz, info]);
+
+  const passMark = useMemo(() => {
+    const pm = Number(quiz?.passMark ?? 80);
+    return Number.isFinite(pm) ? pm : 80;
+  }, [quiz]);
+
+  // ========= load session info =========
+  const loadedTokenRef = useRef("");
+
+  const loadInfo = async () => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const data = await fetchJson(getInfoEndpoint(token));
+      setInfo(data);
+      // ✅ backend GET no longer returns "alreadySubmitted" per person
+      setDone(false);
+    } catch (e) {
+      setInfo(null);
+      setDone(false);
+      setMsg(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    if (loadedTokenRef.current === token) return;
+
+    loadedTokenRef.current = token;
+    setAnswers({});
+    setDone(false);
+    setMsg("");
+    loadInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const submit = async () => {
+    if (!questions.length) return;
+
+    const name = norm(pName);
+    const designation = norm(pDesignation);
+    const employeeId = norm(pEmployeeId);
+
+    if (!name) {
+      alert("Please enter your name.");
+      return;
+    }
+    if (!employeeId) {
+      alert("Please enter your Employee ID.");
+      return;
+    }
+
+    // validate all answered
+    for (let i = 0; i < questions.length; i++) {
+      if (typeof answers[i] !== "number") {
+        alert(`Please answer question #${i + 1}`);
+        return;
+      }
+    }
+
+    setSaving(true);
+    setMsg("");
+
+    try {
+      const arr = questions.map((_, i) => answers[i]);
+
+      // ✅ use no-throw fetch to handle 409 cleanly
+      const out = await fetchJsonNoThrow(getSubmitEndpoint(token), {
+        method: "POST",
+        body: JSON.stringify({
+          participant: { name, designation, employeeId },
+          answers: arr,
+        }),
+      });
+
+      // ✅ ALREADY_SUBMITTED
+      if (!out.ok && out.status === 409 && out?.data?.error === "ALREADY_SUBMITTED") {
+        const score = out?.data?.score ?? "";
+        const result = out?.data?.result ?? "";
+        const submittedAt = out?.data?.submittedAt ?? "";
+
+        setDone(true);
+        setMsg(
+          `✅ Already submitted for this trainee.\nScore: ${score}% — ${result}${
+            submittedAt ? `\nSubmitted at: ${submittedAt}` : ""
+          }`
+        );
+        return;
+      }
+
+      if (!out.ok) {
+        // generic error
+        setMsg(String(out?.data?.error || out?.data?.message || `HTTP ${out.status}`));
+        return;
+      }
+
+      const score = out?.data?.score ?? "";
+      const result = out?.data?.result ?? "";
+
+      setDone(true);
+      setMsg(`✅ Submitted. Score: ${score}% — ${result}`);
+    } catch (e) {
+      setMsg(String(e?.message || e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const page = {
+    minHeight: "100vh",
+    background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+    padding: "14px clamp(12px,2.4vw,28px) 22px",
+    fontFamily: "Cairo, Arial, sans-serif",
+  };
+
+  const card = {
+    maxWidth: 900,
+    margin: "0 auto",
+    background: "#fff",
+    border: "1px solid #dbe4e2",
+    borderRadius: 6,
+    boxShadow: "0 12px 30px rgba(15,23,42,.06)",
+    padding: 16,
+  };
+
+  const btn = (active) => ({
+    padding: "10px 12px",
+    borderRadius: 5,
+    border: "1px solid #dbe4e2",
+    background: active ? "#0f766e" : "#fff",
+    color: active ? "#fff" : "#111827",
+    cursor: "pointer",
+    fontWeight: 900,
+  });
+
+  const inputStyle = {
+    width: "100%",
+    padding: 12,
+    borderRadius: 6,
+    border: "1px solid #dbe4e2",
+    outline: "none",
+    fontWeight: 900,
+    background: "#fff",
+  };
+
+  // للحقول المعبّأة تلقائياً (اسم/مسمى) — للقراءة فقط، غير قابلة للتعديل
+  const readOnlyInputStyle = {
+    ...inputStyle,
+    background: "#f1f5f9",
+    color: "#0f172a",
+    cursor: "not-allowed",
+  };
+
+  // ✅ tiny translator for quiz UI
+  const tL = (en, ar) => (lang === "AR" ? ar : en);
+  const isAr = lang === "AR";
+
+  if (loading) {
+    return (
+      <div style={page}>
+        <div style={card}>{tL("Loading…", "جارٍ التحميل…")}</div>
+      </div>
+    );
+  }
+
+  if (msg && !info) {
+    return (
+      <div style={page}>
+        <div style={card}>
+          <div style={{ fontWeight: 1100, color: "#be123c" }}>{tL("Error", "خطأ")}</div>
+          <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{msg}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={page} dir={isAr ? "rtl" : "ltr"}>
+      <div style={card}>
+        {/* ✅ QR SECTION */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: 12,
+            borderRadius: 16,
+            border: "1px solid #e5e7eb",
+            background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              ref={qrWrapRef}
+              style={{
+                padding: 10,
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                background: "#fff",
+                display: "inline-flex",
+                flexDirection: "column",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>📌 {tL("Scan QR", "مسح الـ QR")}</div>
+              <QRCodeCanvas value={shareUrl || ""} size={140} includeMargin />
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                {tL("Training Quiz Link", "رابط الاختبار التدريبي")}
+              </div>
+            </div>
+
+            <div style={{ minWidth: 260 }}>
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>🔗 {tL("Link", "الرابط")}</div>
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: 10,
+                  borderRadius: 14,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  color: "#0f172a",
+                  wordBreak: "break-all",
+                  userSelect: "all",
+                }}
+              >
+                {shareUrl}
+              </div>
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={copyLink} style={btn(false)}>{tL("Copy Link", "نسخ الرابط")}</button>
+                <button onClick={downloadQR} style={btn(false)}>{tL("Download QR", "تنزيل الـ QR")}</button>
+                <button onClick={printQR} style={btn(false)}>{tL("Print", "طباعة")}</button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setLang("EN")} style={btn(lang === "EN")}>
+              EN
+            </button>
+            <button onClick={() => setLang("AR")} style={btn(lang === "AR")}>
+              عربي
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 1100, fontSize: 18, color: "#0f172a" }}>
+              🧪 {quiz?.module ? getModuleName(quiz.module, langLower) : (lang === "AR" ? "اختبار تدريبي" : "Training Quiz")}
+            </div>
+            <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
+              {lang === "AR" ? "درجة النجاح" : "Pass Mark"}: {passMark}%
+            </div>
+            {quiz?.level ? (
+              <div style={{ marginTop: 4, color: "#64748b", fontWeight: 900 }}>
+                {lang === "AR" ? "المستوى" : "Level"}: {quiz.level}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* ✅ trainee info fields */}
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 16,
+            border: "1px solid #e5e7eb",
+            background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+          }}
+        >
+          <div style={{ fontWeight: 1100, color: "#0f172a", marginBottom: 10 }}>
+            👤 {tL("Trainee Details", "بيانات المتدرّب")}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                {tL("Employee ID", "الرقم الوظيفي")}
+              </div>
+              <input
+                value={pEmployeeId}
+                onChange={(e) => handleEmployeeIdChange(e.target.value)}
+                placeholder={tL("Enter Employee ID", "اكتب الرقم الوظيفي")}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                {tL("Name", "الاسم")}
+              </div>
+              <input
+                value={pName}
+                readOnly
+                tabIndex={-1}
+                placeholder={tL("Auto-filled from Employee ID", "يُعبّأ تلقائياً من الرقم الوظيفي")}
+                style={readOnlyInputStyle}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                {tL("Designation", "المسمى الوظيفي")}
+              </div>
+              <input
+                value={pDesignation}
+                readOnly
+                tabIndex={-1}
+                placeholder={tL("Auto-filled from Employee ID", "يُعبّأ تلقائياً من الرقم الوظيفي")}
+                style={readOnlyInputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900, fontSize: 12 }}>
+            {tL("Submission key (for tracking)", "مفتاح الإرسال (للتتبع)")}:{" "}
+            <span style={{ userSelect: "all" }}>{participantKey || "-"}</span>
+          </div>
+        </div>
+
+        {done ? (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 14,
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              fontWeight: 1000,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {msg || (tL("✅ Done", "✅ تم"))}
+          </div>
+        ) : (
+          <>
+            <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900 }}>
+              {tL("Questions", "عدد الأسئلة")}: {questions.length}
+            </div>
+
+            {msg ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "#fff7ed",
+                  border: "1px solid #fed7aa",
+                  fontWeight: 900,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {msg}
+              </div>
+            ) : null}
+
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              {questions.map((q, i) => {
+                const qText = lang === "AR" ? (q.q_ar || q.q_en) : (q.q_en || q.q_ar);
+                const opts = lang === "AR"
+                  ? (q.options_ar?.length ? q.options_ar : (q.options_en || []))
+                  : (q.options_en?.length ? q.options_en : (q.options_ar || []));
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 16,
+                      padding: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 1100,
+                        color: "#0f172a",
+                        marginBottom: 10,
+                        direction: lang === "AR" ? "rtl" : "ltr",
+                      }}
+                    >
+                      {i + 1}) {qText}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        direction: lang === "AR" ? "rtl" : "ltr",
+                      }}
+                    >
+                      {opts.map((opt, oi) => {
+                        const checked = answers[i] === oi;
+                        return (
+                          <label
+                            key={oi}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              border: `1px solid ${checked ? "#c7d2fe" : "#e5e7eb"}`,
+                              background: checked
+                                ? "linear-gradient(135deg,#eef2ff,#ffffff)"
+                                : "#fff",
+                              cursor: "pointer",
+                              fontWeight: 900,
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name={`q_${i}`}
+                              checked={checked}
+                              onChange={() => setAnswers((p) => ({ ...p, [i]: oi }))}
+                            />
+                            <span>{opt}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={submit}
+              disabled={saving}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                padding: 14,
+                borderRadius: 14,
+                border: "1px solid #111827",
+                background: "#111827",
+                color: "#fff",
+                fontWeight: 1100,
+                cursor: saving ? "not-allowed" : "pointer",
+                opacity: saving ? 0.75 : 1,
+              }}
+            >
+              {saving ? tL("Saving...", "جارٍ الحفظ...") : tL("✅ Submit", "✅ إرسال")}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
