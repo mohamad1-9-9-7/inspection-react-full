@@ -26,6 +26,7 @@ const Inspection = lazy(() => import("./pages/Inspection"));
 const InspectionHub = lazy(() => import("./pages/inspection/InspectionHub"));
 const InspectionAnnualPlan = lazy(() => import("./pages/inspection/InspectionAnnualPlan"));
 const InspectionEvidencePublic = lazy(() => import("./pages/InspectionEvidencePublic"));
+const DemoRequest = lazy(() => import("./pages/DemoRequest"));
 
 // 🔪 قسم الجزار — تسجيل أوزان القطع (كشك، الدخول بالرقم الوظيفي) + العرض
 const ButcherHub = lazy(() => import("./pages/butcher/ButcherHub"));
@@ -744,7 +745,7 @@ function useSecurityGuard() {
 
   useEffect(() => {
     const shouldBlock = () => {
-      if (location.pathname === "/" || location.pathname.startsWith("/settings")) return false;
+      if (location.pathname === "/" || location.pathname === "/demo" || location.pathname.startsWith("/settings")) return false;
       const settings = getSecuritySettings();
       const user = getCurrentUser();
       return !!settings.readOnlyMode && !user.isAdmin && !user.isSuperAdmin;
@@ -822,6 +823,8 @@ export default function App() {
         {/* الجذر */}
         <Route path="/" element={<Login />} />
         <Route path="/subscription-expired" element={<SubscriptionExpired />} />
+        {/* Public: "Request a demo" — no login */}
+        <Route path="/demo" element={<DemoRequest />} />
         {/* 🔍 Inspection module — the icon opens a hub, not the form directly */}
         <Route
           path="/inspection"

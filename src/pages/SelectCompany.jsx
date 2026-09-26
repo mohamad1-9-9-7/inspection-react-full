@@ -30,11 +30,13 @@ import { clearAppSession } from "../utils/authFetch";
 const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
 const SecurityControlsTab   = lazy(() => import("./settings/SecurityControlsTab"));
+const DemoRequestsTab       = lazy(() => import("./settings/DemoRequestsTab"));
 
 const CENTER_TABS = [
   { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it" },
   { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open" },
   { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Plans, invoices, quotations and company status" },
+  { id: "leads",     icon: "📨", label: "Demo Requests",          ar: "طلبات العرض التجريبي", hint: "Companies that asked for a demo on the public /demo page" },
   { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Record deletion, read-only mode, session timeout and screen lock" },
 ];
 
@@ -263,6 +265,7 @@ export default function SelectCompany() {
                 {tab === "accounts" && <AccountsManagementTab />}
                 {tab === "billing" && <BillingPlansTab />}
                 {tab === "security" && <SecurityControlsTab />}
+                {tab === "leads" && <DemoRequestsTab />}
               </Suspense>
             </section>
           )}

@@ -218,6 +218,13 @@ function Login() {
             </button>
           </form>
 
+          <div style={S.demoBox}>
+            <span style={S.demoText}>New here? See how it works for your company.</span>
+            <button type="button" onClick={() => navigate("/demo")} style={S.demoBtn}>
+              Request a free demo · اطلب عرض تجريبي
+            </button>
+          </div>
+
           <div style={S.footer}>Built by Eng. Mohammed Abdullah</div>
         </section>
       </section>
@@ -435,6 +442,30 @@ const S = {
     fontFamily: "inherit",
     boxShadow: "0 18px 34px rgba(15,118,110,0.24)",
     transition: "transform .16s ease, box-shadow .16s ease, opacity .16s ease",
+  },
+  demoBox: {
+    marginTop: 22,
+    padding: "14px 16px",
+    borderRadius: 8,
+    border: "1px dashed #99f6e4",
+    background: "#f0fdfa",
+    display: "grid",
+    gap: 10,
+    textAlign: "center",
+  },
+  demoText: {
+    color: "#475569",
+    fontWeight: 800,
+  },
+  demoBtn: {
+    minHeight: 46,
+    borderRadius: 8,
+    border: "1.5px solid #0f766e",
+    background: "#fff",
+    color: "#0f766e",
+    cursor: "pointer",
+    fontWeight: 950,
+    fontFamily: "inherit",
   },
   footer: {
     marginTop: 24,

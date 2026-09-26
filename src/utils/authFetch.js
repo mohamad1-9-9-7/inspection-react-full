@@ -219,7 +219,8 @@ window.fetch = function authFetch(input, init = {}) {
     const isLoginCall = url.includes("/api/auth/login");
     if (res.status === 401 && !isLoginCall) {
       clearAppSession();
-      if (window.location.pathname !== "/") {
+      // The public /demo page has no session to lose — never bounce a visitor off it.
+      if (window.location.pathname !== "/" && window.location.pathname !== "/demo") {
         window.location.href = "/";
       }
       return res;
