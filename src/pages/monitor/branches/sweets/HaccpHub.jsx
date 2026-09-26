@@ -100,6 +100,8 @@ const S = {
   grid: { marginTop: 18, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%,280px),1fr))", gap: 14 },
   card: (hover) => ({
     position: "relative", minHeight: 168, height: "100%", display: "grid", gridTemplateRows: "auto 1fr auto", gap: 12,
+    // one column that may shrink to the card: content can never widen the card
+    gridTemplateColumns: "minmax(0,1fr)", minWidth: 0,
     padding: "16px 18px 13px", borderRadius: 14, border: hover ? "1px solid rgba(15,118,110,.48)" : "1px solid rgba(15,23,42,.1)",
     background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
     boxShadow: hover ? "0 20px 42px rgba(15,23,42,.15)" : "0 8px 20px rgba(15,23,42,.07)",
@@ -197,8 +199,8 @@ export default function HaccpHub() {
                   <div style={S.cardTop}>
                     <div style={S.cardIcon}>{x.icon}</div>
                   </div>
-                  <div className="hhx hhx-card-title" style={S.cardTitle}><Bi en={x.label} ar={x.ar} /></div>
-                  <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={x.desc} ar={x.descAr} /></div>
+                  <div className="hhx hhx-card-title" style={S.cardTitle}><Bi en={x.label} ar={x.ar} stack /></div>
+                  <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={x.desc} ar={x.descAr} stack /></div>
                   <div className="hhx hhx-card-foot" style={S.cardFoot}>
                     <span><Bi en="Open" ar="فتح" /></span>
                     <span aria-hidden="true">→</span>
@@ -244,8 +246,8 @@ function HubCard({ m, onOpen }) {
         <span className="hhx hhx-pill" style={S.pill}><Bi en="Module" ar="وحدة" /></span>
       </div>
       <div>
-        <h2 className="hhx hhx-card-title" style={S.cardTitle}><Bi en={m.title} /></h2>
-        <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={m.subtitle} /></div>
+        <h2 className="hhx hhx-card-title" style={S.cardTitle}><Bi en={m.title} stack /></h2>
+        <div className="hhx hhx-card-sub" style={S.cardSub}><Bi en={m.subtitle} stack /></div>
       </div>
       <div className="hhx hhx-card-foot" style={S.cardFoot}>
         <span><Bi en="Open" ar="فتح" /></span>

@@ -63,7 +63,10 @@ export default function NotificationManager() {
       try {
         if (!document.hidden && shouldRunCCPCheck()) {
           markCCPCheckRan();
-          fetch(`${API_BASE}/api/reports?type=ccp_monitoring_record`, { cache: "no-store" })
+          /* Only recent readings can be new deviations: a 7-day window (by the
+             record's reportDate, filtered in SQL) instead of the whole log. */
+          const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+          fetch(`${API_BASE}/api/reports?type=ccp_monitoring_record&from=${since}`, { cache: "no-store" })
             .then((r) => r.ok ? r.json() : [])
             .then((json) => {
               if (cancelled) return;

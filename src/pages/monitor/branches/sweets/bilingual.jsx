@@ -263,7 +263,11 @@ export function bi(en, ar) {
 
 const CSS = `
 .bi{display:inline-flex;flex-wrap:wrap;align-items:baseline;column-gap:.45em;row-gap:0;max-width:100%;vertical-align:baseline}
-.bi-ar{font-family:var(--font-arabic,'Cairo','Tajawal',sans-serif);font-weight:700;opacity:.7;unicode-bidi:isolate;direction:rtl;white-space:nowrap}
+.bi-ar{font-family:var(--font-arabic,'Cairo','Tajawal',sans-serif);font-weight:700;opacity:.7;unicode-bidi:isolate;direction:rtl;min-width:0;max-width:100%}
+/* Arabic wraps when it does not fit: a nowrap line wider than its box pushed
+   whole cards open (badge off the edge, text under the next card). A short
+   label still sits on one line beside the English; .bi-nowrap keeps it forced. */
+.bi-nowrap .bi-ar{white-space:nowrap}
 .bi-stack{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.2;row-gap:1px}
 .bi-stack .bi-ar{white-space:normal}
 .bi-center.bi-stack{align-items:center;text-align:center}
