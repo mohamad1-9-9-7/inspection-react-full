@@ -17,8 +17,10 @@ const STATUS_META = {
   trial:     { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b", label: "Trial" },
   expired:   { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444", label: "Expired" },
   suspended: { bg: "#e2e8f0", text: "#475569", dot: "#94a3b8", label: "Suspended" },
+  // Disabled: its own accounts are locked out; only the super-admin enters.
+  disabled:  { bg: "#1f2937", text: "#f9fafb", dot: "#111827", label: "⛔ Disabled" },
 };
-const statusKey = (c) => String(c.status || "active").toLowerCase();
+const statusKey = (c) => (c.disabled_at ? "disabled" : String(c.status || "active").toLowerCase());
 
 // Which internal system a company opens — drives its colour, icon and the
 // "opens X" tag so the owner sees at a glance where a card leads.
@@ -83,7 +85,7 @@ export default function SelectCompany() {
 
   // status counts for the stat tiles + filter chips
   const counts = useMemo(() => {
-    const c = { all: companies.length, active: 0, trial: 0, expired: 0, suspended: 0 };
+    const c = { all: companies.length, active: 0, trial: 0, expired: 0, suspended: 0, disabled: 0 };
     companies.forEach((x) => { const k = statusKey(x); if (c[k] != null) c[k] += 1; });
     return c;
   }, [companies]);
@@ -130,6 +132,7 @@ export default function SelectCompany() {
     { key: "trial", label: "Trial", n: counts.trial },
     { key: "expired", label: "Expired", n: counts.expired },
     { key: "suspended", label: "Suspended", n: counts.suspended },
+    { key: "disabled", label: "Disabled", n: counts.disabled },
   ];
 
   return (

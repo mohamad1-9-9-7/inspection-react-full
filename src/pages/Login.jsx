@@ -91,6 +91,8 @@ function Login() {
           invalid_credentials: "Wrong username or password",
           account_disabled: "This account is disabled",
           too_many_attempts: "Too many attempts - wait 1 minute",
+          company_disabled: "This company is disabled. Contact the platform administrator.",
+          subscription_lapsed: "This company's subscription has ended. Contact the platform administrator.",
         };
         setError(errMap[data.error] || "Login failed");
       }

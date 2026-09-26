@@ -26,6 +26,7 @@ const SAVE_ERRORS = {
 /* What the company is really in, today — the same rule the login lock
    applies: a stored active/trial past its end date is expired. */
 function effectiveStatus(c, days) {
+  if (c.disabled_at) return "disabled"; // wins over every stored status
   const s = String(c.status || "active").toLowerCase();
   if (s === "expired" || s === "suspended") return s;
   return days !== null && days < 0 ? "expired" : s;
@@ -50,6 +51,7 @@ export default function CompaniesTab() {
     trial:     { bg:"#fef3c7", text:"#92400e", label:t("stTrial")     },
     expired:   { bg:"#fee2e2", text:"#991b1b", label:t("stExpired")   },
     suspended: { bg:"#f3f4f6", text:"#6b7280", label:t("stSuspended") },
+    disabled:  { bg:"#1f2937", text:"#f9fafb", label:"⛔ " + t("stDisabled") },
   };
   const [companies, setCompanies] = useState([]);
   const [plans,     setPlans]     = useState([]);
@@ -58,7 +60,7 @@ export default function CompaniesTab() {
   const [form,      setForm]      = useState(emptyForm);
   const [saving,    setSaving]    = useState(false);
   const [msg,       setMsg]       = useState("");
-  const [confirm,   setConfirm]   = useState(null);
+  const [confirm,   setConfirm]   = useState(null); // null | { company, action: "disable" | "enable" }
   const [query,     setQuery]     = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
@@ -154,27 +156,28 @@ export default function CompaniesTab() {
     setSaving(false);
   }
 
-  async function deleteCompany(id) {
+  /* A company is never deleted — only disabled and re-enabled (the server
+     has no delete route). Disabled = nobody but the super-admin gets in. */
+  async function setCompanyEnabled(company, action) {
     try {
-      const company = companies.find((c) => c.id === id) || { id };
-      const r = await fetch(`${API_BASE}/api/companies/${id}`, { method:"DELETE" });
+      const r = await fetch(`${API_BASE}/api/companies/${company.id}/${action}`, { method:"POST" });
       const d = await r.json().catch(() => ({}));
+      setConfirm(null);
       if (!r.ok || d.ok === false) {
-        setConfirm(null);
-        setMsg("❌ " + (d.error || t("failDelete")));
+        setMsg("❌ " + (d.error === "primary_company" ? t("primaryCompany") : t("failToggle")));
         return;
       }
       await logSettingsAudit({
         area: "companies",
-        action: "delete_company",
-        target: company.name || String(id),
+        action: action === "disable" ? "disable_company" : "enable_company",
+        target: company.name || String(company.id),
         before: company,
-        after: null,
-        reason: "Company deleted",
+        after: { ...company, disabled_at: action === "disable" ? new Date().toISOString() : null },
+        reason: action === "disable" ? "Company disabled" : "Company re-enabled",
       });
-      setConfirm(null); setMsg("✅ " + t("companyDeleted")); load();
+      setMsg("✅ " + t(action === "disable" ? "companyDisabled" : "companyEnabled")); load();
       setTimeout(() => setMsg(""), 3000);
-    } catch { setConfirm(null); setMsg("❌ " + t("failDelete")); }
+    } catch { setConfirm(null); setMsg("❌ " + t("failToggle")); }
   }
 
   const enrichedCompanies = useMemo(() => companies.map((company) => {
@@ -260,6 +263,7 @@ export default function CompaniesTab() {
           <option value="trial">{t("stTrial")}</option>
           <option value="expired">{t("stExpired")}</option>
           <option value="suspended">{t("stSuspended")}</option>
+          <option value="disabled">{t("stDisabled")}</option>
         </select>
         <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} style={{ ...inputStyle, width: 190, fontSize: 16 }}>
           <option value="all">{t("allPlans")}</option>
@@ -267,14 +271,14 @@ export default function CompaniesTab() {
         </select>
       </div>
 
-      {/* Delete modal */}
+      {/* Disable / re-enable confirmation */}
       <ConfirmModal
         open={!!confirm}
-        title={t("deleteCompanyQ")}
-        body={t("deleteCompanyD")}
-        confirmText={t("delete")}
+        title={confirm?.action === "enable" ? t("enableCompanyQ") : t("disableCompanyQ")}
+        body={confirm?.action === "enable" ? t("enableCompanyD") : t("disableCompanyD")}
+        confirmText={confirm?.action === "enable" ? t("enableCompany") : t("disableCompany")}
         cancelText={t("cancel")}
-        onConfirm={() => deleteCompany(confirm)}
+        onConfirm={() => setCompanyEnabled(confirm.company, confirm.action)}
         onCancel={() => setConfirm(null)}
       />
 
@@ -441,7 +445,11 @@ export default function CompaniesTab() {
                   {isSuperAdmin && (
                     <div style={{ display:"flex", gap:8, flexShrink:0 }}>
                       <Button onClick={() => openEdit(c)} tone="secondary" style={{ minHeight:36 }}>{t("edit")}</Button>
-                      <Button onClick={() => setConfirm(c.id)} tone="danger" style={{ minHeight:36 }}>{t("delete")}</Button>
+                      {c.disabled_at ? (
+                        <Button onClick={() => setConfirm({ company: c, action: "enable" })} tone="primary" style={{ minHeight:36 }}>{t("enableCompany")}</Button>
+                      ) : Number(c.id) !== 1 && (
+                        <Button onClick={() => setConfirm({ company: c, action: "disable" })} tone="danger" style={{ minHeight:36 }}>{t("disableCompany")}</Button>
+                      )}
                     </div>
                   )}
                 </div>
