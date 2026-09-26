@@ -77,6 +77,11 @@ export async function listReports(type, params = {}) {
   if (params.reporter) qs.set("reporter", params.reporter);
   qs.set("type", type);
   if (params.limit) qs.set("limit", String(params.limit));
+  // Business-date window (YYYY-MM-DD). The server filters in SQL, so only the
+  // period on screen crosses the wire instead of every record ever written.
+  // Rows with no business date are left out of a windowed read by design.
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
 
   const res = await fetch(`${REPORTS_URL}?${qs.toString()}`, {
     method: "GET",

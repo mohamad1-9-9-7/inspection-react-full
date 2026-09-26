@@ -3,6 +3,7 @@
 // تُستخدم من قِبل: NotificationManager, AdminDashboard widget, /admin/expiry-center
 
 import API_BASE from "../config/api";
+import { getActiveCompany } from "./companyContext";
 
 /* =================================================================
    عتبات افتراضية (يمكن تجاوزها من إعدادات الأدمن)
@@ -304,12 +305,21 @@ async function fetchByType(type, signal) {
 /* =================================================================
    كاش بسيط في localStorage (يمنع التحميل المتكرر بين الصفحات)
    ================================================================= */
-const CACHE_KEY = "expiry_scan_cache_v1";
+/* One cache per company: a super-admin who switches company must not see the
+   previous company's certificates for the rest of the TTL. A regular account's
+   company is fixed by its token (currentUser.companyId). */
+function cacheKey() {
+  let cid = "";
+  try {
+    cid = getActiveCompany()?.id ?? JSON.parse(localStorage.getItem("currentUser") || "{}").companyId ?? "";
+  } catch { /* fall back to the shared key */ }
+  return `expiry_scan_cache_v1:${cid}`;
+}
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 دقائق
 
 export function getCachedScan() {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.timestamp || !Array.isArray(parsed.items)) return null;
@@ -322,12 +332,12 @@ export function getCachedScan() {
 
 function saveCachedScan(items) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), items }));
+    localStorage.setItem(cacheKey(), JSON.stringify({ timestamp: Date.now(), items }));
   } catch {}
 }
 
 export function clearScanCache() {
-  try { localStorage.removeItem(CACHE_KEY); } catch {}
+  try { localStorage.removeItem(cacheKey()); } catch {}
 }
 
 /* =================================================================

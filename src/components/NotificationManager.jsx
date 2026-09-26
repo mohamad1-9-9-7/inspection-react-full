@@ -98,7 +98,9 @@ export default function NotificationManager() {
 
       /* ===== فحص تنبيه انتهاء الصلاحية ===== */
       try {
-        if (!scanRunning && shouldFireExpiryAlertNow()) {
+        /* Hidden tabs never scan: the scan pulls every tracked type with its
+           full payload, and each call wakes Neon. The next visible tick runs it. */
+        if (!scanRunning && !document.hidden && shouldFireExpiryAlertNow()) {
           // التنبيه يصل للأدمن فقط (تجنّب إزعاج المستخدمين)
           if (!isAdminUser()) return;
           scanRunning = true;
@@ -128,12 +130,17 @@ export default function NotificationManager() {
                 `منتهية: ${summary.expired} · ` +
                 `قريبة الانتهاء: ${summary.expiringSoon + summary.expiring} ` +
                 `(خلال ${threshold} يوم)`;
-              const ok = sendNotification("⏰ تنبيه انتهاء صلاحية", {
+              sendNotification("⏰ تنبيه انتهاء صلاحية", {
                 body,
                 tag: "expiry-alert",
                 onClickUrl: "/admin/expiry-center",
               });
-              if (ok) markExpiryAlertFired();
+              /* The day's scan is done whether or not the browser could show
+                 the notification. Marking only on success meant a browser
+                 without notification permission re-ran the full scan every
+                 5 minutes until midnight — a retry can't grant a permission.
+                 The results stay visible in the Expiry Center. */
+              markExpiryAlertFired();
             })
             .catch(() => {})
             .finally(() => {

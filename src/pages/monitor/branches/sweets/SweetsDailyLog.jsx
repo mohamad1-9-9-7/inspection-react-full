@@ -114,8 +114,9 @@ function useLotSuggestions(type, active) {
     const ctl = new AbortController();
     (async () => {
       try {
-        const rows = await listReports(type, { signal: ctl.signal });
         const since = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10);
+        // Only the 45-day window — never the whole history of the log.
+        const rows = await listReports(type, { from: since, signal: ctl.signal });
         const seen = new Set();
         const out = [];
         rows
@@ -149,8 +150,8 @@ function useLookupOptions(col) {
     const ctl = new AbortController();
     (async () => {
       try {
-        const rows = await listReports(from, { signal: ctl.signal });
         const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+        const rows = await listReports(from, { from: since, signal: ctl.signal });
         const seen = new Set();
         const out = [];
         rows
@@ -711,6 +712,23 @@ function LogSheet({ schema, record, onBack, onEdit, onDeleted }) {
 }
 
 /* ═════════════════════════ Saved sheets browser ═════════════════════════ */
+/* The list loads one period, not the whole history: a daily log gains a sheet
+   a day, and every sheet carries its full payload, so "load everything" grows
+   without bound. Search, the month filter and "only with issues" work on the
+   loaded period — widening the period is one click. */
+const PERIODS = [
+  { months: 3, label: "Last 3 months" },
+  { months: 6, label: "Last 6 months" },
+  { months: 12, label: "Last 12 months" },
+  { months: 0, label: "All time" },
+];
+function periodStart(months) {
+  if (!months) return null;
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function LogBrowser({ schema }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -720,19 +738,21 @@ function LogBrowser({ schema }) {
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [period, setPeriod] = useState(3);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const rows = await listReports(schema.type);
+      const from = periodStart(period);
+      const rows = await listReports(schema.type, from ? { from } : {});
       setRecords(rows.sort((a, b) => reportDateOf(b).localeCompare(reportDateOf(a))));
     } catch {
       setError("Failed to load sheets. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [schema.type]);
+  }, [schema.type, period]);
   useEffect(() => { load(); }, [load]);
 
   const months = useMemo(() => [...new Set(records.map((r) => reportDateOf(r).slice(0, 7)).filter(Boolean))], [records]);
@@ -762,7 +782,7 @@ function LogBrowser({ schema }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
         <div>
           <h2 style={S.h2}>{schema.icon} {schema.title}</h2>
-          <p style={S.sub}>{records.length} sheet(s)</p>
+          <p style={S.sub}>{records.length} sheet(s) · {PERIODS.find((p) => p.months === period)?.label}</p>
         </div>
         <button onClick={load} style={S.btn("#0891b2")}>↻ Refresh</button>
       </div>
@@ -774,6 +794,14 @@ function LogBrowser({ schema }) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="🔍 Search anything — product, supplier, lot / batch no., equipment…"
         />
+        <select
+          style={{ ...S.input, flex: "0 0 160px", background: "#fff" }}
+          value={period}
+          onChange={(e) => { setMonth(""); setPeriod(Number(e.target.value)); }}
+          title="Which period to load from the server"
+        >
+          {PERIODS.map((p) => <option key={p.months} value={p.months}>{p.label}</option>)}
+        </select>
         <select style={{ ...S.input, flex: "0 0 160px", background: "#fff" }} value={month} onChange={(e) => setMonth(e.target.value)}>
           <option value="">All months</option>
           {months.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -786,7 +814,9 @@ function LogBrowser({ schema }) {
       {loading && <div style={{ textAlign: "center", padding: 40, color: "#64748b", fontWeight: 700 }}>⏳ Loading…</div>}
       {error && <div style={{ ...S.card, background: "#fef2f2", color: "#b91c1c", fontWeight: 700 }}>⚠️ {error}</div>}
       {!loading && !error && !shown.length && (
-        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontWeight: 700 }}>{records.length ? "No sheet matches the filters." : "No sheets saved yet."}</div>
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontWeight: 700 }}>{records.length
+            ? "No sheet matches the filters."
+            : period ? "No sheets in this period — choose a longer one above." : "No sheets saved yet."}</div>
       )}
 
       {!loading && !error && shown.map(({ r, s }) => {
