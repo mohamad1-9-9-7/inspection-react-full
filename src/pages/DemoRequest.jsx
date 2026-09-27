@@ -73,6 +73,7 @@ const TXT = {
     haveAccount: "Already a customer?",
     signIn: "Sign in",
     privacy: "We use these details only to contact you about the demo.",
+    quizLink: "Not sure yet? Check how inspection-ready you are — 2 minutes",
     waFab: "Chat on WhatsApp",
     waOr: "Prefer WhatsApp? Chat with us now",
     waMsg: "Hello, I'd like to know more about InspectPro and book a demo.",
@@ -110,6 +111,7 @@ const TXT = {
     haveAccount: "عندك حساب؟",
     signIn: "تسجيل الدخول",
     privacy: "منستخدم هالبيانات بس لنتواصل معك بخصوص العرض.",
+    quizLink: "مش متأكد؟ قيس جاهزية شركتك للتفتيش بدقيقتين",
     waFab: "راسلنا واتساب",
     waOr: "بتفضّل واتساب؟ راسلنا هلأ",
     waMsg: "مرحبا، حابب أعرف أكتر عن InspectPro وأحجز عرض تجريبي.",
@@ -226,6 +228,13 @@ export default function DemoRequest() {
               <li key={p} style={S.point}><span style={S.tick} aria-hidden="true">✓</span>{p}</li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={() => navigate(`/readiness${source ? `?src=${encodeURIComponent(source)}` : ""}`)}
+            style={S.quizLink}
+          >
+            📊 {t.quizLink} {isAr ? "←" : "→"}
+          </button>
         </aside>
 
         <section style={S.card}>
@@ -328,7 +337,7 @@ export default function DemoRequest() {
   );
 }
 
-function WaIcon({ size = 24 }) {
+export function WaIcon({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ flex: `0 0 ${size}px` }}>
       <path fill="currentColor" d="M16.02 3C8.84 3 3 8.83 3 16c0 2.29.6 4.53 1.74 6.5L3 29l6.68-1.75A12.96 12.96 0 0 0 16.02 29C23.2 29 29 23.17 29 16S23.2 3 16.02 3Zm0 23.8c-2 0-3.95-.54-5.65-1.55l-.4-.24-3.96 1.04 1.06-3.86-.26-.4A10.74 10.74 0 0 1 5.2 16c0-5.96 4.85-10.8 10.82-10.8 5.96 0 10.8 4.84 10.8 10.8 0 5.96-4.84 10.8-10.8 10.8Zm5.93-8.09c-.33-.16-1.93-.95-2.23-1.06-.3-.11-.52-.16-.73.16-.22.33-.84 1.06-1.03 1.28-.19.22-.38.24-.7.08-.33-.16-1.38-.51-2.62-1.62-.97-.86-1.62-1.93-1.81-2.25-.19-.33-.02-.5.14-.66.15-.15.33-.38.49-.57.16-.19.22-.33.33-.55.11-.22.05-.41-.03-.57-.08-.16-.73-1.77-1-2.42-.27-.64-.54-.55-.73-.56h-.62c-.22 0-.57.08-.87.41-.3.33-1.14 1.11-1.14 2.72 0 1.6 1.17 3.15 1.33 3.37.16.22 2.3 3.5 5.56 4.91.78.34 1.39.54 1.86.69.78.25 1.49.21 2.05.13.63-.09 1.93-.79 2.2-1.55.27-.76.27-1.41.19-1.55-.08-.13-.3-.21-.62-.37Z" />
@@ -474,6 +483,11 @@ const S = {
   ghostBtn: {
     border: "1px solid #cbd5e1", borderRadius: 10, padding: "12px 20px", fontWeight: 900, fontSize: 15,
     background: "#fff", color: "#0f172a", cursor: "pointer", fontFamily: "inherit",
+  },
+  quizLink: {
+    marginTop: "auto", alignSelf: "flex-start", textAlign: "start", border: "1px solid rgba(255,255,255,.45)",
+    background: "rgba(255,255,255,.14)", color: "#fff", borderRadius: 10, padding: "10px 14px",
+    fontWeight: 900, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.5, position: "relative",
   },
   waFab: {
     position: "fixed", bottom: 18, right: 18, zIndex: 50,

@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { Button, ConfirmModal, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { DEMO_ACTIVITIES, DEMO_EMIRATES } from "../DemoRequest";
+import { levelOf, scoreAnswers } from "../readiness/readinessQuestions";
 
 export const DEMO_STATUSES = [
   { v: "new",       label: "New",             ar: "جديد",          color: "#2563eb", bg: "#dbeafe" },
@@ -41,6 +42,9 @@ const norm = (r = {}) => ({
   source: r.source || "",
   referrer: r.referrer || "",
   lang: r.lang || "",
+  // Set only on leads from the /readiness check.
+  quizScore: Number.isInteger(r.quiz_score ?? r.quizScore) ? (r.quiz_score ?? r.quizScore) : null,
+  quizAnswers: r.quiz_answers || r.quizAnswers || null,
 });
 
 const fmtWhen = (iso) => {
@@ -85,6 +89,7 @@ export default function DemoRequestsTab() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [waClicks, setWaClicks] = useState({});
   const [whatsapp, setWhatsapp] = useState("");
+  const [quizStats, setQuizStats] = useState({});
 
   const load = async () => {
     setLoading(true);
@@ -95,6 +100,7 @@ export default function DemoRequestsTab() {
       setRows((j.requests || j.data || []).map(norm));
       setWaClicks(j.waClicks && typeof j.waClicks === "object" ? j.waClicks : {});
       setWhatsapp(String(j.whatsapp || ""));
+      setQuizStats(j.quizStats && typeof j.quizStats === "object" ? j.quizStats : {});
       setMsg(null);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ ${e.message}` });
@@ -138,8 +144,11 @@ export default function DemoRequestsTab() {
     c.thisMonth = rows.filter((r) => new Date(r.createdAt) >= monthStart).length;
     const decided = c.won + c.lost;
     c.winRate = decided ? Math.round((c.won / decided) * 100) : null;
+    const sumOf = (prefix) => Object.entries(quizStats).reduce((a, [k, v]) => a + (k.startsWith(prefix) ? Number(v) || 0 : 0), 0);
+    c.quizDone = sumOf("done:");
+    c.quizLeads = rows.filter((r) => r.quizScore != null).length;
     return c;
-  }, [rows]);
+  }, [rows, quizStats]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -189,7 +198,7 @@ export default function DemoRequestsTab() {
 
       <WhatsAppSetting saved={whatsapp} onSaved={setWhatsapp} setMsg={setMsg} />
 
-      <ShareLinks publicUrl={publicUrl} rows={rows} waClicks={waClicks} />
+      <ShareLinks origin={window.location.origin} rows={rows} waClicks={waClicks} quizStats={quizStats} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
         <Stat label="Total" value={rows.length} color="#0f766e" />
@@ -197,6 +206,12 @@ export default function DemoRequestsTab() {
         <Stat label="New (not contacted)" value={counts.new} color="#2563eb" />
         <Stat label="Won" value={counts.won} color="#059669" />
         <Stat label="Win rate" value={counts.winRate == null ? "—" : `${counts.winRate}%`} color="#7c3aed" />
+        <Stat label="Readiness checks finished" value={counts.quizDone} color="#d97706" />
+        <Stat
+          label="Checks → left their number"
+          value={counts.quizDone ? `${Math.min(100, Math.round((counts.quizLeads / counts.quizDone) * 100))}%` : "—"}
+          color="#b45309"
+        />
         <Stat label="WhatsApp taps" value={Object.values(waClicks).reduce((a, b) => a + (Number(b) || 0), 0)} color="#15803d" />
       </div>
 
@@ -231,6 +246,7 @@ export default function DemoRequestsTab() {
                 <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ flex: "1 1 260px", minWidth: 0, cursor: "pointer" }} onClick={() => setOpenId(open ? null : r.id)}>
                     <div style={{ fontWeight: 1000, fontSize: 17 }}>
+                      {r.quizScore != null && <ScoreBadge score={r.quizScore} />}
                       {r.companyName || "—"}
                       <span style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>
                         {" "}· {activityLabel(r.activity)}{r.branches ? ` · ${r.branches} branches` : ""}{r.emirate ? ` · ${emirateLabel(r.emirate)}` : ""}
@@ -258,6 +274,7 @@ export default function DemoRequestsTab() {
 
                 {open && (
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {r.quizScore != null && <QuizGaps answers={r.quizAnswers} />}
                     {r.message && (
                       <div style={{ ...ui.subtleCard, marginBottom: 0, whiteSpace: "pre-wrap", fontWeight: 700 }}>
                         <div style={{ color: "#64748b", fontSize: 12, fontWeight: 900, marginBottom: 4 }}>THEIR MESSAGE</div>
@@ -365,16 +382,26 @@ function WhatsAppSetting({ saved, onSaved, setMsg }) {
   );
 }
 
-function ShareLinks({ publicUrl, rows, waClicks = {} }) {
+const SHARE_PAGES = [
+  { v: "readiness", path: "/readiness", label: "📊 Readiness check", ar: "فحص الجاهزية" },
+  { v: "demo",      path: "/demo",      label: "📝 Demo request",   ar: "طلب عرض" },
+];
+
+function ShareLinks({ origin, rows, waClicks = {}, quizStats = {} }) {
   const [open, setOpen] = useState(true);
+  const [page, setPage] = useState("readiness");
+  const publicUrl = origin + (SHARE_PAGES.find((p) => p.v === page)?.path || "/demo");
+  const isQuiz = page === "readiness";
   const [copied, setCopied] = useState("");
   const [custom, setCustom] = useState("");
 
   const bySource = useMemo(() => {
     const c = {};
-    rows.forEach((r) => { const s = slugSrc(r.source); if (s) c[s] = (c[s] || 0) + 1; });
+    rows
+      .filter((r) => (r.quizScore != null) === isQuiz)
+      .forEach((r) => { const s = slugSrc(r.source); if (s) c[s] = (c[s] || 0) + 1; });
     return c;
-  }, [rows]);
+  }, [rows, isQuiz]);
 
   const linkOf = (src) => `${publicUrl}?src=${encodeURIComponent(src)}`;
   const copy = async (text, key) => {
@@ -403,6 +430,11 @@ function ShareLinks({ publicUrl, rows, waClicks = {} }) {
         <span title="Requests that came from this link" style={{ fontWeight: 900, color: n ? "#059669" : "#94a3b8", minWidth: 70, textAlign: "center" }}>
           {n} {n === 1 ? "request" : "requests"}
         </span>
+        {isQuiz && (
+          <span title="Opened the check → finished it" style={{ fontWeight: 900, color: quizStats[`start:${src}`] ? "#b45309" : "#94a3b8", minWidth: 80, textAlign: "center" }}>
+            ▶ {quizStats[`start:${src}`] || 0} → ✓ {quizStats[`done:${src}`] || 0}
+          </span>
+        )}
         <span title="WhatsApp taps from this link" style={{ fontWeight: 900, color: waClicks[src] ? "#15803d" : "#94a3b8", minWidth: 60, textAlign: "center" }}>
           💬 {waClicks[src] || 0}
         </span>
@@ -436,6 +468,12 @@ function ShareLinks({ publicUrl, rows, waClicks = {} }) {
       </button>
       {open && (
         <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontWeight: 900 }}>Page:</span>
+            {SHARE_PAGES.map((p) => (
+              <Chip key={p.v} on={page === p.v} onClick={() => setPage(p.v)} label={`${p.label} · ${p.ar}`} />
+            ))}
+          </div>
           {/localhost|127\.0\.0\.1/.test(publicUrl) && (
             <div style={{ ...ui.subtleCard, marginBottom: 8, color: "#b45309", fontWeight: 800, fontSize: 13 }}>
               You are on localhost — open this screen on the live site to copy links people outside can open.
@@ -456,6 +494,37 @@ function ShareLinks({ publicUrl, rows, waClicks = {} }) {
           {customSrc && <Row k="custom" src={customSrc} label={customSrc} />}
         </div>
       )}
+    </div>
+  );
+}
+
+function ScoreBadge({ score }) {
+  const l = levelOf(score);
+  return (
+    <span
+      title={`Readiness check: ${l.en}`}
+      style={{ display: "inline-block", marginInlineEnd: 8, padding: "2px 10px", borderRadius: 999, background: l.bg, color: l.color, fontWeight: 1000, fontSize: 13, verticalAlign: "middle" }}
+    >
+      📊 {score}/100
+    </span>
+  );
+}
+
+/* A readiness lead's weak areas, weakest first — what to open the call with. */
+function QuizGaps({ answers }) {
+  const { gaps } = scoreAnswers(answers || {});
+  if (!gaps.length) return null;
+  return (
+    <div style={{ ...ui.subtleCard, marginBottom: 0 }}>
+      <div style={{ color: "#64748b", fontSize: 12, fontWeight: 900, marginBottom: 6 }}>WEAK AREAS FROM THEIR READINESS CHECK</div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {gaps.map((g) => (
+          <div key={g.q.id} style={{ display: "flex", gap: 10, fontWeight: 750 }}>
+            <b style={{ color: g.pts >= 5 ? "#d97706" : "#dc2626", minWidth: 44 }}>{g.pts}/10</b>
+            <span><b>{g.q.area.en}</b> — {g.opt.en}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
