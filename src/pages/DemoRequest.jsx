@@ -9,7 +9,7 @@
 // `?src=linkedin` (or any value) on the link is saved with the request, so
 // each channel you share the link on can be counted separately.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
@@ -73,6 +73,9 @@ const TXT = {
     haveAccount: "Already a customer?",
     signIn: "Sign in",
     privacy: "We use these details only to contact you about the demo.",
+    waFab: "Chat on WhatsApp",
+    waOr: "Prefer WhatsApp? Chat with us now",
+    waMsg: "Hello, I'd like to know more about InspectPro and book a demo.",
   },
   ar: {
     eyebrow: "InspectPro QMS",
@@ -107,6 +110,9 @@ const TXT = {
     haveAccount: "عندك حساب؟",
     signIn: "تسجيل الدخول",
     privacy: "منستخدم هالبيانات بس لنتواصل معك بخصوص العرض.",
+    waFab: "راسلنا واتساب",
+    waOr: "بتفضّل واتساب؟ راسلنا هلأ",
+    waMsg: "مرحبا، حابب أعرف أكتر عن InspectPro وأحجز عرض تجريبي.",
   },
 };
 
@@ -144,6 +150,32 @@ export default function DemoRequest() {
 
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // WhatsApp number is set by the owner in Platform Center → Demo Requests;
+  // no number (or no server) → no button.
+  const [waNumber, setWaNumber] = useState("");
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/api/demo-config`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((j) => { if (alive) setWaNumber(String(j?.whatsapp || "").replace(/\D/g, "")); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // The source rides along in the message, so the chat itself says which link it came from.
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(t.waMsg + (source ? ` [${source}]` : ""))}`
+    : "";
+  const countWaTap = () => {
+    try {
+      fetch(`${API_BASE}/api/demo-requests/wa-click`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch { /* counting never blocks the chat */ }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -268,6 +300,11 @@ export default function DemoRequest() {
                 {sending ? t.sending : t.submit}
               </button>
               <p style={S.privacy}>{t.privacy}</p>
+              {waHref && (
+                <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} style={S.waInline}>
+                  <WaIcon size={20} /> {t.waOr}
+                </a>
+              )}
             </form>
           )}
 
@@ -277,7 +314,25 @@ export default function DemoRequest() {
           </div>
         </section>
       </section>
+
+      {waHref && (
+        <a
+          href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap}
+          className="demo-wa-fab" style={S.waFab} aria-label={t.waFab} title={t.waFab}
+        >
+          <WaIcon size={30} />
+          <span className="demo-wa-label" style={S.waLabel}>{t.waFab}</span>
+        </a>
+      )}
     </main>
+  );
+}
+
+function WaIcon({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ flex: `0 0 ${size}px` }}>
+      <path fill="currentColor" d="M16.02 3C8.84 3 3 8.83 3 16c0 2.29.6 4.53 1.74 6.5L3 29l6.68-1.75A12.96 12.96 0 0 0 16.02 29C23.2 29 29 23.17 29 16S23.2 3 16.02 3Zm0 23.8c-2 0-3.95-.54-5.65-1.55l-.4-.24-3.96 1.04 1.06-3.86-.26-.4A10.74 10.74 0 0 1 5.2 16c0-5.96 4.85-10.8 10.82-10.8 5.96 0 10.8 4.84 10.8 10.8 0 5.96-4.84 10.8-10.8 10.8Zm5.93-8.09c-.33-.16-1.93-.95-2.23-1.06-.3-.11-.52-.16-.73.16-.22.33-.84 1.06-1.03 1.28-.19.22-.38.24-.7.08-.33-.16-1.38-.51-2.62-1.62-.97-.86-1.62-1.93-1.81-2.25-.19-.33-.02-.5.14-.66.15-.15.33-.38.49-.57.16-.19.22-.33.33-.55.11-.22.05-.41-.03-.57-.08-.16-.73-1.77-1-2.42-.27-.64-.54-.55-.73-.56h-.62c-.22 0-.57.08-.87.41-.3.33-1.14 1.11-1.14 2.72 0 1.6 1.17 3.15 1.33 3.37.16.22 2.3 3.5 5.56 4.91.78.34 1.39.54 1.86.69.78.25 1.49.21 2.05.13.63-.09 1.93-.79 2.2-1.55.27-.76.27-1.41.19-1.55-.08-.13-.3-.21-.62-.37Z" />
+    </svg>
   );
 }
 
@@ -318,6 +373,15 @@ const CSS = `
   #root .demo-page.demo-page .demo-hero-title { font-size: 24px !important; }
   #root .demo-page.demo-page .demo-title { font-size: 22px !important; }
 }
+.demo-page .demo-wa-fab:hover { transform: translateY(-3px) scale(1.03); }
+@keyframes demo-wa-pulse { 0% { box-shadow: 0 0 0 0 rgba(37,211,102,.55); } 70% { box-shadow: 0 0 0 16px rgba(37,211,102,0); } 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); } }
+.demo-page .demo-wa-fab { animation: demo-wa-pulse 2.4s ease-out 1.5s 3; }
+#root .demo-page.demo-page .demo-wa-label { font-size: 15px !important; }
+@media (max-width: 620px) {
+  .demo-page .demo-wa-label { display: none !important; }
+  .demo-page .demo-wa-fab { width: 58px; height: 58px; padding: 0 !important; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .demo-page .demo-wa-fab { animation: none; } }
 .demo-page .demo-primary:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 22px 40px rgba(15,118,110,.30) !important; }
 `;
 
@@ -410,6 +474,18 @@ const S = {
   ghostBtn: {
     border: "1px solid #cbd5e1", borderRadius: 10, padding: "12px 20px", fontWeight: 900, fontSize: 15,
     background: "#fff", color: "#0f172a", cursor: "pointer", fontFamily: "inherit",
+  },
+  waFab: {
+    position: "fixed", bottom: 18, right: 18, zIndex: 50,
+    display: "inline-flex", alignItems: "center", gap: 10, minHeight: 58, padding: "0 20px 0 16px",
+    borderRadius: 999, background: "#25d366", color: "#fff", textDecoration: "none",
+    fontWeight: 1000, boxShadow: "0 14px 30px rgba(37,211,102,.38)", transition: "transform .16s ease",
+  },
+  waLabel: { fontWeight: 1000, fontSize: 15, whiteSpace: "nowrap" },
+  waInline: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 48,
+    borderRadius: 10, border: "1.5px solid #25d366", background: "#f0fdf4", color: "#15803d",
+    fontWeight: 1000, textDecoration: "none",
   },
   privacy: { margin: 0, color: "#94a3b8", fontWeight: 700, fontSize: 13, textAlign: "center" },
   doneBox: { display: "grid", gap: 18, justifyItems: "center", padding: "30px 0" },

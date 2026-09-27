@@ -83,6 +83,8 @@ export default function DemoRequestsTab() {
   const [openId, setOpenId] = useState(null);
   const [notesDraft, setNotesDraft] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [waClicks, setWaClicks] = useState({});
+  const [whatsapp, setWhatsapp] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -91,6 +93,8 @@ export default function DemoRequestsTab() {
       if (res.status === 404) throw new Error("The server has no /api/demo-requests yet — deploy the server part first.");
       const j = await readJson(res, "Could not load demo requests");
       setRows((j.requests || j.data || []).map(norm));
+      setWaClicks(j.waClicks && typeof j.waClicks === "object" ? j.waClicks : {});
+      setWhatsapp(String(j.whatsapp || ""));
       setMsg(null);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ ${e.message}` });
@@ -183,7 +187,9 @@ export default function DemoRequestsTab() {
 
       <StatusMessage message={msg} />
 
-      <ShareLinks publicUrl={publicUrl} rows={rows} />
+      <WhatsAppSetting saved={whatsapp} onSaved={setWhatsapp} setMsg={setMsg} />
+
+      <ShareLinks publicUrl={publicUrl} rows={rows} waClicks={waClicks} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
         <Stat label="Total" value={rows.length} color="#0f766e" />
@@ -191,6 +197,7 @@ export default function DemoRequestsTab() {
         <Stat label="New (not contacted)" value={counts.new} color="#2563eb" />
         <Stat label="Won" value={counts.won} color="#059669" />
         <Stat label="Win rate" value={counts.winRate == null ? "—" : `${counts.winRate}%`} color="#7c3aed" />
+        <Stat label="WhatsApp taps" value={Object.values(waClicks).reduce((a, b) => a + (Number(b) || 0), 0)} color="#15803d" />
       </div>
 
       <div style={{ ...ui.toolbar, justifyContent: "flex-start" }}>
@@ -312,7 +319,53 @@ function Stat({ label, value, color }) {
 
 /* Copy-ready links for each LinkedIn spot, with how many requests each one
    has brought in so far, plus a builder for any other channel. */
-function ShareLinks({ publicUrl, rows }) {
+/* The number behind the green WhatsApp button on /demo. Empty = no button. */
+function WhatsAppSetting({ saved, onSaved, setMsg }) {
+  const [draft, setDraft] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setDraft(saved); }, [saved]);
+
+  const save = async (value) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/demo-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsapp: value }),
+      });
+      if (res.status === 404) throw new Error("The server has no /api/demo-config yet — deploy the server part first.");
+      const j = await readJson(res, "Could not save the WhatsApp number");
+      onSaved(j.whatsapp || "");
+      setMsg({ kind: "ok", text: j.whatsapp ? `✅ WhatsApp button is live: +${j.whatsapp}` : "✅ WhatsApp button hidden." });
+    } catch (e) {
+      setMsg({ kind: "err", text: e.message === "invalid_whatsapp" ? "❌ That number does not look right (8–15 digits)." : `❌ ${e.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ ...ui.card, padding: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 240px" }}>
+        <div style={{ fontWeight: 1000 }}>💬 WhatsApp button on /demo — زر الواتساب</div>
+        <div style={{ color: "#64748b", fontWeight: 700, fontSize: 12.5 }}>
+          {saved ? <>Live: <a href={`https://wa.me/${saved}`} target="_blank" rel="noreferrer">+{saved}</a></> : "Hidden — add a number to show it."}
+        </div>
+      </div>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="+971 5x xxx xxxx"
+        dir="ltr"
+        style={{ ...ui.input, flex: "1 1 180px", maxWidth: 240, minHeight: 38 }}
+      />
+      <Button tone="primary" style={{ minHeight: 38 }} disabled={busy || draft === saved} onClick={() => save(draft)}>Save</Button>
+      {saved && <Button tone="muted" style={{ minHeight: 38 }} disabled={busy} onClick={() => save("")}>Hide</Button>}
+    </div>
+  );
+}
+
+function ShareLinks({ publicUrl, rows, waClicks = {} }) {
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState("");
   const [custom, setCustom] = useState("");
@@ -349,6 +402,9 @@ function ShareLinks({ publicUrl, rows }) {
         <code style={{ flex: "2 1 260px", minWidth: 0, overflowWrap: "anywhere", background: "#f1f5f9", borderRadius: 6, padding: "6px 8px", fontSize: 12.5 }}>{url}</code>
         <span title="Requests that came from this link" style={{ fontWeight: 900, color: n ? "#059669" : "#94a3b8", minWidth: 70, textAlign: "center" }}>
           {n} {n === 1 ? "request" : "requests"}
+        </span>
+        <span title="WhatsApp taps from this link" style={{ fontWeight: 900, color: waClicks[src] ? "#15803d" : "#94a3b8", minWidth: 60, textAlign: "center" }}>
+          💬 {waClicks[src] || 0}
         </span>
         <div style={{ display: "flex", gap: 6 }}>
           <Button tone={copied === k ? "primary" : undefined} style={{ minHeight: 36 }} onClick={() => copy(url, k)}>
