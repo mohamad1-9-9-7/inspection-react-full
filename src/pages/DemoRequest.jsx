@@ -1,18 +1,19 @@
 // src/pages/DemoRequest.jsx
-// Public "Request a demo" page (/demo) — no login. A visitor leaves their
-// company details; the server stores the request and e-mails the owner, and
-// the super-admin follows it up in Platform Center → Demo Requests.
+// Public landing page (/demo) — the first thing a prospect sees of InspectPro.
+// No login. Hero with a live-looking product mock-up, who it is for, the
+// feature bento, before/after, how it works, the readiness-check band, the
+// demo-request form, FAQ. Styles: DemoRequest.css (scoped under .dp).
 //
-// Server contract: POST /api/demo-requests (public, rate-limited). See
-// routes/demoRequests.cjs in the inspection-server repo.
-//
-// `?src=linkedin` (or any value) on the link is saved with the request, so
-// each channel you share the link on can be counted separately.
+// Server contract: POST /api/demo-requests (public, rate-limited),
+// GET /api/demo-config (WhatsApp number, offer, referral, story — all set by
+// the owner in Platform Center → Demo Requests). `?src=linkedin` (or any value)
+// on the link is saved with the request, so each channel can be counted.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
+import "./DemoRequest.css";
+import { BrandLockup } from "./readiness/brand";
 import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
@@ -22,7 +23,7 @@ export const DEMO_ACTIVITIES = [
   { v: "kitchen", en: "Central kitchen / catering", ar: "مطبخ مركزي / تموين" },
   { v: "factory", en: "Food factory / manufacturing", ar: "مصنع أغذية" },
   { v: "retail", en: "Supermarket / retail", ar: "سوبرماركت / تجزئة" },
-  { v: "distribution", en: "Distribution / import / cold store", ar: "توزيع / استيراد / تخزين مبرد" },
+  { v: "distribution", en: "Distribution / import / cold store", ar: "توزيع / استيراد / تخزين مبرّد" },
   { v: "other", en: "Other", ar: "أخرى" },
 ];
 
@@ -42,107 +43,249 @@ export const DEMO_EMIRATES = [
 
 const TXT = {
   en: {
-    eyebrow: "InspectPro QMS",
-    heroTitle: "See your food-safety records run on one screen.",
-    heroSub:
-      "HACCP & ISO 22000 logs, branch inspections, returns and condemnation, supplier approval, and reports ready for the auditor — for every branch, from any device.",
-    points: ["Daily logs replace paper and Excel", "Every branch live on one dashboard", "PDF & Excel reports in one click"],
-    title: "Request a free demo",
-    sub: "Leave your details and we will call you within one working day to book a short demo.",
-    company: "Company name",
-    activity: "Business type",
-    branches: "Number of branches / sites",
-    contact: "Your name",
-    job: "Job title",
-    phone: "Mobile / WhatsApp",
-    email: "E-mail",
-    emirate: "Emirate / country",
-    message: "What would you like to solve? (optional)",
-    messagePh: "e.g. we still do HACCP logs on paper across 6 branches",
+    nav: { features: "Features", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
+    pill: "Food-safety & quality management platform",
+    pillTag: "New",
+    offerTag: "Offer",
+    offerPill: (d) => `No setup fee until ${d}`,
+    h1a: "Every branch. Every record.",
+    h1b: "Inspection‑ready, always.",
+    lead: "InspectPro replaces paper logs with one live platform for HACCP, ISO 22000, internal audits, traceability and suppliers — so any record is in front of the inspector in minutes, not days.",
+    ctaDemo: "Book a free demo",
+    ctaCheck: "Check your readiness — 2 min",
+    trust: ["Phone, tablet & desktop", "Arabic & English", "PDF & Excel in one click"],
+    mock: {
+      title: "Dashboard", today: "Today",
+      k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
+      chart: "Cooler temperatures", range: "Limit 0–5 °C",
+      r1: "Receiving check — POS 10", r2: "Cleaning checklist — POS 15", r3: "Pest control — QCS",
+      ok: "Done", due: "Due 4 pm",
+      f1: "Cooler 03 · 2.4 °C", f1s: "Within limit",
+      f2: "NCR-000087", f2s: "Closed with evidence",
+      f3: "Monthly report", f3s: "PDF ready",
+    },
+    forLbl: "Built for",
+    forList: ["Meat & butchery", "Sweets & bakery", "Restaurants", "Central kitchens", "Food factories", "Retail & cold stores"],
+    stats: [
+      ["1", "screen for every branch, live"],
+      ["2 min", "to find any record by branch & date"],
+      ["10", "food-safety areas in one system"],
+      ["2", "languages — Arabic & English"],
+    ],
+    featEyebrow: "Platform",
+    featTitle: "Everything an inspector asks for, in one place",
+    featSub: "Daily logs, audits and follow-ups your team fills on the phone — and head office sees the same day.",
+    feats: {
+      haccp: ["HACCP & temperature logs", "Coolers, freezers and cooking checks filled on a phone, each unit with its own limits — readings outside them stand out."],
+      trace: ["Traceability in one search", "Item codes link shipment, receiving and branch records."],
+      trace3: ["Supplier", "Receiving", "Branch"],
+      ncr: ["NCR & CAPA", "Every non-conformance gets its own reference and stays open until it is closed."],
+      audit: ["Internal audits with evidence", "Audit on the phone; each finding sends the branch a link to upload its proof."],
+      supp: ["Supplier approval", "Suppliers self-assess through a link; their score shows on every receiving record."],
+      ret: ["Returns & condemnation", "Reason, action and photos — a photo of the transfer note fills the item codes."],
+      train: ["Training & staff", "Sessions, quizzes and attendance per employee."],
+      rep: ["Audit-ready reports", "Any record as PDF or Excel in one click, laid out like the original form."],
+      tags: ["HACCP", "ISO 22000", "Dubai & Abu Dhabi", "Multi-branch"],
+    },
+    baEyebrow: "Before & after",
+    baTitle: "From paper folders to one live screen",
+    howEyebrow: "How it works",
+    howTitle: "Live in three steps",
+    steps: [
+      ["Book a short demo", "We show InspectPro on your own kind of branch and records — no commitment."],
+      ["We set it up with you", "Your branches, forms, users and permissions — ready for your team."],
+      ["Your team records, you see it live", "Staff fill checks on their phones; QA and management follow every branch from one dashboard."],
+    ],
+    bandTitle: "How ready are you for your next inspection?",
+    bandSub: "Answer 10 quick questions and get a score out of 100, with the weak points an inspector would find first. Free, no sign-up.",
+    bandCta: "Start the free check",
+    bandScore: "readiness",
+    formEyebrow: "Free demo",
+    formTitle: "See InspectPro on your own branches",
+    formSub: "Leave your details and we will contact you within one working day to book a short demo.",
+    gets: [
+      "A walkthrough built around your business type and number of branches",
+      "How your current paper forms become phone checklists",
+      "Live branch dashboard, NCR follow-up and audit-ready reports",
+      "A clear quote for your company — no obligation",
+    ],
+    waOr: "Prefer WhatsApp? Chat with us",
+    cardTitle: "Request a free demo",
+    cardHint: "Takes less than a minute.",
+    company: "Company name", activity: "Business type", branches: "Number of branches / sites", emirate: "Emirate / country",
+    contact: "Your name", job: "Job title", phone: "Mobile / WhatsApp", email: "E-mail",
+    message: "What would you like to solve? (optional)", messagePh: "e.g. we still do HACCP logs on paper across 6 branches",
+    referredBy: "Who recommended us? (optional)", referredPh: "Company or person",
     pick: "Select…",
-    submit: "Send request",
-    sending: "Sending…",
+    submit: "Send request", sending: "Sending…",
     required: "Please fill in the company name, your name and a phone number.",
     badEmail: "That e-mail address does not look right.",
     badPhone: "Please enter a valid phone number.",
     failed: "We could not send your request. Please try again, or contact us directly.",
     tooMany: "Too many requests from this device. Please try again later.",
+    privacy: "We use these details only to contact you about the demo.",
     doneTitle: "Thank you — request received",
     doneSub: "We will contact you within one working day to arrange your demo.",
-    back: "Back to sign in",
     another: "Send another request",
-    haveAccount: "Already a customer?",
-    signIn: "Sign in",
-    privacy: "We use these details only to contact you about the demo.",
-    referredBy: "Who recommended us? (optional)",
-    referredPh: "Company or person",
-    quizTitle: "Not sure yet?",
-    quizSub: "Check how inspection-ready your company is — in 2 minutes",
-    quizGo: "Start the free check",
+    doneCheck: "Meanwhile, check your readiness",
+    faqEyebrow: "Questions",
+    faqTitle: "Frequently asked",
+    faq: [
+      ["Does it work in Arabic?", "Yes. Every screen works in Arabic and English, and each user works in their own language."],
+      ["Do we need our own server or IT team?", "No. InspectPro runs in the cloud and opens in any browser — on a phone at the branch or a computer at head office."],
+      ["Can our current forms be kept?", "Yes. Your paper forms are turned into digital checklists that follow the same layout, and reports print in that layout too."],
+      ["How is it priced?", "Per company, depending on the number of branches and modules. You get a clear quote after the demo."],
+    ],
+    footRights: "All rights reserved.",
+    footSignIn: "Customer sign-in",
+    footCheck: "Readiness check",
     waFab: "Chat on WhatsApp",
-    waOr: "Prefer WhatsApp? Chat with us now",
     waMsg: "Hello, I'd like to know more about InspectPro and book a demo.",
+    lang: "العربية",
   },
   ar: {
-    eyebrow: "InspectPro QMS",
-    heroTitle: "سجلات سلامة الغذاء لجميع فروعك على شاشة واحدة.",
-    heroSub:
-      "سجلات HACCP و ISO 22000، وتفتيش الفروع، والمرتجعات والإتلاف، واعتماد الموردين، وتقارير جاهزة للمدقق — لجميع الفروع ومن أي جهاز.",
-    points: ["السجلات اليومية بدلًا من الورق وملفات Excel", "جميع الفروع مباشرةً على لوحة واحدة", "تقارير PDF و Excel بنقرة واحدة"],
-    title: "اطلب عرضًا تجريبيًا مجانيًا",
-    sub: "اترك بياناتك، وسنتواصل معك خلال يوم عمل واحد لتحديد موعد عرض قصير.",
-    company: "اسم الشركة",
-    activity: "نوع النشاط",
-    branches: "عدد الفروع / المواقع",
-    contact: "الاسم",
-    job: "المسمى الوظيفي",
-    phone: "رقم الجوال / واتساب",
-    email: "البريد الإلكتروني",
-    emirate: "الإمارة / الدولة",
-    message: "ما المشكلة التي تودّ حلّها؟ (اختياري)",
-    messagePh: "مثال: ما زلنا نعبّئ سجلات HACCP ورقيًا في 6 فروع",
-    referredBy: "من رشّحنا لك؟ (اختياري)",
-    referredPh: "اسم الشركة أو الشخص",
+    nav: { features: "المزايا", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
+    pill: "منصة إدارة سلامة الغذاء والجودة",
+    pillTag: "جديد",
+    offerTag: "عرض",
+    offerPill: (d) => `إعفاء من رسوم التأسيس حتى ${d}`,
+    h1a: "كل فرع، وكل سجل،",
+    h1b: "جاهزٌ للتفتيش دائمًا.",
+    lead: "يستبدل InspectPro السجلات الورقية بمنصة واحدة مباشرة لـ HACCP و ISO 22000 والتدقيق الداخلي والتتبّع والموردين — ليكون أي سجل بين يدي المفتش خلال دقائق، لا أيام.",
+    ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
+    ctaCheck: "قِس جاهزيتك — دقيقتان",
+    trust: ["الجوال والجهاز اللوحي والحاسوب", "العربية والإنجليزية", "PDF و Excel بنقرة واحدة"],
+    mock: {
+      title: "لوحة التحكم", today: "اليوم",
+      k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",
+      chart: "درجات حرارة الثلاجات", range: "الحد 0–5 °م",
+      r1: "فحص الاستلام — POS 10", r2: "قائمة النظافة — POS 15", r3: "مكافحة الآفات — QCS",
+      ok: "مكتمل", due: "الساعة 4 م",
+      f1: "ثلاجة 03 · 2.4 °م", f1s: "ضمن الحد المسموح",
+      f2: "NCR-000087", f2s: "أُغلقت بدليل موثّق",
+      f3: "التقرير الشهري", f3s: "ملف PDF جاهز",
+    },
+    forLbl: "مصمَّم لـ",
+    forList: ["اللحوم والملاحم", "الحلويات والمخابز", "المطاعم", "المطابخ المركزية", "مصانع الأغذية", "التجزئة والتخزين المبرّد"],
+    stats: [
+      ["1", "شاشة واحدة لجميع الفروع مباشرةً"],
+      ["دقيقتان", "للوصول إلى أي سجل بالفرع والتاريخ"],
+      ["10", "جوانب لسلامة الغذاء في نظام واحد"],
+      ["2", "لغتان — العربية والإنجليزية"],
+    ],
+    featEyebrow: "المنصة",
+    featTitle: "كل ما يطلبه المفتش، في مكان واحد",
+    featSub: "سجلات يومية وتدقيق ومتابعة يعبّئها فريقك من الجوال — وتطّلع عليها الإدارة في اليوم نفسه.",
+    feats: {
+      haccp: ["سجلات HACCP ودرجات الحرارة", "فحوصات الثلاجات والمجمِّدات والطهي تُعبّأ من الجوال، ولكل وحدة حدودها — وتبرز القراءات الخارجة عنها."],
+      trace: ["التتبّع ببحث واحد", "يربط رمز الصنف سجلات الشحن والاستلام والفروع."],
+      trace3: ["المورّد", "الاستلام", "الفرع"],
+      ncr: ["عدم المطابقة والإجراءات التصحيحية", "لكل حالة رقم مرجعي خاص، وتبقى مفتوحة حتى تُغلق."],
+      audit: ["تدقيق داخلي بالأدلة", "التدقيق من الجوال، ولكل ملاحظة رابط يرفع الفرع من خلاله الدليل."],
+      supp: ["اعتماد الموردين", "يقيّم المورّد نفسه عبر رابط، وتظهر نتيجته في كل سجل استلام."],
+      ret: ["المرتجعات والإتلاف", "السبب والإجراء والصور — وصورة إشعار التحويل تعبّئ رموز الأصناف."],
+      train: ["التدريب والموظفون", "الجلسات والاختبارات والحضور لكل موظف."],
+      rep: ["تقارير جاهزة للتدقيق", "أي سجل بصيغة PDF أو Excel بنقرة واحدة، وبتصميم النموذج الأصلي."],
+      tags: ["HACCP", "ISO 22000", "دبي وأبوظبي", "فروع متعددة"],
+    },
+    baEyebrow: "قبل وبعد",
+    baTitle: "من الملفات الورقية إلى شاشة واحدة مباشرة",
+    howEyebrow: "آلية العمل",
+    howTitle: "ثلاث خطوات للانطلاق",
+    steps: [
+      ["احجز عرضًا قصيرًا", "نعرض لك InspectPro على نوع فروعك وسجلاتك — دون أي التزام."],
+      ["نجهّز النظام معك", "فروعك ونماذجك ومستخدموك وصلاحياتهم — جاهزة لفريقك."],
+      ["يسجّل فريقك وتتابع مباشرةً", "يعبّئ الموظفون الفحوصات من جوالاتهم، ويتابع قسم الجودة والإدارة كل فرع من لوحة واحدة."],
+    ],
+    bandTitle: "ما مدى جاهزيتك للتفتيش القادم؟",
+    bandSub: "أجب عن 10 أسئلة سريعة، واحصل على درجة من 100 مع نقاط الضعف التي سيلاحظها المفتش أولًا. مجانًا ودون تسجيل.",
+    bandCta: "ابدأ الفحص المجاني",
+    bandScore: "الجاهزية",
+    formEyebrow: "عرض مجاني",
+    formTitle: "شاهد InspectPro على فروعك أنت",
+    formSub: "اترك بياناتك، وسنتواصل معك خلال يوم عمل واحد لتحديد موعد عرض قصير.",
+    gets: [
+      "جولة مصمَّمة وفق نوع نشاطك وعدد فروعك",
+      "كيف تتحول نماذجك الورقية الحالية إلى قوائم فحص على الجوال",
+      "لوحة الفروع المباشرة، ومتابعة حالات عدم المطابقة، وتقارير جاهزة للتدقيق",
+      "عرض سعر واضح لشركتك — دون أي التزام",
+    ],
+    waOr: "تفضّل واتساب؟ راسلنا الآن",
+    cardTitle: "اطلب عرضًا تجريبيًا مجانيًا",
+    cardHint: "يستغرق أقل من دقيقة.",
+    company: "اسم الشركة", activity: "نوع النشاط", branches: "عدد الفروع / المواقع", emirate: "الإمارة / الدولة",
+    contact: "الاسم", job: "المسمى الوظيفي", phone: "رقم الجوال / واتساب", email: "البريد الإلكتروني",
+    message: "ما المشكلة التي تودّ حلّها؟ (اختياري)", messagePh: "مثال: ما زلنا نعبّئ سجلات HACCP ورقيًا في 6 فروع",
+    referredBy: "من رشّحنا لك؟ (اختياري)", referredPh: "اسم الشركة أو الشخص",
     pick: "اختر…",
-    submit: "إرسال الطلب",
-    sending: "جارٍ الإرسال…",
+    submit: "إرسال الطلب", sending: "جارٍ الإرسال…",
     required: "يُرجى إدخال اسم الشركة واسمك ورقم الجوال.",
     badEmail: "البريد الإلكتروني غير صحيح.",
     badPhone: "يُرجى إدخال رقم جوال صحيح.",
     failed: "تعذّر إرسال الطلب. يُرجى المحاولة مرة أخرى أو التواصل معنا مباشرة.",
     tooMany: "تم إرسال طلبات كثيرة من هذا الجهاز. يُرجى المحاولة لاحقًا.",
+    privacy: "نستخدم هذه البيانات فقط للتواصل معك بشأن العرض.",
     doneTitle: "شكرًا لك — تم استلام طلبك",
     doneSub: "سنتواصل معك خلال يوم عمل واحد لتحديد موعد العرض.",
-    back: "العودة إلى تسجيل الدخول",
     another: "إرسال طلب آخر",
-    haveAccount: "لديك حساب؟",
-    signIn: "تسجيل الدخول",
-    privacy: "نستخدم هذه البيانات فقط للتواصل معك بشأن العرض.",
-    quizTitle: "لست متأكدًا بعد؟",
-    quizSub: "قِس جاهزية شركتك للتفتيش في دقيقتين",
-    quizGo: "ابدأ الفحص المجاني",
+    doneCheck: "وإلى ذلك الحين، قِس جاهزيتك",
+    faqEyebrow: "أسئلة",
+    faqTitle: "الأسئلة الشائعة",
+    faq: [
+      ["هل يعمل النظام باللغة العربية؟", "نعم. جميع الشاشات تعمل بالعربية والإنجليزية، ويعمل كل مستخدم بلغته."],
+      ["هل نحتاج إلى خادم خاص أو فريق تقنية معلومات؟", "لا. يعمل InspectPro سحابيًا ويُفتح من أي متصفح — من الجوال في الفرع أو من الحاسوب في الإدارة."],
+      ["هل يمكن الإبقاء على نماذجنا الحالية؟", "نعم. تتحول نماذجكم الورقية إلى قوائم فحص رقمية بالتصميم نفسه، وتُطبع التقارير بذلك التصميم أيضًا."],
+      ["كيف يُحتسب السعر؟", "لكل شركة بحسب عدد الفروع والوحدات المطلوبة، وتحصل على عرض سعر واضح بعد العرض التجريبي."],
+    ],
+    footRights: "جميع الحقوق محفوظة.",
+    footSignIn: "دخول العملاء",
+    footCheck: "فحص الجاهزية",
     waFab: "راسلنا عبر واتساب",
-    waOr: "تفضّل واتساب؟ راسلنا الآن",
     waMsg: "مرحبًا، أودّ معرفة المزيد عن InspectPro وحجز عرض تجريبي.",
+    lang: "English",
   },
 };
 
 const EMPTY = {
-  companyName: "",
-  activity: "",
-  branches: "",
-  contactName: "",
-  jobTitle: "",
-  phone: "",
-  email: "",
-  emirate: "",
-  message: "",
-  referredBy: "",
+  companyName: "", activity: "", branches: "", contactName: "", jobTitle: "", phone: "", email: "",
+  emirate: "", message: "", referredBy: "",
   website: "", // honeypot — hidden from people, bots fill it
 };
 
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 const phoneDigits = (s) => String(s || "").replace(/\D/g, "");
+const FONTS_HREF = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
+
+/* Load the page fonts once (the app shell only ships calligraphy fonts). */
+export function usePublicFonts() {
+  useEffect(() => {
+    if (document.getElementById("dp-fonts")) return;
+    const l = document.createElement("link");
+    l.id = "dp-fonts"; l.rel = "stylesheet"; l.href = FONTS_HREF;
+    document.head.appendChild(l);
+  }, []);
+}
+
+/* Fade sections in as they scroll into view; everything shows at once when
+   IntersectionObserver or motion is unavailable. */
+function useReveal(rootRef) {
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!("IntersectionObserver" in window) || reduce) { root.classList.add("dp-noio"); return undefined; }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+    root.querySelectorAll(".dp-reveal").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [rootRef]);
+}
+
+const fmtOfferDate = (iso, lang) => {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(lang === "ar" ? "ar-AE" : "en-GB", { day: "numeric", month: "long" });
+};
 
 export default function DemoRequest() {
   const navigate = useNavigate();
@@ -154,11 +297,19 @@ export default function DemoRequest() {
   });
   const t = TXT[lang];
   const isAr = lang === "ar";
+  const arrow = isAr ? "←" : "→";
 
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  const rootRef = useRef(null);
+  const heroRef = useRef(null);
+  const mockRef = useRef(null);
+  usePublicFonts();
+  useReveal(rootRef);
 
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -181,6 +332,39 @@ export default function DemoRequest() {
         keepalive: true,
       }).catch(() => {});
     } catch { /* counting never blocks the chat */ }
+  };
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Spotlight + mock-up tilt follow the pointer; CSS variables only, no re-render.
+  const onHeroMove = (e) => {
+    const h = heroRef.current;
+    if (!h) return;
+    const r = h.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    h.style.setProperty("--mx", `${x * 100}%`);
+    h.style.setProperty("--my", `${y * 100}%`);
+    if (mockRef.current) {
+      mockRef.current.style.setProperty("--tx", (x - 0.5).toFixed(3));
+      mockRef.current.style.setProperty("--ty", (y - 0.5).toFixed(3));
+    }
+  };
+  const onCardMove = (e) => {
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty("--gx", `${e.clientX - r.left}px`);
+    el.style.setProperty("--gy", `${e.clientY - r.top}px`);
+  };
+
+  const goForm = (e) => {
+    e?.preventDefault?.();
+    document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const submit = async (e) => {
@@ -215,142 +399,432 @@ export default function DemoRequest() {
     }
   };
 
+  const m = t.mock;
+  const F = t.feats;
+
   return (
-    <main dir={isAr ? "rtl" : "ltr"} lang={lang} style={S.shell} className="demo-page">
-      <style>{CSS + PROMO_CSS}</style>
-      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-        <OfferBanner offer={cfg.offer} lang={lang} />
-      </div>
-      <section className="demo-layout" style={S.layout}>
-        <aside className="demo-side" style={S.side}>
-          <div style={S.sideGlow} aria-hidden="true" />
-          <div style={S.brandRow}>
-            <img src={logo} alt="" style={S.logo} />
-            <span style={S.eyebrow}>{t.eyebrow}</span>
+    <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className="dp">
+      <style>{PROMO_CSS}</style>
+
+      {/* ── nav ── */}
+      <header className={`dp-nav${scrolled ? " scrolled" : ""}`}>
+        <div className="dp-wrap dp-nav-in">
+          <a href="#top" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ textDecoration: "none" }} aria-label="InspectPro">
+            <BrandLockup size={36} tone="dark" />
+          </a>
+          <nav className="dp-nav-links fs-sm" aria-label="Page">
+            <a href="#features">{t.nav.features}</a>
+            <a href="#how">{t.nav.how}</a>
+            <a href={quizHref} onClick={(e) => { e.preventDefault(); navigate(quizHref); }}>{t.nav.check}</a>
+          </nav>
+          <div className="dp-nav-act">
+            <button type="button" className="dp-lang fs-sm" onClick={() => setLang(isAr ? "en" : "ar")}>{t.lang}</button>
+            <button type="button" className="dp-btn ghost-d sm fs-sm dp-signin" onClick={() => navigate("/")}>{t.nav.signIn}</button>
+            <button type="button" className="dp-btn primary sm fs-sm" onClick={goForm}>{t.nav.book}</button>
           </div>
-          <h1 className="demo-hero-title" style={S.heroTitle}>{t.heroTitle}</h1>
-          <p className="demo-hero-sub" style={S.heroSub}>{t.heroSub}</p>
-          <ul style={S.points}>
-            {t.points.map((p) => (
-              <li key={p} style={S.point}><span style={S.tick} aria-hidden="true">✓</span>{p}</li>
-            ))}
-          </ul>
-          <button type="button" onClick={() => navigate(quizHref)} className="demo-quiz" style={S.quizCard}>
-            <span style={S.quizIcon} aria-hidden="true">📊</span>
-            <span style={{ display: "grid", gap: 4, flex: 1, minWidth: 0 }}>
-              <span className="demo-quiz-title" style={S.quizTitle}>{t.quizTitle}</span>
-              <span className="demo-quiz-sub" style={S.quizSub}>{t.quizSub}</span>
-              <span style={S.quizGo}>{t.quizGo} {isAr ? "←" : "→"}</span>
-            </span>
-          </button>
-        </aside>
+        </div>
+      </header>
 
-        <section style={S.card}>
-          <div style={S.cardTop}>
-            <div>
-              <h2 className="demo-title" style={S.title}>{done ? t.doneTitle : t.title}</h2>
-              <p style={S.sub}>{done ? t.doneSub : t.sub}</p>
-            </div>
-            <button type="button" onClick={() => setLang(isAr ? "en" : "ar")} style={S.langBtn}>
-              {isAr ? "English" : "العربية"}
-            </button>
-          </div>
-
-          {done ? (
-            <div style={S.doneBox}>
-              <div style={S.doneIcon} aria-hidden="true">✅</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-                <button type="button" style={S.ghostBtn} onClick={() => setDone(false)}>{t.another}</button>
-                <button type="button" style={S.primaryBtn} className="demo-primary" onClick={() => navigate("/")}>{t.back}</button>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={submit} style={S.form} noValidate>
-              <div className="demo-grid" style={S.grid}>
-                <Field label={t.company} required>
-                  <input className="demo-input" style={S.input} value={form.companyName} onChange={set("companyName")} autoComplete="organization" maxLength={150} />
-                </Field>
-                <Field label={t.activity}>
-                  <select className="demo-input" style={S.input} value={form.activity} onChange={set("activity")}>
-                    <option value="">{t.pick}</option>
-                    {DEMO_ACTIVITIES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
-                  </select>
-                </Field>
-                <Field label={t.branches}>
-                  <select className="demo-input" style={S.input} value={form.branches} onChange={set("branches")}>
-                    <option value="">{t.pick}</option>
-                    {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </Field>
-                <Field label={t.emirate}>
-                  <select className="demo-input" style={S.input} value={form.emirate} onChange={set("emirate")}>
-                    <option value="">{t.pick}</option>
-                    {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
-                  </select>
-                </Field>
-                <Field label={t.contact} required>
-                  <input className="demo-input" style={S.input} value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
-                </Field>
-                <Field label={t.job}>
-                  <input className="demo-input" style={S.input} value={form.jobTitle} onChange={set("jobTitle")} autoComplete="organization-title" maxLength={120} />
-                </Field>
-                <Field label={t.phone} required>
-                  <input className="demo-input" style={{ ...S.input, direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
-                </Field>
-                <Field label={t.email}>
-                  <input className="demo-input" style={{ ...S.input, direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
-                </Field>
-              </div>
-
-              <Field label={t.message}>
-                <textarea className="demo-input" style={{ ...S.input, minHeight: 96, resize: "vertical" }} value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
-              </Field>
-              <Field label={t.referredBy}>
-                <input className="demo-input" style={S.input} value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
-              </Field>
-
-              {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
-              <div aria-hidden="true" style={S.honeypot}>
-                <label>Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={set("website")} /></label>
-              </div>
-
-              {error && <div role="alert" style={S.error}>{error}</div>}
-
-              <button type="submit" disabled={sending} className="demo-primary" style={{ ...S.primaryBtn, width: "100%", minHeight: 56, opacity: sending ? 0.7 : 1 }}>
-                {sending ? t.sending : t.submit}
+      {/* ── hero ── */}
+      <section id="top" className="dp-hero" ref={heroRef} onMouseMove={onHeroMove}>
+        <div className="dp-aurora" aria-hidden="true"><span /><span /><span /></div>
+        <div className="dp-wrap dp-hero-grid">
+          <div>
+            {cfg.offer?.endsAt ? (
+              <a href="#demo-form" onClick={goForm} className="dp-pill fs-sm">
+                <b className="fs-xs">🎁 {t.offerTag}</b> {t.offerPill(fmtOfferDate(cfg.offer.endsAt, lang))} <span aria-hidden="true">{arrow}</span>
+              </a>
+            ) : (
+              <span className="dp-pill teal fs-sm"><b className="fs-xs">{t.pillTag}</b> {t.pill}</span>
+            )}
+            <h1 className="dp-h1 fs-hero">
+              {t.h1a}<br /><span className="dp-grad">{t.h1b}</span>
+            </h1>
+            <p className="dp-lead fs-lead">{t.lead}</p>
+            <div className="dp-cta">
+              <button type="button" className="dp-btn primary fs-md" onClick={goForm}>
+                {t.ctaDemo} <span className="arr" aria-hidden="true">{arrow}</span>
               </button>
-              <p style={S.privacy}>{t.privacy}</p>
-              {waHref && (
-                <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} style={S.waInline}>
+              <button type="button" className="dp-btn ghost-d fs-md" onClick={() => navigate(quizHref)}>
+                📊 {t.ctaCheck}
+              </button>
+            </div>
+            <div className="dp-trust fs-sm">
+              {t.trust.map((x) => <span key={x}><i className="fs-2xs">✓</i>{x}</span>)}
+            </div>
+          </div>
+
+          <div className="dp-stage" aria-hidden="true">
+            <div className="dp-mock" ref={mockRef}>
+              <div className="dp-screen" dir={isAr ? "rtl" : "ltr"}>
+                <div className="dp-side"><i className="on" /><i /><i /><i /><i /></div>
+                <div className="dp-main">
+                  <div className="dp-bar">
+                    <b className="fs-md">{m.title}</b>
+                    <span className="fs-xs" style={{ color: "#64748b", fontWeight: 700 }}>{m.today} · 09:42</span>
+                  </div>
+                  <div className="dp-kpis">
+                    <div className="dp-kpi"><small className="fs-2xs">{m.k1}</small><b className="fs-kpi">12<span className="fs-sm" style={{ color: "#94a3b8" }}>/12</span></b><em className="fs-2xs" style={{ color: "#059669" }}>▲ 100%</em></div>
+                    <div className="dp-kpi"><small className="fs-2xs">{m.k2}</small><b className="fs-kpi">3</b><em className="fs-2xs" style={{ color: "#059669" }}>▼ 5</em></div>
+                    <div className="dp-kpi"><small className="fs-2xs">{m.k3}</small><b className="fs-kpi" style={{ color: "#0d9488" }}>94%</b><em className="fs-2xs" style={{ color: "#059669" }}>▲ 12</em></div>
+                  </div>
+                  <div className="dp-chart">
+                    <div className="dp-chart-h fs-2xs"><span>{m.chart}</span><span>{m.range}</span></div>
+                    <svg viewBox="0 0 300 96" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="dp-area" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0" stopColor="#14b8a6" stopOpacity=".28" />
+                          <stop offset="1" stopColor="#14b8a6" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <rect x="0" y="22" width="300" height="52" fill="#14b8a6" opacity=".06" />
+                      <line x1="0" y1="22" x2="300" y2="22" stroke="#14b8a6" strokeDasharray="4 4" opacity=".5" />
+                      <line x1="0" y1="74" x2="300" y2="74" stroke="#14b8a6" strokeDasharray="4 4" opacity=".5" />
+                      <path d="M0 58 C20 52 30 44 50 47 S80 60 100 52 130 36 150 40 180 55 200 50 230 34 250 38 280 48 300 44 L300 96 L0 96 Z" fill="url(#dp-area)" />
+                      <path className="dp-line" d="M0 58 C20 52 30 44 50 47 S80 60 100 52 130 36 150 40 180 55 200 50 230 34 250 38 280 48 300 44" fill="none" stroke="#0d9488" strokeWidth="2.5" strokeLinecap="round" />
+                      <circle cx="250" cy="38" r="4.5" fill="#fff" stroke="#0d9488" strokeWidth="2.5" />
+                    </svg>
+                  </div>
+                  <div className="dp-rows">
+                    {[[m.r1, m.ok, "#10b981", "#d1fae5", "#047857"], [m.r2, m.ok, "#10b981", "#d1fae5", "#047857"], [m.r3, m.due, "#f59e0b", "#fef3c7", "#b45309"]].map(([a, s, dot, bg, fg]) => (
+                      <div className="dp-row fs-xs" key={a}>
+                        <span className="dot" style={{ background: dot }} />{a}
+                        <span className="st fs-2xs" style={{ background: bg, color: fg }}>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="dp-float f1 fs-sm">
+              <span className="ic" style={{ background: "#ccfbf1", color: "#0f766e" }}><Icon name="thermo" size={18} /></span>
+              <span>{m.f1}<small className="fs-xs">{m.f1s}</small></span>
+            </div>
+            <div className="dp-float f2 fs-sm">
+              <span className="ic" style={{ background: "#dcfce7", color: "#15803d" }}><Icon name="check" size={18} /></span>
+              <span dir="auto">{m.f2}<small className="fs-xs">{m.f2s}</small></span>
+            </div>
+            <div className="dp-float f3 fs-sm">
+              <span className="ic" style={{ background: "#e0e7ff", color: "#4338ca" }}><Icon name="file" size={18} /></span>
+              <span>{m.f3}<small className="fs-xs">{m.f3s}</small></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── built for ── */}
+      <div className="dp-strip">
+        <div className="dp-wrap dp-strip-in fs-sm">
+          <span className="lbl">{t.forLbl}</span>
+          {t.forList.map((x) => <span key={x} className="dp-chip-d">{x}</span>)}
+        </div>
+      </div>
+
+      {/* ── stats ── */}
+      <div className="dp-wrap">
+        <div className="dp-stats">
+          {t.stats.map(([n, l], i) => (
+            <div key={l} className="dp-stat dp-reveal" style={{ "--d": `${i * 0.08}s` }}>
+              <b className="fs-stat">{n}</b>
+              <span className="fs-sm">{l}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── features ── */}
+      <section id="features" className="dp-section">
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.featEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.featTitle}</h2>
+            <p className="dp-sub fs-lead">{t.featSub}</p>
+          </div>
+          <div className="dp-bento">
+            <article className="dp-card dark c4 wide dp-reveal" onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="thermo" /></div>
+              <h3 className="fs-h3">{F.haccp[0]}</h3>
+              <p className="fs-md">{F.haccp[1]}</p>
+              <div className="dp-mini">
+                <svg viewBox="0 0 400 110" preserveAspectRatio="none" aria-hidden="true">
+                  <rect x="0" y="24" width="400" height="56" fill="#2dd4bf" opacity=".07" />
+                  <line x1="0" y1="24" x2="400" y2="24" stroke="#2dd4bf" strokeDasharray="5 5" opacity=".45" />
+                  <line x1="0" y1="80" x2="400" y2="80" stroke="#2dd4bf" strokeDasharray="5 5" opacity=".45" />
+                  <path d="M0 62 C30 55 50 48 80 52 S120 64 150 58 190 40 220 44 260 60 290 55 330 36 360 42 390 50 400 48" fill="none" stroke="#5eead4" strokeWidth="2.5" />
+                  <path d="M0 70 C30 72 60 66 90 68 S140 76 170 72 210 64 240 66 280 74 310 70 350 62 400 66" fill="none" stroke="#22d3ee" strokeWidth="2" opacity=".7" />
+                  <circle cx="300" cy="14" r="5" fill="#f59e0b" />
+                  <path d="M300 14 L300 40" stroke="#f59e0b" strokeDasharray="3 3" />
+                </svg>
+              </div>
+            </article>
+            <article className="dp-card c2 dp-reveal" style={{ "--d": ".05s" }} onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="route" /></div>
+              <h3 className="fs-h3">{F.trace[0]}</h3>
+              <p className="fs-md">{F.trace[1]}</p>
+              <div className="dp-flow fs-xs">
+                <span>{F.trace3[0]}</span><i>{arrow}</i><span>{F.trace3[1]}</span><i>{arrow}</i><span>{F.trace3[2]}</span>
+              </div>
+            </article>
+            <article className="dp-card c2 dp-reveal" onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="alert" /></div>
+              <h3 className="fs-h3">{F.ncr[0]}</h3>
+              <p className="fs-md">{F.ncr[1]}</p>
+            </article>
+            <article className="dp-card c2 dp-reveal" style={{ "--d": ".05s" }} onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="clipboard" /></div>
+              <h3 className="fs-h3">{F.audit[0]}</h3>
+              <p className="fs-md">{F.audit[1]}</p>
+            </article>
+            <article className="dp-card c2 dp-reveal" style={{ "--d": ".1s" }} onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="truck" /></div>
+              <h3 className="fs-h3">{F.supp[0]}</h3>
+              <p className="fs-md">{F.supp[1]}</p>
+            </article>
+            <article className="dp-card c2 dp-reveal" onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="box" /></div>
+              <h3 className="fs-h3">{F.ret[0]}</h3>
+              <p className="fs-md">{F.ret[1]}</p>
+            </article>
+            <article className="dp-card c2 dp-reveal" style={{ "--d": ".05s" }} onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="cap" /></div>
+              <h3 className="fs-h3">{F.train[0]}</h3>
+              <p className="fs-md">{F.train[1]}</p>
+            </article>
+            <article className="dp-card dark c2 dp-reveal" style={{ "--d": ".1s" }} onMouseMove={onCardMove}>
+              <div className="dp-ico"><Icon name="file" /></div>
+              <h3 className="fs-h3">{F.rep[0]}</h3>
+              <p className="fs-md">{F.rep[1]}</p>
+              <div className="dp-tags fs-xs">{F.tags.map((x) => <span key={x}>{x}</span>)}</div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* ── before / after ── */}
+      <section className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.baEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.baTitle}</h2>
+          </div>
+          <div className="dp-ba-wrap dp-reveal"><BeforeAfter lang={lang} /></div>
+        </div>
+      </section>
+
+      {/* ── how it works ── */}
+      <section id="how" className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.howEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.howTitle}</h2>
+          </div>
+          <div className="dp-steps">
+            {t.steps.map(([h, p], i) => (
+              <div key={h} className="dp-step dp-reveal" style={{ "--d": `${i * 0.1}s` }}>
+                <span className="n fs-md">{i + 1}</span>
+                <h3 className="fs-h3">{h}</h3>
+                <p className="fs-md">{p}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── readiness band ── */}
+      <section className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-band dp-reveal">
+            <div>
+              <h2 className="dp-h2 fs-h2" style={{ marginTop: 0 }}>{t.bandTitle}</h2>
+              <p className="fs-lead">{t.bandSub}</p>
+              <div className="dp-cta">
+                <button type="button" className="dp-btn primary fs-md" onClick={() => navigate(quizHref)}>
+                  {t.bandCta} <span className="arr" aria-hidden="true">{arrow}</span>
+                </button>
+              </div>
+            </div>
+            <div className="dp-gauge" aria-hidden="true">
+              <svg viewBox="0 0 210 210">
+                <circle cx="105" cy="105" r="90" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="16" />
+                <defs>
+                  <linearGradient id="dp-gauge" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#5eead4" />
+                    <stop offset="1" stopColor="#22d3ee" />
+                  </linearGradient>
+                </defs>
+                <circle className="dp-arc" cx="105" cy="105" r="90" fill="none" stroke="url(#dp-gauge)" strokeWidth="16" strokeLinecap="round" />
+              </svg>
+              <div className="val"><div><b className="fs-stat">80<span className="fs-md">/100</span></b><span className="fs-sm">{t.bandScore}</span></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── form ── */}
+      <section id="demo-form" className="dp-formsec dp-section">
+        <div className="dp-wrap dp-form-grid">
+          <div className="dp-reveal">
+            <span className="dp-eyebrow fs-xs" style={{ color: "#5eead4" }}>{t.formEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.formTitle}</h2>
+            <p className="dp-sub fs-lead" style={{ color: "#9fb0c8" }}>{t.formSub}</p>
+            <ul className="dp-gets fs-md">
+              {t.gets.map((g) => <li key={g}><i className="fs-sm">✓</i><span>{g}</span></li>)}
+            </ul>
+            {waHref && (
+              <div className="dp-contact">
+                <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} className="dp-wa-inline fs-md">
                   <WaIcon size={20} /> {t.waOr}
                 </a>
-              )}
-            </form>
-          )}
-
-          <div style={S.footer}>
-            {t.haveAccount}{" "}
-            <button type="button" onClick={() => navigate("/")} style={S.link}>{t.signIn}</button>
+              </div>
+            )}
+            <div className="dp-side-promos">
+              <StoryCard story={cfg.story} lang={lang} />
+              <ReferralNote referral={cfg.referral} lang={lang} />
+            </div>
           </div>
-        </section>
+
+          <div className="dp-formcard dp-reveal" style={{ "--d": ".08s" }}>
+            <OfferBanner offer={cfg.offer} lang={lang} />
+            {done ? (
+              <div className="dp-done">
+                <div className="dp-done-ic"><Icon name="check" size={40} color="#fff" /></div>
+                <h3 className="fs-h2">{t.doneTitle}</h3>
+                <p className="hint fs-md" style={{ margin: "10px 0 0" }}>{t.doneSub}</p>
+                <div className="dp-done-act">
+                  <button type="button" className="dp-btn dark fs-md" onClick={() => navigate(quizHref)}>📊 {t.doneCheck}</button>
+                  <button type="button" className="dp-btn fs-md" style={{ border: "1px solid #e2e8f0", background: "#fff" }} onClick={() => setDone(false)}>{t.another}</button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={submit} noValidate>
+                <h3 className="fs-h2">{t.cardTitle}</h3>
+                <p className="hint fs-md">{t.cardHint}</p>
+                <div className="dp-fields">
+                  <Field id="f-co" label={t.company} required>
+                    <input id="f-co" className="dp-input" value={form.companyName} onChange={set("companyName")} autoComplete="organization" maxLength={150} />
+                  </Field>
+                  <Field id="f-act" label={t.activity}>
+                    <select id="f-act" className="dp-input" value={form.activity} onChange={set("activity")}>
+                      <option value="">{t.pick}</option>
+                      {DEMO_ACTIVITIES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
+                    </select>
+                  </Field>
+                  <Field id="f-br" label={t.branches}>
+                    <select id="f-br" className="dp-input" value={form.branches} onChange={set("branches")}>
+                      <option value="">{t.pick}</option>
+                      {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </Field>
+                  <Field id="f-em" label={t.emirate}>
+                    <select id="f-em" className="dp-input" value={form.emirate} onChange={set("emirate")}>
+                      <option value="">{t.pick}</option>
+                      {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
+                    </select>
+                  </Field>
+                  <Field id="f-nm" label={t.contact} required>
+                    <input id="f-nm" className="dp-input" value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
+                  </Field>
+                  <Field id="f-jb" label={t.job}>
+                    <input id="f-jb" className="dp-input" value={form.jobTitle} onChange={set("jobTitle")} autoComplete="organization-title" maxLength={120} />
+                  </Field>
+                  <Field id="f-ph" label={t.phone} required>
+                    <input id="f-ph" className="dp-input" style={{ direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
+                  </Field>
+                  <Field id="f-ml" label={t.email}>
+                    <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
+                  </Field>
+                  <Field id="f-msg" label={t.message} full>
+                    <textarea id="f-msg" className="dp-input" value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
+                  </Field>
+                  <Field id="f-ref" label={t.referredBy} full>
+                    <input id="f-ref" className="dp-input" value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
+                  </Field>
+                </div>
+
+                {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
+                <div aria-hidden="true" className="dp-honey">
+                  <label>Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={set("website")} /></label>
+                </div>
+
+                {error && <div role="alert" className="dp-err fs-sm" style={{ marginTop: 14 }}>{error}</div>}
+
+                <button type="submit" disabled={sending} className="dp-btn primary dp-submit fs-md">
+                  {sending ? t.sending : <>{t.submit} <span className="arr" aria-hidden="true">{arrow}</span></>}
+                </button>
+                <p className="dp-privacy fs-xs">🔒 {t.privacy}</p>
+              </form>
+            )}
+          </div>
+        </div>
       </section>
 
-      <section style={S.promos}>
-        <BeforeAfter lang={lang} />
-        <StoryCard story={cfg.story} lang={lang} />
-        <ReferralNote referral={cfg.referral} lang={lang} />
+      {/* ── FAQ ── */}
+      <section className="dp-section tight">
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.faqEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.faqTitle}</h2>
+          </div>
+          <div className="dp-faq">
+            {t.faq.map(([q, a]) => (
+              <details key={q} className="dp-reveal">
+                <summary className="fs-md">{q}</summary>
+                <p className="fs-md">{a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
       </section>
+
+      {/* ── footer ── */}
+      <footer className="dp-foot">
+        <div className="dp-wrap dp-foot-in fs-sm">
+          <BrandLockup size={30} tone="dark" tag="" />
+          <div className="dp-foot-links">
+            <button type="button" onClick={() => navigate(quizHref)}>{t.footCheck}</button>
+            <button type="button" onClick={() => navigate("/")}>{t.footSignIn}</button>
+          </div>
+          <span>© {new Date().getFullYear()} INSPECT PRO. {t.footRights}</span>
+        </div>
+      </footer>
 
       {waHref && (
-        <a
-          href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap}
-          className="demo-wa-fab" style={S.waFab} aria-label={t.waFab} title={t.waFab}
-        >
+        <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} className="dp-wa-fab fs-md" aria-label={t.waFab} title={t.waFab}>
           <WaIcon size={30} />
-          <span className="demo-wa-label" style={S.waLabel}>{t.waFab}</span>
+          <span className="lbl">{t.waFab}</span>
         </a>
       )}
     </main>
+  );
+}
+
+function Field({ id, label, required, full, children }) {
+  return (
+    <div className={`dp-field${full ? " full" : ""}`}>
+      <label htmlFor={id} className="fs-sm">{label}{required && <em> *</em>}</label>
+      {children}
+    </div>
+  );
+}
+
+/* Small stroke icons, drawn to one 24px grid. */
+const ICONS = {
+  thermo: <><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0Z" /><path d="M12 9v6.5" /></>,
+  route: <><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" /><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5" /></>,
+  alert: <><path d="M12 3 2.5 20h19L12 3Z" /><path d="M12 10v4.5M12 17.2v.1" /></>,
+  clipboard: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1M8.5 12l2.2 2.2L15.5 9.5" /></>,
+  truck: <><path d="M2.5 6.5h11v9h-11zM13.5 10h4l3 3v2.5h-7" /><circle cx="6.5" cy="17.5" r="2" /><circle cx="17" cy="17.5" r="2" /></>,
+  box: <><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
+  cap: <><path d="m2 9 10-5 10 5-10 5L2 9Z" /><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v5" /></>,
+  file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
+  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
+};
+
+function Icon({ name, size = 24, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
   );
 }
 
@@ -361,184 +835,3 @@ export function WaIcon({ size = 24 }) {
     </svg>
   );
 }
-
-function Field({ label, required, children }) {
-  return (
-    <label style={S.field}>
-      <span style={S.label}>
-        {label}
-        {required && <span style={{ color: "#dc2626" }}> *</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-const CSS = `
-@media (max-width: 980px) {
-  .demo-page .demo-layout { grid-template-columns: 1fr !important; }
-  .demo-page .demo-side { min-height: auto !important; }
-}
-@media (max-width: 620px) {
-  .demo-page .demo-grid { grid-template-columns: 1fr !important; }
-}
-.demo-page .demo-input:focus {
-  border-color: #0f766e !important;
-  box-shadow: 0 0 0 4px rgba(15,118,110,.18) !important;
-  background: #fff !important;
-  outline: none;
-}
-/* globals.css pins every #root element to 14px !important; the doubled class
-   out-specifies it so the page keeps its type scale. */
-#root .demo-page.demo-page .demo-hero-title { font-size: 30px !important; line-height: 1.25 !important; }
-#root .demo-page.demo-page .demo-hero-sub { font-size: 16px !important; }
-#root .demo-page.demo-page .demo-title { font-size: 26px !important; }
-#root .demo-page.demo-page .demo-input,
-#root .demo-page.demo-page .demo-primary { font-size: 16px !important; }
-@media (max-width: 620px) {
-  #root .demo-page.demo-page .demo-hero-title { font-size: 24px !important; }
-  #root .demo-page.demo-page .demo-title { font-size: 22px !important; }
-}
-#root .demo-page.demo-page .demo-quiz-title { font-size: 20px !important; }
-#root .demo-page.demo-page .demo-quiz-sub { font-size: 16px !important; }
-.demo-page .demo-quiz { transition: transform .16s ease, box-shadow .16s ease; }
-.demo-page .demo-quiz:hover { transform: translateY(-3px); box-shadow: 0 22px 44px rgba(15,23,42,.30) !important; }
-.demo-page .demo-wa-fab:hover { transform: translateY(-3px) scale(1.03); }
-@keyframes demo-wa-pulse { 0% { box-shadow: 0 0 0 0 rgba(37,211,102,.55); } 70% { box-shadow: 0 0 0 16px rgba(37,211,102,0); } 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); } }
-.demo-page .demo-wa-fab { animation: demo-wa-pulse 2.4s ease-out 1.5s 3; }
-#root .demo-page.demo-page .demo-wa-label { font-size: 15px !important; }
-@media (max-width: 620px) {
-  .demo-page .demo-wa-label { display: none !important; }
-  .demo-page .demo-wa-fab { width: 58px; height: 58px; padding: 0 !important; justify-content: center; }
-}
-@media (prefers-reduced-motion: reduce) { .demo-page .demo-wa-fab { animation: none; } }
-.demo-page .demo-primary:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 22px 40px rgba(15,118,110,.30) !important; }
-`;
-
-const S = {
-  shell: {
-    minHeight: "100vh",
-    padding: "24px 16px",
-    boxSizing: "border-box",
-    background: "radial-gradient(1200px 600px at 10% -10%, #ccfbf1 0%, transparent 60%), linear-gradient(180deg,#f0fdfa 0%,#f8fafc 100%)",
-    fontFamily: 'Cairo, system-ui, -apple-system, "Segoe UI", sans-serif',
-    color: "#0f172a",
-  },
-  layout: {
-    maxWidth: 1180,
-    margin: "0 auto",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)",
-    gap: 20,
-    alignItems: "stretch",
-  },
-  side: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: 16,
-    padding: "34px 30px",
-    minHeight: 560,
-    background: "linear-gradient(145deg,#0f766e 0%,#0e7490 55%,#155e75 100%)",
-    color: "#fff",
-    display: "flex",
-    flexDirection: "column",
-    gap: 18,
-    boxShadow: "0 24px 60px rgba(15,118,110,.28)",
-  },
-  sideGlow: {
-    position: "absolute",
-    inset: "auto -120px -160px auto",
-    width: 380,
-    height: 380,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(255,255,255,.22), transparent 70%)",
-    pointerEvents: "none",
-  },
-  brandRow: { display: "flex", alignItems: "center", gap: 12 },
-  logo: { width: 54, height: 54, borderRadius: 12, objectFit: "cover", background: "#fff" },
-  eyebrow: { fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase", opacity: 0.9 },
-  heroTitle: { margin: "10px 0 0", fontSize: 30, lineHeight: 1.25, fontWeight: 1000 },
-  heroSub: { margin: 0, fontSize: 16, lineHeight: 1.7, opacity: 0.92, fontWeight: 600 },
-  points: { listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 10 },
-  point: { display: "flex", alignItems: "center", gap: 10, fontWeight: 800, fontSize: 15 },
-  tick: {
-    width: 26, height: 26, flex: "0 0 26px", borderRadius: 8, display: "grid", placeItems: "center",
-    background: "rgba(255,255,255,.18)", fontWeight: 1000,
-  },
-  card: {
-    background: "#fff",
-    borderRadius: 16,
-    padding: "28px 26px",
-    border: "1px solid rgba(15,23,42,.08)",
-    boxShadow: "0 24px 60px rgba(15,23,42,.10)",
-    display: "flex",
-    flexDirection: "column",
-  },
-  cardTop: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18 },
-  title: { margin: 0, fontSize: 26, fontWeight: 1000 },
-  sub: { margin: "6px 0 0", color: "#64748b", fontWeight: 700, lineHeight: 1.6 },
-  langBtn: {
-    border: "1px solid #cbd5e1", background: "#fff", color: "#0f766e", borderRadius: 8,
-    padding: "8px 12px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-  },
-  form: { display: "grid", gap: 14 },
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
-  field: { display: "grid", gap: 6, minWidth: 0 },
-  label: { fontWeight: 900, color: "#334155", fontSize: 14 },
-  input: {
-    width: "100%", minHeight: 48, padding: "11px 13px", borderRadius: 8, border: "1.5px solid #dbe4ef",
-    background: "#f8fafc", color: "#0f172a", fontFamily: "inherit", fontWeight: 700, fontSize: 15,
-    boxSizing: "border-box", transition: "border-color .15s, box-shadow .15s, background .15s",
-  },
-  honeypot: { position: "absolute", left: -10000, top: "auto", width: 1, height: 1, overflow: "hidden" },
-  error: {
-    padding: "12px 14px", borderRadius: 8, background: "#fef2f2", color: "#991b1b",
-    border: "1px solid #fecaca", fontWeight: 900,
-  },
-  primaryBtn: {
-    border: "none", borderRadius: 10, padding: "12px 20px", fontWeight: 1000, fontSize: 16,
-    background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", cursor: "pointer",
-    fontFamily: "inherit", boxShadow: "0 16px 30px rgba(15,118,110,.24)",
-    transition: "transform .16s ease, box-shadow .16s ease, opacity .16s ease",
-  },
-  ghostBtn: {
-    border: "1px solid #cbd5e1", borderRadius: 10, padding: "12px 20px", fontWeight: 900, fontSize: 15,
-    background: "#fff", color: "#0f172a", cursor: "pointer", fontFamily: "inherit",
-  },
-  quizCard: {
-    marginTop: "auto", position: "relative", display: "flex", gap: 14, alignItems: "center", width: "100%",
-    textAlign: "start", border: "none", borderRadius: 14, padding: "16px 18px", background: "#fff",
-    color: "#0f172a", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 16px 36px rgba(15,23,42,.24)",
-  },
-  quizIcon: {
-    width: 56, height: 56, flex: "0 0 56px", borderRadius: 14, display: "grid", placeItems: "center",
-    background: "#fef3c7", fontSize: 30,
-  },
-  quizTitle: { fontWeight: 1000, fontSize: 20, color: "#0f766e" },
-  quizSub: { fontWeight: 800, fontSize: 16, color: "#334155", lineHeight: 1.5 },
-  quizGo: {
-    justifySelf: "start", marginTop: 4, background: "#d97706", color: "#fff", borderRadius: 999,
-    padding: "6px 14px", fontWeight: 1000,
-  },
-  promos: { maxWidth: 1180, margin: "20px auto 0", display: "grid", gap: 14 },
-  waFab: {
-    position: "fixed", bottom: 18, right: 18, zIndex: 50,
-    display: "inline-flex", alignItems: "center", gap: 10, minHeight: 58, padding: "0 20px 0 16px",
-    borderRadius: 999, background: "#25d366", color: "#fff", textDecoration: "none",
-    fontWeight: 1000, boxShadow: "0 14px 30px rgba(37,211,102,.38)", transition: "transform .16s ease",
-  },
-  waLabel: { fontWeight: 1000, fontSize: 15, whiteSpace: "nowrap" },
-  waInline: {
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 48,
-    borderRadius: 10, border: "1.5px solid #25d366", background: "#f0fdf4", color: "#15803d",
-    fontWeight: 1000, textDecoration: "none",
-  },
-  privacy: { margin: 0, color: "#94a3b8", fontWeight: 700, fontSize: 13, textAlign: "center" },
-  doneBox: { display: "grid", gap: 18, justifyItems: "center", padding: "30px 0" },
-  doneIcon: { fontSize: 56 },
-  footer: { marginTop: "auto", paddingTop: 20, textAlign: "center", color: "#64748b", fontWeight: 800 },
-  link: {
-    border: "none", background: "none", padding: 0, color: "#0f766e", fontWeight: 1000,
-    cursor: "pointer", fontFamily: "inherit", fontSize: "inherit", textDecoration: "underline",
-  },
-};

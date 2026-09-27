@@ -2,16 +2,23 @@
 // Small round button, fixed bottom-left on every page: ☀️ day ⇄ 🌙 night.
 // Mounted once in App.jsx. The mode itself: utils/theme.js + styles/theme-dark.css.
 import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { getTheme, setTheme } from "../utils/theme";
+
+// Public sales pages carry their own design (and opt out of night mode).
+const PUBLIC_PAGES = ["/demo", "/readiness"];
 
 export default function ThemeToggle() {
   const [theme, setThemeState] = useState(getTheme);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const onChange = (e) => setThemeState(e.detail === "dark" ? "dark" : "light");
     window.addEventListener("app:theme-changed", onChange);
     return () => window.removeEventListener("app:theme-changed", onChange);
   }, []);
+
+  if (PUBLIC_PAGES.includes(pathname)) return null;
 
   const dark = theme === "dark";
   const label = dark ? "الوضع النهاري / Day mode" : "الوضع الليلي / Night mode";

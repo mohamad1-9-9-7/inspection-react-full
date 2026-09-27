@@ -11,9 +11,9 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import logo from "../../assets/almawashi-logo.jpg";
 import API_BASE from "../../config/api";
-import { DEMO_BRANCHES, WaIcon } from "../DemoRequest";
+import { DEMO_BRANCHES, WaIcon, usePublicFonts } from "../DemoRequest";
+import { BrandLockup } from "./brand";
 import { READINESS_QUESTIONS, levelOf, scoreAnswers } from "./readinessQuestions";
 import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./promoBlocks";
 
@@ -131,6 +131,7 @@ export default function ReadinessCheck() {
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const sent = useRef({});
+  usePublicFonts();
 
   const { rows, score, gaps } = useMemo(() => scoreAnswers(answers), [answers]);
   const level = levelOf(score);
@@ -238,10 +239,7 @@ export default function ReadinessCheck() {
       <style>{CSS + PROMO_CSS}</style>
       <div style={S.wrap}>
         <header style={S.head} className="rd-noprint">
-          <div style={S.brand}>
-            <img src={logo} alt="" style={S.logo} />
-            <span style={S.eyebrow}>{t.eyebrow}</span>
-          </div>
+          <BrandLockup size={40} tone="light" />
           <button type="button" onClick={() => setLang(isAr ? "en" : "ar")} style={S.langBtn}>{t.lang}</button>
         </header>
 
@@ -432,6 +430,9 @@ const CSS = `
 #root .rd-page.rd-page .rd-input,
 #root .rd-page.rd-page .rd-primary { font-size: 16px !important; }
 #root .rd-page.rd-page .rd-score { font-size: 38px !important; }
+#root .rd-page.rd-page .brand-word { font-size: 20px !important; }
+#root .rd-page.rd-page .brand-word span:not(.brand-tag) { font-size: inherit !important; }
+#root .rd-page.rd-page .brand-tag { font-size: 10px !important; }
 @media (max-width: 620px) {
   #root .rd-page.rd-page .rd-h1 { font-size: 24px !important; }
   #root .rd-page.rd-page .rd-q { font-size: 19px !important; }
@@ -451,17 +452,17 @@ const CSS = `
 }
 `;
 
+// Same type as /demo: IBM Plex Sans Arabic, Plus Jakarta Sans for Latin.
+const isArFont = '"IBM Plex Sans Arabic", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
+
 const S = {
   shell: {
     minHeight: "100vh", padding: "20px 16px 40px", boxSizing: "border-box",
     background: "radial-gradient(1200px 600px at 10% -10%, #ccfbf1 0%, transparent 60%), linear-gradient(180deg,#f0fdfa 0%,#f8fafc 100%)",
-    fontFamily: 'Cairo, system-ui, -apple-system, "Segoe UI", sans-serif', color: "#0f172a",
+    fontFamily: isArFont, color: "#0f172a",
   },
   wrap: { maxWidth: 720, margin: "0 auto" },
   head: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  brand: { display: "flex", alignItems: "center", gap: 10 },
-  logo: { width: 44, height: 44, borderRadius: 10, objectFit: "cover", background: "#fff" },
-  eyebrow: { fontWeight: 1000, letterSpacing: ".1em", textTransform: "uppercase", color: "#0f766e" },
   langBtn: {
     border: "1px solid #cbd5e1", background: "#fff", color: "#0f766e", borderRadius: 8,
     padding: "8px 12px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
