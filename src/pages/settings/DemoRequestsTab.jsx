@@ -56,6 +56,18 @@ const waLink = (phone) => {
 };
 const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
+/* Ready-made tracked links, one per place the owner posts on LinkedIn. The
+   `src` is what the /demo page saves on the request ("via linkedin-post"). */
+const SHARE_LINKS = [
+  { src: "linkedin-post",    label: "LinkedIn post",        ar: "منشور لينكدإن",            hint: "A normal post on your feed" },
+  { src: "linkedin-profile", label: "LinkedIn profile",     ar: "البروفايل (قسم Featured / الموقع)", hint: "Website / Featured section of your profile" },
+  { src: "linkedin-dm",      label: "LinkedIn message",     ar: "رسالة خاصة",               hint: "Private messages to people you contact" },
+  { src: "linkedin-page",    label: "LinkedIn company page", ar: "صفحة الشركة",             hint: "Your company page's website button" },
+  { src: "linkedin-group",   label: "LinkedIn group",       ar: "مجموعات لينكدإن",          hint: "Posts inside groups" },
+  { src: "linkedin-ads",     label: "LinkedIn ads",         ar: "إعلانات ممولة",            hint: "Paid campaigns" },
+];
+const slugSrc = (s) => String(s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+
 async function readJson(res, fallback) {
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.ok === false) throw new Error(j.error || `${fallback} (${res.status})`);
@@ -170,6 +182,8 @@ export default function DemoRequestsTab() {
       </div>
 
       <StatusMessage message={msg} />
+
+      <ShareLinks publicUrl={publicUrl} rows={rows} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
         <Stat label="Total" value={rows.length} color="#0f766e" />
@@ -292,6 +306,100 @@ function Stat({ label, value, color }) {
     <div style={{ ...ui.card, marginBottom: 0, padding: "12px 14px", borderTop: `3px solid ${color}` }}>
       <div style={{ fontSize: 24, fontWeight: 1000, color }}>{value}</div>
       <div style={{ color: "#64748b", fontWeight: 800, fontSize: 12.5 }}>{label}</div>
+    </div>
+  );
+}
+
+/* Copy-ready links for each LinkedIn spot, with how many requests each one
+   has brought in so far, plus a builder for any other channel. */
+function ShareLinks({ publicUrl, rows }) {
+  const [open, setOpen] = useState(true);
+  const [copied, setCopied] = useState("");
+  const [custom, setCustom] = useState("");
+
+  const bySource = useMemo(() => {
+    const c = {};
+    rows.forEach((r) => { const s = slugSrc(r.source); if (s) c[s] = (c[s] || 0) + 1; });
+    return c;
+  }, [rows]);
+
+  const linkOf = (src) => `${publicUrl}?src=${encodeURIComponent(src)}`;
+  const copy = async (text, key) => {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch { /* shown on screen anyway */ }
+      ta.remove();
+    }
+    setCopied(key);
+    setTimeout(() => setCopied((k) => (k === key ? "" : k)), 1800);
+  };
+
+  const customSrc = slugSrc(custom);
+  const Row = ({ k, label, sub, src }) => {
+    const url = linkOf(src);
+    const n = bySource[src] || 0;
+    return (
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid rgba(15,23,42,.08)" }}>
+        <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+          <div style={{ fontWeight: 900 }}>{label}</div>
+          {sub && <div style={{ color: "#64748b", fontWeight: 700, fontSize: 12.5 }}>{sub}</div>}
+        </div>
+        <code style={{ flex: "2 1 260px", minWidth: 0, overflowWrap: "anywhere", background: "#f1f5f9", borderRadius: 6, padding: "6px 8px", fontSize: 12.5 }}>{url}</code>
+        <span title="Requests that came from this link" style={{ fontWeight: 900, color: n ? "#059669" : "#94a3b8", minWidth: 70, textAlign: "center" }}>
+          {n} {n === 1 ? "request" : "requests"}
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <Button tone={copied === k ? "primary" : undefined} style={{ minHeight: 36 }} onClick={() => copy(url, k)}>
+            {copied === k ? "✓ Copied" : "📋 Copy"}
+          </Button>
+          {src.startsWith("linkedin") && (
+            <a
+              href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`}
+              target="_blank" rel="noreferrer" style={{ ...linkBtn, minHeight: 36, color: "#0a66c2" }}
+              title="Open LinkedIn with this link ready to post"
+            >
+              in Share
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ ...ui.card, padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ all: "unset", cursor: "pointer", display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", fontWeight: 1000, fontSize: 16 }}
+      >
+        <span>🔗 Ready links — روابط جاهزة للنسخ</span>
+        <span style={{ color: "#64748b" }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {/localhost|127\.0\.0\.1/.test(publicUrl) && (
+            <div style={{ ...ui.subtleCard, marginBottom: 8, color: "#b45309", fontWeight: 800, fontSize: 13 }}>
+              You are on localhost — open this screen on the live site to copy links people outside can open.
+            </div>
+          )}
+          {SHARE_LINKS.map((l) => (
+            <Row key={l.src} k={l.src} src={l.src} label={`${l.label} · ${l.ar}`} sub={l.hint} />
+          ))}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid rgba(15,23,42,.08)" }}>
+            <span style={{ fontWeight: 900 }}>Other channel:</span>
+            <input
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder="e.g. whatsapp, instagram, expo-2026"
+              style={{ ...ui.input, flex: "1 1 200px", maxWidth: 300, minHeight: 36 }}
+            />
+          </div>
+          {customSrc && <Row k="custom" src={customSrc} label={customSrc} />}
+        </div>
+      )}
     </div>
   );
 }
