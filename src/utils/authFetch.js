@@ -97,11 +97,21 @@ function withFullLimit(url) {
    covers every existing call site, the same way the token and the
    limit=5000 above already do.
 
-   Restricted to the two endpoints the server actually reads
-   ?company_id= on today (see routes/reports.cjs and routes/admin.cjs).
-   Extending this to a new endpoint means teaching that endpoint the
-   query param first — adding a path here alone does nothing. */
-const COMPANY_SCOPED_PATHS = ["/api/reports", "/api/app-users"];
+   Restricted to the endpoints the server actually reads ?company_id= on
+   (routes/reports.cjs, routes/admin.cjs, and utils/tenant.cjs for the
+   catalogue + e-mail). Extending this to a new endpoint means teaching
+   that endpoint the query param first — adding a path here alone does
+   nothing. "/api/email" also covers /api/email-history. */
+const COMPANY_SCOPED_PATHS = [
+  "/api/reports",
+  "/api/app-users",
+  // each company has its own product catalogue
+  "/api/catalog",
+  "/api/items",
+  "/api/product-catalog",
+  // direct sending is per company (only a company with its own mailbox)
+  "/api/email",
+];
 
 function withActiveCompany(url) {
   if (typeof url !== "string") return url;
