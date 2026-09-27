@@ -4,7 +4,7 @@
 // the super-admin follows it up in Platform Center → Demo Requests.
 //
 // Server contract: POST /api/demo-requests (public, rate-limited). See
-// docs/server/demo-requests/README.md for the server side.
+// routes/demoRequests.cjs in the inspection-server repo.
 //
 // `?src=linkedin` (or any value) on the link is saved with the request, so
 // each channel you share the link on can be counted separately.

@@ -4,7 +4,7 @@
 //
 // Server: GET /api/demo-requests, PATCH /api/demo-requests/:id,
 // DELETE /api/demo-requests/:id (super-admin only). See
-// docs/server/demo-requests/README.md.
+// routes/demoRequests.cjs in the inspection-server repo.
 
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
