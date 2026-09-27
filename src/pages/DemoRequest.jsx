@@ -9,15 +9,16 @@
 // `?src=linkedin` (or any value) on the link is saved with the request, so
 // each channel you share the link on can be counted separately.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
+import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
   { v: "meat", en: "Meat / butchery / slaughterhouse", ar: "لحوم / ملاحم / مسالخ" },
   { v: "sweets", en: "Sweets / bakery / confectionery", ar: "حلويات / مخابز" },
-  { v: "restaurant", en: "Restaurant / café chain", ar: "مطاعم / مقاهي" },
+  { v: "restaurant", en: "Restaurant / café chain", ar: "مطاعم / مقاهٍ" },
   { v: "kitchen", en: "Central kitchen / catering", ar: "مطبخ مركزي / تموين" },
   { v: "factory", en: "Food factory / manufacturing", ar: "مصنع أغذية" },
   { v: "retail", en: "Supermarket / retail", ar: "سوبرماركت / تجزئة" },
@@ -73,48 +74,56 @@ const TXT = {
     haveAccount: "Already a customer?",
     signIn: "Sign in",
     privacy: "We use these details only to contact you about the demo.",
-    quizLink: "Not sure yet? Check how inspection-ready you are — 2 minutes",
+    referredBy: "Who recommended us? (optional)",
+    referredPh: "Company or person",
+    quizTitle: "Not sure yet?",
+    quizSub: "Check how inspection-ready your company is — in 2 minutes",
+    quizGo: "Start the free check",
     waFab: "Chat on WhatsApp",
     waOr: "Prefer WhatsApp? Chat with us now",
     waMsg: "Hello, I'd like to know more about InspectPro and book a demo.",
   },
   ar: {
     eyebrow: "InspectPro QMS",
-    heroTitle: "سجلات سلامة الغذاء لكل فروعك على شاشة وحدة.",
+    heroTitle: "سجلات سلامة الغذاء لجميع فروعك على شاشة واحدة.",
     heroSub:
-      "سجلات HACCP و ISO 22000، تفتيش الفروع، المرتجعات والإتلاف، اعتماد الموردين، وتقارير جاهزة للمدقق — لكل الفروع ومن أي جهاز.",
-    points: ["السجلات اليومية بدل الورق والإكسل", "كل الفروع مباشرة على لوحة وحدة", "تقارير PDF و Excel بكبسة زر"],
-    title: "اطلب عرض تجريبي مجاني",
-    sub: "اترك بياناتك ومنتواصل معك خلال يوم عمل لنحدد موعد عرض قصير.",
+      "سجلات HACCP و ISO 22000، وتفتيش الفروع، والمرتجعات والإتلاف، واعتماد الموردين، وتقارير جاهزة للمدقق — لجميع الفروع ومن أي جهاز.",
+    points: ["السجلات اليومية بدلًا من الورق وملفات Excel", "جميع الفروع مباشرةً على لوحة واحدة", "تقارير PDF و Excel بنقرة واحدة"],
+    title: "اطلب عرضًا تجريبيًا مجانيًا",
+    sub: "اترك بياناتك، وسنتواصل معك خلال يوم عمل واحد لتحديد موعد عرض قصير.",
     company: "اسم الشركة",
     activity: "نوع النشاط",
     branches: "عدد الفروع / المواقع",
-    contact: "اسمك",
+    contact: "الاسم",
     job: "المسمى الوظيفي",
-    phone: "الموبايل / واتساب",
+    phone: "رقم الجوال / واتساب",
     email: "البريد الإلكتروني",
     emirate: "الإمارة / الدولة",
-    message: "شو المشكلة اللي بدك تحلها؟ (اختياري)",
-    messagePh: "مثلاً: لسا منعبّي سجلات HACCP على الورق بـ 6 فروع",
+    message: "ما المشكلة التي تودّ حلّها؟ (اختياري)",
+    messagePh: "مثال: ما زلنا نعبّئ سجلات HACCP ورقيًا في 6 فروع",
+    referredBy: "من رشّحنا لك؟ (اختياري)",
+    referredPh: "اسم الشركة أو الشخص",
     pick: "اختر…",
     submit: "إرسال الطلب",
     sending: "جارٍ الإرسال…",
-    required: "عبّي اسم الشركة واسمك ورقم الموبايل.",
-    badEmail: "البريد الإلكتروني مش مكتوب صح.",
-    badPhone: "اكتب رقم موبايل صحيح.",
-    failed: "ما قدرنا نبعت الطلب. جرّب مرة تانية أو تواصل معنا مباشرة.",
-    tooMany: "طلبات كتير من هالجهاز. جرّب بعد شوي.",
-    doneTitle: "شكراً — وصلنا طلبك",
-    doneSub: "رح نتواصل معك خلال يوم عمل لنحدد موعد العرض.",
-    back: "رجوع لتسجيل الدخول",
+    required: "يُرجى إدخال اسم الشركة واسمك ورقم الجوال.",
+    badEmail: "البريد الإلكتروني غير صحيح.",
+    badPhone: "يُرجى إدخال رقم جوال صحيح.",
+    failed: "تعذّر إرسال الطلب. يُرجى المحاولة مرة أخرى أو التواصل معنا مباشرة.",
+    tooMany: "تم إرسال طلبات كثيرة من هذا الجهاز. يُرجى المحاولة لاحقًا.",
+    doneTitle: "شكرًا لك — تم استلام طلبك",
+    doneSub: "سنتواصل معك خلال يوم عمل واحد لتحديد موعد العرض.",
+    back: "العودة إلى تسجيل الدخول",
     another: "إرسال طلب آخر",
-    haveAccount: "عندك حساب؟",
+    haveAccount: "لديك حساب؟",
     signIn: "تسجيل الدخول",
-    privacy: "منستخدم هالبيانات بس لنتواصل معك بخصوص العرض.",
-    quizLink: "مش متأكد؟ قيس جاهزية شركتك للتفتيش بدقيقتين",
-    waFab: "راسلنا واتساب",
-    waOr: "بتفضّل واتساب؟ راسلنا هلأ",
-    waMsg: "مرحبا، حابب أعرف أكتر عن InspectPro وأحجز عرض تجريبي.",
+    privacy: "نستخدم هذه البيانات فقط للتواصل معك بشأن العرض.",
+    quizTitle: "لست متأكدًا بعد؟",
+    quizSub: "قِس جاهزية شركتك للتفتيش في دقيقتين",
+    quizGo: "ابدأ الفحص المجاني",
+    waFab: "راسلنا عبر واتساب",
+    waOr: "تفضّل واتساب؟ راسلنا الآن",
+    waMsg: "مرحبًا، أودّ معرفة المزيد عن InspectPro وحجز عرض تجريبي.",
   },
 };
 
@@ -128,6 +137,7 @@ const EMPTY = {
   email: "",
   emirate: "",
   message: "",
+  referredBy: "",
   website: "", // honeypot — hidden from people, bots fill it
 };
 
@@ -153,17 +163,11 @@ export default function DemoRequest() {
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  // WhatsApp number is set by the owner in Platform Center → Demo Requests;
-  // no number (or no server) → no button.
-  const [waNumber, setWaNumber] = useState("");
-  useEffect(() => {
-    let alive = true;
-    fetch(`${API_BASE}/api/demo-config`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((j) => { if (alive) setWaNumber(String(j?.whatsapp || "").replace(/\D/g, "")); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
+  // WhatsApp number, launch offer, referral and customer story are all set by
+  // the owner in Platform Center → Demo Requests; anything unset is not shown.
+  const cfg = useDemoConfig();
+  const waNumber = cfg.whatsapp;
+  const quizHref = `/readiness${source ? `?src=${encodeURIComponent(source)}` : ""}`;
   // The source rides along in the message, so the chat itself says which link it came from.
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(t.waMsg + (source ? ` [${source}]` : ""))}`
@@ -213,7 +217,10 @@ export default function DemoRequest() {
 
   return (
     <main dir={isAr ? "rtl" : "ltr"} lang={lang} style={S.shell} className="demo-page">
-      <style>{CSS}</style>
+      <style>{CSS + PROMO_CSS}</style>
+      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+        <OfferBanner offer={cfg.offer} lang={lang} />
+      </div>
       <section className="demo-layout" style={S.layout}>
         <aside className="demo-side" style={S.side}>
           <div style={S.sideGlow} aria-hidden="true" />
@@ -228,12 +235,13 @@ export default function DemoRequest() {
               <li key={p} style={S.point}><span style={S.tick} aria-hidden="true">✓</span>{p}</li>
             ))}
           </ul>
-          <button
-            type="button"
-            onClick={() => navigate(`/readiness${source ? `?src=${encodeURIComponent(source)}` : ""}`)}
-            style={S.quizLink}
-          >
-            📊 {t.quizLink} {isAr ? "←" : "→"}
+          <button type="button" onClick={() => navigate(quizHref)} className="demo-quiz" style={S.quizCard}>
+            <span style={S.quizIcon} aria-hidden="true">📊</span>
+            <span style={{ display: "grid", gap: 4, flex: 1, minWidth: 0 }}>
+              <span className="demo-quiz-title" style={S.quizTitle}>{t.quizTitle}</span>
+              <span className="demo-quiz-sub" style={S.quizSub}>{t.quizSub}</span>
+              <span style={S.quizGo}>{t.quizGo} {isAr ? "←" : "→"}</span>
+            </span>
           </button>
         </aside>
 
@@ -297,6 +305,9 @@ export default function DemoRequest() {
               <Field label={t.message}>
                 <textarea className="demo-input" style={{ ...S.input, minHeight: 96, resize: "vertical" }} value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
               </Field>
+              <Field label={t.referredBy}>
+                <input className="demo-input" style={S.input} value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
+              </Field>
 
               {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
               <div aria-hidden="true" style={S.honeypot}>
@@ -322,6 +333,12 @@ export default function DemoRequest() {
             <button type="button" onClick={() => navigate("/")} style={S.link}>{t.signIn}</button>
           </div>
         </section>
+      </section>
+
+      <section style={S.promos}>
+        <BeforeAfter lang={lang} />
+        <StoryCard story={cfg.story} lang={lang} />
+        <ReferralNote referral={cfg.referral} lang={lang} />
       </section>
 
       {waHref && (
@@ -382,6 +399,10 @@ const CSS = `
   #root .demo-page.demo-page .demo-hero-title { font-size: 24px !important; }
   #root .demo-page.demo-page .demo-title { font-size: 22px !important; }
 }
+#root .demo-page.demo-page .demo-quiz-title { font-size: 20px !important; }
+#root .demo-page.demo-page .demo-quiz-sub { font-size: 16px !important; }
+.demo-page .demo-quiz { transition: transform .16s ease, box-shadow .16s ease; }
+.demo-page .demo-quiz:hover { transform: translateY(-3px); box-shadow: 0 22px 44px rgba(15,23,42,.30) !important; }
 .demo-page .demo-wa-fab:hover { transform: translateY(-3px) scale(1.03); }
 @keyframes demo-wa-pulse { 0% { box-shadow: 0 0 0 0 rgba(37,211,102,.55); } 70% { box-shadow: 0 0 0 16px rgba(37,211,102,0); } 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); } }
 .demo-page .demo-wa-fab { animation: demo-wa-pulse 2.4s ease-out 1.5s 3; }
@@ -484,11 +505,22 @@ const S = {
     border: "1px solid #cbd5e1", borderRadius: 10, padding: "12px 20px", fontWeight: 900, fontSize: 15,
     background: "#fff", color: "#0f172a", cursor: "pointer", fontFamily: "inherit",
   },
-  quizLink: {
-    marginTop: "auto", alignSelf: "flex-start", textAlign: "start", border: "1px solid rgba(255,255,255,.45)",
-    background: "rgba(255,255,255,.14)", color: "#fff", borderRadius: 10, padding: "10px 14px",
-    fontWeight: 900, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.5, position: "relative",
+  quizCard: {
+    marginTop: "auto", position: "relative", display: "flex", gap: 14, alignItems: "center", width: "100%",
+    textAlign: "start", border: "none", borderRadius: 14, padding: "16px 18px", background: "#fff",
+    color: "#0f172a", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 16px 36px rgba(15,23,42,.24)",
   },
+  quizIcon: {
+    width: 56, height: 56, flex: "0 0 56px", borderRadius: 14, display: "grid", placeItems: "center",
+    background: "#fef3c7", fontSize: 30,
+  },
+  quizTitle: { fontWeight: 1000, fontSize: 20, color: "#0f766e" },
+  quizSub: { fontWeight: 800, fontSize: 16, color: "#334155", lineHeight: 1.5 },
+  quizGo: {
+    justifySelf: "start", marginTop: 4, background: "#d97706", color: "#fff", borderRadius: 999,
+    padding: "6px 14px", fontWeight: 1000,
+  },
+  promos: { maxWidth: 1180, margin: "20px auto 0", display: "grid", gap: 14 },
   waFab: {
     position: "fixed", bottom: 18, right: 18, zIndex: 50,
     display: "inline-flex", alignItems: "center", gap: 10, minHeight: 58, padding: "0 20px 0 16px",

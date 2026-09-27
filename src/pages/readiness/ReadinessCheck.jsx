@@ -9,12 +9,13 @@
 // POST /api/demo-requests/quiz-event (start / done funnel counts),
 // GET /api/demo-config (WhatsApp number). `?src=` is kept like on /demo.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../../assets/almawashi-logo.jpg";
 import API_BASE from "../../config/api";
 import { DEMO_BRANCHES, WaIcon } from "../DemoRequest";
 import { READINESS_QUESTIONS, levelOf, scoreAnswers } from "./readinessQuestions";
+import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./promoBlocks";
 
 const TXT = {
   en: {
@@ -62,44 +63,44 @@ const TXT = {
   },
   ar: {
     eyebrow: "InspectPro QMS",
-    introTitle: "قديش شركتك جاهزة لتفتيش سلامة الغذاء؟",
-    introSub: "10 أسئلة سريعة، تقريباً دقيقتين. بتاخد علامة من 100، ونقاط الضعف اللي المفتش رح يلاقيها أول شي.",
-    introPoints: ["سجلات الحرارة، التتبّع، الموردين، التدريب وغيرها", "علامتك بتطلع فوراً — بدون تسجيل", "تقرير كامل فيه كيف تسكّر كل ثغرة"],
+    introTitle: "ما مدى جاهزية شركتك لتفتيش سلامة الغذاء؟",
+    introSub: "عشرة أسئلة سريعة تستغرق نحو دقيقتين، تحصل بعدها على درجة من 100، وعلى نقاط الضعف التي سيلاحظها المفتش أولًا.",
+    introPoints: ["سجلات الحرارة، والتتبّع، والموردون، والتدريب، وغيرها", "تظهر درجتك فورًا — دون تسجيل", "تقرير كامل يوضّح كيفية معالجة كل ثغرة"],
     start: "ابدأ الفحص",
-    qOf: (i, n) => `سؤال ${i} من ${n}`,
-    back: "رجوع",
-    yourScore: "علامة الجاهزية",
-    gapsCount: (n) => (n ? `${n} من 10 جوانب بدها شغل` : "ما في ثغرات — عظيم"),
-    weakest: "أضعف نقطة عندك",
-    lockedTitle: "خُد تقريرك الكامل",
-    lockedSub: "بتشوف كل جانب، وشو ممكن يلاحظ المفتش، وكيف تسكّر كل ثغرة. ورح نعرض عليك عرض تجريبي مجاني.",
+    qOf: (i, n) => `السؤال ${i} من ${n}`,
+    back: "السابق",
+    yourScore: "درجة الجاهزية",
+    gapsCount: (n) => (!n ? "لا توجد ثغرات — أحسنت" : n === 1 ? "جانب واحد من 10 يحتاج إلى تحسين" : n === 2 ? "جانبان من 10 يحتاجان إلى تحسين" : `${n} جوانب من 10 تحتاج إلى تحسين`),
+    weakest: "أضعف جانب لديك",
+    lockedTitle: "احصل على تقريرك الكامل",
+    lockedSub: "اطّلع على كل جانب، وعلى ما قد يلاحظه المفتش، وعلى كيفية معالجة كل ثغرة. وسنعرض عليك كذلك عرضًا تجريبيًا مجانيًا.",
     company: "اسم الشركة",
-    contact: "اسمك",
-    phone: "الموبايل / واتساب",
+    contact: "الاسم",
+    phone: "رقم الجوال / واتساب",
     email: "البريد الإلكتروني (اختياري)",
     branches: "عدد الفروع",
     pick: "اختر…",
-    unlock: "ورجيني التقرير الكامل",
+    unlock: "اعرض تقريري الكامل",
     sending: "جارٍ الإرسال…",
-    required: "عبّي اسم الشركة واسمك ورقم الموبايل.",
-    badPhone: "اكتب رقم موبايل صحيح.",
-    badEmail: "البريد الإلكتروني مش مكتوب صح.",
-    failed: "ما قدرنا نبعتها. جرّب مرة تانية.",
-    tooMany: "طلبات كتير من هالجهاز. جرّب بعد شوي.",
-    privacy: "منستخدم هالبيانات بس لنبعتلك التقرير ونتواصل معك بخصوص العرض.",
+    required: "يُرجى إدخال اسم الشركة واسمك ورقم الجوال.",
+    badPhone: "يُرجى إدخال رقم جوال صحيح.",
+    badEmail: "البريد الإلكتروني غير صحيح.",
+    failed: "تعذّر الإرسال. يُرجى المحاولة مرة أخرى.",
+    tooMany: "تم إرسال طلبات كثيرة من هذا الجهاز. يُرجى المحاولة لاحقًا.",
+    privacy: "نستخدم هذه البيانات فقط لإرسال تقريرك والتواصل معك بشأن العرض.",
     reportTitle: "تقريرك الكامل",
-    reportSub: "شكراً — رح نتواصل معك خلال يوم عمل.",
-    yourAnswer: "جوابك",
-    howFix: "كيف InspectPro بيسكّرها",
-    full: "علامة كاملة",
-    print: "احفظ / اطبع التقرير",
-    whatsapp: "احكي معنا واتساب",
-    demo: "احجز عرض تجريبي مجاني",
+    reportSub: "شكرًا لك — سنتواصل معك خلال يوم عمل واحد.",
+    yourAnswer: "إجابتك",
+    howFix: "كيف يعالجها InspectPro",
+    full: "درجة كاملة",
+    print: "حفظ / طباعة التقرير",
+    whatsapp: "تواصل معنا عبر واتساب",
+    demo: "احجز عرضًا تجريبيًا مجانيًا",
     share: "شارك الفحص",
-    copied: "انتسخ الرابط",
+    copied: "تم نسخ الرابط",
     retake: "أعد الفحص",
-    disclaimer: "فحص ذاتي تقريبي للاستخدام الداخلي — مش تقييم رسمي من أي جهة رقابية.",
-    haveAccount: "عندك حساب؟",
+    disclaimer: "فحص ذاتي تقريبي للاستخدام الداخلي — وليس تقييمًا رسميًا صادرًا عن أي جهة رقابية.",
+    haveAccount: "لديك حساب؟",
     signIn: "تسجيل الدخول",
     lang: "English",
   },
@@ -129,20 +130,13 @@ export default function ReadinessCheck() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [waNumber, setWaNumber] = useState("");
   const sent = useRef({});
 
   const { rows, score, gaps } = useMemo(() => scoreAnswers(answers), [answers]);
   const level = levelOf(score);
 
-  useEffect(() => {
-    let alive = true;
-    fetch(`${API_BASE}/api/demo-config`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((j) => { if (alive) setWaNumber(String(j?.whatsapp || "").replace(/\D/g, "")); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
+  const cfg = useDemoConfig();
+  const waNumber = cfg.whatsapp;
 
   // Funnel counts: once per page load each, and never in the way of the visitor.
   const track = (event) => {
@@ -223,7 +217,7 @@ export default function ReadinessCheck() {
 
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(
-        (isAr ? `مرحبا، عملت فحص الجاهزية وطلعت علامتي ${score}/100. حابب أعرف كيف أسكّر الثغرات.` : `Hello, I took the readiness check and scored ${score}/100. I'd like to know how to close the gaps.`) +
+        (isAr ? `مرحبًا، أجريتُ فحص الجاهزية وحصلتُ على ${score}/100، وأودّ معرفة كيفية معالجة الثغرات.` : `Hello, I took the readiness check and scored ${score}/100. I'd like to know how to close the gaps.`) +
         (source ? ` [${source}]` : ""))}`
     : "";
   const countWa = () => {
@@ -241,7 +235,7 @@ export default function ReadinessCheck() {
 
   return (
     <main dir={isAr ? "rtl" : "ltr"} lang={lang} className="rd-page" style={S.shell}>
-      <style>{CSS}</style>
+      <style>{CSS + PROMO_CSS}</style>
       <div style={S.wrap}>
         <header style={S.head} className="rd-noprint">
           <div style={S.brand}>
@@ -250,6 +244,8 @@ export default function ReadinessCheck() {
           </div>
           <button type="button" onClick={() => setLang(isAr ? "en" : "ar")} style={S.langBtn}>{t.lang}</button>
         </header>
+
+        {(step === -1 || step >= N) && <div className="rd-noprint"><OfferBanner offer={cfg.offer} lang={lang} /></div>}
 
         {step === -1 && (
           <section style={S.card} className="rd-fade">
@@ -364,6 +360,11 @@ export default function ReadinessCheck() {
               {!unlocked && <button type="button" style={S.ghost} onClick={() => navigate(demoHref)}>{t.demo}</button>}
               <button type="button" style={S.ghost} onClick={share}>🔗 {copied ? t.copied : t.share}</button>
               <button type="button" style={S.ghost} onClick={retake}>↺ {t.retake}</button>
+            </div>
+            <div style={{ display: "grid", gap: 14, marginTop: 16 }} className="rd-noprint">
+              <StoryCard story={cfg.story} lang={lang} />
+              <BeforeAfter lang={lang} />
+              <ReferralNote referral={cfg.referral} lang={lang} />
             </div>
             <p style={{ ...S.fine, marginTop: 10 }}>{t.disclaimer}</p>
           </>

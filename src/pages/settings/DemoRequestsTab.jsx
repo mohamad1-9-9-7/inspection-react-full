@@ -42,6 +42,7 @@ const norm = (r = {}) => ({
   source: r.source || "",
   referrer: r.referrer || "",
   lang: r.lang || "",
+  referredBy: r.referred_by || r.referredBy || "",
   // Set only on leads from the /readiness check.
   quizScore: Number.isInteger(r.quiz_score ?? r.quizScore) ? (r.quiz_score ?? r.quizScore) : null,
   quizAnswers: r.quiz_answers || r.quizAnswers || null,
@@ -89,6 +90,7 @@ export default function DemoRequestsTab() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [waClicks, setWaClicks] = useState({});
   const [whatsapp, setWhatsapp] = useState("");
+  const [promoConfig, setPromoConfig] = useState({});
   const [quizStats, setQuizStats] = useState({});
 
   const load = async () => {
@@ -100,6 +102,7 @@ export default function DemoRequestsTab() {
       setRows((j.requests || j.data || []).map(norm));
       setWaClicks(j.waClicks && typeof j.waClicks === "object" ? j.waClicks : {});
       setWhatsapp(String(j.whatsapp || ""));
+      setPromoConfig(j.config && typeof j.config === "object" ? j.config : {});
       setQuizStats(j.quizStats && typeof j.quizStats === "object" ? j.quizStats : {});
       setMsg(null);
     } catch (e) {
@@ -198,6 +201,8 @@ export default function DemoRequestsTab() {
 
       <WhatsAppSetting saved={whatsapp} onSaved={setWhatsapp} setMsg={setMsg} />
 
+      <PromoSettings saved={promoConfig} onSaved={setPromoConfig} setMsg={setMsg} />
+
       <ShareLinks origin={window.location.origin} rows={rows} waClicks={waClicks} quizStats={quizStats} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -255,6 +260,11 @@ export default function DemoRequestsTab() {
                     <div style={{ color: "#334155", fontWeight: 750, marginTop: 3 }}>
                       {r.contactName}{r.jobTitle ? ` — ${r.jobTitle}` : ""}
                       <span style={{ color: "#94a3b8" }}> · {fmtWhen(r.createdAt)}{r.source ? ` · via ${r.source}` : ""}</span>
+                      {r.referredBy && (
+                        <span title="Referral: this company may earn the referral discount" style={{ marginInlineStart: 8, padding: "1px 8px", borderRadius: 999, background: "#dbeafe", color: "#1d4ed8", fontWeight: 900, fontSize: 12.5 }}>
+                          🤝 {r.referredBy}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -386,6 +396,130 @@ const SHARE_PAGES = [
   { v: "readiness", path: "/readiness", label: "📊 Readiness check", ar: "فحص الجاهزية" },
   { v: "demo",      path: "/demo",      label: "📝 Demo request",   ar: "طلب عرض" },
 ];
+
+/* What the public /demo and /readiness pages advertise: the launch offer (no
+   setup fee until a date), the referral discount, and one real customer story.
+   The server hides an offer by itself once its date has passed. */
+const plusDays = (n) => new Date(Date.now() + 4 * 3600_000 + n * 864e5).toISOString().slice(0, 10);
+
+function PromoToggle({ on, onChange, label }) {
+  return (
+    <label style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 1000, cursor: "pointer", minWidth: 220 }}>
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} style={{ width: 18, height: 18 }} />
+      {label}
+    </label>
+  );
+}
+
+function PromoSettings({ saved = {}, onSaved, setMsg }) {
+  const init = () => ({
+    offer: { on: !!saved.offer?.on, endsAt: saved.offer?.endsAt || plusDays(30) },
+    referral: { on: !!saved.referral?.on, pct: saved.referral?.pct ?? 20, months: saved.referral?.months ?? 12 },
+    story: { on: !!saved.story?.on, ar: saved.story?.ar || "", en: saved.story?.en || "" },
+  });
+  const [d, setD] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setD(init()); }, [saved]);
+
+  const put = (part, patch) => setD((x) => ({ ...x, [part]: { ...x[part], ...patch } }));
+  const today = plusDays(0);
+  const expired = d.offer.on && d.offer.endsAt < today;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body = {
+        offer: d.offer,
+        referral: { ...d.referral, pct: Number(d.referral.pct), months: Number(d.referral.months) },
+        story: d.story,
+      };
+      const res = await fetch(`${API_BASE}/api/demo-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await readJson(res, "Could not save");
+      onSaved(j.config || {});
+      setMsg({ kind: "ok", text: "✅ Offers saved — the public pages show them now." });
+    } catch (e) {
+      const known = { invalid_offer_date: "Pick an end date for the offer.", invalid_referral_pct: "The referral discount must be 1–100%." };
+      setMsg({ kind: "err", text: `❌ ${known[e.message] || e.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const liveBits = [
+    saved.offer?.on && saved.offer?.endsAt >= today && `🎁 no setup fee until ${saved.offer.endsAt}`,
+    saved.referral?.on && `🤝 ${saved.referral.pct}% referral`,
+    saved.story?.on && (saved.story.ar || saved.story.en) && "💬 story",
+  ].filter(Boolean);
+
+  const row = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid rgba(15,23,42,.08)" };
+  return (
+    <div style={{ ...ui.card, padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ all: "unset", cursor: "pointer", display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+      >
+        <span>
+          <span style={{ fontWeight: 1000, fontSize: 16 }}>🎁 Offers on the public pages — العروض</span>
+          <span style={{ display: "block", color: "#64748b", fontWeight: 700, fontSize: 12.5 }}>
+            {liveBits.length ? `Live: ${liveBits.join(" · ")}` : "Nothing switched on."}
+          </span>
+        </span>
+        <span style={{ color: "#64748b" }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          <div style={row}>
+            <PromoToggle on={d.offer.on} onChange={(v) => put("offer", { on: v })} label="No setup fee — إعفاء من رسوم التأسيس" />
+            <span style={{ fontWeight: 800, color: "#475569" }}>until</span>
+            <input type="date" value={d.offer.endsAt} min={today} onChange={(e) => put("offer", { endsAt: e.target.value })} style={{ ...ui.input, width: "auto", minHeight: 38 }} />
+            <Button tone="muted" style={{ minHeight: 36 }} onClick={() => put("offer", { endsAt: plusDays(30) })}>+1 month from today</Button>
+            {expired && <span style={{ color: "#dc2626", fontWeight: 900 }}>Date has passed — visitors no longer see it.</span>}
+          </div>
+
+          <div style={row}>
+            <PromoToggle on={d.referral.on} onChange={(v) => put("referral", { on: v })} label="Referral discount — خصم الإحالة" />
+            <input type="number" min={1} max={100} value={d.referral.pct} onChange={(e) => put("referral", { pct: e.target.value })} style={{ ...ui.input, width: 80, minHeight: 38 }} />
+            <span style={{ fontWeight: 800, color: "#475569" }}>% for</span>
+            <input type="number" min={1} max={60} value={d.referral.months} onChange={(e) => put("referral", { months: e.target.value })} style={{ ...ui.input, width: 80, minHeight: 38 }} />
+            <span style={{ fontWeight: 800, color: "#475569" }}>months, to the customer who referred the new one</span>
+          </div>
+
+          <div style={{ ...row, alignItems: "flex-start" }}>
+            <PromoToggle on={d.story.on} onChange={(v) => put("story", { on: v })} label="Customer story — قصة عميل" />
+            <div style={{ flex: "1 1 320px", display: "grid", gap: 8 }}>
+              <textarea
+                dir="rtl" value={d.story.ar} maxLength={600} onChange={(e) => put("story", { ar: e.target.value })}
+                placeholder="بالعربية الفصحى — مثال: اكتشف أحد فروعنا منتجًا منتهي الصلاحية قبل وصوله إلى العميل بفضل تنبيه النظام."
+                style={{ ...ui.input, minHeight: 70, resize: "vertical" }}
+              />
+              <textarea
+                dir="ltr" value={d.story.en} maxLength={600} onChange={(e) => put("story", { en: e.target.value })}
+                placeholder="In English — shown on the English page"
+                style={{ ...ui.input, minHeight: 70, resize: "vertical" }}
+              />
+              <span style={{ color: "#b45309", fontWeight: 800, fontSize: 12.5 }}>
+                Only a story that really happened, with the customer's permission — each language shows on its own page.
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(15,23,42,.08)" }}>
+            <Button tone="muted" disabled={busy} onClick={() => setD(init())}>Reset</Button>
+            <Button tone="primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save offers"}</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ShareLinks({ origin, rows, waClicks = {}, quizStats = {} }) {
   const [open, setOpen] = useState(true);
