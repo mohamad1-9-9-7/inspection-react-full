@@ -3,6 +3,7 @@
 // نفس أسلوب POS11PersonalHygiene: ترويسة موحّدة، فرع من URL، حفظ عبر /api/reports
 
 import React, { useMemo, useRef, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { useSearchParams } from "react-router-dom";
 import API_BASE from "../../../../config/api";
 import useTakenDates from "../_shared/useTakenDates";
@@ -201,14 +202,14 @@ export default function POS11ReceivingLogInput() {
 
     try {
       setSaving(true);
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos11", type: TYPE, payload }), // ✅ تمييز الفرع
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos11", type: TYPE, payload },
+        label: `POS 11 Receiving Log ${reportDate}`,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       markTaken(reportDate);
-      setSaveMsg("✅ تم الحفظ بنجاح!");
+      setSaveMsg(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);
       setSaveMsg("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");

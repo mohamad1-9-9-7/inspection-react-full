@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/POS 11/POS11TemperatureInput.jsx
 import React, { useMemo, useState, useEffect, useCallback } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 
 const API_BASE =
@@ -195,17 +196,20 @@ export default function POS11TemperatureInput() {
         savedAt: Date.now(),
         unique_key: `pos11_temperature_${toISODate(reportDate)}`,
       };
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos11", type: "pos11_temperature", payload }),
-      });
-      if (!res.ok) {
-        if (res.status === 409) throw new Error("⛔ A report already exists for this day (409 Conflict).");
-        throw new Error(`HTTP ${res.status}`);
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({
+          body: { reporter: "pos11", type: "pos11_temperature", payload },
+          label: `POS 11 Temperature ${payload.reportDate || payload.date || ""}`,
+        }));
+      } catch (err) {
+        if (err?.status === 409) throw new Error("⛔ A report already exists for this day (409 Conflict).");
+        throw err;
       }
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      setOpMsg("✅ Saved successfully!");
+      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
     } catch (e) {
       console.error(e);
       setOpMsg(`❌ Failed to save. ${e?.message || ""}`);
