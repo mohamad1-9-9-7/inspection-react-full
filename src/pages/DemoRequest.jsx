@@ -94,7 +94,7 @@ const TXT = {
     cardTitle: "Request a free demo",
     cardHint: "Takes less than a minute.",
     company: "Company name", activity: "Business type", branches: "Number of branches / sites", emirate: "Emirate / country",
-    contact: "Your name", job: "Job title", phone: "Mobile / WhatsApp", email: "E-mail",
+    contact: "Your name", phone: "Mobile / WhatsApp", email: "E-mail",
     message: "What would you like to solve? (optional)", messagePh: "e.g. we still do HACCP logs on paper across 6 branches",
     referredBy: "Who recommended us? (optional)", referredPh: "Company or person",
     pick: "Select…",
@@ -177,7 +177,7 @@ const TXT = {
     cardTitle: "اطلب عرضًا تجريبيًا مجانيًا",
     cardHint: "يستغرق أقل من دقيقة.",
     company: "اسم الشركة", activity: "نوع النشاط", branches: "عدد الفروع / المواقع", emirate: "الإمارة / الدولة",
-    contact: "الاسم", job: "المسمى الوظيفي", phone: "رقم الجوال / واتساب", email: "البريد الإلكتروني",
+    contact: "الاسم", phone: "رقم الجوال / واتساب", email: "البريد الإلكتروني",
     message: "ما المشكلة التي تودّ حلّها؟ (اختياري)", messagePh: "مثال: ما زلنا نعبّئ سجلات HACCP ورقيًا في 6 فروع",
     referredBy: "من رشّحنا لك؟ (اختياري)", referredPh: "اسم الشركة أو الشخص",
     pick: "اختر…",
@@ -210,7 +210,7 @@ const TXT = {
 };
 
 const EMPTY = {
-  companyName: "", activity: "", branches: "", contactName: "", jobTitle: "", phone: "", email: "",
+  companyName: "", activity: "", branches: "", contactName: "", phone: "", email: "",
   emirate: "", message: "", referredBy: "",
   website: "", // honeypot — hidden from people, bots fill it
 };
@@ -614,13 +614,10 @@ export default function DemoRequest() {
                   <Field id="f-nm" label={t.contact} required>
                     <input id="f-nm" className="dp-input" value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
                   </Field>
-                  <Field id="f-jb" label={t.job}>
-                    <input id="f-jb" className="dp-input" value={form.jobTitle} onChange={set("jobTitle")} autoComplete="organization-title" maxLength={120} />
-                  </Field>
                   <Field id="f-ph" label={t.phone} required>
                     <input id="f-ph" className="dp-input" style={{ direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
                   </Field>
-                  <Field id="f-ml" label={t.email}>
+                  <Field id="f-ml" label={t.email} full>
                     <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
                   </Field>
                   <Field id="f-msg" label={t.message} full>
