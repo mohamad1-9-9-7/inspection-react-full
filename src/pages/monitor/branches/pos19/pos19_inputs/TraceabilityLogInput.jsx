@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/TraceabilityLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import { REPORTS_URL } from "../../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../../config/api";
 import useReportDateStatus from "../_shared/useReportDateStatus";
@@ -825,22 +826,20 @@ export default function TraceabilityLogInput() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos19",
-          type: TYPE,
-          payload,
-        }),
-      });
-      if (res.status === 409) {
-        alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View).");
-        dateStatus.refresh();
-        return;
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Traceability ${payload.reportDate || ""}` }));
+      } catch (err) {
+        if (err?.status === 409) {
+          alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View).");
+          dateStatus.refresh();
+          return;
+        }
+        throw err;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ تم الحفظ بنجاح");
+      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح");
       dateStatus.refresh();
     } catch (e) {
       console.error(e);

@@ -12,6 +12,8 @@ const META_KEYS_TO_HIDE = new Set([
   "tmpHeader", "headers", "header",
   "verifiedByManager", "verifiedBy", "checkedBy",
   "company", "companyName",
+  // offline outbox bookkeeping (utils/reportOutbox.js), never a form field
+  "_outboxId",
 ]);
 
 const HEADER_DEFAULTS = {

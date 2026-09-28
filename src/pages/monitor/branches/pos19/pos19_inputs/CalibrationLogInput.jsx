@@ -1,9 +1,13 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CalibrationLogInput.jsx
 import React, { useEffect, useRef, useState } from "react";
+import { newOutboxId, queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import { getReportByDate, reportId, invalidateReportDates } from "../_shared/reportsApi";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
+
+/* This page's id for new records (see the save below). */
+const SHEET_ID = newOutboxId();
 
 
 const TYPE     = "pos19_calibration_log";
@@ -116,11 +120,23 @@ export default function CalibrationLogInput() {
     try {
       const payload = { branch: BRANCH, formRef: FORM_REF, reportDate, entries: cleanEntries, checkedBy, verifiedBy, savedAt: Date.now() };
       // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
-      const res = await fetch(existingReport?.id ? `${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}` : `${API_BASE}/api/reports`, { method: existingReport?.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
-      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const saved = await res.json().catch(() => null);
-      const savedId = reportId(saved?.report ?? saved) ?? existingReport?.id ?? null;
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      if (!existingReport?.id && !payload._outboxId) payload._outboxId = `${SHEET_ID}:${payload.reportDate}`;
+      let saved = null;
+      try {
+        const r = await saveReport({
+          body: { reporter: "pos19", type: TYPE, payload },
+          id: existingReport?.id || null,
+          label: `POS 19 Calibration Log ${payload.reportDate || ""}`,
+        });
+        if (r.queued) { setLoadMsg(queuedMessage("ar")); setTimeout(() => setLoadMsg(""), 6000); return; }
+        saved = r.report;
+      } catch (err) {
+        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
+        throw err;
+      }
+      const savedId = reportId(saved) ?? existingReport?.id ?? null;
       setExistingReport({ id: savedId, savedAt: payload.savedAt });
       invalidateReportDates(TYPE);
       dateStatus.refresh();

@@ -107,6 +107,7 @@ function pickSummaryFields(payload) {
     "images",
     "attachments",
     "files",
+    "_outboxId", // offline outbox bookkeeping
     "payload",
   ]);
   return Object.entries(payload || {})

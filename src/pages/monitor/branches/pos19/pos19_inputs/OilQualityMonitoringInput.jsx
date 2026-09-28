@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/OilQualityMonitoringInput.jsx
 import React, { useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
@@ -84,14 +85,16 @@ export default function OilQualityMonitoringInput() {
       savedAt: Date.now(),
     };
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
-      });
-      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ تم الحفظ بنجاح!");
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Oil Quality ${payload.reportDate || ""}` }));
+      } catch (err) {
+        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
+        throw err;
+      }
+      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
       dateStatus.refresh();
     } catch (e) {
       console.error(e);

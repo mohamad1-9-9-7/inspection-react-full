@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/TemperatureMonitoringLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
@@ -162,15 +163,17 @@ export default function TemperatureMonitoringLogInput() {
       savedAt: Date.now(),
     };
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
-      });
-      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Temperature Monitoring ${payload.reportDate || ""}` }));
+      } catch (err) {
+        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
+        throw err;
+      }
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert("✅ تم الحفظ بنجاح!");
+      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
       dateStatus.refresh();
     } catch (e) {
       console.error(e);
