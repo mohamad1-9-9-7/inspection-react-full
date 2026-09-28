@@ -19,6 +19,7 @@
 
 const DB_NAME = "inspect-outbox";
 const STORE = "entries";
+const PHOTOS = "photos";
 
 const handlers = new Map();
 const listeners = new Set();
@@ -31,10 +32,15 @@ function openDb() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB unavailable")); return; }
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => {
-        const s = req.result.createObjectStore(STORE, { keyPath: "id" });
-        s.createIndex("scope", "scope");
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = (ev) => {
+        const db = req.result;
+        if (ev.oldVersion < 1) {
+          const s = db.createObjectStore(STORE, { keyPath: "id" });
+          s.createIndex("scope", "scope");
+        }
+        // v2: photos taken without a connection (see keepPhotoOrUpload).
+        if (ev.oldVersion < 2) db.createObjectStore(PHOTOS, { keyPath: "id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -43,11 +49,11 @@ function openDb() {
   return dbPromise;
 }
 
-async function tx(mode, fn) {
+async function tx(mode, fn, storeName = STORE) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const t = db.transaction(STORE, mode);
-    const store = t.objectStore(STORE);
+    const t = db.transaction(storeName, mode);
+    const store = t.objectStore(storeName);
     let out;
     Promise.resolve(fn(store)).then((v) => { out = v; });
     t.oncomplete = () => resolve(out);
@@ -201,6 +207,7 @@ export function startOutbox() {
   started = true;
   const kick = () => { if (!document.hidden) flushOutbox(); };
   window.addEventListener("online", kick);
+  pruneKeptPhotos();
   document.addEventListener("visibilitychange", kick);
   setInterval(() => {
     if (!document.hidden && state.pending.length) flushOutbox();
@@ -218,4 +225,69 @@ export function confirmLogoutWithOutbox() {
   return window.confirm(ar
     ? `لديك ${n} تقرير محفوظ على هذا الجهاز لم يُرسل بعد إلى الخادم. سيُرسل عند تسجيل دخولك مجددًا من هذا الجهاز. هل تريد تسجيل الخروج؟`
     : `${n} saved ${n === 1 ? "sheet has" : "sheets have"} not reached the server yet. ${n === 1 ? "It stays" : "They stay"} on this device and will be sent the next time you sign in here. Log out anyway?`);
+}
+
+/* ── photos taken without a connection ───────────────────────
+   A form uploads each photo the moment it is picked. Without a connection
+   the photo is kept here instead, and the form gets a `blob:` URL for it:
+   an <img> shows it right away, and the report that carries it uploads it
+   before the report itself is sent (reportOutbox.resolveKeptPhotos). No
+   photo is ever stored in a report as base64. */
+
+export const isKeptPhoto = (v) => typeof v === "string" && v.startsWith("blob:");
+
+/** Runs `upload(file)` (which resolves to the hosted URL); when the server
+    cannot be reached, keeps the photo on the device and returns a blob: URL. */
+export async function keepPhotoOrUpload(file, upload) {
+  try {
+    return await upload(file);
+  } catch (err) {
+    if (!isTransient(err)) throw err;
+    const scope = currentScope();
+    if (!scope) throw err;
+    let blob = file;
+    try {
+      const { shrinkForUpload } = await import("./imageUpload");
+      blob = await shrinkForUpload(file);
+    } catch { /* keep the original */ }
+    const url = URL.createObjectURL(blob);
+    await tx("readwrite", (s) => { s.put({ id: url, scope, blob, name: file?.name || "photo.jpg", createdAt: Date.now(), uploadedUrl: "" }); }, PHOTOS);
+    return url;
+  }
+}
+
+export async function getKeptPhoto(url) {
+  return tx("readonly", (s) => reqP(s.get(url)), PHOTOS);
+}
+
+export async function markKeptPhotoUploaded(url, uploadedUrl) {
+  await tx("readwrite", async (s) => {
+    const rec = await reqP(s.get(url));
+    // The file is no longer needed; the mapping stays so a form still holding
+    // the blob: URL saves the hosted one next time.
+    if (rec) s.put({ ...rec, uploadedUrl, blob: null });
+  }, PHOTOS);
+}
+
+/** The user removed a photo that never left the device. */
+export async function dropKeptPhoto(url) {
+  try { await tx("readwrite", (s) => { s.delete(url); }, PHOTOS); } catch { /* nothing kept */ }
+  try { URL.revokeObjectURL(url); } catch { /* not ours */ }
+}
+
+/** Forgets kept photos that no waiting save refers to and that are older than
+    a week (a form that was abandoned, or a draft that was cleared). */
+export async function pruneKeptPhotos(maxAgeMs = 7 * 864e5) {
+  try {
+    const entries = await tx("readonly", (s) => reqP(s.getAll()));
+    const used = new Set();
+    const walk = (v) => {
+      if (isKeptPhoto(v)) used.add(v);
+      else if (v && typeof v === "object") Object.values(v).forEach(walk);
+    };
+    (entries || []).forEach((e) => walk(e.data));
+    const photos = await tx("readonly", (s) => reqP(s.getAll()), PHOTOS);
+    const old = (photos || []).filter((p) => !used.has(p.id) && Date.now() - p.createdAt > maxAgeMs);
+    if (old.length) await tx("readwrite", (s) => { old.forEach((p) => s.delete(p.id)); }, PHOTOS);
+  } catch { /* storage unavailable */ }
 }

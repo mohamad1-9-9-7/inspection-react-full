@@ -2,6 +2,8 @@
 // QCS — Product Rejection Report — Input form
 
 import React, { useRef, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
@@ -49,7 +51,10 @@ const DISPOSITIONS = [
 
 const UNITS = ["kg", "pcs", "box", "carton", "bag", "litre"];
 
-async function uploadImage(file) {
+/* Without a connection the photo is kept on the device (blob: URL) and
+   uploaded when the record is sent. */
+const uploadImage = (file) => keepPhotoOrUpload(file, uploadImageNow);
+async function uploadImageNow(file) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(`${API_BASE}/api/images`, {
@@ -66,6 +71,7 @@ async function uploadImage(file) {
 
 async function deleteImage(url) {
   if (!url) return;
+  if (isKeptPhoto(url)) return dropKeptPhoto(url);
   try {
     await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
       method: "DELETE",
@@ -197,14 +203,10 @@ export default function ProductRejectionInput() {
     try {
       setBusy(true);
       showMsg("info", "جاري الحفظ...");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: IS_SAME_ORIGIN ? "include" : "omit",
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showMsg("ok", "✅ تم حفظ تقرير الرفض بنجاح");
+      // Without a connection the record waits on this device and is sent
+      // later (utils/reportOutbox.js); the form is cleared either way.
+      const { queued } = await saveReport({ body: { reporter: "qcs", type: TYPE, payload }, label: "Product Rejection" });
+      showMsg("ok", queued ? queuedMessage("ar") : "✅ تم حفظ تقرير الرفض بنجاح");
       resetForm();
     } catch (e) {
       showMsg("err", "❌ فشل الحفظ: " + (e?.message || e));

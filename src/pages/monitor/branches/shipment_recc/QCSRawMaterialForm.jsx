@@ -1431,11 +1431,17 @@ export default function QCSRawMaterialForm() {
         saveLockRef.current = true;
         setSaveMsg("جارٍ الحفظ...");
         showToast("info", "جارٍ الحفظ...");
-        await sendToServer(
+        const { queued } = await sendToServer(
           buildReportPayload({ createdAt, createdDate: userDate, uniqueKey, sequence })
         );
-        setSaveMsg("تم الحفظ — تقرير جديد جاهز");
-        showToast("success", `تم الحفظ ✅ (${ymdToDMY(userDate)} · #${sequence}) — تقرير جديد جاهز`);
+        if (queued) {
+          // No connection: the report waits on this device and is sent later.
+          setSaveMsg("محفوظ على الجهاز — سيُرسل عند عودة الاتصال");
+          showToast("success", `📴 لا يوجد اتصال — حُفظ التقرير (${ymdToDMY(userDate)} · #${sequence}) على هذا الجهاز وسيُرسل تلقائيًا عند عودة الاتصال`);
+        } else {
+          setSaveMsg("تم الحفظ — تقرير جديد جاهز");
+          showToast("success", `تم الحفظ ✅ (${ymdToDMY(userDate)} · #${sequence}) — تقرير جديد جاهز`);
+        }
         lastSaveTsRef.current = Date.now();
         startNewEntry();
       } catch (e) {

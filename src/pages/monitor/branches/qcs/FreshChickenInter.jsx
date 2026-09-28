@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/qcs/FreshChickenInter.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 
 /* ====== API (aligned with Returns.js) ====== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -92,8 +94,12 @@ function parseTempNumber(s) {
   return Number.isFinite(x) ? x : NaN;
 }
 
-/* Images API: POST /api/images, DELETE /api/images?url=... */
-async function uploadImageViaServer(file) {
+/* Images API: POST /api/images, DELETE /api/images?url=...
+   Without a connection the photo is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+const uploadImageViaServer = async (file) =>
+  ({ url: await keepPhotoOrUpload(file, async (f) => (await uploadImageViaServerNow(f)).url) });
+async function uploadImageViaServerNow(file) {
   const fd = new FormData();
   fd.append("file", file);
   const url = `${API_BASE}/api/images`;
@@ -110,6 +116,7 @@ async function uploadImageViaServer(file) {
 }
 async function deleteImageUrl(url) {
   if (!url) return true;
+  if (isKeptPhoto(url)) { await dropKeptPhoto(url); return true; }
   const res = await fetch(
     `${API_BASE}/api/images?url=${encodeURIComponent(url)}`,
     { method: "DELETE" }
@@ -120,19 +127,12 @@ async function deleteImageUrl(url) {
   return true;
 }
 
-/* Reports API: POST /api/reports with { reporter, type, payload } */
+/* Reports API: POST /api/reports with { reporter, type, payload }.
+   Without a connection the report waits on this device and is sent later
+   (utils/reportOutbox.js); the result then says { queued: true }. */
 async function saveReportOnServer({ type, payload }) {
-  const endpoint = `${API_BASE}/api/reports`;
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reporter: "QC", type, payload }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Save failed ${res.status}: ${txt}`);
-  }
-  return await res.json();
+  const { queued, report } = await saveReport({ body: { reporter: "QC", type, payload }, label: "Fresh Chicken" });
+  return queued ? { queued: true } : report;
 }
 
 /* ====== Date helpers ====== */
@@ -760,7 +760,9 @@ export default function FreshChickenInter() {
       setSaving(true);
       const res = await saveReportOnServer({ type: REPORT_TYPE_KEY, payload });
       setSaving(false);
-      alert(`✅ Saved '${variant}' for ${toDMYfromISO(entryDateISO)}. ID: ${res?.id || res?._id || "N/A"}`);
+      alert(res?.queued
+        ? queuedMessage("en")
+        : `✅ Saved '${variant}' for ${toDMYfromISO(entryDateISO)}. ID: ${res?.id || res?._id || "N/A"}`);
     } catch (err) {
       setSaving(false);
       alert(String(err?.message || "Saving to server failed."));

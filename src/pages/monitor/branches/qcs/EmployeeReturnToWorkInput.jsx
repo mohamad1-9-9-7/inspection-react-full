@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/qcs/EmployeeReturnToWorkInput.jsx
 import React, { useMemo, useState } from "react";
-import API_BASE from "../../../../config/api";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import {
   useStaffDirectory,
   normalizeEmpNo,
@@ -291,13 +291,10 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
     try {
       setSaving(true);
       setMsg("Saving…");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter, type, payload }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMsg("✅ Saved successfully");
+      // Without a connection the record waits on this device and is sent
+      // later (utils/reportOutbox.js); the form is cleared either way.
+      const { queued } = await saveReport({ body: { reporter, type, payload }, label: "Return to Work" });
+      setMsg(queued ? queuedMessage("en") : "✅ Saved successfully");
       resetForm();
     } catch (e) {
       console.error(e);

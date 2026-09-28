@@ -1,35 +1,7 @@
 // src/pages/monitor/branches/qcs/DailyCleanlinessTab.jsx
 import React, { useMemo, useState } from "react";
-import {
-  getLatestReport,
-  getReportRowByDate,
-  payloadOf,
-  reportId,
-} from "../_shared/reportApi";
-
-/* =========================
-   API base (CRA + Vite safe)
-========================= */
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-
-const CRA_URL =
-  typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL
-    ? process.env.REACT_APP_API_URL
-    : undefined;
-
-let VITE_URL;
-try {
-  VITE_URL = import.meta.env?.VITE_API_URL;
-} catch {}
-
-const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
-const IS_SAME_ORIGIN = (() => {
-  try {
-    return new URL(API_BASE).origin === window.location.origin;
-  } catch {
-    return false;
-  }
-})();
+import { getLatestReport } from "../_shared/reportApi";
+import { saveReport } from "../../../../utils/reportOutbox";
 
 /* -------- Fallbacks / Defaults -------- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
@@ -455,13 +427,6 @@ export default function DailyCleanlinessTab({
   const [saving, setSaving] = useState(false);
   const [loadingLast, setLoadingLast] = useState(false);
 
-  /* Targeted read — this used to download every cleanliness report ever saved
-     just to discover whether this one date already had a record. */
-  async function fetchExistingByDate(dateStr) {
-    const row = await getReportRowByDate(CLEAN_TYPE, dateStr);
-    return row ? { id: reportId(row), payload: payloadOf(row) } : null;
-  }
-
   /* Brings the last saved checklist back and clears the date, so the user
      picks the day they are filling in rather than overwriting yesterday. */
   async function loadFromLast() {
@@ -495,44 +460,27 @@ export default function DailyCleanlinessTab({
     try {
       setSaving(true);
 
-      const existing = await fetchExistingByDate(date);
-
-      const mergedPayload = {
-        ...(existing?.payload || {}),
-        reportDate: date,
-        cleanlinessRows: rows,
-        headers: {
-          ...(existing?.payload?.headers || {}),
-          dcHeader: header,
-          dcFooter: footer,
+      const body = {
+        reporter: "QCS",
+        type: CLEAN_TYPE,
+        payload: {
+          reportDate: date,
+          cleanlinessRows: rows,
+          headers: { dcHeader: header, dcFooter: footer },
         },
       };
 
-      const body = {
-        reporter: "QCS",
-        type: CLEAN_TYPE, // 👈 النوع الصحيح
-        payload: mergedPayload,
-      };
-
-      if (existing?.id) {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update report");
-      } else {
-        const res = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create report");
-      }
-
-      alert(`✅ Daily Cleanliness saved for ${date}.`);
+      // merge: the day's record keeps any field this form does not own (the
+      // lookup and the merge happen at send time, so a save kept offline
+      // merges into whatever the record holds when it is finally sent).
+      const { queued } = await saveReport({
+        body,
+        byDate: { type: CLEAN_TYPE, date, merge: true },
+        label: `Daily Cleanliness ${date}`,
+      });
+      alert(queued
+        ? `📴 No connection — Daily Cleanliness for ${date} is kept on this device and will be sent automatically when the connection is back.`
+        : `✅ Daily Cleanliness saved for ${date}.`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);
     } finally {

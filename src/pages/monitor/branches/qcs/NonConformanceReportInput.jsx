@@ -30,6 +30,8 @@ import {
   payloadOf,
   reportId,
 } from "../_shared/reportApi";
+import { newOutboxId, saveReport } from "../../../../utils/reportOutbox";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 import {
   INSPECTION_BRANCHES,
   canonicalInspectionBranch,
@@ -85,7 +87,10 @@ const SOURCES = [
 /* =========================
    Images API
 ========================= */
-async function uploadViaServer(file) {
+/* Without a connection the photo is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+const uploadViaServer = (file) => keepPhotoOrUpload(file, uploadViaServerNow);
+async function uploadViaServerNow(file) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(`${API_BASE}/api/images`, {
@@ -101,6 +106,7 @@ async function uploadViaServer(file) {
 }
 async function deleteImage(url) {
   if (!url) return;
+  if (isKeptPhoto(url)) return dropKeptPhoto(url);
   const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
     method: "DELETE",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
@@ -468,6 +474,9 @@ export default function NonConformanceReportInput(props) {
      the newest — so "New report" has to switch that lookup off, otherwise the
      effect would immediately pull the old record back over the blank form. */
   const [draftNew, setDraftNew] = useState(false);
+  /* The id of the blank sheet being created — kept for every save of that
+     sheet, so a save kept offline and saved again stays one record. */
+  const outboxIdRef = useRef("");
 
   /* ---- Closing an NCR is the only state with extra requirements ---- */
   const closing = status === "Closed";
@@ -653,6 +662,7 @@ export default function NonConformanceReportInput(props) {
       return;
     }
     setDraftNew(true);
+    outboxIdRef.current = "";
     setEditingReportId("");
     setRefNo("");
     setLegacyNcNo("");
@@ -761,35 +771,29 @@ export default function NonConformanceReportInput(props) {
       setSaving(true);
       setOpMsg("Saving…");
 
-      // A blank sheet always creates; anything else updates the row it loaded.
-      const existing = draftNew
-        ? null
-        : editingReportId
-        ? { id: editingReportId }
-        : await fetchExistingNCByDate(dateISO, TYPE);
-
-      const body = { reporter: REPORTER, type: TYPE, payload };
-
-      const res = await fetch(
-        existing?.id
-          ? `${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`
-          : `${API_BASE}/api/reports`,
-        {
-          method: existing?.id ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        }
-      );
-      if (!res.ok) {
-        throw new Error((await res.text().catch(() => "")) || "Failed to save NC report");
+      // A blank sheet always creates; a loaded record is updated; otherwise
+      // the date's record is updated or created. Without a connection the
+      // save waits on this device and is sent later the same way.
+      if (draftNew && !outboxIdRef.current) outboxIdRef.current = newOutboxId();
+      const body = {
+        reporter: REPORTER,
+        type: TYPE,
+        payload: draftNew ? { ...payload, _outboxId: outboxIdRef.current } : payload,
+      };
+      const { queued, report: row } = await saveReport({
+        body,
+        id: !draftNew && editingReportId ? editingReportId : null,
+        byDate: !draftNew && !editingReportId ? { type: TYPE, date: dateISO } : null,
+        label: `NCR ${dateISO}`,
+      });
+      if (queued) {
+        setOpMsg("📴 No connection — kept on this device; it will be sent automatically when the connection is back.");
+        return;
       }
 
       /* The server answers { ok, report } — `report.payload.refNo` is the
          number it just allocated (or kept, on an update). Read it back so the
          NC No. on screen stops saying "assigned on save". */
-      const saved = await res.json().catch(() => null);
-      const row = saved?.report || saved?.data || saved;
       const savedId = row?.id || row?._id;
       const savedRef = row?.payload?.refNo;
       if (savedId) setEditingReportId(String(savedId));

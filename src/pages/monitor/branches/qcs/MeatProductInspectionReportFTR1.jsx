@@ -1,8 +1,14 @@
 // src/pages/monitor/branches/qcs/MeatProductInspectionReportFTR1.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 import API_BASE from "../../../../config/api";
 import { getReportRowByDate, payloadOf } from "../_shared/reportApi";
-import { uploadImage } from "../../../../utils/imageUpload";
+import { uploadImage as uploadImageNow } from "../../../../utils/imageUpload";
+
+/* Without a connection a photo is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+const uploadImage = (file, purpose) => keepPhotoOrUpload(file, (f) => uploadImageNow(f, purpose));
 
 /* ===== API base ===== */
 
@@ -521,26 +527,28 @@ export default function MeatProductInspectionReportFTR1() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "ftr1", type: TYPE, payload }),
-      });
-      // Now that the payload carries a canonical reportDate, the unique index
-      // on (type, reportDate) enforces one-per-day server side as well. Show
-      // that as the duplicate warning, not as a generic network failure.
-      if (res.status === 409) {
-        setSaving(false);
-        setModalState({
-          open: true,
-          text: "⚠️ يوجد تقرير محفوظ لهذا اليوم لنفس الفرع/الموقع.",
-          kind: "warn",
-        });
-        return;
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({ body: { reporter: "ftr1", type: TYPE, payload }, label: "FTR 1 Pre-loading" }));
+      } catch (err) {
+        // Now that the payload carries a canonical reportDate, the unique index
+        // on (type, reportDate) enforces one-per-day server side as well. Show
+        // that as the duplicate warning, not as a generic network failure.
+        if (err?.status === 409) {
+          setSaving(false);
+          setModalState({
+            open: true,
+            text: "⚠️ يوجد تقرير محفوظ لهذا اليوم لنفس الفرع/الموقع.",
+            kind: "warn",
+          });
+          return;
+        }
+        throw err;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      setModalState({ open: true, text: "✅ تم الحفظ بنجاح", kind: "success" });
+      setModalState({ open: true, text: queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح", kind: "success" });
       setSamples(initialSamples());
       setTruckTemp("");
       setReportDate(todayDubai());

@@ -1,12 +1,13 @@
 // src/pages/monitor/branches/qcs/RMInspectionReportIngredients.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
 import { getReportRowByDate, reportId } from "../_shared/reportApi";
+import { saveReport } from "../../../../utils/reportOutbox";
 
 /* ====== API & هوية التقرير ====== */
 
 
 const TYPE = "qcs_rm_ingredients";
+const LABEL = "RM Ingredients";
 const BRANCH_ID = "QCS";
 const FILE_ID = "RMInspectionReportIngredients";
 
@@ -314,21 +315,19 @@ export default function RMInspectionReportIngredients() {
     setSaving(true);
 
     try {
-      const url = targetId
-        ? `${API_BASE}/api/reports/${encodeURIComponent(targetId)}`
-        : `${API_BASE}/api/reports`;
-
-      const res = await fetch(url, {
-        method: targetId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: TYPE, payload: buildPayload() }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { type: TYPE, payload: buildPayload() },
+        id: targetId || null,
+        label: `${LABEL} ${reportDate}`,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       setModal({
         open: true,
-        text: targetId ? "✅ Report updated." : "✅ Report saved.",
+        text: queued
+          ? "📴 No connection — the report is kept on this device and will be sent automatically when the connection is back."
+          : targetId ? "✅ Report updated." : "✅ Report saved.",
         kind: "success",
       });
 

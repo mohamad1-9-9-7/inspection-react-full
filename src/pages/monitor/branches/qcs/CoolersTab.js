@@ -3,8 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import { getLatestReport } from "../_shared/reportApi";
-import { COOLERS_OUTBOX_KIND, COOLERS_TYPE, saveCoolersRecord } from "./coolersSave";
-import { enqueue, isTransient } from "../../../../utils/offlineOutbox";
+import { saveReport } from "../../../../utils/reportOutbox";
 import CoolerSetupPanel from "./CoolerSetupPanel";
 import {
   COOLER_COUNT,
@@ -41,8 +40,8 @@ const loadDraft = () => {
 /* ---- Config ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
-/* A save still hanging after this long is treated as "no connection". */
-const SAVE_TIMEOUT_MS = 25_000;
+/* Report type stored on the server */
+const COOLERS_TYPE = "qcs-coolers";
 
 /* ---- Time helpers (4AM -> 8PM, every 2 hours) ---- */
 function formatHour(h) {
@@ -592,27 +591,14 @@ export default function CoolersTab(props) {
 
       const body = { reporter: "QCS/COOLERS", type: COOLERS_TYPE, payload };
 
-      // A cold room or a weak signal can leave the request hanging; after
-      // SAVE_TIMEOUT_MS it is treated like no connection and queued.
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), SAVE_TIMEOUT_MS);
-      try {
-        await saveCoolersRecord(body, { signal: ctrl.signal });
-      } catch (err) {
-        if (!isTransient(err)) throw err;
-        // No connection: keep the sheet on this device and send it when the
-        // connection is back. The replay looks the date up again, so if this
-        // save did reach the server after all, it updates rather than duplicates.
-        try {
-          await enqueue(COOLERS_OUTBOX_KIND, date, body, `Coolers ${date}`);
-        } catch {
-          throw new Error("No connection, and this device could not keep the sheet. It is still on screen — save again when you are back online.");
-        }
+      // One record per date: saveReport looks the date up and updates it, or
+      // creates it. Without a connection the sheet is kept on this device and
+      // sent later the same way, so a save that did land never duplicates.
+      const { queued } = await saveReport({ body, byDate: { type: COOLERS_TYPE, date }, label: `Coolers ${date}` });
+      if (queued) {
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
         alert(`📴 No connection — the Coolers sheet for ${date} is kept on this device and will be sent automatically when the connection is back.`);
         return;
-      } finally {
-        clearTimeout(timer);
       }
 
       try { localStorage.removeItem(DRAFT_KEY); } catch {}

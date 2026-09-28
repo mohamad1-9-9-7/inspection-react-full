@@ -1,4 +1,6 @@
 // qcsRawApi.js
+import { saveReport } from "../../../../utils/reportOutbox";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 /* =============================================================================
    🔗 API base (تقارير)
 ============================================================================= */
@@ -82,47 +84,27 @@ async function requestJSON(url, opts = {}) {
   return data;
 }
 
-/** حفظ/تحديث تقرير qcs_raw_material */
+/** حفظ/تحديث تقرير qcs_raw_material.
+    Returns { queued, report }: queued = no connection, the report waits on
+    this device and is sent later (utils/reportOutbox.js). */
 export async function sendToServer(payload) {
   const reporter = getReporter();
   const type = "qcs_raw_material";
 
   // لا نثق بأي id محلي؛ نعتمد فقط على _id القادم من السيرفر
   const { id, localId, ...clean } = payload || {};
-  const hasServerId = !!clean?._id;
+  const body = { reporter, type, payload: clean };
+  const label = `Raw Material ${clean.createdDate || ""}`.trim();
 
-  // طلبات
-  const makeBody = (doc) =>
-    JSON.stringify({ reporter, type, payload: doc || {} });
-
-  async function doPost(doc) {
-    return requestJSON(REPORTS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: makeBody(doc),
-    });
-  }
-  async function doPut(doc) {
-    const url = `${REPORTS_URL}/${encodeURIComponent(doc?._id || "")}?type=${encodeURIComponent(type)}`;
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      credentials: IS_SAME_ORIGIN ? "include" : "omit",
-      body: makeBody(doc),
-    });
-
-    // Fallback إلى POST إذا كان السجل غير موجود
-    if (res.status === 404) return doPost(doc);
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const t = (data && (data.message || data.error)) || (await res.text().catch(() => ""));
-      throw new Error(t || `HTTP ${res.status}`);
+  if (clean?._id) {
+    try {
+      return await saveReport({ body, id: clean._id, label });
+    } catch (e) {
+      // Fallback إلى POST إذا كان السجل غير موجود
+      if (e?.status !== 404) throw e;
     }
-    return data;
   }
-
-  return hasServerId ? doPut(clean) : doPost(clean);
+  return saveReport({ body, label });
 }
 
 /** حفظ meta (يبقى POST) */
@@ -194,7 +176,11 @@ export async function deriveUniqueKey({ shipmentType, airwayBill, invoiceNo, cre
    📤 Image Upload + 🗑️ Delete
    - الرفع حصراً إلى IMAGE_API_BASE (ضغط تلقائي: 1280px / جودة 80%)
 ============================================================================= */
-export async function uploadImageToServer(file, purpose = "qcs_raw_material") {
+/* Without a connection the file is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+export const uploadImageToServer = (file, purpose = "qcs_raw_material") =>
+  keepPhotoOrUpload(file, (f) => uploadImageToServerNow(f, purpose));
+async function uploadImageToServerNow(file, purpose) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("purpose", purpose);
@@ -212,6 +198,7 @@ export async function uploadImageToServer(file, purpose = "qcs_raw_material") {
 
 export async function deleteImage(url) {
   if (!url) throw new Error("No URL provided");
+  if (isKeptPhoto(url)) { await dropKeptPhoto(url); return true; }
   const res = await fetch(
     `${IMAGE_API_BASE}/api/images?url=${encodeURIComponent(url)}`,
     { method: "DELETE" }

@@ -2,6 +2,8 @@
 // QCS — Garbage / Waste Disposal — Input form (simple info + invoice photo + extra images)
 
 import React, { useRef, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 
 /* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -43,7 +45,10 @@ const LOCATIONS = [
   "Other",
 ];
 
-async function uploadImage(file) {
+/* Without a connection the photo is kept on the device (blob: URL) and
+   uploaded when the record is sent. */
+const uploadImage = (file) => keepPhotoOrUpload(file, uploadImageNow);
+async function uploadImageNow(file) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(`${API_BASE}/api/images`, {
@@ -60,6 +65,7 @@ async function uploadImage(file) {
 
 async function deleteImage(url) {
   if (!url) return;
+  if (isKeptPhoto(url)) return dropKeptPhoto(url);
   try {
     await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
       method: "DELETE",
@@ -218,14 +224,10 @@ export default function GarbageDisposalInput() {
     try {
       setBusy(true);
       showMsg("info", "Saving...");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: IS_SAME_ORIGIN ? "include" : "omit",
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showMsg("ok", "✅ Record saved successfully");
+      // Without a connection the record waits on this device and is sent
+      // later (utils/reportOutbox.js); the form is cleared either way.
+      const { queued } = await saveReport({ body: { reporter: "qcs", type: TYPE, payload }, label: "Garbage Disposal" });
+      showMsg("ok", queued ? queuedMessage("en") : "✅ Record saved successfully");
       resetForm();
     } catch (e) {
       showMsg("err", "❌ Save failed: " + (e?.message || e));

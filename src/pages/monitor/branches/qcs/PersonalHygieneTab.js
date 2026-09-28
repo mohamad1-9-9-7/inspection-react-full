@@ -1,24 +1,12 @@
 // src/pages/monitor/branches/qcs/PersonalHygieneTab.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import {
-  getLatestReport,
-  getReportRowByDate,
-  reportId,
-} from "../_shared/reportApi";
+import { getLatestReport } from "../_shared/reportApi";
+import { saveReport } from "../../../../utils/reportOutbox";
 import {
   useStaffDirectory,
   normalizeEmpNo,
   normalizeName,
 } from "../_shared/staffRegistry";
-
-const IS_SAME_ORIGIN = (() => {
-  try {
-    return new URL(API_BASE).origin === window.location.origin;
-  } catch {
-    return false;
-  }
-})();
 
 /* ---- Fallbacks ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
@@ -415,11 +403,6 @@ export default function PersonalHygieneTab(props) {
       setSavingLocal(true);
       setNote("");
 
-      // Targeted lookup — the old version downloaded every PH report ever
-      // saved just to find out whether this one date already existed.
-      const existing = await getReportRowByDate(PH_TYPE, date);
-      const existingId = existing ? reportId(existing) : "";
-
       const payload = {
         reportDate: date,
         personalHygiene: rows,
@@ -431,21 +414,12 @@ export default function PersonalHygieneTab(props) {
 
       const body = { reporter: "QCS/PH", type: PH_TYPE, payload };
 
-      const url = existingId
-        ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`
-        : `${API_BASE}/api/reports`;
-
-      const res = await fetch(url, {
-        method: existingId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        credentials: IS_SAME_ORIGIN ? "include" : "omit",
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
-      }
-
-      setNote(`✅ Personal Hygiene saved for ${date}.`);
+      // One record per date: updated if the date has one, created if not.
+      // Without a connection it waits on this device and is sent later.
+      const { queued } = await saveReport({ body, byDate: { type: PH_TYPE, date }, label: `Personal Hygiene ${date}` });
+      setNote(queued
+        ? `📴 No connection — Personal Hygiene for ${date} is kept on this device and will be sent automatically when the connection is back.`
+        : `✅ Personal Hygiene saved for ${date}.`);
     } catch (e) {
       setNote(`❌ Failed to save: ${e.message || e}`);
     } finally {

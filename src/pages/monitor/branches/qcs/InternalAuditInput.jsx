@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/qcs/InternalAuditInput.jsx
 import React, { useMemo, useState } from "react";
-import API_BASE from "../../../../config/api";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 
 /* ===== API base ===== */
 
@@ -488,13 +488,10 @@ export default function InternalAuditInput() {
 
     try{
       setSaving(true); setMsg("Saving…");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ reporter:"qcs", type: TYPE, payload }),
-      });
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMsg("✅ Saved successfully");
+      // Without a connection the record waits on this device and is sent
+      // later (utils/reportOutbox.js); the form is cleared either way.
+      const { queued } = await saveReport({ body: { reporter:"qcs", type: TYPE, payload }, label: "Internal Audit" });
+      setMsg(queued ? queuedMessage("en") : "✅ Saved successfully");
     }catch(e){
       console.error(e);
       setMsg("❌ Failed to save");
