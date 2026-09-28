@@ -8,7 +8,7 @@
 // product name or the packaging header was cut off with no way to read it. The
 // shared table wraps its headers and lets each cell show its own value.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "../production/_shared/i18n";
 import useTakenDates from "../_shared/useTakenDates";
@@ -244,24 +244,26 @@ export default function POS10ReceivingLogInput() {
     try {
       setSaving(true);
       setOpMsg("⏳");
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos10", type: TYPE, payload }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      // The server holds the same one-per-day rule on a unique index, so it is
-      // the last word even if this screen's index was stale.
-      if (res.status === 409) {
-        markTaken(reportDate);
-        return flash("⚠️ " + (data?.message || t("date_taken")), 6000);
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      let queued = false;
+      try {
+        ({ queued } = await saveReport({
+          body: { reporter: "pos10", type: TYPE, payload },
+          label: `POS 10 Receiving Log ${reportDate}`,
+        }));
+      } catch (err) {
+        // The server holds the same one-per-day rule on a unique index, so it is
+        // the last word even if this screen's index was stale.
+        if (err?.status === 409) {
+          markTaken(reportDate);
+          return flash("⚠️ " + (err.message || t("date_taken")), 6000);
+        }
+        throw err;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       markTaken(reportDate);
-      flash("✅ " + t("saved"));
+      flash(queued ? queuedMessage(isAr ? "ar" : "en") : "✅ " + t("saved"), queued ? 6000 : undefined);
     } catch (e) {
       console.error(e);
       flash("❌ " + t("err_save"), 6000);

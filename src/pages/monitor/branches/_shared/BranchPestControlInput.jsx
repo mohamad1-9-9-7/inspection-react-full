@@ -9,10 +9,14 @@
 //   }} />
 
 import React, { useState } from "react";
-import { uploadImage, imageSrc } from "../../../../utils/imageUpload";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { uploadImage as uploadImageNow, imageSrc } from "../../../../utils/imageUpload";
+import { keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+/* Without a connection a photo is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+const uploadImage = (file, purpose) => keepPhotoOrUpload(file, (f) => uploadImageNow(f, purpose));
+
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 // photoUrl holds a Cloudinary link. The old photoBase64 field embedded the
@@ -83,15 +87,12 @@ export default function BranchPestControlInput({ config }) {
         ? { reporter, type: TYPE, payload: form }
         : { type: TYPE, payload: form };
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("save failed");
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({ body, label: `Pest Control ${form.reportDate || ""}` });
 
       setSaving(false);
-      updateModal("✅ تم الحفظ", "success");
+      updateModal(queued ? queuedMessage("ar") : "✅ تم الحفظ", "success");
       setTimeout(() => closeModal(), 1400);
 
       setForm((s) => ({

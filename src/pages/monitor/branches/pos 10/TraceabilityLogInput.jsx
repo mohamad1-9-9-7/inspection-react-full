@@ -1,5 +1,6 @@
 // D:\inspection-react-full\src\pages\monitor\branches\pos 10\TraceabilityLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../config/api";
 import { RAW_RECIPES, classifyRaw, ALL_FINALS } from "../_shared/traceabilityRecipes";
@@ -1042,17 +1043,13 @@ export default function TraceabilityLogInput() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos10",
-          type: TYPE,
-          payload,
-        }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos10", type: TYPE, payload },
+        label: `POS 10 Traceability ${payload.reportDate || ""}`,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ تم الحفظ بنجاح");
+      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح");
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");

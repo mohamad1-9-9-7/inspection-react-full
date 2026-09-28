@@ -3,6 +3,7 @@
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 10)
 
 import React, { useEffect, useMemo, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { useSearchParams } from "react-router-dom";
 
 const API_BASE =
@@ -196,18 +197,13 @@ export default function POS10PersonalHygiene() {
         savedAt: Date.now(),
       };
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos10",
-          type: TYPE,
-          payload,
-        }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos10", type: TYPE, payload },
+        label: `POS 10 Personal Hygiene ${payload.reportDate || ""}`,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setOpMsg("✅ Saved successfully!");
+      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ Failed to save.");

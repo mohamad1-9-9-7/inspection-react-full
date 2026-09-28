@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos 10/POS10DailyCleaning.jsx
 import React, { useEffect, useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -197,18 +198,13 @@ export default function POS10DailyCleaning() {
         savedAt: Date.now(),
       };
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos10",
-          type: "pos10_daily_cleanliness",
-          payload,
-        }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos10", type: "pos10_daily_cleanliness", payload },
+        label: `POS 10 Daily Cleaning ${payload.reportDate || ""}`,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setOpMsg("✅ Saved successfully!");
+      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ Failed to save.");
