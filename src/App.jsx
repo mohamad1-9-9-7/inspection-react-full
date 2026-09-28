@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
 import ThemeToggle from "./components/ThemeToggle";
+import AccessibilityMenu from "./components/AccessibilityMenu";
 import GlobalTimePicker from "./components/GlobalTimePicker";
 import OutboxBar from "./components/OutboxBar";
 // Registers the replay for reports saved without a connection, so a waiting
@@ -825,6 +826,7 @@ export default function App() {
       <GlobalDatePicker />
       <GlobalTimePicker />
       <ThemeToggle />
+      <AccessibilityMenu />
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />

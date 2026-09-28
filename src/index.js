@@ -6,10 +6,12 @@ import './styles/globals.css';
 import './styles/theme-dark.css';
 import './utils/authFetch';
 import { applyTheme } from './utils/theme';
+import { applyFontStep } from './utils/fontScale';
 
 // Day / night mode before the first paint, so a night-mode user never
 // sees a white flash.
 applyTheme();
+applyFontStep();
 
 // لما نشتغل داخل Electron (file://) لازم HashRouter لأن BrowserRouter بيكسر
 const isElectron =

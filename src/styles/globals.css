@@ -61,7 +61,8 @@ table td textarea {
 }
 
 html {
-  font-size: 14px;
+  /* --app-fs = user text size (utils/fontScale.js, AccessibilityMenu). */
+  font-size: calc(14px * var(--app-fs, 1));
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
 }
@@ -72,14 +73,19 @@ body,
 #root *,
 #root *::before,
 #root *::after {
-  font-size: 14px !important;
+  font-size: calc(14px * var(--app-fs, 1)) !important;
 }
 
 #root table,
 #root table *,
 #root .qms-table,
 #root .qms-table * {
-  font-size: 12px !important;
+  font-size: calc(12px * var(--app-fs, 1)) !important;
+}
+
+/* Paper keeps the designed size whatever the screen text size is. */
+@media print {
+  html { --app-fs: 1 !important; }
 }
 
 body {
