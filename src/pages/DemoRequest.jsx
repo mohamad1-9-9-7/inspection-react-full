@@ -1,7 +1,8 @@
 // src/pages/DemoRequest.jsx
 // Public landing page (/demo) — the first thing a prospect sees of InspectPro.
 // No login. Hero with a live-looking product mock-up, who it is for, the
-// feature bento, before/after, how it works, the demo-request form, FAQ. Styles: DemoRequest.css (scoped under .dp).
+// feature bento, before/after + paper-vs-app table, how it works, the savings
+// calculator (DemoValue.jsx), the demo-request form, FAQ. Styles: DemoRequest.css (scoped under .dp).
 //
 // Server contract: POST /api/demo-requests (public, rate-limited),
 // GET /api/demo-config (WhatsApp number, offer, referral, story — all set by
@@ -13,6 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
+import { PaperVsTable, SavingsCalculator } from "./DemoValue";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
@@ -42,7 +44,7 @@ export const DEMO_EMIRATES = [
 
 const TXT = {
   en: {
-    nav: { features: "Features", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
+    nav: { features: "Features", savings: "Savings", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
     pill: "Food-safety & quality management platform",
     pillTag: "New",
     offerTag: "Offer",
@@ -76,6 +78,9 @@ const TXT = {
     },
     baEyebrow: "Before & after",
     baTitle: "From paper folders to one live screen",
+    calcEyebrow: "Savings calculator",
+    calcTitle: "What does paper cost you?",
+    calcSub: "Move the slider to your number of branches.",
     howEyebrow: "How it works",
     howTitle: "Live in three steps",
     steps: [
@@ -115,7 +120,7 @@ const TXT = {
       ["Does it work in Arabic?", "Yes. Every screen works in Arabic and English, and each user works in their own language."],
       ["Do we need our own server or IT team?", "No. InspectPro runs in the cloud and opens in any browser — on a phone at the branch or a computer at head office."],
       ["Can our current forms be kept?", "Yes. Your paper forms are turned into digital checklists that follow the same layout, and reports print in that layout too."],
-      ["How is it priced?", "Per company, depending on the number of branches and modules. You get a clear quote after the demo."],
+      ["How is it priced?", "Per branch, from AED 990 a month for up to two branches, billed annually. The calculator above shows your number, and you get a written quote after the demo."],
     ],
     footRights: "All rights reserved.",
     footSignIn: "Customer sign-in",
@@ -125,7 +130,7 @@ const TXT = {
     lang: "العربية",
   },
   ar: {
-    nav: { features: "المزايا", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
+    nav: { features: "المزايا", savings: "التوفير", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
     pill: "منصة إدارة سلامة الغذاء والجودة",
     pillTag: "جديد",
     offerTag: "عرض",
@@ -159,6 +164,9 @@ const TXT = {
     },
     baEyebrow: "قبل وبعد",
     baTitle: "من الملفات الورقية إلى شاشة واحدة مباشرة",
+    calcEyebrow: "حاسبة التوفير",
+    calcTitle: "كم تكلّفك السجلات الورقية؟",
+    calcSub: "حرّك المؤشر إلى عدد فروعك.",
     howEyebrow: "آلية العمل",
     howTitle: "ثلاث خطوات للانطلاق",
     steps: [
@@ -198,7 +206,7 @@ const TXT = {
       ["هل يعمل النظام باللغة العربية؟", "نعم. جميع الشاشات تعمل بالعربية والإنجليزية، ويعمل كل مستخدم بلغته."],
       ["هل نحتاج إلى خادم خاص أو فريق تقنية معلومات؟", "لا. يعمل InspectPro سحابيًا ويُفتح من أي متصفح — من الجوال في الفرع أو من الحاسوب في الإدارة."],
       ["هل يمكن الإبقاء على نماذجنا الحالية؟", "نعم. تتحول نماذجكم الورقية إلى قوائم فحص رقمية بالتصميم نفسه، وتُطبع التقارير بذلك التصميم أيضًا."],
-      ["كيف يُحتسب السعر؟", "لكل شركة بحسب عدد الفروع والوحدات المطلوبة، وتحصل على عرض سعر واضح بعد العرض التجريبي."],
+      ["كيف يُحتسب السعر؟", "بحسب عدد الفروع، ابتداءً من 990 درهمًا شهريًا لفرعين، بالدفع السنوي. تعرض لك الحاسبة أعلاه رقمك، وتحصل على عرض سعر مكتوب بعد العرض التجريبي."],
     ],
     footRights: "جميع الحقوق محفوظة.",
     footSignIn: "دخول العملاء",
@@ -330,6 +338,12 @@ export default function DemoRequest() {
     document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // The calculator hands over its branch count, so the form arrives pre-filled.
+  const bookFromCalc = (bucket) => {
+    setForm((f) => ({ ...f, branches: bucket }));
+    goForm();
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError("");
@@ -377,6 +391,7 @@ export default function DemoRequest() {
           </a>
           <nav className="dp-nav-links fs-sm" aria-label="Page">
             <a href="#features">{t.nav.features}</a>
+            <a href="#savings">{t.nav.savings}</a>
             <a href="#how">{t.nav.how}</a>
             <a href={quizHref} onClick={(e) => { e.preventDefault(); navigate(quizHref); }}>{t.nav.check}</a>
           </nav>
@@ -536,6 +551,7 @@ export default function DemoRequest() {
             <h2 className="dp-h2 fs-h2">{t.baTitle}</h2>
           </div>
           <div className="dp-ba-wrap dp-reveal"><BeforeAfter lang={lang} /></div>
+          <div className="dp-ba-wrap dp-reveal"><PaperVsTable lang={lang} /></div>
         </div>
       </section>
 
@@ -555,6 +571,18 @@ export default function DemoRequest() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── savings calculator + offer ── */}
+      <section id="savings" className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.calcEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.calcTitle}</h2>
+            <p className="dp-sub fs-lead">{t.calcSub}</p>
+          </div>
+          <div className="dp-reveal"><SavingsCalculator lang={lang} onBook={bookFromCalc} /></div>
         </div>
       </section>
 
