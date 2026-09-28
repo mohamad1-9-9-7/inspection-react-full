@@ -580,8 +580,10 @@ function getCurrentUser() {
 }
 
 function ProtectedRoute({ children }) {
+  const { pathname } = useLocation();
   let isAuthed = false;
   let isSuperAdmin = false;
+  let industry = "meat";
   try {
     const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
     if (raw) {
@@ -590,6 +592,7 @@ function ProtectedRoute({ children }) {
       if (user && age < getSessionMaxMs()) {
         isAuthed     = true;
         isSuperAdmin = user.isSuperAdmin || false;
+        industry     = user.companyIndustry || "meat";
       } else {
         clearAppSession();
       }
@@ -599,6 +602,16 @@ function ProtectedRoute({ children }) {
   }
   if (!isAuthed) return <Navigate to="/" replace />;
   if (isSubscriptionExpired() && !isSuperAdmin) return <Navigate to="/subscription-expired" replace />;
+  /* Company separation: an account of any company that is not on the meat
+     system (sweets, restaurant, supermarket, warehouse, manufacturing…) lives
+     ONLY inside /company-app. Every other protected route is the Al Mawashi
+     system — typing its URL used to open it (with this company's empty data);
+     now it bounces back to the account's own app. The server already scopes
+     every row to the account's company; this closes the screens as well.
+     The super-admin is exempt (it moves between companies on purpose). */
+  if (!isSuperAdmin && industry !== "meat" && pathname !== "/company-app") {
+    return <Navigate to="/company-app" replace />;
+  }
   return children;
 }
 

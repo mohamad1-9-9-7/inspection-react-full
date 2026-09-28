@@ -92,6 +92,49 @@
             }
           ]
         }
+      },
+      {
+        "files": [
+          "src/industries/_kit/**",
+          "src/industries/restaurant/**",
+          "src/industries/retail/**",
+          "src/industries/warehouse/**",
+          "src/industries/factory/**",
+          "src/pages/industry-kit/**"
+        ],
+        "rules": {
+          "no-restricted-imports": [
+            "error",
+            {
+              "patterns": [
+                {
+                  "group": [
+                    "**/ohc/*",
+                    "**/qcs/*",
+                    "**/inspection/*",
+                    "**/shipment_recc/*",
+                    "**/pos*/*",
+                    "**/ftr*/*",
+                    "**/production/*",
+                    "**/butcher*/*",
+                    "**/mrp/*",
+                    "**/workforce/*",
+                    "**/_shared/staffRegistry",
+                    "**/_shared/ProductPicker",
+                    "**/_shared/TemperatureMatchingReport",
+                    "**/items.json",
+                    "**/data/items*",
+                    "**/sweets/*",
+                    "**/sweets-*/*",
+                    "**/industries/sweets*",
+                    "**/branches/sweets/*"
+                  ],
+                  "message": "Industry-kit code (restaurant / supermarket / warehouse / manufacturing) must not import the meat company or the sweets company modules — separation rule #1. Put shared pieces in src/pages/industry-kit or src/industries/_kit."
+                }
+              ]
+            }
+          ]
+        }
       }
     ]
   },

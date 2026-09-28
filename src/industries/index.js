@@ -9,10 +9,19 @@
 // باستيراد ملف قالبه وتسجيله هنا — لا شيء آخر يتغيّر.
 
 import sweets from "./sweets";
+// الأنشطة المبنية من الأدوات المشتركة (industries/_kit + pages/industry-kit):
+import restaurant from "./restaurant";
+import retail from "./retail";
+import warehouse from "./warehouse";
+import factory from "./factory";
+import { categoryOf } from "./catalog";
 
 const TEMPLATES = {
   sweets,
-  // مستقبلاً: import bakery from "./bakery"; ... bakery,
+  restaurant,
+  retail,
+  warehouse,
+  factory,
 };
 
 /** قالب النشاط، أو null إن لم يوجد (يشمل 'meat' الذي لا قالب له عمداً). */
@@ -29,8 +38,11 @@ export function isGenericIndustry(id) {
  *  لأنه ليس في TEMPLATES لكنه خيار صالح (النظام الافتراضي). */
 export function industryOptions() {
   return [
-    { id: "meat", label: "Meat manufacturing (Al Mawashi system)" },
-    ...Object.values(TEMPLATES).map((t) => ({ id: t.id, label: t.labelEn || t.label })),
+    { id: "meat", label: `${categoryOf("meat").icon} ${categoryOf("meat").long}` },
+    ...Object.values(TEMPLATES)
+      .map((t) => ({ id: t.id, order: categoryOf(t.id).order, label: `${categoryOf(t.id).icon} ${t.labelEn || t.label}` }))
+      .sort((a, b) => a.order - b.order)
+      .map(({ id, label }) => ({ id, label })),
   ];
 }
 

@@ -18,6 +18,8 @@
 // same commit.
 
 import { SWEETS_REPORT_MODULES } from "../../industries/sweets/reportTypes";
+import { KIT_INDUSTRY_IDS, categoryOf } from "../../industries/catalog";
+import { kitReportModules } from "../../industries/_kit/kitRegistry";
 
 /* ═══════════════════════════════════════════════════════════════
    CARDS — the dashboard tiles, in dashboard order.
@@ -43,6 +45,10 @@ export const CARDS = [
   // The Confectionery tenant's own reports (company-app). Its slugs live in
   // industries/sweets/reportTypes.js — add sweets reports THERE, not here.
   { id: "sweets",           label: "Confectionery",     emoji: "🍰", order: 16 },
+  // Restaurants, supermarkets, warehouses, manufacturing (the shared industry
+  // kit). Their slugs come from industries/_kit/kitRegistry.js (KIT_BRANCHES
+  // below) — a new kit report is covered by adding its schema there.
+  ...KIT_INDUSTRY_IDS.map((id, i) => ({ id, label: categoryOf(id).label, emoji: categoryOf(id).icon, order: 17 + i })),
 ];
 
 const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]));
@@ -444,6 +450,17 @@ export const BRANCHES = [
   })),
 ];
 
+/* ───── Restaurants · Supermarkets · Warehouses · Manufacturing (kit) ─────
+   Kept OUT of BRANCHES on purpose: every Al Mawashi backup / inventory / date
+   tree screen walks BRANCHES and reads each type from the server, so listing
+   ~75 kit types there would add ~75 empty requests to each of those runs.
+   They are still known to describeReportType (audit trail labels), and a kit
+   company's own backup screen can read them from here. */
+export const KIT_BRANCHES = KIT_INDUSTRY_IDS.flatMap((id) => kitReportModules(id).map((m) => ({
+  id: m.id, card: id, label: m.label, emoji: m.emoji, accent: categoryOf(id).tint,
+  types: m.types,
+})));
+
 /* ═══════════════════════════════════════════════════════════════
    DERIVED LOOKUPS
    ═══════════════════════════════════════════════════════════════ */
@@ -453,7 +470,7 @@ export const BRANCHES = [
    and reviewed at the truck; the DM inspection appears under Inspection and
    under ISO), exactly as the screens present them. */
 const BY_TYPE = new Map();
-for (const b of BRANCHES) {
+for (const b of [...BRANCHES, ...KIT_BRANCHES]) {
   for (const [type, label, group] of b.types) {
     if (!BY_TYPE.has(type)) {
       BY_TYPE.set(type, {

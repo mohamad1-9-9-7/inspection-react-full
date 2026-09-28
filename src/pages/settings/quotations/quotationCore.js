@@ -536,7 +536,7 @@ export function moduleCatalog(industry) {
           group: tpl.labelEn || tpl.label || industry,
           icon: r.icon || "📄",
           titleEn: r.label,
-          titleAr: REPORT_AR[r.label] || "",
+          titleAr: REPORT_AR[r.label] || r.labelAr || "",
           details: r.desc || "",
           count: 1,
         });

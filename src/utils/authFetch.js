@@ -111,6 +111,8 @@ const COMPANY_SCOPED_PATHS = [
   "/api/product-catalog",
   // direct sending is per company (only a company with its own mailbox)
   "/api/email",
+  // uploads land in the company's own storage folder (routes/media.cjs)
+  "/api/images",
 ];
 
 function withActiveCompany(url) {

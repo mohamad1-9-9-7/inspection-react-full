@@ -27,6 +27,7 @@ import logo from "../assets/almawashi-logo.jpg";
 import { setActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { clearAppSession } from "../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
+import { INDUSTRY_CATEGORIES, categoryOf } from "../industries/catalog";
 
 const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
@@ -51,15 +52,11 @@ const STATUS_META = {
 };
 const statusKey = (c) => (c.disabled_at ? "disabled" : String(c.status || "active").toLowerCase());
 
-// Which internal system a company opens — drives its colour, icon and the
-// "opens X" tag so the owner sees at a glance where a card leads.
+// Which category a company belongs to (industries/catalog.js) — drives its
+// colour, icon, the "opens X" tag and the category section it is filed under.
 function industryMeta(raw) {
-  const k = String(raw || "meat").toLowerCase();
-  if (k.includes("sweet") || k.includes("confection") || k.includes("bakery") || k.includes("dessert"))
-    return { key: "sweets", icon: "🍬", label: "Confectionery", opens: "Generic app", grad: "linear-gradient(135deg,#ec4899,#be185d)", glow: "rgba(190,24,93,.35)", tint: "#be185d" };
-  if (k === "meat" || k === "")
-    return { key: "meat", icon: "🥩", label: "Meat / Al Mawashi", opens: "Al Mawashi QMS", grad: "linear-gradient(135deg,#0f766e,#0891b2)", glow: "rgba(15,118,110,.35)", tint: "#0f766e" };
-  return { key: "generic", icon: "🏭", label: raw || "General", opens: "Generic app", grad: "linear-gradient(135deg,#6366f1,#4f46e5)", glow: "rgba(99,102,241,.35)", tint: "#4f46e5" };
+  const c = categoryOf(raw);
+  return { key: c.id, icon: c.icon, label: c.label, labelAr: c.labelAr, opens: c.opens, grad: c.grad, glow: c.glow, tint: c.tint, order: c.order };
 }
 
 const SORTS = {
@@ -86,6 +83,7 @@ export default function SelectCompany() {
   // tools
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [catFilter, setCatFilter] = useState("all"); // "all" | category id (industries/catalog.js)
   const [sortKey, setSortKey] = useState("name");
   const [view, setViewState] = useState(readView);
   const searchRef = useRef(null);
@@ -146,19 +144,40 @@ export default function SelectCompany() {
     return c;
   }, [companies]);
 
+  // companies per category, for the category bar
+  const catCounts = useMemo(() => {
+    const c = {};
+    companies.forEach((x) => { const k = industryMeta(x.industry).key; c[k] = (c[k] || 0) + 1; });
+    return c;
+  }, [companies]);
+  // every catalogue category (even empty ones, so the owner sees what exists)
+  // plus a bucket for any unknown industry value that is actually in use
+  const categories = useMemo(() => {
+    const list = [...INDUSTRY_CATEGORIES];
+    if (catCounts.other) list.push(categoryOf("__other__"));
+    return list.sort((a, b) => a.order - b.order);
+  }, [catCounts]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return companies
       .filter((c) => statusFilter === "all" || statusKey(c) === statusFilter)
-      .filter((c) =>
-        !q ||
-        (c.name || "").toLowerCase().includes(q) ||
-        (c.plan_name || "").toLowerCase().includes(q) ||
-        (c.contact_name || "").toLowerCase().includes(q) ||
-        (c.industry || "").toLowerCase().includes(q)
-      )
+      .filter((c) => catFilter === "all" || industryMeta(c.industry).key === catFilter)
+      .filter((c) => {
+        if (!q) return true;
+        const ind = industryMeta(c.industry);
+        return [c.name, c.plan_name, c.contact_name, c.industry, ind.label, ind.labelAr]
+          .some((v) => String(v || "").toLowerCase().includes(q));
+      })
       .sort(SORTS[sortKey].cmp);
-  }, [companies, query, statusFilter, sortKey]);
+  }, [companies, query, statusFilter, catFilter, sortKey]);
+
+  // the visible companies filed under their category, in catalogue order
+  const sections = useMemo(() => {
+    const by = {};
+    visible.forEach((c) => { const m = industryMeta(c.industry); (by[m.key] = by[m.key] || { meta: m, items: [] }).items.push(c); });
+    return Object.values(by).sort((a, b) => a.meta.order - b.meta.order);
+  }, [visible]);
 
   function enter(company) {
     setActiveCompany(company);
@@ -196,7 +215,7 @@ export default function SelectCompany() {
     { key: "suspended", label: "Suspended", n: counts.suspended },
     { key: "disabled", label: "Disabled", n: counts.disabled },
   ];
-  const filtered = query.trim() || statusFilter !== "all";
+  const filtered = query.trim() || statusFilter !== "all" || catFilter !== "all";
 
   return (
     <div className="pc pc-shell">
@@ -294,6 +313,22 @@ export default function SelectCompany() {
               ))}
             </section>
 
+            {/* ── Categories: every company is filed under its industry ── */}
+            <section className="pc-cats" aria-label="Categories">
+              <button type="button" onClick={() => setCatFilter("all")} className={`pc-cat${catFilter === "all" ? " on" : ""}`} style={{ "--tint": "#0f766e", "--grad": "linear-gradient(135deg,#0f766e,#0891b2)" }}>
+                <span className="pc-cat-ico" aria-hidden="true">🗂️</span>
+                <span className="pc-cat-txt"><span className="pc-cat-label">All categories</span><span className="pc-cat-ar" lang="ar">كل الفئات</span></span>
+                <span className="pc-cat-n">{loading ? "–" : companies.length}</span>
+              </button>
+              {categories.map((c) => (
+                <button key={c.id} type="button" onClick={() => setCatFilter(c.id)} className={`pc-cat${catFilter === c.id ? " on" : ""}${catCounts[c.id] ? "" : " empty"}`} style={{ "--tint": c.tint, "--grad": c.grad }}>
+                  <span className="pc-cat-ico" aria-hidden="true">{c.icon}</span>
+                  <span className="pc-cat-txt"><span className="pc-cat-label">{c.label}</span><span className="pc-cat-ar" lang="ar">{c.labelAr}</span></span>
+                  <span className="pc-cat-n">{loading ? "–" : catCounts[c.id] || 0}</span>
+                </button>
+              ))}
+            </section>
+
             {/* ── Toolbar: search · filters · sort · view ── */}
             <section className="pc-toolbar">
               <label className="pc-search">
@@ -340,7 +375,7 @@ export default function SelectCompany() {
               <div className="pc-result">
                 Showing <b>{visible.length}</b> of {companies.length}
                 {filtered && (
-                  <button type="button" className="pc-reset" onClick={() => { setQuery(""); setStatusFilter("all"); }}>Clear filters</button>
+                  <button type="button" className="pc-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setCatFilter("all"); }}>Clear filters</button>
                 )}
               </div>
             )}
@@ -368,64 +403,74 @@ export default function SelectCompany() {
                 <b>No matches</b>
                 Try another search term or clear the filter.
               </div>
-            ) : view === "list" ? (
-              <div className="pc-list">
-                {visible.map((c, i) => {
-                  const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
-                  const ind = industryMeta(c.industry);
-                  return (
-                    <button key={c.id} type="button" className="pc-row" onClick={() => enter(c)}
-                      style={{ "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.03}s` }}>
-                      <span className="pc-ava sm" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
-                      <span className="pc-row-name">{c.name}<span className="pc-row-ind">{ind.icon} {ind.label}</span></span>
-                      <span className="pc-row-meta"><span className="pc-k">Plan</span>{c.plan_name || "—"}</span>
-                      <span className="pc-row-meta"><span className="pc-k">Contact</span>{c.contact_name || "—"}</span>
-                      <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
-                        <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
-                      </span>
-                      <span className="pc-enter">Enter →</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="pc-grid">
-                {visible.map((c, i) => {
-                  const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
-                  const ind = industryMeta(c.industry);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="pc-card"
-                      style={{ "--grad": ind.grad, "--glow": ind.glow, "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.04}s` }}
-                      onClick={() => enter(c)}
-                    >
-                      <span className="pc-card-band" aria-hidden="true" />
-                      <span className="pc-card-top">
-                        <span className="pc-ava" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
-                        <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
-                          <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
-                        </span>
-                      </span>
+            ) : sections.map((sec) => (
+              <section key={sec.meta.key} className="pc-sec" style={{ "--tint": sec.meta.tint, "--grad": sec.meta.grad }}>
+                <header className="pc-sec-head">
+                  <span className="pc-sec-ico" aria-hidden="true">{sec.meta.icon}</span>
+                  <span className="pc-sec-label">{sec.meta.label}</span>
+                  <span className="pc-sec-ar" lang="ar">{sec.meta.labelAr}</span>
+                  <span className="pc-sec-n">{sec.items.length} {sec.items.length === 1 ? "company" : "companies"}</span>
+                </header>
+                {view === "list" ? (
+                  <div className="pc-list">
+                    {sec.items.map((c, i) => {
+                      const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
+                      const ind = industryMeta(c.industry);
+                      return (
+                        <button key={c.id} type="button" className="pc-row" onClick={() => enter(c)}
+                          style={{ "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.03}s` }}>
+                          <span className="pc-ava sm" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
+                          <span className="pc-row-name">{c.name}<span className="pc-row-ind">{ind.icon} {ind.label}</span></span>
+                          <span className="pc-row-meta"><span className="pc-k">Plan</span>{c.plan_name || "—"}</span>
+                          <span className="pc-row-meta"><span className="pc-k">Contact</span>{c.contact_name || "—"}</span>
+                          <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
+                            <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                          </span>
+                          <span className="pc-enter">Enter →</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="pc-grid">
+                    {sec.items.map((c, i) => {
+                      const meta = STATUS_META[statusKey(c)] || STATUS_META.active;
+                      const ind = industryMeta(c.industry);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="pc-card"
+                          style={{ "--grad": ind.grad, "--glow": ind.glow, "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.04}s` }}
+                          onClick={() => enter(c)}
+                        >
+                          <span className="pc-card-band" aria-hidden="true" />
+                          <span className="pc-card-top">
+                            <span className="pc-ava" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
+                            <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
+                              <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                            </span>
+                          </span>
 
-                      <span className="pc-card-name">{c.name}</span>
-                      <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {ind.label}</span>
+                          <span className="pc-card-name">{c.name}</span>
+                          <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {ind.label}</span>
 
-                      <span className="pc-meta">
-                        <span className="pc-meta-row"><span className="pc-k">Plan</span><span className="pc-v">{c.plan_name || "—"}</span></span>
-                        <span className="pc-meta-row"><span className="pc-k">Contact</span><span className="pc-v">{c.contact_name || "—"}</span></span>
-                      </span>
+                          <span className="pc-meta">
+                            <span className="pc-meta-row"><span className="pc-k">Plan</span><span className="pc-v">{c.plan_name || "—"}</span></span>
+                            <span className="pc-meta-row"><span className="pc-k">Contact</span><span className="pc-v">{c.contact_name || "—"}</span></span>
+                          </span>
 
-                      <span className="pc-card-foot">
-                        <span className="pc-opens">Opens {ind.opens}</span>
-                        <span className="pc-enter">Enter <span aria-hidden="true" className="pc-arrow">→</span></span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                          <span className="pc-card-foot">
+                            <span className="pc-opens">Opens {ind.opens}</span>
+                            <span className="pc-enter">Enter <span aria-hidden="true" className="pc-arrow">→</span></span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ))}
           </>)}
         </div>
       </main>
@@ -589,7 +634,36 @@ const PC_CSS = `
   background:linear-gradient(90deg,#fff 0%,#eef2f6 50%,#fff 100%); background-size:800px 100%; animation:pcShimmer 1.3s linear infinite}
 .pc .pc-skel.row{height:68px; border-radius:14px}
 
+/* categories bar */
+.pc .pc-cats{display:grid; grid-template-columns:repeat(auto-fill,minmax(178px,1fr)); gap:10px}
+.pc .pc-cat{display:flex; align-items:center; gap:10px; text-align:start; padding:10px 12px; border-radius:14px; background:#fff; cursor:pointer;
+  border:1px solid rgba(15,23,42,.08); box-shadow:0 6px 16px rgba(15,23,42,.05); transition:transform .15s, box-shadow .15s, border-color .15s}
+.pc .pc-cat:hover{transform:translateY(-2px); border-color:var(--tint)}
+.pc .pc-cat.on{background:var(--grad); color:#fff; border-color:transparent; box-shadow:0 12px 26px color-mix(in srgb,var(--tint) 35%,transparent)}
+.pc .pc-cat.empty:not(.on){opacity:.6}
+.pc .pc-cat-ico{width:36px; height:36px; border-radius:11px; display:grid; place-items:center; background:color-mix(in srgb,var(--tint) 12%,#fff); flex-shrink:0}
+.pc .pc-cat.on .pc-cat-ico{background:rgba(255,255,255,.2)}
+.pc .pc-cat-txt{display:grid; gap:1px; min-width:0; flex:1}
+.pc .pc-cat-label{font-weight:900; color:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.pc .pc-cat-ar{font-weight:700; opacity:.7}
+.pc .pc-cat-n{min-width:26px; text-align:center; padding:2px 8px; border-radius:999px; font-weight:900; background:color-mix(in srgb,var(--tint) 12%,#fff); color:var(--tint)}
+.pc .pc-cat.on .pc-cat-n{background:rgba(255,255,255,.25); color:#fff}
+
+/* one section per category */
+.pc .pc-sec{display:grid; gap:12px}
+.pc .pc-sec-head{display:flex; align-items:center; gap:10px; padding:4px 2px 8px; border-bottom:2px solid color-mix(in srgb,var(--tint) 25%,transparent)}
+.pc .pc-sec-ico{width:34px; height:34px; border-radius:10px; display:grid; place-items:center; background:var(--grad); color:#fff}
+.pc .pc-sec-label{font-weight:900; color:#0f172a}
+.pc .pc-sec-ar{font-weight:800; color:var(--tint)}
+.pc .pc-sec-n{margin-inline-start:auto; color:#64748b; font-weight:800}
+
 /* type scale — must out-rank globals.css #root * {font-size:14px !important} */
+#root .pc.pc .pc-cat-ico{font-size:18px !important}
+#root .pc.pc .pc-cat-label{font-size:13.5px !important}
+#root .pc.pc .pc-cat-ar, #root .pc.pc .pc-cat-n{font-size:12px !important}
+#root .pc.pc .pc-sec-ico{font-size:17px !important}
+#root .pc.pc .pc-sec-label{font-size:17px !important}
+#root .pc.pc .pc-sec-ar, #root .pc.pc .pc-sec-n{font-size:13px !important}
 #root .pc.pc .pc-eyebrow{font-size:11px !important; font-weight:900; letter-spacing:.12em; color:#5eead4}
 #root .pc.pc .pc-brand-name{font-size:18px !important; font-weight:900; line-height:1.1}
 #root .pc.pc .pc-nav-ico{font-size:17px !important}
