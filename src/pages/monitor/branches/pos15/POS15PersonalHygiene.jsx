@@ -3,10 +3,9 @@
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 15)
 
 import React, { useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { useSearchParams } from "react-router-dom";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 const columns = [
   "Nails",
@@ -65,18 +64,13 @@ export default function POS15PersonalHygiene() {
         savedAt: Date.now(),
       };
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos15",                // ✅ تمييز الفرع
-          type: "pos15_personal_hygiene",   // ✅ نوع التقرير
-          payload,
-        }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos15", type: "pos15_personal_hygiene", payload },
+        label: `POS 15 Personal Hygiene ${date}`,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setOpMsg("✅ Saved successfully!");
+      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ Failed to save.");

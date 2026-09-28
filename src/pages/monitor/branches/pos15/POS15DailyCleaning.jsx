@@ -1,8 +1,7 @@
 // src/pages/monitor/branches/pos15/POS15DailyCleaning.jsx
 import React, { useState } from "react";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 /* ===== أقسام POS 15 طبقًا للنموذج ===== */
 const sections = [
@@ -116,18 +115,13 @@ export default function POS15DailyCleaning() {
         savedAt: Date.now(),
       };
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos15",
-          type: "pos15_daily_cleanliness",
-          payload,
-        }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos15", type: "pos15_daily_cleanliness", payload },
+        label: `POS 15 Daily Cleaning ${date}`,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setOpMsg("✅ Saved successfully!");
+      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ Failed to save.");

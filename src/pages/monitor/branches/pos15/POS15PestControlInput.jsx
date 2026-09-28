@@ -1,7 +1,12 @@
 // src/pages/monitor/branches/pos15/POS15PestControlInput.jsx
 import React, { useState } from "react";
-import API_BASE from "../../../../config/api";
-import { uploadImage, photoOf } from "../../../../utils/imageUpload";
+import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { uploadImage as uploadImageNow, photoOf } from "../../../../utils/imageUpload";
+import { keepPhotoOrUpload } from "../../../../utils/offlineOutbox";
+
+/* Without a connection a photo is kept on the device (blob: URL) and
+   uploaded when the report is sent. */
+const uploadImage = (file, purpose) => keepPhotoOrUpload(file, (f) => uploadImageNow(f, purpose));
 
 /* ===== API base ===== */
 
@@ -83,15 +88,15 @@ export default function POS15PestControlInput() {
       setSaving(true);
       openModal("⏳ جاري الحفظ…", "info");
 
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload: form }),
+      // Without a connection the report waits on this device and is sent
+      // later (utils/reportOutbox.js).
+      const { queued } = await saveReport({
+        body: { reporter: "pos15", type: TYPE, payload: form },
+        label: `POS 15 Pest Control ${form.reportDate}`,
       });
-      if (!res.ok) throw new Error("save failed");
 
       setSaving(false);
-      updateModal("✅ تم الحفظ", "success");
+      updateModal(queued ? queuedMessage("ar") : "✅ تم الحفظ", "success");
       setTimeout(() => closeModal(), 1400);
 
       // إعادة تهيئة بسيطة (نبقي التاريخ/الفرع/نوع الزيارة)
