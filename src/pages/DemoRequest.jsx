@@ -1,8 +1,7 @@
 // src/pages/DemoRequest.jsx
 // Public landing page (/demo) — the first thing a prospect sees of InspectPro.
 // No login. Hero with a live-looking product mock-up, who it is for, the
-// feature bento, before/after, how it works, the readiness-check band, the
-// demo-request form, FAQ. Styles: DemoRequest.css (scoped under .dp).
+// feature bento, before/after, how it works, the demo-request form, FAQ. Styles: DemoRequest.css (scoped under .dp).
 //
 // Server contract: POST /api/demo-requests (public, rate-limited),
 // GET /api/demo-config (WhatsApp number, offer, referral, story — all set by
@@ -14,7 +13,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
-import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
+import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
   { v: "meat", en: "Meat / butchery / slaughterhouse", ar: "لحوم / ملاحم / مسالخ" },
@@ -53,7 +52,6 @@ const TXT = {
     lead: "InspectPro replaces paper logs with one live platform for HACCP, ISO 22000, internal audits, traceability and suppliers — so any record is in front of the inspector in minutes, not days.",
     ctaDemo: "Book a free demo",
     ctaCheck: "Check your readiness — 2 min",
-    trust: ["Phone, tablet & desktop", "Arabic & English", "PDF & Excel in one click"],
     mock: {
       title: "Dashboard", today: "Today",
       k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
@@ -62,16 +60,9 @@ const TXT = {
       ok: "Done", due: "Due 4 pm",
       f1: "Cooler 03 · 2.4 °C", f1s: "Within limit",
       f2: "NCR-000087", f2s: "Closed with evidence",
-      f3: "Monthly report", f3s: "PDF ready",
     },
     forLbl: "Built for",
     forList: ["Meat & butchery", "Sweets & bakery", "Restaurants", "Central kitchens", "Food factories", "Retail & cold stores"],
-    stats: [
-      ["1", "screen for every branch, live"],
-      ["2 min", "to find any record by branch & date"],
-      ["10", "food-safety areas in one system"],
-      ["2", "languages — Arabic & English"],
-    ],
     featEyebrow: "Platform",
     featTitle: "Everything an inspector asks for, in one place",
     featSub: "Daily logs, audits and follow-ups your team fills on the phone — and head office sees the same day.",
@@ -82,10 +73,6 @@ const TXT = {
       ncr: ["NCR & CAPA", "Every non-conformance gets its own reference and stays open until it is closed."],
       audit: ["Internal audits with evidence", "Audit on the phone; each finding sends the branch a link to upload its proof."],
       supp: ["Supplier approval", "Suppliers self-assess through a link; their score shows on every receiving record."],
-      ret: ["Returns & condemnation", "Reason, action and photos — a photo of the transfer note fills the item codes."],
-      train: ["Training & staff", "Sessions, quizzes and attendance per employee."],
-      rep: ["Audit-ready reports", "Any record as PDF or Excel in one click, laid out like the original form."],
-      tags: ["HACCP", "ISO 22000", "Dubai & Abu Dhabi", "Multi-branch"],
     },
     baEyebrow: "Before & after",
     baTitle: "From paper folders to one live screen",
@@ -96,20 +83,14 @@ const TXT = {
       ["We set it up with you", "Your branches, forms, users and permissions — ready for your team."],
       ["Your team records, you see it live", "Staff fill checks on their phones; QA and management follow every branch from one dashboard."],
     ],
-    bandTitle: "How ready are you for your next inspection?",
-    bandSub: "Answer 10 quick questions and get a score out of 100, with the weak points an inspector would find first. Free, no sign-up.",
-    bandCta: "Start the free check",
-    bandScore: "readiness",
     formEyebrow: "Free demo",
     formTitle: "See InspectPro on your own branches",
     formSub: "Leave your details and we will contact you within one working day to book a short demo.",
     gets: [
       "A walkthrough built around your business type and number of branches",
       "How your current paper forms become phone checklists",
-      "Live branch dashboard, NCR follow-up and audit-ready reports",
       "A clear quote for your company — no obligation",
     ],
-    waOr: "Prefer WhatsApp? Chat with us",
     cardTitle: "Request a free demo",
     cardHint: "Takes less than a minute.",
     company: "Company name", activity: "Business type", branches: "Number of branches / sites", emirate: "Emirate / country",
@@ -154,7 +135,6 @@ const TXT = {
     lead: "يستبدل InspectPro السجلات الورقية بمنصة واحدة مباشرة لـ HACCP و ISO 22000 والتدقيق الداخلي والتتبّع والموردين — ليكون أي سجل بين يدي المفتش خلال دقائق، لا أيام.",
     ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
     ctaCheck: "قِس جاهزيتك — دقيقتان",
-    trust: ["الجوال والجهاز اللوحي والحاسوب", "العربية والإنجليزية", "PDF و Excel بنقرة واحدة"],
     mock: {
       title: "لوحة التحكم", today: "اليوم",
       k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",
@@ -163,16 +143,9 @@ const TXT = {
       ok: "مكتمل", due: "الساعة 4 م",
       f1: "ثلاجة 03 · 2.4 °م", f1s: "ضمن الحد المسموح",
       f2: "NCR-000087", f2s: "أُغلقت بدليل موثّق",
-      f3: "التقرير الشهري", f3s: "ملف PDF جاهز",
     },
     forLbl: "مصمَّم لـ",
     forList: ["اللحوم والملاحم", "الحلويات والمخابز", "المطاعم", "المطابخ المركزية", "مصانع الأغذية", "التجزئة والتخزين المبرّد"],
-    stats: [
-      ["1", "شاشة واحدة لجميع الفروع مباشرةً"],
-      ["دقيقتان", "للوصول إلى أي سجل بالفرع والتاريخ"],
-      ["10", "جوانب لسلامة الغذاء في نظام واحد"],
-      ["2", "لغتان — العربية والإنجليزية"],
-    ],
     featEyebrow: "المنصة",
     featTitle: "كل ما يطلبه المفتش، في مكان واحد",
     featSub: "سجلات يومية وتدقيق ومتابعة يعبّئها فريقك من الجوال — وتطّلع عليها الإدارة في اليوم نفسه.",
@@ -183,10 +156,6 @@ const TXT = {
       ncr: ["عدم المطابقة والإجراءات التصحيحية", "لكل حالة رقم مرجعي خاص، وتبقى مفتوحة حتى تُغلق."],
       audit: ["تدقيق داخلي بالأدلة", "التدقيق من الجوال، ولكل ملاحظة رابط يرفع الفرع من خلاله الدليل."],
       supp: ["اعتماد الموردين", "يقيّم المورّد نفسه عبر رابط، وتظهر نتيجته في كل سجل استلام."],
-      ret: ["المرتجعات والإتلاف", "السبب والإجراء والصور — وصورة إشعار التحويل تعبّئ رموز الأصناف."],
-      train: ["التدريب والموظفون", "الجلسات والاختبارات والحضور لكل موظف."],
-      rep: ["تقارير جاهزة للتدقيق", "أي سجل بصيغة PDF أو Excel بنقرة واحدة، وبتصميم النموذج الأصلي."],
-      tags: ["HACCP", "ISO 22000", "دبي وأبوظبي", "فروع متعددة"],
     },
     baEyebrow: "قبل وبعد",
     baTitle: "من الملفات الورقية إلى شاشة واحدة مباشرة",
@@ -197,20 +166,14 @@ const TXT = {
       ["نجهّز النظام معك", "فروعك ونماذجك ومستخدموك وصلاحياتهم — جاهزة لفريقك."],
       ["يسجّل فريقك وتتابع مباشرةً", "يعبّئ الموظفون الفحوصات من جوالاتهم، ويتابع قسم الجودة والإدارة كل فرع من لوحة واحدة."],
     ],
-    bandTitle: "ما مدى جاهزيتك للتفتيش القادم؟",
-    bandSub: "أجب عن 10 أسئلة سريعة، واحصل على درجة من 100 مع نقاط الضعف التي سيلاحظها المفتش أولًا. مجانًا ودون تسجيل.",
-    bandCta: "ابدأ الفحص المجاني",
-    bandScore: "الجاهزية",
     formEyebrow: "عرض مجاني",
     formTitle: "شاهد InspectPro على فروعك أنت",
     formSub: "اترك بياناتك، وسنتواصل معك خلال يوم عمل واحد لتحديد موعد عرض قصير.",
     gets: [
       "جولة مصمَّمة وفق نوع نشاطك وعدد فروعك",
       "كيف تتحول نماذجك الورقية الحالية إلى قوائم فحص على الجوال",
-      "لوحة الفروع المباشرة، ومتابعة حالات عدم المطابقة، وتقارير جاهزة للتدقيق",
       "عرض سعر واضح لشركتك — دون أي التزام",
     ],
-    waOr: "تفضّل واتساب؟ راسلنا الآن",
     cardTitle: "اطلب عرضًا تجريبيًا مجانيًا",
     cardHint: "يستغرق أقل من دقيقة.",
     company: "اسم الشركة", activity: "نوع النشاط", branches: "عدد الفروع / المواقع", emirate: "الإمارة / الدولة",
@@ -449,9 +412,6 @@ export default function DemoRequest() {
                 📊 {t.ctaCheck}
               </button>
             </div>
-            <div className="dp-trust fs-sm">
-              {t.trust.map((x) => <span key={x}><i className="fs-2xs">✓</i>{x}</span>)}
-            </div>
           </div>
 
           <div className="dp-stage" aria-hidden="true">
@@ -504,10 +464,6 @@ export default function DemoRequest() {
               <span className="ic" style={{ background: "#dcfce7", color: "#15803d" }}><Icon name="check" size={18} /></span>
               <span dir="auto">{m.f2}<small className="fs-xs">{m.f2s}</small></span>
             </div>
-            <div className="dp-float f3 fs-sm">
-              <span className="ic" style={{ background: "#e0e7ff", color: "#4338ca" }}><Icon name="file" size={18} /></span>
-              <span>{m.f3}<small className="fs-xs">{m.f3s}</small></span>
-            </div>
           </div>
         </div>
       </section>
@@ -517,18 +473,6 @@ export default function DemoRequest() {
         <div className="dp-wrap dp-strip-in fs-sm">
           <span className="lbl">{t.forLbl}</span>
           {t.forList.map((x) => <span key={x} className="dp-chip-d">{x}</span>)}
-        </div>
-      </div>
-
-      {/* ── stats ── */}
-      <div className="dp-wrap">
-        <div className="dp-stats">
-          {t.stats.map(([n, l], i) => (
-            <div key={l} className="dp-stat dp-reveal" style={{ "--d": `${i * 0.08}s` }}>
-              <b className="fs-stat">{n}</b>
-              <span className="fs-sm">{l}</span>
-            </div>
-          ))}
         </div>
       </div>
 
@@ -580,22 +524,6 @@ export default function DemoRequest() {
               <h3 className="fs-h3">{F.supp[0]}</h3>
               <p className="fs-md">{F.supp[1]}</p>
             </article>
-            <article className="dp-card c2 dp-reveal" onMouseMove={onCardMove}>
-              <div className="dp-ico"><Icon name="box" /></div>
-              <h3 className="fs-h3">{F.ret[0]}</h3>
-              <p className="fs-md">{F.ret[1]}</p>
-            </article>
-            <article className="dp-card c2 dp-reveal" style={{ "--d": ".05s" }} onMouseMove={onCardMove}>
-              <div className="dp-ico"><Icon name="cap" /></div>
-              <h3 className="fs-h3">{F.train[0]}</h3>
-              <p className="fs-md">{F.train[1]}</p>
-            </article>
-            <article className="dp-card dark c2 dp-reveal" style={{ "--d": ".1s" }} onMouseMove={onCardMove}>
-              <div className="dp-ico"><Icon name="file" /></div>
-              <h3 className="fs-h3">{F.rep[0]}</h3>
-              <p className="fs-md">{F.rep[1]}</p>
-              <div className="dp-tags fs-xs">{F.tags.map((x) => <span key={x}>{x}</span>)}</div>
-            </article>
           </div>
         </div>
       </section>
@@ -630,36 +558,6 @@ export default function DemoRequest() {
         </div>
       </section>
 
-      {/* ── readiness band ── */}
-      <section className="dp-section tight" style={{ paddingTop: 0 }}>
-        <div className="dp-wrap">
-          <div className="dp-band dp-reveal">
-            <div>
-              <h2 className="dp-h2 fs-h2" style={{ marginTop: 0 }}>{t.bandTitle}</h2>
-              <p className="fs-lead">{t.bandSub}</p>
-              <div className="dp-cta">
-                <button type="button" className="dp-btn primary fs-md" onClick={() => navigate(quizHref)}>
-                  {t.bandCta} <span className="arr" aria-hidden="true">{arrow}</span>
-                </button>
-              </div>
-            </div>
-            <div className="dp-gauge" aria-hidden="true">
-              <svg viewBox="0 0 210 210">
-                <circle cx="105" cy="105" r="90" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="16" />
-                <defs>
-                  <linearGradient id="dp-gauge" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#5eead4" />
-                    <stop offset="1" stopColor="#22d3ee" />
-                  </linearGradient>
-                </defs>
-                <circle className="dp-arc" cx="105" cy="105" r="90" fill="none" stroke="url(#dp-gauge)" strokeWidth="16" strokeLinecap="round" />
-              </svg>
-              <div className="val"><div><b className="fs-stat">80<span className="fs-md">/100</span></b><span className="fs-sm">{t.bandScore}</span></div></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ── form ── */}
       <section id="demo-form" className="dp-formsec dp-section">
         <div className="dp-wrap dp-form-grid">
@@ -670,13 +568,6 @@ export default function DemoRequest() {
             <ul className="dp-gets fs-md">
               {t.gets.map((g) => <li key={g}><i className="fs-sm">✓</i><span>{g}</span></li>)}
             </ul>
-            {waHref && (
-              <div className="dp-contact">
-                <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} className="dp-wa-inline fs-md">
-                  <WaIcon size={20} /> {t.waOr}
-                </a>
-              </div>
-            )}
             <div className="dp-side-promos">
               <StoryCard story={cfg.story} lang={lang} />
               <ReferralNote referral={cfg.referral} lang={lang} />
@@ -684,7 +575,6 @@ export default function DemoRequest() {
           </div>
 
           <div className="dp-formcard dp-reveal" style={{ "--d": ".08s" }}>
-            <OfferBanner offer={cfg.offer} lang={lang} />
             {done ? (
               <div className="dp-done">
                 <div className="dp-done-ic"><Icon name="check" size={40} color="#fff" /></div>
@@ -814,8 +704,6 @@ const ICONS = {
   alert: <><path d="M12 3 2.5 20h19L12 3Z" /><path d="M12 10v4.5M12 17.2v.1" /></>,
   clipboard: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1M8.5 12l2.2 2.2L15.5 9.5" /></>,
   truck: <><path d="M2.5 6.5h11v9h-11zM13.5 10h4l3 3v2.5h-7" /><circle cx="6.5" cy="17.5" r="2" /><circle cx="17" cy="17.5" r="2" /></>,
-  box: <><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
-  cap: <><path d="m2 9 10-5 10 5-10 5L2 9Z" /><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v5" /></>,
   file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
 };
