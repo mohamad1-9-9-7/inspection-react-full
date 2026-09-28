@@ -11,6 +11,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { clearAppSession } from "../../utils/authFetch";
+import { confirmLogoutWithOutbox } from "../../utils/offlineOutbox";
 import { getActiveCompany, getActiveCompanyName, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
 import { getIndustryTemplate, findReportType, canSeeCard } from "../../industries";
 import ReportGuide from "./ReportGuide";
@@ -230,6 +231,7 @@ export default function GenericIndustryApp() {
   };
 
   const logout = async () => {
+    if (!confirmLogoutWithOutbox()) return;
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: "POST", headers: { "Content-Type": "application/json" },

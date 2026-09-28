@@ -2,12 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
-import {
-  getLatestReport,
-  getReportRowByDate,
-  payloadOf,
-  reportId,
-} from "../_shared/reportApi";
+import { getLatestReport } from "../_shared/reportApi";
+import { COOLERS_OUTBOX_KIND, COOLERS_TYPE, saveCoolersRecord } from "./coolersSave";
+import { enqueue, isTransient } from "../../../../utils/offlineOutbox";
 import CoolerSetupPanel from "./CoolerSetupPanel";
 import {
   COOLER_COUNT,
@@ -41,32 +38,11 @@ const loadDraft = () => {
   }
 };
 
-/* =========================
-   API base (CRA + Vite safe)
-========================= */
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-
-const CRA_URL =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL)
-    ? process.env.REACT_APP_API_URL
-    : undefined;
-
-let VITE_URL;
-try { VITE_URL = import.meta.env?.VITE_API_URL; } catch {}
-
-const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
-const IS_SAME_ORIGIN = (() => {
-  try { return new URL(API_BASE).origin === window.location.origin; }
-  catch { return false; }
-})();
-
 /* ---- Config ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
-/* Report type stored on the server */
-const COOLERS_TYPE = "qcs-coolers";
+/* A save still hanging after this long is treated as "no connection". */
+const SAVE_TIMEOUT_MS = 25_000;
 
 /* ---- Time helpers (4AM -> 8PM, every 2 hours) ---- */
 function formatHour(h) {
@@ -298,16 +274,6 @@ function tempInputStyle(temp, def) {
     return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
   }
   return base;
-}
-
-/* =========================
-   Server helpers (COOLERS only)
-========================= */
-/* Targeted read — this used to download every coolers report ever saved just
-   to find out whether one date already had a record. */
-async function fetchExistingByDate(dateStr) {
-  const row = await getReportRowByDate(COOLERS_TYPE, dateStr);
-  return row ? { id: reportId(row), payload: payloadOf(row) } : null;
 }
 
 /* Blanks every reading in a temperature block while keeping its shape. */
@@ -611,8 +577,6 @@ export default function CoolersTab(props) {
         alert("⚠️ Pick a report date first.");
         return;
       }
-      const existing = await fetchExistingByDate(date);
-
       const payload = {
         reportDate: date,
         coolers: dataCoolers,
@@ -628,22 +592,27 @@ export default function CoolersTab(props) {
 
       const body = { reporter: "QCS/COOLERS", type: COOLERS_TYPE, payload };
 
-      if (existing?.id) {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update coolers report");
-      } else {
-        const res = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create coolers report");
+      // A cold room or a weak signal can leave the request hanging; after
+      // SAVE_TIMEOUT_MS it is treated like no connection and queued.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), SAVE_TIMEOUT_MS);
+      try {
+        await saveCoolersRecord(body, { signal: ctrl.signal });
+      } catch (err) {
+        if (!isTransient(err)) throw err;
+        // No connection: keep the sheet on this device and send it when the
+        // connection is back. The replay looks the date up again, so if this
+        // save did reach the server after all, it updates rather than duplicates.
+        try {
+          await enqueue(COOLERS_OUTBOX_KIND, date, body, `Coolers ${date}`);
+        } catch {
+          throw new Error("No connection, and this device could not keep the sheet. It is still on screen — save again when you are back online.");
+        }
+        try { localStorage.removeItem(DRAFT_KEY); } catch {}
+        alert(`📴 No connection — the Coolers sheet for ${date} is kept on this device and will be sent automatically when the connection is back.`);
+        return;
+      } finally {
+        clearTimeout(timer);
       }
 
       try { localStorage.removeItem(DRAFT_KEY); } catch {}

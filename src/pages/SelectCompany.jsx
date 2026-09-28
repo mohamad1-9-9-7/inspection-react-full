@@ -26,6 +26,7 @@ import API_BASE from "../config/api";
 import logo from "../assets/almawashi-logo.jpg";
 import { setActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { clearAppSession } from "../utils/authFetch";
+import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
 
 const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
@@ -168,6 +169,7 @@ export default function SelectCompany() {
   }
 
   function logout() {
+    if (!confirmLogoutWithOutbox()) return;
     clearAppSession();
     navigate("/", { replace: true });
   }

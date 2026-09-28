@@ -5,6 +5,10 @@ import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
 import ThemeToggle from "./components/ThemeToggle";
 import GlobalTimePicker from "./components/GlobalTimePicker";
+import OutboxBar from "./components/OutboxBar";
+// Registers the replay for coolers sheets saved without a connection, so a
+// waiting sheet is sent from whichever page is open when the connection is back.
+import "./pages/monitor/branches/qcs/coolersSave";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch, refreshSecuritySettings } from "./pages/settings/SecurityControlsTab";
@@ -817,6 +821,7 @@ export default function App() {
       }
     >
       <NotificationManager />
+      <OutboxBar />
       <GlobalDatePicker />
       <GlobalTimePicker />
       <ThemeToggle />

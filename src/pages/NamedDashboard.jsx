@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
 import { clearAppSession } from "../utils/authFetch";
+import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
 import { getActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { useInventoryOfficer } from "./workforce/workforceAccess";
 
@@ -346,6 +347,7 @@ function LegacyNamedDashboard() {
   };
 
   const handleLogout = async () => {
+    if (!confirmLogoutWithOutbox()) return;
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",
@@ -1095,6 +1097,7 @@ export default function NamedDashboard() {
   };
 
   const handleLogout = async () => {
+    if (!confirmLogoutWithOutbox()) return;
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",
