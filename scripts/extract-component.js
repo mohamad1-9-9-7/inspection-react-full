@@ -55,6 +55,17 @@ traverse(ast, {
 });
 if (!comp) fail(`component ${op.component || "(default export)"} not found`);
 const compScope = comp.scope;
+
+/* A run of statements may be named by the first/last name they declare
+   ("fromName"/"throughName") instead of lines — names do not shift when
+   an earlier extraction adds an import line. */
+function stmtLineOf(name, edge) {
+  const s = comp.get("body").get("body").find((p) => Object.keys(p.getOuterBindingIdentifiers ? p.getOuterBindingIdentifiers() : {}).includes(name));
+  if (!s) fail(`no statement of the component declares "${name}"`);
+  return edge === "start" ? s.node.loc.start.line : s.node.loc.end.line;
+}
+if (op.fromName) op.from = stmtLineOf(op.fromName, "start");
+if (op.throughName) op.through = stmtLineOf(op.throughName, "end");
 const inside = (node, outer) => node.start >= outer.start && node.end <= outer.end;
 
 /* ---------- module-level imports (to copy into the new file) ---------- */
