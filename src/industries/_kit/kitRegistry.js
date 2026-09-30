@@ -41,6 +41,17 @@ export function kitSchemasFor(id) {
   return [...SPECIFIC[id], ...commonReports(id)];
 }
 
+/** The log-sheet schema behind a stored type ("restaurant_cooking"), or null.
+ *  Used where only the type is known: the offline replay and the Excel backup. */
+let BY_TYPE = null;
+export function kitSchemaByType(type) {
+  if (!BY_TYPE) {
+    BY_TYPE = new Map();
+    KIT_INDUSTRY_IDS.forEach((id) => kitSchemasFor(id).forEach((s) => BY_TYPE.set(s.type, s)));
+  }
+  return BY_TYPE.get(String(type || "")) || null;
+}
+
 /** The two register types every kit company keeps next to its log sheets. */
 export const registerTypesFor = (id) => ({
   ohc: `${id}_ohc_certificate`,

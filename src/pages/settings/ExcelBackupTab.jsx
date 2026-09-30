@@ -6,11 +6,11 @@ import React, { useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { getExporter, exporterKindFor } from "./excel-exporters";
 import {
-  sheetNameFor, sanitizeSheetName, extractDate, formatDMY, linkifySheet,
+  sheetNameFor, sanitizeSheetName, extractDate, formatDMY, linkifySheet, setDocBrand,
 } from "./excel-exporters/_lib";
 import { pickTemplateRecord, makeBlankRecord, makeBlankRecordList } from "./excel-exporters/_blank_form";
 import {
-  BRANCHES, activeCards, branchesOfCard, groupsOfBranch,
+  ALL_BRANCHES, BRANCHES, activeCards, branchesOfCard, groupsOfBranch,
 } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
 import {
@@ -155,7 +155,19 @@ function addEmptySheet(wb, typeLabel) {
   ws.getRow(1).height = 36;
 }
 
+/* A customer company's backup (opts.tenantBrand) must not carry Al Mawashi's
+   name, logo band or signatories: every exporter's document header reads the
+   brand set here for the length of one workbook (exporters run one at a time). */
 async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records, opts = {}) {
+  setDocBrand(opts.tenantBrand || null);
+  try {
+    return await buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, records, opts);
+  } finally {
+    setDocBrand(null);
+  }
+}
+
+async function buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, records, opts = {}) {
   const wb = new ExcelJS.Workbook();
   const brand = opts.brand || "Al Mawashi";
   wb.creator = opts.blankForm ? `${brand} — Blank Forms` : `${brand} — Excel Backup`;
@@ -215,16 +227,20 @@ async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records, 
  *   brand   — company name on the ZIP file name, README and workbook creator. */
 export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } = {}) {
   const cardKey = cardIds ? cardIds.join("|") : "";
+  // A scoped (company-app) backup may name kit cards, whose branches live in
+  // ALL_BRANCHES; the full Al Mawashi backup keeps walking BRANCHES only.
   const scopeBranches = useMemo(
-    () => (cardIds ? BRANCHES.filter((b) => cardIds.includes(b.card)) : BRANCHES),
+    () => (cardIds ? ALL_BRANCHES.filter((b) => cardIds.includes(b.card)) : BRANCHES),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cardKey]
   );
   const scopeCards = useMemo(
-    () => (cardIds ? activeCards().filter((c) => cardIds.includes(c.id)) : activeCards()),
+    () => (cardIds ? activeCards({ withKit: true }).filter((c) => cardIds.includes(c.id)) : activeCards()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cardKey]
   );
+  // Another company's backup carries its own name in every sheet header.
+  const tenantBrand = cardIds ? brand : null;
   const fileBrand = brand.replace(/[^A-Za-z0-9]+/g, "") || "Backup";
 
   // Selection state: Set of "branchId::typeKey" strings (type-level granularity)
@@ -428,7 +444,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         }
 
         const folder = folderFor(zip, segments, folderCache);
-        const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records, { brand });
+        const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records, { brand, tenantBrand });
         const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
 
         const empty = records.length === 0;
@@ -566,7 +582,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           : [makeBlankRecord(template, blankRows)];
 
         const wb = await buildWorkbook(
-          ExcelJS, branch.label, typeKey, typeLabel, payload, { blankForm: true, brand }
+          ExcelJS, branch.label, typeKey, typeLabel, payload, { blankForm: true, brand, tenantBrand }
         );
         const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
 

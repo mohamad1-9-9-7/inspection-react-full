@@ -125,6 +125,11 @@ import real_recall                    from "./real_recall";
 import product_withdrawal             from "./product_withdrawal";
 import mock_recall_drill              from "./mock_recall_drill";
 
+/* ─── Industry kit (restaurant / retail / warehouse / factory) ─── */
+import kitSheet                      from "./kit_sheet";
+import { KIT_INDUSTRY_IDS }          from "../../../industries/catalog";
+import { kitSchemasFor, registerTypesFor } from "../../../industries/_kit/kitRegistry";
+
 /* ─── OHC + Training ─── */
 import ohc_certificate               from "./ohc_certificate";
 import training_certificate          from "./training_certificate";
@@ -315,6 +320,18 @@ const CUSTOM = {
   "sweets_cars_loading_inspection":         cars_loading_inspection,
   "sweets_truck_daily_cleaning":            truck_daily_cleaning,
 };
+
+/* Restaurants · supermarkets · warehouses · manufacturing (industry kit).
+   Every log sheet is schema-driven, so ONE exporter renders them all (a new
+   kit report needs nothing here). The OHC and external-certificate pages are
+   copies of the Al Mawashi ones and save the same payload, so they reuse
+   those registers. */
+KIT_INDUSTRY_IDS.forEach((id) => {
+  kitSchemasFor(id).forEach((s) => { CUSTOM[s.type] = kitSheet; });
+  const reg = registerTypesFor(id);
+  CUSTOM[reg.ohc] = ohc_certificate;
+  CUSTOM[reg.certificates] = training_certificate;
+});
 
 /* ═══════════════════════════════════════════════════════════════
    AUTOMATIC REGISTERS

@@ -6,6 +6,7 @@
 //   view         (viewer) browse / edit / export the saved sheets
 //   ohc          (pair)   OHC cards — add + register
 //   certificates (pair)   external certificates — add + register
+//   settings     (hub)    admins only — Excel backup of every report
 //
 // Permission keys are "<industry>:<card id>" (industries/index.js), so a
 // restaurant account's grants can never open a supermarket's cards.
@@ -14,6 +15,7 @@ import { lazy } from "react";
 import { categoryOf } from "../catalog";
 import { arOf } from "../../pages/industry-kit/i18n/bilingual";
 import { REPORT_GROUPS, kitSchemasFor } from "./kitRegistry";
+import { guideFor } from "./guides";
 
 const logPage = (kind, schema) =>
   lazy(() => import("../../pages/industry-kit/log/DailyLog").then((m) => ({ default: kind === "input" ? m.inputFor(schema) : m.viewFor(schema) })));
@@ -39,6 +41,8 @@ export function buildTemplate(id) {
     labelAr: arOf(s.label),
     descAr: arOf(s.desc),
     group: s.group || null,
+    // "How to fill this report" panel (pages/generic/ReportGuide.jsx).
+    guide: guideFor(id, s.key),
     Input: logPage("input", s),
     View: logPage("view", s),
   }));
@@ -95,6 +99,18 @@ export function buildTemplate(id) {
       viewIcon: "🗂️",
       Input: lazy(() => import("../../pages/industry-kit/external-certs/CertUpload")),
       View: lazy(() => import("../../pages/industry-kit/external-certs/CertView")),
+    },
+    {
+      // Company settings — admins only (GenericIndustryApp hides adminOnly
+      // cards from everyone else, and they are never offered as a grant).
+      id: "settings",
+      kind: "hub",
+      adminOnly: true,
+      label: "Settings",
+      desc: "Company tools — export all reports to Excel",
+      icon: "⚙️",
+      grad: "linear-gradient(135deg,#475569,#0f766e)",
+      Hub: lazy(() => import("../../pages/industry-kit/settings/KitSettingsHub")),
     },
   ].map(withAr);
 

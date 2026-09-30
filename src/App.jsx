@@ -10,6 +10,7 @@ import OutboxBar from "./components/OutboxBar";
 // Registers the replay for reports saved without a connection, so a waiting
 // report is sent from whichever page is open when the connection is back.
 import "./utils/reportOutbox";
+import "./pages/industry-kit/log/outboxReplay";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch, refreshSecuritySettings } from "./pages/settings/SecurityControlsTab";

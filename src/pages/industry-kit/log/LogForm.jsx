@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bi, bi } from "../i18n/bilingual";
 import { reportDateOf, reportId } from "../../monitor/branches/_shared/reportApi";
+import { newOutboxId } from "../../../utils/reportOutbox";
 import { getSheetByDate, listSheets, saveSheet } from "./api";
 import { useLookupOptions, useOpenItems } from "./hooks";
 import EntryTable from "./EntryTable";
@@ -70,6 +71,9 @@ export default function LogForm({ schema, record = null, onSaved, onCancel }) {
   const lookupOptions = useLookupOptions(lookupCol);
   const openPrev = useOpenItems(schema, date, !record);
   const dirtyRef = useRef(false);
+  // One id per NEW sheet, reused on every save of it (online or kept offline),
+  // so saving twice never files the day twice. Renewed when another day opens.
+  const outboxIdRef = useRef(newOutboxId());
 
   const hydrate = useCallback((payload) => {
     const p = payload || {};
@@ -86,6 +90,7 @@ export default function LogForm({ schema, record = null, onSaved, onCancel }) {
     const ctl = new AbortController();
     setLoading(true);
     setMsg(null);
+    outboxIdRef.current = newOutboxId();
     getSheetByDate(schema.type, date, { signal: ctl.signal })
       .then((row) => {
         if (ctl.signal.aborted) return;
@@ -93,7 +98,16 @@ export default function LogForm({ schema, record = null, onSaved, onCancel }) {
         hydrate(row?.payload);
         if (row) setMsg({ level: "warn", text: `A sheet for ${fmtDate(date)} already exists — you are continuing it. Saving updates the same sheet.`, ar: `توجد ورقة بتاريخ ${fmtDate(date)} — أنت تكمل عليها، والحفظ يحدّث نفس الورقة.` });
       })
-      .catch(() => { if (!ctl.signal.aborted) { setExistingId(null); hydrate(null); } })
+      .catch(() => {
+        if (ctl.signal.aborted) return;
+        setExistingId(null);
+        hydrate(null);
+        setMsg({
+          level: "warn",
+          text: `Could not load the sheet of ${fmtDate(date)} (no connection?). You can still fill it in — if that day already has a sheet, the rows you save are added to it.`,
+          ar: `تعذّر تحميل ورقة ${fmtDate(date)} (لا يوجد اتصال؟). يمكنك التعبئة — وإن كانت لذلك اليوم ورقة، تُضاف الأسطر التي تحفظها إليها.`,
+        });
+      })
       .finally(() => { if (!ctl.signal.aborted) setLoading(false); });
     return () => ctl.abort();
   }, [date, record, schema.type, hydrate]);
@@ -156,8 +170,17 @@ export default function LogForm({ schema, record = null, onSaved, onCancel }) {
     setSaving(true);
     setMsg(null);
     try {
-      const { saved, id } = await saveSheet(schema, payload, existingId);
+      const res = await saveSheet(schema, payload, existingId, outboxIdRef.current);
       dirtyRef.current = false;
+      if (res.queued) {
+        setMsg({
+          level: "warn",
+          text: "No connection — the sheet is kept on this device and will be sent automatically when the connection is back.",
+          ar: "لا يوجد اتصال — حُفظت الورقة على هذا الجهاز وستُرسل تلقائياً عند عودة الاتصال.",
+        });
+        return;
+      }
+      const { saved, id } = res;
       setExistingId(saved ? reportId(saved) : id);
       const s = payload.summary;
       setMsg({

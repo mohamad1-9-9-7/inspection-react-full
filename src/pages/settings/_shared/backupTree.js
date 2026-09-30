@@ -12,7 +12,7 @@
 // Both the Excel backup and the blank-forms export build their paths here, so
 // the two ZIPs are always laid out identically.
 
-import { BRANCHES, folderSegmentsFor, fileIndexFor, cardById } from "../reportTypeCatalog";
+import { ALL_BRANCHES, folderSegmentsFor, fileIndexFor, cardById } from "../reportTypeCatalog";
 
 /* JSZip treats "/" inside a name as a folder separator, so a label like
    "F-13/F-18 Equipment Maintenance" used to silently split into a phantom
@@ -43,7 +43,9 @@ const pad2 = (n) => String(n).padStart(2, "0");
  */
 export function buildWorkList(picked) {
   const work = [];
-  for (const branch of BRANCHES) {
+  // Only picked keys produce work, and a kit type can only be picked on a kit
+  // company's own backup screen — so Al Mawashi's runs are unchanged.
+  for (const branch of ALL_BRANCHES) {
     for (const [typeKey, typeLabel] of branch.types) {
       if (!picked.has(`${branch.id}::${typeKey}`)) continue;
       const segments = folderSegmentsFor(branch, typeKey).map(safeSegment);

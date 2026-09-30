@@ -531,15 +531,22 @@ export function isKnownType(type) {
    TREE — the shape the backup ZIP mirrors.
    ═══════════════════════════════════════════════════════════════ */
 
-/** Branches of one card, in catalog order. */
+/** Every branch, kit industries included — for screens scoped to ONE company
+    (a kit company's own backup), never for the Al Mawashi-wide walks. */
+export const ALL_BRANCHES = [...BRANCHES, ...KIT_BRANCHES];
+
+/** Branches of one card, in catalog order. A kit card's branches come from
+    KIT_BRANCHES; every other card's are exactly as before. */
 export function branchesOfCard(cardId) {
-  return BRANCHES.filter((b) => b.card === cardId);
+  return ALL_BRANCHES.filter((b) => b.card === cardId);
 }
 
-/** Cards that actually own at least one branch, in dashboard order. */
-export function activeCards() {
+/** Cards that actually own at least one branch, in dashboard order.
+    `withKit` adds the kit industry cards (a kit company's own backup). */
+export function activeCards({ withKit = false } = {}) {
+  const pool = withKit ? ALL_BRANCHES : BRANCHES;
   return CARDS
-    .filter((c) => BRANCHES.some((b) => b.card === c.id))
+    .filter((c) => pool.some((b) => b.card === c.id))
     .sort((a, b) => a.order - b.order);
 }
 

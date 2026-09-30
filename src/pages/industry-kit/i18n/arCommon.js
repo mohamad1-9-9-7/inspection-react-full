@@ -33,6 +33,8 @@ export const AR_COMMON = {
 
   /* ── company-app shell ── */
   "Main Branch": "الفرع الرئيسي",
+  "Settings": "الإعدادات",
+  "Company tools — export all reports to Excel": "أدوات الشركة — تصدير كل التقارير إلى Excel",
   "Daily Reports": "التقارير اليومية", "Fill in the daily operation reports": "تعبئة تقارير التشغيل اليومية",
   "View Reports": "عرض التقارير", "Browse all saved reports": "تصفح كل التقارير المحفوظة",
   "OHC Certificates": "الشهادات الصحية", "Occupational Health Cards": "بطاقات الصحة المهنية",

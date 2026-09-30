@@ -97,7 +97,19 @@ export function sheetNameFor(idx, rec) {
 /* Produces 3-column grid: [logo column | left labels/values | right labels/values]
  * Followed by gray "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC" band and
  * a darker "report title" band. */
+/* The company a backup is made for, when it is NOT Al Mawashi (a customer
+   company exporting from its own company-app). Set by ExcelBackupTab around
+   one workbook. While set, every document header shows that company and none
+   of Al Mawashi's names — even exporters that pass them explicitly. */
+let DOC_BRAND = null;
+export function setDocBrand(brand) {
+  DOC_BRAND = brand ? String(brand) : null;
+}
+
 export function addDocHeader(ws, opts) {
+  const tenant = DOC_BRAND
+    ? { issuedBy: "", controllingOfficer: "", approvedBy: "", documentNo: "", company: DOC_BRAND.toUpperCase() }
+    : null;
   const {
     documentTitle = "",
     documentNo    = "",
@@ -111,7 +123,7 @@ export function addDocHeader(ws, opts) {
     reportTitle   = "",
     reportDate    = "",
     totalCols     = 12,
-  } = opts || {};
+  } = { ...(opts || {}), ...(tenant || {}) };
 
   const NC = Math.max(totalCols, 6);
   const LOGO_W  = 2;
@@ -131,7 +143,7 @@ export function addDocHeader(ws, opts) {
   // Merge logo column across 4 rows
   ws.mergeCells(r, 1, r + 3, LOGO_W);
   const logoCell = ws.getCell(r, 1);
-  logoCell.value = "AL MAWASHI";
+  logoCell.value = DOC_BRAND ? DOC_BRAND.toUpperCase() : "AL MAWASHI";
   logoCell.alignment = { horizontal: "center", vertical: "middle" };
   logoCell.font = { bold: true, size: 14, color: { argb: COLORS.NAVY } };
   logoCell.fill = fillSolid(COLORS.SKY_LIGHT);
