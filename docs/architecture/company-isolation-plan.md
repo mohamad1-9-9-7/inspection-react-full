@@ -51,9 +51,9 @@ data isolation by `company_id` + Postgres RLS (`db/tenantRls.cjs`).
 | # | Item | Check before moving on | Status |
 |---|---|---|---|
 | 1 | **Tooling**: `check-imports.js`, `check-sizes.js`, ESLint company-boundary rule | scripts run clean on today's tree; rule fires on a deliberate violation | ☑ |
-| 2 | **Server: `companies.module`** column (which code module a company runs), returned by `/api/companies` and login; defaults: meat → `almawashi`, sweets → `exaltis`, kit industries → their starter | `node --check`; column + values verified on the live DB after deploy | ☐ |
-| 3 | **Platform Center**: "System" field on add/edit company (list from the registry) | ESLint clean; field saves and reloads | ☐ |
-| 4 | **Registry + boundary**: `src/companies/index.js`, `CompanyBoundary.jsx`, `getActiveModule()`; company app picks its template by module (industry as fallback) | ESLint + import check clean; sweets and kit companies still open the same cards | ☐ |
+| 2 | **Server: `companies.module`** column (which code module a company runs), returned by `/api/companies` and login; defaults: meat → `almawashi`, sweets → `exaltis`, kit industries → their starter | `node --check`; column + values verified on the live DB after deploy | ☑ |
+| 3 | **Platform Center**: "System" field on add/edit company (list from the registry) | ESLint clean; field saves and reloads | ☑ |
+| 4 | **Registry + boundary**: `src/companies/index.js`, `CompanyBoundary.jsx`, `getActiveModule()`; company app picks its template by module (industry as fallback) | ESLint + import check clean; sweets and kit companies still open the same cards | ☑ |
 | 5 | **Move EXALTIS in**: `industries/sweets` + `pages/monitor/branches/sweets` + `pages/sweets-*` → `src/companies/exaltis/…`; all imports rewritten; public quiz/verify routes repointed | import check: 0 unresolved; ESLint clean; no file outside the module imports the old paths | ☐ |
 | 6 | **Split EXALTIS files over 800 lines** (training list/admin/plan, OHC view, cert view, cars, daily log…) into focused files | `check-sizes` → 0 files over 800 in `companies/exaltis`; ESLint + import check clean | ☐ |
 | 7 | **Full server audit**: every route — auth, company scope, RLS path, input validation, errors, secrets, rate limits; findings fixed or listed | report delivered; fixes committed and pushed | ☐ |

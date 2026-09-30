@@ -61,6 +61,8 @@ function Login() {
             // الحالي، غيره = المحرّك العام). مخزّن هنا حتى يقرأه getActiveIndustry
             // بلا نداء إضافي.
             companyIndustry: data.user.company?.industry || "meat",
+            // Which code module the company runs (src/companies/<module>/).
+            companyModule: data.user.company?.module || "",
             companyName: data.user.company?.name || "",
             // null = platform account (super-admin). The in-app subscription
             // lock in App.jsx only ever judges an account by its OWN company.

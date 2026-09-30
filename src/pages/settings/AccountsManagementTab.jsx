@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
-import { permissionSectionsFor } from "../../industries";
+import { useCompanyManifest, permissionSectionsOf } from "../../companies";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 import {
@@ -652,10 +652,13 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
 
   /* The permission list follows the company the account belongs to: Al
      Mawashi's sections, or the cards of that company's own system. */
-  const industryOf = (companyId) =>
-    (companies || []).find(c => String(c.id) === String(companyId))?.industry || "meat";
+  const companyRow = (companyId) => (companies || []).find(c => String(c.id) === String(companyId));
+  const industryOf = (companyId) => companyRow(companyId)?.industry || "meat";
   const industry = industryOf(form.companyId);
-  const cardSections = permissionSectionsFor(industry); // null = Al Mawashi
+  // The cards of the company's OWN module (src/companies/<module>/); keys stay
+  // "<industry>:<card>". No manifest (the meat system) = Al Mawashi's sections.
+  const { manifest } = useCompanyManifest(companyRow(form.companyId)?.module, industry);
+  const cardSections = permissionSectionsOf(manifest, industry); // null = Al Mawashi
   /* Switching to a company of ANOTHER system wipes the permissions: a
      section of one system means nothing in the other. */
   const changeCompany = (companyId) => setForm(f => {

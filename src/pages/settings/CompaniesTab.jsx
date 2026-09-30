@@ -5,12 +5,13 @@ import { useSettingsLang } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 import { industryOptions } from "../../industries";
+import { defaultModuleFor, moduleOptions, MODULES } from "../../companies";
 import { companyStatus, currencyOf, daysLeft, priceOf } from "./_shared/companyBilling";
 import { deleteImage, uploadImage } from "../../utils/imageUpload";
 
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
-  plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat",
+  plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat", module:"almawashi",
   price:"", currency:"", logo_url:"",
 };
 
@@ -95,6 +96,7 @@ export default function CompaniesTab() {
       end_date:      c.end_date?.substring(0,10)   || "",
       notes:         c.notes || "",
       industry:      c.industry || "meat",
+      module:        c.module || defaultModuleFor(c.industry || "meat"),
       price:         c.price != null ? String(Number(c.price)) : "",
       currency:      c.currency || "",
       logo_url:      c.logo_url || "",
@@ -136,6 +138,7 @@ export default function CompaniesTab() {
       start_date: form.start_date || null,
       end_date:   form.end_date   || null,
       industry:   form.industry || "meat",
+      module:     form.module || defaultModuleFor(form.industry || "meat"),
       // "" = no custom price → the plan's price applies.
       price:      form.price === "" ? null : Number(form.price),
       currency:   form.currency || null,
@@ -326,13 +329,33 @@ export default function CompaniesTab() {
               </select>
             </Field>
             <Field label={t("businessType")}>
-              {/* Decides which system the company opens: "Meat manufacturing" =
-                  the full Al Mawashi system; any other industry = the generic
-                  engine built from that industry's template. */}
-              <select value={form.industry} onChange={e => setForm(f=>({...f,industry:e.target.value}))} style={inputStyle}>
+              {/* What KIND of business it is (keys its permission list). The
+                  system it opens is the "System" field next to it. Changing
+                  the kind moves the system to that kind's default — unless a
+                  system of its own was already picked. */}
+              <select value={form.industry} style={inputStyle}
+                onChange={e => { const industry = e.target.value; setForm(f => ({
+                  ...f, industry,
+                  module: !f.module || f.module === defaultModuleFor(f.industry) ? defaultModuleFor(industry) : f.module,
+                })); }}>
                 {industryOptions().map(o => (
                   <option key={o.id} value={o.id}>{o.label}</option>
                 ))}
+              </select>
+            </Field>
+            <Field label={lang === "ar" ? "النظام (البرمجة الخاصة بالشركة)" : "System (the company's own programmed module)"}>
+              {/* Every company runs its own code module (src/companies/<module>/).
+                  A starter is the shared kit a new customer opens on until its
+                  own module is programmed and added to the registry. */}
+              <select value={form.module} onChange={e => setForm(f => ({ ...f, module: e.target.value }))} style={inputStyle}>
+                {moduleOptions().map(o => (
+                  <option key={o.id} value={o.id}>
+                    {(lang === "ar" ? o.labelAr : o.label)}{o.industry !== form.industry ? (lang === "ar" ? "  ⚠ نوع نشاط مختلف" : "  ⚠ different kind of business") : ""}
+                  </option>
+                ))}
+                {form.module && !MODULES[form.module] && (
+                  <option value={form.module}>{form.module} {lang === "ar" ? "(غير مسجّل بالكود)" : "(not in the code registry)"}</option>
+                )}
               </select>
             </Field>
             <Field label={t("contactName")}>

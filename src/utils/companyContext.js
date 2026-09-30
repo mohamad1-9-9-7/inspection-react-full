@@ -24,6 +24,7 @@ export function setActiveCompany(company) {
           id: company.id,
           name: company.name || "",
           industry: company.industry || "meat",
+          module: company.module || "",
         })
       );
     } else {
@@ -53,6 +54,20 @@ export function getActiveIndustry() {
     return cu.companyIndustry || "meat";
   } catch {
     return "meat";
+  }
+}
+
+/** The code module (src/companies/<module>/) of the active company — the
+ *  super-admin's picked company, or the account's own from its login.
+ *  "" = not recorded (older session): callers fall back to the industry's
+ *  default module (companies/index.js moduleOf). */
+export function getActiveModule() {
+  try {
+    const cu = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    if (cu.isSuperAdmin) return getActiveCompany()?.module || "";
+    return cu.companyModule || "";
+  } catch {
+    return "";
   }
 }
 

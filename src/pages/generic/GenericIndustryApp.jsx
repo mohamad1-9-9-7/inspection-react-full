@@ -12,8 +12,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { clearAppSession } from "../../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../../utils/offlineOutbox";
-import { getActiveCompany, getActiveCompanyName, getActiveIndustry, clearActiveCompany } from "../../utils/companyContext";
-import { getIndustryTemplate, findReportType, canSeeCard } from "../../industries";
+import { getActiveCompany, getActiveCompanyName, getActiveIndustry, getActiveModule, clearActiveCompany } from "../../utils/companyContext";
+import { findReportType, canSeeCard } from "../../industries";
+import { useCompanyManifest } from "../../companies";
+import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
 
 function getCurrentUser() {
@@ -172,7 +174,10 @@ export default function GenericIndustryApp() {
   const isSuperAdmin = !!currentUser.isSuperAdmin;
 
   const industry = getActiveIndustry();
-  const template = getIndustryTemplate(industry);
+  /* The company's own module (src/companies/<module>/), loaded for this
+     company only; its industry keys the permission list. */
+  const moduleKey = getActiveModule();
+  const { manifest: template, loading: templateLoading } = useCompanyManifest(moduleKey, industry);
   /* Only the cards this account was granted (Platform Center → Accounts):
      "<industry>:<cardId>" in its permissions. Admins and the super-admin see
      all; adminOnly cards (company Settings) are for admins only. A hidden
@@ -191,8 +196,8 @@ export default function GenericIndustryApp() {
     : null;
 
   useEffect(() => {
-    if (!template) navigate("/named-dashboard", { replace: true });
-  }, [template, navigate]);
+    if (!templateLoading && !template) navigate("/named-dashboard", { replace: true });
+  }, [template, templateLoading, navigate]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);
@@ -211,7 +216,7 @@ export default function GenericIndustryApp() {
     }
   }, [card, activeType, setParams]);
 
-  if (!template) return null;
+  if (!template) return templateLoading ? <Loading /> : null;
 
   const found = activeType ? findReportType(template, activeType) : null;
   const companyName = isSuperAdmin
@@ -251,6 +256,7 @@ export default function GenericIndustryApp() {
   } else if (card && found) {
     Leaf = card.kind === "viewer" ? found.report.View : found.report.Input;
   }
+  const leafKey = `${cardId || ""}|${activeType || ""}|${mode || ""}`;
   const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
@@ -538,7 +544,7 @@ export default function GenericIndustryApp() {
           </div>
           <div style={{ ...S.mainBody, padding: 0 }}>
             {Leaf ? (
-              <Suspense fallback={<Loading />}><Leaf /></Suspense>
+              <CompanyBoundary module={moduleKey || industry} resetKey={leafKey} onHome={() => go({})}><Suspense fallback={<Loading />}><Leaf /></Suspense></CompanyBoundary>
             ) : (
               <div style={S.loading}>Nothing to show.</div>
             )}
@@ -551,7 +557,7 @@ export default function GenericIndustryApp() {
         <section style={S.main}>
           <div style={{ ...S.mainBody, padding: 0 }}>
             {Leaf ? (
-              <Suspense fallback={<Loading />}><Leaf /></Suspense>
+              <CompanyBoundary module={moduleKey || industry} resetKey={leafKey} onHome={() => go({})}><Suspense fallback={<Loading />}><Leaf /></Suspense></CompanyBoundary>
             ) : (
               <div style={S.loading}>Nothing to show.</div>
             )}
@@ -591,9 +597,11 @@ export default function GenericIndustryApp() {
                 />
               )}
               {Leaf ? (
-                <Suspense fallback={<Loading />}>
-                  <Leaf />
-                </Suspense>
+                <CompanyBoundary module={moduleKey || industry} resetKey={leafKey} onHome={() => go({})}>
+                  <Suspense fallback={<Loading />}>
+                    <Leaf />
+                  </Suspense>
+                </CompanyBoundary>
               ) : (
                 <div style={S.loading}><Two en="Select a report from the list." ar="اختر تقريراً من القائمة." /></div>
               )}
