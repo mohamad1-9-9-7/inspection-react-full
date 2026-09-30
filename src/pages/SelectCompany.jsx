@@ -467,17 +467,27 @@ export default function SelectCompany() {
                         <button
                           key={c.id}
                           type="button"
-                          className="pc-card"
+                          className={`pc-card${c.logo_url ? " has-logo" : ""}`}
                           style={{ "--grad": ind.grad, "--glow": ind.glow, "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.04}s` }}
                           onClick={() => enter(c)}
                         >
-                          <span className="pc-card-band" aria-hidden="true" />
-                          <span className="pc-card-top">
-                            <Ava c={c} grad={ind.grad} />
-                            <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
-                              <span className="pc-badge-dot" style={{ background: meta.dot }} />{statusLabel(meta)}
+                          {c.logo_url ? (
+                            /* With a picture: the logo gets the whole head of the card. */
+                            <span className="pc-card-logo">
+                              <img src={c.logo_url} alt="" />
+                              <span className="pc-badge pc-badge-float" style={{ background: meta.bg, color: meta.text }}>
+                                <span className="pc-badge-dot" style={{ background: meta.dot }} />{statusLabel(meta)}
+                              </span>
                             </span>
-                          </span>
+                          ) : (<>
+                            <span className="pc-card-band" aria-hidden="true" />
+                            <span className="pc-card-top">
+                              <Ava c={c} grad={ind.grad} />
+                              <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
+                                <span className="pc-badge-dot" style={{ background: meta.dot }} />{statusLabel(meta)}
+                              </span>
+                            </span>
+                          </>)}
 
                           <span className="pc-card-name">{c.name}</span>
                           <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {catLabel(ind)}</span>
@@ -617,9 +627,9 @@ const PC_CSS = `
 .pc .pc-card{position:relative; display:flex; flex-direction:column; gap:10px; text-align:start; padding:22px 22px 18px; min-height:236px; border-radius:18px;
   background:#fff; border:1px solid rgba(15,23,42,.08); box-shadow:0 12px 30px rgba(15,23,42,.07); cursor:pointer; overflow:hidden;
   transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; animation:pcIn .32s ease both}
-.pc .pc-card-band{position:absolute; inset:0 0 auto 0; height:84px; background:var(--grad); opacity:.1; transition:opacity .18s}
+.pc .pc-card-band{position:absolute; inset:0 0 auto 0; height:96px; background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 13%,transparent),transparent); opacity:.8; transition:opacity .18s}
 .pc .pc-card:hover, .pc .pc-card:focus-visible{transform:translateY(-4px); border-color:var(--tint); box-shadow:0 26px 50px var(--glow); outline:none}
-.pc .pc-card:hover .pc-card-band, .pc .pc-card:focus-visible .pc-card-band{opacity:.18}
+.pc .pc-card:hover .pc-card-band, .pc .pc-card:focus-visible .pc-card-band{opacity:1}
 .pc .pc-card > span:not(.pc-card-band){position:relative}
 .pc .pc-card-top{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .pc .pc-ava{width:54px; height:54px; border-radius:15px; display:grid; place-items:center; color:#fff; font-weight:900; flex-shrink:0; box-shadow:0 12px 24px var(--glow, rgba(15,23,42,.2))}
@@ -637,12 +647,17 @@ const PC_CSS = `
 .pc .pc-enter{font-weight:900; color:var(--tint, #0f766e); white-space:nowrap}
 .pc .pc-arrow{display:inline-block; transition:transform .18s}
 .pc .pc-card:hover .pc-arrow{transform:translateX(4px)}
-/* a logo keeps its own shape: wide wordmarks get a wide box instead of
-   shrinking into a square */
-.pc .pc-ava.pic{width:auto; min-width:64px; max-width:170px; height:64px; padding:6px 10px; box-sizing:border-box;
-  background:#fff; border:1px solid rgba(15,23,42,.1); box-shadow:0 8px 18px rgba(15,23,42,.08); overflow:hidden}
-.pc .pc-ava.pic img{height:100%; width:auto; max-width:100%; object-fit:contain; display:block; margin:0 auto}
-.pc .pc-ava.pic.sm{min-width:42px; max-width:110px; height:42px; padding:4px 6px}
+/* a company with a picture: the logo gets the head of the card — a quiet
+   full-width stage, logo centred, status pinned in the corner */
+.pc .pc-card.has-logo{padding-top:0}
+.pc .pc-card-logo{display:grid; place-items:center; height:112px; margin:0 -22px 4px; padding:18px 28px;
+  background:#f8fafc; border-bottom:1px solid #eef2f6; box-sizing:border-box}
+.pc .pc-card-logo img{max-width:72%; max-height:100%; object-fit:contain; display:block; transition:transform .18s}
+.pc .pc-card:hover .pc-card-logo img{transform:scale(1.03)}
+.pc .pc-badge-float{position:absolute; top:12px; inset-inline-end:12px; box-shadow:0 2px 6px rgba(15,23,42,.08)}
+/* list rows: same square as the letter avatar, logo contained inside */
+.pc .pc-ava.pic{background:#fff; border:1px solid #e2e8f0; padding:5px; box-sizing:border-box; overflow:hidden; box-shadow:none}
+.pc .pc-ava.pic img{width:100%; height:100%; object-fit:contain; display:block}
 .pc[dir=rtl] .pc-card:hover .pc-arrow{transform:translateX(-4px)}
 .pc[dir=rtl] .pc-nav-btn.on{box-shadow:inset -3px 0 0 #2dd4bf, 0 10px 22px rgba(0,0,0,.18)}
 
