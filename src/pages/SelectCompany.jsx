@@ -620,7 +620,7 @@ const PC_CSS = `
 .pc .pc-card-band{position:absolute; inset:0 0 auto 0; height:84px; background:var(--grad); opacity:.1; transition:opacity .18s}
 .pc .pc-card:hover, .pc .pc-card:focus-visible{transform:translateY(-4px); border-color:var(--tint); box-shadow:0 26px 50px var(--glow); outline:none}
 .pc .pc-card:hover .pc-card-band, .pc .pc-card:focus-visible .pc-card-band{opacity:.18}
-.pc .pc-card > span{position:relative}
+.pc .pc-card > span:not(.pc-card-band){position:relative}
 .pc .pc-card-top{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .pc .pc-ava{width:54px; height:54px; border-radius:15px; display:grid; place-items:center; color:#fff; font-weight:900; flex-shrink:0; box-shadow:0 12px 24px var(--glow, rgba(15,23,42,.2))}
 .pc .pc-ava.sm{width:42px; height:42px; border-radius:12px; box-shadow:none}
@@ -637,8 +637,12 @@ const PC_CSS = `
 .pc .pc-enter{font-weight:900; color:var(--tint, #0f766e); white-space:nowrap}
 .pc .pc-arrow{display:inline-block; transition:transform .18s}
 .pc .pc-card:hover .pc-arrow{transform:translateX(4px)}
-.pc .pc-ava.pic{background:#fff; border:1px solid rgba(15,23,42,.1); overflow:hidden; padding:4px; box-sizing:border-box}
-.pc .pc-ava.pic img{width:100%; height:100%; object-fit:contain; display:block}
+/* a logo keeps its own shape: wide wordmarks get a wide box instead of
+   shrinking into a square */
+.pc .pc-ava.pic{width:auto; min-width:64px; max-width:170px; height:64px; padding:6px 10px; box-sizing:border-box;
+  background:#fff; border:1px solid rgba(15,23,42,.1); box-shadow:0 8px 18px rgba(15,23,42,.08); overflow:hidden}
+.pc .pc-ava.pic img{height:100%; width:auto; max-width:100%; object-fit:contain; display:block; margin:0 auto}
+.pc .pc-ava.pic.sm{min-width:42px; max-width:110px; height:42px; padding:4px 6px}
 .pc[dir=rtl] .pc-card:hover .pc-arrow{transform:translateX(-4px)}
 .pc[dir=rtl] .pc-nav-btn.on{box-shadow:inset -3px 0 0 #2dd4bf, 0 10px 22px rgba(0,0,0,.18)}
 
