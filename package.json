@@ -37,6 +37,7 @@
   "scripts": {
     "start": "react-scripts start --host 0.0.0.0",
     "build": "react-scripts build",
+    "check": "node scripts/check-imports.js && node scripts/check-sizes.js --top 0",
     "electron": "electron .",
     "electron:dev": "electron .",
     "electron:build": "react-scripts build && electron-builder --win --x64",
