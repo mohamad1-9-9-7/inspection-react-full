@@ -1,181 +1,129 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/pages/settings/BillingOverviewTab.jsx
+// Billing → Overview. The ONLY place the headline money numbers live:
+// four figures, then one list of everything that needs the owner's hand
+// (overdue invoices, lapsed or lapsing subscriptions, companies missing the
+// data an invoice needs). Per-plan figures stay on the plan cards; the
+// company list stays in Companies.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
-import { Button, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
-import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
+import { Button, StatusMessage, ui } from "./_shared/SettingsUIKit";
+import { useSettingsLang } from "./_shared/settingsI18n";
+import { companyStatus, daysLeft, mrrByCurrency } from "./_shared/companyBilling";
+import { apiListInvoices, day, fmtMoney, invoiceKpis, moneyMap, statusOf, todayISO } from "./invoices/invoiceCore";
 
-const money = (amount, currency = "AED") => {
-  const n = Number(amount || 0);
-  return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency || "AED"}`;
-};
+const SOON_DAYS = 14;
 
-function daysLeft(date) {
-  if (!date) return null;
-  const end = new Date(date);
-  if (Number.isNaN(end.getTime())) return null;
-  end.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.ceil((end - now) / 86400000);
-}
-
-function normalizeStatus(status) {
-  return String(status || "active").toLowerCase();
-}
-
-/* What a company is really in today — the login lock's rule: a stored
-   active/trial whose end date has passed counts as expired. */
-function statusOf(c) {
-  const s = normalizeStatus(c.status);
-  if (s === "expired" || s === "suspended") return s;
-  const d = daysLeft(c.end_date);
-  return d !== null && d < 0 ? "expired" : s;
-}
-
-/* A company's monthly price: its own custom price, else its plan's. */
-const priceOf = (c) => Number(c.price ?? c.plan_price ?? 0);
-
-export default function BillingOverviewTab() {
-  const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
+export default function BillingOverviewTab({ onGo }) {
+  const { t, dir, lang } = useSettingsLang();
+  const L = useCallback((en, ar) => t({ en, ar }), [t]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
-  const [data, setData] = useState({ plans: [], companies: [], invoices: [] });
+  const [companies, setCompanies] = useState([]);
+  const [invoices, setInvoices] = useState([]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setMsg(null);
     try {
-      const [plansRes, companiesRes, invoicesRes] = await Promise.all([
-        fetch(`${API_BASE}/api/plans`).then((r) => r.json()).catch(() => ({})),
+      const [comp, inv] = await Promise.all([
         fetch(`${API_BASE}/api/companies`).then((r) => r.json()).catch(() => ({})),
-        fetch(`${API_BASE}/api/invoices`).then((r) => r.json()).catch(() => ({})),
+        apiListInvoices(lang).catch(() => []),
       ]);
-      setData({
-        plans: plansRes.ok && Array.isArray(plansRes.plans) ? plansRes.plans : [],
-        companies: companiesRes.ok && Array.isArray(companiesRes.companies) ? companiesRes.companies : [],
-        invoices: invoicesRes.ok && Array.isArray(invoicesRes.invoices) ? invoicesRes.invoices : [],
-      });
-    } catch (err) {
-      setMsg({ kind: "err", text: err?.message || "Failed to load billing overview" });
+      setCompanies(comp?.ok && Array.isArray(comp.companies) ? comp.companies : []);
+      setInvoices(Array.isArray(inv) ? inv : []);
+    } catch (e) {
+      setMsg({ kind: "err", text: e?.message || L("Could not load.", "تعذّر التحميل.") });
     } finally {
       setLoading(false);
     }
-  }
+  }, [lang, L]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const stats = useMemo(() => {
-    const activeCompanies = data.companies.filter((c) => statusOf(c) === "active");
-    const trialCompanies = data.companies.filter((c) => statusOf(c) === "trial");
-    const expiredCompanies = data.companies.filter((c) => statusOf(c) === "expired");
-    const suspendedCompanies = data.companies.filter((c) => statusOf(c) === "suspended");
-    const expiringSoon = data.companies
-      .map((c) => ({ ...c, days: daysLeft(c.end_date) }))
-      .filter((c) => c.days !== null && c.days >= 0 && c.days <= 14)
-      .sort((a, b) => a.days - b.days);
-    const overdue = data.companies
-      .map((c) => ({ ...c, days: daysLeft(c.end_date) }))
-      .filter((c) => c.days !== null && c.days < 0)
-      .sort((a, b) => a.days - b.days);
-    const mrr = activeCompanies.reduce((sum, c) => sum + priceOf(c), 0);
-    // A void invoice was never owed — it counts neither as issued nor as revenue.
-    const liveInvoices = data.invoices.filter((inv) => inv.status !== "void");
-    const invoiceTotal = liveInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const currency =
-      activeCompanies.find((c) => c.plan_currency)?.plan_currency ||
-      data.plans.find((p) => p.currency)?.currency ||
-      "AED";
+  const view = useMemo(() => {
+    const kpi = invoiceKpis(invoices);
+    // A disabled company is switched off on purpose — nothing to chase.
+    const live = companies.filter((c) => !c.disabled_at).map((c) => ({ ...c, days: daysLeft(c.end_date), st: companyStatus(c) }));
+    const expired = live.filter((c) => c.st === "expired").sort((a, b) => (a.days ?? 0) - (b.days ?? 0));
+    const soon = live.filter((c) => c.st !== "expired" && c.days !== null && c.days >= 0 && c.days <= SOON_DAYS).sort((a, b) => a.days - b.days);
 
-    const planUsage = data.plans.map((plan) => {
-      const used = data.companies.filter((c) => String(c.plan_name || "").toLowerCase() === String(plan.name || "").toLowerCase());
-      return {
-        ...plan,
-        companies: used.length,
-        activeCompanies: used.filter((c) => statusOf(c) === "active").length,
-        revenue: used.filter((c) => statusOf(c) === "active").reduce((sum, c) => sum + (c.price != null || c.plan_price != null ? priceOf(c) : Number(plan.price || 0)), 0),
-      };
-    }).sort((a, b) => b.companies - a.companies);
+    const today = todayISO();
+    const overdueInv = invoices
+      .filter((i) => statusOf(i) === "overdue")
+      .map((i) => ({ ...i, late: Math.max(0, Math.round((new Date(today) - new Date(day(i.due_date) || today)) / 86400000)) }))
+      .sort((a, b) => b.late - a.late);
 
-    return {
-      activeCompanies,
-      trialCompanies,
-      expiredCompanies,
-      suspendedCompanies,
-      expiringSoon,
-      overdue,
-      mrr,
-      invoiceTotal,
-      invoiceCount: liveInvoices.length,
-      currency,
-      planUsage,
-    };
-  }, [data]);
+    const gaps = live
+      .map((c) => ({
+        c,
+        missing: [
+          !c.plan_id && !c.plan_name && c.price == null ? L("plan or price", "خطة أو سعر") : null,
+          !c.contact_email ? L("e-mail", "إيميل") : null,
+          !c.end_date ? L("end date", "تاريخ انتهاء") : null,
+        ].filter(Boolean),
+      }))
+      .filter((g) => g.missing.length);
+
+    return { kpi, expired, soon, overdueInv, gaps, mrr: mrrByCurrency(companies) };
+  }, [companies, invoices, L]);
+
+  const actions = view.overdueInv.length + view.expired.length + view.soon.length + view.gaps.length;
 
   return (
     <div style={ui.page} dir={dir}>
-      <PageHeader
-        eyebrow={t("boEyebrow")}
-        title={t("boTitle")}
-        subtitle={t("boSubtitle")}
-        actions={
-          <>
-            <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
-            <Button onClick={load} disabled={loading} tone="secondary">{loading ? t("loadingDots") : t("refresh")}</Button>
-          </>
-        }
-      />
+      <div style={sx.head}>
+        <div>
+          <h2 className="bpx-xl" style={ui.title}>{L("Overview", "نظرة عامة")}</h2>
+          <p className="bpx-sm" style={ui.subtitle}>{L("The money in one glance, and what needs you today.", "الفلوس بنظرة وحدة، وشو بدّه منك اليوم.")}</p>
+        </div>
+        <Button onClick={load} disabled={loading}>{loading ? "…" : `↻ ${L("Refresh", "تحديث")}`}</Button>
+      </div>
 
       <StatusMessage message={msg} />
 
       {loading ? (
-        <div style={sx.empty}>{t("loadingData")}</div>
+        <div style={sx.empty}>{L("Loading…", "جاري التحميل…")}</div>
       ) : (
         <>
-          <div style={sx.kpiGrid}>
-            <Kpi label={t("boActiveCompanies")} value={stats.activeCompanies.length} sub={`${stats.trialCompanies.length} ${t("boTrialSuffix")}`} color="#0f766e" />
-            <Kpi label={t("boMrr")} value={money(stats.mrr, stats.currency)} sub={t("boMrrSub")} color="#2563eb" />
-            <Kpi label={t("boRenewalRisk")} value={stats.expiringSoon.length + stats.overdue.length} sub={`${stats.overdue.length} ${t("boOverdueSuffix")}`} color="#b91c1c" />
-            <Kpi label={t("boInvoicesIssued")} value={stats.invoiceCount} sub={money(stats.invoiceTotal, stats.currency)} color="#7c3aed" />
-          </div>
-
-          <div style={sx.grid2}>
-            <section style={ui.card}>
-              <h3 style={sx.title}>{t("boPlanUtil")}</h3>
-              {stats.planUsage.length === 0 ? <div style={sx.muted}>{t("boNoPlansYet")}</div> : stats.planUsage.map((plan) => (
-                <div key={plan.id || plan.name} style={sx.planRow}>
-                  <div>
-                    <div style={sx.rowTitle}>{plan.name}</div>
-                    <div style={sx.muted}>{plan.activeCompanies} {t("boActiveTotal")} {plan.companies} {t("boTotalCompanies")}</div>
-                  </div>
-                  <div style={sx.rowMoney}>{money(plan.revenue, plan.currency || stats.currency)}</div>
-                </div>
-              ))}
-            </section>
-
-            <section style={ui.card}>
-              <h3 style={sx.title}>{t("boRenewalWatch")}</h3>
-              {[...stats.overdue, ...stats.expiringSoon].slice(0, 8).map((c) => (
-                <div key={c.id || c.name} style={sx.watchRow(c.days < 0)}>
-                  <div>
-                    <div style={sx.rowTitle}>{c.name}</div>
-                    <div style={sx.muted}>{c.plan_name || t("boNoPlan")} · {c.end_date?.slice(0, 10) || t("boNoEndDate")}</div>
-                  </div>
-                  <strong>{c.days < 0 ? `${Math.abs(c.days)}${t("boDOverdue")}` : `${c.days}${t("boDLeft")}`}</strong>
-                </div>
-              ))}
-              {stats.overdue.length + stats.expiringSoon.length === 0 && (
-                <div style={sx.okBox}>{t("boNoRenewals")}</div>
-              )}
-            </section>
+          <div style={sx.kpis}>
+            <Kpi color="#2563eb" label={L("Monthly revenue (MRR)", "الإيراد الشهري")} value={moneyMap(view.mrr)}
+              sub={L("active companies, at their own price", "الشركات الفعّالة، كل وحدة بسعرها")} />
+            <Kpi color="#15803d" label={L("Collected this month", "المحصّل هالشهر")} value={moneyMap(view.kpi.collected)} />
+            <Kpi color={view.kpi.overdueCount ? "#b91c1c" : "#b45309"} label={L("Outstanding", "غير محصّل")} value={moneyMap(view.kpi.outstanding)}
+              sub={view.kpi.overdueCount ? `${view.kpi.overdueCount} ${L("overdue", "متأخرة")} · ${moneyMap(view.kpi.overdue)}` : L("nothing overdue", "ولا فاتورة متأخرة")} />
+            <Kpi color={view.expired.length ? "#b91c1c" : "#0f766e"} label={L(`Ending within ${SOON_DAYS} days`, `بتخلص خلال ${SOON_DAYS} يوم`)} value={String(view.soon.length)}
+              sub={view.expired.length ? `${view.expired.length} ${L("already expired", "منتهية فعلاً")}` : L("none expired", "ولا وحدة منتهية")} />
           </div>
 
           <section style={ui.card}>
-            <h3 style={sx.title}>{t("boDataGaps")}</h3>
-            <div style={sx.gapGrid}>
-              <Gap label={t("boGapNoPlan")} value={data.companies.filter((c) => !c.plan_name && !c.plan_id).length} />
-              <Gap label={t("boGapNoEmail")} value={data.companies.filter((c) => !c.contact_email).length} />
-              <Gap label={t("boGapNoEnd")} value={data.companies.filter((c) => !c.end_date).length} />
-              <Gap label={t("boGapInactive")} value={data.plans.filter((p) => !p.is_active).length} />
-            </div>
+            <h3 className="bpx-lg" style={sx.title}>
+              {L("Needs you", "بدها تصرّف")} <span style={sx.count(actions)}>{actions}</span>
+            </h3>
+
+            {actions === 0 && <div style={sx.ok}>✓ {L("Nothing to chase — every company is paid up and in date.", "ما في شي — كل الشركات دافعة وضمن المدة.")}</div>}
+
+            {view.overdueInv.map((i) => (
+              <Row key={`i${i.id}`} tone="red" onOpen={onGo && (() => onGo("invoices"))} openLabel={L("Invoices", "الفواتير")}
+                title={`${i.company_name || "—"} · ${i.invoice_number}`}
+                sub={`${L("Invoice overdue", "فاتورة متأخرة")} ${i.late} ${L("days", "يوم")} · ${fmtMoney(i.amount, i.currency)}`} />
+            ))}
+            {view.expired.map((c) => (
+              <Row key={`e${c.id}`} tone="red" onOpen={onGo && (() => onGo("companies"))} openLabel={L("Companies", "الشركات")}
+                title={c.name}
+                sub={c.days !== null
+                  ? `${L("Subscription ended", "الاشتراك خلص من")} ${-c.days} ${L("days ago", "يوم")} · ${c.end_date}`
+                  : L("Marked expired", "معلّمة منتهية")} />
+            ))}
+            {view.soon.map((c) => (
+              <Row key={`s${c.id}`} tone="amber" onOpen={onGo && (() => onGo("companies"))} openLabel={L("Companies", "الشركات")}
+                title={c.name}
+                sub={`${L("Ends in", "بتخلص بعد")} ${c.days} ${L("days", "يوم")} · ${c.end_date}`} />
+            ))}
+            {view.gaps.map(({ c, missing }) => (
+              <Row key={`g${c.id}`} tone="grey" onOpen={onGo && (() => onGo("companies"))} openLabel={L("Companies", "الشركات")}
+                title={c.name}
+                sub={`${L("Missing", "ناقصها")}: ${missing.join(" · ")}`} />
+            ))}
           </section>
         </>
       )}
@@ -186,54 +134,39 @@ export default function BillingOverviewTab() {
 function Kpi({ label, value, sub, color }) {
   return (
     <div style={{ ...ui.card, marginBottom: 0, borderTop: `4px solid ${color}` }}>
-      <div style={sx.kpiLabel}>{label}</div>
-      <div style={{ ...sx.kpiValue, color }}>{value}</div>
-      <div style={sx.muted}>{sub}</div>
+      <div className="bpx-xs" style={sx.kpiLabel}>{label}</div>
+      <div className="bpx-lg" style={{ fontWeight: 1000, color, marginTop: 4 }}>{value}</div>
+      {sub && <div className="bpx-xs" style={sx.muted}>{sub}</div>}
     </div>
   );
 }
 
-function Gap({ label, value }) {
-  const bad = Number(value) > 0;
+const TONES = {
+  red:   { bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
+  amber: { bg: "#fffbeb", fg: "#92400e", bd: "#fde68a" },
+  grey:  { bg: "#f8fafc", fg: "#334155", bd: "#e2e8f0" },
+};
+
+function Row({ title, sub, tone, onOpen, openLabel }) {
+  const c = TONES[tone] || TONES.grey;
   return (
-    <div style={sx.gap(bad)}>
-      <strong>{value}</strong>
-      <span>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 8, borderRadius: 10, background: c.bg, border: `1px solid ${c.bd}`, color: c.fg }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 950, color: "#0f172a" }}>{title}</div>
+        <div className="bpx-sm" style={{ fontWeight: 800 }}>{sub}</div>
+      </div>
+      {onOpen && <Button onClick={onOpen} style={{ minHeight: 36 }}>{openLabel} →</Button>}
     </div>
   );
 }
 
 const sx = {
+  head: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 },
   empty: { ...ui.card, textAlign: "center", color: "#64748b", fontWeight: 850 },
-  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 },
-  grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 },
-  title: { margin: "0 0 14px", color: "#0f172a", fontSize: 18, fontWeight: 1000 },
-  kpiLabel: { color: "#64748b", fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: "0.05em" },
-  kpiValue: { marginTop: 6, fontSize: 28, fontWeight: 1000 },
-  muted: { color: "#64748b", fontSize: 13, fontWeight: 750 },
-  planRow: { display: "flex", justifyContent: "space-between", gap: 12, padding: "11px 0", borderBottom: "1px solid #e2e8f0" },
-  watchRow: (danger) => ({
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "11px 12px",
-    borderRadius: 8,
-    background: danger ? "#fef2f2" : "#fffbeb",
-    color: danger ? "#991b1b" : "#92400e",
-    marginBottom: 8,
-  }),
-  rowTitle: { color: "#0f172a", fontWeight: 950 },
-  rowMoney: { color: "#0f766e", fontWeight: 1000 },
-  okBox: { padding: 14, borderRadius: 8, background: "#f0fdf4", color: "#166534", fontWeight: 850 },
-  gapGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 },
-  gap: (bad) => ({
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    padding: 14,
-    borderRadius: 8,
-    background: bad ? "#fef2f2" : "#f0fdf4",
-    color: bad ? "#991b1b" : "#166534",
-    border: `1px solid ${bad ? "#fecaca" : "#bbf7d0"}`,
-  }),
+  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 },
+  kpiLabel: { color: "#475569", fontWeight: 900 },
+  muted: { color: "#475569", fontWeight: 750, marginTop: 2 },
+  title: { margin: "0 0 14px", color: "#0f172a", fontWeight: 1000, display: "flex", alignItems: "center", gap: 10 },
+  count: (n) => ({ minWidth: 30, textAlign: "center", padding: "0 10px", borderRadius: 999, background: n ? "#fee2e2" : "#dcfce7", color: n ? "#991b1b" : "#166534" }),
+  ok: { padding: 14, borderRadius: 10, background: "#f0fdf4", color: "#166534", fontWeight: 850 },
 };

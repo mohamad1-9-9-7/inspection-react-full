@@ -3,10 +3,14 @@
 //   🏢 Companies            enter a company (below)
 //   👥 Accounts & Perms     every company's accounts; the permission list
 //                           follows the account's company (AccountsManagementTab)
-//   💳 Billing              companies (disable / re-enable), plans, invoices,
-//                           quotations, seller profile (BillingPlansTab)
+//   💳 Billing              overview, companies (add / edit / disable, card
+//                           picture), plans, quotations, invoices (BillingPlansTab)
 //   🛡️ Security & Server    security controls
 // None of these live in a company's own Settings any more.
+//
+// ONE language button (the header) drives every tab: they all read the
+// shared useSettingsLang() store, and none of them carries its own toggle.
+// A screen is one language at a time — never a label beside its twin.
 //
 // Companies tab — one card per company, shown right after
 // login for a super-admin account only. Picking one sets the active company
@@ -28,6 +32,8 @@ import { setActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { clearAppSession } from "../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
 import { INDUSTRY_CATEGORIES, categoryOf } from "../industries/catalog";
+import { useSettingsLang, LangToggle } from "./settings/_shared/settingsI18n";
+import { companyStatus } from "./settings/_shared/companyBilling";
 
 const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTab"));
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
@@ -35,22 +41,25 @@ const SecurityControlsTab   = lazy(() => import("./settings/SecurityControlsTab"
 const DemoRequestsTab       = lazy(() => import("./settings/DemoRequestsTab"));
 
 const CENTER_TABS = [
-  { id: "companies", icon: "🏢", label: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it" },
-  { id: "accounts",  icon: "👥", label: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open" },
-  { id: "billing",   icon: "💳", label: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Plans, invoices, quotations and company status" },
-  { id: "leads",     icon: "📨", label: "Demo Requests",          ar: "طلبات العرض التجريبي", hint: "Companies that asked for a demo on the public /demo page" },
-  { id: "security",  icon: "🛡️", label: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Record deletion, read-only mode, session timeout and screen lock" },
+  { id: "companies", icon: "🏢", en: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it",                              hintAr: "اختر شركة لتشتغل جوّاها" },
+  { id: "accounts",  icon: "👥", en: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open",               hintAr: "حسابات كل الشركات وشو بيقدروا يفتحوا" },
+  { id: "billing",   icon: "💳", en: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Revenue, companies, plans, quotations and invoices",           hintAr: "الإيراد، الشركات، الخطط، عروض الأسعار والفواتير" },
+  { id: "leads",     icon: "📨", en: "Demo Requests",          ar: "طلبات العرض التجريبي", hint: "Companies that asked for a demo on the public /demo page",      hintAr: "الشركات اللي طلبت عرض تجريبي من صفحة /demo" },
+  { id: "security",  icon: "🛡️", en: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Record deletion, read-only mode, session timeout and screen lock", hintAr: "حذف السجلات، وضع القراءة فقط، مهلة الجلسة وقفل الشاشة" },
 ];
 
 const STATUS_META = {
-  active:    { bg: "#d1fae5", text: "#065f46", dot: "#10b981", label: "Active" },
-  trial:     { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b", label: "Trial" },
-  expired:   { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444", label: "Expired" },
-  suspended: { bg: "#e2e8f0", text: "#475569", dot: "#94a3b8", label: "Suspended" },
+  active:    { bg: "#d1fae5", text: "#065f46", dot: "#10b981", en: "Active",      ar: "فعّالة" },
+  trial:     { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b", en: "Trial",       ar: "تجريبية" },
+  expired:   { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444", en: "Expired",     ar: "منتهية" },
+  suspended: { bg: "#e2e8f0", text: "#475569", dot: "#94a3b8", en: "Suspended",   ar: "موقوفة" },
   // Disabled: its own accounts are locked out; only the super-admin enters.
-  disabled:  { bg: "#1f2937", text: "#f9fafb", dot: "#111827", label: "⛔ Disabled" },
+  disabled:  { bg: "#1f2937", text: "#f9fafb", dot: "#111827", en: "⛔ Disabled", ar: "⛔ معطّلة" },
 };
-const statusKey = (c) => (c.disabled_at ? "disabled" : String(c.status || "active").toLowerCase());
+// The same rule the Billing tabs and the login lock use (end date passed = expired).
+const statusKey = (c) => companyStatus(c);
+
+const OPENS_AR = { "Al Mawashi QMS": "نظام المواشي", "Company app": "تطبيق الشركة" };
 
 // Which category a company belongs to (industries/catalog.js) — drives its
 // colour, icon, the "opens X" tag and the category section it is filed under.
@@ -60,24 +69,35 @@ function industryMeta(raw) {
 }
 
 const SORTS = {
-  name:   { label: "Name (A→Z)", cmp: (a, b) => (a.name || "").localeCompare(b.name || "") },
-  status: { label: "Status",     cmp: (a, b) => statusKey(a).localeCompare(statusKey(b)) || (a.name || "").localeCompare(b.name || "") },
-  plan:   { label: "Plan",       cmp: (a, b) => (a.plan_name || "~").localeCompare(b.plan_name || "~") || (a.name || "").localeCompare(b.name || "") },
+  name:   { en: "Name (A→Z)", ar: "الاسم (أ←ي)", cmp: (a, b) => (a.name || "").localeCompare(b.name || "") },
+  status: { en: "Status",     ar: "الحالة",      cmp: (a, b) => statusKey(a).localeCompare(statusKey(b)) || (a.name || "").localeCompare(b.name || "") },
+  plan:   { en: "Plan",       ar: "الخطة",       cmp: (a, b) => (a.plan_name || "~").localeCompare(b.plan_name || "~") || (a.name || "").localeCompare(b.name || "") },
 };
 
 function readView() {
   try { return localStorage.getItem("pc_view") === "list" ? "list" : "grid"; } catch { return "grid"; }
 }
 
+/* The company's card picture (Billing → Companies → Edit), else its initial. */
+function Ava({ c, grad, small }) {
+  if (c.logo_url) {
+    return <span className={`pc-ava pic${small ? " sm" : ""}`}><img src={c.logo_url} alt="" /></span>;
+  }
+  return <span className={`pc-ava${small ? " sm" : ""}`} style={{ background: grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>;
+}
+
 export default function SelectCompany() {
   const navigate = useNavigate();
+  const { lang, dir, toggle: toggleLang } = useSettingsLang();
+  const ar = lang === "ar";
+  const L = (en, arText) => (ar ? arText : en);
   const [params, setParams] = useSearchParams();
   const tab = CENTER_TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "companies";
   const tabMeta = CENTER_TABS.find((x) => x.id === tab);
   const setTab = (id) => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", id); return n; }, { replace: true });
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(""); // "" | "load" | "net"
   const [now, setNow] = useState(new Date());
 
   // tools
@@ -100,9 +120,9 @@ export default function SelectCompany() {
       const r = await fetch(`${API_BASE}/api/companies`);
       const d = await r.json();
       if (d.ok) setCompanies(d.companies || []);
-      else setErr("Could not load companies.");
+      else setErr("load");
     } catch {
-      setErr("Could not connect to server.");
+      setErr("net");
     }
     setLoading(false);
   }
@@ -193,32 +213,41 @@ export default function SelectCompany() {
     navigate("/", { replace: true });
   }
 
-  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const locale = ar ? "ar-AE-u-nu-latn" : "en-GB";
+  const timeStr = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const hour = now.getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const ownerName = currentUser.displayName || currentUser.name || currentUser.username || "Owner";
+  const greeting = ar
+    ? (hour < 12 ? "صباح الخير" : "مساء الخير")
+    : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
+  const ownerName = currentUser.displayName || currentUser.name || currentUser.username || L("Owner", "المالك");
+  const catLabel = (c) => (ar ? c.labelAr || c.label : c.label);
+  const statusLabel = (m) => (ar ? m.ar : m.en);
+  const opensLabel = (o) => (ar ? OPENS_AR[o] || o : o);
+  const tabLabel = (x) => (ar ? x.ar : x.en);
 
   const pct = (n) => (counts.all ? Math.round((n / counts.all) * 100) : 0);
   const STAT_TILES = [
-    { key: "all",      icon: "🏢", label: "All companies", val: counts.all,      tint: "#0f766e", share: 100 },
-    { key: "active",   icon: "✅", label: "Active",        val: counts.active,   tint: "#10b981", share: pct(counts.active) },
-    { key: "trial",    icon: "⏳", label: "Trial",         val: counts.trial,    tint: "#f59e0b", share: pct(counts.trial) },
-    { key: "expired",  icon: "⚠️", label: "Expired",       val: counts.expired,  tint: "#ef4444", share: pct(counts.expired) },
-    { key: "disabled", icon: "⛔", label: "Disabled",      val: counts.disabled, tint: "#334155", share: pct(counts.disabled) },
+    { key: "all",      icon: "🏢", label: L("All companies", "كل الشركات"), val: counts.all,      tint: "#0f766e", share: 100 },
+    { key: "active",   icon: "✅", label: L("Active", "فعّالة"),            val: counts.active,   tint: "#10b981", share: pct(counts.active) },
+    { key: "trial",    icon: "⏳", label: L("Trial", "تجريبية"),            val: counts.trial,    tint: "#f59e0b", share: pct(counts.trial) },
+    { key: "expired",  icon: "⚠️", label: L("Expired", "منتهية"),           val: counts.expired,  tint: "#ef4444", share: pct(counts.expired) },
+    { key: "disabled", icon: "⛔", label: L("Disabled", "معطّلة"),          val: counts.disabled, tint: "#334155", share: pct(counts.disabled) },
   ];
+  // "Suspended" is a legacy stored value — shown as a chip only while a
+  // company still carries it (new ones are switched off with Disable).
   const FILTERS = [
-    { key: "all", label: "All", n: counts.all },
-    { key: "active", label: "Active", n: counts.active },
-    { key: "trial", label: "Trial", n: counts.trial },
-    { key: "expired", label: "Expired", n: counts.expired },
-    { key: "suspended", label: "Suspended", n: counts.suspended },
-    { key: "disabled", label: "Disabled", n: counts.disabled },
+    { key: "all", label: L("All", "الكل"), n: counts.all },
+    { key: "active", label: L("Active", "فعّالة"), n: counts.active },
+    { key: "trial", label: L("Trial", "تجريبية"), n: counts.trial },
+    { key: "expired", label: L("Expired", "منتهية"), n: counts.expired },
+    ...(counts.suspended ? [{ key: "suspended", label: L("Suspended", "موقوفة"), n: counts.suspended }] : []),
+    { key: "disabled", label: L("Disabled", "معطّلة"), n: counts.disabled },
   ];
   const filtered = query.trim() || statusFilter !== "all" || catFilter !== "all";
 
   return (
-    <div className="pc pc-shell">
+    <div className="pc pc-shell" dir={dir}>
       <style>{PC_CSS}</style>
 
       {/* ── Sidebar ── */}
@@ -228,19 +257,18 @@ export default function SelectCompany() {
           <img src={logo} alt="Al Mawashi" className="pc-logo" />
           <div className="pc-brand-txt">
             <span className="pc-eyebrow">INSPECT PRO</span>
-            <span className="pc-brand-name">Platform Center</span>
+            <span className="pc-brand-name">{L("Platform Center", "مركز المنصّة")}</span>
           </div>
         </div>
 
-        <nav className="pc-nav" role="tablist" aria-label="Platform Center">
+        <nav className="pc-nav" role="tablist" aria-label={L("Platform Center", "مركز المنصّة")}>
           {CENTER_TABS.map((x) => (
             <button key={x.id} type="button" role="tab" aria-selected={tab === x.id}
               onClick={() => setTab(x.id)}
               className={`pc-nav-btn${tab === x.id ? " on" : ""}`}>
               <span aria-hidden="true" className="pc-nav-ico">{x.icon}</span>
               <span className="pc-nav-txt">
-                <span className="pc-nav-label">{x.label}</span>
-                <span className="pc-nav-ar" lang="ar">{x.ar}</span>
+                <span className="pc-nav-label">{tabLabel(x)}</span>
               </span>
               {x.id === "companies" && <span className="pc-nav-n">{counts.all}</span>}
             </button>
@@ -252,37 +280,37 @@ export default function SelectCompany() {
         <div className="pc-clock" title={dateStr}>
           <span className="pc-clock-time">{timeStr}</span>
           <span className="pc-clock-date">{dateStr}</span>
-          <span className="pc-live"><span className="pc-pulse" /> {counts.active} of {counts.all} companies active</span>
+          <span className="pc-live"><span className="pc-pulse" /> {ar ? `${counts.active} من ${counts.all} شركات فعّالة` : `${counts.active} of ${counts.all} companies active`}</span>
         </div>
 
-        <button type="button" className="pc-logout" onClick={logout}>🚪 Back to Login</button>
-        <div className="pc-credit">Built by Eng. Mohammed Abdullah</div>
+        <button type="button" className="pc-logout" onClick={logout}>🚪 {L("Back to Login", "رجوع لتسجيل الدخول")}</button>
+        <div className="pc-credit">{L("Built by Eng. Mohammed Abdullah", "تطوير م. محمد عبدالله")}</div>
       </aside>
 
       {/* ── Main ── */}
       <main className="pc-main">
         <header className="pc-top">
           <div className="pc-top-txt">
-            <span className="pc-crumb">Platform Center <span aria-hidden="true">›</span> {tabMeta.label}</span>
-            <h1 className="pc-h1"><span aria-hidden="true">{tabMeta.icon}</span> {tab === "companies" ? `${greeting}, ${ownerName}` : tabMeta.label}</h1>
-            <p className="pc-sub">{tabMeta.hint}</p>
+            <span className="pc-crumb">{L("Platform Center", "مركز المنصّة")} <span aria-hidden="true">{ar ? "‹" : "›"}</span> {tabLabel(tabMeta)}</span>
+            <h1 className="pc-h1"><span aria-hidden="true">{tabMeta.icon}</span> {tab === "companies" ? `${greeting}${ar ? "، " : ", "}${ownerName}` : tabLabel(tabMeta)}</h1>
+            <p className="pc-sub">{ar ? tabMeta.hintAr : tabMeta.hint}</p>
           </div>
           <div className="pc-top-actions">
             {tab === "companies" && (
               <button type="button" className="pc-btn" onClick={load} disabled={loading}>
-                <span className={loading ? "pc-spin-inline" : ""} aria-hidden="true">↻</span> Refresh
+                <span className={loading ? "pc-spin-inline" : ""} aria-hidden="true">↻</span> {L("Refresh", "تحديث")}
               </button>
             )}
-            {tab !== "billing" && (
-              <button type="button" className="pc-btn" onClick={() => setTab("billing")}>💳 Billing</button>
-            )}
+            {/* The one language switch for the whole Platform Center. */}
+            <LangToggle lang={lang} toggle={toggleLang}
+              style={{ background: "#0f172a", border: "1px solid #0f172a", minHeight: 42, padding: "0 16px" }} />
           </div>
         </header>
 
         <div className="pc-content">
           {tab !== "companies" && (
             <section className="pc-panel" key={tab}>
-              <Suspense fallback={<div className="pc-empty"><span className="pc-spinner" /> Loading…</div>}>
+              <Suspense fallback={<div className="pc-empty"><span className="pc-spinner" /> {L("Loading…", "جاري التحميل…")}</div>}>
                 {tab === "accounts" && <AccountsManagementTab />}
                 {tab === "billing" && <BillingPlansTab />}
                 {tab === "security" && <SecurityControlsTab />}
@@ -308,22 +336,22 @@ export default function SelectCompany() {
                   </span>
                   <span className="pc-stat-val">{loading ? "–" : t.val}</span>
                   <span className="pc-stat-bar"><span style={{ width: `${loading ? 0 : t.share}%` }} /></span>
-                  <span className="pc-stat-pct">{loading ? "" : t.key === "all" ? "total" : `${t.share}% of all`}</span>
+                  <span className="pc-stat-pct">{loading ? "" : t.key === "all" ? L("total", "المجموع") : L(`${t.share}% of all`, `${t.share}% من الكل`)}</span>
                 </button>
               ))}
             </section>
 
             {/* ── Categories: every company is filed under its industry ── */}
-            <section className="pc-cats" aria-label="Categories">
+            <section className="pc-cats" aria-label={L("Categories", "الفئات")}>
               <button type="button" onClick={() => setCatFilter("all")} className={`pc-cat${catFilter === "all" ? " on" : ""}`} style={{ "--tint": "#0f766e", "--grad": "linear-gradient(135deg,#0f766e,#0891b2)" }}>
                 <span className="pc-cat-ico" aria-hidden="true">🗂️</span>
-                <span className="pc-cat-txt"><span className="pc-cat-label">All categories</span><span className="pc-cat-ar" lang="ar">كل الفئات</span></span>
+                <span className="pc-cat-txt"><span className="pc-cat-label">{L("All categories", "كل الفئات")}</span></span>
                 <span className="pc-cat-n">{loading ? "–" : companies.length}</span>
               </button>
               {categories.map((c) => (
                 <button key={c.id} type="button" onClick={() => setCatFilter(c.id)} className={`pc-cat${catFilter === c.id ? " on" : ""}${catCounts[c.id] ? "" : " empty"}`} style={{ "--tint": c.tint, "--grad": c.grad }}>
                   <span className="pc-cat-ico" aria-hidden="true">{c.icon}</span>
-                  <span className="pc-cat-txt"><span className="pc-cat-label">{c.label}</span><span className="pc-cat-ar" lang="ar">{c.labelAr}</span></span>
+                  <span className="pc-cat-txt"><span className="pc-cat-label">{catLabel(c)}</span></span>
                   <span className="pc-cat-n">{loading ? "–" : catCounts[c.id] || 0}</span>
                 </button>
               ))}
@@ -337,12 +365,12 @@ export default function SelectCompany() {
                   ref={searchRef}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by name, plan, contact or industry…"
+                  placeholder={L("Search by name, plan, contact or industry…", "ابحث بالاسم، الخطة، جهة التواصل أو النشاط…")}
                   className="pc-search-in"
                 />
                 {query
-                  ? <button type="button" className="pc-clear" onClick={() => setQuery("")} aria-label="Clear search">✕</button>
-                  : <kbd className="pc-kbd" title="Press / to search">/</kbd>}
+                  ? <button type="button" className="pc-clear" onClick={() => setQuery("")} aria-label={L("Clear search", "مسح البحث")}>✕</button>
+                  : <kbd className="pc-kbd" title={L("Press / to search", "اضغط / للبحث")}>/</kbd>}
               </label>
 
               <div className="pc-chips">
@@ -359,23 +387,23 @@ export default function SelectCompany() {
               </div>
 
               <div className="pc-tool-end">
-                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="pc-select" aria-label="Sort">
+                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="pc-select" aria-label={L("Sort", "الترتيب")}>
                   {Object.entries(SORTS).map(([k, v]) => (
-                    <option key={k} value={k}>Sort: {v.label}</option>
+                    <option key={k} value={k}>{L("Sort", "ترتيب")}: {ar ? v.ar : v.en}</option>
                   ))}
                 </select>
-                <div className="pc-seg" role="group" aria-label="View">
-                  <button type="button" className={view === "grid" ? "on" : ""} onClick={() => setView("grid")} title="Cards">▦</button>
-                  <button type="button" className={view === "list" ? "on" : ""} onClick={() => setView("list")} title="List">☰</button>
+                <div className="pc-seg" role="group" aria-label={L("View", "العرض")}>
+                  <button type="button" className={view === "grid" ? "on" : ""} onClick={() => setView("grid")} title={L("Cards", "بطاقات")}>▦</button>
+                  <button type="button" className={view === "list" ? "on" : ""} onClick={() => setView("list")} title={L("List", "قائمة")}>☰</button>
                 </div>
               </div>
             </section>
 
             {!loading && !err && companies.length > 0 && (
               <div className="pc-result">
-                Showing <b>{visible.length}</b> of {companies.length}
+                {ar ? <>عرض <b>{visible.length}</b> من {companies.length}</> : <>Showing <b>{visible.length}</b> of {companies.length}</>}
                 {filtered && (
-                  <button type="button" className="pc-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setCatFilter("all"); }}>Clear filters</button>
+                  <button type="button" className="pc-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setCatFilter("all"); }}>{L("Clear filters", "مسح الفلاتر")}</button>
                 )}
               </div>
             )}
@@ -388,28 +416,27 @@ export default function SelectCompany() {
             ) : err ? (
               <div className="pc-empty err">
                 <span className="pc-empty-ico">📡</span>
-                {err}
-                <button type="button" className="pc-btn light" onClick={load}>↻ Retry</button>
+                {err === "net" ? L("Could not connect to server.", "تعذّر الاتصال بالسيرفر.") : L("Could not load companies.", "تعذّر تحميل الشركات.")}
+                <button type="button" className="pc-btn light" onClick={load}>↻ {L("Retry", "إعادة المحاولة")}</button>
               </div>
             ) : companies.length === 0 ? (
               <div className="pc-empty">
                 <span className="pc-empty-ico">🏗️</span>
-                No companies yet. Add one from Billing &amp; Subscriptions.
-                <button type="button" className="pc-btn light" onClick={() => setTab("billing")}>💳 Open Billing</button>
+                {L("No companies yet. Add one from Billing & Subscriptions.", "ما في شركات بعد. أضف وحدة من الاشتراكات والفوترة.")}
+                <button type="button" className="pc-btn light" onClick={() => setTab("billing")}>💳 {L("Open Billing", "افتح الفوترة")}</button>
               </div>
             ) : visible.length === 0 ? (
               <div className="pc-empty">
                 <span className="pc-empty-ico">🔍</span>
-                <b>No matches</b>
-                Try another search term or clear the filter.
+                <b>{L("No matches", "ما في نتائج")}</b>
+                {L("Try another search term or clear the filter.", "جرّب كلمة بحث تانية أو امسح الفلتر.")}
               </div>
             ) : sections.map((sec) => (
               <section key={sec.meta.key} className="pc-sec" style={{ "--tint": sec.meta.tint, "--grad": sec.meta.grad }}>
                 <header className="pc-sec-head">
                   <span className="pc-sec-ico" aria-hidden="true">{sec.meta.icon}</span>
-                  <span className="pc-sec-label">{sec.meta.label}</span>
-                  <span className="pc-sec-ar" lang="ar">{sec.meta.labelAr}</span>
-                  <span className="pc-sec-n">{sec.items.length} {sec.items.length === 1 ? "company" : "companies"}</span>
+                  <span className="pc-sec-label">{catLabel(sec.meta)}</span>
+                  <span className="pc-sec-n">{ar ? `${sec.items.length} ${sec.items.length === 1 ? "شركة" : "شركات"}` : `${sec.items.length} ${sec.items.length === 1 ? "company" : "companies"}`}</span>
                 </header>
                 {view === "list" ? (
                   <div className="pc-list">
@@ -419,14 +446,14 @@ export default function SelectCompany() {
                       return (
                         <button key={c.id} type="button" className="pc-row" onClick={() => enter(c)}
                           style={{ "--tint": ind.tint, animationDelay: `${Math.min(i, 12) * 0.03}s` }}>
-                          <span className="pc-ava sm" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
-                          <span className="pc-row-name">{c.name}<span className="pc-row-ind">{ind.icon} {ind.label}</span></span>
-                          <span className="pc-row-meta"><span className="pc-k">Plan</span>{c.plan_name || "—"}</span>
-                          <span className="pc-row-meta"><span className="pc-k">Contact</span>{c.contact_name || "—"}</span>
+                          <Ava c={c} grad={ind.grad} small />
+                          <span className="pc-row-name">{c.name}<span className="pc-row-ind">{ind.icon} {catLabel(ind)}</span></span>
+                          <span className="pc-row-meta"><span className="pc-k">{L("Plan", "الخطة")}</span>{c.plan_name || "—"}</span>
+                          <span className="pc-row-meta"><span className="pc-k">{L("Contact", "التواصل")}</span>{c.contact_name || "—"}</span>
                           <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
-                            <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                            <span className="pc-badge-dot" style={{ background: meta.dot }} />{statusLabel(meta)}
                           </span>
-                          <span className="pc-enter">Enter →</span>
+                          <span className="pc-enter">{L("Enter →", "دخول ←")}</span>
                         </button>
                       );
                     })}
@@ -446,23 +473,23 @@ export default function SelectCompany() {
                         >
                           <span className="pc-card-band" aria-hidden="true" />
                           <span className="pc-card-top">
-                            <span className="pc-ava" style={{ background: ind.grad }}>{c.name?.[0]?.toUpperCase() || "?"}</span>
+                            <Ava c={c} grad={ind.grad} />
                             <span className="pc-badge" style={{ background: meta.bg, color: meta.text }}>
-                              <span className="pc-badge-dot" style={{ background: meta.dot }} />{meta.label}
+                              <span className="pc-badge-dot" style={{ background: meta.dot }} />{statusLabel(meta)}
                             </span>
                           </span>
 
                           <span className="pc-card-name">{c.name}</span>
-                          <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {ind.label}</span>
+                          <span className="pc-ind"><span aria-hidden="true">{ind.icon}</span> {catLabel(ind)}</span>
 
                           <span className="pc-meta">
-                            <span className="pc-meta-row"><span className="pc-k">Plan</span><span className="pc-v">{c.plan_name || "—"}</span></span>
-                            <span className="pc-meta-row"><span className="pc-k">Contact</span><span className="pc-v">{c.contact_name || "—"}</span></span>
+                            <span className="pc-meta-row"><span className="pc-k">{L("Plan", "الخطة")}</span><span className="pc-v">{c.plan_name || "—"}</span></span>
+                            <span className="pc-meta-row"><span className="pc-k">{L("Contact", "التواصل")}</span><span className="pc-v">{c.contact_name || "—"}</span></span>
                           </span>
 
                           <span className="pc-card-foot">
-                            <span className="pc-opens">Opens {ind.opens}</span>
-                            <span className="pc-enter">Enter <span aria-hidden="true" className="pc-arrow">→</span></span>
+                            <span className="pc-opens">{L("Opens", "بيفتح")} {opensLabel(ind.opens)}</span>
+                            <span className="pc-enter">{L("Enter", "دخول")} <span aria-hidden="true" className="pc-arrow">{ar ? "←" : "→"}</span></span>
                           </span>
                         </button>
                       );
@@ -610,6 +637,10 @@ const PC_CSS = `
 .pc .pc-enter{font-weight:900; color:var(--tint, #0f766e); white-space:nowrap}
 .pc .pc-arrow{display:inline-block; transition:transform .18s}
 .pc .pc-card:hover .pc-arrow{transform:translateX(4px)}
+.pc .pc-ava.pic{background:#fff; border:1px solid rgba(15,23,42,.1); overflow:hidden; padding:4px; box-sizing:border-box}
+.pc .pc-ava.pic img{width:100%; height:100%; object-fit:contain; display:block}
+.pc[dir=rtl] .pc-card:hover .pc-arrow{transform:translateX(-4px)}
+.pc[dir=rtl] .pc-nav-btn.on{box-shadow:inset -3px 0 0 #2dd4bf, 0 10px 22px rgba(0,0,0,.18)}
 
 /* list view */
 .pc .pc-list{display:grid; gap:8px}

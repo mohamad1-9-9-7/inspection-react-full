@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { FiAward, FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
+import { FiBarChart2, FiBriefcase, FiCreditCard, FiFileText, FiLayers } from "react-icons/fi";
 import InvoicesTab from "./invoices/InvoicesTab";
 import BillingOverviewTab from "./BillingOverviewTab";
 import CompaniesTab from "./CompaniesTab";
 import PlansTab from "./PlansTab";
 import QuotationsTab from "./quotations/QuotationsTab";
-import SellerProfileTab from "./SellerProfileTab";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { ui } from "./_shared/SettingsUIKit";
 
@@ -15,14 +14,7 @@ const TABS = [
     Icon: FiBarChart2,
     en: "Overview",
     ar: "نظرة عامة",
-    render: () => <BillingOverviewTab />,
-  },
-  {
-    id: "plans",
-    Icon: FiLayers,
-    en: "Plans",
-    ar: "الخطط",
-    render: () => <PlansTab />,
+    render: (go) => <BillingOverviewTab onGo={go} />,
   },
   {
     id: "companies",
@@ -30,6 +22,13 @@ const TABS = [
     en: "Companies",
     ar: "الشركات",
     render: () => <CompaniesTab />,
+  },
+  {
+    id: "plans",
+    Icon: FiLayers,
+    en: "Plans",
+    ar: "الخطط",
+    render: () => <PlansTab />,
   },
   {
     id: "quotations",
@@ -43,14 +42,8 @@ const TABS = [
     Icon: FiCreditCard,
     en: "Invoices",
     ar: "الفواتير",
-    render: (go) => <InvoicesTab onOpenProfile={() => go("seller")} />,
-  },
-  {
-    id: "seller",
-    Icon: FiAward,
-    en: "INSPECT PRO profile",
-    ar: "هوية INSPECT PRO",
-    render: () => <SellerProfileTab />,
+    // INSPECT PRO's own profile opens from the ⚙️ button inside Invoices.
+    render: () => <InvoicesTab />,
   },
 ];
 
@@ -92,7 +85,8 @@ html:has(.bpx.bpx), html:has(.bpx.bpx) body, html:has(.bpx.bpx) #root{ overflow-
 export default function BillingPlansTab({ fullScreen = false }) {
   const { dir, lang } = useSettingsLang();
   const [active, setActiveState] = useState(() => {
-    try { return sessionStorage.getItem(TAB_KEY) || "overview"; } catch { return "overview"; }
+    // "seller" was a tab of its own before it moved into Invoices.
+    try { const s = sessionStorage.getItem(TAB_KEY); return s === "seller" ? "invoices" : s || "overview"; } catch { return "overview"; }
   });
   const setActive = (id) => {
     setActiveState(id);

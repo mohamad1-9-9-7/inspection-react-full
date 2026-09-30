@@ -358,7 +358,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange, sect
                         <td key={op.id} style={{ ...fs.permTd, textAlign:"center" }}>
                           {inert ? (
                             <span style={{ color:"#cbd5e1", fontWeight:900, fontSize:16 }}
-                              title="Only applies to Daily (POS) & Returns reports">—</span>
+                              title={lang === "ar" ? "بتنطبق بس على التقارير اليومية (POS) والمرتجعات" : "Only applies to Daily (POS) & Returns reports"}>—</span>
                           ) : (
                             <label
                               style={{

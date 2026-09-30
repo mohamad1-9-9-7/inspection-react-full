@@ -169,7 +169,7 @@ export const ST = {
 
   // ── Plans tab (header / toolbar / KPIs) ──
   plansEyebrow:  { en: "Billing", ar: "الفوترة" },
-  plansSubtitle: { en: "Create plans, pricing, and account limits used by companies and the subscription panel.", ar: "أنشئ الخطط والأسعار وحدود الحسابات المستخدمة في الشركات ولوحة الاشتراك." },
+  plansSubtitle: { en: "The price lists companies are billed on. Each card shows how many companies use it and what it brings in.", ar: "قوائم الأسعار اللي بتنفوتر عليها الشركات. كل بطاقة بتبيّن كم شركة عليها وشو بتجيب." },
   searchPlans:   { en: "Search plans", ar: "بحث في الخطط" },
   allStatuses:   { en: "All statuses", ar: "كل الحالات" },
   activeOnly:    { en: "Active only", ar: "المفعّلة فقط" },
@@ -212,7 +212,7 @@ export const ST = {
 
   // ── Companies tab ──
   companiesTitle:  { en: "Companies Management", ar: "إدارة الشركات" },
-  companiesSubtitle: { en: "Connect companies to plans, contacts, status, and subscription dates.", ar: "اربط الشركات بالخطط وجهات الاتصال والحالة وتواريخ الاشتراك." },
+  companiesSubtitle: { en: "Add, edit or disable a company: plan, price, contact, dates and its card picture.", ar: "أضف أو عدّل أو عطّل شركة: الخطة، السعر، التواصل، التواريخ وصورة الكرت." },
   searchCompanies: { en: "Search companies", ar: "بحث في الشركات" },
   allPlans:        { en: "All plans", ar: "كل الخطط" },
   businessType:    { en: "Business type / Industry", ar: "نوع النشاط / الصناعة" },

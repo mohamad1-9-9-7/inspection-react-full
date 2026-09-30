@@ -20,14 +20,15 @@ import { loadSeller, normalizeSeller, sellerGaps } from "../_shared/sellerProfil
 import { logSettingsAudit } from "../../../utils/settingsAudit";
 import {
   STATUS, apiInvoiceAction, apiIssueInvoice, apiListInvoices, currencyOf, day, fmtDate, fmtMoney,
-  invoiceKpis, moneyMap, nextPeriod, priceOf, statusOf, todayISO,
+  moneyMap, nextPeriod, priceOf, statusOf, todayISO,
 } from "./invoiceCore";
 import { buildInvoiceHtml, downloadInvoicePdf, printInvoice } from "./invoiceDocument";
+import SellerProfileTab from "../SellerProfileTab";
 
 const audit = (entry) => { try { Promise.resolve(logSettingsAudit(entry)).catch(() => {}); } catch { /* ignore */ } };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-export default function InvoicesTab({ onOpenProfile }) {
+export default function InvoicesTab() {
   const { t, lang, dir } = useSettingsLang();
   const L = useCallback((en, ar) => t({ en, ar }), [t]);
 
@@ -41,6 +42,9 @@ export default function InvoicesTab({ onOpenProfile }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [issuing, setIssuing] = useState(false);
   const [openId, setOpenId] = useState(null);
+  // INSPECT PRO's own details (printed on every invoice) — filled once, so
+  // they sit behind the ⚙️ button here instead of in a tab of their own.
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,7 +69,6 @@ export default function InvoicesTab({ onOpenProfile }) {
   const upsert = (inv) => setInvoices((list) => [inv, ...list.filter((x) => x.id !== inv.id)]
     .sort((a, b) => day(b.issue_date).localeCompare(day(a.issue_date)) || b.id - a.id));
 
-  const kpi = useMemo(() => invoiceKpis(invoices), [invoices]);
   const gaps = useMemo(() => sellerGaps(seller), [seller]);
 
   const visible = useMemo(() => {
@@ -83,6 +86,18 @@ export default function InvoicesTab({ onOpenProfile }) {
   }, [invoices]);
 
   const opened = invoices.find((i) => i.id === openId) || null;
+  const onOpenProfile = () => setProfileOpen(true);
+
+  if (profileOpen) {
+    return (
+      <div dir={dir}>
+        <Button onClick={() => { setProfileOpen(false); load(); }} style={{ marginBottom: 12 }}>
+          {dir === "rtl" ? "→" : "←"} {L("Back to invoices", "رجوع للفواتير")}
+        </Button>
+        <SellerProfileTab />
+      </div>
+    );
+  }
 
   return (
     <div style={ui.page} dir={dir}>
@@ -95,6 +110,7 @@ export default function InvoicesTab({ onOpenProfile }) {
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Button onClick={onOpenProfile}>⚙️ {L("INSPECT PRO profile", "هوية INSPECT PRO")}</Button>
           <Button onClick={load} disabled={loading}>{loading ? "…" : `↻ ${L("Refresh", "تحديث")}`}</Button>
           <Button tone="primary" onClick={() => setIssuing(true)} disabled={!companies.length}>＋ {L("Issue invoice", "إصدار فاتورة")}</Button>
         </div>
@@ -103,18 +119,12 @@ export default function InvoicesTab({ onOpenProfile }) {
       {gaps.length > 0 && (
         <div className="bpx-sm" style={sx.gapBar}>
           <span>⚠️ {L("Your invoices are missing:", "فواتيرك ناقصها:")} <b>{gaps.map((g) => (lang === "ar" ? g.ar : g.en)).join(" · ")}</b></span>
-          {onOpenProfile && <Button onClick={onOpenProfile} style={{ minHeight: 38 }}>{L("Complete the profile", "كمّل الهوية")}</Button>}
+          <Button onClick={onOpenProfile} style={{ minHeight: 38 }}>{L("Complete the profile", "كمّل الهوية")}</Button>
         </div>
       )}
 
       <StatusMessage message={msg} />
 
-      <div style={sx.kpis}>
-        <Kpi tone="#b45309" label={L("Outstanding", "غير محصّل")} value={moneyMap(kpi.outstanding)} />
-        <Kpi tone={kpi.overdueCount ? "#b91c1c" : "#64748b"} label={L("Overdue", "متأخر")} value={moneyMap(kpi.overdue)} sub={`${kpi.overdueCount} ${L("invoice(s)", "فاتورة")}`} />
-        <Kpi tone="#15803d" label={L("Collected this month", "المحصّل هالشهر")} value={moneyMap(kpi.collected)} />
-        <Kpi tone="#0f766e" label={L("Issued this year", "صادرة هالسنة")} value={String(kpi.issuedThisYear)} />
-      </div>
 
       <div style={sx.toolbar}>
         <input style={{ ...ui.input, flex: "1 1 240px", minHeight: 46 }} value={query} onChange={(e) => setQuery(e.target.value)}
@@ -507,15 +517,6 @@ function StatusPill({ status, lang }) {
   );
 }
 
-function Kpi({ label, value, sub, tone }) {
-  return (
-    <div style={{ ...ui.card, marginBottom: 0, borderTop: `4px solid ${tone}`, padding: "14px 16px" }}>
-      <div className="bpx-xs" style={{ color: "#64748b", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
-      <div className="bpx-lg" style={{ fontWeight: 1000, color: tone, marginTop: 4, overflowWrap: "anywhere" }}>{value}</div>
-      {sub && <div className="bpx-xs" style={{ color: "#64748b", fontWeight: 700 }}>{sub}</div>}
-    </div>
-  );
-}
 
 function Fact({ k, v, strong }) {
   return (
@@ -571,7 +572,6 @@ const ISSUE_CSS = `
 const sx = {
   head: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 16 },
   gapBar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e", marginBottom: 14 },
-  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 },
   toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
   chips: { display: "flex", gap: 6, flexWrap: "wrap" },
   chip: (on, s) => ({

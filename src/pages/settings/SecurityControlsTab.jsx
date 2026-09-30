@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import API_BASE from "../../config/api";
-import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
+import { useSettingsLang } from "./_shared/settingsI18n";
 import { BRANCHES, BRANCH_TYPE_META } from "../../config/branches";
 import { Button, ConfirmModal } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
@@ -126,7 +126,7 @@ const GroupLabel = ({ label }) => (
 );
 
 export default function SecurityControlsTab() {
-  const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
+  const { t, dir, lang } = useSettingsLang();
   const [s, setS]   = useState(getSecuritySettings);
   const [saved, setSaved] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
@@ -245,12 +245,6 @@ export default function SecurityControlsTab() {
 
   return (
     <div style={rs.wrap} dir={dir}>
-
-      {/* language toggle */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-        <LangToggle lang={lang} toggle={toggleLang}
-          style={{ background: "#0b1220", border: "1px solid #1e293b" }} />
-      </div>
 
       {/* ── Record Management ── */}
       <GroupLabel label={t("secGrpRecords")} />

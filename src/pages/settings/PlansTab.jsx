@@ -1,9 +1,11 @@
 // src/pages/settings/PlansTab.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import API_BASE from "../../config/api";
-import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
+import { useSettingsLang } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../utils/settingsAudit";
+import { companyStatus, mrrByCurrency, onPlan } from "./_shared/companyBilling";
+import { moneyMap } from "./invoices/invoiceCore";
 
 const CURRENCIES = ["AED", "SAR", "USD", "EUR", "GBP"];
 
@@ -14,7 +16,8 @@ function getUser() {
 }
 
 export default function PlansTab() {
-  const { t, dir, lang, toggle: toggleLang } = useSettingsLang();
+  const { t, dir, lang } = useSettingsLang();
+  const L = (en, ar) => (lang === "ar" ? ar : en);
   const STATUS_COLORS = {
     true:  { bg: "#d1fae5", text: "#065f46", label: t("active")   },
     false: { bg: "#f3f4f6", text: "#6b7280", label: t("inactive") },
@@ -70,8 +73,8 @@ export default function PlansTab() {
 
   async function save() {
     if (!form.name.trim()) { setMsg("❌ " + t("planNameReq")); return; }
-    if (Number(form.price || 0) < 0) { setMsg("❌ Price cannot be negative"); return; }
-    if (Number(form.setup_fee || 0) < 0) { setMsg("❌ Setup fee cannot be negative"); return; }
+    if (Number(form.price || 0) < 0) { setMsg("❌ " + L("Price cannot be negative.", "السعر ما بيكون بالسالب.")); return; }
+    if (Number(form.setup_fee || 0) < 0) { setMsg("❌ " + L("Setup fee cannot be negative.", "رسوم التأسيس ما بتكون بالسالب.")); return; }
     setSaving(true); setMsg("");
     const body = {
       name:         form.name.trim(),
@@ -128,25 +131,14 @@ export default function PlansTab() {
     const q = query.trim().toLowerCase();
     return plans
       .map((plan) => {
-        const assigned = companies.filter((company) => {
-          const byName = String(company.plan_name || "").toLowerCase() === String(plan.name || "").toLowerCase();
-          const byId = String(company.plan_id || "") === String(plan.id || "");
-          return byName || byId;
-        });
-        const activeAssigned = assigned.filter((company) => String(company.status || "active").toLowerCase() === "active");
-        const mrr = activeAssigned.reduce((sum, company) => sum + Number(company.plan_price || plan.price || 0), 0);
-        return { ...plan, assignedCount: assigned.length, activeAssignedCount: activeAssigned.length, mrr };
+        const assigned = companies.filter((company) => onPlan(company, plan));
+        const activeAssigned = assigned.filter((company) => companyStatus(company) === "active");
+        // Same rule as the Overview's MRR: each company at its own price.
+        return { ...plan, assignedCount: assigned.length, activeAssignedCount: activeAssigned.length, mrr: mrrByCurrency(activeAssigned) };
       })
       .filter((plan) => statusFilter === "all" || (statusFilter === "active" ? plan.is_active : !plan.is_active))
       .filter((plan) => !q || [plan.name, plan.description, plan.currency].join(" ").toLowerCase().includes(q));
   }, [plans, companies, query, statusFilter]);
-
-  const totals = useMemo(() => {
-    const activePlans = plans.filter((plan) => plan.is_active).length;
-    const mrr = planRows.reduce((sum, plan) => sum + Number(plan.mrr || 0), 0);
-    const assigned = planRows.reduce((sum, plan) => sum + Number(plan.assignedCount || 0), 0);
-    return { activePlans, mrr, assigned };
-  }, [plans, planRows]);
 
   return (
     <div style={ui.page} dir={dir}>
@@ -155,23 +147,13 @@ export default function PlansTab() {
         title={t("plansTitle")}
         subtitle={t("plansSubtitle")}
         actions={
-          <>
-          <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
-          {isSuperAdmin && (
+          isSuperAdmin && (
             <Button onClick={openNew} tone="primary">+ {t("newPlan")}</Button>
-          )}
-          </>
+          )
         }
       />
 
       <StatusMessage message={msg ? { kind: msg.startsWith("✅") ? "ok" : "err", text: msg } : null} />
-
-      <div style={kpiGridStyle}>
-        <MetricCard label={t("totalPlans")} value={plans.length} />
-        <MetricCard label={t("activePlans")} value={totals.activePlans} />
-        <MetricCard label={t("assignedCompanies")} value={totals.assigned} />
-        <MetricCard label={t("mrrEstimate")} value={totals.mrr.toLocaleString("en-US")} />
-      </div>
 
       <div style={toolbarStyle}>
         <input
@@ -289,8 +271,8 @@ export default function PlansTab() {
                     {Number(plan.setup_fee) > 0 && (
                       <LimitChip icon="🧾" label={t("setupFee")} val={`${plan.setup_fee} ${plan.currency || "AED"} · ${t("oneTime")}`} />
                     )}
-                    <LimitChip icon="Companies" label={t("assigned")} val={`${plan.activeAssignedCount}/${plan.assignedCount}`} />
-                    <LimitChip icon="MRR" label={t("revenue")} val={`${plan.mrr} ${plan.currency || "AED"}`} />
+                    <LimitChip icon="🏢" label={L("Companies (active / all)", "الشركات (فعّالة / الكل)")} val={`${plan.activeAssignedCount} / ${plan.assignedCount}`} />
+                    <LimitChip icon="💰" label={L("Monthly revenue", "الإيراد الشهري")} val={moneyMap(plan.mrr)} />
                   </div>
                 </div>
 
@@ -319,15 +301,6 @@ function LimitChip({ icon, label, val }) {
   );
 }
 
-function MetricCard({ label, value }) {
-  return (
-    <div style={{ ...ui.card, marginBottom: 0, padding: "14px 16px" }}>
-      <div style={{ color:"#64748b", fontSize:12, fontWeight:900, textTransform:"uppercase", letterSpacing:"0.04em" }}>{label}</div>
-      <div style={{ color:"#0f172a", fontSize:26, fontWeight:950, marginTop:4 }}>{value}</div>
-    </div>
-  );
-}
-
 function Field({ label, children, style }) {
   return (
     <div style={style}>
@@ -342,39 +315,10 @@ const inputStyle = {
   padding:"11px 14px", fontSize:18, color:"#1e293b",
   fontFamily:"Cairo, sans-serif", boxSizing:"border-box", background:"#fff",
 };
-const kpiGridStyle = {
-  display:"grid",
-  gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",
-  gap:12,
-  marginBottom:14,
-};
 const toolbarStyle = {
   display:"flex",
   flexWrap:"wrap",
   alignItems:"center",
   gap:10,
   marginBottom:16,
-};
-const btnStyle = (bg) => ({
-  background:bg, color:"#fff", border:"none", borderRadius:8,
-  padding:"11px 24px", fontWeight:700, fontSize:18, cursor:"pointer",
-});
-const btnSmall = (bg) => ({
-  background:bg, color:"#fff", border:"none", borderRadius:7,
-  padding:"8px 16px", fontWeight:700, fontSize:16, cursor:"pointer",
-});
-const msgStyle = (msg) => ({
-  background: msg.startsWith("✅") ? "#d1fae5" : "#fee2e2",
-  color:       msg.startsWith("✅") ? "#065f46" : "#991b1b",
-  border:`1px solid ${msg.startsWith("✅") ? "#6ee7b7" : "#fca5a5"}`,
-  borderRadius:8, padding:"12px 18px", fontWeight:700,
-  fontSize:18, marginBottom:16,
-});
-const overlayStyle = {
-  position:"fixed", inset:0, background:"rgba(0,0,0,.45)",
-  display:"flex", alignItems:"center", justifyContent:"center", zIndex:999,
-};
-const modalStyle = {
-  background:"#fff", borderRadius:14, padding:"28px 32px",
-  maxWidth:380, width:"100%", boxShadow:"0 20px 60px rgba(0,0,0,.25)",
 };
