@@ -11,6 +11,7 @@ import { sweetsAreaLabel } from "./sweetsAreas";
 import EmailSendModal from "../../../pages/shared/EmailSendModal";
 import EmailSendHistory from "../../../pages/shared/EmailSendHistory";
 import { makeNcrEmailConfig } from "./ncrEmailConfig";
+import API_BASE from "../../../config/api";
 
 /* The NC number is allocated by the server as `payload.refNo` ("NCR-000042").
    Reports written before that still only carry the hand-typed headRow.ncNo, so
@@ -32,13 +33,7 @@ const STATUS_TONE = {
 const statusOf = (p) => p?.correctiveActionExtras?.status || "Open";
 const toneOf = (p) => STATUS_TONE[statusOf(p)] || STATUS_TONE.Open;
 
-/* ===== API base ===== */
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const CRA =
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) || undefined;
-let VITE;
-try { VITE = import.meta.env?.VITE_API_URL; } catch {}
-const API_BASE = (VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
+/* ===================== API base → src/config/api.js ===================== */
 const IS_SAME_ORIGIN = (() => {
   try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; }
 })();

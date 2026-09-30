@@ -4,15 +4,9 @@ import { useNavigate } from "./nav";
 import { SWEETS_MODULES, SWEETS_MONTHLY_FOCUS } from "./content";
 import { SWEETS_AREAS } from "../reports/sweetsAreas";
 import { useGlobalLang, getModuleNameShort, getModuleName } from "./TrainingSessionsList.helpers";
+import API_BASE from "../../../config/api";
 
-/* ===================== API base ===================== */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-    API_ROOT_DEFAULT
-).replace(/\/$/, "");
+/* ===================== API base → src/config/api.js ===================== */
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE = "sweets_training_annual_plan";

@@ -6,6 +6,7 @@ import { IsoShell, ISO_UI } from "../../../../pages/monitor/branches/_shared/bra
 import { eventReportDate } from "../../reports/sweetsRecord";
 import { BlankFormPrintButton } from "../../../../pages/monitor/branches/_shared/blankFormPrint";
 import { Bi, bi } from "../../reports/bilingual";
+import API_BASE from "../../../../config/api";
 
 /* Arabic twins for the on-screen sheet only — the printed blank form and the
    saved payload stay English. */
@@ -44,13 +45,6 @@ const DEST_AR = { BRANCH: "فرع", "CUSTOMER DELIVERY": "توصيل عميل", 
  * - AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR) (Yes/No)
  * - MANUAL HANDLING CONTROLS APPLIED (Yes/No)
  */
-
-const API_BASE_RAW =
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) ||
-  "https://inspection-server-4nvj.onrender.com";
-
-const API_BASE = String(API_BASE_RAW).replace(/\/$/, "");
 
 const TYPE = "sweets_cars_loading_inspection";
 

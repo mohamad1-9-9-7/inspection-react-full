@@ -1,16 +1,9 @@
 import React from "react";
 
-/* ===================== API base ===================== */
+/* ===================== API base → src/config/api.js ===================== */
 import { SWEETS_MODULES_AR, SWEETS_MODULES_AR_SHORT, SWEETS_QUIZ_BANK } from "./content";
-
-export const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-
-export const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-    API_ROOT_DEFAULT
-).replace(/\/$/, "");
+import API_BASE from "../../../config/api";
+export { API_BASE };
 
 export const REPORTS_URL = `${API_BASE}/api/reports`;
 export const TYPE = "sweets_training_session";
@@ -80,23 +73,16 @@ export function getModuleNameShort(name, lang = "en") {
   return name;
 }
 
-/* ===================== ✅ PUBLIC ORIGIN (Netlify/Vite/CRA) ===================== */
+/* ===================== ✅ PUBLIC ORIGIN ===================== */
 /**
  * الهدف: أي رابط يتولد يكون أونلاين حتى لو أنت فاتح محلي.
- * Netlify/Vite:  import.meta.env.VITE_PUBLIC_ORIGIN
  * CRA:           process.env.REACT_APP_PUBLIC_ORIGIN
  * Window override (اختياري): window.__QCS_PUBLIC_ORIGIN__
+ * (The app is built with CRA: the old Vite import.meta branch never had a
+ *  value, and Jest cannot parse it.)
  */
-let VITE_PUBLIC_ORIGIN;
-try {
-  VITE_PUBLIC_ORIGIN = import.meta.env?.VITE_PUBLIC_ORIGIN;
-} catch {
-  VITE_PUBLIC_ORIGIN = undefined;
-}
-
 export const PUBLIC_ORIGIN = String(
   (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-    VITE_PUBLIC_ORIGIN ||
     (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
     (typeof window !== "undefined" && window.location ? window.location.origin : "")
 ).replace(/\/$/, "");

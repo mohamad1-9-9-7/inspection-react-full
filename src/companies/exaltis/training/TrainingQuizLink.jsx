@@ -7,15 +7,9 @@ import {
   getModuleName,
   LANG_STORAGE_KEY,
 } from "./TrainingSessionsList.helpers";
+import API_BASE from "../../../config/api";
 
-/* ===== API base (same pattern) ===== */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-    API_ROOT_DEFAULT
-).replace(/\/$/, "");
+/* ===== API base → src/config/api.js (one source of truth) ===== */
 
 /* ===== small helpers ===== */
 function norm(s) {

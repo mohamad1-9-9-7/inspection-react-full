@@ -1,19 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
 
-/* ===================== API base (CRA + Vite safe) ===================== */
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+/* ===================== API base → src/config/api.js (one source of truth) ===================== */
 
-const CRA_URL =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL)
-    ? process.env.REACT_APP_API_URL
-    : undefined;
-
-let VITE_URL;
-try { VITE_URL = import.meta.env?.VITE_API_URL; } catch {}
-
-const API_BASE = String(VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
 const IS_SAME_ORIGIN = (() => {
@@ -48,7 +37,6 @@ async function deleteReportById(id) {
   }
   return true;
 }
-
 
 /* ===================== Visual Inspection Params (English only) ===================== */
 /* NEW safety controls + existing hygiene controls (same ids as input page) */

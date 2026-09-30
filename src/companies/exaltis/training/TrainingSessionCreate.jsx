@@ -7,15 +7,9 @@ import { SWEETS_MODULES } from "./content";
 import { SWEETS_AREAS } from "../reports/sweetsAreas";
 import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 import { QUIZ_BANK } from './TrainingSessionsList.helpers';
+import API_BASE from "../../../config/api";
 
-/* ===================== API base ===================== */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-    API_ROOT_DEFAULT
-).replace(/\/$/, "");
+/* ===================== API base → src/config/api.js ===================== */
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE = "sweets_training_session";
@@ -258,8 +252,6 @@ function pickQuestionsForModule(moduleName, liveBank = {}) {
     ar: [{ q: "هذا القسم يحتاج أسئلة من QA.", options: ["موافق"], correct: 0 }],
   };
 }
-
-
 
 /* ===================== Sub-components (defined OUTSIDE to preserve focus) ===================== */
 const InfoCard = ({ label, value, children }) => (

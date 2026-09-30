@@ -1,19 +1,10 @@
 // src/companies/exaltis/cars/pages/CleaningReports.jsx
 // Confectionery copy of the truck cleaning reports browser (sweets_* type).
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
 
-/* ================= API base (CRA + Vite + window override) ================= */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const fromWindow =
-  typeof window !== "undefined" ? window.__QCS_API__ : undefined;
-const fromProcess =
-  typeof process !== "undefined"
-    ? (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL)
-    : undefined;
-let fromVite;
-try { fromVite = import.meta.env && import.meta.env.VITE_API_URL; } catch { fromVite = undefined; }
+/* ================= API base → src/config/api.js (one source of truth) ================= */
 
-const API_BASE = String(fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT).replace(/\/$/, "");
 const IS_SAME_ORIGIN = (() => {
   try { return new URL(API_BASE).origin === window.location.origin; }
   catch { return false; }
