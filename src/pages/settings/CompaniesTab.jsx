@@ -48,6 +48,7 @@ export default function CompaniesTab() {
   const [saving,    setSaving]    = useState(false);
   const [msg,       setMsg]       = useState("");
   const [confirm,   setConfirm]   = useState(null); // null | { company, action: "disable" | "enable" }
+  const [deleting,  setDeleting]  = useState(null); // company being deleted (DeleteCompanyModal)
   const [query,     setQuery]     = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
@@ -257,6 +258,20 @@ export default function CompaniesTab() {
       </div>
 
       {/* Disable / re-enable confirmation */}
+      {deleting && (
+        <DeleteCompanyModal
+          company={deleting}
+          lang={lang}
+          onClose={() => setDeleting(null)}
+          onDeleted={(name) => {
+            setDeleting(null);
+            logSettingsAudit({ area: "companies", action: "delete_company", target: name, before: deleting, after: null, reason: "Company deleted with all its data" });
+            setMsg("✅ " + (lang === "ar" ? `انحذفت "${name}" مع كل بياناتها.` : `"${name}" was deleted with all its data.`));
+            load(); setTimeout(() => setMsg(""), 4000);
+          }}
+        />
+      )}
+
       <ConfirmModal
         open={!!confirm}
         title={confirm?.action === "enable" ? t("enableCompanyQ") : t("disableCompanyQ")}
@@ -448,12 +463,20 @@ export default function CompaniesTab() {
 
                   {/* Actions */}
                   {isSuperAdmin && (
-                    <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                    <div style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
                       <Button onClick={() => openEdit(c)} tone="secondary" style={{ minHeight:36 }}>{t("edit")}</Button>
                       {c.disabled_at ? (
                         <Button onClick={() => setConfirm({ company: c, action: "enable" })} tone="primary" style={{ minHeight:36 }}>{t("enableCompany")}</Button>
                       ) : Number(c.id) !== 1 && (
                         <Button onClick={() => setConfirm({ company: c, action: "disable" })} tone="danger" style={{ minHeight:36 }}>{t("disableCompany")}</Button>
+                      )}
+                      {/* The primary company (Al Mawashi) can never be deleted. */}
+                      {Number(c.id) !== 1 && (
+                        <Button onClick={() => setDeleting(c)} tone="secondary"
+                          style={{ minHeight:36, color:"#b91c1c", borderColor:"#fecaca" }}
+                          title={lang === "ar" ? "حذف الشركة نهائياً مع كل بياناتها" : "Delete the company and all its data for good"}>
+                          🗑 {lang === "ar" ? "حذف" : "Delete"}
+                        </Button>
                       )}
                     </div>
                   )}
@@ -482,6 +505,150 @@ export function CompanyAvatar({ name, logo, size = 58 }) {
     <div style={{ ...box, background:"linear-gradient(135deg,#3b82f6,#1d4ed8)", color:"#fff",
       display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:Math.round(size * 0.38) }}>
       {name?.[0]?.toUpperCase() || "?"}
+    </div>
+  );
+}
+
+/* Deleting a company erases it and everything it owns (server:
+   POST /api/companies/:id/delete). The owner first sees what will go,
+   then types the company's exact name AND the super-admin password —
+   the server re-checks both and locks after 5 wrong passwords. */
+const DELETE_ERRORS = {
+  wrong_password:     { en: "Wrong password.", ar: "كلمة السر غلط." },
+  name_mismatch:      { en: "The name you typed does not match the company.", ar: "الاسم اللي كتبته مش مطابق لاسم الشركة." },
+  too_many_attempts:  { en: "Too many wrong passwords — try again in 15 minutes.", ar: "كلمة السر غلط كذا مرة — جرّب بعد 15 دقيقة." },
+  primary_company:    { en: "The primary company cannot be deleted.", ar: "الشركة الأساسية ما بتنحذف." },
+  super_admin_required: { en: "Only the platform owner can delete a company.", ar: "مالك المنصّة وحده بيقدر يحذف شركة." },
+  not_found:          { en: "This company no longer exists.", ar: "الشركة مش موجودة." },
+};
+
+function DeleteCompanyModal({ company, lang, onClose, onDeleted }) {
+  const ar = lang === "ar";
+  const L = (en, a) => (ar ? a : en);
+  const [counts, setCounts] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/api/companies/${company.id}/delete-preview`)
+      .then((r) => r.json())
+      .then((d) => { if (!alive) return; if (d.ok) setCounts(d.counts); else setLoadErr(d.error || "error"); })
+      .catch(() => alive && setLoadErr("net"));
+    return () => { alive = false; };
+  }, [company.id]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+
+  const nameOk = name.trim() === String(company.name || "").trim();
+  const canDelete = nameOk && password && counts && !busy;
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!canDelete) return;
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`${API_BASE}/api/companies/${company.id}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, confirmName: name.trim() }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok) { onDeleted(company.name); return; }
+      const m = DELETE_ERRORS[d.error];
+      let text = m ? (ar ? m.ar : m.en) : L("Could not delete — nothing was changed.", "ما انحذفت — ما تغيّر شي.");
+      if (d.error === "wrong_password" && d.attemptsLeft != null) {
+        text += " " + L(`${d.attemptsLeft} attempts left.`, `باقي ${d.attemptsLeft} محاولات.`);
+      }
+      setErr(text);
+      setPassword("");
+    } catch {
+      setErr(L("Connection error — nothing was changed.", "خطأ بالاتصال — ما تغيّر شي."));
+    }
+    setBusy(false);
+  }
+
+  const rows = counts ? [
+    [L("Reports", "التقارير"), counts.reports],
+    [L("User accounts", "حسابات المستخدمين"), counts.accounts],
+    [L("Audit trail entries", "سجل التعديلات"), counts.audit_rows],
+    [L("E-mail log", "سجل الإيميلات"), counts.emails],
+    [L("Invoices", "الفواتير"), counts.invoices],
+    [L("Catalogue items", "أصناف الكتالوج"), counts.catalog_items],
+  ] : [];
+
+  return (
+    <div role="dialog" aria-modal="true" dir={ar ? "rtl" : "ltr"}
+      onClick={() => !busy && onClose()}
+      style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(15,23,42,.55)", display:"grid", placeItems:"center", padding:16 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit}
+        style={{ width:"min(520px, 100%)", maxHeight:"92vh", overflow:"auto", background:"#fff", borderRadius:16,
+          boxShadow:"0 30px 80px rgba(0,0,0,.35)", borderTop:"5px solid #dc2626" }}>
+        <div style={{ padding:"20px 22px 6px" }}>
+          <div style={{ fontWeight:1000, color:"#991b1b" }} className="bpx-lg">
+            🗑 {L("Delete company for good", "حذف الشركة نهائياً")}
+          </div>
+          <div style={{ fontWeight:900, color:"#0f172a", marginTop:4 }}>{company.name}</div>
+        </div>
+
+        <div style={{ padding:"8px 22px 4px" }}>
+          <div style={{ padding:"10px 12px", borderRadius:10, background:"#fef2f2", border:"1px solid #fecaca", color:"#991b1b", fontWeight:800 }}>
+            {L("This cannot be undone. The company and everything below are erased, and its files are removed from storage. To only switch it off, use Disable instead.",
+               "ما في تراجع. الشركة وكل شي تحت بينمسح، وملفاتها بتنشال من التخزين. إذا بدك توقفها بس، استعمل «تعطيل».")}
+          </div>
+
+          <div style={{ marginTop:12 }}>
+            {loadErr ? (
+              <div style={{ color:"#991b1b", fontWeight:800 }}>
+                {DELETE_ERRORS[loadErr] ? (ar ? DELETE_ERRORS[loadErr].ar : DELETE_ERRORS[loadErr].en) : L("Could not load what will be deleted.", "تعذّر تحميل اللي رح ينحذف.")}
+              </div>
+            ) : !counts ? (
+              <div style={{ color:"#64748b", fontWeight:800 }}>{L("Counting its data…", "عم نعدّ بياناتها…")}</div>
+            ) : (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"6px 16px", padding:"10px 12px", borderRadius:10, background:"#f8fafc", border:"1px solid #e2e8f0" }}>
+                {rows.map(([k, v]) => (
+                  <React.Fragment key={k}>
+                    <span style={{ color:"#475569", fontWeight:800 }}>{k}</span>
+                    <b style={{ color: v ? "#b91c1c" : "#94a3b8", textAlign:"end" }}>{Number(v || 0).toLocaleString("en-US")}</b>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <label style={{ display:"block", marginTop:14 }}>
+            <span style={{ display:"block", fontWeight:800, color:"#334155", marginBottom:6 }}>
+              {L("Type the company name to confirm:", "اكتب اسم الشركة للتأكيد:")} <b dir="auto">{company.name}</b>
+            </span>
+            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="off" dir="auto"
+              style={{ ...inputStyle, borderColor: name && !nameOk ? "#fca5a5" : "#e2e8f0" }} />
+          </label>
+
+          <label style={{ display:"block", marginTop:12 }}>
+            <span style={{ display:"block", fontWeight:800, color:"#334155", marginBottom:6 }}>
+              {L("Your super-admin password:", "كلمة سر السوبر أدمن:")}
+            </span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+              style={inputStyle} />
+          </label>
+
+          {err && <div role="alert" style={{ marginTop:10, color:"#991b1b", fontWeight:900 }}>❌ {err}</div>}
+        </div>
+
+        <div style={{ display:"flex", gap:10, justifyContent:"flex-end", padding:"16px 22px 20px" }}>
+          <Button onClick={onClose} disabled={busy} tone="secondary">{L("Cancel", "إلغاء")}</Button>
+          <Button type="submit" tone="danger" disabled={!canDelete}>
+            {busy ? L("Deleting…", "عم ينحذف…") : `🗑 ${L("Delete for good", "احذف نهائياً")}`}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
