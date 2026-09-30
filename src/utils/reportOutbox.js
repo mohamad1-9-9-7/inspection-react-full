@@ -126,6 +126,12 @@ async function withTimeout(ms, fn) {
   try { return await fn(ctrl.signal); } finally { clearTimeout(t); }
 }
 
+/** One send of a spec ({ body, id?, byDate? }) with kept photos uploaded
+    first — for a page that queues under its OWN outbox kind because its replay
+    must check something before sending (e.g. a duplicate employee number). */
+export const sendReportSpec = (spec, timeoutMs = REPLAY_TIMEOUT_MS) =>
+  withTimeout(timeoutMs, (signal) => send(spec, signal));
+
 registerOutboxHandler(KIND, (spec) => withTimeout(REPLAY_TIMEOUT_MS, (signal) => send(spec, signal)));
 // Coolers sheets queued by the first version (qcs-coolers only) replay the same way.
 registerOutboxHandler("qcs-coolers", (body) =>

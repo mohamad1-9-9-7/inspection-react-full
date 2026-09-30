@@ -1,8 +1,9 @@
 // src/pages/industry-kit/health-cards/OHCUpload.jsx — OHC card upload, shared by the kit companies
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE from "../../../config/api";
 import { uploadImage } from "../../../utils/imageUpload";
+import { dropKeptPhoto, isKeptPhoto, isTransient, keepPhotoOrUpload } from "../../../utils/offlineOutbox";
+import { findOhcByAppNo, saveOhc } from "./ohcOutbox";
 import { Bi } from "../i18n/bilingual";
 import { kitType, kitIndustry } from "../kitType";
 
@@ -14,65 +15,8 @@ import { kitType, kitIndustry } from "../kitType";
 const TYPE = () => kitType("ohc_certificate");
 
 /* ========= Helpers ========= */
-async function jsonFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    ...opts,
-  });
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-  return { ok: res.ok, status: res.status, data };
-}
-
-// Normalize server list
-function extractReportsList(data) {
-  let arr = [];
-  if (Array.isArray(data)) arr = data;
-  else if (Array.isArray(data?.items)) arr = data.items;
-  else if (Array.isArray(data?.data?.items)) arr = data.data.items;
-  else if (Array.isArray(data?.data)) arr = data.data;
-  else if (Array.isArray(data?.results)) arr = data.results;
-  else if (Array.isArray(data?.rows)) arr = data.rows;
-  else if (Array.isArray(data?.list)) arr = data.list;
-  return arr
-    .filter((x) => (x?.type ? x.type === TYPE() : true))
-    .map((x) => x.payload || x);
-}
-
-// Try to detect duplicates on server by appNo (two passes)
-async function appNoExistsOnServer(appNo) {
-  const direct = await jsonFetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(
-      TYPE()
-    )}&appNo=${encodeURIComponent(appNo)}&limit=1`
-  );
-  if (direct.ok) {
-    const list = extractReportsList(direct.data);
-    if (
-      list.some(
-        (p) => String(p?.appNo || "").trim() === String(appNo).trim()
-      )
-    )
-      return true;
-  }
-
-  const wide = await jsonFetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(
-      TYPE()
-    )}&limit=1000&sort=-createdAt`
-  );
-  if (wide.ok) {
-    const list = extractReportsList(wide.data);
-    return list.some(
-      (p) => String(p?.appNo || "").trim() === String(appNo).trim()
-    );
-  }
-  return false;
-}
+// Duplicate check + saving (online now, or kept offline and sent later with
+// the check re-run at send time) live in ./ohcOutbox.js.
 
 /* The certificate used to be stored inside the payload as base64 — one record
    ran ~87 KB, of which 99.4% was the image, and reading the list cost 12.9 MB.
@@ -238,7 +182,13 @@ export default function OHCUpload() {
     setMsg({ type: "", text: "" });
 
     try {
-      const exists = await appNoExistsOnServer(trimmedAppNo);
+      // Offline the check cannot run here — it runs again when the card is sent.
+      let exists = false;
+      try {
+        exists = !!(await findOhcByAppNo(TYPE(), trimmedAppNo));
+      } catch (err) {
+        if (!isTransient(err)) throw err;
+      }
       if (exists) {
         setBusy(false);
         setMsg({
@@ -266,37 +216,25 @@ export default function OHCUpload() {
         savedAt: new Date().toISOString(),
       };
 
-      const body = JSON.stringify({
-        reporter: kitIndustry(),
-        type: TYPE(),
-        payload,
-      });
-
-      const { ok, status, data } = await jsonFetch(
-        `${API_BASE}/api/reports`,
-        {
-          method: "POST",
-          body,
-        }
-      );
-
-      setBusy(false);
-
-      if (!ok) {
-        const serverMsg =
-          data?.message ||
-          (status >= 500
-            ? "Server error. Please try again later."
-            : "Failed to save. Please check the data and try again.");
-
+      let result;
+      try {
+        result = await saveOhc({ reporter: kitIndustry(), type: TYPE(), payload });
+      } catch (err) {
+        setBusy(false);
+        const status = Number(err?.status) || 0;
         setMsg({
           type: "error",
-          text: `Failed to save to server (HTTP ${status}). ${serverMsg} · فشل الحفظ.`,
+          text: status
+            ? `Failed to save to server (HTTP ${status}). ${err.message || ""} · فشل الحفظ.`
+            : `${err?.message || err} · فشل الحفظ.`,
         });
         return;
       }
 
-      setMsg({ type: "ok", text: "✅ Saved to server successfully. · تم الحفظ بنجاح." });
+      setBusy(false);
+      setMsg(result.queued
+        ? { type: "ok", text: "📴 No connection — the card is kept on this device and will be sent automatically when the connection is back (the employee number is checked then). · لا يوجد اتصال — حُفظت البطاقة على الجهاز وستُرسل تلقائياً عند عودة الاتصال." }
+        : { type: "ok", text: "✅ Saved to server successfully. · تم الحفظ بنجاح." });
 
       setForm({
         appNo: "",
@@ -329,7 +267,9 @@ export default function OHCUpload() {
     }
     try {
       setMsg({ type: "", text: "⏳ Uploading image… · جارٍ رفع الصورة…" });
-      const url = await uploadImage(file, TYPE());
+      // Without a connection the photo is kept on this device (blob: URL) and
+      // uploaded when the card is sent.
+      const url = await keepPhotoOrUpload(file, (f) => uploadImage(f, TYPE()));
       setImageData(url);
       setImageMeta({ name: file.name, type: file.type || "image/jpeg" });
       setMsg({ type: "", text: "" });
@@ -344,6 +284,7 @@ export default function OHCUpload() {
   }
 
   function removeImage() {
+    if (isKeptPhoto(imageData)) dropKeptPhoto(imageData);
     setImageData("");
     setImageMeta({ name: "", type: "" });
   }

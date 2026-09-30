@@ -1,8 +1,9 @@
 // src/pages/industry-kit/external-certs/CertUpload.jsx — add an external certificate (BFS / PIC / EFST / HACCP…), shared by the kit companies
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE from "../../../config/api";
 import { uploadImage as uploadImageToServer } from "../../../utils/imageUpload";
+import { dropKeptPhoto, isKeptPhoto, keepPhotoOrUpload } from "../../../utils/offlineOutbox";
+import { newOutboxId, saveReport } from "../../../utils/reportOutbox";
 import { Bi, bi } from "../i18n/bilingual";
 import { kitType, kitIndustry } from "../kitType";
 
@@ -14,20 +15,6 @@ import { kitType, kitIndustry } from "../kitType";
 const TYPE = () => kitType("external_certificate");
 
 /* ========= Helpers ========= */
-async function jsonFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    ...opts,
-  });
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-  return { ok: res.ok, status: res.status, data };
-}
-
 // Compress image to File (1280px / 0.8 quality) — for Cloudinary upload
 async function compressToFile(file, { maxDim = 1280, quality = 0.8 } = {}) {
   const dataURL = await new Promise((resolve, reject) => {
@@ -255,6 +242,8 @@ export default function TrainingCertificatesBFS() {
   // حذف شهادة
   const removeCertificateRow = (index) => {
     setCerts((prev) => {
+      // A photo that never left this device goes with its row.
+      if (isKeptPhoto(prev[index]?.imageUrl)) dropKeptPhoto(prev[index].imageUrl);
       if (prev.length === 1) {
         return [makeEmptyCert()];
       }
@@ -299,6 +288,12 @@ export default function TrainingCertificatesBFS() {
     setBusy(true);
     setMsg({ type: "", text: "" });
 
+    // Each certificate keeps ONE outbox id for all its save attempts, so saving
+    // again after a partial failure (or a save kept offline) never files the
+    // same certificate twice — the server turns a repeat into an update.
+    const ids = new Map(certs.map((c) => [c, c.outboxId || newOutboxId()]));
+    setCerts((prev) => prev.map((c) => (ids.has(c) ? { ...c, outboxId: ids.get(c) } : c)));
+
     try {
       const results = [];
 
@@ -316,23 +311,20 @@ export default function TrainingCertificatesBFS() {
           imageUrl: cert.imageUrl || undefined,          // Cloudinary URL فقط
           imageName: cert.imageName || undefined,
           savedAt: new Date().toISOString(),
+          _outboxId: ids.get(cert),
         };
 
-        const body = JSON.stringify({
-          reporter: kitIndustry(),
-          type: TYPE(),
-          payload,
-        });
-
-        const { ok, status, data } = await jsonFetch(
-          `${API_BASE}/api/reports`,
-          {
-            method: "POST",
-            body,
-          }
-        );
-
-        results.push({ ok, status, data });
+        // Without a connection the certificate (and a photo taken offline)
+        // waits on this device and is sent automatically later.
+        try {
+          const r = await saveReport({
+            body: { reporter: kitIndustry(), type: TYPE(), payload },
+            label: `Certificate — ${employee.name || employee.employeeNo} · ${courseTypeToSave}`,
+          });
+          results.push({ ok: true, queued: r.queued });
+        } catch (err) {
+          results.push({ ok: false, status: Number(err?.status) || 0, data: { message: err?.message } });
+        }
       }
 
       setBusy(false);
@@ -352,9 +344,12 @@ export default function TrainingCertificatesBFS() {
         return;
       }
 
+      const kept = results.filter((x) => x.queued).length;
       setMsg({
         type: "ok",
-        text: `✅ Saved ${results.length} certificate(s) successfully. · تم حفظ ${results.length} شهادة.`,
+        text: kept
+          ? `📴 No connection — ${kept} certificate(s) kept on this device; they will be sent automatically when the connection is back. · لا يوجد اتصال — حُفظت ${kept} شهادة على الجهاز وستُرسل تلقائياً.`
+          : `✅ Saved ${results.length} certificate(s) successfully. · تم حفظ ${results.length} شهادة.`,
       });
 
       setEmployee({
@@ -396,7 +391,9 @@ export default function TrainingCertificatesBFS() {
 
     try {
       const compressed = await compressToFile(file);
-      const url = await uploadImageToServer(compressed, TYPE());
+      // Without a connection the photo is kept on this device (blob: URL) and
+      // uploaded when the certificate is sent.
+      const url = await keepPhotoOrUpload(compressed, (f) => uploadImageToServer(f, TYPE()));
       setCerts((prev) => {
         const next = [...prev];
         next[index] = { ...next[index], imageUrl: url, imageName: file.name };
@@ -417,6 +414,7 @@ export default function TrainingCertificatesBFS() {
   function removeCertImage(index) {
     setCerts((prev) => {
       const next = [...prev];
+      if (isKeptPhoto(next[index]?.imageUrl)) dropKeptPhoto(next[index].imageUrl);
       next[index] = { ...next[index], imageUrl: "", imageName: "" };
       return next;
     });
