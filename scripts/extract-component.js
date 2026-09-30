@@ -155,7 +155,7 @@ if (op.mode === "jsx") {
   replacement = `<${op.name}${keyAttr}${props.map((p) => ` ${p}={${p}}`).join("")} />`;
   const body = dedent(src.slice(el.node.start, el.node.end));
   newText = [...header(), ...importLines([...moduleImports]), "",
-    `export function ${op.name}({ ${props.join(", ")} }) {`, "  return (", indent(body, "    "), "  );", "}", ""].join(NL);
+    `export function ${op.name}(${props.length ? `{ ${props.join(", ")} }` : ""}) {`, "  return (", indent(body, "    "), "  );", "}", ""].join(NL);
   console.log(`${op.name}: JSX lines ${el.node.loc.start.line}-${el.node.loc.end.line} · ${props.length} props`);
 } else if (op.mode === "hook") {
   const stmts = comp.get("body").get("body").filter((s) => s.node.loc.start.line >= op.from && s.node.loc.end.line <= op.through);
