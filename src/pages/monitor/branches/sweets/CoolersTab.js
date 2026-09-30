@@ -7,6 +7,7 @@ import {
   reportId,
 } from "../_shared/reportApi";
 import CoolerSetupPanel from "./CoolerSetupPanel";
+import { companyScopedKey } from "./sweetsRecord";
 import {
   COOLER_COUNT,
   accentOf,
@@ -56,18 +57,21 @@ const SWEETS_PRODUCTS = [
 ];
 
 /* ===== Draft (localStorage) ===== */
-const DRAFT_KEY = "sweets_coolers_draft_v1";
+/* Per company: the platform owner can open two sweets companies on the same
+   browser, and an unsaved sheet from one must never prefill the other's. */
+const DRAFT_KEY_BASE = "sweets_coolers_draft_v1";
+const draftKey = () => companyScopedKey(DRAFT_KEY_BASE);
 /* A draft left over from an earlier, unsaved session is only useful for
    TODAY's sheet. Reusing an older one would silently load a stale date +
    partial readings under what looks like today's tab, and saving could
    PUT-overwrite a different day's already-submitted report. */
 const loadDraft = () => {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(draftKey());
     if (!raw) return {};
     const draft = JSON.parse(raw);
     if (draft && draft.date && draft.date !== todayDubaiISO()) {
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      try { localStorage.removeItem(draftKey()); } catch {}
       return {};
     }
     return draft || {};
@@ -456,7 +460,7 @@ export default function CoolersTab(props) {
   useEffect(() => {
     try {
       localStorage.setItem(
-        DRAFT_KEY,
+        draftKey(),
         JSON.stringify({
           date,
           verifiedByManager,
@@ -686,7 +690,7 @@ export default function CoolersTab(props) {
         if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create coolers report");
       }
 
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      try { localStorage.removeItem(draftKey()); } catch {}
       alert(`✅ Coolers saved for ${date}. · تم حفظ البرادات.`);
     } catch (e) {
       alert(`❌ Failed to save · فشل الحفظ: ${e.message || e}`);
