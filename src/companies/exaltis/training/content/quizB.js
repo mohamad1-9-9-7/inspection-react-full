@@ -1,4 +1,4 @@
-// src/pages/sweets-training/content/quizB.js
+// src/companies/exaltis/training/content/quizB.js
 // Trainee quiz bank, part B (modules 8–13). Same shape as quizA.js.
 const q = (difficulty, q_en, q_ar, options_en, options_ar, correct) =>
   ({ difficulty, q_en, q_ar, options_en, options_ar, correct });

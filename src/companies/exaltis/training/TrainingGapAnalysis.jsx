@@ -1,4 +1,4 @@
-// src/pages/training/TrainingGapAnalysis.jsx
+// src/companies/exaltis/training/TrainingGapAnalysis.jsx
 // Shows per-employee training gap: which modules are done vs missing.
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from "./nav";

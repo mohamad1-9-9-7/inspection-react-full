@@ -1,8 +1,8 @@
-// src/pages/monitor/branches/sweets/InternalAuditView.jsx
+// src/companies/exaltis/reports/InternalAuditView.jsx
 import React, { useState, useEffect, useCallback } from "react";
-import API_BASE from "../../../../config/api";
-import SignatureName from "../../../shared/SignatureName";
-import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../config/api";
+import SignatureName from "../../../pages/shared/SignatureName";
+import { canDelete } from "../../../utils/perms";
 
 /* ===== API base ===== */
 

@@ -1,4 +1,4 @@
-// src/pages/sweets-cars/pages/CleaningReports.jsx
+// src/companies/exaltis/cars/pages/CleaningReports.jsx
 // Confectionery copy of the truck cleaning reports browser (sweets_* type).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 

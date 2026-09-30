@@ -1,13 +1,13 @@
-// src/pages/monitor/branches/sweets/PestControlView.jsx
+// src/companies/exaltis/reports/PestControlView.jsx
 // Pest Control Log — records list (month filter, search, KPIs, next-visit tracker).
 
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
-import { deleteReport, listReports, reportId } from "../_shared/reportApi";
+import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../../../pages/monitor/branches/_shared/branchViewKit";
+import { deleteReport, listReports, reportId } from "../../../pages/monitor/branches/_shared/reportApi";
 import { pdfSafeText } from "./pdfImageUtils";
-import { canDelete } from "../../../../utils/perms";
+import { canDelete } from "../../../utils/perms";
 import { businessDateOf, enLabel } from "./sweetsRecord";
 
 const TYPE = "sweets_pest_control";

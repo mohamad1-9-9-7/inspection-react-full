@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/coolerDefs.js
+// src/companies/exaltis/reports/coolerDefs.js
 //
 // 🧊 تعريف وحدات التخزين — الاسم · النوع · الحد الأدنى/الأعلى.
 // Storage-unit definitions for the Temperature Control record: what each
@@ -26,7 +26,7 @@
 // PUT /api/reports upserts on (type, reportDate), so there is always one row.
 // localStorage is a first-paint cache only — never a standalone store.
 
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 import { companyScopedKey } from "./sweetsRecord";
 
 export const COOLERS_CONFIG_TYPE = "sweets_coolers_config";

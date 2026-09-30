@@ -1,8 +1,8 @@
-// src/pages/monitor/branches/sweets/StaffSicknessView.jsx
+// src/companies/exaltis/reports/StaffSicknessView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import API_BASE from "../../../../config/api";
-import SignatureName from "../../../shared/SignatureName";
-import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../config/api";
+import SignatureName from "../../../pages/shared/SignatureName";
+import { canDelete } from "../../../utils/perms";
 
 /* ===== API base ===== */
 

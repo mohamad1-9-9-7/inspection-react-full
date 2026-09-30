@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/SweetsDailyLog.jsx
+// src/companies/exaltis/reports/SweetsDailyLog.jsx
 // One engine for every schema-driven sweets daily log (dailyLogSchemas.js):
 // the entry sheet, the saved-sheets browser and the read-only sheet with the
 // standard toolbar (Edit · Excel · PDF · Print · Delete from _sweetsReportKit).
@@ -11,9 +11,9 @@
 // ready-made component through inputFor(type) / viewFor(type).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import { canDelete, canEdit } from "../../../../utils/perms";
-import { getLatestReport, getReportRowByDate, listReports, reportDateOf, reportId } from "../_shared/reportApi";
+import API_BASE from "../../../config/api";
+import { canDelete, canEdit } from "../../../utils/perms";
+import { getLatestReport, getReportRowByDate, listReports, reportDateOf, reportId } from "../../../pages/monitor/branches/_shared/reportApi";
 import { SweetsReportActions, excelFromNode, pdfFromNode, printNode } from "./_sweetsReportKit";
 import { schemaByType } from "./dailyLogSchemas";
 import { containsOf, loadAllergenMatrix, mayContainOf } from "./allergenMatrixData";

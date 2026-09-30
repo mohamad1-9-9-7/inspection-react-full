@@ -1,11 +1,11 @@
-// src/pages/monitor/branches/sweets/CoolersTab.js
+// src/companies/exaltis/reports/CoolersTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getLatestReport,
   getReportRowByDate,
   payloadOf,
   reportId,
-} from "../_shared/reportApi";
+} from "../../../pages/monitor/branches/_shared/reportApi";
 import CoolerSetupPanel from "./CoolerSetupPanel";
 import { companyScopedKey } from "./sweetsRecord";
 import {
@@ -26,8 +26,8 @@ import {
   storageOptions,
   warnBandOf,
 } from "./coolerDefs";
-import { canEdit, getCurrentUser } from "../../../../utils/perms";
-import { notifyOutOfRange } from "../../../../utils/notifications";
+import { canEdit, getCurrentUser } from "../../../utils/perms";
+import { notifyOutOfRange } from "../../../utils/notifications";
 import { Bi, bi } from "./bilingual";
 
 function todayDubaiISO() {

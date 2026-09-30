@@ -1,7 +1,7 @@
-// src/pages/sweets-settings/SweetsSettingsHub.jsx
+// src/companies/exaltis/settings/SweetsSettingsHub.jsx
 // Settings card for the Confectionery (sweets) company-app. Same visual
 // language as the sweets HACCP hub (teal hero + module cards). Admin-only —
-// the card carries `adminOnly` in industries/sweets/index.js.
+// the card carries `adminOnly` in companies/exaltis/manifest.js.
 //
 // First module: Excel export of every sweets report. It is the SAME
 // ExcelBackupTab Al Mawashi's Settings uses (one sheet per report in its view
@@ -9,10 +9,10 @@
 // catalog's "sweets" card so only this company's report types are listed.
 // Data is company-scoped by the server token, so nothing else can leak in.
 import React, { Suspense, lazy, useState } from "react";
-import { Bi } from "../monitor/branches/sweets/bilingual";
-import { getActiveCompanyName } from "../../utils/companyContext";
+import { Bi } from "../reports/bilingual";
+import { getActiveCompanyName } from "../../../utils/companyContext";
 
-const ExcelBackupTab = lazy(() => import("../settings/ExcelBackupTab"));
+const ExcelBackupTab = lazy(() => import("../../../pages/settings/ExcelBackupTab"));
 
 const MODULES = [
   {

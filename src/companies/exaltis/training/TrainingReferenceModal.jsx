@@ -1,4 +1,4 @@
-// src/pages/training/TrainingReferenceModal.jsx
+// src/companies/exaltis/training/TrainingReferenceModal.jsx
 // Shared trainer reference card — used by TrainingSessionCreate AND TrainingSessionsList
 import React, { useState } from 'react';
 import { CompanyMark, companyLine } from "./brand";

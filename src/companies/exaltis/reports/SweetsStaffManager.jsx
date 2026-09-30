@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/SweetsStaffManager.jsx
+// src/companies/exaltis/reports/SweetsStaffManager.jsx
 //
 // 👥 The confectionery staff list editor — opened from the forms that read it
 // (Personal Hygiene, Sick Employee). There is no separate settings screen in

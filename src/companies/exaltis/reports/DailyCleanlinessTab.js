@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/DailyCleanlinessTab.js
+// src/companies/exaltis/reports/DailyCleanlinessTab.js
 import { Bi } from "./bilingual";
 import React, { useMemo, useState } from "react";
 import {
@@ -6,7 +6,7 @@ import {
   getReportRowByDate,
   payloadOf,
   reportId,
-} from "../_shared/reportApi";
+} from "../../../pages/monitor/branches/_shared/reportApi";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -271,7 +271,7 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
 }
 
 /* -------- Default template --------
-   Confectionery premises (one branch, see src/industries/sweets/index.js).
+   Confectionery premises (one branch, see src/companies/exaltis/manifest.js).
    Only a NEW sheet starts from this list; a saved report keeps its own rows. */
 const TEMPLATE_SECTIONS = [
   { title: "Hand Washing Station", items: ["Soap & sanitizer available", "Paper towels available", "Hair nets / masks / gloves available", "Hot & cold water"] },

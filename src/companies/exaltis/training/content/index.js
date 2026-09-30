@@ -1,4 +1,4 @@
-// src/pages/sweets-training/content/index.js
+// src/companies/exaltis/training/content/index.js
 // Everything the sweets training pages know about WHAT is taught. The copied
 // pages import from here instead of carrying the other company's modules.
 import { QUIZ_A } from "./quizA";

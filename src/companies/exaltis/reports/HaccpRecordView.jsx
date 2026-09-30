@@ -1,9 +1,9 @@
-// src/pages/monitor/branches/sweets/HaccpRecordView.jsx
+// src/companies/exaltis/reports/HaccpRecordView.jsx
 // Browse list for the generic HACCP hub records (see HaccpRecordInput). One
 // component, reused per module via the `reportType` prop — each module's data
 // stays isolated by its own sweets_* type, independent of Al Mawashi.
 import React, { useCallback, useEffect, useState } from "react";
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 
 const STATUS_TONE = {
   Compliant: { bg: "#ecfdf5", fg: "#065f46", bd: "#6ee7b7" },

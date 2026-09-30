@@ -1,4 +1,4 @@
-// src/pages/sweets-training/nav.js
+// src/companies/exaltis/training/nav.js
 // The sweets training pages live INSIDE the company app (card "training"),
 // not on /training/* routes — those belong to the other company. The copied
 // pages still call navigate("/training/sessions") etc.; this drop-in

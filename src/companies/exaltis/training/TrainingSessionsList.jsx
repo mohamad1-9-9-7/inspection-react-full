@@ -1,11 +1,11 @@
-// src/pages/training/TrainingSessionsList.jsx
+// src/companies/exaltis/training/TrainingSessionsList.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "./nav";
 import { CompanyMark, companyLine, companyName } from "./brand";
 import { QRCodeCanvas } from 'qrcode.react';
 import TrainingReferenceModal, { MODULE_DETAILS_BI, parseRefSections, LETTER_PALETTE } from './TrainingReferenceModal';
-import { exportNodeToPdf, safeFileName, pdfStageStyle } from "../../utils/nodeToPdf";
+import { exportNodeToPdf, safeFileName, pdfStageStyle } from "../../../utils/nodeToPdf";
 
 import {
   REPORTS_URL,
@@ -32,7 +32,7 @@ import {
   useGlobalLang, // ✅ unified language hook
   getModuleName, // ✅ AR/EN module name helper
 } from "./TrainingSessionsList.helpers";
-import { uploadImage as uploadImageToServer } from "../../utils/imageUpload";
+import { uploadImage as uploadImageToServer } from "../../../utils/imageUpload";
 
 /* ===================== ✅ Participant images (Cloudinary, max 2/each) ===================== */
 const MAX_PARTICIPANT_IMAGES = 2;

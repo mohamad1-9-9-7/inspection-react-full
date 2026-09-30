@@ -1,4 +1,4 @@
-// src/pages/sweets-training/content/quizA.js
+// src/companies/exaltis/training/content/quizA.js
 // Trainee quiz bank, part A (modules 1–7). 5 Easy + 5 Medium + 5 Hard each.
 // Shape = the other system's QUIZ_BANK: { difficulty, q_en, q_ar,
 // options_en, options_ar, correct } — `correct` is the option index.

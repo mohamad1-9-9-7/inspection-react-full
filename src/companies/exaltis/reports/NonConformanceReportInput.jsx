@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/NonConformanceReportInput.jsx
+// src/companies/exaltis/reports/NonConformanceReportInput.jsx
 //
 // Non-Conformance Report (NCR) — entry form.
 //
@@ -29,7 +29,7 @@ import {
   getReportRowByDate,
   payloadOf,
   reportId,
-} from "../_shared/reportApi";
+} from "../../../pages/monitor/branches/_shared/reportApi";
 import { SWEETS_AREAS, canonicalSweetsArea, isKnownSweetsArea } from "./sweetsAreas";
 import { Bi, bi } from "./bilingual";
 

@@ -1,4 +1,4 @@
-// src/pages/sweets-training/content/references.js
+// src/companies/exaltis/training/content/references.js
 // Trainer reference per module. Format read by parseRefSections():
 //   "A) English section title — summary"   then English body lines,
 //   "أ) Arabic section title"               then Arabic body lines.

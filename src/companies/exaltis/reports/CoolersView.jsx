@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/CoolersView.jsx
+// src/companies/exaltis/reports/CoolersView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActionBar,
@@ -7,15 +7,15 @@ import {
   GlassShell,
   ReportActions,
   ResponsiveReportLayout,
-} from "../_shared/branchViewKit";
+} from "../../../pages/monitor/branches/_shared/branchViewKit";
 import {
   deleteReportByDate,
   getReportPayloadByDate,
   listReportDates,
   reportDateOf,
   saveReport,
-} from "../_shared/reportApi";
-import { canEdit } from "../../../../utils/perms";
+} from "../../../pages/monitor/branches/_shared/reportApi";
+import { canEdit } from "../../../utils/perms";
 import {
   accentOf,
   defForStorageKey,

@@ -1,9 +1,9 @@
-// src/pages/sweets-ohc/OHCUpload.jsx
+// src/companies/exaltis/ohc/OHCUpload.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE from "../../config/api";
-import { uploadImage } from "../../utils/imageUpload";
-import { Bi } from "../monitor/branches/sweets/bilingual";
+import API_BASE from "../../../config/api";
+import { uploadImage } from "../../../utils/imageUpload";
+import { Bi } from "../reports/bilingual";
 
 /* ========= API ========= */
 

@@ -36,7 +36,7 @@ export const MODULES = {
     label: "EXALTIS — confectionery system",
     labelAr: "EXALTIS — نظام الحلويات",
     industry: "sweets",
-    load: () => import("../industries/sweets"),
+    load: () => import("./exaltis/manifest"),
   },
   /* Starters: a new customer of these kinds opens on the shared kit until its
      own module is programmed (then it gets its own entry here). */

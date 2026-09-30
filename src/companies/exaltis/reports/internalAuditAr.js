@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/internalAuditAr.js
+// src/companies/exaltis/reports/internalAuditAr.js
 //
 // Arabic twin of every Internal Audit checklist question and section title,
 // keyed by the question CODE (and the English title). Display only — the saved

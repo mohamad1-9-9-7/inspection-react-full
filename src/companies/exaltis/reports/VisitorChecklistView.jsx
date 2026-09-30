@@ -1,7 +1,7 @@
-// src/pages/monitor/branches/sweets/VisitorChecklistView.jsx
+// src/companies/exaltis/reports/VisitorChecklistView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import API_BASE from "../../../../config/api";
-import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../config/api";
+import { canDelete } from "../../../utils/perms";
 
 /* ===== API base ===== */
 

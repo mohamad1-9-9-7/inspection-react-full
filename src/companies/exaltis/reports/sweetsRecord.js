@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/sweetsRecord.js
+// src/companies/exaltis/reports/sweetsRecord.js
 //
 // Record-key helpers for sweets reports that can happen SEVERAL times a day
 // (a rejected product, a pest-control visit, a training session…).
@@ -14,7 +14,7 @@
 // Daily sheets (one per day: hygiene, cleanliness, coolers, daily logs) keep a
 // plain-day reportDate on purpose — re-opening the day's sheet is the feature.
 
-import { getActiveCompany } from "../../../../utils/companyContext";
+import { getActiveCompany } from "../../../utils/companyContext";
 
 /** Unique reportDate for an event on `day` (YYYY-MM-DD). */
 export function eventReportDate(day) {

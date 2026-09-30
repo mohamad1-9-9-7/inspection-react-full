@@ -1,4 +1,4 @@
-// src/pages/sweets-training/SweetsTrainingHub.jsx
+// src/companies/exaltis/training/SweetsTrainingHub.jsx
 // The confectionery company's Internal Training, inside the company app
 // (card "training"). Same feature set as the other company's /training
 // system — home, create session, sessions & quizzes & certificates, annual

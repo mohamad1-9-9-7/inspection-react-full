@@ -1,11 +1,11 @@
-// src/pages/monitor/branches/sweets/PersonalHygieneTab.js
+// src/companies/exaltis/reports/PersonalHygieneTab.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 import {
   getLatestReport,
   getReportRowByDate,
   reportId,
-} from "../_shared/reportApi";
+} from "../../../pages/monitor/branches/_shared/reportApi";
 import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
 import SweetsStaffManager from "./SweetsStaffManager";
 import { Bi, bi } from "./bilingual";

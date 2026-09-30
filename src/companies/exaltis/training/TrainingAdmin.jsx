@@ -1,4 +1,4 @@
-// src/pages/training/TrainingAdmin.jsx
+// src/companies/exaltis/training/TrainingAdmin.jsx
 // 🛠️ Training Administration Console — bilingual EN/AR
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "./nav";

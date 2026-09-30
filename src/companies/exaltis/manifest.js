@@ -1,8 +1,8 @@
-// src/industries/sweets/index.js
+// src/companies/exaltis/manifest.js
 // Sweets (Confectionery) industry template.
 //
 // Each report reuses the EXACT QCS report design (copied into
-// src/pages/monitor/branches/sweets/, English, with sweets_* report types so
+// src/companies/exaltis/reports/, English, with sweets_* report types so
 // data never mixes with any other company). Company data is additionally
 // isolated by company_id at the API layer.
 //
@@ -13,9 +13,9 @@
 // Add a report: create/copy its Input + View components, then add one entry
 // to REPORTS below. Nothing else changes.
 import { lazy } from "react";
-import { DAILY_LOG_SCHEMAS } from "../../pages/monitor/branches/sweets/dailyLogSchemas";
-import { guideFor } from "../../pages/monitor/branches/sweets/sweetsReportGuides";
-import { arOf } from "../../pages/monitor/branches/sweets/bilingual";
+import { DAILY_LOG_SCHEMAS } from "./reports/dailyLogSchemas";
+import { guideFor } from "./reports/sweetsReportGuides";
+import { arOf } from "./reports/bilingual";
 
 const REPORT_PAGES = [
   {
@@ -23,64 +23,64 @@ const REPORT_PAGES = [
     icon: "🧼",
     label: "Personal Hygiene",
     desc: "Personal hygiene checklist",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/PersonalHygieneTab")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/PersonalHygieneView")),
+    Input: lazy(() => import("./reports/PersonalHygieneTab")),
+    View: lazy(() => import("./reports/PersonalHygieneView")),
   },
   {
     type: "sweets-clean",
     icon: "🧽",
     label: "Daily Cleanliness",
     desc: "Daily cleaning checklist",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/DailyCleanlinessTab")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/DailyCleanlinessView")),
+    Input: lazy(() => import("./reports/DailyCleanlinessTab")),
+    View: lazy(() => import("./reports/DailyCleanlinessView")),
   },
   {
     type: "sweets-coolers",
     icon: "🌡️",
     label: "Cooler Temperatures",
     desc: "5 coolers + freezer temperature log",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/CoolersTab")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/CoolersView")),
+    Input: lazy(() => import("./reports/CoolersTab")),
+    View: lazy(() => import("./reports/CoolersView")),
   },
   {
     type: "sweets_visitor_checklist",
     icon: "🚶",
     label: "Visitor Checklist",
     desc: "Visitor log & hygiene compliance",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/VisitorChecklistInput")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/VisitorChecklistView")),
+    Input: lazy(() => import("./reports/VisitorChecklistInput")),
+    View: lazy(() => import("./reports/VisitorChecklistView")),
   },
   {
     type: "sweets_non_conformance",
     icon: "⚠️",
     label: "Non-Conformance",
     desc: "Non-conformance reports (NCR)",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/NonConformanceReportInput")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/NonConformanceReportsView")),
+    Input: lazy(() => import("./reports/NonConformanceReportInput")),
+    View: lazy(() => import("./reports/NonConformanceReportsView")),
   },
   {
     type: "sweets_product_rejection",
     icon: "🚫",
     label: "Product Rejection",
     desc: "Rejected products & decisions",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/ProductRejectionInput")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/ProductRejectionView")),
+    Input: lazy(() => import("./reports/ProductRejectionInput")),
+    View: lazy(() => import("./reports/ProductRejectionView")),
   },
   {
     type: "sweets_pest_control",
     icon: "🐜",
     label: "Pest Control",
     desc: "Pest control visits & findings",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/PestControlInput")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/PestControlView")),
+    Input: lazy(() => import("./reports/PestControlInput")),
+    View: lazy(() => import("./reports/PestControlView")),
   },
   {
     type: "sweets_staff_sickness",
     icon: "🤒",
     label: "Sick Employee",
     desc: "Staff sickness / fitness to work",
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/StaffSicknessInput")),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/StaffSicknessView")),
+    Input: lazy(() => import("./reports/StaffSicknessInput")),
+    View: lazy(() => import("./reports/StaffSicknessView")),
   },
   // Schema-driven daily log sheets (Dubai Municipality / HACCP records).
   // Fields + compliance limits live in sweets/dailyLogSchemas.js; one engine
@@ -90,8 +90,8 @@ const REPORT_PAGES = [
     icon: s.icon,
     label: s.label,
     desc: s.desc,
-    Input: lazy(() => import("../../pages/monitor/branches/sweets/SweetsDailyLog").then((m) => ({ default: m.inputFor(s.type) }))),
-    View: lazy(() => import("../../pages/monitor/branches/sweets/SweetsDailyLog").then((m) => ({ default: m.viewFor(s.type) }))),
+    Input: lazy(() => import("./reports/SweetsDailyLog").then((m) => ({ default: m.inputFor(s.type) }))),
+    View: lazy(() => import("./reports/SweetsDailyLog").then((m) => ({ default: m.viewFor(s.type) }))),
   })),
 ];
 
@@ -175,8 +175,8 @@ const sweets = {
       viewLabel: "View Certificates",
       viewDesc: "Browse saved OHC certificates",
       viewIcon: "🗂️",
-      Input: lazy(() => import("../../pages/sweets-ohc/OHCUpload")),
-      View: lazy(() => import("../../pages/sweets-ohc/OHCView")),
+      Input: lazy(() => import("./ohc/OHCUpload")),
+      View: lazy(() => import("./ohc/OHCView")),
     },
     {
       // Inspection (Internal Audit) — its own Add / View pages, isolated
@@ -193,8 +193,8 @@ const sweets = {
       viewLabel: "View Audits",
       viewDesc: "Browse saved audits",
       viewIcon: "🗂️",
-      Input: lazy(() => import("../../pages/monitor/branches/sweets/InternalAuditInput")),
-      View: lazy(() => import("../../pages/monitor/branches/sweets/InternalAuditView")),
+      Input: lazy(() => import("./reports/InternalAuditInput")),
+      View: lazy(() => import("./reports/InternalAuditView")),
     },
     {
       // Training Certificates (BFS / PIC / EFST / HACCP) — Add / View pages,
@@ -211,13 +211,13 @@ const sweets = {
       viewLabel: "View Certificates",
       viewDesc: "Browse training certificates",
       viewIcon: "🗂️",
-      Input: lazy(() => import("../../pages/sweets-certs/CertUpload")),
-      View: lazy(() => import("../../pages/sweets-certs/CertView")),
+      Input: lazy(() => import("./certs/CertUpload")),
+      View: lazy(() => import("./certs/CertView")),
     },
     {
       // Internal Training — the full training system (sessions, quiz links,
       // certificates, annual plan & yearly summary, gap analysis, settings),
-      // copied from the other company's structure into pages/sweets-training
+      // copied from the other company's structure into companies/exaltis/training
       // with its own sweets_training_* types and confectionery modules.
       // (The earlier single-record sweets_training_record stays in backups.)
       id: "training",
@@ -226,19 +226,19 @@ const sweets = {
       desc: "Sessions, quizzes, certificates & annual plan",
       icon: "🎓",
       grad: "linear-gradient(135deg,#16a34a,#15803d)",
-      Hub: lazy(() => import("../../pages/sweets-training/SweetsTrainingHub")),
+      Hub: lazy(() => import("./training/SweetsTrainingHub")),
     },
     {
       // Vehicles hub — loading checks (truck temp ≤ 5 °C) + daily truck
       // cleaning, entry and reports. Same design as the fleet hub, but its own
-      // sweets-cars copies and sweets_* report types.
+      // companies/exaltis/cars copies and sweets_* report types.
       id: "cars",
       kind: "hub",
       label: "Vehicles",
       desc: "Loading checks & truck cleaning",
       icon: "🚚",
       grad: "linear-gradient(135deg,#2563eb,#7c3aed)",
-      Hub: lazy(() => import("../../pages/sweets-cars/SweetsCarsHub")),
+      Hub: lazy(() => import("./cars/SweetsCarsHub")),
     },
     {
       // HACCP hub — placeholder module grid only (Supplier Evaluation, SOP,
@@ -250,7 +250,7 @@ const sweets = {
       desc: "Food safety modules",
       icon: "🛡️",
       grad: "linear-gradient(135deg,#0f766e,#0891b2)",
-      Hub: lazy(() => import("../../pages/monitor/branches/sweets/HaccpHub")),
+      Hub: lazy(() => import("./reports/HaccpHub")),
     },
     {
       // Company settings — admins only (GenericIndustryApp hides adminOnly
@@ -264,7 +264,7 @@ const sweets = {
       desc: "Company tools — export all reports to Excel",
       icon: "⚙️",
       grad: "linear-gradient(135deg,#475569,#0f766e)",
-      Hub: lazy(() => import("../../pages/sweets-settings/SweetsSettingsHub")),
+      Hub: lazy(() => import("./settings/SweetsSettingsHub")),
     },
   ],
 };

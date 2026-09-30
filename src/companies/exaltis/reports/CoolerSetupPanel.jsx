@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/CoolerSetupPanel.jsx
+// src/companies/exaltis/reports/CoolerSetupPanel.jsx
 //
 // ⚙️ لوحة إعدادات وحدة التخزين — الاسم · النوع · الحد الأدنى والأعلى.
 // The inline editor behind the ⚙️ button on every storage unit of the

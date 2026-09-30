@@ -476,8 +476,8 @@ const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"))
 // ✅🆕 Certificate Verification (public QR scan page)
 const TrainingCertVerify = lazy(() => import("./pages/training/TrainingCertVerify"));
 // 🍰 Confectionery's own copies (public quiz + certificate check)
-const SweetsTrainingQuizLink = lazy(() => import("./pages/sweets-training/TrainingQuizLink"));
-const SweetsTrainingCertVerify = lazy(() => import("./pages/sweets-training/TrainingCertVerify"));
+const SweetsTrainingQuizLink = lazy(() => import("./companies/exaltis/training/TrainingQuizLink"));
+const SweetsTrainingCertVerify = lazy(() => import("./companies/exaltis/training/TrainingCertVerify"));
 // ✅🆕 Training Gap Analysis
 const TrainingGapAnalysis = lazy(() => import("./pages/training/TrainingGapAnalysis"));
 // 🛠️ Training Admin

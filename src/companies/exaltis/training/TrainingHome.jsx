@@ -1,4 +1,4 @@
-// src/pages/training/TrainingHome.jsx
+// src/companies/exaltis/training/TrainingHome.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "./nav";
 import {

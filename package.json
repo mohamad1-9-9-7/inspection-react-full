@@ -59,9 +59,40 @@
     "overrides": [
       {
         "files": [
-          "src/industries/sweets/**",
-          "src/pages/monitor/branches/sweets/**",
-          "src/pages/sweets-*/**",
+          "src/companies/**"
+        ],
+        "rules": {
+          "no-restricted-imports": [
+            "error",
+            {
+              "patterns": [
+                {
+                  "group": [
+                    "**/pages/ohc/*",
+                    "**/branches/qcs/*",
+                    "**/pages/inspection/*",
+                    "**/shipment_recc/*",
+                    "**/branches/pos*/*",
+                    "**/branches/ftr*/*",
+                    "**/branches/production/*",
+                    "**/pages/butcher*/*",
+                    "**/pages/mrp/*",
+                    "**/pages/workforce/*",
+                    "**/_shared/staffRegistry",
+                    "**/_shared/ProductPicker",
+                    "**/_shared/TemperatureMatchingReport",
+                    "**/items.json",
+                    "**/data/items*"
+                  ],
+                  "message": "A company module must not import the meat company's screens or data (Al Mawashi) — separation rule #1. Use core/ or copy what you need into your own module."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "files": [
           "src/pages/generic/**"
         ],
         "rules": {
@@ -128,7 +159,8 @@
                     "**/sweets/*",
                     "**/sweets-*/*",
                     "**/industries/sweets*",
-                    "**/branches/sweets/*"
+                    "**/branches/sweets/*",
+                    "**/companies/*/**"
                   ],
                   "message": "Industry-kit code (restaurant / supermarket / warehouse / manufacturing) must not import the meat company or the sweets company modules — separation rule #1. Put shared pieces in src/pages/industry-kit or src/industries/_kit."
                 }

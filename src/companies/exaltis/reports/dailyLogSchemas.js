@@ -1,11 +1,11 @@
-// src/pages/monitor/branches/sweets/dailyLogSchemas.js
+// src/companies/exaltis/reports/dailyLogSchemas.js
 // Field definitions for the sweets factory's daily log sheets. One schema =
 // one report type = one sheet per day (the server keeps a single record per
 // type + reportDate, so a day's sheet is re-opened and extended, never
 // duplicated). SweetsDailyLog.jsx renders the entry form, the saved-sheet view,
 // Excel/PDF/Print and the per-row compliance status from these objects alone —
 // adding a log means adding one object here and one entry in
-// industries/sweets/index.js.
+// companies/exaltis/manifest.js.
 //
 // Column types: text · number · time · date · select · computed · list
 //   options    — select choices (or datalist suggestions for text)

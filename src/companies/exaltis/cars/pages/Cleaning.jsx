@@ -1,8 +1,8 @@
-// src/pages/sweets-cars/pages/Cleaning.jsx
+// src/companies/exaltis/cars/pages/Cleaning.jsx
 // Confectionery copy of the truck daily cleaning checklist — same design,
 // own sweets_* report types, no data from any other company.
 import React, { useEffect, useMemo, useState } from "react";
-import { Bi, bi } from "../../monitor/branches/sweets/bilingual";
+import { Bi, bi } from "../../reports/bilingual";
 
 /* Arabic twins of the table heads (screen only; the payload keys are unchanged). */
 const TRUCK_COL_AR = {

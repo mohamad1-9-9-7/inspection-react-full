@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/HaccpRecordInput.jsx
+// src/companies/exaltis/reports/HaccpRecordInput.jsx
 // Generic "manual record" entry form reused across every HACCP hub module
 // (Supplier Evaluation, SOP, CCP Monitoring, Dubai Municipality Inspection,
 // Mock Recall). Each module is a fully standalone sweets_* report type — none
@@ -6,8 +6,8 @@
 // deliberately generic (title/date/status/remarks + one attachment) since
 // these are uploaded/typed by hand rather than driven by a structured form.
 import React, { useState } from "react";
-import API_BASE from "../../../../config/api";
-import { uploadImage } from "../../../../utils/imageUpload";
+import API_BASE from "../../../config/api";
+import { uploadImage } from "../../../utils/imageUpload";
 import { Bi, bi } from "./bilingual";
 
 const STATUS_OPTIONS = ["", "Compliant", "Non-Compliant", "Pending Review"];

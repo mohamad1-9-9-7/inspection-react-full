@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/ncrEmailConfig.js
+// src/companies/exaltis/reports/ncrEmailConfig.js
 //
 // Config for the shared EmailSendModal, customised for the Non-Conformance
 // Report — same modal the Returns log uses, so recipients, templates,
@@ -9,7 +9,7 @@
 // from the DOM: the mail must be sendable from anywhere, not only while the
 // report card happens to be rendered.
 
-import { escapeHtml } from "../../../shared/emailReportUtils";
+import { escapeHtml } from "../../../pages/shared/emailReportUtils";
 import { sweetsAreaLabel } from "./sweetsAreas";
 
 const DEFAULT_INTRO =

@@ -1,15 +1,15 @@
-// src/pages/monitor/branches/sweets/NonConformanceReportsView.jsx
+// src/companies/exaltis/reports/NonConformanceReportsView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
+import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../../../pages/monitor/branches/_shared/branchViewKit";
 import { printNode } from "./_sweetsReportKit";
-import { canEdit, canDelete } from "../../../../utils/perms";
+import { canEdit, canDelete } from "../../../utils/perms";
 import { sweetsAreaLabel } from "./sweetsAreas";
-import EmailSendModal from "../../../shared/EmailSendModal";
-import EmailSendHistory from "../../../shared/EmailSendHistory";
+import EmailSendModal from "../../../pages/shared/EmailSendModal";
+import EmailSendHistory from "../../../pages/shared/EmailSendHistory";
 import { makeNcrEmailConfig } from "./ncrEmailConfig";
 
 /* The NC number is allocated by the server as `payload.refNo` ("NCR-000042").

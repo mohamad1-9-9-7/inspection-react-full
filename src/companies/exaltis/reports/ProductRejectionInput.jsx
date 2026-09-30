@@ -1,12 +1,12 @@
-// src/pages/monitor/branches/sweets/ProductRejectionInput.jsx
+// src/companies/exaltis/reports/ProductRejectionInput.jsx
 // Product Rejection Report — input form (one record per rejected product).
 //
 // Several rejections can happen on one day, so the record is keyed with
 // eventReportDate() (sweetsRecord.js) while payload.date stays the plain day.
 
 import React, { useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import { uploadImage, deleteImage } from "../../../../utils/imageUpload";
+import API_BASE from "../../../config/api";
+import { uploadImage, deleteImage } from "../../../utils/imageUpload";
 import { eventReportDate } from "./sweetsRecord";
 import { Bi, bi } from "./bilingual";
 

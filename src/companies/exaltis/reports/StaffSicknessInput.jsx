@@ -1,8 +1,8 @@
-// src/pages/monitor/branches/sweets/StaffSicknessInput.jsx
+// src/companies/exaltis/reports/StaffSicknessInput.jsx
 import React, { useEffect, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import { getActiveCompanyName } from "../../../../utils/companyContext";
-import { getReportRowByDate, payloadOf, reportId } from "../_shared/reportApi";
+import API_BASE from "../../../config/api";
+import { getActiveCompanyName } from "../../../utils/companyContext";
+import { getReportRowByDate, payloadOf, reportId } from "../../../pages/monitor/branches/_shared/reportApi";
 import { useSweetsStaff, normalizeEmpNo, normalizeName } from "./sweetsStaff";
 import SweetsStaffManager from "./SweetsStaffManager";
 import { Bi } from "./bilingual";

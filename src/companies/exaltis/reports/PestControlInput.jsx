@@ -1,11 +1,11 @@
-// src/pages/monitor/branches/sweets/PestControlInput.jsx
+// src/companies/exaltis/reports/PestControlInput.jsx
 // Pest Control Log — input form (visit details + bait stations + photos).
 // One record per contractor visit; several visits a day are allowed, so the
 // record is keyed with eventReportDate() while payload.date stays the day.
 
 import React, { useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import { uploadImage as uploadImageRaw, deleteImage as deleteImageRaw } from "../../../../utils/imageUpload";
+import API_BASE from "../../../config/api";
+import { uploadImage as uploadImageRaw, deleteImage as deleteImageRaw } from "../../../utils/imageUpload";
 import { eventReportDate } from "./sweetsRecord";
 import { Bi, bi } from "./bilingual";
 

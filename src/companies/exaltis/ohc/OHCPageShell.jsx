@@ -1,4 +1,4 @@
-// src/pages/sweets-ohc/OHCPageShell.jsx
+// src/companies/exaltis/ohc/OHCPageShell.jsx
 // Sticky header with "Back to Hub" + language toggle, used by Upload/View pages.
 
 import React from "react";

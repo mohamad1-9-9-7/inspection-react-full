@@ -1,6 +1,6 @@
-// src/pages/monitor/branches/sweets/InternalAuditInput.jsx
+// src/companies/exaltis/reports/InternalAuditInput.jsx
 import React, { useMemo, useState } from "react";
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 import { Bi, bi } from "./bilingual";
 import { AUDIT_Q_AR, AUDIT_TITLE_AR } from "./internalAuditAr";
 

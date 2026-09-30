@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/sweetsStaff.js
+// src/companies/exaltis/reports/sweetsStaff.js
 //
 // The confectionery company's own staff list: employee number · name · job.
 // Feeds the Personal Hygiene sheet (one row per active person) and the name /
@@ -15,7 +15,7 @@
 // super-admin switching companies never sees another company's names.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 import { companyScopedKey } from "./sweetsRecord";
 
 export const SWEETS_STAFF_TYPE = "sweets_staff_directory";

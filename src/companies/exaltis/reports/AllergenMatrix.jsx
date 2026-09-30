@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/AllergenMatrix.jsx
+// src/companies/exaltis/reports/AllergenMatrix.jsx
 // HACCP → Allergen Matrix for the confectionery factory. Products × allergens
 // with C / M / – cells, the label line each product must carry, a suggested
 // production run order (allergen-free first, nuts last) and a review date.
@@ -7,7 +7,7 @@
 
 import { Bi, bi } from "./bilingual";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { canEdit } from "../../../../utils/perms";
+import { canEdit } from "../../../utils/perms";
 import { SweetsReportActions, excelFromNode, pdfFromNode, printNode } from "./_sweetsReportKit";
 import {
   ALLERGEN_COLS, NUT_TYPES, blankProduct, containsOf, hasNuts, labelStatement,

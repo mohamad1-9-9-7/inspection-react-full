@@ -1,8 +1,8 @@
-// src/pages/training/TrainingAnnualPlan.jsx
+// src/companies/exaltis/training/TrainingAnnualPlan.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "./nav";
 import { SWEETS_MODULES, SWEETS_MONTHLY_FOCUS } from "./content";
-import { SWEETS_AREAS } from "../monitor/branches/sweets/sweetsAreas";
+import { SWEETS_AREAS } from "../reports/sweetsAreas";
 import { useGlobalLang, getModuleNameShort, getModuleName } from "./TrainingSessionsList.helpers";
 
 /* ===================== API base ===================== */

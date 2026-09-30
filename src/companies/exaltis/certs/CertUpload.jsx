@@ -1,9 +1,9 @@
 // D:\inspection-react-full\src\pages\BFS PIC EFST\TrainingCertificatesBFS.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE from "../../config/api";
-import { uploadImage as uploadImageToServer } from "../../utils/imageUpload";
-import { Bi, bi } from "../monitor/branches/sweets/bilingual";
+import API_BASE from "../../../config/api";
+import { uploadImage as uploadImageToServer } from "../../../utils/imageUpload";
+import { Bi, bi } from "../reports/bilingual";
 
 /* ========= API ========= */
 

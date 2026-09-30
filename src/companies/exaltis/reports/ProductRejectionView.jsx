@@ -1,9 +1,9 @@
-// src/pages/monitor/branches/sweets/ProductRejectionView.jsx
+// src/companies/exaltis/reports/ProductRejectionView.jsx
 // Product Rejection Report — records list with filters, KPIs and exports.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import API_BASE from "../../../../config/api";
-import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../config/api";
+import { canDelete } from "../../../utils/perms";
 import { SweetsReportActions, printNode, pdfFromNode, excelFromNode } from "./_sweetsReportKit";
 import { businessDateOf, enLabel } from "./sweetsRecord";
 

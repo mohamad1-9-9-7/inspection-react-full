@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/_sweetsReportKit.jsx
+// src/companies/exaltis/reports/_sweetsReportKit.jsx
 // Unified action toolbar + faithful export helpers for ALL sweets view reports.
 //
 // The company standard is ONE toolbar per report, always the same five actions

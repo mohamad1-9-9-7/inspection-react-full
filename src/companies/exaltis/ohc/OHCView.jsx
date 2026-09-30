@@ -1,7 +1,7 @@
-// src/pages/sweets-ohc/OHCView.jsx
+// src/companies/exaltis/ohc/OHCView.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import API_BASE from "../../config/api";
-import { uploadImage } from "../../utils/imageUpload";
+import API_BASE from "../../../config/api";
+import { uploadImage } from "../../../utils/imageUpload";
 
 /* ========= API ========= */
 

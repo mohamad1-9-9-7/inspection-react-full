@@ -1,11 +1,11 @@
-// src/pages/monitor/branches/sweets/TrainingRecordView.jsx
+// src/companies/exaltis/reports/TrainingRecordView.jsx
 // Browse saved Internal Training records (sweets_training_record). List with
 // search + detail panel + delete + CSV export. Self-contained, renders inside
 // the company-app shell. Company isolation is server-side by token.
 
 import React, { useState, useEffect, useCallback } from "react";
-import API_BASE from "../../../../config/api";
-import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../config/api";
+import { canDelete } from "../../../utils/perms";
 
 const TYPE = "sweets_training_record";
 const getId = (r) => r?._id || r?.id || r?.payload?.id || null;

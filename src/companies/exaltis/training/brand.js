@@ -1,9 +1,9 @@
-// src/pages/sweets-training/brand.js
+// src/companies/exaltis/training/brand.js
 // Who the training documents belong to. Never a hardcoded company: the name
 // comes from the signed-in account (or the super-admin's picked company), and
 // the mark is drawn from its initials — no other company's logo file.
 import React from "react";
-import { getActiveCompanyName } from "../../utils/companyContext";
+import { getActiveCompanyName } from "../../../utils/companyContext";
 
 export function companyName() {
   return getActiveCompanyName() || "";

@@ -1,8 +1,8 @@
-// src/pages/monitor/branches/sweets/VisitorChecklistInput.jsx
+// src/companies/exaltis/reports/VisitorChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import { getActiveCompanyName } from "../../../../utils/companyContext";
-import API_BASE from "../../../../config/api";
-import { getLatestReport } from "../_shared/reportApi";
+import { getActiveCompanyName } from "../../../utils/companyContext";
+import API_BASE from "../../../config/api";
+import { getLatestReport } from "../../../pages/monitor/branches/_shared/reportApi";
 import { Bi } from "./bilingual";
 
 /* ===== API base ===== */

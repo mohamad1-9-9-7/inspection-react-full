@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/sweetsAreas.js
+// src/companies/exaltis/reports/sweetsAreas.js
 // The confectionery factory's own areas — the location list for sweets forms
 // (NCR, …). Deliberately independent of inspection/inspectionBranches.js,
 // which belongs to the other company.

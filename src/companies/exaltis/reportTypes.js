@@ -1,4 +1,4 @@
-// src/industries/sweets/reportTypes.js
+// src/companies/exaltis/reportTypes.js
 //
 // Every report `type` slug the Confectionery (sweets) company writes — in one
 // place, grouped the way the company-app shows them.
@@ -12,7 +12,7 @@
 //
 // Pure data — no React, no pages — so the catalog can import it freely.
 
-import { DAILY_LOG_SCHEMAS } from "../../pages/monitor/branches/sweets/dailyLogSchemas";
+import { DAILY_LOG_SCHEMAS } from "./reports/dailyLogSchemas";
 
 /** [slug, label, group] per module; the module becomes a backup folder. */
 export const SWEETS_REPORT_MODULES = [

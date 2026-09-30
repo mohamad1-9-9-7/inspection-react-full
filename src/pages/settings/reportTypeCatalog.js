@@ -17,7 +17,7 @@
 // inventory screen. When a new report type is introduced, add it here in the
 // same commit.
 
-import { SWEETS_REPORT_MODULES } from "../../industries/sweets/reportTypes";
+import { SWEETS_REPORT_MODULES } from "../../companies/exaltis/reportTypes";
 import { KIT_INDUSTRY_IDS, categoryOf } from "../../industries/catalog";
 import { kitReportModules } from "../../industries/_kit/kitRegistry";
 
@@ -43,7 +43,7 @@ export const CARDS = [
   { id: "emailCenter",      label: "Email Center",      emoji: "📨", order: 14 },
   { id: "settings",         label: "Settings",          emoji: "⚙️", order: 15 },
   // The Confectionery tenant's own reports (company-app). Its slugs live in
-  // industries/sweets/reportTypes.js — add sweets reports THERE, not here.
+  // companies/exaltis/reportTypes.js — add EXALTIS reports THERE, not here.
   { id: "sweets",           label: "Confectionery",     emoji: "🍰", order: 16 },
   // Restaurants, supermarkets, warehouses, manufacturing (the shared industry
   // kit). Their slugs come from industries/_kit/kitRegistry.js (KIT_BRANCHES

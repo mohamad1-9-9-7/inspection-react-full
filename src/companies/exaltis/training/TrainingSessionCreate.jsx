@@ -1,10 +1,10 @@
-// src/pages/training/TrainingSessionCreate.jsx
+// src/companies/exaltis/training/TrainingSessionCreate.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "./nav";
 import { FiArrowLeft, FiBookOpen, FiSave } from "react-icons/fi";
 import { CompanyMark, companyName } from "./brand";
 import { SWEETS_MODULES } from "./content";
-import { SWEETS_AREAS } from "../monitor/branches/sweets/sweetsAreas";
+import { SWEETS_AREAS } from "../reports/sweetsAreas";
 import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 import { QUIZ_BANK } from './TrainingSessionsList.helpers';
 

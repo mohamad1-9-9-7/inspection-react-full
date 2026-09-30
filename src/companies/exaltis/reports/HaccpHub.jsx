@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/HaccpHub.jsx
+// src/companies/exaltis/reports/HaccpHub.jsx
 // HACCP hub for the Confectionery (sweets) company. Same visual language as
 // Al Mawashi's HACCP/ISO command center (teal/cyan gradient hero + card grid),
 // scoped to a small starter set of modules. Each module is a fully standalone
@@ -9,7 +9,7 @@ import React, { useState } from "react";
 import HaccpRecordInput from "./HaccpRecordInput";
 import HaccpRecordView from "./HaccpRecordView";
 import AllergenMatrix from "./AllergenMatrix";
-import ReportGuide from "../../../generic/ReportGuide";
+import ReportGuide from "../../../pages/generic/ReportGuide";
 import { guideFor } from "./sweetsReportGuides";
 import { Bi } from "./bilingual";
 

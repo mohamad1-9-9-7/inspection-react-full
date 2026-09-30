@@ -1,11 +1,11 @@
-// src/pages/sweets-cars/pages/LoadingLog.jsx
+// src/companies/exaltis/cars/pages/LoadingLog.jsx
 // Confectionery copy of the fleet outbound (loading) checklist — same design,
 // own sweets_* report types, no data from any other company.
 import React, { useEffect, useMemo, useState } from "react";
-import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
-import { eventReportDate } from "../../monitor/branches/sweets/sweetsRecord";
-import { BlankFormPrintButton } from "../../monitor/branches/_shared/blankFormPrint";
-import { Bi, bi } from "../../monitor/branches/sweets/bilingual";
+import { IsoShell, ISO_UI } from "../../../../pages/monitor/branches/_shared/branchViewKit";
+import { eventReportDate } from "../../reports/sweetsRecord";
+import { BlankFormPrintButton } from "../../../../pages/monitor/branches/_shared/blankFormPrint";
+import { Bi, bi } from "../../reports/bilingual";
 
 /* Arabic twins for the on-screen sheet only — the printed blank form and the
    saved payload stay English. */

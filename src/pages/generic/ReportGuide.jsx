@@ -1,7 +1,7 @@
 // src/pages/generic/ReportGuide.jsx
 // Collapsible "how to fill this report" panel shown by the company-app shell
 // above a report page when the industry template gives the report a `guide`
-// (see industries/sweets/index.js + sweetsReportGuides.js).
+// (see src/companies/<module>/manifest.js, e.g. exaltis + its sweetsReportGuides.js).
 //
 // Bilingual on purpose (user request): every line shows its English and its
 // Arabic twin together. `compact` (view pages) keeps only the limits table and

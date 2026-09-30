@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/TrainingRecordInput.jsx
+// src/companies/exaltis/reports/TrainingRecordInput.jsx
 // A single focused Internal Training record for the sweets company: one
 // training session = one report (topic, trainer, date, attendees + signatures).
 // Isolated under the sweets_training_record report type. Self-contained: posts
@@ -6,7 +6,7 @@
 // company-app shell like the other sweets reports.
 
 import React, { useState } from "react";
-import API_BASE from "../../../../config/api";
+import API_BASE from "../../../config/api";
 import { eventReportDate } from "./sweetsRecord";
 import { Bi, bi } from "./bilingual";
 

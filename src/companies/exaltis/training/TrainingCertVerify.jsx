@@ -1,4 +1,4 @@
-// src/pages/training/TrainingCertVerify.jsx
+// src/companies/exaltis/training/TrainingCertVerify.jsx
 // Public page — scanned from QR code on certificate.
 // Reads all cert data from URL params (no backend call needed).
 // Uses useLocation so it works with both BrowserRouter (web) and HashRouter (Electron).

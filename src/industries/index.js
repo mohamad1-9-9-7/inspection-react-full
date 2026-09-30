@@ -8,7 +8,7 @@
 // أي نوع آخر = قالب ملف يقوده المحرّك العام (pages/generic). أضف نشاطاً جديداً
 // باستيراد ملف قالبه وتسجيله هنا — لا شيء آخر يتغيّر.
 
-import sweets from "./sweets";
+import sweets from "../companies/exaltis/manifest";
 // الأنشطة المبنية من الأدوات المشتركة (industries/_kit + pages/industry-kit):
 import restaurant from "./restaurant";
 import retail from "./retail";

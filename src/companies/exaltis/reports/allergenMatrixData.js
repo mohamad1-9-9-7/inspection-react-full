@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/allergenMatrixData.js
+// src/companies/exaltis/reports/allergenMatrixData.js
 // The confectionery Allergen Matrix: one product per row, one allergen per
 // column, each cell "C" (contains), "M" (may contain — cross-contact) or ""
 // (free). Stored as ONE record (type sweets_haccp_allergen_matrix,
@@ -6,8 +6,8 @@
 // matrix is always a single row. The production log reads it to pre-fill a
 // batch's allergens from the product name.
 
-import API_BASE from "../../../../config/api";
-import { getReportRowByDate } from "../_shared/reportApi";
+import API_BASE from "../../../config/api";
+import { getReportRowByDate } from "../../../pages/monitor/branches/_shared/reportApi";
 
 export const MATRIX_TYPE = "sweets_haccp_allergen_matrix";
 export const MATRIX_KEY = "matrix";

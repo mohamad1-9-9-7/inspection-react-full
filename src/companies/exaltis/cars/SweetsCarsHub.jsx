@@ -1,13 +1,13 @@
-// src/pages/sweets-cars/SweetsCarsHub.jsx
+// src/companies/exaltis/cars/SweetsCarsHub.jsx
 // 🚚 Vehicles hub for the Confectionery company — the same design as the fleet
 // hub (pages/car/CarsHub.jsx) but self-contained: its four pages are sweets
-// copies (sweets-cars/pages, sweets_* report types) and they open INSIDE the
+// copies (companies/exaltis/cars/pages, sweets_* report types) and they open INSIDE the
 // hub instead of routing to the other company's /car/* screens. The loading
 // and cleaning entry pages carry their bilingual fill-in guide.
 
 import React, { Suspense, lazy, useState } from "react";
-import ReportGuide from "../generic/ReportGuide";
-import { guideFor } from "../monitor/branches/sweets/sweetsReportGuides";
+import ReportGuide from "../../../pages/generic/ReportGuide";
+import { guideFor } from "../reports/sweetsReportGuides";
 
 const LoadingLog = lazy(() => import("./pages/LoadingLog"));
 const Cleaning = lazy(() => import("./pages/Cleaning"));

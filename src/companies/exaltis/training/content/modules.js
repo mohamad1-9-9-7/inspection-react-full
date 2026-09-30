@@ -1,10 +1,10 @@
-// src/pages/sweets-training/content/modules.js
+// src/companies/exaltis/training/content/modules.js
 // The confectionery company's training modules. A module is keyed by its
 // English NAME everywhere (sessions, question banks, references, plan) —
 // renaming one orphans its saved sessions, so add new names, don't rename.
 //
 // Limits taught here are the SAME as the sweets daily forms
-// (branches/sweets/dailyLogSchemas.js + sweetsReportGuides.js). Change a limit
+// (exaltis/reports/dailyLogSchemas.js + sweetsReportGuides.js). Change a limit
 // there → change it here too.
 
 export const SWEETS_MODULES = [

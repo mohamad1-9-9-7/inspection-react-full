@@ -1,10 +1,10 @@
-// src/pages/monitor/branches/sweets/sweetsReportGuides.js
+// src/companies/exaltis/reports/sweetsReportGuides.js
 // "How to fill this report" guides for every sweets INPUT report — purpose,
 // when / who, creation steps, allowed vs critical limits with the action to
 // take, and practical notes. Bilingual by request: every line carries an
 // English and an Arabic twin that render together (ReportGuide.jsx).
 //
-// Keyed by report type; industries/sweets/index.js attaches guide objects to
+// Keyed by report type; companies/exaltis/manifest.js attaches guide objects to
 // REPORTS, and the company-app shell shows them above the input page and
 // (limits + notes only) above the matching view page, so both read the same
 // rules. Limits mirror dailyLogSchemas.js / coolerDefs.js — change them

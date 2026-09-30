@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/sweets/bilingual.jsx
+// src/companies/exaltis/reports/bilingual.jsx
 //
 // Combined English + Arabic labels for every sweets INPUT page.
 //
@@ -105,7 +105,7 @@ export const AR = {
   "Cooked / baked from frozen": "طبخ / خَبز من التجميد مباشرة", "Room temperature": "حرارة الغرفة",
   "Rows": "الأسطر", "Non-compliant": "غير مطابق", "To review": "للمراجعة",
 
-  /* ── company shell: cards, reports, sidebar (industries/sweets/index.js) ── */
+  /* ── company shell: cards, reports, sidebar (companies/exaltis/manifest.js) ── */
   "Confectionery": "الحلويات", "Main Branch": "الفرع الرئيسي",
   "Daily Reports": "التقارير اليومية", "Fill in the daily operation reports": "تعبئة تقارير التشغيل اليومية",
   "View Reports": "عرض التقارير", "Browse all saved reports": "تصفح كل التقارير المحفوظة",

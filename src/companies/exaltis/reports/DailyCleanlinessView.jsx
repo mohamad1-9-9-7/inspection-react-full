@@ -1,13 +1,13 @@
-// src/pages/monitor/branches/sweets/DailyCleanlinessView.jsx
+// src/companies/exaltis/reports/DailyCleanlinessView.jsx
 import React, { useRef } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import API_BASE from "../../../../config/api";
-import SignatureName from "../../../shared/SignatureName";
-import { DateTreeSidebar } from "../_shared/branchViewKit";
+import API_BASE from "../../../config/api";
+import SignatureName from "../../../pages/shared/SignatureName";
+import { DateTreeSidebar } from "../../../pages/monitor/branches/_shared/branchViewKit";
 import { SweetsReportActions, printNode, excelFromNode } from "./_sweetsReportKit";
-import useReportIndex from "../_shared/useReportIndex";
-import { canDelete } from "../../../../utils/perms";
+import useReportIndex from "../../../pages/monitor/branches/_shared/useReportIndex";
+import { canDelete } from "../../../utils/perms";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
 
