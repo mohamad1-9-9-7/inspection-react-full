@@ -7,6 +7,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 
 
@@ -54,14 +55,7 @@ const C = {
   border:    "#dbeafe",
 };
 
-const actionBtn = (bg, disabled = false) => ({
-  background: disabled ? C.gray200 : bg,
-  color: disabled ? C.gray400 : C.white,
-  border: "none", borderRadius: 8, padding: "7px 13px",
-  fontWeight: 700, fontSize: 12,
-  cursor: disabled ? "not-allowed" : "pointer",
-  whiteSpace: "nowrap",
-});
+const actionBtn = (bg, disabled = false) => colorBtn(bg, disabled);
 
 const thCell = {
   border: `1px solid ${C.navy}`, padding: "7px 5px",
@@ -99,8 +93,9 @@ export default function FoodTemperatureVerificationView() {
   const [allDates, setAllDates] = useState([]);
   const [expandedYears, setExpandedYears]   = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
-  const gridStyle = useMemo(() => ({ width:"100%", borderCollapse:"collapse", tableLayout:"fixed", fontSize:12 }), []);
+  const gridStyle = useMemo(() => ({ width:"max-content", minWidth:"100%", borderCollapse:"collapse", tableLayout:"fixed", fontSize:12 }), []);
 
   const colDefs = useMemo(() => [
     <col key="time"    style={{ width: 80  }} />,
@@ -337,10 +332,10 @@ export default function FoodTemperatureVerificationView() {
     <div style={{ background:C.gray50, minHeight:"100vh", fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr" }}>
 
       {/* ── Top bar ── */}
-      <div style={{ background:`linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%)`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, borderRadius:"12px 12px 0 0", flexWrap:"wrap" }}>
+      <div style={{ background:"linear-gradient(135deg,#f0f9ff 0%,#ecfdf5 100%)", border:"1px solid #bae6fd", padding:"14px 20px", display:"flex", alignItems:"center", gap:12, borderRadius:"12px 12px 0 0", flexWrap:"wrap" }}>
         <div>
-          <div style={{ color:C.white, fontWeight:800, fontSize:17, letterSpacing:.3 }}>Food Temperature Verification Log</div>
-          <div style={{ color:"#93c5fd", fontSize:12, marginTop:2 }}>{BRANCH} — View Mode</div>
+          <div style={{ color:C.navy, fontWeight:900, fontSize:17, letterSpacing:.3 }}>Food Temperature Verification Log</div>
+          <div style={{ color:"#0369a1", fontSize:12, marginTop:2, fontWeight:700 }}>{BRANCH} — View Mode</div>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
           {canEdit("daily") && (
@@ -364,7 +359,7 @@ export default function FoodTemperatureVerificationView() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"260px 1fr", gap:0, background:C.white, borderRadius:"0 0 12px 12px", border:`1px solid ${C.border}`, borderTop:"none" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"260px minmax(0, 1fr)", gap:0, background:C.white, borderRadius:"0 0 12px 12px", border:`1px solid ${C.border}`, borderTop:"none" }}>
 
         {/* ── Date tree ── */}
         <div style={{ borderRight:`1px solid ${C.border}`, padding:14, background:C.gray50 }}>
@@ -438,9 +433,9 @@ export default function FoodTemperatureVerificationView() {
               )}
 
               {/* ── Legend band ── */}
-              <div style={{background:`linear-gradient(90deg,${C.navy},${C.navyLight})`,borderRadius:"8px 8px 0 0",padding:"9px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
-                <span style={{color:C.white,fontWeight:800,fontSize:13}}>Food Temperature Verification</span>
-                <span style={{color:"#93c5fd",fontSize:11}}>Cooking/Reheating ≥ 75°C &nbsp;|&nbsp; Chilled ≤ 5°C &nbsp;|&nbsp; Frozen ≤ -18°C &nbsp;|&nbsp; Cooling ≤ 5°C / 4hrs</span>
+              <div style={{background:"#e0f2fe", border:"1px solid #bae6fd",borderRadius:"8px 8px 0 0",padding:"9px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+                <span style={{color:C.navy,fontWeight:900,fontSize:13}}>Food Temperature Verification</span>
+                <span style={{color:"#0369a1",fontSize:11,fontWeight:700}}>Cooking/Reheating ≥ 75°C &nbsp;|&nbsp; Chilled ≤ 5°C &nbsp;|&nbsp; Frozen ≤ -18°C &nbsp;|&nbsp; Cooling ≤ 5°C / 4hrs</span>
               </div>
 
               {/* ── Table ── */}

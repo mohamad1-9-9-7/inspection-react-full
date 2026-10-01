@@ -6,6 +6,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 
 const TYPE     = "pos19_cooling_log";
@@ -14,7 +15,7 @@ const FORM_REF = "FS-HACCP/POS19/CL/01";
 
 const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background:bg, color:"#fff", border:"none", borderRadius:8, padding:"8px 12px", fontWeight:700, cursor:"pointer" });
+const btn = (bg) => colorBtn(bg);
 const formatDMY = (iso) => { if(!iso) return iso; const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso; };
 const isFilledRow = (r={}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
 const emptyRow = () => ({ foodItem:"", batchNo:"", cookedTime:"", cookedTemp:"", check2hTime:"", check2hTemp:"", check6hTime:"", check6hTemp:"", destination:"", correctiveAction:"" });
@@ -33,6 +34,7 @@ export default function CoolingLogView() {
   const [allDates, setAllDates] = useState([]);
   const [expandedYears, setExpandedYears]   = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   const thCell = { border:"1px solid #1f3b70", padding:"8px 6px", textAlign:"center", whiteSpace:"pre-line", fontWeight:700, background:"#f5f8ff", color:"#0b1f4d" };
   const tdCell = { border:"1px solid #1f3b70", padding:"8px 6px", textAlign:"center", verticalAlign:"middle" };
@@ -134,7 +136,7 @@ export default function CoolingLogView() {
           )}
           {editing && <><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
           {canDelete("daily") && (
-            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
           )}
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
@@ -143,7 +145,7 @@ export default function CoolingLogView() {
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"280px minmax(0, 1fr)", gap:12 }}>
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>

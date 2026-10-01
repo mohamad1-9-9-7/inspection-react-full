@@ -7,6 +7,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 
 const DEFAULT_TYPE     = "pos19_sanitizer_concentration";
@@ -15,7 +16,7 @@ const DEFAULT_FORM_REF = "FS-HACCP/POS19/SAN/08";
 
 const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
+const btn = (bg) => colorBtn(bg);
 const formatDMY = (iso) => { if(!iso)return iso; const[y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; };
 const isFilledRow = (r={}) => [r.location,r.actualConc,r.result,r.correctiveAction,r.checkedBy]
   .some(v=>String(v??"").trim()!=="");
@@ -46,6 +47,7 @@ export default function SanitizerConcentrationVerificationView({
   const [allDates,setAllDates]             = useState([]);
   const [expandedYears,setExpandedYears]   = useState({});
   const [expandedMonths,setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   const thCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",whiteSpace:"pre-line",fontWeight:700,background:"#f5f8ff",color:"#0b1f4d"};
   const tdCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",verticalAlign:"middle"};
@@ -140,7 +142,7 @@ export default function SanitizerConcentrationVerificationView({
           )}
           {editing&&<><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
           {canDelete("daily") && (
-            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
           )}
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
@@ -148,7 +150,7 @@ export default function SanitizerConcentrationVerificationView({
           <label style={{...btn("#059669"),display:"inline-block"}}>Import JSON<input ref={fileInputRef} type="file" accept="application/json" onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/></label>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"280px minmax(0, 1fr)",gap:12}}>
         <div style={{border:"1px solid #e5e7eb",borderRadius:10,padding:10,background:"#fafafa"}}>
           <div style={{fontWeight:800,marginBottom:8}}>📅 Date Tree</div>
           <div style={{maxHeight:380,overflowY:"auto"}}>

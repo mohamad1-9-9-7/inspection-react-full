@@ -6,6 +6,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 /* "22000 · NAME" — the item code glued to its product name, so one cell
    carries both wherever the row is rendered, printed or exported. */
@@ -22,7 +23,7 @@ const BRANCH = "POS 19";
 
 const safe  = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
+const btn   = (bg) => colorBtn(bg);
 
 const formatDMY = (iso) => {
   if (!iso) return iso;
@@ -75,6 +76,7 @@ export default function TraceabilityLogView() {
   // Accordion state
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   // Styles
   const gridStyle = useMemo(() => ({
@@ -591,7 +593,7 @@ export default function TraceabilityLogView() {
       </div>
 
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"280px minmax(0, 1fr)", gap:12 }}>
         {/* Date tree */}
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>

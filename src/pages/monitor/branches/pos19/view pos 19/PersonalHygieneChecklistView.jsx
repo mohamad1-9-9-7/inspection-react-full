@@ -8,6 +8,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 
 
@@ -26,15 +27,7 @@ const COLS = [
 ];
 
 // helpers
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 12px",
-  fontWeight: 700,
-  cursor: "pointer",
-});
+const btn = (bg) => colorBtn(bg);
 const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const formatDMY = (iso) => {
@@ -92,6 +85,7 @@ export default function PersonalHygieneChecklistView() {
   // accordion states
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   // table styles
   const gridStyle = useMemo(
@@ -623,7 +617,7 @@ async function exportXLSX() {
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
           {canDelete("daily") && (
-            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
           )}
 
           {/* Export / Import */}
@@ -650,7 +644,7 @@ async function exportXLSX() {
       </div>
 
       {/* Layout: Date tree + content */}
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 12 }}>
         {/* Date tree (Year -> Month -> Dates) */}
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>📅 Date Tree</div>

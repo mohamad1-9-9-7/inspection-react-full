@@ -8,6 +8,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 
 
@@ -26,15 +27,7 @@ const TICK_COLS = [
 /* ===== Helpers & styles ===== */
 const safe = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 12px",
-  fontWeight: 700,
-  cursor: "pointer",
-});
+const btn = (bg) => colorBtn(bg);
 const formatDMY = (iso) => {
   if (!iso) return iso;
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -112,6 +105,7 @@ export default function ReceivingLogView() {
   const [allDates, setAllDates] = useState([]);
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   const gridStyle = useMemo(() => ({
     width: "max-content",
@@ -625,7 +619,7 @@ export default function ReceivingLogView() {
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
           {canDelete("daily") && (
-            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
           )}
           <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
@@ -644,7 +638,7 @@ export default function ReceivingLogView() {
       </div>
 
       {/* Layout */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"280px minmax(0, 1fr)", gap:12 }}>
         {/* Date tree */}
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>

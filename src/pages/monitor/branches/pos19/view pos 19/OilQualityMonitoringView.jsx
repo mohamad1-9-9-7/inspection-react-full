@@ -8,6 +8,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { useRevealDate } from "../_shared/viewUi";
 
 
 
@@ -81,6 +82,7 @@ export default function OilQualityMonitoringView() {
   const [allDates, setAllDates] = useState([]);
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   // styles
   const gridStyle = useMemo(() => ({
@@ -549,7 +551,7 @@ export default function OilQualityMonitoringView() {
       </div>
 
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"270px 1fr", gap:14 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"270px minmax(0, 1fr)", gap:14 }}>
         {/* Date tree */}
         <div style={{ border:"1px solid #e5ecf7", borderRadius:12, padding:12, background:"#fff", boxShadow:"0 1px 3px rgba(11,31,77,0.05)", alignSelf:"start" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>

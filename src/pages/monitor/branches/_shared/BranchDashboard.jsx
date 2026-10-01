@@ -109,6 +109,16 @@ function tr(key, lang) {
     reports:      { en: "reports",                       ar: "تقرير" },
     allTime:      { en: "all time",                      ar: "كل الفترات" },
     daysAgo:      { en: "d ago",                         ar: "يوم سابق" },
+    fAll:         { en: "All",                           ar: "الكل" },
+    fPending:     { en: "Not submitted today",           ar: "لم يُسجّل اليوم" },
+    fDone:        { en: "Submitted today",               ar: "سُجّل اليوم" },
+    fNever:       { en: "Never used",                    ar: "بلا تقارير" },
+    sDefault:     { en: "Default order",                 ar: "الترتيب الافتراضي" },
+    sStale:       { en: "Longest without a report",      ar: "الأطول بلا تقرير" },
+    sName:        { en: "Name (A–Z)",                    ar: "الاسم" },
+    sMost:        { en: "Most reports",                  ar: "الأكثر تقارير" },
+    showing:      { en: "Showing",                       ar: "المعروض" },
+    noneMatch:    { en: "Nothing matches this filter.",  ar: "لا شيء يطابق هذا الفلتر." },
   };
   return D[key]?.[lang] || D[key]?.en || key;
 }
@@ -133,6 +143,8 @@ export default function BranchDashboard({
   const [data, setData]       = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [filter, setFilter] = useState("all");      // all | pending | done | never
+  const [sortBy, setSortBy] = useState("default");  // default | stale | name | most
 
   function handleRefresh() {
     // Bust cache so the effect re-fetches fresh data
@@ -218,6 +230,29 @@ export default function BranchDashboard({
   const totalAll   = useMemo(() => reportTypes.reduce((a, rt) => a + (stats[rt.type]?.total || 0), 0), [stats, reportTypes]);
   const todayDone  = useMemo(() => reportTypes.filter((rt) => (stats[rt.type]?.today || 0) > 0).length, [stats, reportTypes]);
 
+  const statusOf = (rt) => {
+    const s = stats[rt.type];
+    if (!s || !s.lastDate) return "never";
+    return s.today > 0 ? "done" : "pending";
+  };
+  const counts = useMemo(() => {
+    const c = { all: reportTypes.length, pending: 0, done: 0, never: 0 };
+    reportTypes.forEach((rt) => { c[statusOf(rt)] += 1; });
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats, reportTypes]);
+  const titleOf = (rt) => (isAr && rt.titleAr ? rt.titleAr : (rt.titleEn || rt.title || rt.key));
+  const shownTypes = useMemo(() => {
+    const list = reportTypes.filter((rt) => filter === "all" || statusOf(rt) === filter);
+    const st = (rt) => stats[rt.type] || {};
+    if (sortBy === "name") list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
+    // never-used first, then the oldest last-report date
+    if (sortBy === "stale") list.sort((a, b) => String(st(a).lastDate || "").localeCompare(String(st(b).lastDate || "")));
+    if (sortBy === "most") list.sort((a, b) => (st(b).total || 0) - (st(a).total || 0));
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportTypes, stats, filter, sortBy, isAr]);
+
   const dateLabel = useMemo(() => {
     try {
       return new Date().toLocaleDateString(isAr ? "ar-AE" : "en-GB", {
@@ -284,9 +319,33 @@ export default function BranchDashboard({
         </div>
       </div>
 
+      {/* ── Filter + sort ── */}
+      <div className="bdash-tools">
+        <div className="bdash-chips">
+          {[["all", "fAll"], ["pending", "fPending"], ["done", "fDone"], ["never", "fNever"]].map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              className={`bdash-chip ${filter === k ? "on" : ""} bdash-chip-${k}`}
+              onClick={() => setFilter(k)}
+            >
+              {t(label)} <b>{counts[k]}</b>
+            </button>
+          ))}
+        </div>
+        <select className="bdash-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+          <option value="default">{t("sDefault")}</option>
+          <option value="stale">{t("sStale")}</option>
+          <option value="name">{t("sName")}</option>
+          <option value="most">{t("sMost")}</option>
+        </select>
+        <span className="bdash-showing">{t("showing")}: {shownTypes.length} / {reportTypes.length}</span>
+      </div>
+
       {/* ── Cards grid ── */}
+      {!shownTypes.length && <div className="bdash-none">{t("noneMatch")}</div>}
       <div className="bdash-grid">
-        {reportTypes.map((rt) => {
+        {shownTypes.map((rt) => {
           const s = stats[rt.type] || { total: 0, today: 0, week: 0, month: 0, lastDate: null };
           const isToday = s.today > 0;
           const daysSince = s.lastDate ? diffDays(todayIso, s.lastDate) : null;
@@ -359,6 +418,21 @@ function diffDays(todayIso, otherIso) {
 }
 
 const STYLES = `
+  .bdash-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin: 0 0 14px; }
+  .bdash-chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .bdash-chip {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 12px; border-radius:999px;
+    border:1px solid #e2e8f0; background:#fff; color:#334155;
+    font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  .bdash-chip b { background:#f1f5f9; border-radius:999px; padding:0 7px; }
+  .bdash-chip.on { background:#e0f2fe; border-color:#7dd3fc; color:#0369a1; }
+  .bdash-chip-pending.on { background:#fef3c7; border-color:#fcd34d; color:#92400e; }
+  .bdash-chip-done.on { background:#dcfce7; border-color:#86efac; color:#166534; }
+  .bdash-sort { padding:7px 10px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; font-weight:700; font-family:inherit; }
+  .bdash-showing { color:#64748b; font-weight:700; margin-inline-start:auto; }
+  .bdash-none { padding:30px; text-align:center; color:#64748b; font-weight:700; background:#fff; border:1px dashed #cbd5e1; border-radius:12px; }
   .bdash-wrap {
     padding: 22px;
     background: #f8fafc;
@@ -367,9 +441,12 @@ const STYLES = `
   }
 
   .bdash-hero {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #fff;
-    padding: 22px 24px;
+    /* light "Soft Sky" banner — the dark slate one was the first thing every
+       branch overview showed, and it is the look the owner keeps rejecting */
+    background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%);
+    border: 1px solid #bae6fd;
+    color: #0f172a;
+    padding: 18px 22px;
     border-radius: 14px;
     margin-bottom: 16px;
     display: flex;
@@ -410,26 +487,27 @@ const STYLES = `
   }
   .bdash-subtitle {
     margin: 4px 0 0;
-    color: #cbd5e1;
+    color: #475569;
     font-size: 13px;
   }
   .bdash-date {
     margin-top: 6px;
     display: inline-block;
-    background: rgba(255,255,255,.1);
+    background: #fff;
+    color: #334155;
     padding: 4px 12px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
-    border: 1px solid rgba(255,255,255,.15);
+    border: 1px solid #e2e8f0;
   }
   .bdash-refresh {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 9px 16px;
     border-radius: 8px;
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.25);
-    color: #fff;
+    background: #fff;
+    border: 1px solid #bae6fd;
+    color: #0369a1;
     font-family: inherit;
     font-size: 13px; font-weight: 700;
     cursor: pointer;
@@ -437,7 +515,7 @@ const STYLES = `
     transition: all .15s ease;
   }
   .bdash-refresh:hover:not(:disabled) {
-    background: rgba(255,255,255,.2);
+    background: #e0f2fe;
     transform: translateY(-1px);
   }
   .bdash-refresh:disabled { opacity: .6; cursor: not-allowed; }

@@ -7,6 +7,7 @@ import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
+import { colorBtn, useRevealDate } from "../_shared/viewUi";
 
 const TYPE     = "pos19_finished_product_monitoring";
 const BRANCH   = "POS 19";
@@ -14,7 +15,7 @@ const FORM_REF = "TELT/QA/FP/1";
 
 const safe = (v) => (v == null ? "" : v);
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
+const btn = (bg) => colorBtn(bg);
 const formatDMY = (iso) => { if (!iso) return iso; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const isFilledRow = (r = {}) => Object.values(r).some((v) => String(v ?? "").trim() !== "");
 
@@ -46,6 +47,7 @@ export default function FinishedProductMonitoringView() {
   const [allDates, setAllDates]       = useState([]);
   const [expandedYears, setExpandedYears]   = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   const thCell = { border: "1px solid #1f3b70", padding: "6px 4px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 700, background: "#f5f8ff", color: "#0b1f4d" };
   const tdCell = { border: "1px solid #1f3b70", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
@@ -304,7 +306,7 @@ export default function FinishedProductMonitoringView() {
             </>
           )}
           {canDelete("daily") && (
-            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
           )}
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
@@ -316,7 +318,7 @@ export default function FinishedProductMonitoringView() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 12 }}>
         {/* Date tree sidebar */}
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>📅 Date Tree</div>

@@ -1,7 +1,8 @@
 // src/pages/monitor/branches/pos19/POS19DailyView.jsx
 // POS 19 — Daily Viewer Hub (unified design عبر BranchDailyView — تبويبات أفقية فوق)
-import React, { useEffect, useMemo, useState, lazy } from "react";
+import React, { lazy } from "react";
 import BranchDailyView from "../_shared/BranchDailyView";
+import BranchDashboard from "../_shared/BranchDashboard";
 
 // ✅ Personal Hygiene View
 const PHView   = lazy(() => import("./view pos 19/PersonalHygieneChecklistView"));
@@ -54,109 +55,39 @@ const SSView   = lazy(() => import("../qcs/StaffSicknessView"));
 // ✅ Employee Return to Work View (نفس نموذج QCS)
 const ERTWView = lazy(() => import("../qcs/EmployeeReturnToWorkView"));
 
-/* ── Overview — ملخص اليوم من تقارير المفتش (localStorage) ── */
-function POS19Overview() {
-  const [reports, setReports] = useState([]);
-  const [selectedDate, setSelectedDate] = useState("");
-
-  const todayDubai = useMemo(() => {
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-  }, []);
-
-  useEffect(() => {
-    let saved; try { saved = JSON.parse(localStorage.getItem("pos19_reports") || "[]") || []; } catch { saved = []; }
-    saved.sort((a,b) => String(b?.date||"").localeCompare(String(a?.date||"")));
-    setReports(saved);
-    const todayRep = saved.find(r => r?.date === todayDubai);
-    if (todayRep) setSelectedDate(todayDubai);
-    else if (saved.length > 0) setSelectedDate(saved[0]?.date || "");
-  }, [todayDubai]);
-
-  const selectedReport = useMemo(
-    () => reports.find(r => r?.date === selectedDate) || null,
-    [reports, selectedDate]
-  );
-
-  const S = {
-    noReport: { display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"50px 0", color:"#64748b", fontWeight:700, fontSize:16 },
-    dateRow: { display:"flex", alignItems:"center", gap:10, marginBottom:16, fontWeight:700, fontSize:15.5 },
-    dateInput: { padding:"8px 12px", border:"1.5px solid #c7d2fe", borderRadius:10, fontSize:15, fontFamily:"inherit" },
-    grid: { display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12, marginBottom:18 },
-    card: {
-      background:"linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
-      border:"1px solid rgba(139,92,246,0.25)", borderRadius:14, padding:"14px 16px", textAlign:"center",
-    },
-    cardTitle: { fontSize:14.5, fontWeight:700, color:"#5b21b6", marginBottom:4 },
-    cardValue: { fontSize:28, fontWeight:900, color:"#0b1f4d" },
-    cardUnit: { fontSize:15, fontWeight:700, color:"#64748b" },
-    secTitle: { fontWeight:800, fontSize:16.5, color:"#0b1f4d", margin:"16px 0 8px" },
-    checkRow: { display:"flex", alignItems:"center", gap:8, padding:"6px 0", fontSize:15.5, fontWeight:600, color:"#334155" },
-    notes: { background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 16px", fontSize:15, color:"#334155", lineHeight:1.7 },
-  };
-
-  if (!reports.length) return (
-    <div style={S.noReport}>
-      <span style={{fontSize:40}}>📭</span>
-      لا توجد تقارير محفوظة حتى الآن لفرع POS 19
-    </div>
-  );
-
-  const temps   = selectedReport?.temperatures || {};
-  const clean   = selectedReport?.cleanliness  || {};
-  const uniform = !!selectedReport?.uniform;
-  const notes   = selectedReport?.notes || "—";
-
-  return (
-    <>
-      <div style={S.dateRow}>
-        <span>اختر التاريخ:</span>
-        <input type="date" style={S.dateInput}
-          value={selectedDate||""}
-          onChange={e => setSelectedDate(e.target.value)}
-        />
-      </div>
-
-      {selectedReport ? (
-        <>
-          <div style={S.grid}>
-            {[["براد 1", temps.fridge1], ["براد 2", temps.fridge2], ["براد 3", temps.fridge3]].map(([lbl, val]) => (
-              <div style={S.card} key={lbl}>
-                <div style={S.cardTitle}>{lbl}</div>
-                <div style={S.cardValue}>{val ?? "—"}<span style={S.cardUnit}> °C</span></div>
-              </div>
-            ))}
-          </div>
-
-          <div style={S.secTitle}>🧼 نظافة الموقع</div>
-          {[["الأرضيات",clean.floors],["الرفوف",clean.shelves],["الثلاجات",clean.fridges]].map(([lbl,val]) => (
-            <div style={S.checkRow} key={lbl}>
-              <span>{val ? "✅" : "❌"}</span>
-              {lbl}
-            </div>
-          ))}
-
-          <div style={S.secTitle}>👔 الزي الرسمي</div>
-          <div style={S.checkRow}>
-            <span>{uniform ? "✅" : "❌"}</span>
-            {uniform ? "الموظف ملتزم بالزي" : "الموظف غير ملتزم بالزي"}
-          </div>
-
-          <div style={S.secTitle}>📝 ملاحظات المفتش</div>
-          <div style={S.notes}>{notes}</div>
-        </>
-      ) : (
-        <div style={S.noReport}>
-          <span style={{fontSize:36}}>❌</span>
-          لا يوجد تقرير لهذا التاريخ
-        </div>
-      )}
-    </>
-  );
-}
+/* ── Overview — today's status per report type, read from the server.
+   The old overview read a "pos19_reports" localStorage key that nothing has
+   written for months, so the default tab always said "no reports yet". ── */
+const DASH_TYPES = [
+  { type: "pos19_cleaning_programme_schedule",  key: "cleaningProgramme",      icon: "🧼", titleEn: "Cleaning Programme",          titleAr: "جدول برنامج التنظيف",           accent: "#22c55e" },
+  { type: "pos19_daily_cleaning",               key: "dailyCleaningButchery",  icon: "🧹", titleEn: "Daily Cleaning",              titleAr: "التنظيف اليومي",                accent: "#16a34a" },
+  { type: "pos19_equipment_inspection",         key: "equipmentInspection",    icon: "🧪", titleEn: "Equipment Inspection",        titleAr: "فحص وتعقيم المعدات",            accent: "#f59e0b" },
+  { type: "pos19_food_temperature_verification",key: "foodTempVerification",   icon: "🌡️", titleEn: "Food Temperature",            titleAr: "التحقق من حرارة الطعام",         accent: "#ef4444" },
+  { type: "pos19_glass_items_condition",        key: "glassItemsCondition",    icon: "🧯", titleEn: "Glass Items",                 titleAr: "الأدوات الزجاجية",              accent: "#06b6d4" },
+  { type: "pos19_hot_holding_temperature",      key: "hotHoldingTemp",         icon: "🔥", titleEn: "Hot Holding",                 titleAr: "الحفظ الساخن",                  accent: "#f97316" },
+  { type: "pos19_oil_quality_monitoring",       key: "oilQuality",             icon: "🛢️", titleEn: "Oil Quality",                 titleAr: "جودة الزيت",                    accent: "#ca8a04" },
+  { type: "pos19_personal_hygiene",             key: "personalHygiene",        icon: "🧑‍🔬", titleEn: "Personal Hygiene",          titleAr: "النظافة الشخصية",               accent: "#0ea5e9" },
+  { type: "pos19_receiving_log_butchery",       key: "receivingLog",           icon: "📦", titleEn: "Receiving Log",               titleAr: "سجل الاستلام",                  accent: "#a855f7" },
+  { type: "pos19_sanitizer_concentration",      key: "sanitizerConcentration", icon: "🧴", titleEn: "Sanitizer Concentration",     titleAr: "تركيز المطهر",                  accent: "#0891b2" },
+  { type: "pos19_temperature_monitoring",       key: "temperatureMonitoring",  icon: "🌡️", titleEn: "Temperature Monitoring",      titleAr: "مراقبة درجات الحرارة",          accent: "#3b82f6" },
+  { type: "pos19_traceability_log",             key: "traceability",           icon: "🔗", titleEn: "Traceability Log",            titleAr: "سجل التتبع",                    accent: "#8b5cf6" },
+  { type: "pos19_wooden_items_condition",       key: "woodenItemsCondition",   icon: "🪵", titleEn: "Wooden Items",                titleAr: "الأدوات الخشبية",               accent: "#92400e" },
+  { type: "pos19_cooking_temperature",          key: "cookingTemperature",     icon: "🍳", titleEn: "Cooking Temperature",         titleAr: "حرارة الطبخ",                   accent: "#e11d48" },
+  { type: "pos19_defrosting_record",            key: "defrosting",             icon: "❄️", titleEn: "Defrosting",                  titleAr: "إذابة التجميد",                 accent: "#38bdf8" },
+  { type: "pos19_cooling_log",                  key: "cooling",                icon: "🧊", titleEn: "Cooling Log",                 titleAr: "سجل التبريد",                   accent: "#0284c7" },
+  { type: "pos19_reheating_log",                key: "reheating",              icon: "♨️", titleEn: "Reheating Log",               titleAr: "إعادة التسخين",                 accent: "#dc2626" },
+  { type: "pos19_calibration_log",              key: "calibration",            icon: "📏", titleEn: "Thermometer Calibration",     titleAr: "معايرة موازين الحرارة",         accent: "#64748b" },
+  { type: "pos19_non_conformance",              key: "nonConformance",         icon: "🚫", titleEn: "Non-Conformance",             titleAr: "عدم المطابقة",                  accent: "#b91c1c" },
+  { type: "pos19_finished_product_monitoring",  key: "finishedProduct",        icon: "🍖", titleEn: "Finished Product",            titleAr: "المنتج النهائي",                accent: "#be123c" },
+  { type: "pos19_veg_sanitation_ccp",           key: "vegSanitation",          icon: "🥬", titleEn: "Veg/Fruits Sanitation (CCP)", titleAr: "تعقيم الخضار والفواكه",          accent: "#65a30d" },
+  { type: "pos19_blast_freezer_ccp",            key: "blastFreezer",           icon: "🥶", titleEn: "Blast Freezer (CCP)",         titleAr: "التجميد السريع",                accent: "#1d4ed8" },
+  { type: "pos19_dry_store_temp_humidity",      key: "dryStore",               icon: "📦", titleEn: "Dry Store",                   titleAr: "المخزن الجاف",                  accent: "#a16207" },
+  { type: "pos19_staff_sickness",               key: "staffSickness",          icon: "🩺", titleEn: "Staff Sickness",              titleAr: "مرض الموظفين",                  accent: "#0f766e" },
+  { type: "pos19_employee_return_to_work",      key: "employeeReturnToWork",   icon: "🏥", titleEn: "Return to Work",              titleAr: "العودة إلى العمل",              accent: "#0b5236" },
+];
 
 const TABS = [
-  { key: "overview",               icon: "📊", label: "Overview — POS 19",                      labelAr: "نظرة عامة — POS 19",                element: <POS19Overview /> },
+  { key: "overview",               icon: "📊", label: "Overview — POS 19",                      labelAr: "نظرة عامة — POS 19",                element: <BranchDashboard branchName="Al Warqa Kitchen (POS 19)" branchNameAr="مطبخ الورقاء (POS 19)" reportTypes={DASH_TYPES} accent="#0ea5e9" /> },
   { key: "cleaningProgramme",      icon: "🧼", label: "Cleaning Programme Schedule",            labelAr: "جدول برنامج التنظيف",              element: <CPSView />,   loaderLabel: "Cleaning Programme" },
   { key: "dailyCleaningButchery",  icon: "🧹", label: "Daily Cleaning – Butchery",              labelAr: "التنظيف اليومي – الملحمة",         element: <DCView />,    loaderLabel: "Daily Cleaning" },
   { key: "equipmentInspection",    icon: "🧪", label: "Equipment Inspection & Sanitizing",      labelAr: "فحص وتعقيم المعدات",              element: <EIView />,    loaderLabel: "Equipment Inspection" },
@@ -189,7 +120,7 @@ export default function POS19DailyView() {
   return (
     <BranchDailyView
       branchCode="POS-19"
-      title="عرض تقارير الفرع"
+      title="مطبخ الورقاء — عرض التقارير"
       subtitle="Daily Viewer Hub"
       tabs={TABS}
       defaultTabKey="overview"
