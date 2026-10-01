@@ -439,8 +439,8 @@ export default function CompaniesTab() {
             const expired  = days !== null && days <= 0;
             return (
               <div key={c.id} style={{ ...ui.card, padding:"16px 20px" }}>
-                <div style={{ display:"flex", alignItems:"flex-start", gap:16 }}>
-                  <CompanyAvatar name={c.name} logo={c.logo_url} size={58} />
+                <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                  <CompanyAvatar name={c.name} logo={c.logo_url} size={48} />
 
                   {/* Body */}
                   <div style={{ flex:1, minWidth:0 }}>
@@ -483,10 +483,12 @@ export default function CompaniesTab() {
                       <div style={{ marginTop:8, fontSize:15, color:"#94a3b8", fontStyle:"italic" }}>{c.notes}</div>
                     )}
                   </div>
+                </div>
 
-                  {/* Actions */}
-                  {isSuperAdmin && (
-                    <div style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                {/* Actions — a footer row: the cards sit in a grid (BillingPlansTab
+                    .bpx-cards), too narrow for buttons beside the text. */}
+                {isSuperAdmin && (
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14, paddingTop:12, borderTop:"1px solid #e2e8f0" }}>
                       <Button onClick={() => openEdit(c)} tone="secondary" style={{ minHeight:36 }}>{t("edit")}</Button>
                       {c.disabled_at ? (
                         <Button onClick={() => setConfirm({ company: c, action: "enable" })} tone="primary" style={{ minHeight:36 }}>{t("enableCompany")}</Button>
@@ -502,8 +504,7 @@ export default function CompaniesTab() {
                         </Button>
                       )}
                     </div>
-                  )}
-                </div>
+                )}
               </div>
             );
           })}
