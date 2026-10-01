@@ -28,6 +28,7 @@ import {
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
 import { allowedVatPct, licenseLine, loadSeller, normalizeSeller } from "../_shared/sellerProfile";
+import ScaledDoc, { useContainerWidth } from "../_shared/ScaledDoc";
 
 /* "Issued by" on a quotation, straight from the INSPECT PRO profile. */
 const issuerFromSeller = (seller) => ({
@@ -368,17 +369,6 @@ const STEPS = [
   { id: "q-design", en: "Design", ar: "التصميم", icon: "🎨" },
 ];
 
-function useIsWide(min = 1280) {
-  const get = () => (typeof window !== "undefined" ? window.innerWidth >= min : true);
-  const [wide, setWide] = useState(get);
-  useEffect(() => {
-    const on = () => setWide(get());
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return wide;
-}
-
 function QuoteEditor({ initial, companies, plans, existing, config, seller, saveConfig, startSmart, onCancel, onSaved, onDuplicate, flash }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
@@ -389,7 +379,10 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
   const [smart, setSmart] = useState(!!startSmart);
   const [preview, setPreview] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const wide = useIsWide();
+  /* Two columns only when the editor itself has room — it sits beside the
+     Platform Center sidebar, so the window width says nothing. */
+  const [gridRef, gridW] = useContainerWidth();
+  const wide = gridW >= 960;
 
   useEffect(() => { setQ({ ...initial, termsList: termsListOf(initial) }); setDirty(false); }, [initial]);
 
@@ -519,7 +512,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
         </div>
       </div>
 
-      <div style={S.editorGrid(wide)}>
+      <div ref={gridRef} style={S.editorGrid(wide)}>
         <div style={{ minWidth: 0, display: "grid", gap: 16 }}>
 
           {/* 1 · CLIENT */}
@@ -730,7 +723,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
         </div>
 
         {wide && (
-          <div style={{ position: "sticky", top: 170, alignSelf: "start" }}>
+          <div style={{ position: "sticky", top: 170, alignSelf: "start", maxHeight: "calc(100vh - 186px)", overflowY: "auto", paddingBottom: 4 }}>
             <SidePanel q={q} opts={opts} totals={totals} insights={insights} th={th} onPreview={() => setPreview(true)} onDuplicate={q.id ? () => onDuplicate(q) : null} />
           </div>
         )}
@@ -794,6 +787,16 @@ function SidePanel({ q, opts, totals, insights, th, onPreview, onDuplicate }) {
       </div>
 
       <div style={S.panelTight}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontWeight: 1000 }}>👁 {L("Live preview", "معاينة مباشرة")}</span>
+          <button type="button" onClick={onPreview} className="bpx-xs" style={S.linkBtn}>{L("Open full size", "فتح بالحجم الكامل")} ↗</button>
+        </div>
+        <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 10 }}>
+          <MiniPreview q={q} opts={opts} onOpen={onPreview} />
+        </div>
+      </div>
+
+      <div style={S.panelTight}>
         <div style={{ fontWeight: 1000, marginBottom: 8 }}>🧠 {L("Smart checks", "فحص ذكي")}</div>
         <div style={{ display: "grid", gap: 6 }}>
           {insights.map((x, i) => {
@@ -803,22 +806,13 @@ function SidePanel({ q, opts, totals, insights, th, onPreview, onDuplicate }) {
         </div>
       </div>
 
-      <div style={S.panelTight}>
-        <div style={{ fontWeight: 1000, marginBottom: 8 }}>👁 {L("Live mini preview", "معاينة مصغّرة مباشرة")}</div>
-        <div style={{ position: "relative", height: 470, overflow: "hidden", borderRadius: 10, border: "1px solid #e2e8f0", cursor: "zoom-in", background: "#fff" }} onClick={onPreview}>
-          <MiniPreview q={q} opts={opts} />
-        </div>
-      </div>
     </div>
   );
 }
 
-function MiniPreview({ q, opts }) {
+function MiniPreview({ q, opts, onOpen }) {
   const html = useDeferred(q, (v) => buildQuoteHtml(v, opts), 400);
-  return (
-    <iframe title="mini" sandbox="allow-same-origin" srcDoc={html}
-      style={{ width: 794, height: 1123, border: 0, transform: "scale(0.44)", transformOrigin: "top left", pointerEvents: "none", position: "absolute", left: 0, top: 0 }} />
-  );
+  return <ScaledDoc title="Quotation preview" html={html} onOpen={onOpen} />;
 }
 
 /* Debounced derived value so typing never waits on the preview. */
@@ -1444,7 +1438,8 @@ const S = {
   },
   heroGlow: { position: "absolute", inset: 0, background: "radial-gradient(600px 240px at 85% 0%, rgba(45,212,191,.35), transparent 70%), radial-gradient(500px 200px at 10% 120%, rgba(56,189,248,.25), transparent 70%)" },
   heroKicker: { display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)", marginBottom: 10, fontWeight: 900, letterSpacing: ".04em" },
-  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 18 },
+  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 18 },
+  linkBtn: { border: 0, background: "none", color: "#0f766e", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", padding: 0 },
   kpi: (tone) => ({ background: "#fff", borderRadius: 18, padding: 18, boxShadow: SHADOW, border: "1px solid rgba(15,23,42,.06)", borderTop: `4px solid ${tone}` }),
   kpiIcon: (tone) => ({ width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", background: `${tone}14`, flex: "0 0 auto" }),
   panel: { background: "#fff", borderRadius: 20, padding: 18, boxShadow: SHADOW, border: "1px solid rgba(15,23,42,.06)" },
@@ -1469,7 +1464,7 @@ const S = {
   }),
   headTotal: { textAlign: "end", padding: "6px 14px", borderRadius: 14, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)" },
   step: { border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.08)", color: "#fff", borderRadius: 999, padding: "6px 14px", cursor: "pointer", fontWeight: 800, fontFamily: "inherit" },
-  editorGrid: (wide) => ({ display: "grid", gap: 16, alignItems: "start", gridTemplateColumns: wide ? "minmax(0, 1fr) 420px" : "minmax(0, 1fr)" }),
+  editorGrid: (wide) => ({ display: "grid", gap: 16, alignItems: "start", gridTemplateColumns: wide ? "minmax(0, 1fr) minmax(360px, 440px)" : "minmax(0, 1fr)" }),
   card: { background: "#fff", borderRadius: 20, padding: "18px 20px", boxShadow: SHADOW, border: "1px solid rgba(15,23,42,.06)", scrollMarginTop: 180 },
   cardIcon: { width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: "linear-gradient(135deg,#ecfeff,#f0fdfa)", border: "1px solid #ccfbf1", flex: "0 0 auto" },
   grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 },

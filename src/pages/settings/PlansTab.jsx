@@ -280,7 +280,7 @@ export default function PlansTab() {
                 {isSuperAdmin && (
                   <div style={{ display:"flex", gap:8, flexShrink:0 }}>
                     <Button onClick={() => openEdit(plan)} tone="secondary" style={{ minHeight: 36 }}>{t("edit")}</Button>
-                    <Button onClick={() => setConfirm(plan.id)} tone="danger" style={{ minHeight: 36 }}>{t("delete")}</Button>
+                    <Button onClick={() => setConfirm(plan.id)} tone="muted" style={{ minHeight: 36, color: "#b91c1c", borderColor: "#fecaca", background: "#fff" }}>{t("delete")}</Button>
                   </div>
                 )}
               </div>

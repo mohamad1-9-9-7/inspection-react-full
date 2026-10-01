@@ -491,7 +491,7 @@ export default function CompaniesTab() {
                       {c.disabled_at ? (
                         <Button onClick={() => setConfirm({ company: c, action: "enable" })} tone="primary" style={{ minHeight:36 }}>{t("enableCompany")}</Button>
                       ) : Number(c.id) !== 1 && (
-                        <Button onClick={() => setConfirm({ company: c, action: "disable" })} tone="danger" style={{ minHeight:36 }}>{t("disableCompany")}</Button>
+                        <Button onClick={() => setConfirm({ company: c, action: "disable" })} tone="muted" style={{ minHeight:36, color:"#b45309", borderColor:"#fcd34d", background:"#fffbeb" }}>{t("disableCompany")}</Button>
                       )}
                       {/* The primary company (Al Mawashi) can never be deleted. */}
                       {Number(c.id) !== 1 && (

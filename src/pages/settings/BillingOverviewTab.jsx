@@ -163,7 +163,7 @@ function Row({ title, sub, tone, onOpen, openLabel }) {
 const sx = {
   head: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 },
   empty: { ...ui.card, textAlign: "center", color: "#64748b", fontWeight: 850 },
-  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 },
+  kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 16 },
   kpiLabel: { color: "#475569", fontWeight: 900 },
   muted: { color: "#475569", fontWeight: 750, marginTop: 2 },
   title: { margin: "0 0 14px", color: "#0f172a", fontWeight: 1000, display: "flex", alignItems: "center", gap: 10 },

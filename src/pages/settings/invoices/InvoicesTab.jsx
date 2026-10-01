@@ -24,6 +24,7 @@ import {
 } from "./invoiceCore";
 import { buildInvoiceHtml, downloadInvoicePdf, printInvoice } from "./invoiceDocument";
 import SellerProfileTab from "../SellerProfileTab";
+import ScaledDoc from "../_shared/ScaledDoc";
 
 const audit = (entry) => { try { Promise.resolve(logSettingsAudit(entry)).catch(() => {}); } catch { /* ignore */ } };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -478,36 +479,6 @@ function InvoiceModal({ invoice: inv, onClose, onChanged }) {
 
 /* ═════════════ Small pieces ═════════════ */
 
-/* An A4 page (794 × 1123 px) shrunk to whatever width its column has,
-   like a PDF viewer — never a horizontal scrollbar, never cut off. */
-const A4_W = 794;
-const A4_H = 1123;
-function ScaledDoc({ html, title }) {
-  const box = useRef(null);
-  const [scale, setScale] = useState(0.6);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return undefined;
-    const fit = () => setScale(Math.min(1, (el.clientWidth || A4_W) / A4_W));
-    fit();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div ref={box} style={{ ...sx.frameBox, height: Math.round(A4_H * scale) }}>
-      <iframe
-        title={title}
-        sandbox="allow-same-origin"
-        srcDoc={html}
-        scrolling="no"
-        style={{ width: A4_W, height: A4_H, border: 0, display: "block", transform: `scale(${scale})`, transformOrigin: "top left" }}
-      />
-    </div>
-  );
-}
-
 function StatusPill({ status, lang }) {
   const s = STATUS[status] || STATUS.unpaid;
   return (
@@ -559,13 +530,14 @@ function Modal({ title, children, onClose, wide }) {
 const inp = (bad) => ({ ...ui.input, minHeight: 46, borderColor: bad ? "#f87171" : "rgba(15,23,42,0.16)" });
 
 const ISSUE_CSS = `
-#root .bpx.bpx .inv-issue{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,560px); gap:22px; align-items:start; }
+/* two columns only when the MODAL has room for both (it sits beside the Platform
+   Center sidebar, so the window width says nothing) */
+#root .bpx.bpx .inv-issue{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 430px), 1fr)); gap:24px; align-items:start; }
 #root .bpx.bpx .inv-preview{ position:sticky; top:0; }
 #root .bpx.bpx .inv-tot > div{ display:flex; justify-content:space-between; gap:12px; }
 #root .bpx.bpx .inv-3{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 #root .bpx.bpx .inv-2{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 #root .bpx.bpx .inv-line{ display:grid; grid-template-columns:minmax(0,1fr) 90px 140px 44px; gap:8px; }
-@media (max-width: 1100px){ #root .bpx.bpx .inv-issue{ grid-template-columns:1fr; } #root .bpx.bpx .inv-preview{ position:static; } }
 @media (max-width: 640px){ #root .bpx.bpx .inv-3, #root .bpx.bpx .inv-2{ grid-template-columns:1fr; } #root .bpx.bpx .inv-line{ grid-template-columns:1fr 70px 100px 40px; } }
 `;
 
@@ -585,7 +557,6 @@ const sx = {
   modalHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid #e2e8f0" },
   iconBtn: { width: 44, minHeight: 44, borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", fontWeight: 900, color: "#475569" },
   previewLabel: { color: "#64748b", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 },
-  frameBox: { width: "100%", overflow: "hidden", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", boxShadow: "0 12px 30px rgba(15,23,42,.10)" },
   vatLocked: { minHeight: 46, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", fontWeight: 900 },
   totalBox: { marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", display: "grid", gap: 6 },
   err: { marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b", fontWeight: 800 },

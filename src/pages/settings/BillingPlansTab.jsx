@@ -76,7 +76,7 @@ html:has(.bpx.bpx), html:has(.bpx.bpx) body, html:has(.bpx.bpx) #root{ overflow-
 #root .bpx.bpx button{ transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
 #root .bpx.bpx button:not(:disabled):active{ transform: translateY(1px); }
 /* card lists tile across the whole width instead of one stacked column */
-#root .bpx.bpx .bpx-cards{ display: grid !important; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 14px !important; }
+#root .bpx.bpx .bpx-cards{ display: grid !important; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 14px !important; }
 #root .bpx.bpx .bpx-cards > *{ margin-bottom: 0 !important; min-width: 0; }
 @keyframes bpxIn { from { opacity: 0; } to { opacity: 1; } }
 #root .bpx.bpx .bpx-in{ animation: bpxIn .28s ease both; }

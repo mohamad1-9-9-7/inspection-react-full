@@ -27,7 +27,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
-import logo from "../assets/almawashi-logo.jpg";
+import { BrandMark } from "./readiness/brand";
 import { setActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { clearAppSession } from "../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
@@ -254,7 +254,7 @@ export default function SelectCompany() {
       <aside className="pc-side">
         <div aria-hidden="true" className="pc-side-glow" />
         <div className="pc-brand">
-          <img src={logo} alt="Al Mawashi" className="pc-logo" />
+          <span className="pc-logo" aria-hidden="true" style={{ display: "block", boxShadow: "0 10px 24px rgba(0,0,0,.35)", background: "none" }}><BrandMark size={48} /></span>
           <div className="pc-brand-txt">
             <span className="pc-eyebrow">INSPECT PRO</span>
             <span className="pc-brand-name">{L("Platform Center", "مركز المنصّة")}</span>
@@ -541,6 +541,7 @@ const PC_CSS = `
 .pc .pc-side > *{position:relative}
 .pc .pc-brand{display:flex; align-items:center; gap:12px; padding:4px 6px 16px; border-bottom:1px solid rgba(255,255,255,.1)}
 .pc .pc-logo{width:48px; height:48px; border-radius:12px; object-fit:cover; background:#fff; box-shadow:0 10px 24px rgba(0,0,0,.35); flex-shrink:0}
+.pc .pc-logo svg{width:100% !important; height:100% !important}
 .pc .pc-brand-txt{display:grid; gap:2px; min-width:0}
 .pc .pc-nav{display:grid; gap:6px}
 .pc .pc-nav-btn{display:flex; align-items:center; gap:12px; width:100%; text-align:start; padding:11px 12px; border-radius:12px;
