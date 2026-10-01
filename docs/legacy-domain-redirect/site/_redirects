@@ -1,0 +1,4 @@
+# Every old link (branch evidence, supplier forms, training quizzes, QR codes)
+# lands on the same page of the live site. 301 = permanent, ! = even if a
+# file of that name existed here.
+/*    https://inspectpro-ae.netlify.app/:splat    301!

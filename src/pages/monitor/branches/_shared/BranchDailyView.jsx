@@ -260,6 +260,13 @@ const STYLES = `
       margin-bottom: 12px;
     }
     .bdv-content { overflow: visible; padding: 12px; }
+    /* The views lay out "date tree | report" as an inline 260–300px + 1fr
+       grid; on a phone that left the report a 40px column of vertical
+       letters. Stack them instead. */
+    #root .bdv-content [style*="grid-template-columns"][style*="px minmax(0"],
+    #root .bdv-content [style*="grid-template-columns"][style*="px 1fr"] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
     .bdv-header { padding: 10px 12px; }
     .bdv-header-actions { margin-inline-start: 0; width: 100%; }
     .bdv-panel { padding: 14px 12px; }
