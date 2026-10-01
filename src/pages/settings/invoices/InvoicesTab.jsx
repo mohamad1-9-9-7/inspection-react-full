@@ -266,7 +266,7 @@ function IssueModal({ companies, invoices, seller, onClose, onIssued }) {
     subtotal, vat_pct: vat, vat_amount: vatAmount, amount: total, status: "unpaid",
     seller: {
       name: seller.name, owner_name: seller.ownerName, address: seller.address, email: seller.email, phone: seller.phone,
-      website: seller.website, logo_url: seller.logoUrl, license_no: seller.licenseStatus === "issued" ? seller.licenseNo : "",
+      website: seller.website, logo_url: seller.logoUrl, license_no: seller.licenseNo,
       license_authority: seller.licenseAuthority, vat_registered: seller.vatRegistered, trn: seller.vatRegistered ? seller.trn : "",
       bank_name: seller.bankName, account_name: seller.accountName, iban: seller.iban, swift: seller.swift,
     },

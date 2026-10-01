@@ -39,10 +39,11 @@ describe("seller profile", () => {
     expect(invoiceTitle(registered)).toBe("Tax Invoice");
   });
 
-  test("a pending licence prints nothing", () => {
-    expect(licenseLine(freelancer)).toBe("");
-    expect(licenseLine({ ...freelancer, licenseStatus: "issued", licenseNo: "FL-123", licenseAuthority: "Dubai" }))
-      .toBe("Licence No. FL-123 · Dubai");
+  test("the licence is always printed, defaulting to INSPECT PRO's own", () => {
+    expect(licenseLine(freelancer)).toBe("Licence No. CN-6791275 · Abu Dhabi Registration Authority (ADRA)");
+    expect(licenseLine({ ...freelancer, licenseNo: "FL-123", licenseAuthority: "Dubai" })).toBe("Licence No. FL-123 · Dubai");
+    expect(licenseLine({ ...freelancer, licenseNo: "" })).toBe("");
+    expect(sellerToRow(freelancer)).not.toHaveProperty("license_status");
   });
 
   test("the readiness list asks for the IBAN and a contact", () => {
@@ -65,12 +66,11 @@ describe("quotation VAT check", () => {
     expect(quoteInsights({ ...q, issuerTaxId: "100123456700003" }, registered).some((x) => /TRN/.test(x.en))).toBe(false);
   });
 
-  test("a licensed seller's quotation without the licence line gets a tip", () => {
-    const licensed = { ...freelancer, licenseStatus: "issued", licenseNo: "CN-6791275", licenseAuthority: "ADRA" };
+  test("a quotation without the licence line gets a tip", () => {
     const q0 = { ...q, vatPct: 0 };
-    expect(quoteInsights(q0, licensed).some((x) => /licence/.test(x.en))).toBe(true);
-    expect(quoteInsights({ ...q0, issuerLicense: licenseLine(licensed) }, licensed).some((x) => /licence/.test(x.en))).toBe(false);
-    expect(quoteInsights(q0, freelancer).some((x) => /licence/.test(x.en))).toBe(false);
+    expect(quoteInsights(q0, freelancer).some((x) => /licence/.test(x.en))).toBe(true);
+    expect(quoteInsights({ ...q0, issuerLicense: licenseLine(freelancer) }, freelancer).some((x) => /licence/.test(x.en))).toBe(false);
+    expect(quoteInsights(q0, { ...freelancer, licenseNo: "" }).some((x) => /licence/.test(x.en))).toBe(false);
   });
 
   test("old callers without a seller keep working", () => {

@@ -10,11 +10,21 @@
 // 15-digit TRN — may charge VAT or title a document "Tax Invoice". A
 // freelancer still waiting for a licence is not, so vatRegistered=false
 // means: VAT 0 %, and the document is a plain "Invoice" / "Quotation".
+//
+// Licence: INSPECT PRO is licensed (Abu Dhabi, 1 Oct 2026), so every document
+// carries the licence line. An empty profile falls back to LICENSE_DEFAULTS;
+// the server's invoice snapshot uses the same values (routes/billing.cjs).
 // -----------------------------------------------------------------------------
 
 import API_BASE from "../../../config/api";
 
 export const SELLER_DEFAULT_NAME = "INSPECT PRO";
+
+export const LICENSE_DEFAULTS = {
+  no: "CN-6791275",
+  authority: "Abu Dhabi Registration Authority (ADRA)",
+  expiry: "2027-09-30",
+};
 
 /* Server row → the shape screens use. Tolerates a missing row and the
    columns an older server has not added yet. */
@@ -28,10 +38,9 @@ export function normalizeSeller(row) {
     phone: r.contact_phone || "",
     website: r.website || "",
     logoUrl: /^https?:\/\//i.test(r.logo_url || "") ? r.logo_url : "",
-    licenseStatus: r.license_status === "issued" ? "issued" : "pending",
-    licenseNo: r.license_no || "",
-    licenseAuthority: r.license_authority || "",
-    licenseExpiry: r.license_expiry ? String(r.license_expiry).slice(0, 10) : "",
+    licenseNo: r.license_no || LICENSE_DEFAULTS.no,
+    licenseAuthority: r.license_authority || LICENSE_DEFAULTS.authority,
+    licenseExpiry: r.license_expiry ? String(r.license_expiry).slice(0, 10) : LICENSE_DEFAULTS.expiry,
     vatRegistered: r.vat_registered === true,
     trn: r.tax_id || "",
     bankName: r.bank_name || "",
@@ -54,7 +63,6 @@ export function sellerToRow(s) {
     contact_phone: s.phone,
     website: s.website,
     logo_url: s.logoUrl,
-    license_status: s.licenseStatus,
     license_no: s.licenseNo,
     license_authority: s.licenseAuthority,
     license_expiry: s.licenseExpiry || null,
@@ -108,13 +116,10 @@ export const allowedVatPct = (seller, wanted) =>
 /* "Tax Invoice" is a legal title — only with a TRN. */
 export const invoiceTitle = (seller) => (seller?.vatRegistered ? "Tax Invoice" : "Invoice");
 
-/* The licence line under the seller's name. Pending → says nothing false. */
+/* The licence line under the seller's name. */
 export function licenseLine(seller) {
-  if (!seller) return "";
-  if (seller.licenseStatus === "issued" && seller.licenseNo) {
-    return [`Licence No. ${seller.licenseNo}`, seller.licenseAuthority].filter(Boolean).join(" · ");
-  }
-  return "";
+  if (!seller?.licenseNo) return "";
+  return [`Licence No. ${seller.licenseNo}`, seller.licenseAuthority].filter(Boolean).join(" · ");
 }
 
 /* What is still missing before documents look finished, most important
@@ -126,6 +131,6 @@ export function sellerGaps(s) {
   if (!s.email.trim() && !s.phone.trim()) gaps.push({ key: "contact", en: "An e-mail or phone for customers", ar: "إيميل أو هاتف للعملاء" });
   if (!s.iban.trim()) gaps.push({ key: "iban", en: "Bank IBAN, so customers can pay you", ar: "رقم IBAN حتى يقدر العميل يدفعلك" });
   if (!s.logoUrl) gaps.push({ key: "logo", en: "Logo", ar: "الشعار" });
-  if (s.licenseStatus === "issued" && !s.licenseNo.trim()) gaps.push({ key: "license", en: "Licence number", ar: "رقم الرخصة" });
+  if (!s.licenseNo.trim()) gaps.push({ key: "license", en: "Licence number", ar: "رقم الرخصة" });
   return gaps;
 }

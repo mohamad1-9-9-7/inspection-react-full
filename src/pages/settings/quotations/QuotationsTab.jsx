@@ -715,7 +715,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 {(seller?.vatRegistered || q.issuerTaxId) && <Field label={L("Tax / TRN", "الرقم الضريبي")}><input style={S.input} value={q.issuerTaxId} onChange={(e) => set({ issuerTaxId: e.target.value })} /></Field>}
                 <Field label={L("Email", "الإيميل")}><input style={S.input} value={q.issuerEmail} onChange={(e) => set({ issuerEmail: e.target.value })} /></Field>
                 <Field label={L("Phone", "الهاتف")}><input style={S.input} value={q.issuerPhone} onChange={(e) => set({ issuerPhone: e.target.value })} /></Field>
-                <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} placeholder={L("Shown once the licence is issued", "تظهر بعد صدور الرخصة")} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
+                <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
               </div>
               <Field label={L("Address", "العنوان")} style={{ marginTop: 10 }}><input style={S.input} value={q.issuerAddress} onChange={(e) => set({ issuerAddress: e.target.value })} /></Field>
               <Btn style={{ marginTop: 10 }} onClick={() => { set(issuerFromSeller(seller)); flash(L("Issuer refreshed from the profile", "تم تحديث بيانات المُصدِر من الهوية")); }}>

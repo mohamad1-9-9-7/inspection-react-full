@@ -6,9 +6,9 @@
 // from here: name, licence, tax status, contact, where to pay. The right-hand
 // column is a live preview of that header, so nothing is filled in blind.
 //
-// Freelancer-aware on purpose: the licence can be "pending" (nothing printed
-// until it is issued), and VAT stays off until there is a 15-digit TRN — in
-// which case documents are titled "Invoice", never "Tax Invoice".
+// The licence is always printed (defaults in sellerProfile.js). VAT stays off
+// until there is a 15-digit TRN — until then documents are titled "Invoice",
+// never "Tax Invoice".
 // -----------------------------------------------------------------------------
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -188,35 +188,18 @@ export default function SellerProfileTab() {
             </Field>
           </Section>
 
-          <Section n="2" title={L("Licence", "الرخصة")} hint={L("Nothing about a licence is printed until it is issued.", "ما بينطبع شي عن الرخصة لحد ما تصدر.")}>
-            <Segmented
-              value={form.licenseStatus}
-              onChange={(v) => set({ licenseStatus: v })}
-              options={[
-                { id: "pending", label: `⏳ ${L("Being issued", "قيد الإصدار")}` },
-                { id: "issued", label: `✅ ${L("Issued", "صادرة")}` },
-              ]}
-            />
-            {form.licenseStatus === "pending" ? (
-              <Note tone="info">
-                {L(
-                  "Fine to start with. Quotations and invoices are issued in the owner's name without a licence line. Switch to “Issued” the day you get it.",
-                  "عادي تبلّش هيك. العروض والفواتير بتطلع باسم المالك وبدون سطر رخصة. أول ما تستلمها حوّلها لـ«صادرة»."
-                )}
-              </Note>
-            ) : (
-              <div className="spt-3" style={{ marginTop: 14 }}>
-                <Field label={L("Licence / permit No.", "رقم الرخصة / التصريح")}>
-                  <input style={inp()} value={form.licenseNo} onChange={(e) => set({ licenseNo: e.target.value })} />
-                </Field>
-                <Field label={L("Issued by", "جهة الإصدار")} hint={L("e.g. the free zone or authority", "مثلاً المنطقة الحرة أو الدائرة")}>
-                  <input style={inp()} value={form.licenseAuthority} onChange={(e) => set({ licenseAuthority: e.target.value })} />
-                </Field>
-                <Field label={L("Expires", "تاريخ الانتهاء")}>
-                  <input type="date" style={inp()} value={form.licenseExpiry} onChange={(e) => set({ licenseExpiry: e.target.value })} />
-                </Field>
-              </div>
-            )}
+          <Section n="2" title={L("Licence", "الرخصة")} hint={L("Printed on every quotation and invoice.", "بتنطبع على كل عرض سعر وكل فاتورة.")}>
+            <div className="spt-3">
+              <Field label={L("Licence / permit No.", "رقم الرخصة / التصريح")}>
+                <input style={inp()} value={form.licenseNo} onChange={(e) => set({ licenseNo: e.target.value })} />
+              </Field>
+              <Field label={L("Issued by", "جهة الإصدار")} hint={L("e.g. the free zone or authority", "مثلاً المنطقة الحرة أو الدائرة")}>
+                <input style={inp()} value={form.licenseAuthority} onChange={(e) => set({ licenseAuthority: e.target.value })} />
+              </Field>
+              <Field label={L("Expires", "تاريخ الانتهاء")}>
+                <input type="date" style={inp()} value={form.licenseExpiry} onChange={(e) => set({ licenseExpiry: e.target.value })} />
+              </Field>
+            </div>
           </Section>
 
           <Section n="3" title={L("Tax (VAT)", "الضريبة (VAT)")} hint={L("Only a VAT-registered business may charge VAT.", "بس المسجّل بالضريبة بيحقّله يحسب VAT.")}>
