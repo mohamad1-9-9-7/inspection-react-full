@@ -1463,7 +1463,6 @@ const S = {
   heroGlow: { position: "absolute", inset: 0, background: "radial-gradient(600px 240px at 85% 0%, rgba(45,212,191,.35), transparent 70%), radial-gradient(500px 200px at 10% 120%, rgba(56,189,248,.25), transparent 70%)" },
   heroKicker: { display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)", marginBottom: 10, fontWeight: 900, letterSpacing: ".04em" },
   kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 18 },
-  linkBtn: { border: 0, background: "none", color: "#0f766e", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", padding: 0 },
   kpi: (tone) => ({ background: "#fff", borderRadius: 18, padding: 18, boxShadow: SHADOW, border: "1px solid rgba(15,23,42,.06)", borderTop: `4px solid ${tone}` }),
   kpiIcon: (tone) => ({ width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", background: `${tone}14`, flex: "0 0 auto" }),
   panel: { background: "#fff", borderRadius: 20, padding: 18, boxShadow: SHADOW, border: "1px solid rgba(15,23,42,.06)" },
