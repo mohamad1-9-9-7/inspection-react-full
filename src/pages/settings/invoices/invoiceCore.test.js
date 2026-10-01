@@ -62,3 +62,13 @@ test("helpers", () => {
   expect(priceOf({ price: "1200.00", plan_price: 1500 })).toBe(1200);
   expect(priceOf({ price: null, plan_price: "1500.00" })).toBe(1500);
 });
+
+describe("amount in words", () => {
+  const { amountInWords } = require("./invoiceCore");
+  test("whole dirhams, fils and big numbers", () => {
+    expect(amountInWords(3200, "AED")).toBe("UAE Dirhams Three Thousand Two Hundred Only");
+    expect(amountInWords(1250.5, "AED")).toBe("UAE Dirhams One Thousand Two Hundred Fifty and Fifty Fils Only");
+    expect(amountInWords(2001021, "USD")).toBe("US Dollars Two Million One Thousand Twenty-One Only");
+    expect(amountInWords(0)).toBe("UAE Dirhams Zero Only");
+  });
+});

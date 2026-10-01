@@ -56,6 +56,7 @@ export const LINE_KINDS = [
 
 /* Document colour themes — `a` is the main colour, `b` the accent. */
 export const THEMES = [
+  { id: "brand",    en: "INSPECT PRO", ar: "هوية INSPECT PRO", a: "#0B1E3F", b: "#0EA5A4", soft: "#f0fdfa", line: "#99f6e4" },
   { id: "teal",     en: "Teal",     ar: "فيروزي",  a: "#0f766e", b: "#0891b2", soft: "#f0fdfa", line: "#99f6e4" },
   { id: "navy",     en: "Navy",     ar: "كحلي",    a: "#1e3a8a", b: "#2563eb", soft: "#eff6ff", line: "#bfdbfe" },
   { id: "violet",   en: "Violet",   ar: "بنفسجي",  a: "#5b21b6", b: "#db2777", soft: "#f5f3ff", line: "#ddd6fe" },
@@ -80,7 +81,10 @@ export const TERM_GROUPS = [
 export const TERM_LIBRARY = [
   { key: "vat", group: "payment", on: true,
     en: "Prices exclude VAT; VAT at {vat}% is added to every invoice.",
-    ar: "الأسعار لا تشمل الضريبة، وتُضاف ضريبة القيمة المضافة بنسبة {vat}% على كل فاتورة." },
+    ar: "الأسعار لا تشمل الضريبة، وتُضاف ضريبة القيمة المضافة بنسبة {vat}% على كل فاتورة.",
+    // a 0 % quotation: "VAT at 0 % is added" reads as if VAT were due
+    enZero: "No VAT is charged — the supplier is not registered for VAT.",
+    arZero: "لا تُحتسب ضريبة القيمة المضافة — المورّد غير مسجّل في الضريبة." },
   { key: "billing", group: "payment", on: true,
     en: "The subscription is invoiced in advance at the start of each {cycle} period.",
     ar: "يُفوتر الاشتراك مقدّماً في بداية كل فترة ({cycleAr})." },
@@ -152,7 +156,8 @@ export const defaultTermsList = () => TERM_LIBRARY.map((t) => makeTerm(t.key));
 /* Sentence for one term, in one language, with every placeholder filled. */
 export function termText(term, q, lang = "en") {
   const tpl = term.key ? termTemplate(term.key) : null;
-  const raw = (lang === "ar" ? term.ar : term.en) || (tpl ? tpl[lang] : "") || "";
+  const zero = tpl?.enZero && num(q?.vatPct) === 0 ? (lang === "ar" ? tpl.arZero : tpl.enZero) : "";
+  const raw = (lang === "ar" ? term.ar : term.en) || zero || (tpl ? tpl[lang] : "") || "";
   const cyc = cycleById(q?.cycle);
   const vars = {
     vat: fmtNum(q?.vatPct),
@@ -269,7 +274,7 @@ export const emptyQuote = (defaults = {}) => ({
   termsList: defaultTermsList(),
   notes: "",
   showArabic: true,
-  theme: "teal",
+  theme: "brand",
   showLogo: true,
   ...defaults,
 });

@@ -11,7 +11,7 @@ import {
   TERM_GROUPS, computeTotals, cycleById, dmy, fmtMoney, lineTotal, num, statusById,
   termTemplate, termText, termsListOf, themeById, unitById, validUntil,
 } from "./quotationCore";
-import { htmlToPdf, printHtml } from "../_shared/docRender";
+import { DOC_FONTS, htmlToPdf, printHtml } from "../_shared/docRender";
 
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (m) =>
   ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "\"": "&quot;" }[m]));
@@ -106,6 +106,7 @@ export function buildQuoteHtml(q, opts = {}) {
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(q.number)} — ${esc(q.clientName)}</title>
+${DOC_FONTS}
 <style>
   @page { size: A4; margin: 10mm; }
   * { box-sizing: border-box; }
@@ -127,12 +128,12 @@ export function buildQuoteHtml(q, opts = {}) {
   .logo { width: 62px; height: 62px; border-radius: 14px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.18); }
   .logo img { max-width: 54px; max-height: 54px; object-fit: contain; }
   .logo span { font-weight: 900; font-size: 22px; color: var(--a); }
-  .iss-n { font-size: 19px; font-weight: 800; letter-spacing: .2px; }
+  .iss-n { font: 800 20px/1.15 Montserrat, "Segoe UI", sans-serif; letter-spacing: .6px; }
   .iss-l { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; margin-top: 2px; }
   .iss-d { font-size: 11px; opacity: .85; margin-top: 3px; line-height: 1.5; }
   .qt { text-align: right; }
   .qt-k { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .85; }
-  .qt-h { font-size: 30px; font-weight: 900; letter-spacing: 1.5px; line-height: 1.05; }
+  .qt-h { font: 800 30px/1.05 Montserrat, "Segoe UI", sans-serif; letter-spacing: 2px; }
   .qt-ar { font-size: 17px; font-weight: 800; opacity: .9; }
   .chips { position: relative; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
   .chip { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); border-radius: 999px; padding: 4px 12px; font-size: 11px; }
@@ -155,7 +156,7 @@ export function buildQuoteHtml(q, opts = {}) {
   .hero-v { font-size: 22px; font-weight: 900; margin-top: 4px; line-height: 1.1; }
   .hero-s { font-size: 10.5px; opacity: .9; margin-top: 6px; }
 
-  .title { margin: 20px 0 2px; font-size: 18px; font-weight: 900; color: var(--ink); }
+  .title { margin: 20px 0 2px; font: 800 18px/1.3 Montserrat, "Segoe UI", sans-serif; color: var(--ink); }
   .title-ar { font-size: 14px; font-weight: 800; color: #475569; }
   .intro { color: #334155; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; margin: 8px 0 0; padding: 10px 14px; background: var(--soft); border-radius: 10px; border-inline-start: 4px solid var(--a); }
 

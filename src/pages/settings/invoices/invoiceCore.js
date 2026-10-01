@@ -31,6 +31,36 @@ export function fmtDate(v) {
 export const fmtMoney = (n, cur = "AED") =>
   `${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur || "AED"}`;
 
+/* "UAE Dirhams Three Thousand Two Hundred and Fifty Fils Only" — the amount
+   in words customary on a UAE invoice. Whole units up to the billions. */
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+  "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+const CURRENCY_WORDS = {
+  AED: ["UAE Dirhams", "Fils"], USD: ["US Dollars", "Cents"], SAR: ["Saudi Riyals", "Halalas"],
+  EUR: ["Euros", "Cents"], GBP: ["Pounds Sterling", "Pence"],
+};
+function under1000(n) {
+  const h = Math.floor(n / 100), r = n % 100;
+  const rest = r < 20 ? ONES[r] : [TENS[Math.floor(r / 10)], ONES[r % 10]].filter(Boolean).join("-");
+  return [h ? `${ONES[h]} Hundred` : "", rest].filter(Boolean).join(" ");
+}
+function intWords(n) {
+  if (n === 0) return "Zero";
+  const parts = [];
+  [[1e9, "Billion"], [1e6, "Million"], [1e3, "Thousand"], [1, ""]].forEach(([size, name]) => {
+    const chunk = Math.floor(n / size) % 1000;
+    if (chunk) parts.push([under1000(chunk), name].filter(Boolean).join(" "));
+  });
+  return parts.join(" ");
+}
+export function amountInWords(amount, cur = "AED") {
+  const cents = Math.round(Math.abs(Number(amount) || 0) * 100);
+  const [major, minor] = CURRENCY_WORDS[cur] || [cur, "Cents"];
+  const whole = Math.floor(cents / 100), frac = cents % 100;
+  return `${major} ${intWords(whole)}${frac ? ` and ${intWords(frac)} ${minor}` : ""} Only`;
+}
+
 export const todayISO = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 

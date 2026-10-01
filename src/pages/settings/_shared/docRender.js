@@ -9,6 +9,10 @@
 // Arabic-shaping note in project memory.
 // -----------------------------------------------------------------------------
 
+/* INSPECT PRO's identity on every document it issues (public/brand/inspect-pro). */
+export const DOC_BRAND = { navy: "#0B1E3F", teal: "#0EA5A4", soft: "#f0fdfa", line: "#ccfbf1" };
+export const DOC_FONTS = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap">`;
+
 export function mountFrame(html, visible = false) {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -21,10 +25,13 @@ export function mountFrame(html, visible = false) {
   return iframe;
 }
 
-/* Resolves once the document (and its images) have loaded. */
+/* Resolves once the document, its images and its web fonts have loaded —
+   a capture taken before the fonts arrive prints the fallback face. Fonts
+   get 3 s at most, so a slow or offline network never blocks the PDF. */
 export const waitFor = (iframe) => new Promise((resolve) => {
   const w = iframe.contentWindow;
-  const done = () => setTimeout(resolve, 150);
+  const fonts = () => Promise.race([w.document.fonts?.ready, new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
+  const done = () => fonts().then(() => setTimeout(resolve, 150));
   if (w.document.readyState === "complete") done();
   else w.addEventListener("load", done, { once: true });
 });

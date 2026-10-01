@@ -85,3 +85,12 @@ describe("quotation VAT check", () => {
     expect(() => quoteInsights(q)).not.toThrow();
   });
 });
+
+describe("quotation VAT term", () => {
+  const { termText, makeTerm } = require("../quotations/quotationCore");
+  test("a 0 % quotation says no VAT is charged instead of 'VAT at 0 % is added'", () => {
+    expect(termText(makeTerm("vat"), { vatPct: 0 }, "en")).toMatch(/No VAT is charged/);
+    expect(termText(makeTerm("vat"), { vatPct: 5 }, "en")).toMatch(/VAT at 5% is added/);
+    expect(termText(makeTerm("vat", { en: "Custom." }), { vatPct: 0 }, "en")).toBe("Custom.");
+  });
+});
