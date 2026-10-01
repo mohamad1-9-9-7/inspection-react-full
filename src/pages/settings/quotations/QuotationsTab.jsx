@@ -630,6 +630,9 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
               <Field label={L("Contract term (months)", "مدة العقد (أشهر)")}>
                 <Stepper value={q.contractMonths} disabled={cyc.months === 0} onChange={(v) => set({ contractMonths: v })} presets={[3, 6, 12, 24, 36]} />
               </Field>
+              <Field label={`🎁 ${L("Free months (from signing)", "أشهر مجانية (من التوقيع)")}`}>
+                <Stepper value={q.freeMonths || 0} disabled={cyc.months === 0} max={Math.max(0, num(q.contractMonths))} onChange={(v) => set({ freeMonths: v })} presets={[0, 1, 2, 3]} />
+              </Field>
               <Field label={L("Overall discount %", "خصم إجمالي %")}>
                 <Stepper value={q.discountPct} step={0.5} max={100} onChange={(v) => set({ discountPct: v })} presets={[0, 5, 10, 15, 20]} suffix="%" />
               </Field>
@@ -656,7 +659,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
               )}
               {cyc.months > 0 && totals.recurring > 0 && (
                 <TotalCard th={th} accent title={`${L("Contract value", "قيمة العقد")} · ${num(q.contractMonths)} ${L("mo", "شهر")}`}
-                  rows={[[L("First invoice", "الفاتورة الأولى"), totals.firstInvoice], [L("Monthly equivalent", "ما يعادل شهرياً"), totals.monthlyEquivalent]]}
+                  rows={[[(totals.freeMonths ? L("Due on signing", "المستحق عند التوقيع") : L("First invoice", "الفاتورة الأولى")), totals.firstInvoice], [L("Monthly equivalent", "ما يعادل شهرياً"), totals.monthlyEquivalent]]}
                   total={totals.contractValue} currency={q.currency} />
               )}
             </div>
@@ -796,7 +799,8 @@ function SidePanel({ q, opts, totals, insights, th, onPreview, onDuplicate }) {
         <div style={{ opacity: 0.85 }}>{totals.recurring ? `${L("Total", "الإجمالي")} ${lang === "ar" ? cyc.perAr : cyc.perEn}` : L("Total", "الإجمالي")}</div>
         <div className="bpx-xxl" style={{ fontWeight: 1000, lineHeight: 1.1, margin: "4px 0 10px" }}>{fmtMoney(totals.recurringTotal || totals.oneTimeTotal, q.currency)}</div>
         <SumRow k={L("One-time", "مرة واحدة")} v={fmtMoney(totals.oneTimeTotal, q.currency)} show={totals.oneTime > 0 && totals.recurring > 0} />
-        <SumRow k={L("First invoice", "الفاتورة الأولى")} v={fmtMoney(totals.firstInvoice, q.currency)} show={totals.recurring > 0 && totals.oneTime > 0} />
+        <SumRow k={(totals.freeMonths ? L("Due on signing", "المستحق عند التوقيع") : L("First invoice", "الفاتورة الأولى"))} v={fmtMoney(totals.firstInvoice, q.currency)} show={totals.recurring > 0 && totals.oneTime > 0} />
+        <SumRow k={`🎁 ${L("Free", "مجاني")} · ${totals.freeMonths} ${L("mo", "شهر")}`} v={`− ${fmtMoney(totals.freeValue, q.currency)}`} show={totals.freeMonths > 0} />
         <SumRow k={`${L("Contract", "العقد")} · ${num(q.contractMonths)} ${L("mo", "شهر")}`} v={fmtMoney(totals.contractValue, q.currency)} show={cyc.months > 0 && totals.recurring > 0} />
         <SumRow k={L("Client saves", "توفير العميل")} v={fmtMoney(totals.savings, q.currency)} show={totals.savings > 0} />
         <SumRow k={L("Optional add-ons", "إضافات اختيارية")} v={fmtMoney(totals.optional, q.currency)} show={totals.optional > 0} />

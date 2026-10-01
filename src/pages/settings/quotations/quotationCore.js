@@ -103,6 +103,10 @@ export const TERM_LIBRARY = [
   { key: "notice", group: "contract", on: true, params: [{ k: "days", v: 30, en: "days", ar: "يوم" }],
     en: "After the minimum period the subscription renews automatically and can be cancelled with {days} days' written notice.",
     ar: "بعد الحد الأدنى يتجدد الاشتراك تلقائياً، ويمكن إلغاؤه بإشعار خطي قبل {days} يوماً." },
+  { key: "early_exit", group: "contract", on: true,
+    params: [{ k: "months", v: 6, en: "months", ar: "شهر" }, { k: "penalty", v: 2, en: "months' value", ar: "شهر" }],
+    en: "If the Client terminates the contract before {months} months from the signing date, the Client shall pay a penalty equal to {penalty} months of the monthly subscription value stated in this contract ({amount}).",
+    ar: "في حال فسخ العميل للعقد قبل انقضاء {months} أشهر من تاريخ التوقيع، يلتزم العميل بدفع غرامة تعادل قيمة {penalty} شهر من قيمة الاشتراك الشهرية الموضحة في هذا العقد ({amount})." },
   { key: "price_lock", group: "contract", on: false, params: [{ k: "months", v: 12, en: "months", ar: "شهر" }, { k: "pct", v: 5, en: "%", ar: "%" }],
     en: "Prices are fixed for {months} months; any later increase will not exceed {pct}% per year.",
     ar: "الأسعار ثابتة لمدة {months} شهراً، وأي زيادة لاحقة لا تتجاوز {pct}% سنوياً." },
@@ -167,6 +171,8 @@ export function termText(term, q, lang = "en") {
     currency: q?.currency || "",
     ...Object.fromEntries(Object.entries(term.params || {}).map(([k, v]) => [k, fmtNum(v)])),
   };
+  // {amount}: the penalty in money — n months of the monthly value on this quotation
+  if (raw.includes("{amount}")) vars.amount = fmtMoney(computeTotals(q).monthlyEquivalent * num(term.params?.penalty), q?.currency);
   return raw.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
 
@@ -247,6 +253,7 @@ export const emptyQuote = (defaults = {}) => ({
   currency: "AED",
   cycle: "monthly",
   contractMonths: 12,
+  freeMonths: 0,        // free subscription months from the signing date
   // client
   companyId: null,
   clientName: "",
@@ -292,6 +299,28 @@ export function lineTotal(l) {
   return round2(gross * (1 - num(l.discountPct) / 100));
 }
 
+/* Free months from the signing date: only for a recurring cycle, never more
+   than the contract itself. */
+export function freeMonthsOf(q) {
+  if (cycleById(q?.cycle).months === 0) return 0;
+  const max = Math.max(0, Math.round(num(q?.contractMonths)));
+  return Math.min(max, Math.max(0, Math.round(num(q?.freeMonths))));
+}
+
+/* The sentence printed with the payment terms when there are free months. */
+export function freeMonthsText(q, lang = "en") {
+  const n = freeMonthsOf(q);
+  if (!n) return "";
+  if (lang === "ar") {
+    return n === 1
+      ? "الشهر الأول من الاشتراك مجاني ابتداءً من تاريخ توقيع العقد، وتصدر أول فاتورة اشتراك في بداية الشهر الثاني."
+      : `أول ${n} أشهر من الاشتراك مجانية ابتداءً من تاريخ توقيع العقد، وتصدر أول فاتورة اشتراك في بداية الشهر ${n + 1}.`;
+  }
+  return n === 1
+    ? "The first month of the subscription is free of charge, counted from the contract signing date; the first subscription invoice is issued at the start of month 2."
+    : `The first ${n} months of the subscription are free of charge, counted from the contract signing date; the first subscription invoice is issued at the start of month ${n + 1}.`;
+}
+
 export function computeTotals(q) {
   const all = q?.lines || [];
   const lines = all.filter((l) => !l.optional);
@@ -314,15 +343,18 @@ export function computeTotals(q) {
   const cyc = cycleById(q?.cycle);
   const months = Math.max(0, Math.round(num(q?.contractMonths)));
   const periods = cyc.months > 0 ? months / cyc.months : 0;
-  const contractValue = round2(recurringTotal * periods + oneTimeTotal);
+  const freeMonths = freeMonthsOf(q);
+  const freeValue = cyc.months > 0 ? round2(recurringTotal / cyc.months * freeMonths) : 0;
+  const contractValue = round2(recurringTotal * periods + oneTimeTotal - freeValue);
   const monthlyEquivalent = cyc.months > 0 ? round2(recurringTotal / cyc.months) : 0;
-  const savings = round2((recurring + oneTime) * dPct + all.reduce((s, l) => s + (l.optional ? 0 : num(l.qty) * num(l.unitPrice) - lineTotal(l)), 0));
+  const savings = round2((recurring + oneTime) * dPct + freeValue + all.reduce((s, l) => s + (l.optional ? 0 : num(l.qty) * num(l.unitPrice) - lineTotal(l)), 0));
 
   return {
     recurring, recurringDiscount, recurringNet, recurringVat, recurringTotal,
     oneTime, oneTimeDiscount, oneTimeNet, oneTimeVat, oneTimeTotal,
-    optional, periods, contractValue, monthlyEquivalent, savings,
-    firstInvoice: round2(recurringTotal + oneTimeTotal),
+    optional, periods, contractValue, monthlyEquivalent, savings, freeMonths, freeValue,
+    // with free months the subscription is not billed on signing — only one-time fees are
+    firstInvoice: round2((freeMonths ? 0 : recurringTotal) + oneTimeTotal),
   };
 }
 
@@ -421,6 +453,7 @@ export function quoteSummaryText(q, lang = "en") {
     ...rows,
     "",
     t.recurring ? `${ar ? "الإجمالي" : "Total"} ${ar ? cyc.perAr : cyc.perEn}: ${fmtMoney(t.recurringTotal, q.currency)}` : "",
+    t.freeMonths ? (ar ? `🎁 ${t.freeMonths === 1 ? "الشهر الأول مجاني" : `أول ${t.freeMonths} أشهر مجاناً`} من تاريخ توقيع العقد` : `🎁 ${t.freeMonths === 1 ? "First month" : `First ${t.freeMonths} months`} free from the contract signing date`) : "",
     t.oneTime ? `${ar ? "رسوم لمرة واحدة" : "One-time"}: ${fmtMoney(t.oneTimeTotal, q.currency)}` : "",
     t.recurring && cyc.months ? `${ar ? "قيمة العقد" : "Contract value"} (${fmtNum(q.contractMonths)} ${ar ? "شهر" : "months"}): ${fmtMoney(t.contractValue, q.currency)}` : "",
     num(q.vatPct) ? (ar ? `(شامل ضريبة ${fmtNum(q.vatPct)}%)` : `(incl. ${fmtNum(q.vatPct)}% VAT)`) : "",

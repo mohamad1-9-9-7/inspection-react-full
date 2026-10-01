@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------------
 
 import {
-  TERM_GROUPS, computeTotals, cycleById, dmy, fmtMoney, lineTotal, num, statusById,
+  TERM_GROUPS, computeTotals, cycleById, dmy, fmtMoney, freeMonthsText, lineTotal, num, statusById,
   termTemplate, termText, termsListOf, themeById, unitById, validUntil,
 } from "./quotationCore";
 import { DOC_FONTS, PRINT_BREAK_CSS, htmlToPdf, printHtml } from "../_shared/docRender";
@@ -92,8 +92,10 @@ export function buildQuoteHtml(q, opts = {}) {
 
   /* Terms grouped by topic, numbered continuously. */
   const terms = termsListOf(q).filter((x) => x.on);
+  // free months: a sentence at the head of the payment terms, not a stored term
+  if (t.freeMonths) terms.unshift({ id: "free", group: "payment", virtual: { en: freeMonthsText(q, "en"), ar: freeMonthsText(q, "ar") } });
   let tn = 0;
-  const groupOf = (x) => (x.key ? termTemplate(x.key)?.group : "other") || "other";
+  const groupOf = (x) => x.group || (x.key ? termTemplate(x.key)?.group : "other") || "other";
   const groups = [...TERM_GROUPS, { id: "other", en: "Other", ar: "أخرى" }]
     .map((g) => ({ g, items: terms.filter((x) => groupOf(x) === g.id) }))
     .filter((x) => x.items.length);
@@ -101,8 +103,8 @@ export function buildQuoteHtml(q, opts = {}) {
     <div class="tg-h">${inline(g.en, g.ar)}</div>
     ${items.map((x) => {
       tn += 1;
-      const en = termText(x, q, "en");
-      const a = ar ? termText(x, q, "ar") : "";
+      const en = x.virtual ? x.virtual.en : termText(x, q, "en");
+      const a = ar ? (x.virtual ? x.virtual.ar : termText(x, q, "ar")) : "";
       return `<div class="term"><span class="tn">${tn}</span><div>${en ? `<div dir="auto">${esc(en)}</div>` : ""}${a ? `<div class="t-ar" dir="rtl">${esc(a)}</div>` : ""}</div></div>`;
     }).join("")}`).join("");
 
@@ -159,6 +161,11 @@ ${DOC_FONTS}
   .hero-v { font-size: 22px; font-weight: 900; margin-top: 4px; line-height: 1.1; }
   .hero-s { font-size: 10.5px; opacity: .9; margin-top: 6px; }
 
+  .gift { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 16px; border-radius: 12px;
+          background: linear-gradient(90deg, #fffbeb, #fef3c7); border: 1.5px dashed #f59e0b; color: #92400e; }
+  .gift-t { font: 800 15px/1.2 Montserrat, "Segoe UI", sans-serif; letter-spacing: 1px; }
+  .gift-ar { font-size: 14px; font-weight: 800; }
+  .gift-s { font-size: 11.5px; font-weight: 700; opacity: .85; }
   .title { margin: 20px 0 2px; font: 800 18px/1.3 Montserrat, "Segoe UI", sans-serif; color: var(--ink); }
   .title-ar { font-size: 14px; font-weight: 800; color: #475569; }
   .intro { color: #334155; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; margin: 8px 0 0; padding: 10px 14px; background: var(--soft); border-radius: 10px; border-inline-start: 4px solid var(--a); }
@@ -244,6 +251,11 @@ ${DOC_FONTS}
   </div>
 
   <div class="body">
+    ${t.freeMonths ? `<div class="gift avoid">
+      <span class="gift-t">🎁 ${t.freeMonths === 1 ? "FIRST MONTH FREE" : `FIRST ${t.freeMonths} MONTHS FREE`}</span>
+      ${ar ? `<span class="gift-ar" dir="rtl">${t.freeMonths === 1 ? "الشهر الأول مجاني" : `أول ${t.freeMonths} أشهر مجاناً`}</span>` : ""}
+      <span class="gift-s">${inline("from the contract signing date", "من تاريخ توقيع العقد")}</span>
+    </div>` : ""}
     <div class="grid3 avoid">
       <div class="card">
         <div class="card-k">${inline("Prepared for", "مقدّم إلى")}</div>
@@ -262,7 +274,7 @@ ${DOC_FONTS}
           <div class="hero-k">${heroLabel}</div>
           <div class="hero-v">${fmtMoney(heroValue, cur)}</div>
         </div>
-        <div class="hero-s">${recurring.length && oneTime.length ? `${inline("+ one-time", "+ مرة واحدة")} ${fmtMoney(t.oneTimeTotal, cur)}<br>` : ""}${num(q.vatPct) ? inline(`incl. ${num(q.vatPct)}% VAT`, "شامل الضريبة") : ""}</div>
+        <div class="hero-s">${t.freeMonths ? `🎁 ${inline(t.freeMonths === 1 ? "1st month free" : `${t.freeMonths} months free`, "مجاناً")}<br>` : ""}${recurring.length && oneTime.length ? `${inline("+ one-time", "+ مرة واحدة")} ${fmtMoney(t.oneTimeTotal, cur)}<br>` : ""}${num(q.vatPct) ? inline(`incl. ${num(q.vatPct)}% VAT`, "شامل الضريبة") : ""}</div>
       </div>
     </div>
 
@@ -283,8 +295,11 @@ ${DOC_FONTS}
       }) : ""}
     </div>
     <div class="sums avoid">
-      ${recurring.length && cyc.months > 0 && num(q.contractMonths) > 0 ? `<div class="sum"><div class="sum-l">${inline(`Contract value · ${num(q.contractMonths)} months`, `قيمة العقد · ${num(q.contractMonths)} شهر`)}</div><div class="sum-v">${fmtMoney(t.contractValue, cur)}</div></div>` : ""}
-      ${recurring.length && oneTime.length ? `<div class="sum"><div class="sum-l">${inline("First invoice", "الفاتورة الأولى")}</div><div class="sum-v">${fmtMoney(t.firstInvoice, cur)}</div></div>` : ""}
+      ${recurring.length && cyc.months > 0 && num(q.contractMonths) > 0 ? `<div class="sum"><div class="sum-l">${inline(`Contract value · ${num(q.contractMonths)} months${t.freeMonths ? ` (${t.freeMonths} free)` : ""}`, `قيمة العقد · ${num(q.contractMonths)} شهر${t.freeMonths ? ` (${t.freeMonths} مجاني)` : ""}`)}</div><div class="sum-v">${fmtMoney(t.contractValue, cur)}</div></div>` : ""}
+      ${recurring.length && t.freeMonths
+        // free months: say WHEN the subscription is first billed, never "First invoice 0.00"
+        ? `${t.oneTimeTotal > 0 ? `<div class="sum"><div class="sum-l">${inline("Due on signing", "المستحق عند التوقيع")}</div><div class="sum-v">${fmtMoney(t.oneTimeTotal, cur)}</div></div>` : ""}<div class="sum"><div class="sum-l">${inline(`First subscription invoice · start of month ${t.freeMonths + 1}`, `أول فاتورة اشتراك · بداية الشهر ${t.freeMonths + 1}`)}</div><div class="sum-v">${fmtMoney(t.recurringTotal, cur)}</div></div>`
+        : recurring.length && oneTime.length ? `<div class="sum"><div class="sum-l">${inline("First invoice", "الفاتورة الأولى")}</div><div class="sum-v">${fmtMoney(t.firstInvoice, cur)}</div></div>` : ""}
       ${t.savings > 0 ? `<div class="sum"><div class="sum-l">${inline("You save", "توفيرك")}</div><div class="sum-v">${fmtMoney(t.savings, cur)}</div></div>` : ""}
     </div>
 
@@ -497,9 +512,17 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
     val(r, `SUMIF(${range},"Optional",${amt})`);
     r += 2;
   }
+  const free = computeTotals(q).freeMonths;
+  let rFree = null;
+  if (cyc.months > 0 && free) {
+    rFree = r;
+    lab(r, L("Free months (from signing)", "أشهر مجانية (من التوقيع)"));
+    val(r, free, "0", { fill: inputFill, font: blue });
+    r += 2;
+  }
   if (cyc.months > 0) {
     lab(r, L("Contract value", "قيمة العقد"), true);
-    val(r, `H${recTotal}*H${rMonths}/${cyc.months}+H${oneTotal}`, MONEY, { font: { bold: true, size: 12, color: { argb: "FFFFFFFF" } }, fill: tealFill });
+    val(r, `H${recTotal}*H${rMonths}/${cyc.months}+H${oneTotal}${rFree ? `-H${recTotal}/${cyc.months}*H${rFree}` : ""}`, MONEY, { font: { bold: true, size: 12, color: { argb: "FFFFFFFF" } }, fill: tealFill });
     r += 2;
   }
   ws.mergeCells(`A${r}:H${r}`);
@@ -508,11 +531,12 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
 
   // Terms & notes
   const terms = termsListOf(q).filter((x) => x.on);
+  if (free) terms.unshift({ id: "free", virtual: { en: freeMonthsText(q, "en"), ar: freeMonthsText(q, "ar") } });
   if (terms.length) {
     ws.mergeCells(`A${r}:H${r}`); put(`A${r}`, L("Terms & conditions", "الشروط والأحكام"), { font: { bold: true, size: 11, color: { argb: ACCENT } } });
     terms.forEach((term, i) => {
-      const en = termText(term, q, "en");
-      const arTxt = ar ? termText(term, q, "ar") : "";
+      const en = term.virtual ? term.virtual.en : termText(term, q, "en");
+      const arTxt = ar ? (term.virtual ? term.virtual.ar : termText(term, q, "ar")) : "";
       const tx = [en, arTxt].filter(Boolean).join("\n");
       r++; ws.mergeCells(`A${r}:H${r}`);
       put(`A${r}`, `${i + 1}. ${tx}`, { font: { size: 9, color: { argb: "FF334155" } }, alignment: { wrapText: true, vertical: "top" } });
