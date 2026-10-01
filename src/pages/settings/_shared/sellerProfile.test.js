@@ -65,6 +65,14 @@ describe("quotation VAT check", () => {
     expect(quoteInsights({ ...q, issuerTaxId: "100123456700003" }, registered).some((x) => /TRN/.test(x.en))).toBe(false);
   });
 
+  test("a licensed seller's quotation without the licence line gets a tip", () => {
+    const licensed = { ...freelancer, licenseStatus: "issued", licenseNo: "CN-6791275", licenseAuthority: "ADRA" };
+    const q0 = { ...q, vatPct: 0 };
+    expect(quoteInsights(q0, licensed).some((x) => /licence/.test(x.en))).toBe(true);
+    expect(quoteInsights({ ...q0, issuerLicense: licenseLine(licensed) }, licensed).some((x) => /licence/.test(x.en))).toBe(false);
+    expect(quoteInsights(q0, freelancer).some((x) => /licence/.test(x.en))).toBe(false);
+  });
+
   test("old callers without a seller keep working", () => {
     expect(() => quoteInsights(q)).not.toThrow();
   });

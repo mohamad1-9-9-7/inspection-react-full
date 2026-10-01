@@ -27,7 +27,17 @@ import {
   termsListOf, themeById, todayISO, validUntil,
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
-import { allowedVatPct, loadSeller, normalizeSeller } from "../_shared/sellerProfile";
+import { allowedVatPct, licenseLine, loadSeller, normalizeSeller } from "../_shared/sellerProfile";
+
+/* "Issued by" on a quotation, straight from the INSPECT PRO profile. */
+const issuerFromSeller = (seller) => ({
+  issuerName: seller.name,
+  issuerAddress: seller.address,
+  issuerTaxId: seller.vatRegistered ? seller.trn : "",
+  issuerLicense: licenseLine(seller),
+  issuerEmail: seller.email,
+  issuerPhone: seller.phone,
+});
 
 /* The logo on every quotation is INSPECT PRO's, from its profile. The old
    per-quotation upload kept a base64 image inside the report row, which the
@@ -103,11 +113,7 @@ export default function QuotationsTab() {
       number: nextQuoteNumber(quotes),
       // Not VAT-registered → 0 %, whatever the saved default says.
       vatPct: allowedVatPct(seller, has(d.vatPct) ? d.vatPct : 5),
-      issuerName: seller.name,
-      issuerAddress: seller.address,
-      issuerTaxId: seller.vatRegistered ? seller.trn : "",
-      issuerEmail: seller.email,
-      issuerPhone: seller.phone,
+      ...issuerFromSeller(seller),
     };
   };
 
@@ -709,8 +715,12 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 {(seller?.vatRegistered || q.issuerTaxId) && <Field label={L("Tax / TRN", "الرقم الضريبي")}><input style={S.input} value={q.issuerTaxId} onChange={(e) => set({ issuerTaxId: e.target.value })} /></Field>}
                 <Field label={L("Email", "الإيميل")}><input style={S.input} value={q.issuerEmail} onChange={(e) => set({ issuerEmail: e.target.value })} /></Field>
                 <Field label={L("Phone", "الهاتف")}><input style={S.input} value={q.issuerPhone} onChange={(e) => set({ issuerPhone: e.target.value })} /></Field>
+                <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} placeholder={L("Shown once the licence is issued", "تظهر بعد صدور الرخصة")} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
               </div>
               <Field label={L("Address", "العنوان")} style={{ marginTop: 10 }}><input style={S.input} value={q.issuerAddress} onChange={(e) => set({ issuerAddress: e.target.value })} /></Field>
+              <Btn style={{ marginTop: 10 }} onClick={() => { set(issuerFromSeller(seller)); flash(L("Issuer refreshed from the profile", "تم تحديث بيانات المُصدِر من الهوية")); }}>
+                🔄 {L("Refresh from the profile", "تحديث من الهوية")}
+              </Btn>
             </details>
           </Card>
 

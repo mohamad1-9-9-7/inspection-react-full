@@ -254,6 +254,7 @@ export const emptyQuote = (defaults = {}) => ({
   issuerName: "",
   issuerAddress: "",
   issuerTaxId: "",
+  issuerLicense: "",   // "Licence No. … · authority", only once the licence is issued
   issuerEmail: "",
   issuerPhone: "",
   preparedBy: "",
@@ -354,6 +355,10 @@ export function quoteInsights(q, seller) {
   }
   if (seller?.vatRegistered && num(q?.vatPct) > 0 && !String(q?.issuerTaxId || "").trim()) {
     add("warn", "VAT is charged but no TRN is shown on the quotation.", "في ضريبة بس الرقم الضريبي مش ظاهر على العرض.");
+  }
+  /* A licensed seller's quotation should say so — an older draft predates it. */
+  if (seller?.licenseStatus === "issued" && String(seller.licenseNo || "").trim() && !String(q?.issuerLicense || "").trim()) {
+    add("tip", "The licence number is not on this quotation — refresh the issuer from the profile.", "رقم الرخصة مش ظاهر على العرض — حدّث بيانات المُصدِر من الهوية.");
   }
   const lines = q?.lines || [];
   const t = computeTotals(q);

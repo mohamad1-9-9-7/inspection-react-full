@@ -214,7 +214,7 @@ export function buildQuoteHtml(q, opts = {}) {
         <div class="logo">${logo ? `<img src="${esc(logo)}" alt="">` : `<span>${esc(initials(q.issuerName))}</span>`}</div>
         <div>
           <div class="iss-n">${esc(q.issuerName) || "—"}</div>
-          <div class="iss-d">${[q.issuerAddress, q.issuerTaxId ? `TRN ${q.issuerTaxId}` : "", [q.issuerEmail, q.issuerPhone].filter(Boolean).join(" · ")].filter(Boolean).map(esc).join("<br>")}</div>
+          <div class="iss-d">${[q.issuerLicense, q.issuerAddress, q.issuerTaxId ? `TRN ${q.issuerTaxId}` : "", [q.issuerEmail, q.issuerPhone].filter(Boolean).join(" · ")].filter(Boolean).map(esc).join("<br>")}</div>
         </div>
       </div>
       <div class="qt">
@@ -289,7 +289,7 @@ export function buildQuoteHtml(q, opts = {}) {
       <div>${inline("Accepted by", "موافقة")} <b dir="auto">${esc(q.clientName) || "—"}</b><br>${inline("Name, signature, stamp & date", "الاسم والتوقيع والختم والتاريخ")}</div>
     </div>
 
-    <div class="foot"><span>${esc(q.issuerName)}</span><span>${esc(q.number)} · ${dmy(q.issueDate)}</span></div>
+    <div class="foot"><span>${[q.issuerName, q.issuerLicense].filter(Boolean).map(esc).join(" · ")}</span><span>${esc(q.number)} · ${dmy(q.issueDate)}</span></div>
   </div>
 </div></body></html>`;
 }
@@ -371,7 +371,7 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
   }
   ws.mergeCells("A1:D1"); put("A1", `${logo ? "            " : ""}${q.issuerName || ""}`, { font: { bold: true, size: 16 } });
   ws.mergeCells("E1:H1"); put("E1", ar ? "QUOTATION  ·  عرض سعر" : "QUOTATION", { font: { bold: true, size: 18, color: { argb: ACCENT } }, alignment: { horizontal: "right" } });
-  ws.mergeCells("A2:D2"); put("A2", [q.issuerAddress, q.issuerTaxId ? `TRN: ${q.issuerTaxId}` : "", q.issuerEmail, q.issuerPhone].filter(Boolean).join("  ·  "), { font: { size: 9, color: { argb: "FF475569" } } });
+  ws.mergeCells("A2:D2"); put("A2", [q.issuerLicense, q.issuerAddress, q.issuerTaxId ? `TRN: ${q.issuerTaxId}` : "", q.issuerEmail, q.issuerPhone].filter(Boolean).join("  ·  "), { font: { size: 9, color: { argb: "FF475569" } } });
 
   const meta = [
     [L("Quotation No.", "رقم العرض"), q.number || ""],
