@@ -109,8 +109,10 @@ export function invoiceKpis(invoices, today = todayISO()) {
   return { outstanding, overdue, collected, overdueCount, issuedThisYear };
 }
 
-export const moneyMap = (m) =>
-  Object.keys(m).length ? Object.entries(m).map(([c, v]) => fmtMoney(v, c)).join(" · ") : fmtMoney(0);
+/* `zeroCur`: the currency to show "0.00" in when the map is empty, so an
+   empty KPI matches the cards beside it instead of defaulting to AED. */
+export const moneyMap = (m, zeroCur) =>
+  Object.keys(m).length ? Object.entries(m).map(([c, v]) => fmtMoney(v, c)).join(" · ") : fmtMoney(0, zeroCur);
 
 /* ─────────── API ─────────── */
 

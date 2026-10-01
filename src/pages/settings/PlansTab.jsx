@@ -240,11 +240,8 @@ export default function PlansTab() {
           {planRows.map(plan => {
             const sc = STATUS_COLORS[String(plan.is_active)];
             return (
-              <div key={plan.id} style={{
-                ...ui.card,
-                padding:"16px 20px", display:"flex", alignItems:"center", gap:16,
-                marginBottom: 0,
-              }}>
+              <div key={plan.id} style={{ ...ui.card, padding:"16px 20px", marginBottom: 0 }}>
+               <div style={{ display:"flex", alignItems:"center", gap:16 }}>
                 {/* Price bubble */}
                 <div style={{
                   minWidth:90, textAlign:"center",
@@ -276,9 +273,12 @@ export default function PlansTab() {
                   </div>
                 </div>
 
-                {/* Actions */}
+               </div>
+
+                {/* Actions — a footer row, like the company cards: the grid
+                    (.bpx-cards) is too narrow for buttons beside the text. */}
                 {isSuperAdmin && (
-                  <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14, paddingTop:12, borderTop:"1px solid #e2e8f0" }}>
                     <Button onClick={() => openEdit(plan)} tone="secondary" style={{ minHeight: 36 }}>{t("edit")}</Button>
                     <Button onClick={() => setConfirm(plan.id)} tone="muted" style={{ minHeight: 36, color: "#b91c1c", borderColor: "#fecaca", background: "#fff" }}>{t("delete")}</Button>
                   </div>

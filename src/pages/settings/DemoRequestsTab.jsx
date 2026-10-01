@@ -14,6 +14,7 @@ import { Button, ConfirmModal, StatusMessage, ui } from "./_shared/SettingsUIKit
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { DEMO_ACTIVITIES, DEMO_EMIRATES } from "../DemoRequest";
 import { levelOf, scoreAnswers } from "../readiness/readinessQuestions";
+import { getPublicOrigin } from "../../config/publicOrigin";
 
 export const DEMO_STATUSES = [
   { v: "new",       label: "New",             ar: "جديد",          color: "#2563eb", bg: "#dbeafe" },
@@ -193,7 +194,7 @@ export default function DemoRequestsTab() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
-  const publicUrl = `${window.location.origin}/demo`;
+  const publicUrl = `${getPublicOrigin()}/demo`;
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(publicUrl); setMsg({ kind: "ok", text: `✅ ${L("Copied", "انتسخ")} ${publicUrl}` }); }
     catch { setMsg({ kind: "info", text: publicUrl }); }
@@ -221,7 +222,7 @@ export default function DemoRequestsTab() {
 
       <PromoSettings saved={promoConfig} onSaved={setPromoConfig} setMsg={setMsg} />
 
-      <ShareLinks origin={window.location.origin} rows={rows} waClicks={waClicks} quizStats={quizStats} />
+      <ShareLinks origin={getPublicOrigin()} rows={rows} waClicks={waClicks} quizStats={quizStats} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
         <Stat label={L("Total", "الكل")} value={rows.length} color="#0f766e" />

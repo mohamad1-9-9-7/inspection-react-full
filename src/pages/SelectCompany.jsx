@@ -94,7 +94,11 @@ export default function SelectCompany() {
   const [params, setParams] = useSearchParams();
   const tab = CENTER_TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "companies";
   const tabMeta = CENTER_TABS.find((x) => x.id === tab);
-  const setTab = (id) => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", id); return n; }, { replace: true });
+  const setTab = (id) => {
+    setParams((p) => { const n = new URLSearchParams(p); n.set("tab", id); return n; }, { replace: true });
+    /* a new tab starts at its own header, not wherever the last list was scrolled */
+    try { window.scrollTo({ top: 0 }); } catch {}
+  };
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(""); // "" | "load" | "net"
@@ -657,7 +661,10 @@ const PC_CSS = `
 .pc .pc-card.has-logo{padding-top:0}
 .pc .pc-card-logo{display:grid; place-items:center; height:112px; margin:0 -22px 4px; padding:18px 28px;
   background:#f8fafc; border-bottom:1px solid #eef2f6; box-sizing:border-box}
-.pc .pc-card-logo img{max-width:72%; max-height:100%; object-fit:contain; display:block; transition:transform .18s}
+.pc .pc-card-logo{overflow:hidden}
+/* explicit px: a % max-height resolves against the grid row (auto) and lets a
+   tall logo spill over the company name */
+.pc .pc-card-logo img{max-width:72%; max-height:76px; width:auto; height:auto; object-fit:contain; display:block; transition:transform .18s}
 .pc .pc-card:hover .pc-card-logo img{transform:scale(1.03)}
 .pc .pc-badge-float{position:absolute; top:12px; inset-inline-end:12px; box-shadow:0 2px 6px rgba(15,23,42,.08)}
 /* list rows: same square as the letter avatar, logo contained inside */

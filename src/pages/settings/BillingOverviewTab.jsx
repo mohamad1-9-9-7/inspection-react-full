@@ -88,8 +88,8 @@ export default function BillingOverviewTab({ onGo }) {
           <div style={sx.kpis}>
             <Kpi color="#2563eb" label={L("Monthly revenue (MRR)", "الإيراد الشهري")} value={moneyMap(view.mrr)}
               sub={L("active companies, at their own price", "الشركات الفعّالة، كل وحدة بسعرها")} />
-            <Kpi color="#15803d" label={L("Collected this month", "المحصّل هالشهر")} value={moneyMap(view.kpi.collected)} />
-            <Kpi color={view.kpi.overdueCount ? "#b91c1c" : "#b45309"} label={L("Outstanding", "غير محصّل")} value={moneyMap(view.kpi.outstanding)}
+            <Kpi color="#15803d" label={L("Collected this month", "المحصّل هالشهر")} value={moneyMap(view.kpi.collected, Object.keys(view.mrr || {})[0])} />
+            <Kpi color={view.kpi.overdueCount ? "#b91c1c" : "#b45309"} label={L("Outstanding", "غير محصّل")} value={moneyMap(view.kpi.outstanding, Object.keys(view.mrr || {})[0])}
               sub={view.kpi.overdueCount ? `${view.kpi.overdueCount} ${L("overdue", "متأخرة")} · ${moneyMap(view.kpi.overdue)}` : L("nothing overdue", "ولا فاتورة متأخرة")} />
             <Kpi color={view.expired.length ? "#b91c1c" : "#0f766e"} label={L(`Ending within ${SOON_DAYS} days`, `بتخلص خلال ${SOON_DAYS} يوم`)} value={String(view.soon.length)}
               sub={view.expired.length ? `${view.expired.length} ${L("already expired", "منتهية فعلاً")}` : L("none expired", "ولا وحدة منتهية")} />
