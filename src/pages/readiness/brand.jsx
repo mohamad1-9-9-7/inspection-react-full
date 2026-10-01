@@ -5,27 +5,19 @@
 
 import React from "react";
 
+/* The approved INSPECT PRO mark ("Scan ring", Oct 2026): a lens whose ring is
+   scanning, a check inside, on a navy app tile. Same drawing as
+   public/brand/inspect-pro/app-icon.svg — change both together. */
 export function BrandMark({ size = 36 }) {
-  const id = React.useId().replace(/:/g, "");
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ flex: `0 0 ${size}px`, display: "block" }}>
-      <defs>
-        <linearGradient id={`bm-g-${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2dd4bf" />
-          <stop offset=".55" stopColor="#0d9488" />
-          <stop offset="1" stopColor="#0e7490" />
-        </linearGradient>
-        <linearGradient id={`bm-s-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity=".95" />
-          <stop offset="1" stopColor="#fff" stopOpacity=".75" />
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width="46" height="46" rx="13" fill={`url(#bm-g-${id})`} />
-      <rect x="1.5" y="1.5" width="45" height="45" rx="12.5" fill="none" stroke="#fff" strokeOpacity=".22" />
-      {/* shield */}
-      <path d="M24 9.5 35 13.6v9.1c0 7.4-4.7 12.9-11 15.8-6.3-2.9-11-8.4-11-15.8v-9.1L24 9.5Z" fill="none" stroke={`url(#bm-s-${id})`} strokeWidth="2.6" strokeLinejoin="round" />
-      {/* check */}
-      <path d="m18.6 23.9 3.9 3.9 7.4-7.6" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" style={{ flex: `0 0 ${size}px`, display: "block" }}>
+      <rect width="120" height="120" rx="27" fill="#0B1E3F" />
+      <g transform="translate(13,13) scale(.8)">
+        <path d="M88 52 A36 36 0 1 1 52 16" fill="none" stroke="#fff" strokeWidth="11" strokeLinecap="round" />
+        <path d="M52 16 A36 36 0 0 1 88 52" fill="none" stroke="#0EA5A4" strokeWidth="11" strokeLinecap="round" />
+        <path d="M80 80 L104 104" stroke="#fff" strokeWidth="14" strokeLinecap="round" />
+        <path d="M33 53 L47 67 L73 39" fill="none" stroke="#0EA5A4" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
     </svg>
   );
 }
