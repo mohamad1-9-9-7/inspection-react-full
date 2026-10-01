@@ -34,6 +34,8 @@ import ScaledDoc, { useContainerWidth } from "../_shared/ScaledDoc";
 const issuerFromSeller = (seller) => ({
   issuerName: seller.name,
   issuerLegalName: seller.legalName,
+  issuerSignature: seller.signatureUrl,
+  issuerSignedBy: seller.ownerName,
   issuerAddress: seller.address,
   issuerTaxId: seller.vatRegistered ? seller.trn : "",
   issuerLicense: licenseLine(seller),
@@ -713,6 +715,13 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
               </div>
               <Field label={L("Address", "العنوان")} style={{ marginTop: 10 }}><input style={S.input} value={q.issuerAddress} onChange={(e) => set({ issuerAddress: e.target.value })} /></Field>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                <span style={{ fontWeight: 900 }}>✍️ {L("Signature", "التوقيع")}</span>
+                {q.issuerSignature
+                  ? <><img src={q.issuerSignature} alt="" style={{ height: 44, maxWidth: 180, objectFit: "contain", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4 }} />
+                      <Btn onClick={() => set({ issuerSignature: "" })}>{L("Leave unsigned", "بدون توقيع")}</Btn></>
+                  : <span className="bpx-sm" style={{ color: "#64748b" }}>{seller?.signatureUrl ? L("Not signed — “Refresh from the profile” adds it.", "غير موقّع — «تحديث من الهوية» بيضيفه.") : L("Add one in the INSPECT PRO profile.", "أضفه من هوية INSPECT PRO.")}</span>}
+              </div>
               <Btn style={{ marginTop: 10 }} onClick={() => { set(issuerFromSeller(seller)); flash(L("Issuer refreshed from the profile", "تم تحديث بيانات المُصدِر من الهوية")); }}>
                 🔄 {L("Refresh from the profile", "تحديث من الهوية")}
               </Btn>

@@ -114,6 +114,11 @@ ${DOC_FONTS}
   .pay { margin-top: 24px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
   .box { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; background: #f8fafc; }
   .mono { font-family: Consolas, "Courier New", monospace; letter-spacing: .03em; }
+  .signed { display: flex; justify-content: flex-end; margin-top: 22px; }
+  .signed > div { width: 270px; text-align: center; }
+  .signed img { max-height: 64px; max-width: 220px; object-fit: contain; display: block; margin: 0 auto 4px; }
+  .signed .ln { border-top: 1.5px solid ${B.navy}; padding-top: 6px; font-size: 11px; color: #475569; line-height: 1.45; }
+  .signed .ln b { color: #0f172a; }
   .foot { margin: 28px 44px 0; padding: 12px 0 26px; display: flex; justify-content: space-between; gap: 16px; font-size: 10.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
   .stamp { position: absolute; top: 300px; right: 70px; transform: rotate(-14deg); border: 5px solid; border-radius: 14px; padding: 6px 22px; font-size: 44px; font-weight: 900; letter-spacing: .12em; opacity: .2; }
   .stamp.PAID { color: #15803d; } .stamp.VOID { color: #b91c1c; }
@@ -194,6 +199,10 @@ ${DOC_FONTS}
         <div class="muted">${inv.notes ? esc(inv.notes) : "Thank you for your business."}</div>
       </div>
     </div>
+    ${s.signature_url ? `<div class="signed avoid"><div>
+      <img src="${esc(s.signature_url)}" alt="">
+      <div class="ln"><b>${esc(s.owner_name || legal || s.name || "INSPECT PRO")}</b><br>Authorised signature</div>
+    </div></div>` : ""}
   </div>
 
   <div class="foot"><span>${esc(footLeft)}</span><span>${esc(inv.invoice_number)}</span></div>

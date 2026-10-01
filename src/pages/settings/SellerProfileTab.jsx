@@ -22,6 +22,7 @@ import {
   sellerGaps,
 } from "./_shared/sellerProfile";
 import { deleteImage, uploadImage } from "../../utils/imageUpload";
+import SignaturePad from "../../components/SignaturePad";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 
 const TRN_OK = (v) => /^\d{15}$/.test(String(v || "").replace(/\s+/g, ""));
@@ -40,6 +41,9 @@ export default function SellerProfileTab() {
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState(null);
   const fileRef = useRef(null);
+  const sigFileRef = useRef(null);
+  const [signing, setSigning] = useState(false);
+  const [sigDraft, setSigDraft] = useState("");
 
   const load = useCallback(async () => {
     setLoadErr("");
@@ -88,6 +92,7 @@ export default function SellerProfileTab() {
       const next = await saveSeller(clean, lang);
       // The previous logo is no longer referenced by anything — drop the file.
       if (saved?.logoUrl && saved.logoUrl !== next.logoUrl) deleteImage(saved.logoUrl).catch(() => {});
+      if (saved?.signatureUrl && saved.signatureUrl !== next.signatureUrl) deleteImage(saved.signatureUrl).catch(() => {});
       await logSettingsAudit({
         area: "seller_profile",
         action: "update_seller_profile",
@@ -104,6 +109,31 @@ export default function SellerProfileTab() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /* The signature is stored like the logo: a hosted PNG, never base64 in a
+     row. A drawn one is turned into a file first. */
+  async function onSignature(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setMsg({ kind: "err", text: L("Please choose an image.", "اختار صورة.") }); return; }
+    setUploading(true);
+    setMsg(null);
+    try {
+      const url = await uploadImage(file, "seller_signature");
+      if (form.signatureUrl && form.signatureUrl !== saved?.signatureUrl) deleteImage(form.signatureUrl).catch(() => {});
+      set({ signatureUrl: url });
+      setSigning(false);
+      setSigDraft("");
+    } catch (e) {
+      setMsg({ kind: "err", text: e.message });
+    } finally {
+      setUploading(false);
+    }
+  }
+  async function useDrawnSignature() {
+    if (!sigDraft) return;
+    const blob = await (await fetch(sigDraft)).blob();
+    await onSignature(new File([blob], "signature.png", { type: "image/png" }));
   }
 
   async function onPickLogo(file) {
@@ -188,6 +218,30 @@ export default function SellerProfileTab() {
                 {form.logoUrl && <Button tone="muted" onClick={() => set({ logoUrl: "" })}>{L("Remove", "حذف")}</Button>}
                 <span className="bpx-xs" style={sx.muted}>{L("Square PNG/JPG works best. Without one, your initials are used.", "الأفضل صورة مربّعة. بدون شعار بتطلع أول حروف الاسم.")}</span>
               </div>
+            </Field>
+            <Field label={L("Signature", "التوقيع")} hint={L("Signs every quotation and invoice above your name.", "بيوقّع كل عرض سعر وفاتورة فوق اسمك.")} style={{ marginTop: 14 }}>
+              <div style={sx.logoRow}>
+                <div style={sx.sigBox}>
+                  {form.signatureUrl
+                    ? <img src={form.signatureUrl} alt="" style={sx.sigImg} />
+                    : <span className="bpx-xs" style={sx.muted}>{L("No signature yet", "ما في توقيع بعد")}</span>}
+                </div>
+                <Button onClick={() => { setSigning(true); setSigDraft(""); }} disabled={uploading}>✍️ {form.signatureUrl ? L("Draw again", "ارسم من جديد") : L("Draw", "ارسم")}</Button>
+                <input ref={sigFileRef} type="file" accept="image/png,image/*" style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; onSignature(f); }} />
+                <Button tone="muted" onClick={() => sigFileRef.current?.click()} disabled={uploading}>⬆ {L("Upload image", "ارفع صورة")}</Button>
+                {form.signatureUrl && <Button tone="muted" onClick={() => set({ signatureUrl: "" })}>{L("Remove", "حذف")}</Button>}
+              </div>
+              {signing && (
+                <div style={sx.sigPad}>
+                  <SignaturePad value={sigDraft} onChange={setSigDraft} width={560} height={190} penColor="#0B1E3F" background="rgba(0,0,0,0)" />
+                  <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                    <Button tone="primary" disabled={!sigDraft || uploading} onClick={useDrawnSignature}>{uploading ? L("Uploading…", "جاري الرفع…") : L("Use this signature", "اعتمد هالتوقيع")}</Button>
+                    <Button tone="muted" onClick={() => { setSigning(false); setSigDraft(""); }}>{L("Cancel", "إلغاء")}</Button>
+                  </div>
+                  <div className="bpx-xs" style={{ ...sx.muted, marginTop: 6 }}>{L("Tip: a transparent PNG of a pen signature on white paper also works — use “Upload image”.", "نصيحة: فيك ترفع صورة PNG لتوقيعك بالقلم على ورقة بيضاء من «ارفع صورة».")}</div>
+                </div>
+              )}
             </Field>
           </Section>
 
@@ -403,6 +457,9 @@ const sx = {
   label: { display: "block", marginBottom: 6, color: "#334155", fontWeight: 900 },
   muted: { color: "#64748b", fontWeight: 700 },
   logoRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
+  sigBox: { width: 200, height: 72, borderRadius: 12, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff", flexShrink: 0, padding: 6 },
+  sigImg: { maxWidth: "100%", maxHeight: 60, objectFit: "contain" },
+  sigPad: { marginTop: 12, padding: 14, borderRadius: 12, border: "1px solid #e2e8f0", background: "#f8fafc" },
   logoBox: { width: 72, height: 72, borderRadius: 14, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff", flexShrink: 0 },
   logoImg: { maxWidth: 64, maxHeight: 64, objectFit: "contain" },
   logoInitials: { fontWeight: 1000, color: "#0f766e" },

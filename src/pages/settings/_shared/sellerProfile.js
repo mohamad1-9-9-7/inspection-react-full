@@ -40,6 +40,7 @@ export function normalizeSeller(row) {
     phone: r.contact_phone || "",
     website: r.website || "",
     logoUrl: /^https?:\/\//i.test(r.logo_url || "") ? r.logo_url : "",
+    signatureUrl: /^https?:\/\//i.test(r.signature_url || "") ? r.signature_url : "",
     licenseNo: r.license_no || LICENSE_DEFAULTS.no,
     licenseAuthority: r.license_authority || LICENSE_DEFAULTS.authority,
     licenseExpiry: r.license_expiry ? String(r.license_expiry).slice(0, 10) : LICENSE_DEFAULTS.expiry,
@@ -66,6 +67,7 @@ export function sellerToRow(s) {
     contact_phone: s.phone,
     website: s.website,
     logo_url: s.logoUrl,
+    signature_url: s.signatureUrl,
     license_no: s.licenseNo,
     license_authority: s.licenseAuthority,
     license_expiry: s.licenseExpiry || null,
@@ -91,6 +93,7 @@ export async function loadSeller() {
 const SAVE_ERRORS = {
   trn_required_15_digits: { en: "VAT registration needs a 15-digit TRN.", ar: "التسجيل بالضريبة بحاجة لرقم ضريبي (TRN) من 15 رقم." },
   logo_must_be_hosted_url: { en: "The logo must be uploaded, not pasted.", ar: "الشعار لازم ينرفع، مش ينلصق." },
+  signature_must_be_hosted_url: { en: "The signature must be uploaded, not pasted.", ar: "التوقيع لازم ينرفع، مش ينلصق." },
   iban_invalid: { en: "The IBAN does not look right (e.g. AE07 0331 2345 6789 0123 456).", ar: "رقم الـIBAN غير صحيح (مثال: AE07 0331 2345 6789 0123 456)." },
   email_invalid: { en: "The e-mail address is not valid.", ar: "الإيميل غير صحيح." },
   super_admin_required: { en: "Only the platform owner can change this.", ar: "مالك المنصّة وحده يقدر يعدّل هون." },

@@ -258,6 +258,8 @@ export const emptyQuote = (defaults = {}) => ({
   // issuer (pre-filled from the billing profile)
   issuerName: "",
   issuerLegalName: "", // the full name on the licence, under the brand name
+  issuerSignature: "", // hosted image of the owner's signature (seller profile)
+  issuerSignedBy: "",  // the name printed under it
   issuerAddress: "",
   issuerTaxId: "",
   issuerLicense: "",   // "Licence No. … · authority", from the profile
