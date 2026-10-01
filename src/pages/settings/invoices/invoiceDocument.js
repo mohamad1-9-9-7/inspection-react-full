@@ -115,7 +115,9 @@ ${DOC_FONTS}
   .box { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; background: #f8fafc; }
   .mono { font-family: Consolas, "Courier New", monospace; letter-spacing: .03em; }
   .signed { display: flex; justify-content: flex-end; margin-top: 22px; }
-  .signed > div { width: 270px; text-align: center; }
+  .signed > div { position: relative; width: 270px; text-align: center; }
+  .signed .seal { position: absolute; left: -104px; top: -26px; width: 124px; height: 124px; max-width: none; max-height: none; margin: 0; transform: rotate(-9deg); opacity: .9; }
+  .signed.stamped { margin-top: 40px; }
   .signed img { max-height: 64px; max-width: 220px; object-fit: contain; display: block; margin: 0 auto 4px; }
   .signed .ln { border-top: 1.5px solid ${B.navy}; padding-top: 6px; font-size: 11px; color: #475569; line-height: 1.45; }
   .signed .ln b { color: #0f172a; }
@@ -199,8 +201,9 @@ ${DOC_FONTS}
         <div class="muted">${inv.notes ? esc(inv.notes) : "Thank you for your business."}</div>
       </div>
     </div>
-    ${s.signature_url ? `<div class="signed avoid"><div>
-      <img src="${esc(s.signature_url)}" alt="">
+    ${s.signature_url || s.stamp_url ? `<div class="signed avoid${s.stamp_url ? " stamped" : ""}"><div>
+      ${s.stamp_url ? `<img class="seal" src="${esc(s.stamp_url)}" alt="">` : ""}
+      ${s.signature_url ? `<img src="${esc(s.signature_url)}" alt="">` : `<div style="height:64px"></div>`}
       <div class="ln"><b>${esc(s.owner_name || legal || s.name || "INSPECT PRO")}</b><br>Authorised signature</div>
     </div></div>` : ""}
   </div>

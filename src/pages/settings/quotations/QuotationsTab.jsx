@@ -36,6 +36,7 @@ const issuerFromSeller = (seller) => ({
   issuerLegalName: seller.legalName,
   issuerSignature: seller.signatureUrl,
   issuerSignedBy: seller.ownerName,
+  issuerStamp: seller.stampUrl,
   issuerAddress: seller.address,
   issuerTaxId: seller.vatRegistered ? seller.trn : "",
   issuerLicense: licenseLine(seller),
@@ -715,6 +716,15 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
               </div>
               <Field label={L("Address", "العنوان")} style={{ marginTop: 10 }}><input style={S.input} value={q.issuerAddress} onChange={(e) => set({ issuerAddress: e.target.value })} /></Field>
+              {(q.issuerStamp || seller?.stampUrl) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                  <span style={{ fontWeight: 900 }}>🔵 {L("Stamp", "الختم")}</span>
+                  {q.issuerStamp
+                    ? <><img src={q.issuerStamp} alt="" style={{ height: 52, width: 52, objectFit: "contain" }} />
+                        <Btn onClick={() => set({ issuerStamp: "" })}>{L("No stamp", "بدون ختم")}</Btn></>
+                    : <Btn onClick={() => set({ issuerStamp: seller.stampUrl })}>{L("Add the stamp", "أضف الختم")}</Btn>}
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
                 <span style={{ fontWeight: 900 }}>✍️ {L("Signature", "التوقيع")}</span>
                 {q.issuerSignature

@@ -42,6 +42,7 @@ export default function SellerProfileTab() {
   const [msg, setMsg] = useState(null);
   const fileRef = useRef(null);
   const sigFileRef = useRef(null);
+  const stampFileRef = useRef(null);
   const [signing, setSigning] = useState(false);
   const [sigDraft, setSigDraft] = useState("");
 
@@ -93,6 +94,7 @@ export default function SellerProfileTab() {
       // The previous logo is no longer referenced by anything — drop the file.
       if (saved?.logoUrl && saved.logoUrl !== next.logoUrl) deleteImage(saved.logoUrl).catch(() => {});
       if (saved?.signatureUrl && saved.signatureUrl !== next.signatureUrl) deleteImage(saved.signatureUrl).catch(() => {});
+      if (saved?.stampUrl && saved.stampUrl !== next.stampUrl) deleteImage(saved.stampUrl).catch(() => {});
       await logSettingsAudit({
         area: "seller_profile",
         action: "update_seller_profile",
@@ -124,6 +126,21 @@ export default function SellerProfileTab() {
       set({ signatureUrl: url });
       setSigning(false);
       setSigDraft("");
+    } catch (e) {
+      setMsg({ kind: "err", text: e.message });
+    } finally {
+      setUploading(false);
+    }
+  }
+  async function onStamp(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setMsg({ kind: "err", text: L("Please choose an image.", "اختار صورة.") }); return; }
+    setUploading(true);
+    setMsg(null);
+    try {
+      const url = await uploadImage(file, "seller_stamp");
+      if (form.stampUrl && form.stampUrl !== saved?.stampUrl) deleteImage(form.stampUrl).catch(() => {});
+      set({ stampUrl: url });
     } catch (e) {
       setMsg({ kind: "err", text: e.message });
     } finally {
@@ -242,6 +259,21 @@ export default function SellerProfileTab() {
                   <div className="bpx-xs" style={{ ...sx.muted, marginTop: 6 }}>{L("Tip: a transparent PNG of a pen signature on white paper also works — use “Upload image”.", "نصيحة: فيك ترفع صورة PNG لتوقيعك بالقلم على ورقة بيضاء من «ارفع صورة».")}</div>
                 </div>
               )}
+            </Field>
+            <Field label={L("Company stamp", "ختم الشركة")} hint={L("Printed over the signature on quotations and invoices. A round PNG with a transparent background looks best.", "بينطبع فوق التوقيع على العروض والفواتير. الأفضل صورة PNG دائرية بخلفية شفافة.")} style={{ marginTop: 14 }}>
+              <div style={sx.logoRow}>
+                <div style={sx.stampBox}>
+                  {form.stampUrl
+                    ? <img src={form.stampUrl} alt="" style={sx.stampImg} />
+                    : <span className="bpx-xs" style={sx.muted}>{L("No stamp", "ما في ختم")}</span>}
+                </div>
+                <input ref={stampFileRef} type="file" accept="image/png,image/*" style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; onStamp(f); }} />
+                <Button onClick={() => stampFileRef.current?.click()} disabled={uploading}>
+                  {uploading ? L("Uploading…", "جاري الرفع…") : form.stampUrl ? `⬆ ${L("Change", "تغيير")}` : `⬆ ${L("Upload", "رفع")}`}
+                </Button>
+                {form.stampUrl && <Button tone="muted" onClick={() => set({ stampUrl: "" })}>{L("Remove", "حذف")}</Button>}
+              </div>
             </Field>
           </Section>
 
@@ -459,6 +491,8 @@ const sx = {
   logoRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
   sigBox: { width: 200, height: 72, borderRadius: 12, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff", flexShrink: 0, padding: 6 },
   sigImg: { maxWidth: "100%", maxHeight: 60, objectFit: "contain" },
+  stampBox: { width: 96, height: 96, borderRadius: "50%", border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff", flexShrink: 0 },
+  stampImg: { width: 90, height: 90, objectFit: "contain" },
   sigPad: { marginTop: 12, padding: 14, borderRadius: 12, border: "1px solid #e2e8f0", background: "#f8fafc" },
   logoBox: { width: 72, height: 72, borderRadius: 14, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", overflow: "hidden", background: "#fff", flexShrink: 0 },
   logoImg: { maxWidth: 64, maxHeight: 64, objectFit: "contain" },

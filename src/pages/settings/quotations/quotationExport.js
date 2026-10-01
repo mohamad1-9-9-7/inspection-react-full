@@ -204,7 +204,9 @@ ${DOC_FONTS}
   .notes { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; color: #334155; background: var(--soft); border-radius: 10px; padding: 10px 14px; }
 
   .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 26px; }
-  .sg-img { height: 70px; display: flex; align-items: flex-end; padding: 0 6px 4px; }
+  .sg-img { position: relative; height: 70px; display: flex; align-items: flex-end; padding: 0 6px 4px; }
+  .sign.stamped { margin-top: 56px; }
+  .sg-img .stamp { position: absolute; right: 14px; bottom: -34px; width: 118px; height: 118px; max-width: none; max-height: none; transform: rotate(-9deg); opacity: .9; }
   .sg-img img { max-height: 66px; max-width: 240px; object-fit: contain; }
   .sg-line { border-top: 2px solid var(--ink); padding-top: 8px; font-size: 11px; color: #475569; line-height: 1.5; }
   .sign b { color: var(--ink); }
@@ -290,9 +292,9 @@ ${DOC_FONTS}
 
     ${q.notes ? `<div class="avoid"><div class="sec-h">${bi("Notes", "ملاحظات")}</div><div class="notes">${esc(q.notes)}</div></div>` : ""}
 
-    <div class="sign avoid">
+    <div class="sign avoid${q.issuerStamp ? " stamped" : ""}">
       <div>
-        <div class="sg-img">${q.issuerSignature ? `<img src="${esc(q.issuerSignature)}" alt="">` : ""}</div>
+        <div class="sg-img">${q.issuerSignature ? `<img src="${esc(q.issuerSignature)}" alt="">` : ""}${q.issuerStamp ? `<img class="stamp" src="${esc(q.issuerStamp)}" alt="">` : ""}</div>
         <div class="sg-line">${inline("For", "عن")} <b>${esc(q.issuerLegalName || q.issuerName) || "—"}</b><br>${q.issuerSignature && q.issuerSignedBy
           ? `<b>${esc(q.issuerSignedBy)}</b> · ${dmy(q.issueDate)}`
           : inline("Name, signature & date", "الاسم والتوقيع والتاريخ")}</div>

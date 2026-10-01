@@ -260,6 +260,7 @@ export const emptyQuote = (defaults = {}) => ({
   issuerLegalName: "", // the full name on the licence, under the brand name
   issuerSignature: "", // hosted image of the owner's signature (seller profile)
   issuerSignedBy: "",  // the name printed under it
+  issuerStamp: "",     // hosted image of the company stamp, printed over the signature
   issuerAddress: "",
   issuerTaxId: "",
   issuerLicense: "",   // "Licence No. … · authority", from the profile
