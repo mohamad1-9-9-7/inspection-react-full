@@ -518,6 +518,10 @@ export default function SelectCompany() {
 const PC_CSS = `
 @keyframes pcSpin{to{transform:rotate(360deg)}}
 @keyframes pcIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* the panel only fades: a held transform (even translate 0) makes it the
+   containing block of every position:fixed modal inside it, so pop-ups opened
+   lower down the page landed off-screen */
+@keyframes pcFade{from{opacity:0}to{opacity:1}}
 @keyframes pcPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.7);opacity:.45}}
 @keyframes pcShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
 
@@ -582,7 +586,7 @@ const PC_CSS = `
 .pc .pc-content{flex:1; display:flex; flex-direction:column; gap:16px; padding:0 clamp(18px,3vw,44px) 32px}
 
 .pc .pc-panel{flex:1; border-radius:18px; background:#fff; border:1px solid rgba(15,23,42,.08); box-shadow:0 14px 34px rgba(15,23,42,.06);
-  padding:clamp(10px,1.6vw,22px); animation:pcIn .25s ease both}
+  padding:clamp(10px,1.6vw,22px); animation:pcFade .25s ease both}
 
 /* stat tiles */
 .pc .pc-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px}

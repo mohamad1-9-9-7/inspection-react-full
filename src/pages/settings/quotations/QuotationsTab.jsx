@@ -485,7 +485,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
   return (
     <div>
       {/* ─────────── sticky header ─────────── */}
-      <div style={S.editorHead(th)}>
+      <div style={S.editorHead(th, wide)}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <Btn tone="glass" title={L("Back to list", "رجوع للقائمة")} onClick={() => { if (!dirty || window.confirm(L("Discard unsaved changes?", "تجاهل التعديلات غير المحفوظة؟"))) onCancel(); }}>{lang === "ar" ? "→" : "←"}</Btn>
           <div style={{ minWidth: 0, flex: "1 1 260px" }}>
@@ -1478,8 +1478,10 @@ const S = {
     minHeight: 44, borderRadius: 999, padding: "4px 14px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
     border: `1px solid ${onDark ? "rgba(255,255,255,.4)" : st.tone}`, background: onDark ? "#fff" : st.bg, color: st.tone,
   }),
-  editorHead: (th) => ({
-    position: "sticky", top: 0, zIndex: 20, borderRadius: 20, padding: "16px 18px", marginBottom: 16, color: "#fff",
+  /* pinned only in the two-column layout: on a narrow screen its wrapped
+     button rows took half the height and covered the form and the preview */
+  editorHead: (th, pinned) => ({
+    position: pinned ? "sticky" : "relative", top: 0, zIndex: 20, borderRadius: 20, padding: "16px 18px", marginBottom: 16, color: "#fff",
     background: `linear-gradient(120deg, #0b1220 0%, ${th.a} 55%, ${th.b} 100%)`, boxShadow: "0 18px 44px rgba(15,23,42,.25)",
   }),
   headTotal: { textAlign: "end", padding: "6px 14px", borderRadius: 14, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)" },
