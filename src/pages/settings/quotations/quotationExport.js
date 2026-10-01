@@ -42,6 +42,8 @@ export function buildQuoteHtml(q, opts = {}) {
     : `<span class="${cls}">${en}</span>`;
   const inline = (en, arTxt) => (ar ? `${en} <span class="arI" dir="rtl">${arTxt}</span>` : en);
 
+  /* A line at 0 is part of the package, not a missing price: say so. */
+  const included = `<span class="incl">${inline("Included", "مشمول")}</span>`;
   let n = 0;
   const lineRows = (list) => list.map((l) => {
     n += 1;
@@ -54,9 +56,9 @@ export function buildQuoteHtml(q, opts = {}) {
         ${l.details ? `<div class="li-d" dir="auto">${esc(l.details)}</div>` : ""}
       </td>
       <td class="c nowrap">${esc(num(l.qty))}<div class="unit">${esc(unitById(l.unit).en)}${ar ? ` · ${esc(unitById(l.unit).ar)}` : ""}</div></td>
-      <td class="r nowrap">${fmtMoney(l.unitPrice)}</td>
+      <td class="r nowrap">${num(l.unitPrice) ? fmtMoney(l.unitPrice) : included}</td>
       ${hasLineDisc ? `<td class="c nowrap">${num(l.discountPct) ? `<span class="disc">−${num(l.discountPct)}%</span>` : "—"}</td>` : ""}
-      <td class="r nowrap amt">${fmtMoney(lineTotal(l))}</td>
+      <td class="r nowrap amt">${num(l.unitPrice) ? fmtMoney(lineTotal(l)) : included}</td>
     </tr>`;
   }).join("");
 
@@ -178,6 +180,8 @@ ${DOC_FONTS}
   .li-d { color: var(--mut); font-size: 10.5px; margin-top: 2px; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; }
   .unit { font-size: 10px; color: #94a3b8; }
   .amt { font-weight: 900; }
+  .incl { color: var(--a); font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; }
+  .incl .arI { text-transform: none; letter-spacing: 0; }
   .disc { color: #b91c1c; font-weight: 800; }
   .opt table.items td { color: #475569; }
   .opt-note { font-size: 10.5px; color: var(--mut); margin-top: 4px; }
@@ -359,6 +363,7 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
   const thin = { style: "thin", color: { argb: "FFCBD5E1" } };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
   const MONEY = '#,##0.00;(#,##0.00);"-"';
+  const LINE_MONEY = '#,##0.00;(#,##0.00);"Included"'; // a line at 0 is part of the package
   const PCT = '0.0%;(0.0%);"-"';
   const blue = { name: FONT, size: 10, color: { argb: "FF0000FF" } };
 
@@ -443,10 +448,10 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
       c.alignment = { vertical: "top", wrapText: true, horizontal: j === 0 || j === 3 || j === 4 ? "center" : undefined };
       if ([4, 5, 6].includes(j)) c.fill = inputFill;
     });
-    row.getCell(6).numFmt = MONEY;
+    row.getCell(6).numFmt = LINE_MONEY;
     row.getCell(7).numFmt = PCT;
     row.getCell(8).value = { formula: `E${r}*F${r}*(1-G${r})` };
-    row.getCell(8).numFmt = MONEY; row.getCell(8).font = { name: FONT, size: 10, bold: true };
+    row.getCell(8).numFmt = LINE_MONEY; row.getCell(8).font = { name: FONT, size: 10, bold: true };
     row.height = Math.max(30, 15 * (String(title).split("\n").length + Math.ceil(String(l.details || "").length / 40)));
   });
   const last = Math.max(r, first);

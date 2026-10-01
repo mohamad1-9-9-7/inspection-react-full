@@ -379,7 +379,8 @@ export function quoteInsights(q, seller) {
   if (!String(q?.clientName || "").trim()) add("err", "Client name is missing.", "اسم العميل ناقص.");
   if (!lines.length) add("err", "No items yet — add the company's cards or use Smart build.", "لا توجد بنود — أضف كروت الشركة أو استخدم البناء الذكي.");
   const zero = lines.filter((l) => !num(l.unitPrice));
-  if (zero.length) add("warn", `${zero.length} line(s) have no price.`, `${zero.length} بند بدون سعر.`);
+  // 0 is a deliberate "Included" line, not an error — just make sure it is meant
+  if (zero.length) add("tip", `${zero.length} line(s) at 0 show as “Included” — price them if that is not intended.`, `${zero.length} بند سعره 0 بيطلع «مشمول» — سعّره إذا مش مقصود.`);
   const noTitle = lines.filter((l) => !String(l.titleEn || l.titleAr).trim());
   if (noTitle.length) add("err", `${noTitle.length} line(s) have no description.`, `${noTitle.length} بند بدون وصف.`);
   if (!String(q?.clientEmail || "").trim()) add("tip", "Add the client's e-mail so the quotation can be sent.", "أضف إيميل العميل لإرسال العرض.");
