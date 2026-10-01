@@ -1,10 +1,57 @@
-// Login.jsx - username + password login page
+// Login.jsx - username + password login page (INSPECT PRO platform screen)
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "./Login.css";
-import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
 import { SUB_CACHE_KEY, writeSubscriptionCache } from "../utils/subscriptionLock";
+
+const BRAND = "/brand/inspect-pro";
+
+// The approved "Scan ring" mark (same paths as public/brand/inspect-pro/mark*.svg).
+function ScanRing({ ring = "#fff", className }) {
+  return (
+    <svg className={className} viewBox="0 0 124 124" aria-hidden="true">
+      <g transform="translate(4,4)">
+        <path d="M88 52 A36 36 0 1 1 52 16" fill="none" stroke={ring} strokeWidth="11" strokeLinecap="round" />
+        <path className="lp-arc" d="M52 16 A36 36 0 0 1 88 52" fill="none" stroke="#0EA5A4" strokeWidth="11" strokeLinecap="round" />
+        <path d="M80 80 L104 104" stroke={ring} strokeWidth="14" strokeLinecap="round" />
+        <path className="lp-check" d="M33 53 L47 67 L73 39" fill="none" stroke="#0EA5A4" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    </svg>
+  );
+}
+
+const Icon = {
+  shield: <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z M8.5 12l2.5 2.5 4.5-5" />,
+  clipboard: <path d="M9 4h6v3H9z M7 5H5v16h14V5h-2 M8.5 13l2.5 2.5 4.5-5" />,
+  route: <path d="M6 19a2 2 0 100-4 2 2 0 000 4z M18 9a2 2 0 100-4 2 2 0 000 4z M8 17h7a3 3 0 000-6H9a3 3 0 010-6h7" />,
+  alert: <path d="M12 4l9 16H3l9-16z M12 10v4 M12 17h.01" />,
+  truck: <path d="M3 6h11v10H3z M14 10h4l3 3v3h-7 M7 19a2 2 0 100-4 2 2 0 000 4z M17 19a2 2 0 100-4 2 2 0 000 4z" />,
+  users: <path d="M9 11a3 3 0 100-6 3 3 0 000 6z M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6 M16 5.5a3 3 0 010 5.5 M21 20c0-2.6-1.6-4.8-4-5.6" />,
+  user: <path d="M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />,
+  lock: <path d="M6 11h12v10H6z M8 11V8a4 4 0 018 0v3 M12 15v2" />,
+  eye: <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z M12 15a3 3 0 100-6 3 3 0 000 6z" />,
+  eyeOff: <path d="M3 3l18 18 M10.6 5.1A10.6 10.6 0 0112 5c6.4 0 10 7 10 7a17 17 0 01-3.2 4 M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7c1.6 0 3-.4 4.3-1 M9.9 9.9a3 3 0 004.2 4.2" />,
+  arrow: <path d="M5 12h14 M13 6l6 6-6 6" />,
+};
+function Ico({ name, className = "lp-ico" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {Icon[name]}
+    </svg>
+  );
+}
+
+const FEATURES = [
+  { icon: "shield", title: "HACCP & ISO 22000", text: "Food safety plans, CCP logs and verification records." },
+  { icon: "clipboard", title: "Inspections & audits", text: "Branch checklists, internal audits and evidence." },
+  { icon: "route", title: "Traceability", text: "From receiving to shelf: batch, origin and expiry." },
+  { icon: "alert", title: "NCR & CAPA", text: "Close every finding with root cause and follow-up." },
+  { icon: "truck", title: "Suppliers", text: "Evaluations, documents and approved supplier list." },
+  { icon: "users", title: "Training & HSE", text: "Staff training, risk registers and health records." },
+];
+
+const TRUST = ["Role-based access", "Full audit trail", "Works offline", "English & Arabic"];
 
 function Login() {
   const navigate = useNavigate();
@@ -106,375 +153,332 @@ function Login() {
   };
 
   return (
-    <main style={S.shell}>
-      <style>{`
-        @media (max-width: 980px) {
-          .login-modern-layout { grid-template-columns: 1fr !important; }
-          .login-modern-side { min-height: auto !important; }
-        }
-        .login-modern-input:focus {
-          border-color: #0f766e !important;
-          box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.18) !important;
-          background: #fff !important;
-          outline: none;
-        }
-        .login-modern-button:not(:disabled):hover {
-          transform: translateY(-2px);
-          box-shadow: 0 24px 44px rgba(15, 118, 110, 0.30) !important;
-        }
-        .login-modern-button:not(:disabled):active {
-          transform: translateY(0);
-        }
-      `}</style>
+    <main className="lp" dir="ltr">
+      <style>{LP_CSS}</style>
 
-      <section className="login-modern-layout" style={S.layout}>
-        <aside className="login-modern-side" style={S.side}>
-          <div style={S.sideGlow} aria-hidden="true" />
-          <div style={S.brandRow}>
-            <img src={logo} alt="Al Mawashi" style={S.logo} />
-            <div style={{ minWidth: 0 }}>
-              <div style={S.company}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</div>
-              <div style={S.companySub}>AL MAWASHI - Quality Management System</div>
+      <section className="lp-layout">
+        <aside className="lp-side">
+          <ScanRing className="lp-watermark" ring="rgba(255,255,255,0.07)" />
+
+          <div className="lp-brand">
+            <ScanRing className="lp-brand-mark" />
+            <div>
+              <div className="lp-word">
+                INSPECT <span>PRO</span>
+              </div>
+              <div className="lp-tagline">FOOD SAFETY · QUALITY · COMPLIANCE</div>
             </div>
           </div>
 
-          <div style={S.heroText}>
-            <p style={S.eyebrow}>InspectPro QMS</p>
-            <h1 style={S.title}>Secure access for inspection, HACCP, ISO, and operations records.</h1>
-            <p style={S.subtitle}>
-              Sign in once to reach your assigned dashboards, branches, registers, reports, and approval tools.
+          <div className="lp-hero">
+            <h1 className="lp-title">
+              Every check, record and audit — <em>in one trusted place.</em>
+            </h1>
+            <p className="lp-sub">
+              The quality management system for food businesses: from receiving and production to branches,
+              suppliers and certification audits.
             </p>
           </div>
 
-          <div style={S.stats}>
-            <div style={S.stat}>
-              <strong>ISO</strong>
-              <span>22000 / HACCP</span>
-            </div>
-            <div style={S.stat}>
-              <strong>QMS</strong>
-              <span>Live operations</span>
-            </div>
+          <ul className="lp-features">
+            {FEATURES.map((f) => (
+              <li key={f.title} className="lp-feature">
+                <span className="lp-feature-ico"><Ico name={f.icon} /></span>
+                <span>
+                  <strong className="lp-feature-title">{f.title}</strong>
+                  <span className="lp-feature-text">{f.text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="lp-trust">
+            {TRUST.map((t) => (
+              <span key={t} className="lp-chip">
+                <span className="lp-dot" />
+                {t}
+              </span>
+            ))}
           </div>
         </aside>
 
-        <section style={S.card}>
-          <div style={S.cardHeader}>
-            <div style={S.cardMark}>IP</div>
-            <div>
-              <h2 style={S.cardTitle}>Sign in</h2>
-              <p style={S.cardSub}>Use your system account to continue.</p>
-            </div>
+        <section className="lp-card">
+          <img className="lp-card-logo" src={`${BRAND}/logo-light.png`} alt="INSPECT PRO" />
+
+          <div className="lp-card-head">
+            <h2 className="lp-card-title">Welcome back</h2>
+            <p className="lp-card-sub">Sign in with your company account to continue.</p>
           </div>
 
-          <form onSubmit={handleSubmit} style={S.form}>
-            <label style={S.field}>
-              <span style={S.label}>Username</span>
-              <input
-                className="login-modern-input"
-                type="text"
-                autoFocus
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                style={S.input}
-              />
+          <form onSubmit={handleSubmit} className="lp-form">
+            <label className="lp-field">
+              <span className="lp-label">Username</span>
+              <span className="lp-input-wrap">
+                <Ico name="user" className="lp-ico lp-input-ico" />
+                <input
+                  className="lp-input"
+                  type="text"
+                  autoFocus
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
+                />
+              </span>
             </label>
 
-            <label style={S.field}>
-              <span style={S.label}>Password</span>
-              <div style={S.passwordWrap}>
+            <label className="lp-field">
+              <span className="lp-label">Password</span>
+              <span className="lp-input-wrap">
+                <Ico name="lock" className="lp-ico lp-input-ico" />
                 <input
-                  className="login-modern-input"
+                  className="lp-input lp-input-pass"
                   type={showPass ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  style={{ ...S.input, paddingRight: 104 }}
                 />
                 <button
                   type="button"
+                  className="lp-show"
                   onClick={() => setShowPass((v) => !v)}
-                  style={S.showButton}
+                  aria-label={showPass ? "Hide password" : "Show password"}
+                  title={showPass ? "Hide password" : "Show password"}
                 >
-                  {showPass ? "Hide" : "Show"}
+                  <Ico name={showPass ? "eyeOff" : "eye"} />
                 </button>
-              </div>
+              </span>
             </label>
 
-            {error && <div style={S.error}>{error}</div>}
+            {error && <div className="lp-error" role="alert">{error}</div>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="login-modern-button"
-              style={{
-                ...S.submit,
-                opacity: loading ? 0.72 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? "Signing in..." : "Sign In"}
+            <button type="submit" disabled={loading} className="lp-submit">
+              {loading ? (
+                <>
+                  <span className="lp-spin" /> Signing in...
+                </>
+              ) : (
+                <>
+                  Sign in <Ico name="arrow" />
+                </>
+              )}
             </button>
           </form>
 
-          <div style={S.demoBox}>
-            <span style={S.demoText}>New here? See how it works for your company.</span>
-            <button type="button" onClick={() => navigate("/demo")} style={S.demoBtn}>
-              Request a free demo · اطلب عرض تجريبي
+          <div className="lp-secure">
+            <Ico name="lock" /> Encrypted connection · your data stays with your company
+          </div>
+
+          <div className="lp-demo">
+            <div>
+              <strong className="lp-demo-title">New to INSPECT PRO?</strong>
+              <span className="lp-demo-text">See how it works for your company.</span>
+            </div>
+            <button type="button" onClick={() => navigate("/demo")} className="lp-demo-btn">
+              Request a free demo
             </button>
           </div>
 
-          <div style={S.footer}>Built by Eng. Mohammed Abdullah</div>
+          <div className="lp-footer">
+            © {new Date().getFullYear()} INSPECT PRO · Built by Eng. Mohammed Abdullah
+          </div>
         </section>
       </section>
     </main>
   );
 }
 
-const S = {
-  shell: {
-    minHeight: "100vh",
-    padding: "24px clamp(16px, 3vw, 48px)",
-    background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
-    color: "#0f172a",
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    display: "grid",
-    placeItems: "center",
-  },
-  layout: {
-    width: "min(1320px, 100%)",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1.15fr) minmax(420px, 0.85fr)",
-    gap: 22,
-    alignItems: "stretch",
-  },
-  side: {
-    position: "relative",
-    overflow: "hidden",
-    minHeight: 650,
-    borderRadius: 8,
-    padding: "34px clamp(24px, 4vw, 56px)",
-    background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.20)",
-    boxShadow: "0 24px 64px rgba(15,23,42,0.22)",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    gap: 36,
-  },
-  sideGlow: {
-    position: "absolute",
-    inset: 0,
-    background:
-      "radial-gradient(820px 260px at 12% 0%, rgba(45,212,191,0.28), transparent 62%)," +
-      "radial-gradient(760px 300px at 90% 20%, rgba(125,211,252,0.22), transparent 60%)",
-    pointerEvents: "none",
-  },
-  brandRow: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-  },
-  logo: {
-    width: 78,
-    height: 78,
-    borderRadius: 8,
-    objectFit: "cover",
-    border: "1px solid rgba(255,255,255,0.34)",
-    background: "#fff",
-    boxShadow: "0 16px 30px rgba(0,0,0,0.25)",
-    flexShrink: 0,
-  },
-  company: {
-    fontWeight: 1000,
-    color: "rgba(255,255,255,0.92)",
-    letterSpacing: "0.03em",
-    lineHeight: 1.2,
-  },
-  companySub: {
-    marginTop: 6,
-    fontWeight: 800,
-    color: "rgba(255,255,255,0.72)",
-    lineHeight: 1.3,
-  },
-  heroText: {
-    position: "relative",
-    maxWidth: 820,
-  },
-  eyebrow: {
-    margin: 0,
-    fontWeight: 900,
-    color: "rgba(255,255,255,0.78)",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-  },
-  title: {
-    margin: "12px 0 0",
-    fontWeight: 1000,
-    lineHeight: 1.08,
-    letterSpacing: 0,
-  },
-  subtitle: {
-    margin: "18px 0 0",
-    color: "rgba(255,255,255,0.82)",
-    lineHeight: 1.5,
-    fontWeight: 700,
-  },
-  stats: {
-    position: "relative",
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  },
-  stat: {
-    borderRadius: 8,
-    padding: "18px 20px",
-    background: "rgba(255,255,255,0.12)",
-    border: "1px solid rgba(255,255,255,0.22)",
-    backdropFilter: "blur(12px)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  card: {
-    borderRadius: 8,
-    background: "#fff",
-    border: "1px solid rgba(15,23,42,0.12)",
-    boxShadow: "0 22px 54px rgba(15,23,42,0.14)",
-    padding: "34px clamp(22px, 3vw, 42px)",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    minHeight: 650,
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 34,
-  },
-  cardMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    display: "grid",
-    placeItems: "center",
-    background: "#ccfbf1",
-    color: "#0f766e",
-    border: "1px solid #99f6e4",
-    fontWeight: 1000,
-    flexShrink: 0,
-  },
-  cardTitle: {
-    margin: 0,
-    fontWeight: 1000,
-    lineHeight: 1.1,
-  },
-  cardSub: {
-    margin: "8px 0 0",
-    color: "#64748b",
-    fontWeight: 800,
-    lineHeight: 1.35,
-  },
-  form: {
-    display: "grid",
-    gap: 22,
-  },
-  field: {
-    display: "grid",
-    gap: 9,
-  },
-  label: {
-    color: "#334155",
-    fontWeight: 950,
-  },
-  input: {
-    width: "100%",
-    minHeight: 58,
-    padding: "14px 16px",
-    borderRadius: 8,
-    border: "1.5px solid #dbe4ef",
-    background: "#f8fafc",
-    color: "#0f172a",
-    fontFamily: "inherit",
-    fontWeight: 800,
-    boxSizing: "border-box",
-    transition: "border-color .15s, box-shadow .15s, background .15s",
-  },
-  passwordWrap: {
-    position: "relative",
-  },
-  showButton: {
-    position: "absolute",
-    right: 10,
-    top: "50%",
-    transform: "translateY(-50%)",
-    minWidth: 80,
-    minHeight: 40,
-    borderRadius: 8,
-    border: "1px solid rgba(15,23,42,0.12)",
-    background: "#fff",
-    color: "#0f766e",
-    cursor: "pointer",
-    fontWeight: 950,
-  },
-  error: {
-    padding: "13px 15px",
-    borderRadius: 8,
-    background: "#fef2f2",
-    color: "#991b1b",
-    border: "1px solid #fecaca",
-    fontWeight: 900,
-    lineHeight: 1.35,
-  },
-  submit: {
-    minHeight: 62,
-    width: "100%",
-    borderRadius: 8,
-    border: "none",
-    background: "linear-gradient(135deg, #0f766e, #0891b2)",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 1000,
-    fontFamily: "inherit",
-    boxShadow: "0 18px 34px rgba(15,118,110,0.24)",
-    transition: "transform .16s ease, box-shadow .16s ease, opacity .16s ease",
-  },
-  demoBox: {
-    marginTop: 22,
-    padding: "14px 16px",
-    borderRadius: 8,
-    border: "1px dashed #99f6e4",
-    background: "#f0fdfa",
-    display: "grid",
-    gap: 10,
-    textAlign: "center",
-  },
-  demoText: {
-    color: "#475569",
-    fontWeight: 800,
-  },
-  demoBtn: {
-    minHeight: 46,
-    borderRadius: 8,
-    border: "1.5px solid #0f766e",
-    background: "#fff",
-    color: "#0f766e",
-    cursor: "pointer",
-    fontWeight: 950,
-    fontFamily: "inherit",
-  },
-  footer: {
-    marginTop: 24,
-    color: "#94a3b8",
-    fontWeight: 800,
-    textAlign: "center",
-  },
-};
+// globals.css forces `#root * { font-size: 14px !important }`, so every size here
+// is scoped under a doubled class (`.lp.lp`) with !important to out-rank it.
+const LP_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap');
+
+#root .lp.lp {
+  --navy: #0B1E3F; --teal: #0EA5A4; --teal-d: #0f766e;
+  min-height: 100vh; box-sizing: border-box;
+  padding: 24px clamp(16px, 3vw, 48px);
+  display: grid; place-items: center;
+  background:
+    radial-gradient(900px 500px at 0% 0%, rgba(14,165,164,0.10), transparent 60%),
+    radial-gradient(800px 500px at 100% 100%, rgba(11,30,63,0.08), transparent 60%),
+    #f4f7fb;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+#root .lp.lp * { box-sizing: border-box; }
+#root .lp.lp .lp-layout {
+  width: min(1240px, 100%);
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(400px, 0.8fr);
+  border-radius: 20px; overflow: hidden;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(11,30,63,0.18), 0 2px 6px rgba(11,30,63,0.06);
+}
+
+/* ---------- brand side ---------- */
+#root .lp.lp .lp-side {
+  position: relative; overflow: hidden;
+  padding: 40px clamp(24px, 4vw, 52px);
+  display: flex; flex-direction: column; gap: 30px;
+  color: #fff;
+  background:
+    radial-gradient(600px 300px at 100% 0%, rgba(14,165,164,0.35), transparent 65%),
+    radial-gradient(500px 300px at 0% 100%, rgba(14,165,164,0.18), transparent 65%),
+    linear-gradient(160deg, #0B1E3F 0%, #0d2a52 55%, #0c3550 100%);
+}
+#root .lp.lp .lp-watermark {
+  position: absolute; width: 520px; height: 520px; right: -150px; bottom: -150px;
+  pointer-events: none;
+}
+#root .lp.lp .lp-watermark .lp-arc, #root .lp.lp .lp-watermark .lp-check { stroke: rgba(14,165,164,0.14); }
+#root .lp.lp .lp-brand { position: relative; display: flex; align-items: center; gap: 16px; }
+#root .lp.lp .lp-brand-mark { width: 62px; height: 62px; flex-shrink: 0; }
+#root .lp.lp .lp-brand-mark .lp-arc { animation: lp-pulse 2.8s ease-in-out infinite; }
+#root .lp.lp .lp-word {
+  font-family: Montserrat, system-ui, sans-serif; font-weight: 800;
+  font-size: calc(30px * var(--app-fs, 1)) !important; letter-spacing: 0.02em; line-height: 1;
+}
+#root .lp.lp .lp-word span { color: var(--teal); font-size: inherit !important; }
+#root .lp.lp .lp-tagline {
+  margin-top: 8px; font-family: Montserrat, system-ui, sans-serif; font-weight: 600;
+  font-size: calc(11px * var(--app-fs, 1)) !important; letter-spacing: 0.22em; color: #9fb3cf;
+}
+#root .lp.lp .lp-hero { position: relative; max-width: 620px; }
+#root .lp.lp .lp-title {
+  margin: 0; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em;
+  font-size: calc(32px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-title em { font-style: normal; color: #5eead4; font-size: inherit !important; }
+#root .lp.lp .lp-sub {
+  margin: 14px 0 0; color: #c3d1e6; line-height: 1.6; font-weight: 500;
+  font-size: calc(15px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-features {
+  position: relative; list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+}
+#root .lp.lp .lp-feature {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+  transition: background .2s, border-color .2s, transform .2s;
+}
+#root .lp.lp .lp-feature:hover { background: rgba(255,255,255,0.09); border-color: rgba(94,234,212,0.35); transform: translateY(-2px); }
+#root .lp.lp .lp-feature-ico {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px;
+  display: grid; place-items: center;
+  background: rgba(14,165,164,0.18); color: #5eead4;
+}
+#root .lp.lp .lp-ico { width: 20px; height: 20px; display: block; flex-shrink: 0; }
+#root .lp.lp .lp-feature-title { display: block; font-weight: 700; color: #fff; }
+#root .lp.lp .lp-feature-text {
+  display: block; margin-top: 3px; color: #a9bad3; line-height: 1.45;
+  font-size: calc(12.5px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-trust { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+#root .lp.lp .lp-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px; border-radius: 999px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: #dbe6f5; font-weight: 600; font-size: calc(12.5px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-dot { width: 7px; height: 7px; border-radius: 50%; background: #2dd4bf; box-shadow: 0 0 0 3px rgba(45,212,191,0.2); }
+
+/* ---------- sign-in card ---------- */
+#root .lp.lp .lp-card {
+  padding: 40px clamp(24px, 3.4vw, 48px);
+  display: flex; flex-direction: column; justify-content: center;
+}
+#root .lp.lp .lp-card-logo { display: none; width: min(240px, 80%); height: auto; margin-bottom: 26px; }
+#root .lp.lp .lp-card-head { margin-bottom: 24px; }
+#root .lp.lp .lp-card-title { margin: 0; font-weight: 800; color: var(--navy); font-size: calc(26px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-card-sub { margin: 6px 0 0; color: #64748b; font-weight: 500; }
+#root .lp.lp .lp-form { display: grid; gap: 18px; }
+#root .lp.lp .lp-field { display: grid; gap: 8px; }
+#root .lp.lp .lp-label { color: #334155; font-weight: 700; }
+#root .lp.lp .lp-input-wrap { position: relative; display: block; }
+#root .lp.lp .lp-input-ico { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+#root .lp.lp .lp-input {
+  width: 100%; min-height: 54px; margin: 0;
+  padding: 14px 16px 14px 46px; border-radius: 12px;
+  border: 1.5px solid #dbe4ef; background: #f8fafc; color: #0f172a;
+  font-family: inherit; font-weight: 600; box-shadow: none;
+  font-size: calc(15px * var(--app-fs, 1)) !important;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+#root .lp.lp .lp-input-pass { padding-right: 56px; }
+#root .lp.lp .lp-input:focus { outline: none; border-color: var(--teal); background: #fff; box-shadow: 0 0 0 4px rgba(14,165,164,0.16); }
+#root .lp.lp .lp-input-wrap:focus-within .lp-input-ico { color: var(--teal); }
+#root .lp.lp .lp-show {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px; border-radius: 10px; border: none; background: transparent;
+  color: #64748b; cursor: pointer; display: grid; place-items: center;
+}
+#root .lp.lp .lp-show:hover { background: #eef2f7; color: var(--teal-d); }
+#root .lp.lp .lp-error {
+  padding: 12px 14px; border-radius: 10px;
+  background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-weight: 700; line-height: 1.4;
+}
+#root .lp.lp .lp-submit {
+  min-height: 56px; width: 100%; border-radius: 12px; border: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(135deg, #0B1E3F, #0f766e 70%, #0EA5A4);
+  background-size: 160% 100%; background-position: 0 0;
+  color: #fff; cursor: pointer; font-weight: 800; font-family: inherit;
+  font-size: calc(15px * var(--app-fs, 1)) !important;
+  box-shadow: 0 14px 30px rgba(11,30,63,0.22);
+  transition: transform .16s, box-shadow .16s, background-position .3s, opacity .16s;
+}
+#root .lp.lp .lp-submit:not(:disabled):hover { transform: translateY(-2px); background-position: 100% 0; box-shadow: 0 20px 40px rgba(14,165,164,0.30); }
+#root .lp.lp .lp-submit:disabled { opacity: .75; cursor: not-allowed; }
+#root .lp.lp .lp-submit .lp-ico { transition: transform .16s; }
+#root .lp.lp .lp-submit:hover .lp-ico { transform: translateX(3px); }
+#root .lp.lp .lp-spin {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,0.35); border-top-color: #fff;
+  animation: lp-rot .8s linear infinite;
+}
+#root .lp.lp .lp-secure {
+  margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 7px;
+  color: #64748b; font-weight: 500; font-size: calc(12.5px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-secure .lp-ico { width: 15px; height: 15px; color: var(--teal-d); }
+#root .lp.lp .lp-demo {
+  margin-top: 26px; padding: 16px; border-radius: 14px;
+  background: linear-gradient(135deg, #f0fdfa, #ecfeff); border: 1px solid #ccfbf1;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+#root .lp.lp .lp-demo-title { display: block; color: var(--navy); font-weight: 800; }
+#root .lp.lp .lp-demo-text { display: block; margin-top: 2px; color: #475569; font-size: calc(12.5px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-demo-btn {
+  min-height: 42px; padding: 0 16px; border-radius: 10px;
+  border: 1.5px solid var(--teal-d); background: #fff; color: var(--teal-d);
+  cursor: pointer; font-weight: 800; font-family: inherit; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+#root .lp.lp .lp-demo-btn:hover { background: var(--teal-d); color: #fff; }
+#root .lp.lp .lp-footer { margin-top: 24px; text-align: center; color: #94a3b8; font-weight: 500; font-size: calc(12px * var(--app-fs, 1)) !important; }
+
+@keyframes lp-rot { to { transform: rotate(360deg); } }
+@keyframes lp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) {
+  #root .lp.lp *, #root .lp.lp *::before { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 980px) {
+  #root .lp.lp .lp-layout { grid-template-columns: 1fr; }
+  #root .lp.lp .lp-card { order: -1; }
+  #root .lp.lp .lp-card-logo { display: block; }
+  #root .lp.lp .lp-features { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  #root .lp.lp { padding: 12px; }
+  #root .lp.lp .lp-side { padding: 28px 20px; }
+  #root .lp.lp .lp-card { padding: 28px 20px; }
+  #root .lp.lp .lp-title { font-size: calc(24px * var(--app-fs, 1)) !important; }
+  #root .lp.lp .lp-word { font-size: calc(24px * var(--app-fs, 1)) !important; }
+  #root .lp.lp .lp-features { display: none; }
+}
+`;
 
 export default Login;
