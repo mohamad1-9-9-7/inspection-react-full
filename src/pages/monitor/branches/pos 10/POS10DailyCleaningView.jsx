@@ -280,7 +280,7 @@ export default function POS10DailyCleaningView() {
         {loadingReport ? (
           <EmptyState text="⏳ Loading…" />
         ) : !selectedReport ? (
-          <EmptyState text="❌ No report selected." />
+          <EmptyState text="📅 Pick a date from the list to open its report." />
         ) : (
           <div ref={reportRef} style={{ paddingBottom: "100px" }}>
             <h3 style={{ color: "#2980b9", marginTop: 0 }}>

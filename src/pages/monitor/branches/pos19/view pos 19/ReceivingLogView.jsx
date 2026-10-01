@@ -644,7 +644,7 @@ export default function ReceivingLogView() {
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>
             {Object.keys(grouped).length ? (
-              Object.entries(grouped).map(([year, months]) => {
+              Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
                   <div key={year} style={{ marginBottom:8 }}>
@@ -660,7 +660,7 @@ export default function ReceivingLogView() {
                       <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
                     </button>
 
-                    {yOpen && Object.entries(months).map(([month, days]) => {
+                    {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                       const key = `${year}-${month}`;
                       const mOpen = !!expandedMonths[key];
                       return (

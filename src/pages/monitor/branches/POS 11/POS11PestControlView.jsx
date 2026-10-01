@@ -7,6 +7,7 @@ import SignatureName from "../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../utils/perms";
 import { uploadImage, photoOf } from "../../../../utils/imageUpload";
 import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
+import useRevealDate from "../_shared/useRevealDate";
 
 
 
@@ -62,6 +63,7 @@ export default function POS11PestControlView() {
   // أكورديون التاريخ
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({}); // YYYY-MM
+  useRevealDate(date, setExpandedYears, setExpandedMonths);
 
   // أنماط عامة
   const thCell = {
@@ -513,7 +515,7 @@ export default function POS11PestControlView() {
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>
             {Object.keys(groupedDates).length ? (
-              Object.entries(groupedDates).map(([year, months]) => {
+              Object.entries(groupedDates).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
                   <div key={year} style={{ marginBottom:8 }}>
@@ -530,7 +532,7 @@ export default function POS11PestControlView() {
                       <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
                     </button>
 
-                    {yOpen && Object.entries(months).map(([month, days]) => {
+                    {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                       const key = `${year}-${month}`;
                       const mOpen = !!expandedMonths[key];
                       return (

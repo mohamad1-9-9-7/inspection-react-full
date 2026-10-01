@@ -5,7 +5,6 @@
 // charcoal and green buttons side by side. Each file now routes its helper
 // through colorBtn(), which maps the colour it already passes to one of the
 // ISO_UI button kinds the POS 15 views use — same meaning, one palette.
-import { useEffect } from "react";
 import { ISO_UI } from "../../_shared/branchViewKit";
 
 const KIND_BY_HEX = {
@@ -23,19 +22,5 @@ export function colorBtn(bg, disabled = false) {
   return { ...ISO_UI.btn(kind, disabled), display: "inline-block" };
 }
 
-/**
- * Open the year + month of the selected date in a view's date tree.
- * Every tree started fully collapsed, so a branch with a year of records
- * looked empty until you clicked twice. A node the user collapses by hand
- * stays collapsed — it only re-opens when the selected date moves to it.
- */
-export function useRevealDate(date, setYears, setMonths) {
-  useEffect(() => {
-    const m = String(date || "").match(/^(\d{4})-(\d{2})/);
-    if (!m) return;
-    const [, y, mo] = m;
-    setYears((p) => (p[y] ? p : { ...p, [y]: true }));
-    setMonths((p) => (p[`${y}-${mo}`] ? p : { ...p, [`${y}-${mo}`]: true }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
-}
+/* Kept here so the POS 19 views import both helpers from one place. */
+export { default as useRevealDate } from "../../_shared/useRevealDate";

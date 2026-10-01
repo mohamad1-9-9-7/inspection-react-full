@@ -368,8 +368,8 @@ export default function FTR2ReceivingLogView() {
 
   const asDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
 
-  const Btn = ({ label, onClick, color, disabled }) => (
-    <button onClick={onClick} disabled={disabled}
+  const Btn = ({ label, onClick, color, disabled, ...rest }) => (
+    <button onClick={onClick} disabled={disabled} {...rest}
       style={{ minHeight: 38, padding: "8px 14px", borderRadius: 8, background: disabled ? "#d1d5db" : color, color: "#fff", fontWeight: 900, fontSize: 14, border: "none", cursor: disabled ? "not-allowed" : "pointer" }}>
       {label}
     </button>
@@ -453,17 +453,17 @@ export default function FTR2ReceivingLogView() {
           )
           : Object.entries(groupedReports)
               .sort(([a],[b]) => Number(b)-Number(a))
-              .map(([year, months]) => (
+              .map(([year, months], yi) => (
                 // ✅ بدون open — الشجرة مغلقة افتراضياً
-                <details key={year} className="ftr2-tree-year">
+                <details key={year} open={yi === 0} className="ftr2-tree-year">
                   <summary>
                     <span>{year}</span>
                     <b>{Object.values(months).reduce((sum, days) => sum + days.length, 0)}</b>
                   </summary>
                   {Object.entries(months)
                     .sort(([a],[b]) => Number(b)-Number(a))
-                    .map(([month, days]) => (
-                      <details key={month} className="ftr2-tree-month">
+                    .map(([month, days], mi) => (
+                      <details key={month} open={yi === 0 && mi === 0} className="ftr2-tree-month">
                         <summary>
                           <span>{new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
                           <b>{days.length}</b>
@@ -525,7 +525,7 @@ export default function FTR2ReceivingLogView() {
                   <Btn label="⬇ Export JSON" onClick={handleExportJSON}                   color="#059669" disabled={busy} />
                   <Btn label="⬆ Import JSON" onClick={triggerImport}                      color="#f59e0b" disabled={busy} />
                   {canDelete("daily") && (
-                    <Btn label="🗑 Delete"      onClick={() => handleDelete(selectedReport)} color="#ef4444" disabled={busy} />
+                    <Btn label="🗑 Delete"      onClick={() => handleDelete(selectedReport)} color="#ef4444" disabled={busy} data-delete-action="true" />
                   )}
                 </>
               ) : (

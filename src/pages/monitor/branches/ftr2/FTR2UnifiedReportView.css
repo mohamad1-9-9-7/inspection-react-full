@@ -126,8 +126,11 @@
 
 .ftr2-rail-head {
   padding: 18px;
-  color: #fff;
-  background: linear-gradient(135deg, #12343b, #0f766e 58%, #0891b2);
+  color: #0f172a;
+  /* light, like the hub around it — the dark teal slab was the darkest thing
+     on the page */
+  background: linear-gradient(135deg, #f0fdfa, #e0f2fe);
+  border-bottom: 1px solid #bae6fd;
 }
 
 .ftr2-rail-head span {
@@ -135,10 +138,10 @@
   min-height: 24px;
   align-items: center;
   padding: 3px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid #99f6e4;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #dffdf8;
+  background: #fff;
+  color: #0f766e;
   font-size: 10px;
   font-weight: 1000;
   letter-spacing: 0.1em;
@@ -147,7 +150,7 @@
 
 .ftr2-rail-head h3 {
   margin: 12px 0 5px;
-  color: #fff;
+  color: #0f172a;
   font-size: 19px;
   line-height: 1.1;
   font-weight: 1000;
@@ -156,7 +159,7 @@
 
 .ftr2-rail-head p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.74);
+  color: #475569;
   font-size: 12px;
   font-weight: 750;
 }
@@ -718,4 +721,12 @@
   font-size: 16px !important;
   line-height: 1.5 !important;
   text-align: left !important;
+}
+
+/* section header rows inside the entries table (rows with isSection) */
+.ftr2-data-table tr.ftr2-sec-row td {
+  background: #e0f2fe;
+  color: #0c4a6e;
+  font-weight: 900;
+  text-align: start;
 }

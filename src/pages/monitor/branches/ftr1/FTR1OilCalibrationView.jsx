@@ -351,8 +351,8 @@ export default function FTR1OilCalibrationView() {
           <div>
             {Object.entries(grouped)
               .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months]) => (
-                <details key={year}>
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0}>
                   <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
                     📅 Year {year}
                   </summary>
@@ -435,7 +435,7 @@ export default function FTR1OilCalibrationView() {
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <div ref={reportRef}>
             {/* شريط الأزرار أعلى يمين التقرير (ظاهر دائمًا) */}
@@ -459,7 +459,7 @@ export default function FTR1OilCalibrationView() {
                   onClick={() => handleDelete(selectedReport)}
                   className="btn-delete"
                   style={btnDel}
-                  title="Delete this report (password: 9999)"
+                  title="Delete this report"
                  data-delete-action="true">
                   🗑 Delete
                 </button>

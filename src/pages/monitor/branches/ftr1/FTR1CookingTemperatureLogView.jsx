@@ -320,13 +320,13 @@ export default function FTR1CookingTemperatureLogView() {
           <p>❌ No reports</p>
         ) : (
           <div>
-            {Object.entries(groupedReports).sort(([a],[b]) => Number(b)-Number(a)).map(([year, months]) => (
-              <details key={year}>
+            {Object.entries(groupedReports).sort(([a],[b]) => Number(b)-Number(a)).map(([year, months], yi) => (
+              <details key={year} open={yi === 0}>
                 <summary style={{ fontWeight:"bold", marginBottom:"6px" }}>📅 Year {year}</summary>
-                {Object.entries(months).sort(([a],[b]) => Number(b)-Number(a)).map(([month, days]) => {
+                {Object.entries(months).sort(([a],[b]) => Number(b)-Number(a)).map(([month, days], mi) => {
                   const daysSorted = [...days].sort((x,y)=> y._dt - x._dt);
                   return (
-                    <details key={month} style={{ marginLeft:"1rem" }}>
+                    <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft:"1rem" }}>
                       <summary style={{ fontWeight:500 }}>📅 Month {month}</summary>
                       <ul style={{ listStyle:"none", paddingLeft:"1rem" }}>
                         {daysSorted.map((r,i) => {
@@ -355,7 +355,7 @@ export default function FTR1CookingTemperatureLogView() {
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <div ref={reportRef}>
             <div className="action-toolbar" style={{ position:"sticky", top:0, zIndex:5, display:"flex", justifyContent:"flex-end", gap:"0.6rem", padding:"8px 0 12px", background:"linear-gradient(to bottom,#eef3f8,#eef3f8cc)", flexWrap:"wrap" }}>
@@ -369,7 +369,7 @@ export default function FTR1CookingTemperatureLogView() {
                 </>
               )}
               {canDelete("daily") && (
-                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} title="Delete (password: 9999)" data-delete-action="true">🗑 Delete</button>
+                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} title="Delete" data-delete-action="true">🗑 Delete</button>
               )}
               <button onClick={handleExportPDF}  style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>

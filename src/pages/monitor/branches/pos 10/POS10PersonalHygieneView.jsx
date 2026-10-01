@@ -321,7 +321,7 @@ export default function POS10PersonalHygieneView() {
         {loadingReport ? (
           <EmptyState text="⏳ Loading…" />
         ) : !selectedReport ? (
-          <EmptyState text="❌ No report selected." />
+          <EmptyState text="📅 Pick a date from the list to open its report." />
         ) : (
             <div ref={reportRef}>
               {/* Header info */}

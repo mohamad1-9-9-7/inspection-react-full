@@ -12,6 +12,7 @@ import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import useRevealDate from "../_shared/useRevealDate";
 import { canDelete } from "../../../../utils/perms";
 
 /* ========= API BASE (robust like your other pages) ========= */
@@ -513,7 +514,21 @@ export default function FTR1ReceivingLogView() {
     }, {});
   }, [reportList]);
 
-  // Tree stays collapsed by default; user expands manually.
+  /* Open the newest year + month (or the selected report's) so the list
+     doesn't look empty; anything the user collapses stays collapsed. */
+  const revealISO = useMemo(() => {
+    const pick = selectedReport ? pickDateFromAny(selectedReport) : null;
+    let ms = pick && !isNaN(pick) ? pick.getTime() : NaN;
+    if (isNaN(ms)) {
+      for (const months of Object.values(groupedReports))
+        for (const days of Object.values(months))
+          for (const r of days) if (isNaN(ms) || r._dt > ms) ms = r._dt;
+    }
+    if (isNaN(ms)) return "";
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, [groupedReports, selectedReport]);
+  useRevealDate(revealISO, setOpenYears, setOpenMonths);
 
   /* ================== Styles ================== */
   const shell = { display: "flex", gap: "1rem" };
@@ -779,7 +794,7 @@ export default function FTR1ReceivingLogView() {
       {/* Main / Report */}
       <div style={main}>
         {!selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <>
             {/* Actions */}

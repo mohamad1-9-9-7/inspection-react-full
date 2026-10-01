@@ -650,7 +650,7 @@ async function exportXLSX() {
           <div style={{ fontWeight: 800, marginBottom: 8 }}>📅 Date Tree</div>
           <div style={{ maxHeight: 380, overflowY: "auto" }}>
             {Object.keys(grouped).length ? (
-              Object.entries(grouped).map(([year, months]) => {
+              Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
                   <div key={year} style={{ marginBottom: 8 }}>
@@ -675,7 +675,7 @@ async function exportXLSX() {
                     </button>
 
                     {yOpen &&
-                      Object.entries(months).map(([month, days]) => {
+                      Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                         const key = `${year}-${month}`;
                         const mOpen = !!expandedMonths[key];
                         return (

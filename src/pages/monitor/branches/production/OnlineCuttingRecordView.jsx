@@ -316,7 +316,7 @@ export default function OnlineCuttingRecordView() {
             {Object.keys(grouped).length === 0 && (
               <div className="ocv-empty">{isAr ? "لا توجد تقارير" : "No reports"}</div>
             )}
-            {Object.entries(grouped).map(([year, months]) => {
+            {Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
               const yOpen = !!expandedYears[year];
               return (
                 <div key={year} className="ocv-year">
@@ -324,7 +324,7 @@ export default function OnlineCuttingRecordView() {
                     <span>{yOpen ? "▾" : "▸"}</span>
                     <strong>{year}</strong>
                   </button>
-                  {yOpen && Object.entries(months).map(([month, days]) => {
+                  {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                     const key = `${year}-${month}`;
                     const mOpen = !!expandedMonths[key];
                     return (

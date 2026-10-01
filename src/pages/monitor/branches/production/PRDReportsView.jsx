@@ -27,18 +27,18 @@ const DASH_TYPES = [
 ];
 
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview",
+  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
     element: <BranchDashboard branchName="Production" branchNameAr="الإنتاج" reportTypes={DASH_TYPES} accent="#0f766e" />
   },
-  { key: "cleaning",  icon: "🧽", label: "Cleaning Checklist",    element: <CleaningChecklistPRDView /> },
-  { key: "hygiene",   icon: "🧑‍🍳", label: "Personal Hygiene",    element: <PersonalHygienePRDView /> },
-  { key: "defrost",   icon: "❄️",  label: "Defrosting Record",    element: <PRDDefrostingRecordView /> },
-  { key: "trace",     icon: "🔗", label: "Traceability Log",      element: <PRDTraceabilityLogView /> },
-  { key: "cutting",   icon: "✂️", label: "Online Cutting Record", element: <OnlineCuttingRecordView /> },
-  { key: "dried",     icon: "🥓", label: "Dried Meat Process",    element: <DriedMeatProcessView /> },
-  { key: "vegSanitation", icon: "🥬", label: "Sanitation Record (CCP) – Veg/Fruits", element: <PRDVegSanitationView /> },
-  { key: "sanitizer", icon: "🧴", label: "Sanitizer Concentration", element: <PRDSanitizerView /> },
-  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", element: <EquipmentInspectionView reportType="prod_equipment_inspection" branch="Production" reporter="production" /> },
+  { key: "cleaning",  icon: "🧽", label: "Cleaning Checklist", labelAr: "قائمة النظافة",    element: <CleaningChecklistPRDView /> },
+  { key: "hygiene",   icon: "🧑‍🍳", label: "Personal Hygiene", labelAr: "النظافة الشخصية",    element: <PersonalHygienePRDView /> },
+  { key: "defrost",   icon: "❄️",  label: "Defrosting Record", labelAr: "سجل إذابة التجميد",    element: <PRDDefrostingRecordView /> },
+  { key: "trace",     icon: "🔗", label: "Traceability Log", labelAr: "سجل التتبع",      element: <PRDTraceabilityLogView /> },
+  { key: "cutting",   icon: "✂️", label: "Online Cutting Record", labelAr: "التقطيع المباشر", element: <OnlineCuttingRecordView /> },
+  { key: "dried",     icon: "🥓", label: "Dried Meat Process", labelAr: "تصنيع اللحم المجفف",    element: <DriedMeatProcessView /> },
+  { key: "vegSanitation", icon: "🥬", label: "Sanitation Record (CCP) – Veg/Fruits", labelAr: "تعقيم الخضار والفواكه", element: <PRDVegSanitationView /> },
+  { key: "sanitizer", icon: "🧴", label: "Sanitizer Concentration", labelAr: "تركيز المعقم", element: <PRDSanitizerView /> },
+  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", labelAr: "فحص وتعقيم المعدات", element: <EquipmentInspectionView reportType="prod_equipment_inspection" branch="Production" reporter="production" /> },
 ];
 
 export default function PRDReportsView() {

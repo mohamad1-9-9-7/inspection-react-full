@@ -21,15 +21,15 @@ const DASH_TYPES = [
 ];
 
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview",
+  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
     element: <BranchDashboard branchName="FTR 1" branchNameAr="فرع FTR 1" reportTypes={DASH_TYPES} accent="#0ea5e9" />
   },
-  { key: "temperature",  icon: "🌡️",    label: "Temperature Log",      element: <FTR1TemperatureView /> },
-  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleanliness",    element: <FTR1DailyCleanlinessView /> },
-  { key: "oil",          icon: "🛢️",    label: "Oil Calibration",      element: <FTR1OilCalibrationView /> },
-  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene",    element: <FTR1PersonalHygieneView /> },
-  { key: "receiving",    icon: "🚚",     label: "Receiving Log",        element: <FTR1ReceivingLogView /> },
-  { key: "cook",         icon: "🍳",     label: "Cooking Temperature",  element: <FTR1CookingTemperatureLogView /> },
+  { key: "temperature",  icon: "🌡️",    label: "Temperature Log", labelAr: "سجل الحرارة",      element: <FTR1TemperatureView /> },
+  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleanliness", labelAr: "النظافة اليومية",    element: <FTR1DailyCleanlinessView /> },
+  { key: "oil",          icon: "🛢️",    label: "Oil Calibration", labelAr: "معايرة الزيت",      element: <FTR1OilCalibrationView /> },
+  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene", labelAr: "النظافة الشخصية",    element: <FTR1PersonalHygieneView /> },
+  { key: "receiving",    icon: "🚚",     label: "Receiving Log", labelAr: "سجل الاستلام",        element: <FTR1ReceivingLogView /> },
+  { key: "cook",         icon: "🍳",     label: "Cooking Temperature", labelAr: "حرارة الطبخ",  element: <FTR1CookingTemperatureLogView /> },
 ];
 
 export default function FTR1ReportView() {

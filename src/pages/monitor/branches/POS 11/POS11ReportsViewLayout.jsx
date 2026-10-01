@@ -26,17 +26,17 @@ const DASH_TYPES = [
 ];
 
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview",
+  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
     element: <BranchDashboard branchName="POS 11" branchNameAr="فرع POS 11" reportTypes={DASH_TYPES} accent="#3b82f6" />
   },
-  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene",    element: <POS11PersonalHygieneView /> },
-  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleaning",       element: <POS11DailyCleaningView /> },
-  { key: "temperature",  icon: "🌡️",    label: "Temperature Log",      element: <POS11TemperatureView /> },
-  { key: "traceability", icon: "🧬",     label: "Traceability Log",     element: <POS11TraceabilityLogView /> },
-  { key: "receiving",    icon: "📥",     label: "Receiving Log",        element: <POS11ReceivingLogView /> },
-  { key: "pest",         icon: "🪲",     label: "Pest Control",         element: <POS11PestControlView /> },
-  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration", element: <POS11SanitizerView /> },
-  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", element: <EquipmentInspectionView reportType="pos11_equipment_inspection" branch="POS 11" reporter="pos11" /> },
+  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene", labelAr: "النظافة الشخصية",    element: <POS11PersonalHygieneView /> },
+  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleaning", labelAr: "التنظيف اليومي",       element: <POS11DailyCleaningView /> },
+  { key: "temperature",  icon: "🌡️",    label: "Temperature Log", labelAr: "سجل الحرارة",      element: <POS11TemperatureView /> },
+  { key: "traceability", icon: "🧬",     label: "Traceability Log", labelAr: "سجل التتبع",     element: <POS11TraceabilityLogView /> },
+  { key: "receiving",    icon: "📥",     label: "Receiving Log", labelAr: "سجل الاستلام",        element: <POS11ReceivingLogView /> },
+  { key: "pest",         icon: "🪲",     label: "Pest Control", labelAr: "مكافحة الآفات",         element: <POS11PestControlView /> },
+  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration", labelAr: "تركيز المعقم", element: <POS11SanitizerView /> },
+  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", labelAr: "فحص وتعقيم المعدات", element: <EquipmentInspectionView reportType="pos11_equipment_inspection" branch="POS 11" reporter="pos11" /> },
 ];
 
 export default function POS11ReportsViewLayout() {

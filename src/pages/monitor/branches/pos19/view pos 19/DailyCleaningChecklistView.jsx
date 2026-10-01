@@ -345,14 +345,14 @@ export default function DailyCleaningChecklistView() {
         <div style={{ borderRight:`1px solid ${C.border}`, padding:14, background:C.gray50 }}>
           <div style={{ fontWeight:800, fontSize:13, marginBottom:10, color:C.navy, letterSpacing:.3 }}>📅 Date Tree</div>
           <div style={{ maxHeight:520, overflowY:"auto" }}>
-            {Object.keys(grouped).length ? Object.entries(grouped).map(([year,months]) => {
+            {Object.keys(grouped).length ? Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year,months]) => {
               const yOpen=!!expandedYears[year];
               return (
                 <div key={year} style={{marginBottom:8}}>
                   <button onClick={()=>toggleYear(year)} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:yOpen?C.accentBg:C.white,cursor:"pointer",fontWeight:800,fontSize:12,color:C.navy }}>
                     <span>📁 {year}</span><span>{yOpen?"▾":"▸"}</span>
                   </button>
-                  {yOpen && Object.entries(months).map(([month,days]) => {
+                  {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month,days]) => {
                     const key=`${year}-${month}`, mOpen=!!expandedMonths[key];
                     return (
                       <div key={key} style={{marginTop:5,marginLeft:10}}>

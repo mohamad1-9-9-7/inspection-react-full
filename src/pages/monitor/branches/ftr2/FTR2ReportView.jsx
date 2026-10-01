@@ -7,18 +7,18 @@ import FTR2UnifiedReportView from "./FTR2UnifiedReportView";
 import FTR2ReceivingLogView from "./FTR2ReceivingLogView";
 
 const DASH_TYPES = [
-  { type: "ftr2_temperature", key: "temperature", icon: "T", titleEn: "Temperature Log", titleAr: "Temperature Log", accent: "#3b82f6" },
-  { type: "ftr2_daily_cleanliness", key: "cleanliness", icon: "C", titleEn: "Daily Cleanliness", titleAr: "Daily Cleanliness", accent: "#22c55e" },
-  { type: "ftr2_oil_calibration", key: "oil", icon: "O", titleEn: "Oil Calibration", titleAr: "Oil Calibration", accent: "#f59e0b" },
-  { type: "ftr2_personal_hygiene", key: "hygiene", icon: "H", titleEn: "Personal Hygiene", titleAr: "Personal Hygiene", accent: "#0ea5e9" },
-  { type: "ftr2_receiving_log_butchery", key: "receiving", icon: "R", titleEn: "Receiving Log", titleAr: "Receiving Log", accent: "#a855f7" },
-  { type: "ftr2_cooking_temperature_log", key: "cook", icon: "K", titleEn: "Cooking Temperature", titleAr: "Cooking Temperature", accent: "#e11d48" },
+  { type: "ftr2_temperature", key: "temperature", icon: "🌡️", titleEn: "Temperature Log", titleAr: "Temperature Log", accent: "#3b82f6" },
+  { type: "ftr2_daily_cleanliness", key: "cleanliness", icon: "🧹", titleEn: "Daily Cleanliness", titleAr: "Daily Cleanliness", accent: "#22c55e" },
+  { type: "ftr2_oil_calibration", key: "oil", icon: "🛢️", titleEn: "Oil Calibration", titleAr: "Oil Calibration", accent: "#f59e0b" },
+  { type: "ftr2_personal_hygiene", key: "hygiene", icon: "🧑‍🔬", titleEn: "Personal Hygiene", titleAr: "Personal Hygiene", accent: "#0ea5e9" },
+  { type: "ftr2_receiving_log_butchery", key: "receiving", icon: "🚚", titleEn: "Receiving Log", titleAr: "Receiving Log", accent: "#a855f7" },
+  { type: "ftr2_cooking_temperature_log", key: "cook", icon: "🍳", titleEn: "Cooking Temperature", titleAr: "Cooking Temperature", accent: "#e11d48" },
 ];
 
 const TABS = [
   {
     key: "overview",
-    icon: "O",
+    icon: "📊",
     label: "Overview",
     element: (
       <BranchDashboard
@@ -31,7 +31,7 @@ const TABS = [
   },
   {
     key: "temperature",
-    icon: "T",
+    icon: "🌡️",
     label: "Temperature Log",
     element: (
       <FTR2UnifiedReportView
@@ -44,7 +44,7 @@ const TABS = [
   },
   {
     key: "cleanliness",
-    icon: "C",
+    icon: "🧹",
     label: "Daily Cleanliness",
     element: (
       <FTR2UnifiedReportView
@@ -57,7 +57,7 @@ const TABS = [
   },
   {
     key: "oil",
-    icon: "O",
+    icon: "🛢️",
     label: "Oil Calibration",
     element: (
       <FTR2UnifiedReportView
@@ -70,7 +70,7 @@ const TABS = [
   },
   {
     key: "hygiene",
-    icon: "H",
+    icon: "🧑‍🔬",
     label: "Personal Hygiene",
     element: (
       <FTR2UnifiedReportView
@@ -83,13 +83,13 @@ const TABS = [
   },
   {
     key: "receiving",
-    icon: "R",
+    icon: "🚚",
     label: "Receiving Log",
     element: <FTR2ReceivingLogView />,
   },
   {
     key: "cook",
-    icon: "K",
+    icon: "🍳",
     label: "Cooking Temperature",
     element: (
       <FTR2UnifiedReportView

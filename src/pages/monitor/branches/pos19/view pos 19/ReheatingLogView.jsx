@@ -127,11 +127,11 @@ export default function ReheatingLogView() {
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>
-            {Object.keys(grouped).length ? Object.entries(grouped).map(([year, months]) => {
+            {Object.keys(grouped).length ? Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
               const yOpen = !!expandedYears[year];
               return (<div key={year} style={{ marginBottom:8 }}>
                 <button onClick={()=>toggleYear(year)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", padding:"6px 10px", borderRadius:8, border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800 }}><span>Year {year}</span><span>{yOpen?"▾":"▸"}</span></button>
-                {yOpen && Object.entries(months).map(([month, days]) => { const key=`${year}-${month}`; const mOpen=!!expandedMonths[key]; return (<div key={key} style={{ marginTop:6, marginLeft:8 }}>
+                {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => { const key=`${year}-${month}`; const mOpen=!!expandedMonths[key]; return (<div key={key} style={{ marginTop:6, marginLeft:8 }}>
                   <button onClick={()=>toggleMonth(year,month)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", padding:"6px 10px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700 }}><span>Month {month}</span><span>{mOpen?"▾":"▸"}</span></button>
                   {mOpen && <ul style={{ listStyle:"none", padding:"6px 2px 0 2px", margin:0 }}>{days.map(d => (<li key={d} style={{ marginBottom:6 }}><button onClick={()=>setDate(d)} style={{ width:"100%", textAlign:"left", padding:"8px 10px", borderRadius:8, border:"1px solid #d1d5db", background:d===date?"#2563eb":"#fff", color:d===date?"#fff":"#111827", fontWeight:700, cursor:"pointer" }}>{formatDMY(d)}</button></li>))}</ul>}
                 </div>);})}

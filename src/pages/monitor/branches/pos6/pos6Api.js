@@ -110,6 +110,16 @@ export function useSaveReport() {
       setOpMsg("❌ reportDate is required");
       return false;
     }
+    /* A daily sheet can't be filled in for a day that hasn't happened yet.
+       On 1 Oct 2026 an equipment sheet was saved as 26 Oct (a mis-tap in the
+       calendar); it then sat on top of the date tree as the "latest" record
+       and that day's real sheet would have updated it instead of filing. */
+    if (String(body.reportDate).slice(0, 10) > todayISO()) {
+      const msg = `⚠️ ${body.reportDate} is in the future — check the report date.\nالتاريخ ${body.reportDate} بالمستقبل — تأكد من تاريخ التقرير.`;
+      setOpMsg("❌ future date");
+      try { window.alert(msg); } catch {}
+      return false;
+    }
     setSaving(true);
     setOpMsg("⏳");
     try {

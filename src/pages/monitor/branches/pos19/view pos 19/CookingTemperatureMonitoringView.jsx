@@ -350,7 +350,7 @@ export default function CookingTemperatureMonitoringView() {
                  onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/>
           <span style={UI.divider} />
           {canDelete("daily") && (
-            <Btn tone="red" onClick={handleDelete} disabled={!record}>🗑 Delete</Btn>
+            <Btn tone="red" onClick={handleDelete} disabled={!record} data-delete-action="true">🗑 Delete</Btn>
           )}
         </div>
       </div>

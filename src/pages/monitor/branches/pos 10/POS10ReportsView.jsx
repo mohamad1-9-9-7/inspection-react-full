@@ -25,17 +25,17 @@ const DASH_TYPES = [
 ];
 
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview",
+  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
     element: <BranchDashboard branchName="POS 10" branchNameAr="فرع POS 10" reportTypes={DASH_TYPES} accent="#22c55e" />
   },
-  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleaning",        element: <POS10DailyCleaningView /> },
-  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene",     element: <POS10PersonalHygieneView /> },
-  { key: "temperature",  icon: "🌡️",    label: "Temperature Log",        element: <POS10TemperatureView /> },
-  { key: "receiving",    icon: "📥",     label: "Receiving Log",         element: <POS10ReceivingLogView /> },
-  { key: "traceability", icon: "🧬",     label: "Traceability Log",      element: <POS10TraceabilityLogView /> },
-  { key: "pest",         icon: "🪲",     label: "Pest Control",          element: <POS10PestControlView /> },
-  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration", element: <POS10SanitizerView /> },
-  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", element: <EquipmentInspectionView reportType="pos10_equipment_inspection" branch="POS 10" reporter="pos10" /> },
+  { key: "cleanliness",  icon: "🧹",     label: "Daily Cleaning", labelAr: "التنظيف اليومي",        element: <POS10DailyCleaningView /> },
+  { key: "hygiene",      icon: "🧑‍🔬", label: "Personal Hygiene", labelAr: "النظافة الشخصية",     element: <POS10PersonalHygieneView /> },
+  { key: "temperature",  icon: "🌡️",    label: "Temperature Log", labelAr: "سجل الحرارة",        element: <POS10TemperatureView /> },
+  { key: "receiving",    icon: "📥",     label: "Receiving Log", labelAr: "سجل الاستلام",         element: <POS10ReceivingLogView /> },
+  { key: "traceability", icon: "🧬",     label: "Traceability Log", labelAr: "سجل التتبع",      element: <POS10TraceabilityLogView /> },
+  { key: "pest",         icon: "🪲",     label: "Pest Control", labelAr: "مكافحة الآفات",          element: <POS10PestControlView /> },
+  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration", labelAr: "تركيز المعقم", element: <POS10SanitizerView /> },
+  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", labelAr: "فحص وتعقيم المعدات", element: <EquipmentInspectionView reportType="pos10_equipment_inspection" branch="POS 10" reporter="pos10" /> },
 ];
 
 export default function POS10ReportsView() {

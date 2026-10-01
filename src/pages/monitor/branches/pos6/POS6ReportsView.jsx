@@ -200,22 +200,22 @@ const DASH_TYPES = [
 ];
 
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview",
+  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
     element: <BranchDashboard branchName="POS 6" branchNameAr="فرع POS 6" reportTypes={DASH_TYPES} accent="#0284c7" />
   },
-  { key: "hygiene", icon: "🧑‍🔬", label: "Personal Hygiene",
+  { key: "hygiene", icon: "🧑‍🔬", label: "Personal Hygiene", labelAr: "قائمة فحص النظافة الشخصية",
     element: <POS6ReportView type={TYPES.personalHygiene} icon="🧑‍🔬"
       title="Personal Hygiene Checklist" titleAr="قائمة فحص النظافة الشخصية"
       columns={HYGIENE_COLUMNS}
       meta={(p, isAr) => [docMeta(p, isAr, TYPES.personalHygiene)]} />
   },
-  { key: "cleaning", icon: "🧹", label: "Cleaning Checklist",
+  { key: "cleaning", icon: "🧹", label: "Cleaning Checklist", labelAr: "قائمة فحص النظافة",
     element: <POS6ReportView type={TYPES.cleaningChecklist} icon="🧹"
       title="Cleaning Checklist" titleAr="قائمة فحص النظافة"
       columns={CLEANING_COLUMNS}
       meta={(p, isAr) => [docMeta(p, isAr, TYPES.cleaningChecklist)]} />
   },
-  { key: "equipment", icon: "🧪", label: "Equipment Inspection",
+  { key: "equipment", icon: "🧪", label: "Equipment Inspection", labelAr: "فحص وتعقيم المعدات",
     element: <POS6ReportView type={TYPES.equipmentInspection} icon="🧪"
       title="Equipment Inspection & Sanitizing" titleAr="فحص وتعقيم المعدات"
       columnsOf={equipmentColumns}
@@ -224,13 +224,13 @@ const TABS = [
         { label: isAr ? "القسم" : "Section", value: p.section },
       ]} />
   },
-  { key: "receiving", icon: "📥", label: "Receiving Log",
+  { key: "receiving", icon: "📥", label: "Receiving Log", labelAr: "سجل استلام البضائع",
     element: <POS6ReportView type={TYPES.receivingLog} icon="📥"
       title="Receiving Log" titleAr="سجل استلام البضائع"
       columnsOf={receivingColumns}
       meta={receivingMeta} />
   },
-  { key: "coolers", icon: "🌡️", label: "Coolers Temperatures",
+  { key: "coolers", icon: "🌡️", label: "Coolers Temperatures", labelAr: "سجل درجات حرارة البرادات",
     element: <POS6CoolersView />
   },
 ];

@@ -305,8 +305,8 @@ export default function FTR2OilCalibrationView() {
           <div>
             {Object.entries(grouped)
               .sort(([a], [b]) => Number(b) - Number(a)) // السنوات تنازلي
-              .map(([year, months]) => (
-                <details key={year}>
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0}>
                   <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
                     📅 Year {year}
                   </summary>
@@ -390,7 +390,7 @@ export default function FTR2OilCalibrationView() {
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <div ref={reportRef}>
             {/* ====== Header with AL MAWASHI text ====== */}

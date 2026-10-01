@@ -334,7 +334,7 @@ export default function FTR1TemperatureView() {
       >
         {(loading || loadingReport) && <p>Loading...</p>}
 
-        {!loading && !loadingReport && !selectedReport && <EmptyState text="No report selected." />}
+        {!loading && !loadingReport && !selectedReport && <EmptyState text="📅 Pick a date from the list to open its report." />}
 
         {!loadingReport && selectedReport && (
           <div ref={reportRef} style={{ overflowX: "auto" }}>

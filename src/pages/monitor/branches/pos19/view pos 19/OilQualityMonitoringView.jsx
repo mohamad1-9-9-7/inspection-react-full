@@ -560,7 +560,7 @@ export default function OilQualityMonitoringView() {
           </div>
           <div style={{ maxHeight:420, overflowY:"auto" }}>
             {Object.keys(grouped).length ? (
-              Object.entries(grouped).map(([year, months]) => {
+              Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 const yearCount = Object.values(months).reduce((a, arr) => a + arr.length, 0);
                 return (
@@ -579,7 +579,7 @@ export default function OilQualityMonitoringView() {
                       <span style={{ background:"#dbeafe", color:"#1e40af", borderRadius:20, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{yearCount}</span>
                     </button>
 
-                    {yOpen && Object.entries(months).map(([month, days]) => {
+                    {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                       const key = `${year}-${month}`;
                       const mOpen = !!expandedMonths[key];
                       return (

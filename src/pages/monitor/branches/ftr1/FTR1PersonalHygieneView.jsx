@@ -322,18 +322,18 @@ export default function FTR1PersonalHygieneView() {
             {/* ✅ الشجرة مطوية دائماً: حذف open من details */}
             {Object.entries(groupedReports)
               .sort(([ya], [yb]) => Number(yb) - Number(ya))
-              .map(([year, months]) => (
-                <details key={year}>
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0}>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
                     📅 Year {year}
                   </summary>
 
                   {Object.entries(months)
                     .sort(([ma], [mb]) => Number(mb) - Number(ma))
-                    .map(([month, days]) => {
+                    .map(([month, days], mi) => {
                       const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
@@ -381,7 +381,7 @@ export default function FTR1PersonalHygieneView() {
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <div ref={reportRef}>
             <style>{`
@@ -408,7 +408,7 @@ export default function FTR1PersonalHygieneView() {
                 <button
                   onClick={() => handleDelete(selectedReport)}
                   style={btn("#c0392b")}
-                  title="Delete this report (password: 9999)"
+                  title="Delete this report"
                  data-delete-action="true">
                   🗑 Delete
                 </button>

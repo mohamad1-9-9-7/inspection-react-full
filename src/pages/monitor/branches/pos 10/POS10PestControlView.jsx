@@ -285,7 +285,7 @@ export default function POS10PestControlView() {
         {loadingReport ? (
           <EmptyState text="⏳ Loading…" />
         ) : !selected ? (
-          <EmptyState text="❌ No report selected." />
+          <EmptyState text="📅 Pick a date from the list to open its report." />
         ) : (
             <div ref={reportRef}>
               {/* Header table */}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { canDelete } from "../../../../utils/perms";
 import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { getReportById } from "../_shared/reportApi";
 import "./FTR2UnifiedReportView.css";
 
 const MAX_CELL_LENGTH = 140;
@@ -68,6 +69,17 @@ function isUrl(value) {
   return /^https?:\/\//i.test(String(value || ""));
 }
 
+/* savedAt / createdAt are stored as epoch milliseconds — show a date, not
+   "1790605215392". */
+function isEpochMs(key, value) {
+  return typeof value === "number" && value > 1e12 && value < 1e13 && /(at|time|date)$/i.test(String(key || ""));
+}
+function fmtEpoch(ms) {
+  try {
+    return new Date(ms).toLocaleString("en-GB", { timeZone: "Asia/Dubai", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return String(ms); }
+}
+
 function cleanValue(value) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -98,6 +110,10 @@ function renderValue(value) {
 
 function pickSummaryFields(payload) {
   const skip = new Set([
+    // already in the document strip above the summary
+    "branch", "reportDate", "date", "verifiedBy", "documentNo", "docNo",
+    // bookkeeping nobody reading the report needs
+    "uniqueKey", "id", "_id", "type", "reporter", "company_id", "companyId", "_demo",
     "entries",
     "rows",
     "items",
@@ -110,9 +126,14 @@ function pickSummaryFields(payload) {
     "_outboxId", // offline outbox bookkeeping
     "payload",
   ]);
+  // stored keys vary in spelling (uniqueKey / unique_key / UniqueKey)
+  const norm = (k) => String(k).replace(/[_s-]/g, "").toLowerCase();
+  const skipNorm = new Set([...skip].map(norm));
   return Object.entries(payload || {})
-    .filter(([key, value]) => !skip.has(key) && isPrimitive(value))
+    .filter(([key, value]) => !skipNorm.has(norm(key)) && isPrimitive(value))
     .filter(([, value]) => !(typeof value === "string" && value.length > 500))
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined)
+    .map(([key, value]) => [key, isEpochMs(key, value) ? fmtEpoch(value) : value])
     .slice(0, 18);
 }
 
@@ -137,11 +158,15 @@ function findTables(payload) {
   return out.slice(0, 5);
 }
 
+/* Row keys that steer the layout rather than hold an answer. */
+const LAYOUT_KEYS = new Set(["isSection", "id", "_id"]);
+
 function columnsForRows(rows) {
   const keys = [];
   rows.forEach((row) => {
     if (!row || typeof row !== "object") return;
     Object.keys(row).forEach((key) => {
+      if (LAYOUT_KEYS.has(key)) return;
       const value = row[key];
       if (isPrimitive(value) || isUrl(value)) {
         if (!keys.includes(key)) keys.push(key);
@@ -159,7 +184,12 @@ function columnsForRows(rows) {
       }
     });
   });
-  return keys.slice(0, 18);
+  // a column that is empty on every row is noise ("Informed", "Sub letter"…)
+  const filled = (key) => rows.some((row) => {
+    const v = getCellValue(row, key);
+    return v !== null && v !== undefined && String(v).trim() !== "";
+  });
+  return keys.filter(filled).slice(0, 18);
 }
 
 function getCellValue(row, key) {
@@ -194,9 +224,18 @@ function TableBlock({ name, rows }) {
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={index}>
-                {columns.map((key) => <td key={key}>{renderValue(getCellValue(row, key))}</td>)}
-              </tr>
+              row?.isSection ? (
+                // a section heading of the paper form, not an answer row
+                <tr key={index} className="ftr2-sec-row">
+                  <td colSpan={columns.length}>
+                    {[row.secNo, row.section || row.item || row.title].filter(Boolean).join(" · ")}
+                  </td>
+                </tr>
+              ) : (
+                <tr key={index}>
+                  {columns.map((key) => <td key={key}>{renderValue(getCellValue(row, key))}</td>)}
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -277,12 +316,16 @@ export default function FTR2UnifiedReportView({
   const [message, setMessage] = useState("");
   const fileInputRef = useRef(null);
 
-  async function loadSelectedReport(reportDate) {
-    if (!reportDate) {
+  /* Open by record id: a day can hold two sheets (FTR 2 has several), and a
+     by-date read always returned the same one, so the second was unreachable.
+     The date read stays as the fallback for an index row without an id. */
+  async function loadSelectedReport(row) {
+    if (!row) {
       setSelectedReport(null);
       return;
     }
-    setSelectedReport(await getReportByDate(type, reportDate));
+    const byId = row.id ? await getReportById(row.id).catch(() => null) : null;
+    setSelectedReport(byId || (await getReportByDate(type, row.reportDate)));
   }
 
   async function load() {
@@ -291,9 +334,9 @@ export default function FTR2UnifiedReportView({
     try {
       const list = await listReportDateIndex(type);
       setReports(list);
-      const firstDate = list[0]?.reportDate || "";
-      setSelectedId(firstDate);
-      await loadSelectedReport(firstDate);
+      const first = list[0] || null;
+      setSelectedId(first ? String(first.id || first.reportDate) : "");
+      await loadSelectedReport(first);
     } catch (e) {
       setMessage(`Unable to load reports: ${e?.message || e}`);
     } finally {
@@ -409,16 +452,16 @@ export default function FTR2UnifiedReportView({
           ) : (
             Object.entries(tree)
               .sort(([a], [b]) => b.localeCompare(a))
-              .map(([year, months]) => (
-                <details key={year} className="ftr2-tree-year">
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0} className="ftr2-tree-year">
                   <summary>
                     <span>{year}</span>
                     <b>{Object.values(months).reduce((sum, items) => sum + items.length, 0)}</b>
                   </summary>
                   {Object.entries(months)
                     .sort(([a], [b]) => b.localeCompare(a))
-                    .map(([month, items]) => (
-                      <details key={month} className="ftr2-tree-month">
+                    .map(([month, items], mi) => (
+                      <details key={month} open={yi === 0 && mi === 0} className="ftr2-tree-month">
                         <summary>
                           <span>{monthLabel(month)}</span>
                           <b>{items.length}</b>
@@ -426,19 +469,22 @@ export default function FTR2UnifiedReportView({
                         <div className="ftr2-tree-list">
                           {items.map((record) => {
                             const reportDate = getReportDate(record);
-                            const active = reportDate === selectedId;
+                            const rowKey = String(record.id || reportDate);
+                            const active = rowKey === selectedId;
+                            const sameDay = items.filter((r) => getReportDate(r) === reportDate);
+                            const nth = sameDay.length > 1 ? sameDay.indexOf(record) + 1 : 0;
                             return (
                               <button
                                 key={record.id || `${reportDate}-${items.indexOf(record)}`}
                                 type="button"
                                 className={active ? "active" : ""}
                                 onClick={() => {
-                                  setSelectedId(reportDate);
-                                  loadSelectedReport(reportDate);
+                                  setSelectedId(rowKey);
+                                  loadSelectedReport(record);
                                 }}
                               >
                                 <span>{reportDate}</span>
-                                <small>Saved report</small>
+                                <small>{nth ? `Sheet ${nth} of ${sameDay.length}` : "Saved report"}</small>
                               </button>
                             );
                           })}
@@ -457,7 +503,7 @@ export default function FTR2UnifiedReportView({
             <div>
               <span className="ftr2-eyebrow">Report viewer</span>
               <h3>{documentTitle || title}</h3>
-              <p>Unified view, consistent date tree, export tools, and clean data tables.</p>
+              <p>{selectedDate ? `Report of ${selectedDate}` : "Pick a date from the list."}</p>
             </div>
             <div className="ftr2-report-actions">
               <button type="button" onClick={exportCsv} disabled={!selectedReport}>CSV</button>

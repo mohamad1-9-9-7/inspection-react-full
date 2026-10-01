@@ -599,7 +599,7 @@ export default function TraceabilityLogView() {
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>
             {Object.keys(groupedDates).length ? (
-              Object.entries(groupedDates).map(([year, months]) => {
+              Object.entries(groupedDates).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
                   <div key={year} style={{ marginBottom:8 }}>
@@ -616,7 +616,7 @@ export default function TraceabilityLogView() {
                       <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
                     </button>
 
-                    {yOpen && Object.entries(months).map(([month, days]) => {
+                    {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                       const key = `${year}-${month}`;
                       const mOpen = !!expandedMonths[key];
                       return (

@@ -341,13 +341,13 @@ export default function FTR2TemperatureView() {
           : Object.keys(groupedReports).length === 0 ? <p>❌ No reports</p>
           : Object.entries(groupedReports)
               .sort(([a],[b]) => Number(b)-Number(a))
-              .map(([year, months]) => (
-                <details key={year}>
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0}>
                   <summary style={{ fontWeight: "bold", marginBottom: 6, cursor: "pointer" }}>📅 {year}</summary>
                   {Object.entries(months)
                     .sort(([a],[b]) => Number(b)-Number(a))
-                    .map(([month, days]) => (
-                      <details key={month} style={{ marginLeft: "1rem" }}>
+                    .map(([month, days], mi) => (
+                      <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft: "1rem" }}>
                         <summary style={{ fontWeight: 500, cursor: "pointer" }}>📅 {year}/{month}</summary>
                         <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                           {[...days].sort((a,b) => b._dt-a._dt).map((r,i) => {

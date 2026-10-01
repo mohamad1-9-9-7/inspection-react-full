@@ -54,15 +54,20 @@ export async function getReportByDate(type, date, { signal } = {}) {
   return rows.find((row) => String(row?.reportDate || row?.payload?.reportDate || row?.payload?.date || row?.payload?.cutDate || "").slice(0, 10) === String(date).slice(0, 10)) || rows[0] || null;
 }
 
+/* Toolbar button. Callers still pass the colour they always did; it is mapped
+   to one of the ISO_UI kinds so a toolbar no longer shows five unrelated
+   solid colours (green PDF, teal JSON, orange import, red delete…). Destructive
+   stays red, Save stays green, Edit violet — everything else is quiet white. */
+const BTN_KIND_BY_HEX = {
+  "#dc2626": "danger", "#c0392b": "danger", "#ef4444": "danger", "#e11d48": "danger", "#b91c1c": "danger",
+  "#10b981": "success", "#22c55e": "success",
+  "#8b5cf6": "violet", "#6d28d9": "violet",
+};
 export const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  padding: "8px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  boxShadow: "0 2px 8px rgba(15,23,42,0.12)",
+  ...ISO_UI.btn(BTN_KIND_BY_HEX[String(bg || "").toLowerCase()] || "secondary"),
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
 });
 
 export const formatDMY = (iso) => {
@@ -669,7 +674,11 @@ export function DateTreeSidebar({
   const autoOpenedRef = useRef(null);
   useEffect(() => {
     if (!items.length) return;
-    const target = items.find((it) => it.key === activeKey) || items[0];
+    /* Nothing selected → the NEWEST item. Callers pass items in whatever order
+       their rows came in (POS 10 sorts ascending), so items[0] opened the
+       oldest month of the oldest year. */
+    const target = items.find((it) => it.key === activeKey)
+      || items.reduce((a, b) => (String(b.dateISO) > String(a.dateISO) ? b : a), items[0]);
     const m = String(target?.dateISO || "").match(/^(\d{4})-(\d{2})/);
     if (!m) return;
     const [, y, mo] = m;
@@ -747,7 +756,7 @@ export function DateTreeSidebar({
         ) : Object.keys(grouped).length === 0 ? (
           <div style={{ color: "#6b7280", fontSize: 14.5 }}>{emptyText}</div>
         ) : (
-          Object.entries(grouped).map(([year, months]) => {
+          Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
             const yOpen = !!openYears[year];
             const daysInYear = Object.values(months).reduce((s, arr) => s + arr.length, 0);
             return (
@@ -770,7 +779,7 @@ export function DateTreeSidebar({
                       borderInlineStart: "2px solid rgba(139,92,246,0.25)",
                     }}
                   >
-                    {Object.entries(months).map(([month, days]) => {
+                    {Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([month, days]) => {
                       const mKey = `${year}-${month}`;
                       const mOpen = !!openMonths[mKey];
                       return (

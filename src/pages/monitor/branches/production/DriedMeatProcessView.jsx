@@ -340,7 +340,7 @@ export default function DriedMeatProcessView() {
             {Object.keys(grouped).length === 0 && (
               <div className="dmv-empty">{isAr ? "لا توجد تقارير" : "No reports"}</div>
             )}
-            {Object.entries(grouped).map(([year, months]) => {
+            {Object.entries(grouped).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([year, months]) => {
               const yOpen = !!expYears[year];
               return (
                 <div key={year}>
@@ -348,7 +348,7 @@ export default function DriedMeatProcessView() {
                     <span>{yOpen ? "▾" : "▸"}</span>
                     <strong>{year}</strong>
                   </button>
-                  {yOpen && Object.entries(months).map(([mo, days]) => {
+                  {yOpen && Object.entries(months).sort(([a], [b]) => String(b).localeCompare(String(a))).map(([mo, days]) => {
                     const key = `${year}-${mo}`;
                     const mOpen = !!expMonths[key];
                     return (

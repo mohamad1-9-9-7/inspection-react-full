@@ -227,15 +227,15 @@ export default function FTR2DailyCleanlinessView() {
           <div>
             {Object.entries(groupedReports)
               .sort(([a], [b]) => Number(b) - Number(a)) /* سنوات تنازلي */
-              .map(([year, months]) => (
-                <details key={year}>
+              .map(([year, months], yi) => (
+                <details key={year} open={yi === 0}>
                   <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
                   {Object.entries(months)
                     .sort(([a], [b]) => Number(b) - Number(a)) /* أشهر تنازلي */
-                    .map(([month, days]) => {
+                    .map(([month, days], mi) => {
                       const daysSorted = [...days].sort((x, y) => y._dt - x._dt); // أيام تنازلي
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
@@ -296,7 +296,7 @@ export default function FTR2DailyCleanlinessView() {
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (
-          <p>❌ No report selected.</p>
+          <p>📅 Pick a date from the list to open its report.</p>
         ) : (
           <div ref={reportRef} style={{ paddingBottom: "100px" }}>
             {/* Header with actions */}
