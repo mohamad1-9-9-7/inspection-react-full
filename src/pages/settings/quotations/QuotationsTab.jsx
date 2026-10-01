@@ -32,6 +32,7 @@ import { allowedVatPct, licenseLine, loadSeller, normalizeSeller } from "../_sha
 /* "Issued by" on a quotation, straight from the INSPECT PRO profile. */
 const issuerFromSeller = (seller) => ({
   issuerName: seller.name,
+  issuerLegalName: seller.legalName,
   issuerAddress: seller.address,
   issuerTaxId: seller.vatRegistered ? seller.trn : "",
   issuerLicense: licenseLine(seller),
@@ -715,6 +716,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 {(seller?.vatRegistered || q.issuerTaxId) && <Field label={L("Tax / TRN", "الرقم الضريبي")}><input style={S.input} value={q.issuerTaxId} onChange={(e) => set({ issuerTaxId: e.target.value })} /></Field>}
                 <Field label={L("Email", "الإيميل")}><input style={S.input} value={q.issuerEmail} onChange={(e) => set({ issuerEmail: e.target.value })} /></Field>
                 <Field label={L("Phone", "الهاتف")}><input style={S.input} value={q.issuerPhone} onChange={(e) => set({ issuerPhone: e.target.value })} /></Field>
+                <Field label={L("Full company name", "اسم الشركة الكامل")}><input style={S.input} value={q.issuerLegalName || ""} onChange={(e) => set({ issuerLegalName: e.target.value })} /></Field>
                 <Field label={L("Licence", "الرخصة")}><input style={S.input} value={q.issuerLicense || ""} onChange={(e) => set({ issuerLicense: e.target.value })} /></Field>
               </div>
               <Field label={L("Address", "العنوان")} style={{ marginTop: 10 }}><input style={S.input} value={q.issuerAddress} onChange={(e) => set({ issuerAddress: e.target.value })} /></Field>

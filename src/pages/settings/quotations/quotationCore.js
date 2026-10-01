@@ -252,6 +252,7 @@ export const emptyQuote = (defaults = {}) => ({
   industry: "",
   // issuer (pre-filled from the billing profile)
   issuerName: "",
+  issuerLegalName: "", // the full name on the licence, under the brand name
   issuerAddress: "",
   issuerTaxId: "",
   issuerLicense: "",   // "Licence No. … · authority", from the profile
@@ -357,8 +358,9 @@ export function quoteInsights(q, seller) {
     add("warn", "VAT is charged but no TRN is shown on the quotation.", "في ضريبة بس الرقم الضريبي مش ظاهر على العرض.");
   }
   /* A licensed seller's quotation should say so — an older draft predates it. */
-  if (String(seller?.licenseNo || "").trim() && !String(q?.issuerLicense || "").trim()) {
-    add("tip", "The licence number is not on this quotation — refresh the issuer from the profile.", "رقم الرخصة مش ظاهر على العرض — حدّث بيانات المُصدِر من الهوية.");
+  const missing = (have, want) => String(want || "").trim() && !String(have || "").trim();
+  if (missing(q?.issuerLicense, seller?.licenseNo) || missing(q?.issuerLegalName, seller?.legalName)) {
+    add("tip", "The licence details (full company name / licence number) are not on this quotation — refresh the issuer from the profile.", "بيانات الرخصة (اسم الشركة الكامل / رقم الرخصة) مش ظاهرة على العرض — حدّث بيانات المُصدِر من الهوية.");
   }
   const lines = q?.lines || [];
   const t = computeTotals(q);

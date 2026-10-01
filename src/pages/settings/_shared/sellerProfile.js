@@ -21,6 +21,7 @@ import API_BASE from "../../../config/api";
 export const SELLER_DEFAULT_NAME = "INSPECT PRO";
 
 export const LICENSE_DEFAULTS = {
+  legalName: "INSPECT PRO ARTIFICIAL INTELLIGENCE DEVELOPING SERVICES",
   no: "CN-6791275",
   authority: "Abu Dhabi Registration Authority (ADRA)",
   expiry: "2027-09-30",
@@ -33,6 +34,7 @@ export function normalizeSeller(row) {
   return {
     name: r.company_name || SELLER_DEFAULT_NAME,
     ownerName: r.owner_name || "",
+    legalName: r.legal_name || LICENSE_DEFAULTS.legalName,
     address: r.company_address || "",
     email: r.contact_email || "",
     phone: r.contact_phone || "",
@@ -58,6 +60,7 @@ export function sellerToRow(s) {
   return {
     company_name: s.name,
     owner_name: s.ownerName,
+    legal_name: s.legalName,
     company_address: s.address,
     contact_email: s.email,
     contact_phone: s.phone,

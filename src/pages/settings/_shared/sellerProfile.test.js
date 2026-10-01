@@ -46,6 +46,12 @@ describe("seller profile", () => {
     expect(sellerToRow(freelancer)).not.toHaveProperty("license_status");
   });
 
+  test("the full company name defaults to the one on the licence", () => {
+    expect(freelancer.legalName).toBe("INSPECT PRO ARTIFICIAL INTELLIGENCE DEVELOPING SERVICES");
+    expect(normalizeSeller({ legal_name: "X LLC" }).legalName).toBe("X LLC");
+    expect(sellerToRow(freelancer).legal_name).toBe(freelancer.legalName);
+  });
+
   test("the readiness list asks for the IBAN and a contact", () => {
     const keys = sellerGaps(freelancer).map((g) => g.key);
     expect(keys).toEqual(expect.arrayContaining(["iban", "contact", "logo"]));
@@ -69,8 +75,10 @@ describe("quotation VAT check", () => {
   test("a quotation without the licence line gets a tip", () => {
     const q0 = { ...q, vatPct: 0 };
     expect(quoteInsights(q0, freelancer).some((x) => /licence/.test(x.en))).toBe(true);
-    expect(quoteInsights({ ...q0, issuerLicense: licenseLine(freelancer) }, freelancer).some((x) => /licence/.test(x.en))).toBe(false);
-    expect(quoteInsights(q0, { ...freelancer, licenseNo: "" }).some((x) => /licence/.test(x.en))).toBe(false);
+    expect(quoteInsights({ ...q0, issuerLicense: licenseLine(freelancer) }, freelancer).some((x) => /licence/.test(x.en))).toBe(true);
+    const full = { ...q0, issuerLicense: licenseLine(freelancer), issuerLegalName: freelancer.legalName };
+    expect(quoteInsights(full, freelancer).some((x) => /licence/.test(x.en))).toBe(false);
+    expect(quoteInsights(q0, { ...freelancer, licenseNo: "", legalName: "" }).some((x) => /licence/.test(x.en))).toBe(false);
   });
 
   test("old callers without a seller keep working", () => {

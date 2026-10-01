@@ -172,6 +172,9 @@ export default function SellerProfileTab() {
                 <input style={inp()} value={form.ownerName} onChange={(e) => set({ ownerName: e.target.value })} />
               </Field>
             </div>
+            <Field label={L("Full company name (as on the licence)", "اسم الشركة الكامل (متل ما هو على الرخصة)")} hint={L("Printed under the business name on every quotation and invoice.", "بينطبع تحت الاسم التجاري على كل عرض سعر وفاتورة.")} style={{ marginTop: 14 }}>
+              <input style={inp()} value={form.legalName} onChange={(e) => set({ legalName: e.target.value })} />
+            </Field>
             <Field label={L("Logo", "الشعار")} style={{ marginTop: 14 }}>
               <div style={sx.logoRow}>
                 <div style={sx.logoBox}>
@@ -299,6 +302,7 @@ function DocPreview({ seller: s }) {
           <div style={pv.logo}>{s.logoUrl ? <img src={s.logoUrl} alt="" style={pv.logoImg} /> : <span>{initials(s.name)}</span>}</div>
           <div style={{ minWidth: 0 }}>
             <div className="bpx-lg" style={pv.name}>{s.name || "—"}</div>
+            {s.legalName && s.legalName !== s.name && <div className="bpx-xs" style={{ ...pv.line, fontWeight: 700 }}>{s.legalName}</div>}
             {s.ownerName && <div className="bpx-xs" style={pv.line}>{s.ownerName}</div>}
             {lic && <div className="bpx-xs" style={pv.line}>{lic}</div>}
             {s.vatRegistered && s.trn && <div className="bpx-xs" style={pv.line}>TRN {s.trn.replace(/\s+/g, "")}</div>}

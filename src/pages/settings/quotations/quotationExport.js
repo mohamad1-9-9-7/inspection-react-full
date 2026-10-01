@@ -128,6 +128,7 @@ export function buildQuoteHtml(q, opts = {}) {
   .logo img { max-width: 54px; max-height: 54px; object-fit: contain; }
   .logo span { font-weight: 900; font-size: 22px; color: var(--a); }
   .iss-n { font-size: 19px; font-weight: 800; letter-spacing: .2px; }
+  .iss-l { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; margin-top: 2px; }
   .iss-d { font-size: 11px; opacity: .85; margin-top: 3px; line-height: 1.5; }
   .qt { text-align: right; }
   .qt-k { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .85; }
@@ -214,6 +215,7 @@ export function buildQuoteHtml(q, opts = {}) {
         <div class="logo">${logo ? `<img src="${esc(logo)}" alt="">` : `<span>${esc(initials(q.issuerName))}</span>`}</div>
         <div>
           <div class="iss-n">${esc(q.issuerName) || "—"}</div>
+          ${q.issuerLegalName && q.issuerLegalName !== q.issuerName ? `<div class="iss-l">${esc(q.issuerLegalName)}</div>` : ""}
           <div class="iss-d">${[q.issuerLicense, q.issuerAddress, q.issuerTaxId ? `TRN ${q.issuerTaxId}` : "", [q.issuerEmail, q.issuerPhone].filter(Boolean).join(" · ")].filter(Boolean).map(esc).join("<br>")}</div>
         </div>
       </div>
@@ -285,11 +287,11 @@ export function buildQuoteHtml(q, opts = {}) {
     ${q.notes ? `<div class="avoid"><div class="sec-h">${bi("Notes", "ملاحظات")}</div><div class="notes">${esc(q.notes)}</div></div>` : ""}
 
     <div class="sign avoid">
-      <div>${inline("For", "عن")} <b>${esc(q.issuerName) || "—"}</b><br>${inline("Name, signature & date", "الاسم والتوقيع والتاريخ")}</div>
+      <div>${inline("For", "عن")} <b>${esc(q.issuerLegalName || q.issuerName) || "—"}</b><br>${inline("Name, signature & date", "الاسم والتوقيع والتاريخ")}</div>
       <div>${inline("Accepted by", "موافقة")} <b dir="auto">${esc(q.clientName) || "—"}</b><br>${inline("Name, signature, stamp & date", "الاسم والتوقيع والختم والتاريخ")}</div>
     </div>
 
-    <div class="foot"><span>${[q.issuerName, q.issuerLicense].filter(Boolean).map(esc).join(" · ")}</span><span>${esc(q.number)} · ${dmy(q.issueDate)}</span></div>
+    <div class="foot"><span>${[q.issuerLegalName || q.issuerName, q.issuerLicense].filter(Boolean).map(esc).join(" · ")}</span><span>${esc(q.number)} · ${dmy(q.issueDate)}</span></div>
   </div>
 </div></body></html>`;
 }
@@ -371,7 +373,7 @@ export function buildQuoteWorkbook(q, ExcelJS, opts = {}) {
   }
   ws.mergeCells("A1:D1"); put("A1", `${logo ? "            " : ""}${q.issuerName || ""}`, { font: { bold: true, size: 16 } });
   ws.mergeCells("E1:H1"); put("E1", ar ? "QUOTATION  ·  عرض سعر" : "QUOTATION", { font: { bold: true, size: 18, color: { argb: ACCENT } }, alignment: { horizontal: "right" } });
-  ws.mergeCells("A2:D2"); put("A2", [q.issuerLicense, q.issuerAddress, q.issuerTaxId ? `TRN: ${q.issuerTaxId}` : "", q.issuerEmail, q.issuerPhone].filter(Boolean).join("  ·  "), { font: { size: 9, color: { argb: "FF475569" } } });
+  ws.mergeCells("A2:D2"); put("A2", [q.issuerLegalName !== q.issuerName ? q.issuerLegalName : "", q.issuerLicense, q.issuerAddress, q.issuerTaxId ? `TRN: ${q.issuerTaxId}` : "", q.issuerEmail, q.issuerPhone].filter(Boolean).join("  ·  "), { font: { size: 9, color: { argb: "FF475569" } } });
 
   const meta = [
     [L("Quotation No.", "رقم العرض"), q.number || ""],

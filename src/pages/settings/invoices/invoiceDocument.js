@@ -93,6 +93,7 @@ export function buildInvoiceHtml(inv) {
       <div class="logo">${s.logo_url ? `<img src="${esc(s.logo_url)}" alt="">` : esc(initials(s.name))}</div>
       <div>
         <div class="sname">${esc(s.name || "INSPECT PRO")}</div>
+        ${s.legal_name && s.legal_name !== s.name ? `<div class="small"><b>${esc(s.legal_name)}</b></div>` : ""}
         ${s.owner_name ? `<div class="muted small">${esc(s.owner_name)}</div>` : ""}
         ${licence ? `<div class="muted small">${esc(licence)}</div>` : ""}
         ${s.vat_registered && s.trn ? `<div class="muted small">TRN ${esc(s.trn)}</div>` : ""}
