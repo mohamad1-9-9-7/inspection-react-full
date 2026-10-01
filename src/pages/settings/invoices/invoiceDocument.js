@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 import { STATUS, amountInWords, day, fmtDate, fmtMoney, statusOf } from "./invoiceCore";
-import { DOC_BRAND as B, DOC_FONTS, htmlToPdf, printHtml } from "../_shared/docRender";
+import { DOC_BRAND as B, DOC_FONTS, PRINT_BREAK_CSS, htmlToPdf, printHtml } from "../_shared/docRender";
 
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (m) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m]));
 const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -56,6 +56,7 @@ export function buildInvoiceHtml(inv) {
 ${DOC_FONTS}
 <style>
   @page { size: A4; margin: 0; }
+  ${PRINT_BREAK_CSS}
   * { box-sizing: border-box; }
   body { margin: 0; background: #fff; color: #0f172a; font: 13px/1.5 "Segoe UI", Inter, Arial, sans-serif; }
   .doc { width: 794px; min-height: 1123px; margin: 0 auto; position: relative; display: flex; flex-direction: column; }
@@ -202,4 +203,4 @@ ${DOC_FONTS}
 
 export const printInvoice = (inv) => printHtml(buildInvoiceHtml(inv));
 export const downloadInvoicePdf = (inv) =>
-  htmlToPdf(buildInvoiceHtml(inv), `${String(inv.invoice_number || "invoice").replace(/[^\w-]+/g, "_")}.pdf`);
+  htmlToPdf(buildInvoiceHtml(inv), `${String(inv.invoice_number || "invoice").replace(/[^\w-]+/g, "_")}.pdf`, { label: inv.invoice_number || "Invoice" });

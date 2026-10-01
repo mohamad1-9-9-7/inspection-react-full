@@ -11,7 +11,7 @@ import {
   TERM_GROUPS, computeTotals, cycleById, dmy, fmtMoney, lineTotal, num, statusById,
   termTemplate, termText, termsListOf, themeById, unitById, validUntil,
 } from "./quotationCore";
-import { DOC_FONTS, htmlToPdf, printHtml } from "../_shared/docRender";
+import { DOC_FONTS, PRINT_BREAK_CSS, htmlToPdf, printHtml } from "../_shared/docRender";
 
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (m) =>
   ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "\"": "&quot;" }[m]));
@@ -109,6 +109,7 @@ export function buildQuoteHtml(q, opts = {}) {
 ${DOC_FONTS}
 <style>
   @page { size: A4; margin: 10mm; }
+  ${PRINT_BREAK_CSS}
   * { box-sizing: border-box; }
   :root { --a: ${th.a}; --b: ${th.b}; --soft: ${th.soft}; --line: ${th.line}; --ink: #0f172a; --mut: #64748b; }
   body { margin: 0; background: #fff; color: var(--ink); font: 12.5px/1.55 "Segoe UI", "Inter", Tahoma, Cairo, Arial, sans-serif; }
@@ -304,7 +305,7 @@ export function printQuote(q, opts = {}) {
 }
 
 export function downloadQuotePdf(q, opts = {}) {
-  return htmlToPdf(buildQuoteHtml(q, opts), `${quoteFileBase(q)}.pdf`);
+  return htmlToPdf(buildQuoteHtml(q, opts), `${quoteFileBase(q)}.pdf`, { label: q.number || "Quotation" });
 }
 
 /* ═══════════════════════════ Excel (live formulas) ═══════════════════════════ */
