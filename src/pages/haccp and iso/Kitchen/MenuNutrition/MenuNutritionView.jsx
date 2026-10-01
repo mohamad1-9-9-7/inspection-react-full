@@ -30,6 +30,7 @@ import { computePortion, fmt, itemStatus, recalcMessage } from "./nutritionCalc"
 import { deleteItem, loadItems } from "./menuStore";
 import NutritionBooklet, { DailyIntakeStatement, groupForMenu } from "./NutritionBooklet";
 import exportMenuExcel from "./exportMenuExcel";
+import { getPublicOrigin } from "../../../../config/publicOrigin";
 
 const TABS = [
   { id: "register", labelKey: "tabRegister", icon: "🗂️" },
@@ -243,7 +244,7 @@ export default function MenuNutritionView() {
     }
   }
 
-  const publicUrl = `${window.location.origin}${PUBLIC_BOOKLET_PATH}`;
+  const publicUrl = `${getPublicOrigin()}${PUBLIC_BOOKLET_PATH}`;
 
   return (
     <main style={shell(dir, BASE_FONT_PX)}>

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
+import { getPublicOrigin } from "../../../config/publicOrigin";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -1445,7 +1446,7 @@ export default function SupplierEvaluationResults() {
 
   const buildPublicUrl = (token) => {
     if (!token) return "";
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const origin = getPublicOrigin();
     return `${origin}/supplier-approval/t/${encodeURIComponent(String(token))}`;
   };
 

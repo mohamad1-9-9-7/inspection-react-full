@@ -31,6 +31,7 @@ import {
   useGlobalLang, // ✅ unified language hook
   getModuleName, // ✅ AR/EN module name helper
 } from "./TrainingSessionsList.helpers";
+import { getPublicOrigin } from "../../config/publicOrigin";
 import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
 
 /* ===================== ✅ Participant images (Cloudinary, max 2/each) ===================== */
@@ -436,8 +437,8 @@ function CertificateCard({ participant, session, moduleName, branch, date, condu
 
   // QR verify URL — works with both BrowserRouter (web) and HashRouter (Electron)
   const verifyUrl = (() => {
-    const origin = window.location.origin;
-    const isHash = window.location.hash.startsWith('#/');
+    const origin = getPublicOrigin();
+    const isHash = origin === window.location.origin && window.location.hash.startsWith('#/');
     const base   = isHash ? `${origin}/#/training/verify` : `${origin}/training/verify`;
     const qs = [
       `cert=${encodeURIComponent(certNo)}`,

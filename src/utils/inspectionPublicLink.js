@@ -1,3 +1,5 @@
+import { getPublicOrigin, isShareableOrigin } from "../config/publicOrigin";
+
 const TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 /* Default lifetime of a branch evidence link. Long enough for a slow branch,
@@ -26,25 +28,16 @@ export function makeInspectionEvidenceToken() {
   return `iev_${timePart}_${uuidPart}_${randomPart(18)}`;
 }
 
+/* Links always point at the public site — getPublicOrigin() falls back to
+   production when QA works from localhost/LAN (see config/publicOrigin.js). */
 export function getInspectionPublicOrigin() {
-  return String(
-    (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-      (typeof import.meta !== "undefined" && import.meta.env?.VITE_PUBLIC_ORIGIN) ||
-      (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-      (typeof window !== "undefined" && window.location ? window.location.origin : "")
-  ).replace(/\/$/, "");
+  return getPublicOrigin();
 }
 
-/* A link built from a dev origin is useless the moment it leaves this machine —
-   the branch would get http://localhost:3000/... in their inbox. Callers use
-   this to warn (or block) before copying / e-mailing the URL. */
+/* Callers use this to warn (or block) before copying / e-mailing a URL that
+   a branch outside this machine could not open. */
 export function isShareablePublicOrigin(origin = getInspectionPublicOrigin()) {
-  const o = String(origin || "").toLowerCase();
-  if (!o) return false;
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?$/.test(o)) return false;
-  /* LAN addresses are reachable inside the office but not from a phone on 4G. */
-  if (/^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(o)) return false;
-  return true;
+  return isShareableOrigin(origin);
 }
 
 /* Same test applied to a URL that already exists — a link minted earlier from
@@ -103,15 +96,11 @@ export function buildInspectionEvidencePublic(publicInfo = {}, opts = {}) {
     ? publicInfo.expiresAt
     : new Date(Date.now() + Math.max(1, Number(days) || DEFAULT_EVIDENCE_LINK_DAYS) * 86400000).toISOString();
 
-  /* Never let a dev/LAN origin overwrite a URL that was already minted from
-     the real public site — that would quietly turn a working link into
-     http://localhost:3000/... for everyone who reads the report later. */
-  const origin = getInspectionPublicOrigin();
-  const previousUrl = String(publicInfo?.url || "");
-  const url =
-    !isNew && previousUrl && !isShareablePublicOrigin(origin)
-      ? previousUrl
-      : `${origin}/inspection/evidence/${encodeURIComponent(token)}`;
+  /* Always rebuild the URL from the token. A stored URL can sit on a dead
+     domain (the site was renamed on 1 Oct 2026 and Netlify does not
+     redirect) or on localhost; the token is what the server checks, so
+     re-homing the URL keeps every link already sent working. */
+  const url = `${getInspectionPublicOrigin()}/inspection/evidence/${encodeURIComponent(token)}`;
 
   return {
     ...(publicInfo && typeof publicInfo === "object" ? publicInfo : {}),

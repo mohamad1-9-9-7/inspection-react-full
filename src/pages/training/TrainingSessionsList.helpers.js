@@ -1,4 +1,5 @@
 import React from "react";
+import { getPublicOrigin, buildPublicUrl } from "../../config/publicOrigin";
 
 /* ===================== API base ===================== */
 export const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -123,25 +124,8 @@ export function getModuleNameShort(name, lang = "en") {
  * CRA:           process.env.REACT_APP_PUBLIC_ORIGIN
  * Window override (اختياري): window.__QCS_PUBLIC_ORIGIN__
  */
-let VITE_PUBLIC_ORIGIN;
-try {
-  VITE_PUBLIC_ORIGIN = import.meta.env?.VITE_PUBLIC_ORIGIN;
-} catch {
-  VITE_PUBLIC_ORIGIN = undefined;
-}
-
-export const PUBLIC_ORIGIN = String(
-  (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-    VITE_PUBLIC_ORIGIN ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-    (typeof window !== "undefined" && window.location ? window.location.origin : "")
-).replace(/\/$/, "");
-
-export function buildPublicUrl(pathname = "") {
-  const p = String(pathname || "");
-  if (!p) return PUBLIC_ORIGIN;
-  return `${PUBLIC_ORIGIN}${p.startsWith("/") ? "" : "/"}${p}`;
-}
+export const PUBLIC_ORIGIN = getPublicOrigin();
+export { buildPublicUrl };
 
 /* ===================== QUIZ BANK (AR/EN) ===================== */
 export const QUIZ_BANK = {

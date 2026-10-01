@@ -6,6 +6,7 @@ import { companyName, CompanyMark, companyLine } from "../brand";
 import { QRCodeCanvas } from "qrcode.react";
 import { getModuleName } from "../TrainingSessionsList.helpers";
 import { useState } from "react";
+import { getPublicOrigin } from "../../../../config/publicOrigin";
 
 // Default QA signatory (same as the training record's "Approved By" in TrainingSessionCreate)
 export const DEFAULT_QA_MANAGER = "Hussam O.Sarhan";
@@ -109,8 +110,8 @@ export function CertificateCard({ participant, session, moduleName, branch, date
 
   // QR verify URL — works with both BrowserRouter (web) and HashRouter (Electron)
   const verifyUrl = (() => {
-    const origin = window.location.origin;
-    const isHash = window.location.hash.startsWith('#/');
+    const origin = getPublicOrigin();
+    const isHash = origin === window.location.origin && window.location.hash.startsWith('#/');
     const base   = isHash ? `${origin}/#/sweets-training/verify` : `${origin}/sweets-training/verify`;
     const qs = [
       `cert=${encodeURIComponent(certNo)}`,

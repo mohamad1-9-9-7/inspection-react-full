@@ -12,6 +12,7 @@
 
 import { escapeHtml } from "../shared/emailReportUtils";
 import { isClosedStatus, getRowVerification } from "../../utils/auditVerification";
+import { fixPublicUrl } from "../../config/publicOrigin";
 
 export { isClosedStatus };
 
@@ -76,7 +77,7 @@ export function auditMeta(payload) {
     date: header.date || payload?.reportDate || "",
     reportNo: header.reportNo || "—",
     auditor: header.auditConductedBy || "—",
-    evidenceUrl: payload?.evidenceUrl || payload?.public?.url || "",
+    evidenceUrl: fixPublicUrl(payload?.evidenceUrl || payload?.public?.url || ""),
   };
 }
 

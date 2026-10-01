@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
+import { buildPublicUrl } from "../../../config/publicOrigin";
 
 /* ===================== API base (robust + normalized) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -25,31 +26,14 @@ const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE = "supplier_self_assessment_form";
 
 /* ===================== PUBLIC ORIGIN ===================== */
-let VITE_PUBLIC_ORIGIN;
-try {
-  VITE_PUBLIC_ORIGIN = import.meta.env?.VITE_PUBLIC_ORIGIN;
-} catch {
-  VITE_PUBLIC_ORIGIN = undefined;
-}
-
-const PUBLIC_ORIGIN = String(
-  (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-    VITE_PUBLIC_ORIGIN ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-    (typeof window !== "undefined" && window.location ? window.location.origin : "")
-).replace(/\/$/, "");
-
+/* Links go to the public site even when QA works from localhost —
+   see config/publicOrigin.js. */
 /**
  * ✅ matches App.jsx:
  * path="/supplier-approval/t/:token"
  */
 const PUBLIC_ROUTE_PREFIX = "";
 
-function buildPublicUrl(pathname = "") {
-  const p = String(pathname || "");
-  if (!p) return PUBLIC_ORIGIN;
-  return `${PUBLIC_ORIGIN}${p.startsWith("/") ? "" : "/"}${p}`;
-}
 
 /* ===================== Helpers ===================== */
 function makeToken(len = 28) {

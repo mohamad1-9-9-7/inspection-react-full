@@ -3,6 +3,7 @@ import React from "react";
 /* ===================== API base → src/config/api.js ===================== */
 import { SWEETS_MODULES_AR, SWEETS_MODULES_AR_SHORT, SWEETS_QUIZ_BANK } from "./content";
 import API_BASE from "../../../config/api";
+import { getPublicOrigin, buildPublicUrl } from "../../../config/publicOrigin";
 export { API_BASE };
 
 export const REPORTS_URL = `${API_BASE}/api/reports`;
@@ -81,17 +82,8 @@ export function getModuleNameShort(name, lang = "en") {
  * (The app is built with CRA: the old Vite import.meta branch never had a
  *  value, and Jest cannot parse it.)
  */
-export const PUBLIC_ORIGIN = String(
-  (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-    (typeof window !== "undefined" && window.location ? window.location.origin : "")
-).replace(/\/$/, "");
-
-export function buildPublicUrl(pathname = "") {
-  const p = String(pathname || "");
-  if (!p) return PUBLIC_ORIGIN;
-  return `${PUBLIC_ORIGIN}${p.startsWith("/") ? "" : "/"}${p}`;
-}
+export const PUBLIC_ORIGIN = getPublicOrigin();
+export { buildPublicUrl };
 
 /* ===================== QUIZ BANK (AR/EN) ===================== */
 /* ===================== QUIZ BANK (AR/EN) =====================

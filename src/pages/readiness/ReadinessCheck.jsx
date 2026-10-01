@@ -16,6 +16,7 @@ import { DEMO_BRANCHES, WaIcon, usePublicFonts } from "../DemoRequest";
 import { BrandLockup } from "./brand";
 import { READINESS_QUESTIONS, levelOf, scoreAnswers } from "./readinessQuestions";
 import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./promoBlocks";
+import { getPublicOrigin } from "../../config/publicOrigin";
 
 const TXT = {
   en: {
@@ -207,7 +208,7 @@ export default function ReadinessCheck() {
     }
   };
 
-  const shareLink = `${window.location.origin}/readiness?src=share`;
+  const shareLink = `${getPublicOrigin()}/readiness?src=share`;
   const share = async () => {
     try {
       if (navigator.share) { await navigator.share({ title: t.introTitle, url: shareLink }); return; }

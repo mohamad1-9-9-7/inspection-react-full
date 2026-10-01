@@ -17,6 +17,7 @@
 // paperwork by the questionnaire itself.
 
 import { escapeHtml } from "../../shared/emailReportUtils";
+import { fixPublicUrl } from "../../../config/publicOrigin";
 
 /* ============================================================
    Supplier types + the paperwork each one is asked for
@@ -104,7 +105,7 @@ export function linkMeta(payload) {
     type,
     typeLabel: SUPPLIER_TYPE_LABEL[type] || SUPPLIER_TYPE_LABEL.other,
     token: String(pub.token || ""),
-    url: String(pub.url || ""),
+    url: fixPublicUrl(String(pub.url || "")),
     sentAt: pub.sentAt || pub.createdAt || "",
     openedAt: pub.openedAt || "",
     submittedAt: pub.submittedAt || "",

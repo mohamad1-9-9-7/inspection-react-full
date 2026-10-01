@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EmailSendModal from "../../shared/EmailSendModal";
+import { fixPublicUrl } from "../../../config/publicOrigin";
 import {
   CLICHE_LIST,
   makeSupplierEmailConfig,
@@ -564,7 +565,7 @@ export default function SupplierSentLinks() {
   function shareWhatsApp(rec) {
     const p = rec?.payload || {};
     const name = p?.fields?.company_name || "";
-    const url = p?.public?.url || "";
+    const url = fixPublicUrl(p?.public?.url || "");
     if (!url) return;
     const text =
       `مرحباً ${name ? "شركة " + name : ""}،\n\n` +
@@ -774,7 +775,7 @@ export default function SupplierSentLinks() {
     const disabled = isDisabled(rec);
     const expired = isExpired(rec);
     const token = p?.public?.token || "";
-    const url = p?.public?.url || "";
+    const url = fixPublicUrl(p?.public?.url || "");
     const sentAt = getSentAt(rec);
     const openedAt = getOpenedAt(rec);
     const submittedAt = p?.public?.submittedAt || (submitted ? p?.recordDate : "");
