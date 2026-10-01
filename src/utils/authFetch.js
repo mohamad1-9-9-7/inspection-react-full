@@ -193,6 +193,33 @@ async function withRetry(send, { retries = 4, signal } = {}) {
   }
 }
 
+/* ── Double-tap guard for report creation ──
+   The branch forms keep Save enabled while the request is in flight, and on a
+   slow connection people tap again. Each tap POSTed a brand-new record (and
+   got a fresh _outboxId, so the outbox could not tell them apart): POS 10/11
+   personal-hygiene and FTR 2 temperature sheets carry dozens of days with two
+   identical records saved 10–16 s apart. An identical POST /api/reports within
+   a minute now shares the first request's response instead of filing again.
+   A failed request is forgotten at once, so a genuine retry still goes out. */
+const CREATE_DEDUPE_MS = 60 * 1000;
+const RECENT_CREATES = new Map(); // key → { at, promise<Response> }
+
+function createDedupeKey(url, method, init) {
+  if (String(method).toUpperCase() !== "POST" || typeof init?.body !== "string") return null;
+  let path;
+  try { path = new URL(url, window.location.href).pathname; } catch { return null; }
+  if (!/\/api\/reports\/?$/.test(path)) return null;
+  try {
+    const body = JSON.parse(init.body);
+    if (!body?.type || !body.payload || typeof body.payload !== "object") return null;
+    // stamps that differ between two taps of the same sheet
+    const { savedAt, _outboxId, createdAt, updatedAt, ...rest } = body.payload;
+    return `${body.type}|${JSON.stringify(rest)}`;
+  } catch {
+    return null;
+  }
+}
+
 window.fetch = function authFetch(input, init = {}) {
   const url = typeof input === "string" ? input : input?.url || "";
 
@@ -221,13 +248,32 @@ window.fetch = function authFetch(input, init = {}) {
 
   const send = () => ORIGINAL_FETCH(reqInput, nextInit);
 
+  const dedupeKey = createDedupeKey(url, method, init);
+  if (dedupeKey) {
+    const now = Date.now();
+    for (const [k, v] of RECENT_CREATES) if (now - v.at > CREATE_DEDUPE_MS) RECENT_CREATES.delete(k);
+    const hit = RECENT_CREATES.get(dedupeKey);
+    if (hit) return hit.promise.then((r) => r.clone()).then(finishResponse);
+  }
+
   const run = isReportRead(url, method)
     ? _acquire()
         .then(() => withRetry(send, { retries: 4, signal: nextInit.signal }))
         .finally(_release)
     : send();
 
-  return run.then((res) => {
+  if (dedupeKey) {
+    const entry = { at: Date.now(), promise: run };
+    RECENT_CREATES.set(dedupeKey, entry);
+    const forget = () => { if (RECENT_CREATES.get(dedupeKey) === entry) RECENT_CREATES.delete(dedupeKey); };
+    run.then((r) => { if (!r.ok) forget(); }, forget);
+    // every caller (the first included) reads its own copy of the body
+    return run.then((r) => r.clone()).then(finishResponse);
+  }
+
+  return run.then(finishResponse);
+
+  function finishResponse(res) {
     const isLoginCall = url.includes("/api/auth/login");
     if (res.status === 401 && !isLoginCall) {
       clearAppSession();
@@ -242,5 +288,5 @@ window.fetch = function authFetch(input, init = {}) {
       return applyReportWindow(url, res);
     }
     return res;
-  });
+  }
 };
