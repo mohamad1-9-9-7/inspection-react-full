@@ -16,6 +16,11 @@ import { categoryOf } from "../../../industries/catalog";
 import { getActiveCompanyName } from "../../../utils/companyContext";
 
 const ExcelBackupTab = lazy(() => import("../../settings/ExcelBackupTab"));
+const DemoDataPanel = lazy(() => import("./demo/DemoDataPanel"));
+
+const isSuperAdmin = () => {
+  try { return !!JSON.parse(localStorage.getItem("currentUser") || "{}").isSuperAdmin; } catch { return false; }
+};
 
 const MODULES = [
   {
@@ -27,6 +32,16 @@ const MODULES = [
     subtitleAr: "كل تقرير بملف Excel بنفس تصميم صفحة العرض — اختر التقارير والمدة ونزّل ملف ZIP واحد، مع نماذج فارغة للطباعة.",
   },
 ];
+
+// Platform owner only: sample records for a demo company (sales calls).
+const DEMO_MODULE = {
+  id: "demo-data",
+  icon: "🧪",
+  title: "Demo Data",
+  titleAr: "بيانات تجريبية",
+  subtitle: "Owner only — fill a demo company with three weeks of realistic records, or remove them.",
+  subtitleAr: "للمالك فقط — تعبئة شركة تجريبية بثلاثة أسابيع من السجلات الواقعية، أو حذفها.",
+};
 
 const S = {
   shell: {
@@ -68,6 +83,21 @@ export default function KitSettingsHub() {
   const cat = categoryOf(industry);
   const brand = getActiveCompanyName() || cat.long || cat.label;
 
+  const modules = isSuperAdmin() ? [...MODULES, DEMO_MODULE] : MODULES;
+
+  if (openId === "demo-data" && isSuperAdmin()) {
+    return (
+      <main style={S.shell}>
+        <button type="button" style={S.back} onClick={() => setOpenId(null)}>
+          ← <Bi en="Back to Settings" ar="رجوع للإعدادات" />
+        </button>
+        <Suspense fallback={<div style={S.loading}>…</div>}>
+          <DemoDataPanel />
+        </Suspense>
+      </main>
+    );
+  }
+
   if (openId === "excel-export") {
     return (
       <main style={S.shell}>
@@ -97,7 +127,7 @@ export default function KitSettingsHub() {
       </section>
 
       <div style={S.grid}>
-        {MODULES.map((m) => (
+        {modules.map((m) => (
           <button key={m.id} type="button" style={S.card} onClick={() => setOpenId(m.id)}>
             <div style={S.cardIcon}>{m.icon}</div>
             <div style={S.cardTitle}><Bi en={m.title} ar={m.titleAr} /></div>
