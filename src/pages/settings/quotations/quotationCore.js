@@ -370,6 +370,9 @@ export function quoteInsights(q, seller) {
   if (missing(q?.issuerLicense, seller?.licenseNo) || missing(q?.issuerLegalName, seller?.legalName)) {
     add("tip", "The licence details (full company name / licence number) are not on this quotation — refresh the issuer from the profile.", "بيانات الرخصة (اسم الشركة الكامل / رقم الرخصة) مش ظاهرة على العرض — حدّث بيانات المُصدِر من الهوية.");
   }
+  if (q?.issuerSignatureOff !== true && (missing(q?.issuerSignature, seller?.signatureUrl) || missing(q?.issuerStamp, seller?.stampUrl))) {
+    add("tip", "Your signature / stamp is not on this quotation — “Refresh from the profile” adds it.", "توقيعك / ختمك مش على هالعرض — «تحديث من الهوية» بيضيفه.");
+  }
   const lines = q?.lines || [];
   const t = computeTotals(q);
 

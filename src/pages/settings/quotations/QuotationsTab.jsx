@@ -37,6 +37,7 @@ const issuerFromSeller = (seller) => ({
   issuerSignature: seller.signatureUrl,
   issuerSignedBy: seller.ownerName,
   issuerStamp: seller.stampUrl,
+  issuerSignatureOff: false,
   issuerAddress: seller.address,
   issuerTaxId: seller.vatRegistered ? seller.trn : "",
   issuerLicense: licenseLine(seller),
@@ -721,7 +722,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                   <span style={{ fontWeight: 900 }}>🔵 {L("Stamp", "الختم")}</span>
                   {q.issuerStamp
                     ? <><img src={q.issuerStamp} alt="" style={{ height: 52, width: 52, objectFit: "contain" }} />
-                        <Btn onClick={() => set({ issuerStamp: "" })}>{L("No stamp", "بدون ختم")}</Btn></>
+                        <Btn onClick={() => set({ issuerStamp: "", issuerSignatureOff: true })}>{L("No stamp", "بدون ختم")}</Btn></>
                     : <Btn onClick={() => set({ issuerStamp: seller.stampUrl })}>{L("Add the stamp", "أضف الختم")}</Btn>}
                 </div>
               )}
@@ -729,7 +730,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
                 <span style={{ fontWeight: 900 }}>✍️ {L("Signature", "التوقيع")}</span>
                 {q.issuerSignature
                   ? <><img src={q.issuerSignature} alt="" style={{ height: 44, maxWidth: 180, objectFit: "contain", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4 }} />
-                      <Btn onClick={() => set({ issuerSignature: "" })}>{L("Leave unsigned", "بدون توقيع")}</Btn></>
+                      <Btn onClick={() => set({ issuerSignature: "", issuerSignatureOff: true })}>{L("Leave unsigned", "بدون توقيع")}</Btn></>
                   : <span className="bpx-sm" style={{ color: "#64748b" }}>{seller?.signatureUrl ? L("Not signed — “Refresh from the profile” adds it.", "غير موقّع — «تحديث من الهوية» بيضيفه.") : L("Add one in the INSPECT PRO profile.", "أضفه من هوية INSPECT PRO.")}</span>}
               </div>
               <Btn style={{ marginTop: 10 }} onClick={() => { set(issuerFromSeller(seller)); flash(L("Issuer refreshed from the profile", "تم تحديث بيانات المُصدِر من الهوية")); }}>

@@ -114,7 +114,29 @@ export default function SellerProfileTab() {
   }
 
   /* The signature is stored like the logo: a hosted PNG, never base64 in a
-     row. A drawn one is turned into a file first. */
+     row. A drawn one is turned into a file first.
+     Signature and stamp are SAVED the moment they are uploaded — waiting for
+     the Save button at the top of the page lost them. Only that one field
+     changes (the rest is sent as last saved), so other unsaved edits stay
+     unsaved. If the server hands back a different value (an older server
+     that does not know the field yet), say so instead of pretending. */
+  async function persistImage(key, url) {
+    try {
+      const next = await saveSeller({ ...saved, [key]: url }, lang);
+      if ((next[key] || "") !== url) {
+        throw new Error(L("The server did not keep it — it may still be updating. Try again in a few minutes.", "السيرفر ما حفظه — يمكن لسا عم يتحدّث. جرّب كمان كم دقيقة."));
+      }
+      if (saved?.[key] && saved[key] !== url) deleteImage(saved[key]).catch(() => {});
+      setSaved((cur) => ({ ...(cur || next), [key]: next[key] }));
+      set({ [key]: url });
+      setMsg({ kind: "ok", text: key === "stampUrl"
+        ? L("Stamp saved — new quotations and invoices carry it.", "تم حفظ الختم — العروض والفواتير الجديدة بتطلع فيه.")
+        : L("Signature saved — new quotations and invoices carry it.", "تم حفظ التوقيع — العروض والفواتير الجديدة بتطلع فيه.") });
+    } catch (e) {
+      deleteImage(url).catch(() => {}); // nothing references the upload
+      throw e;
+    }
+  }
   async function onSignature(file) {
     if (!file) return;
     if (!/^image\//.test(file.type)) { setMsg({ kind: "err", text: L("Please choose an image.", "اختار صورة.") }); return; }
@@ -122,8 +144,7 @@ export default function SellerProfileTab() {
     setMsg(null);
     try {
       const url = await uploadImage(file, "seller_signature");
-      if (form.signatureUrl && form.signatureUrl !== saved?.signatureUrl) deleteImage(form.signatureUrl).catch(() => {});
-      set({ signatureUrl: url });
+      await persistImage("signatureUrl", url);
       setSigning(false);
       setSigDraft("");
     } catch (e) {
@@ -139,8 +160,7 @@ export default function SellerProfileTab() {
     setMsg(null);
     try {
       const url = await uploadImage(file, "seller_stamp");
-      if (form.stampUrl && form.stampUrl !== saved?.stampUrl) deleteImage(form.stampUrl).catch(() => {});
-      set({ stampUrl: url });
+      await persistImage("stampUrl", url);
     } catch (e) {
       setMsg({ kind: "err", text: e.message });
     } finally {
