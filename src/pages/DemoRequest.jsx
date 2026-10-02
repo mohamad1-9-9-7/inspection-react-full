@@ -334,8 +334,8 @@ export default function DemoRequest() {
   const [params] = useSearchParams();
   const [lang, setLang] = useState(() => {
     const q = params.get("lang");
-    if (q === "ar" || q === "en") return q;
-    try { return String(navigator.language || "").toLowerCase().startsWith("ar") ? "ar" : "en"; } catch { return "en"; }
+    // English by default; Arabic only when the link asks for it (?lang=ar) or the visitor taps the switch.
+    return q === "ar" ? "ar" : "en";
   });
   const t = TXT[lang];
   const isAr = lang === "ar";
