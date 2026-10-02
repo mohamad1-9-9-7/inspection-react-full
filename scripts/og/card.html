@@ -1,0 +1,153 @@
+<!doctype html>
+<!--
+  Link-preview card (Open Graph image), 1200×630.
+  Rendered to public/og/*.jpg by scripts/og/render.js — open it with
+  ?page=demo|readiness&lang=en|ar to see one variant in a browser.
+  Brand rules: food safety, not AI; tagline FOOD SAFETY · QUALITY · COMPLIANCE.
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=block" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(640px circle at 8% -10%, rgba(14, 165, 164, .38), transparent 60%),
+      radial-gradient(560px circle at 100% 110%, rgba(56, 189, 248, .22), transparent 60%),
+      linear-gradient(150deg, #071328 0%, #0B1E3F 55%, #0b2f4a 100%);
+  }
+  body[dir="rtl"] { font-family: "IBM Plex Sans Arabic", "Plus Jakarta Sans", system-ui, sans-serif; }
+  /* faint inspection grid */
+  .grid { position: absolute; inset: 0; opacity: .5;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 40px 40px; mask-image: radial-gradient(900px 500px at 30% 40%, #000, transparent 75%); }
+  .wrap { position: absolute; inset: 0; padding: 56px 64px; display: grid; grid-template-columns: 1fr 400px; gap: 48px; }
+
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand svg { width: 52px; height: 52px; }
+  .brand b { font-family: "Plus Jakarta Sans", sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+  .brand b span { color: #5eead4; }
+  .brand i { font-style: normal; font-family: "Plus Jakarta Sans", sans-serif; font-size: 13px; font-weight: 800; letter-spacing: .08em;
+    padding: 4px 9px; border-radius: 7px; color: #5eead4; border: 1.5px solid rgba(94, 234, 212, .45); }
+
+  .copy { display: flex; flex-direction: column; }
+  h1 { margin-top: 40px; font-size: 56px; line-height: 1.08; font-weight: 800; letter-spacing: -.03em; }
+  body[dir="rtl"] h1 { font-size: 52px; line-height: 1.32; letter-spacing: 0; font-weight: 700; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, #5eead4, #38bdf8 60%, #a5b4fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { margin-top: 20px; font-size: 22px; line-height: 1.5; color: #b6c5da; font-weight: 500; max-width: 600px; }
+  .foot { margin-top: auto; display: flex; align-items: center; gap: 18px; }
+  .cta { display: inline-flex; align-items: center; gap: 10px; padding: 14px 24px; white-space: nowrap; border-radius: 14px; font-size: 22px; font-weight: 800;
+    color: #062a2a; background: linear-gradient(90deg, #5eead4, #22d3ee); box-shadow: 0 14px 30px -10px rgba(34, 211, 238, .6); }
+  .tag { white-space: nowrap; font-family: "Plus Jakarta Sans", sans-serif; font-size: 13px; font-weight: 800; letter-spacing: .16em; color: #7f93ad; }
+
+  /* right-hand product card */
+  .card { align-self: center; border-radius: 26px; padding: 26px; background: #fff; color: #0f172a;
+    box-shadow: 0 40px 80px -24px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .1); }
+  .card h3 { font-size: 19px; font-weight: 800; display: flex; justify-content: space-between; align-items: center; }
+  .card h3 small { font-size: 14px; font-weight: 700; color: #64748b; }
+  .kpis { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .kpi { padding: 14px; border-radius: 14px; background: #f1f5f9; }
+  .kpi span { display: block; font-size: 14px; font-weight: 700; color: #64748b; }
+  .kpi b { display: block; margin-top: 4px; font-size: 32px; font-weight: 800; letter-spacing: -.02em; font-family: "Plus Jakarta Sans", sans-serif; }
+  .kpi b.ok { color: #0d9488; }
+  .rows { margin-top: 14px; display: grid; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; font-size: 16px; font-weight: 700; }
+  .row .dot { width: 10px; height: 10px; border-radius: 50%; background: #10b981; flex: none; }
+  .row .pill { margin-inline-start: auto; font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: #dcfce7; color: #15803d; white-space: nowrap; }
+
+  /* readiness variant: score ring */
+  .ring { position: relative; width: 210px; height: 210px; margin: 6px auto 0; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring div { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring b { font-size: 54px; font-weight: 800; font-family: "Plus Jakarta Sans", sans-serif; line-height: 1; }
+  .ring span { font-size: 16px; font-weight: 700; color: #64748b; margin-top: 6px; }
+  .checks { margin-top: 18px; display: grid; gap: 9px; }
+  .checks li { list-style: none; display: flex; gap: 10px; align-items: center; font-size: 16px; font-weight: 700; color: #334155; }
+  .checks li::before { content: "✓"; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; flex: none;
+    font-size: 13px; color: #fff; background: #0d9488; }
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div class="wrap">
+  <div class="copy">
+    <div class="brand">
+      <svg viewBox="0 0 124 124"><g transform="translate(4,4)"><path d="M88 52 A36 36 0 1 1 52 16" fill="none" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round"/><path d="M52 16 A36 36 0 0 1 88 52" fill="none" stroke="#0EA5A4" stroke-width="11" stroke-linecap="round"/><path d="M80 80 L104 104" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/><path d="M33 53 L47 67 L73 39" fill="none" stroke="#0EA5A4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+      <b>Inspect<span>Pro</span></b><i>QMS</i>
+    </div>
+    <h1 id="h1"></h1>
+    <p class="sub" id="sub"></p>
+    <div class="foot"><span class="cta" id="cta"></span><span class="tag">FOOD SAFETY · QUALITY · COMPLIANCE</span></div>
+  </div>
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+  const COPY = {
+    demo: {
+      en: {
+        h1: "Every branch.<br>Every record.<br><em>Inspection-ready, always.</em>",
+        sub: "HACCP, ISO 22000, audits, traceability and suppliers — on one live platform, in Arabic & English.",
+        cta: "Book a free demo →",
+        card: { title: "Dashboard", when: "Today", k1: "Readiness", k2: "Branches reporting",
+          rows: [["Cooler 03 · 2.4 °C", "Within limit"], ["Receiving check", "Done"], ["NCR closed with evidence", "Closed"]] },
+      },
+      ar: {
+        h1: "كل فرع، وكل سجل،<br><em>جاهزٌ للتفتيش دائمًا.</em>",
+        sub: "HACCP و ISO 22000 والتدقيق والتتبّع والموردون — في منصة واحدة مباشرة، بالعربية والإنجليزية.",
+        cta: "احجز عرضًا مجانيًا ←",
+        card: { title: "لوحة التحكم", when: "اليوم", k1: "الجاهزية", k2: "فروع سجّلت",
+          rows: [["ثلاجة 03 · 2.4 °م", "ضمن الحد"], ["فحص الاستلام", "مكتمل"], ["إغلاق عدم مطابقة بالدليل", "مغلقة"]] },
+      },
+    },
+    readiness: {
+      en: {
+        h1: "How <em>inspection-ready</em><br>is your company?",
+        sub: "10 quick questions, about 2 minutes. Get a score out of 100 and the gaps an inspector would find first.",
+        cta: "Take the free check →",
+        card: { center: "100", label: "your score, out of", checks: ["Temperature logs", "Traceability", "Suppliers & training"] },
+      },
+      ar: {
+        h1: "ما مدى <em>جاهزية</em> شركتك<br>لتفتيش سلامة الغذاء؟",
+        sub: "عشرة أسئلة سريعة في دقيقتين تقريبًا. تحصل على درجة من 100، وعلى الثغرات التي سيلاحظها المفتش أولًا.",
+        cta: "ابدأ الفحص المجاني ←",
+        card: { center: "100", label: "درجتك من", checks: ["سجلات الحرارة", "التتبّع", "الموردون والتدريب"] },
+      },
+    },
+  };
+
+  const q = new URLSearchParams(location.search);
+  const page = COPY[q.get("page")] ? q.get("page") : "demo";
+  const lang = q.get("lang") === "ar" ? "ar" : "en";
+  const t = COPY[page][lang];
+  document.body.dir = lang === "ar" ? "rtl" : "ltr";
+  document.documentElement.lang = lang;
+  document.getElementById("h1").innerHTML = t.h1;
+  document.getElementById("sub").textContent = t.sub;
+  document.getElementById("cta").textContent = t.cta;
+
+  const c = t.card;
+  document.getElementById("card").innerHTML = page === "demo"
+    ? `<h3>${c.title}<small>${c.when} · 09:42</small></h3>
+       <div class="kpis">
+         <div class="kpi"><span>${c.k1}</span><b class="ok">94%</b></div>
+         <div class="kpi"><span>${c.k2}</span><b>12/12</b></div>
+       </div>
+       <div class="rows">${c.rows.map(([a, b]) => `<div class="row"><span class="dot"></span>${a}<span class="pill">${b}</span></div>`).join("")}</div>`
+    : `<div class="ring">
+         <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+           <circle cx="60" cy="60" r="50" fill="none" stroke="url(#g)" stroke-width="12" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="70"/>
+           <defs><linearGradient id="g"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs></svg>
+         <div><span>${c.label}</span><b>${c.center}</b></div>
+       </div>
+       <ul class="checks">${c.checks.map((x) => `<li>${x}</li>`).join("")}</ul>`;
+
+  document.fonts.ready.then(() => document.body.setAttribute("data-ready", "1"));
+</script>
+</body>
+</html>
