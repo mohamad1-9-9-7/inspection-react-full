@@ -1,3 +1,4 @@
+/* eslint-disable testing-library/no-unnecessary-act -- plain react-dom root, no Testing Library here */
 // Smoke test for the shared receiving log: an old flat sheet (supplier on every
 // line, √/✗ ticks) must open as delivery blocks, and saving must write both
 // `deliveries` and the flat `entries` the viewers read — as an UPDATE of the
@@ -39,7 +40,7 @@ jest.mock("./reportApi", () => ({
   reportId: (r) => r.id,
 }));
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+window.IS_REACT_ACT_ENVIRONMENT = true;
 const ReceivingLogForm = require("./ReceivingLogForm").default;
 
 test("old flat sheet opens as deliveries and saves as an update of the same record", async () => {
