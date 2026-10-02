@@ -206,7 +206,13 @@ function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [lang, setLang] = useState(() => (readPref(PREF_LANG, "en") === "ar" ? "ar" : "en"));
+  // A link may ask for a language (?lang=ar — the Arabic link previews and
+  // Google's Arabic result point here); otherwise the visitor's saved choice.
+  const [lang, setLang] = useState(() => {
+    const q = new URLSearchParams(window.location.search).get("lang");
+    if (q === "ar" || q === "en") return q;
+    return readPref(PREF_LANG, "en") === "ar" ? "ar" : "en";
+  });
   usePublicTitle("/", lang);
   // Visitor stats: only people who are NOT signed in are counted (see utils/siteStats.js).
   const stat = useSiteStats("login", lang);

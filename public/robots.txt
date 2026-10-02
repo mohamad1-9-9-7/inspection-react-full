@@ -1,0 +1,17 @@
+# InspectPro — https://inspectpro-ae.netlify.app
+# Only the public pages are for search engines. Everything else is the
+# signed-in app (company records), which must never be crawled.
+# /static/ stays open so Google can run the page's code to read it.
+
+User-agent: *
+Allow: /$
+Allow: /demo
+Allow: /readiness
+Allow: /og/
+Allow: /brand/
+Allow: /static/
+Allow: /robots.txt
+Allow: /sitemap.xml
+Disallow: /
+
+Sitemap: https://inspectpro-ae.netlify.app/sitemap.xml

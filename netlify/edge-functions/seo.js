@@ -55,6 +55,94 @@ const PAGES = {
   },
 };
 
+/* ── Structured data (JSON-LD) for Google ─────────────────────────────
+   Must match what the page shows: prices as on the /demo pricing section
+   (src/pages/DemoValue.jsx), FAQ as on /demo (src/pages/DemoRequest.jsx). */
+const SITE = "https://inspectpro-ae.netlify.app";
+const ORG = {
+  "@type": "Organization",
+  "@id": `${SITE}/#org`,
+  name: "INSPECT PRO",
+  url: SITE,
+  logo: `${SITE}/brand/inspect-pro/app-icon-512.png`,
+  slogan: "Food safety · Quality · Compliance",
+  areaServed: ["AE", "SA", "QA", "KW", "BH", "OM"],
+  address: { "@type": "PostalAddress", addressCountry: "AE" },
+};
+const plan = (name, price) => ({
+  "@type": "Offer",
+  name,
+  price: String(price),
+  priceCurrency: "AED",
+  priceSpecification: { "@type": "UnitPriceSpecification", price, priceCurrency: "AED", unitText: "branch / month" },
+});
+const FAQ = {
+  en: [
+    ["Does it work in Arabic?", "Yes. Every screen works in Arabic and English, and each user works in their own language."],
+    ["Do we need our own server or IT team?", "No. InspectPro runs in the cloud and opens in any browser — on a phone at the branch or a computer at head office."],
+    ["Can our current forms be kept?", "Yes. Your paper forms are turned into digital checklists that follow the same layout, and reports print in that layout too."],
+    ["How is it priced?", "Per branch: Essential AED 249 a month (1–2 branches), Professional AED 399 a month (3 or more), about two months less when billed annually. Factories and large chains get a custom quote."],
+  ],
+  ar: [
+    ["هل يعمل النظام باللغة العربية؟", "نعم. جميع الشاشات تعمل بالعربية والإنجليزية، ويعمل كل مستخدم بلغته."],
+    ["هل نحتاج إلى خادم خاص أو فريق تقنية معلومات؟", "لا. يعمل InspectPro سحابيًا ويُفتح من أي متصفح — من الجوال في الفرع أو من الحاسوب في الإدارة."],
+    ["هل يمكن الإبقاء على نماذجنا الحالية؟", "نعم. تتحول نماذجكم الورقية إلى قوائم فحص رقمية بالتصميم نفسه، وتُطبع التقارير بذلك التصميم أيضًا."],
+    ["كيف يُحتسب السعر؟", "لكل فرع: الأساسية 249 درهمًا شهريًا (فرع أو فرعان)، والاحترافية 399 درهمًا شهريًا (3 فروع فأكثر)، وبخصم نحو شهرين عند الدفع السنوي. المصانع والسلاسل الكبيرة تحصل على عرض سعر خاص."],
+  ],
+};
+
+export function jsonLd(path, m) {
+  const graph = [ORG];
+  if (path === "/demo") {
+    graph.push({
+      "@type": "SoftwareApplication",
+      name: "InspectPro",
+      applicationCategory: "BusinessApplication",
+      applicationSubCategory: "Food safety & quality management (HACCP, ISO 22000)",
+      operatingSystem: "Web browser (phone, tablet, computer)",
+      inLanguage: ["en", "ar"],
+      url: m.canonical,
+      description: m.description,
+      image: m.image,
+      publisher: { "@id": `${SITE}/#org` },
+      offers: [plan("Essential", 249), plan("Professional", 399)],
+    });
+    graph.push({
+      "@type": "FAQPage",
+      inLanguage: m.lang,
+      mainEntity: FAQ[m.lang].map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+    });
+  } else if (path === "/readiness") {
+    graph.push({
+      "@type": "WebApplication",
+      name: m.lang === "ar" ? "فحص جاهزية سلامة الغذاء" : "Food-safety inspection readiness check",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web browser",
+      isAccessibleForFree: true,
+      inLanguage: m.lang,
+      url: m.canonical,
+      description: m.description,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "AED" },
+      publisher: { "@id": `${SITE}/#org` },
+    });
+  } else {
+    graph.push({ "@type": "WebSite", name: "InspectPro", url: `${SITE}/`, inLanguage: ["en", "ar"], publisher: { "@id": `${SITE}/#org` } });
+  }
+  // "<" escaped so nothing inside can close the script tag.
+  return `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@graph": graph }).replace(/</g, "\\u003c")}</script>`;
+}
+
+/* A plain-text twin for crawlers and link readers that do not run JavaScript.
+   People never see it (the app replaces nothing inside <noscript>). */
+function noscriptBlock(m) {
+  const ar = m.lang === "ar";
+  const links = ar
+    ? `<a href="/demo?lang=ar">احجز عرضًا مجانيًا</a> · <a href="/readiness?lang=ar">فحص الجاهزية المجاني</a>`
+    : `<a href="/demo">Book a free demo</a> · <a href="/readiness">Free readiness check</a>`;
+  return `<noscript><main dir="${ar ? "rtl" : "ltr"}" style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;line-height:1.6">`
+    + `<h1>${esc(m.title)}</h1><p>${esc(m.description)}</p><p>${links}</p></main></noscript>`;
+}
+
 const esc = (s) => String(s)
   .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -74,6 +162,7 @@ export function pageMeta(url) {
     alternates: { en: pageUrl("en"), ar: pageUrl("ar") },
     image: `${url.origin}/og/${page.image}-${lang}.jpg?v=${OG_VERSION}`,
     imageAlt: t.alt,
+    path,
   };
 }
 
@@ -118,7 +207,8 @@ export function rewriteHtml(html, m, country = "") {
     .replace(/<meta\b[^>]*\b(?:name|property)=["']?(?:description|og:[^"'\s>]+|twitter:[^"'\s>]+)["']?[^>]*>/gi, "")
     .replace(/<link\b[^>]*\brel=["']?(?:canonical|alternate)["']?[^>]*>/gi, "")
     .replace(/<html\b([^>]*)\blang=["']?[^"'\s>]*["']?/i, `<html$1lang="${m.lang}"`)
-    .replace(/<\/head>/i, `${headTags(m)}${cc}</head>`);
+    .replace(/<\/head>/i, () => `${headTags(m)}${jsonLd(m.path, m)}${cc}</head>`)
+    .replace(/<div id=["']?root["']?>/i, (root) => `${noscriptBlock(m)}${root}`);
 }
 
 export default async (request, context) => {
