@@ -338,6 +338,23 @@ export function usePublicFonts() {
   }, []);
 }
 
+const DOCK_QUERY = "(min-width: 1440px)";
+
+function useMedia(query) {
+  const get = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(query).matches : false);
+  const [on, setOn] = useState(get);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return undefined;
+    const fn = () => setOn(mq.matches);
+    fn();
+    mq.addEventListener?.("change", fn);
+    window.addEventListener("resize", fn); // some engines skip the media "change" event
+    return () => { mq.removeEventListener?.("change", fn); window.removeEventListener("resize", fn); };
+  }, [query]);
+  return on;
+}
+
 /* Fade sections in as they scroll into view; everything shows at once when
    IntersectionObserver or motion is unavailable. */
 function useReveal(rootRef) {
@@ -383,6 +400,9 @@ export default function DemoRequest() {
     return PLUS.en.interests.some(([v]) => v === k) ? [k] : [];
   });
   const [sticky, setSticky] = useState(false);
+  // Wide screens: the form lives in a fixed panel on the right, always in view.
+  const docked = useMedia(DOCK_QUERY);
+  const dockRef = useRef(null);
   const P = PLUS[lang];
   const toggleInterest = (k) => setInterests((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
 
@@ -422,11 +442,27 @@ export default function DemoRequest() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Docked: the panel is already in view, so point at it (flash + first field).
+  // Otherwise scroll down to the form section.
+  const focusForm = () => {
+    const dock = dockRef.current;
+    if (!dock) {
+      document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    dock.scrollTo({ top: 0, behavior: "smooth" });
+    dock.classList.remove("flash");
+    void dock.offsetWidth; // restart the animation
+    dock.classList.add("flash");
+    document.getElementById("f-co")?.focus({ preventScroll: true });
+  };
+
   // Arriving from a login-page product tab: go straight to the form.
   useEffect(() => {
     if (!params.get("interest")) return undefined;
-    const id = setTimeout(() => document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+    const id = setTimeout(focusForm, 400);
     return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
   // Mobile sticky "book" bar: after the hero, hidden while the form is on screen.
@@ -467,7 +503,7 @@ export default function DemoRequest() {
 
   const goForm = (e) => {
     e?.preventDefault?.();
-    document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusForm();
   };
 
   // The calculator hands over its branch count, so the form arrives pre-filled.
@@ -516,8 +552,118 @@ export default function DemoRequest() {
   const m = t.mock;
   const F = t.feats;
 
+  const formCard = (
+      <div className="dp-formcard">{/* no dp-reveal: it can move between panel and section after load */}
+        {done ? (
+          <div className="dp-done">
+            <div className="dp-confetti" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ "--i": i }} />)}</div>
+            <div className="dp-done-ic"><Icon name="check" size={40} color="#fff" /></div>
+            <h3 className="fs-h2">{t.doneTitle}</h3>
+            <p className="hint fs-md" style={{ margin: "10px 0 0" }}>{t.doneSub}</p>
+            <NextSteps P={P} />
+            <div className="dp-done-act">
+              <button type="button" className="dp-btn primary fs-md" onClick={() => document.getElementById("tour")?.scrollIntoView({ behavior: "smooth" })}>▶ {P.doneTour}</button>
+              <button type="button" className="dp-btn dark fs-md" onClick={() => navigate(quizHref)}>📊 {t.doneCheck}</button>
+              <button type="button" className="dp-btn fs-md" style={{ border: "1px solid #e2e8f0", background: "#fff" }} onClick={() => setDone(false)}>{t.another}</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit} noValidate>
+            <h3 className="fs-h2">{t.cardTitle}</h3>
+            <p className="hint fs-md">{t.cardHint}</p>
+            <div className="dp-fields">
+              <Field id="f-co" label={t.company} required>
+                <input id="f-co" className="dp-input" value={form.companyName} onChange={set("companyName")} autoComplete="organization" maxLength={150} />
+              </Field>
+              <Field id="f-act" label={t.activity}>
+                <select id="f-act" className="dp-input" value={form.activity} onChange={set("activity")}>
+                  <option value="">{t.pick}</option>
+                  {DEMO_ACTIVITIES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
+                </select>
+              </Field>
+              <Field id="f-nm" label={t.contact} required>
+                <input id="f-nm" className="dp-input" value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
+              </Field>
+              <Field id="f-ph" label={t.phone} required>
+                <input id="f-ph" className="dp-input" style={{ direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
+              </Field>
+            </div>
+
+            <fieldset className="dp-interest">
+              <legend className="fs-sm">{P.interestQ}</legend>
+              <div className="dp-interest-grid">
+                {P.interests.map(([k, l]) => (
+                  <label key={k} className={`dp-check fs-sm${interests.includes(k) ? " on" : ""}`}>
+                    <input type="checkbox" checked={interests.includes(k)} onChange={() => toggleInterest(k)} />
+                    <span className="dp-check-box" aria-hidden="true" />
+                    {l}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="dp-when">
+              <span className="dp-when-l fs-sm">{P.when}</span>
+              <div className="dp-when-row">
+                {P.days.map(([v, l]) => (
+                  <button key={v} type="button" className={`dp-pick fs-sm${when.day === v ? " on" : ""}`} aria-pressed={when.day === v} onClick={() => setWhen((w) => ({ ...w, day: w.day === v ? "" : v }))}>{l}</button>
+                ))}
+                <span className="dp-when-sep" aria-hidden="true" />
+                {P.times.map(([v, l]) => (
+                  <button key={v} type="button" className={`dp-pick fs-sm${when.time === v ? " on" : ""}`} aria-pressed={when.time === v} onClick={() => setWhen((w) => ({ ...w, time: w.time === v ? "" : v }))}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            <button type="button" className="dp-more fs-sm" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
+              <span className="dp-more-ic" aria-hidden="true">{moreOpen ? "−" : "+"}</span>
+              {moreOpen ? P.less : P.more}
+            </button>
+            {moreOpen && (
+              <div className="dp-fields dp-fields-more">
+                <Field id="f-br" label={t.branches}>
+                  <select id="f-br" className="dp-input" value={form.branches} onChange={set("branches")}>
+                    <option value="">{t.pick}</option>
+                    {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+                <Field id="f-em" label={t.emirate}>
+                  <select id="f-em" className="dp-input" value={form.emirate} onChange={set("emirate")}>
+                    <option value="">{t.pick}</option>
+                    {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
+                  </select>
+                </Field>
+                <Field id="f-ml" label={t.email} full>
+                  <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
+                </Field>
+                <Field id="f-msg" label={t.message} full>
+                  <textarea id="f-msg" className="dp-input" value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
+                </Field>
+                <Field id="f-ref" label={t.referredBy} full>
+                  <input id="f-ref" className="dp-input" value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
+                </Field>
+              </div>
+            )}
+
+            {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
+            <div aria-hidden="true" className="dp-honey">
+              <label>Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={set("website")} /></label>
+            </div>
+
+            {error && <div role="alert" className="dp-err fs-sm" style={{ marginTop: 14 }}>{error}</div>}
+
+            <button type="submit" disabled={sending} className="dp-btn primary dp-submit fs-md">
+              {sending ? t.sending : <>{t.submit} <span className="arr" aria-hidden="true">{arrow}</span></>}
+            </button>
+            <p className="dp-privacy fs-xs">🔒 {t.privacy}</p>
+            <NextSteps P={P} />
+          </form>
+        )}
+      </div>
+  );
+
   return (
-    <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className={`dp${sticky ? " dp-has-sticky" : ""}`}>
+    <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className={`dp${sticky ? " dp-has-sticky" : ""}${docked ? " dp-docked" : ""}`}>
       <style>{PROMO_CSS}{SC_CSS}</style>
 
       {/* ── nav ── */}
@@ -537,7 +683,7 @@ export default function DemoRequest() {
           <div className="dp-nav-act">
             <button type="button" className="dp-lang fs-sm" onClick={() => setLang(isAr ? "en" : "ar")}>{t.lang}</button>
             <button type="button" className="dp-btn ghost-d sm fs-sm dp-signin" onClick={() => navigate("/")}>{t.nav.signIn}</button>
-            <button type="button" className="dp-btn primary sm fs-sm" onClick={goForm}>{t.nav.book}</button>
+            <button type="button" className="dp-btn primary sm fs-sm dp-nav-book" onClick={goForm}>{t.nav.book}</button>
           </div>
         </div>
       </header>
@@ -810,113 +956,7 @@ export default function DemoRequest() {
             </div>
           </div>
 
-          <div className="dp-formcard dp-reveal" style={{ "--d": ".08s" }}>
-            {done ? (
-              <div className="dp-done">
-                <div className="dp-confetti" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ "--i": i }} />)}</div>
-                <div className="dp-done-ic"><Icon name="check" size={40} color="#fff" /></div>
-                <h3 className="fs-h2">{t.doneTitle}</h3>
-                <p className="hint fs-md" style={{ margin: "10px 0 0" }}>{t.doneSub}</p>
-                <NextSteps P={P} />
-                <div className="dp-done-act">
-                  <button type="button" className="dp-btn primary fs-md" onClick={() => document.getElementById("tour")?.scrollIntoView({ behavior: "smooth" })}>▶ {P.doneTour}</button>
-                  <button type="button" className="dp-btn dark fs-md" onClick={() => navigate(quizHref)}>📊 {t.doneCheck}</button>
-                  <button type="button" className="dp-btn fs-md" style={{ border: "1px solid #e2e8f0", background: "#fff" }} onClick={() => setDone(false)}>{t.another}</button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={submit} noValidate>
-                <h3 className="fs-h2">{t.cardTitle}</h3>
-                <p className="hint fs-md">{t.cardHint}</p>
-                <div className="dp-fields">
-                  <Field id="f-co" label={t.company} required>
-                    <input id="f-co" className="dp-input" value={form.companyName} onChange={set("companyName")} autoComplete="organization" maxLength={150} />
-                  </Field>
-                  <Field id="f-act" label={t.activity}>
-                    <select id="f-act" className="dp-input" value={form.activity} onChange={set("activity")}>
-                      <option value="">{t.pick}</option>
-                      {DEMO_ACTIVITIES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
-                    </select>
-                  </Field>
-                  <Field id="f-nm" label={t.contact} required>
-                    <input id="f-nm" className="dp-input" value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
-                  </Field>
-                  <Field id="f-ph" label={t.phone} required>
-                    <input id="f-ph" className="dp-input" style={{ direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
-                  </Field>
-                </div>
-
-                <fieldset className="dp-interest">
-                  <legend className="fs-sm">{P.interestQ}</legend>
-                  <div className="dp-interest-grid">
-                    {P.interests.map(([k, l]) => (
-                      <label key={k} className={`dp-check fs-sm${interests.includes(k) ? " on" : ""}`}>
-                        <input type="checkbox" checked={interests.includes(k)} onChange={() => toggleInterest(k)} />
-                        <span className="dp-check-box" aria-hidden="true" />
-                        {l}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-
-                <div className="dp-when">
-                  <span className="dp-when-l fs-sm">{P.when}</span>
-                  <div className="dp-when-row">
-                    {P.days.map(([v, l]) => (
-                      <button key={v} type="button" className={`dp-pick fs-sm${when.day === v ? " on" : ""}`} aria-pressed={when.day === v} onClick={() => setWhen((w) => ({ ...w, day: w.day === v ? "" : v }))}>{l}</button>
-                    ))}
-                    <span className="dp-when-sep" aria-hidden="true" />
-                    {P.times.map(([v, l]) => (
-                      <button key={v} type="button" className={`dp-pick fs-sm${when.time === v ? " on" : ""}`} aria-pressed={when.time === v} onClick={() => setWhen((w) => ({ ...w, time: w.time === v ? "" : v }))}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <button type="button" className="dp-more fs-sm" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
-                  <span className="dp-more-ic" aria-hidden="true">{moreOpen ? "−" : "+"}</span>
-                  {moreOpen ? P.less : P.more}
-                </button>
-                {moreOpen && (
-                  <div className="dp-fields dp-fields-more">
-                    <Field id="f-br" label={t.branches}>
-                      <select id="f-br" className="dp-input" value={form.branches} onChange={set("branches")}>
-                        <option value="">{t.pick}</option>
-                        {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                    </Field>
-                    <Field id="f-em" label={t.emirate}>
-                      <select id="f-em" className="dp-input" value={form.emirate} onChange={set("emirate")}>
-                        <option value="">{t.pick}</option>
-                        {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
-                      </select>
-                    </Field>
-                    <Field id="f-ml" label={t.email} full>
-                      <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
-                    </Field>
-                    <Field id="f-msg" label={t.message} full>
-                      <textarea id="f-msg" className="dp-input" value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
-                    </Field>
-                    <Field id="f-ref" label={t.referredBy} full>
-                      <input id="f-ref" className="dp-input" value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
-                    </Field>
-                  </div>
-                )}
-
-                {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
-                <div aria-hidden="true" className="dp-honey">
-                  <label>Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={set("website")} /></label>
-                </div>
-
-                {error && <div role="alert" className="dp-err fs-sm" style={{ marginTop: 14 }}>{error}</div>}
-
-                <button type="submit" disabled={sending} className="dp-btn primary dp-submit fs-md">
-                  {sending ? t.sending : <>{t.submit} <span className="arr" aria-hidden="true">{arrow}</span></>}
-                </button>
-                <p className="dp-privacy fs-xs">🔒 {t.privacy}</p>
-                <NextSteps P={P} />
-              </form>
-            )}
-          </div>
+          {!docked && formCard}
         </div>
       </section>
 
@@ -957,6 +997,12 @@ export default function DemoRequest() {
           {P.stickyBook} <span className="arr" aria-hidden="true">{arrow}</span>
         </button>
       </div>
+
+      {docked && (
+        <aside ref={dockRef} className="dp-dock" aria-label={t.cardTitle}>
+          {formCard}
+        </aside>
+      )}
 
       {waHref && (
         <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} className="dp-wa-fab fs-md" aria-label={t.waFab} title={t.waFab}>
