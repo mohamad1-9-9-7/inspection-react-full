@@ -17,6 +17,7 @@ import { BrandLockup } from "./brand";
 import { READINESS_QUESTIONS, levelOf, scoreAnswers } from "./readinessQuestions";
 import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./promoBlocks";
 import { getPublicOrigin } from "../../config/publicOrigin";
+import { usePublicTitle } from "../../config/pageTitles";
 
 const TXT = {
   en: {
@@ -122,6 +123,7 @@ export default function ReadinessCheck() {
   });
   const t = TXT[lang];
   const isAr = lang === "ar";
+  usePublicTitle("/readiness", lang);
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
 
   const [step, setStep] = useState(-1); // -1 intro, 0..N-1 questions, N result

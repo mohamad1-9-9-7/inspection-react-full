@@ -15,6 +15,7 @@ import API_BASE from "../config/api";
 import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
 import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
+import { usePublicTitle } from "../config/pageTitles";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
@@ -376,6 +377,7 @@ export default function DemoRequest() {
   });
   const t = TXT[lang];
   const isAr = lang === "ar";
+  usePublicTitle("/demo", lang);
   const arrow = isAr ? "←" : "→";
 
   const [form, setForm] = useState(EMPTY);

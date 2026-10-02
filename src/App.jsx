@@ -5,6 +5,7 @@ import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
 import ThemeToggle from "./components/ThemeToggle";
 import AccessibilityMenu from "./components/AccessibilityMenu";
+import RouteTitle from "./components/RouteTitle";
 import GlobalTimePicker from "./components/GlobalTimePicker";
 import OutboxBar from "./components/OutboxBar";
 // Registers the replay for reports saved without a connection, so a waiting
@@ -841,6 +842,7 @@ export default function App() {
       <GlobalTimePicker />
       <ThemeToggle />
       <AccessibilityMenu />
+      <RouteTitle />
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />

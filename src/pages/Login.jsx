@@ -5,6 +5,7 @@ import "./Login.css";
 import API_BASE from "../config/api";
 import { SUB_CACHE_KEY, writeSubscriptionCache } from "../utils/subscriptionLock";
 import LoginShowcase, { SC_CSS } from "./LoginShowcase";
+import { usePublicTitle } from "../config/pageTitles";
 
 const BRAND = "/brand/inspect-pro";
 // Per-viewer conveniences only (never a source of truth).
@@ -205,6 +206,7 @@ function Login() {
   const location = useLocation();
 
   const [lang, setLang] = useState(() => (readPref(PREF_LANG, "en") === "ar" ? "ar" : "en"));
+  usePublicTitle("/", lang);
   const [theme, setTheme] = useState(() => (readPref(PREF_THEME, "light") === "dark" ? "dark" : "light"));
   const [username, setUsername] = useState(() => readPref(PREF_USER, ""));
   const [remember, setRemember] = useState(() => !!readPref(PREF_USER, ""));
