@@ -615,36 +615,46 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
   .dp-values { grid-template-columns: 1fr; }
 }
 
-/* ── docked form (≥1440px): fixed panel on the right, page beside it ──
-   Physical right in both languages; the page gets the same padding so
-   nothing slides under the panel. position:fixed (not sticky) because
-   globals.css overflow-x:hidden on #root disables sticky. */
-.dp.dp-docked { --dock-w: 460px; padding-right: var(--dock-w); }
+/* ── docked form (≥1440px): a floating window on the right ──────────
+   The sections keep their full-width backgrounds (they run under the
+   window, so it reads as one page with a window on top, not two screens);
+   only each section's .dp-wrap content moves left, centred in the space
+   beside the window. Physical right in both languages. position:fixed
+   (not sticky) because globals.css overflow-x:hidden on #root disables sticky. */
+.dp.dp-docked { --dock-card: 420px; --dock-gap: 24px; --dock-w: calc(var(--dock-card) + var(--dock-gap) * 2); }
+.dp-docked .dp-wrap {
+  --side: max(20px, calc((100% - var(--dock-w) - 1200px) / 2));
+  max-width: none; padding-left: var(--side); padding-right: calc(var(--dock-w) + var(--side));
+}
 .dp-dock {
-  position: fixed; top: 0; right: 0; bottom: 0; width: var(--dock-w); z-index: 55;
-  overflow-y: auto; overscroll-behavior: contain; padding: 22px 22px 28px;
-  background:
-    radial-gradient(520px circle at 100% 0%, rgba(20, 184, 166, .2), transparent 60%),
-    radial-gradient(480px circle at 0% 100%, rgba(99, 102, 241, .16), transparent 60%),
-    var(--ink);
-  border-left: 1px solid var(--line-d);
-  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .18) transparent;
+  position: fixed; top: 88px; right: var(--dock-gap); width: var(--dock-card); z-index: 55;
+  max-height: calc(100vh - 88px - var(--dock-gap));
+  overflow-y: auto; overscroll-behavior: contain; border-radius: 22px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .08), 0 2px 6px rgba(15, 23, 42, .06), 0 30px 70px -18px rgba(7, 13, 26, .45);
+  scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent;
+  animation: dp-dock-in .5s cubic-bezier(.2, .8, .2, 1) both;
 }
-.dp-dock .dp-formcard { padding: 24px 22px; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .08); }
+/* thin brand line along the top edge of the window */
+.dp-dock::before {
+  content: ""; position: sticky; top: 0; display: block; height: 4px; z-index: 1;
+  background: linear-gradient(90deg, var(--teal), var(--cyan), #a5b4fc);
+}
+.dp-dock .dp-formcard { padding: 22px 24px 24px; border-radius: 0; box-shadow: none; background: transparent; }
+.dp-dock .dp-formcard::before { display: none; }
 .dp-dock .dp-formcard .hint { margin-bottom: 16px; }
-.dp-dock.flash .dp-formcard { animation: dp-dock-flash 1.1s ease-out; }
+.dp-dock.flash { animation: dp-dock-flash 1.1s ease-out; }
+@keyframes dp-dock-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes dp-dock-flash {
-  0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, .75), 0 30px 60px -30px rgba(0, 0, 0, .7); }
-  100% { box-shadow: 0 0 0 18px rgba(45, 212, 191, 0), 0 30px 60px -30px rgba(0, 0, 0, .7); }
+  0% { box-shadow: 0 0 0 0 rgba(20, 184, 166, .7), 0 30px 70px -18px rgba(7, 13, 26, .45); }
+  100% { box-shadow: 0 0 0 16px rgba(20, 184, 166, 0), 0 30px 70px -18px rgba(7, 13, 26, .45); }
 }
-.dp-docked .dp-nav { right: var(--dock-w); } /* the nav ends where the panel starts */
 .dp-docked .dp-nav-links a { white-space: nowrap; }
 .dp-docked .dp-nav-book { display: none; } /* the form is already on screen */
-.dp-docked .dp-wa-fab { right: calc(var(--dock-w) + 20px); }
+.dp-docked .dp-wa-fab { right: calc(var(--dock-w) - var(--dock-gap) + 8px); }
 .dp-docked .dp-form-grid { grid-template-columns: 1fr; max-width: 760px; }
 
-/* The page column is ~460px narrower than the window, so it switches to its
-   tablet grid a little earlier. */
+/* The content column is ~470px narrower than the window, so it switches to
+   its tablet grid a little earlier. */
 @media (max-width: 1499px) {
   .dp-docked .dp-hero-grid { grid-template-columns: 1fr; gap: 70px; }
   .dp-docked .dp-stage { max-width: 720px; margin: 0 auto; width: 100%; }
@@ -653,5 +663,5 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
   .dp-docked .dp-card.wide { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dp-dock.flash .dp-formcard { animation: none; }
+  .dp-dock, .dp-dock.flash { animation: none; }
 }
