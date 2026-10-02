@@ -14,6 +14,7 @@ import { clearAppSession } from "../../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../../utils/offlineOutbox";
 import { getActiveCompany, getActiveCompanyName, getActiveIndustry, getActiveModule, clearActiveCompany } from "../../utils/companyContext";
 import { findReportType, canSeeCard } from "../../industries";
+import { openExternal } from "../../config/externalLinks";
 import { useCompanyManifest } from "../../companies";
 import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
@@ -473,7 +474,7 @@ export default function GenericIndustryApp() {
                       borderColor: on ? "rgba(15,118,110,.48)" : "rgba(15,23,42,.08)",
                       boxShadow: on ? "0 24px 52px rgba(15,118,110,.22)" : "0 14px 34px rgba(15,23,42,.09)",
                     }}
-                    onClick={() => go({ card: c.id })}
+                    onClick={() => (c.href ? openExternal(c.href) : go({ card: c.id }))}
                     onMouseEnter={() => setHovered(c.id)}
                     onMouseLeave={() => setHovered(null)}
                     onFocus={() => setHovered(c.id)}
@@ -482,7 +483,7 @@ export default function GenericIndustryApp() {
                     <div style={S.cardTop}>
                       <div style={{ ...S.cardIcon, background: c.grad || "#0f766e" }}>{c.icon}</div>
                       <span style={S.cardCount}>
-                        {c.reports ? `${c.reports.length} reports · تقرير` : (c.kind === "pair" ? "Add · View · إضافة · عرض" : "Module · وحدة")}
+                        {c.reports ? `${c.reports.length} reports · تقرير` : (c.kind === "pair" ? "Add · View · إضافة · عرض" : c.href ? "External link · رابط خارجي" : "Module · وحدة")}
                       </span>
                     </div>
                     <div className="gia-ct" style={S.cardTitle}>{c.label}{c.labelAr && <div className="gia-ar gia-card-ar" lang="ar" dir="rtl" style={{ color: ACCENT, marginTop: 3 }}>{c.labelAr}</div>}</div>

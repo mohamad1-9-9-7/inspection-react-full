@@ -305,6 +305,7 @@ export const ST = {
   amSecMrp:              { en: "Manufacturing",     ar: "التصنيع" },
   amSecProductTrace:     { en: "Product Traceability", ar: "تتبع المنتج" },
   amSecEmailCenter:      { en: "Email Center",      ar: "مركز البريد" },
+  amSecDmChecked:        { en: "Dubai Municipality", ar: "بلدية دبي" },
 
   /* ── Account grouping ── */
   amGroupBy:        { en: "Group by",            ar: "تجميع حسب" },

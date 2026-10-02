@@ -213,6 +213,7 @@ export const AR = {
   "Supplier Evaluation": "تقييم الموردين", "Approved suppliers, evaluation scores, renewals & performance tracking": "الموردون المعتمدون، درجات التقييم، التجديد ومتابعة الأداء",
   "SOP": "إجراءات التشغيل القياسية", "Standard Operating Procedures — documents, versions & records": "إجراءات التشغيل القياسية — الوثائق والإصدارات والسجلات",
   "CCP Monitoring": "مراقبة نقاط التحكم الحرجة", "Critical Control Points monitoring — readings, deviations, corrective actions": "مراقبة نقاط التحكم الحرجة — القراءات والانحرافات والإجراءات التصحيحية",
+  "Dubai Municipality": "بلدية دبي", "DM Checked — inspection reports portal": "DM Checked — بوابة تقارير التفتيش",
   "Dubai Municipality Inspection": "تفتيش بلدية دبي", "DM inspection reports — uploaded manually, with findings & attachments": "تقارير تفتيش البلدية — تُرفع يدوياً مع الملاحظات والمرفقات",
   "Mock Recall / Traceability Drill": "الاستدعاء التجريبي / تمرين التتبع", "Quarterly traceability drills — backward + forward trace, KPI & audit-ready logs": "تمارين تتبع ربع سنوية — تتبع للخلف وللأمام، مؤشرات وسجلات جاهزة للتدقيق",
   "Pending Review": "بانتظار المراجعة",

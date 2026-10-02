@@ -16,6 +16,7 @@ import { lazy } from "react";
 import { DAILY_LOG_SCHEMAS } from "./reports/dailyLogSchemas";
 import { guideFor } from "./reports/sweetsReportGuides";
 import { arOf } from "./reports/bilingual";
+import { DM_CHECKED_URL } from "../../config/externalLinks";
 
 const REPORT_PAGES = [
   {
@@ -251,6 +252,18 @@ const sweets = {
       icon: "🛡️",
       grad: "linear-gradient(135deg,#0f766e,#0891b2)",
       Hub: lazy(() => import("./reports/HaccpHub")),
+    },
+    {
+      // Dubai Municipality portal — external link only: the card opens
+      // dmchecked.dm.gov.ae in a new tab (GenericIndustryApp honours `href`).
+      // Granted like any card ("sweets:dmChecked").
+      id: "dmChecked",
+      kind: "link",
+      href: DM_CHECKED_URL,
+      label: "Dubai Municipality",
+      desc: "DM Checked — inspection reports portal",
+      icon: "🏛️",
+      grad: "linear-gradient(135deg,#b91c1c,#7f1d1d)",
     },
     {
       // Company settings — admins only (GenericIndustryApp hides adminOnly

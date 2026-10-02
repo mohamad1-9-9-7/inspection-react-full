@@ -7,6 +7,7 @@ import { clearAppSession } from "../utils/authFetch";
 import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
 import { getActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { useInventoryOfficer } from "./workforce/workforceAccess";
+import { DM_CHECKED_URL, openExternal } from "../config/externalLinks";
 
 /* ══════════════════════════════════════════
    OPERATOR PICKER — who is working now?
@@ -273,6 +274,13 @@ const ALL_ROLES = [
     glow: "rgba(30,64,175,.45)",
   },
   {
+    // 🏛️ بوابة تقارير بلدية دبي — رابط خارجي فقط (يفتح بتبويب جديد)
+    id: "dmChecked", label: "Dubai Municipality", href: DM_CHECKED_URL, icon: "🏛️",
+    keywords: ["dm", "dm checked", "municipality", "dubai", "بلدية", "بلدية دبي"],
+    grad: "linear-gradient(135deg,#b91c1c,#7f1d1d)",
+    glow: "rgba(185,28,28,.45)",
+  },
+  {
     id: "settings", label: "Settings", route: "/settings", icon: "⚙️",
     grad: "linear-gradient(135deg,#475569,#334155)",
     glow: "rgba(71,85,105,.45)",
@@ -527,7 +535,7 @@ function LegacyNamedDashboard() {
               <button
                 key={role.id}
                 className="nd-tile"
-                onClick={() => navigate(role.route)}
+                onClick={() => (role.href ? openExternal(role.href) : navigate(role.route))}
                 onMouseEnter={() => setHovered(role.id)}
                 onMouseLeave={() => setHovered(null)}
                 style={{
@@ -1320,7 +1328,7 @@ export default function NamedDashboard() {
                   key={role.id}
                   className="named-card"
                   type="button"
-                  onClick={() => navigate(role.route)}
+                  onClick={() => (role.href ? openExternal(role.href) : navigate(role.route))}
                   onMouseEnter={() => setHovered(role.id)}
                   onMouseLeave={() => setHovered(null)}
                   onFocus={() => setHovered(role.id)}
