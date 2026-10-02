@@ -3,11 +3,6 @@
 import React, { lazy } from "react";
 import BranchInputLayout from "../_shared/BranchInputLayout";
 
-const QCSRawMaterialInspection = lazy(() =>
-  import("../shipment_recc/QCSRawMaterialInspection").then((m) => ({
-    default: m.default || m.QCSRawMaterialInspection,
-  }))
-);
 const POS11PersonalHygiene      = lazy(() => import("./POS11PersonalHygiene"));
 const POS11DailyCleaning        = lazy(() => import("./POS11DailyCleaning"));
 const POS11TemperatureInput     = lazy(() => import("./POS11TemperatureInput"));
@@ -22,10 +17,9 @@ const config = {
   source: "pos11-tabs",
   title: "📋 POS 11 — Operations Inputs (Al Ain Butchery)",
   description:
-    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, and Pest Control) in one place.",
-  defaultTab: "shipments",
+    "All input tabs (Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, and Pest Control) in one place.",
+  defaultTab: "personal",
   tabs: [
-    { key: "shipments",    label: "📦 Shipments",          Component: QCSRawMaterialInspection,    loadingText: "Loading Shipments form…" },
     { key: "personal",     label: "🧑‍🔬 Personal Hygiene", Component: POS11PersonalHygiene,        loadingText: "Loading Personal Hygiene…" },
     { key: "daily",        label: "🧹 Daily Cleaning",     Component: POS11DailyCleaning,          loadingText: "Loading Daily Cleaning…" },
     { key: "temperature",  label: "🌡️ Temperature",        Component: POS11TemperatureInput,       loadingText: "Loading Temperature…" },

@@ -1,14 +1,9 @@
 // src/pages/monitor/branches/pos 10/POS10Layout.jsx
 // POS 10 — Input Tabs (FTR1-style). يستخدم المكوّن المشترك BranchInputLayout.
-// "Shipments" يستخدم النموذج العام؛ بقية التبويبات تأتي من ملفاتها بنفس المجلّد.
+// Incoming shipments are a QCS-only form (QCS → qcs-raw-material-inspection).
 import React, { lazy } from "react";
 import BranchInputLayout from "../_shared/BranchInputLayout";
 
-const QCSRawMaterialInspection = lazy(() =>
-  import("../shipment_recc/QCSRawMaterialInspection").then((m) => ({
-    default: m.default || m.QCSRawMaterialInspection,
-  }))
-);
 const POS10PersonalHygiene     = lazy(() => import("./POS10PersonalHygiene"));
 const POS10DailyCleaning       = lazy(() => import("./POS10DailyCleaning"));
 const POS10TemperatureInput    = lazy(() => import("./POS10TemperatureInput"));
@@ -23,10 +18,9 @@ const config = {
   source: "pos10-tabs",
   title: "📋 POS 10 — Operations Inputs",
   description:
-    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, and Pest Control) in one place.",
-  defaultTab: "shipments",
+    "All input tabs (Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, and Pest Control) in one place.",
+  defaultTab: "personal",
   tabs: [
-    { key: "shipments",    label: "📦 Shipments",          Component: QCSRawMaterialInspection,    loadingText: "Loading Shipments form…" },
     { key: "personal",     label: "🧑‍🔬 Personal Hygiene", Component: POS10PersonalHygiene,        loadingText: "Loading Personal Hygiene…" },
     { key: "daily",        label: "🧹 Daily Cleaning",     Component: POS10DailyCleaning,          loadingText: "Loading Daily Cleaning…" },
     { key: "temperature",  label: "🌡️ Temperature",        Component: POS10TemperatureInput,       loadingText: "Loading Temperature…" },

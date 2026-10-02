@@ -3,11 +3,6 @@
 import React, { lazy } from "react";
 import BranchInputLayout from "../_shared/BranchInputLayout";
 
-const QCSRawMaterialInspection = lazy(() =>
-  import("../shipment_recc/QCSRawMaterialInspection").then((m) => ({
-    default: m.default || m.QCSRawMaterialInspection,
-  }))
-);
 const POS15PersonalHygiene             = lazy(() => import("./POS15PersonalHygiene"));
 const POS15DailyCleaning               = lazy(() => import("./POS15DailyCleaning"));
 const POS15TemperatureInput            = lazy(() => import("./POS15TemperatureInput"));
@@ -33,10 +28,9 @@ const config = {
   source: "pos15-tabs",
   title: "📋 POS 15 — Operations Inputs",
   description:
-    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Receiving Log, Traceability Log, Equipment Inspection & Sanitizing, and Pest Control) in one place.",
-  defaultTab: "shipments",
+    "All input tabs (Personal Hygiene, Daily Cleaning, Temperature, Receiving Log, Traceability Log, Equipment Inspection & Sanitizing, and Pest Control) in one place.",
+  defaultTab: "personal",
   tabs: [
-    { key: "shipments",    label: "📦 Shipments",                            Component: QCSRawMaterialInspection,        loadingText: "Loading Shipments form…" },
     { key: "personal",     label: "🧑‍🔬 Personal Hygiene",                  Component: POS15PersonalHygiene,            loadingText: "Loading Personal Hygiene…" },
     { key: "daily",        label: "🧹 Daily Cleaning",                       Component: POS15DailyCleaning,              loadingText: "Loading Daily Cleaning…" },
     { key: "temperature",  label: "🌡️ Temperature",                          Component: POS15TemperatureInput,           loadingText: "Loading Temperature…" },
