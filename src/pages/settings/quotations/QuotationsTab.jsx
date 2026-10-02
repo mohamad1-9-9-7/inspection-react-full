@@ -19,11 +19,11 @@ import { useSettingsLang } from "../_shared/settingsI18n";
 import { ConfirmModal } from "../_shared/SettingsUIKit";
 import { logSettingsAudit } from "../../../utils/settingsAudit";
 import {
-  BILLING_CYCLES, CURRENCIES, LINE_KINDS, SERVICE_PRESETS, STATUSES, TERM_GROUPS, TERM_LIBRARY, THEMES, UNITS,
+  BILLING_CYCLES, CURRENCIES, LINE_KINDS, SERVICE_PRESETS, STANDARD_PLANS, STATUSES, TERM_GROUPS, TERM_LIBRARY, THEMES, UNITS,
   apiDeleteQuote, apiListQuotes, apiLoadConfig, apiSaveConfig, apiSaveQuote, computeTotals, cycleById,
   daysLeft, defaultTermsList, dmy, emptyConfig, emptyLine, emptyQuote, fmtMoney, isExpired, lineTotal,
   makeCustomTerm, makeTerm, moduleCatalog, newLineId, nextQuoteNumber, num, priceFor, priceKey,
-  quoteInsights, quoteSummaryText, smartBuildLines, statusById, termTemplate, termText,
+  quoteInsights, quoteSummaryText, smartBuildLines, standardPlanFor, statusById, termTemplate, termText,
   termsListOf, themeById, todayISO, validUntil,
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
@@ -1159,9 +1159,9 @@ function ModulePicker({ initialIndustry, companyName, added, priceBook, onClose,
 function SmartBuild({ q, priceBook, industry: ind0, onClose, onBuild }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
-  const [f, setF] = useState({ industry: ind0 || "meat", branches: 1, users: 0, modules: "lines", hosting: true, support: true, setup: true, trainingHours: 4, replace: !q.lines.length });
+  const [f, setF] = useState({ pricing: "standard", industry: ind0 || "meat", branches: 1, users: 0, modules: "lines", hosting: true, support: true, setup: true, trainingHours: 4, replace: !q.lines.length });
   const set = (p) => setF((cur) => ({ ...cur, ...p }));
-  const lines = useMemo(() => smartBuildLines({ ...f, priceBook }), [f, priceBook]);
+  const lines = useMemo(() => smartBuildLines({ ...f, priceBook, cycle: q.cycle }), [f, priceBook, q.cycle]);
   const tot = computeTotals({ ...q, lines });
   const missing = lines.filter((l) => String(l.unitPrice) === "").length;
   const cat = moduleCatalog(f.industry);
@@ -1174,6 +1174,14 @@ function SmartBuild({ q, priceBook, industry: ind0, onClose, onBuild }) {
         <Btn tone="soft" onClick={onClose}>{L("Cancel", "إلغاء")}</Btn>
         <Btn tone="primary" disabled={!lines.length} onClick={() => onBuild(lines, f.replace, f.industry)}>⚡ {L(`Build ${lines.length} items`, `ابنِ ${lines.length} بند`)}</Btn>
       </>}>
+      <Field label={L("Pricing", "التسعير")}>
+        <Segmented value={f.pricing} onChange={(v) => set({ pricing: v })} options={[{ id: "standard", label: L("Standard plans (per branch)", "الباقات القياسية (لكل فرع)") }, { id: "custom", label: L("Custom (price book)", "مخصص (دفتر الأسعار)") }]} />
+      </Field>
+      {f.pricing === "standard" && (
+        <div className="bpx-sm" style={{ color: "#0f766e", margin: "8px 0 12px" }}>
+          {(() => { const p = STANDARD_PLANS[standardPlanFor(f.branches)]; return L(`${p.en}: AED ${p.monthly} / branch / month, or ${p.annual} billed yearly · 6–15 branches −15 %, 16+ −25 % · hosting, support and modules included`, `${p.ar}: ${p.monthly} درهم / فرع / شهر، أو ${p.annual} بالدفع السنوي · 6–15 فرع خصم 15%، 16+ خصم 25% · الاستضافة والدعم والوحدات مشمولة`); })()}
+        </div>
+      )}
       <div style={S.grid3}>
         <Field label={L("System", "النظام")}>
           <select style={S.input} value={f.industry} onChange={(e) => set({ industry: e.target.value })}>{industryOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>

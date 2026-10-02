@@ -60,3 +60,22 @@ describe("early termination term", () => {
     expect(termText(term, base, "en")).toMatch(/before 3 months .* equal to 1 months .*\(1,000.00 AED\)/);
   });
 });
+
+describe("standard plans", () => {
+  const { smartBuildLines, standardBranchPrice, computeTotals: ct } = require("./quotationCore");
+  test("per-branch price by plan, cycle and volume", () => {
+    expect(standardBranchPrice(1, "monthly")).toBe(249);
+    expect(standardBranchPrice(2, "yearly")).toBe(199 * 12);
+    expect(standardBranchPrice(3, "monthly")).toBe(399);
+    expect(standardBranchPrice(10, "monthly")).toBe(339.15);
+    expect(standardBranchPrice(20, "yearly")).toBe(2961);
+  });
+  test("standard build: one priced line, the rest included", () => {
+    const lines = smartBuildLines({ industry: "restaurant", branches: 4, pricing: "standard", cycle: "monthly", trainingHours: 2 });
+    const t = ct({ cycle: "monthly", lines, discountPct: 0, vatPct: 0 });
+    expect(t.recurringTotal).toBe(4 * 399);
+    expect(t.oneTimeTotal).toBe(1500);
+    const yearly = smartBuildLines({ industry: "restaurant", branches: 4, pricing: "standard", cycle: "yearly" });
+    expect(ct({ cycle: "yearly", lines: yearly, discountPct: 0, vatPct: 0 }).oneTimeTotal).toBe(0);
+  });
+});

@@ -636,13 +636,64 @@ export const SERVICE_PRESETS = [
    book; anything without a remembered price is left blank (yellow in the
    editor) rather than guessed. */
 
-export function smartBuildLines({ industry, branches = 1, users = 0, modules = "lines", hosting = true, support = true, setup = true, trainingHours = 0, priceBook = {} }) {
+/* The published per-branch plans (same numbers as the public /demo page,
+   pages/DemoValue.jsx PRICING — change both together). AED per branch per
+   month; "annual" is the monthly rate when billed yearly. */
+export const STANDARD_PLANS = {
+  essential: { en: "Essential", ar: "الأساسية", monthly: 249, annual: 199, maxBranches: 2, setup: 0 },
+  professional: { en: "Professional", ar: "الاحترافية", monthly: 399, annual: 329, setup: 1500 },
+  volume: [{ from: 16, off: 0.25 }, { from: 6, off: 0.15 }],
+};
+
+export const standardPlanFor = (branches) =>
+  (num(branches) <= STANDARD_PLANS.essential.maxBranches ? "essential" : "professional");
+
+/** Per-branch price for one billing period of `cycleId`, volume discount
+ *  included. Yearly uses the annual rate × 12. */
+export function standardBranchPrice(branches, cycleId) {
+  const plan = STANDARD_PLANS[standardPlanFor(branches)];
+  const off = STANDARD_PLANS.volume.find((v) => num(branches) >= v.from)?.off || 0;
+  const months = cycleById(cycleId).months || 1;
+  const rate = cycleId === "yearly" ? plan.annual : plan.monthly;
+  return round2(rate * months * (1 - off));
+}
+
+export function smartBuildLines({ industry, branches = 1, users = 0, modules = "lines", hosting = true, support = true, setup = true, trainingHours = 0, priceBook = {}, pricing = "custom", cycle = "monthly" }) {
   const out = [];
   const pb = (key) => priceFor(priceBook, key);
   const preset = (key, patch = {}) => {
     const p = SERVICE_PRESETS.find((x) => x.key === key);
     return emptyLine({ kind: p.kind, unit: p.unit, titleEn: p.titleEn, titleAr: p.titleAr, source: p.key, unitPrice: pb(p.key), ...patch });
   };
+
+  /* Standard plan: one per-branch line at the published price, everything
+     else included (0 = "Included"). Setup is free on Essential, and on
+     Professional when billed yearly. */
+  if (pricing === "standard") {
+    const n = Math.max(1, num(branches));
+    const planId = standardPlanFor(n);
+    const plan = STANDARD_PLANS[planId];
+    const off = STANDARD_PLANS.volume.find((v) => n >= v.from)?.off || 0;
+    const cat = moduleCatalog(industry || "meat");
+    out.push(preset("svc:branch", {
+      qty: n,
+      titleEn: `INSPECT PRO ${plan.en} plan — per branch / site`,
+      titleAr: `باقة INSPECT PRO ${plan.ar} — لكل فرع / موقع`,
+      details: off ? `Volume discount ${off * 100}% included` : "",
+      unitPrice: standardBranchPrice(n, cycle),
+    }));
+    if (cat.length) {
+      out.push(emptyLine({
+        kind: "recurring", unit: "service", titleEn: `System modules (${cat.length})`, titleAr: `وحدات النظام (${cat.length})`,
+        details: cat.map((m) => m.titleEn).join(" · "), source: `bundle:${industry || "meat"}`, unitPrice: 0,
+      }));
+    }
+    out.push(preset("svc:hosting", { unitPrice: 0 }));
+    out.push(preset("svc:support", { unitPrice: 0 }));
+    out.push(preset("svc:setup", { unitPrice: planId === "professional" && cycle !== "yearly" ? plan.setup : 0 }));
+    if (num(trainingHours) > 0) out.push(preset("svc:training", { qty: num(trainingHours), unitPrice: planId === "professional" ? 0 : pb("svc:training") }));
+    return out;
+  }
 
   if (num(branches) > 0) out.push(preset("svc:branch", { qty: num(branches) }));
 
