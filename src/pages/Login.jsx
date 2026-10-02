@@ -6,6 +6,7 @@ import API_BASE from "../config/api";
 import { SUB_CACHE_KEY, writeSubscriptionCache } from "../utils/subscriptionLock";
 import LoginShowcase, { SC_CSS } from "./LoginShowcase";
 import { usePublicTitle } from "../config/pageTitles";
+import { useSiteStats } from "../utils/siteStats";
 
 const BRAND = "/brand/inspect-pro";
 // Per-viewer conveniences only (never a source of truth).
@@ -207,6 +208,8 @@ function Login() {
 
   const [lang, setLang] = useState(() => (readPref(PREF_LANG, "en") === "ar" ? "ar" : "en"));
   usePublicTitle("/", lang);
+  // Visitor stats: only people who are NOT signed in are counted (see utils/siteStats.js).
+  const stat = useSiteStats("login", lang);
   const [theme, setTheme] = useState(() => (readPref(PREF_THEME, "light") === "dark" ? "dark" : "light"));
   const [username, setUsername] = useState(() => readPref(PREF_USER, ""));
   const [remember, setRemember] = useState(() => !!readPref(PREF_USER, ""));
@@ -370,7 +373,7 @@ function Login() {
             <p className="lp-sub">{t.heroB}</p>
           </div>
 
-          <LoginShowcase lang={lang} labels={t} onDemo={(k) => navigate(`/demo?interest=${k}&lang=${lang}`)} />
+          <LoginShowcase lang={lang} labels={t} onDemo={(k) => { stat("cta", `tour-${k}`); navigate(`/demo?interest=${k}&lang=${lang}`); }} />
 
           <div className="lp-trust">
             {t.trust.map((x) => (
@@ -524,7 +527,7 @@ function Login() {
               <strong className="lp-demo-title">{t.newTitle}</strong>
               <span className="lp-demo-text">{t.newText}</span>
             </div>
-            <button type="button" onClick={() => navigate("/demo")} className="lp-demo-btn">
+            <button type="button" onClick={() => { stat("cta", "demo-button"); navigate("/demo"); }} className="lp-demo-btn">
               {t.demo}
             </button>
           </div>

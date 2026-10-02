@@ -16,6 +16,7 @@ import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
 import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { usePublicTitle } from "../config/pageTitles";
+import { useSiteStats } from "../utils/siteStats";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
@@ -378,6 +379,10 @@ export default function DemoRequest() {
   const t = TXT[lang];
   const isAr = lang === "ar";
   usePublicTitle("/demo", lang);
+  // Visitor stats (Platform Center → Demo Requests): how far down people get, and what they click.
+  const track = useSiteStats("demo", lang, ["features", "how", "stories", "pricing", "savings", "about", "demo-form", "faq"]);
+  const formStarted = useRef(false);
+  const markFormStart = () => { if (!formStarted.current) { formStarted.current = true; track("form_start"); } };
   const arrow = isAr ? "←" : "→";
 
   const [form, setForm] = useState(EMPTY);
@@ -417,6 +422,7 @@ export default function DemoRequest() {
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(t.waMsg + (source ? ` [${source}]` : ""))}`
     : "";
   const countWaTap = () => {
+    track("wa");
     try {
       fetch(`${API_BASE}/api/demo-requests/wa-click`, {
         method: "POST",
@@ -493,16 +499,17 @@ export default function DemoRequest() {
     el.style.setProperty("--gy", `${e.clientY - r.top}px`);
   };
 
-  const goForm = (e) => {
+  const goForm = (e, where = "cta") => {
     e?.preventDefault?.();
+    track("cta", where);
     focusForm();
   };
 
   // The calculator hands over its branch count, so the form arrives pre-filled.
-  const bookFromCalc = (bucket) => {
+  const bookFromCalc = (bucket, where = "calc") => {
     setForm((f) => ({ ...f, branches: bucket }));
     setMoreOpen(true);
-    goForm();
+    goForm(null, where);
   };
 
   const submit = async (e) => {
@@ -530,6 +537,7 @@ export default function DemoRequest() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || j.ok === false) throw new Error(t.failed);
       setDone(true);
+      track("lead");
       setForm(EMPTY);
       setWhen({ day: "", time: "" });
       setInterests([]);
@@ -559,7 +567,7 @@ export default function DemoRequest() {
             </div>
           </div>
         ) : (
-          <form onSubmit={submit} noValidate>
+          <form onSubmit={submit} onFocusCapture={markFormStart} noValidate>
             <h3 className="fs-h2">{t.cardTitle}</h3>
             <p className="hint fs-md">{t.cardHint}</p>
             <div className="dp-fields">
@@ -672,9 +680,9 @@ export default function DemoRequest() {
             <a href={quizHref} onClick={(e) => { e.preventDefault(); navigate(quizHref); }}>{t.nav.check}</a>
           </nav>
           <div className="dp-nav-act">
-            <button type="button" className="dp-lang fs-sm" onClick={() => setLang(isAr ? "en" : "ar")}>{t.lang}</button>
+            <button type="button" className="dp-lang fs-sm" onClick={() => { track("lang", isAr ? "en" : "ar"); setLang(isAr ? "en" : "ar"); }}>{t.lang}</button>
             <button type="button" className="dp-btn ghost-d sm fs-sm dp-signin" onClick={() => navigate("/")}>{t.nav.signIn}</button>
-            <button type="button" className="dp-btn primary sm fs-sm dp-nav-book" onClick={goForm}>{t.nav.book}</button>
+            <button type="button" className="dp-btn primary sm fs-sm dp-nav-book" onClick={(e) => goForm(e, "nav")}>{t.nav.book}</button>
           </div>
         </div>
       </header>
@@ -685,7 +693,7 @@ export default function DemoRequest() {
         <div className="dp-wrap dp-hero-grid">
           <div>
             {cfg.offer?.endsAt ? (
-              <a href="#demo-form" onClick={goForm} className="dp-pill fs-sm">
+              <a href="#demo-form" onClick={(e) => goForm(e, "offer")} className="dp-pill fs-sm">
                 <b className="fs-xs">🎁 {t.offerTag}</b> {t.offerPill(fmtOfferDate(cfg.offer.endsAt, lang))} <span aria-hidden="true">{arrow}</span>
               </a>
             ) : (
@@ -696,7 +704,7 @@ export default function DemoRequest() {
             </h1>
             <p className="dp-lead fs-lead">{t.lead}</p>
             <div className="dp-cta">
-              <button type="button" className="dp-btn primary fs-md" onClick={goForm}>
+              <button type="button" className="dp-btn primary fs-md" onClick={(e) => goForm(e, "hero")}>
                 {t.ctaDemo} <span className="arr" aria-hidden="true">{arrow}</span>
               </button>
               <button type="button" className="dp-btn ghost-d fs-md" onClick={() => navigate(quizHref)}>
@@ -865,7 +873,7 @@ export default function DemoRequest() {
             <h2 className="dp-h2 fs-h2">{t.priceTitle}</h2>
             <p className="dp-sub fs-lead">{t.priceSub}</p>
           </div>
-          <div className="dp-reveal"><PricingPlans lang={lang} onBook={bookFromCalc} /></div>
+          <div className="dp-reveal"><PricingPlans lang={lang} onBook={(b) => bookFromCalc(b, "pricing")} /></div>
         </div>
       </section>
 
@@ -877,7 +885,7 @@ export default function DemoRequest() {
             <h2 className="dp-h2 fs-h2">{t.calcTitle}</h2>
             <p className="dp-sub fs-lead">{t.calcSub}</p>
           </div>
-          <div className="dp-reveal"><SavingsCalculator lang={lang} onBook={bookFromCalc} /></div>
+          <div className="dp-reveal"><SavingsCalculator lang={lang} onBook={(b) => bookFromCalc(b, "calc")} /></div>
         </div>
       </section>
 
@@ -934,7 +942,7 @@ export default function DemoRequest() {
       </section>
 
       {/* ── FAQ ── */}
-      <section className="dp-section tight">
+      <section id="faq" className="dp-section tight">
         <div className="dp-wrap">
           <div className="dp-center dp-reveal">
             <span className="dp-eyebrow fs-xs">{t.faqEyebrow}</span>
@@ -966,7 +974,7 @@ export default function DemoRequest() {
 
       <div className={`dp-sticky${sticky && !done ? " on" : ""}`} aria-hidden={!sticky}>
         <span className="fs-xs">{P.stickyNote}</span>
-        <button type="button" className="dp-btn primary fs-md" onClick={goForm} tabIndex={sticky ? 0 : -1}>
+        <button type="button" className="dp-btn primary fs-md" onClick={(e) => goForm(e, "sticky")} tabIndex={sticky ? 0 : -1}>
           {P.stickyBook} <span className="arr" aria-hidden="true">{arrow}</span>
         </button>
       </div>

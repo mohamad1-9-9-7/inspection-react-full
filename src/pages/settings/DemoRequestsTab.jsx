@@ -15,6 +15,7 @@ import { useSettingsLang } from "./_shared/settingsI18n";
 import { DEMO_ACTIVITIES, DEMO_EMIRATES } from "../DemoRequest";
 import { levelOf, scoreAnswers } from "../readiness/readinessQuestions";
 import { getPublicOrigin } from "../../config/publicOrigin";
+import VisitorStats from "./VisitorStats";
 
 export const DEMO_STATUSES = [
   { v: "new",       label: "New",             ar: "جديد",          color: "#2563eb", bg: "#dbeafe" },
@@ -221,6 +222,8 @@ export default function DemoRequestsTab() {
       <WhatsAppSetting saved={whatsapp} onSaved={setWhatsapp} setMsg={setMsg} />
 
       <PromoSettings saved={promoConfig} onSaved={setPromoConfig} setMsg={setMsg} />
+
+      <VisitorStats />
 
       <ShareLinks origin={getPublicOrigin()} rows={rows} waClicks={waClicks} quizStats={quizStats} />
 

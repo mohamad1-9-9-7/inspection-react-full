@@ -108,14 +108,17 @@ export function headTags(m) {
   ].join("");
 }
 
-/* Drop the defaults from index.html, then add this page's set before </head>. */
-export function rewriteHtml(html, m) {
+/* Drop the defaults from index.html, then add this page's set before </head>.
+   `country` (2 letters, from Netlify's geo lookup) is left for the page's own
+   visitor stats (src/utils/siteStats.js) — it never leaves our site. */
+export function rewriteHtml(html, m, country = "") {
+  const cc = /^[A-Z]{2}$/.test(String(country)) ? `<meta name="x-country" content="${country}">` : "";
   return html
     .replace(/<title>[\s\S]*?<\/title>/i, "")
     .replace(/<meta\b[^>]*\b(?:name|property)=["']?(?:description|og:[^"'\s>]+|twitter:[^"'\s>]+)["']?[^>]*>/gi, "")
     .replace(/<link\b[^>]*\brel=["']?(?:canonical|alternate)["']?[^>]*>/gi, "")
     .replace(/<html\b([^>]*)\blang=["']?[^"'\s>]*["']?/i, `<html$1lang="${m.lang}"`)
-    .replace(/<\/head>/i, `${headTags(m)}</head>`);
+    .replace(/<\/head>/i, `${headTags(m)}${cc}</head>`);
 }
 
 export default async (request, context) => {
@@ -129,7 +132,7 @@ export default async (request, context) => {
   headers.delete("content-length");
   const html = await res.text();
   let out = html;
-  try { out = rewriteHtml(html, meta); } catch { /* never break the page over a preview */ }
+  try { out = rewriteHtml(html, meta, context.geo?.country?.code || ""); } catch { /* never break the page over a preview */ }
   return new Response(out, { status: res.status, headers });
 };
 

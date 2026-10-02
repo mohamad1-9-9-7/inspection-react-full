@@ -18,6 +18,7 @@ import { READINESS_QUESTIONS, levelOf, scoreAnswers } from "./readinessQuestions
 import { BeforeAfter, OfferBanner, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./promoBlocks";
 import { getPublicOrigin } from "../../config/publicOrigin";
 import { usePublicTitle } from "../../config/pageTitles";
+import { useSiteStats } from "../../utils/siteStats";
 
 const TXT = {
   en: {
@@ -124,6 +125,7 @@ export default function ReadinessCheck() {
   const t = TXT[lang];
   const isAr = lang === "ar";
   usePublicTitle("/readiness", lang);
+  const stat = useSiteStats("readiness", lang); // visitor stats (Platform Center → Demo Requests)
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
 
   const [step, setStep] = useState(-1); // -1 intro, 0..N-1 questions, N result
@@ -146,6 +148,7 @@ export default function ReadinessCheck() {
   const track = (event) => {
     if (sent.current[event]) return;
     sent.current[event] = true;
+    stat(event === "start" ? "quiz_start" : "quiz_done");
     try {
       fetch(`${API_BASE}/api/demo-requests/quiz-event`, {
         method: "POST",
@@ -203,6 +206,7 @@ export default function ReadinessCheck() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || j.ok === false) throw new Error(t.failed);
       setUnlocked(true);
+      stat("lead");
     } catch (err) {
       setError(err?.message || t.failed);
     } finally {
@@ -225,6 +229,7 @@ export default function ReadinessCheck() {
         (source ? ` [${source}]` : ""))}`
     : "";
   const countWa = () => {
+    stat("wa");
     try {
       fetch(`${API_BASE}/api/demo-requests/wa-click`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -243,7 +248,7 @@ export default function ReadinessCheck() {
       <div style={S.wrap}>
         <header style={S.head} className="rd-noprint">
           <BrandLockup size={40} tone="light" />
-          <button type="button" onClick={() => setLang(isAr ? "en" : "ar")} style={S.langBtn}>{t.lang}</button>
+          <button type="button" onClick={() => { stat("lang", isAr ? "en" : "ar"); setLang(isAr ? "en" : "ar"); }} style={S.langBtn}>{t.lang}</button>
         </header>
 
         {(step === -1 || step >= N) && <div className="rd-noprint"><OfferBanner offer={cfg.offer} lang={lang} /></div>}
