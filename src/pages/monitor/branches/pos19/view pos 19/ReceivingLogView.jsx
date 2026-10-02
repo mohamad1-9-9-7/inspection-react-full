@@ -821,11 +821,13 @@ export default function ReceivingLogView() {
                               <select value={r[c.key] || ""}
                                 onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], [c.key]:e.target.value}; return n; })}
                                 style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                                title="√ = Satisfactory, ✗ = Needs Improvement"
+                                title="C = Conform, NC = Non-conform (older sheets: √ / ✗)"
                               >
                                 <option value=""></option>
-                                <option value="√">√</option>
-                                <option value="✗">✗</option>
+                                <option value="C">C</option>
+                                <option value="NC">NC</option>
+                                {/* sheets saved before the shared form used √ / ✗ */}
+                                {(r[c.key] === "√" || r[c.key] === "✗") && <option value={r[c.key]}>{r[c.key]}</option>}
                               </select>
                             </td>
                           ))}
@@ -873,7 +875,7 @@ export default function ReceivingLogView() {
 
                 {/* Legend */}
                 <div style={{ marginTop:8, fontSize:12, fontWeight:700, width:"max-content" }}>
-                  Legend: (√) – Satisfactory  &  (✗) – Needs Improvement
+                  Legend: C / (√) – Satisfactory  &  NC / (✗) – Needs Improvement
                 </div>
 
                 {/* Notes */}

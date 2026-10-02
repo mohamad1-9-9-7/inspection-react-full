@@ -30,14 +30,17 @@ function checkPin() {
 /* ================== Columns ================== */
 const COLS = [
   { key: "supplier",         label: "Name of the Supplier",                                                           align: "left"   },
+  { key: "invoiceNo", label: "Invoice no.", align: "left" },
   { key: "itemCode",         label: "Item Code",                                                                       align: "left"   },
   { key: "foodItem",         label: "Food Item",                                                                       align: "left"   },
+  { key: "netWeight", label: "Net weight (kg)", align: "center" },
   { key: "dmApprovalNo",    label: "DM approval number of the delivery vehicle",                                      align: "left"   },
   { key: "vehicleTemp",     label: "Vehicle Temp (°C)",                                                                align: "center" },
   { key: "foodTemp",        label: "Food Temp (°C)",                                                                   align: "center" },
   { key: "vehicleClean",    label: "Vehicle clean",                                                                    align: "center" },
   { key: "handlerHygiene",  label: "Food handler hygiene",                                                             align: "center" },
   { key: "appearanceOK",    label: "Appearance",                                                                       align: "center" },
+  { key: "firmnessOK", label: "Firmness", align: "center" },
   { key: "smellOK",         label: "Smell",                                                                            align: "center" },
   { key: "packagingGood",   label: "Packaging of food is good and undamaged, clean and no signs of pest infestation", align: "left"   },
   { key: "countryOfOrigin", label: "Country of origin",                                                               align: "center" },

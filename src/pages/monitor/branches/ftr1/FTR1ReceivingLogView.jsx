@@ -24,8 +24,10 @@ const LIST_LIMIT = 180;
 /* ================== Columns (بدون عمود الصور) ================== */
 const COLS = [
   { key: "supplier", label: "Name of the Supplier", align: "left" },
+  { key: "invoiceNo", label: "Invoice no.", align: "left" },
   { key: "itemCode", label: "Item Code", align: "left" },
   { key: "foodItem", label: "Food Item", align: "left" },
+  { key: "netWeight", label: "Net weight (kg)", align: "center" },
   {
     key: "dmApprovalNo",
     label: "DM approval number of the delivery vehicle",
@@ -36,6 +38,7 @@ const COLS = [
   { key: "vehicleClean", label: "Vehicle clean", align: "center" },
   { key: "handlerHygiene", label: "Food handler hygiene", align: "center" },
   { key: "appearanceOK", label: "Appearance", align: "center" },
+  { key: "firmnessOK", label: "Firmness", align: "center" },
   { key: "smellOK", label: "Smell", align: "center" },
   {
     key: "packagingGood",
