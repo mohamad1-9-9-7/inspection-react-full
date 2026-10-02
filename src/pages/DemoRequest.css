@@ -184,8 +184,6 @@
 .dp-main { padding: 14px 16px; display: grid; gap: 12px; align-content: start; }
 .dp-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .dp-bar b { font-weight: 800; }
-.dp-dots { display: flex; gap: 6px; }
-.dp-dots span { width: 26px; height: 26px; border-radius: 8px; background: #e2e8f0; }
 .dp-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .dp-kpi { background: #fff; border: 1px solid #e8eef5; border-radius: 12px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
 .dp-kpi small { display: block; color: #64748b; font-weight: 700; }
@@ -333,7 +331,7 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 /* ── footer ─────────────────────────────────────────────── */
 .dp-foot { background: var(--ink); color: #94a3b8; border-top: 1px solid var(--line-d); padding: 40px 0; }
 .dp-foot-in { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
-.dp-foot a, .dp-foot button { color: #cbd5e1; text-decoration: none; font-weight: 700; background: none; border: 0; cursor: pointer; padding: 0; }
+.dp-foot a, .dp-foot button { color: #cbd5e1; text-decoration: none; font-weight: 700; background: none; border: 0; cursor: pointer; padding: 0; display: inline-flex; align-items: center; min-height: 32px; } /* comfortable tap target */
 .dp-foot a:hover, .dp-foot button:hover { color: #fff; }
 .dp-foot-links { display: flex; gap: 20px; flex-wrap: wrap; }
 
