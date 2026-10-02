@@ -67,6 +67,9 @@ const T = {
     trust: ["HACCP & ISO 22000", "Role-based access", "Full audit trail", "Works offline", "English & Arabic"],
     tour: "Product tour", seeIt: "See it with your data", prev: "Previous", next: "Next",
     welcome: "Welcome back",
+    greet: ["Good morning", "Good afternoon", "Good evening"],
+    status: { checking: "Connecting…", up: "All systems operational", down: "Server unreachable" },
+    enter: "Press Enter to sign in",
     welcomeSub: "Sign in with your company account to continue.",
     username: "Username", usernamePh: "Enter your username",
     password: "Password", passwordPh: "Enter your password",
@@ -102,6 +105,9 @@ const T = {
     trust: ["HACCP و ISO 22000", "صلاحيات حسب الدور", "سجل تدقيق كامل", "يعمل دون اتصال", "عربي وإنجليزي"],
     tour: "جولة في النظام", seeIt: "شاهده على بياناتك", prev: "السابق", next: "التالي",
     welcome: "أهلاً بعودتك",
+    greet: ["صباح الخير", "مساء الخير", "مساء الخير"],
+    status: { checking: "جارٍ الاتصال…", up: "جميع الأنظمة تعمل", down: "تعذّر الوصول للخادم" },
+    enter: "اضغط Enter لتسجيل الدخول",
     welcomeSub: "سجّل الدخول بحساب شركتك للمتابعة.",
     username: "اسم المستخدم", usernamePh: "أدخل اسم المستخدم",
     password: "كلمة المرور", passwordPh: "أدخل كلمة المرور",
@@ -146,6 +152,27 @@ function RotatingWord({ words }) {
   );
 }
 
+function greetIndex() {
+  const h = new Date().getHours();
+  return h < 12 ? 0 : h < 18 ? 1 : 2;
+}
+
+/* One no-DB ping on load (also wakes the API before the first sign-in). */
+function useServerStatus() {
+  const [status, setStatus] = useState("checking");
+  useEffect(() => {
+    let alive = true;
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = setTimeout(() => ctrl && ctrl.abort(), 8000);
+    fetch(`${API_BASE}/healthz`, { signal: ctrl ? ctrl.signal : undefined, cache: "no-store" })
+      .then((r) => { if (alive) setStatus(r.ok ? "up" : "down"); })
+      .catch(() => { if (alive) setStatus("down"); })
+      .finally(() => clearTimeout(timer));
+    return () => { alive = false; clearTimeout(timer); if (ctrl) ctrl.abort(); };
+  }, []);
+  return status;
+}
+
 function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -163,6 +190,7 @@ function Login() {
   const [showForgot, setShowForgot] = useState(false);
   const [shake, setShake] = useState(0);
   const sideRef = useRef(null);
+  const server = useServerStatus();
   const passRef = useRef(null);
 
   const t = T[lang];
@@ -324,6 +352,9 @@ function Login() {
       {/* ============ sign-in side ============ */}
       <section className="lp-panel">
         <div className="lp-topbar">
+          <span className={`lp-status ${server}`} role="status">
+            <span className="lp-status-dot" />{t.status[server]}
+          </span>
           <button type="button" className="lp-tool" onClick={switchLang} aria-label={t.lang}>
             <Ico name="globe" /> <span>{t.lang}</span>
           </button>
@@ -345,6 +376,7 @@ function Login() {
           </div>
 
           <div className="lp-card-head">
+            <span className="lp-greet">{t.greet[greetIndex()]} 👋</span>
             <h2 className="lp-card-title">{t.welcome}</h2>
             <p className="lp-card-sub">{t.welcomeSub}</p>
           </div>
@@ -430,6 +462,7 @@ function Login() {
                 <>{t.signIn} <Ico name="arrow" className="lp-ico lp-arrow" /></>
               )}
             </button>
+            <span className="lp-enter"><kbd>Enter ↵</kbd> {t.enter}</span>
           </form>
 
           <div className="lp-secure">
@@ -552,7 +585,26 @@ const LP_CSS = `
   box-shadow: -30px 0 80px rgba(6,19,43,.25);
   transition: background .3s;
 }
-#root .lp.lp .lp-topbar { width: 100%; display: flex; justify-content: flex-end; gap: 8px; }
+#root .lp.lp .lp-topbar { width: 100%; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+#root .lp.lp .lp-status {
+  margin-inline-end: auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  background: var(--field); border: 1px solid var(--field-b); color: var(--muted); font-weight: 700;
+  font-size: calc(12px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .lp-status-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
+#root .lp.lp .lp-status-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: lp-ring 1.8s ease-out infinite; }
+#root .lp.lp .lp-status.up { color: #047857; }
+#root .lp.lp .lp-status.up .lp-status-dot { background: #10b981; }
+#root .lp.lp .lp-status.down { color: #b91c1c; }
+#root .lp.lp .lp-status.down .lp-status-dot { background: #ef4444; }
+#root .lp.lp[data-theme="dark"] .lp-status.up { color: #6ee7b7; }
+#root .lp.lp[data-theme="dark"] .lp-status.down { color: #fca5a5; }
+#root .lp.lp .lp-greet { display: block; margin-bottom: 6px; color: var(--teal); font-weight: 800; letter-spacing: .02em; }
+#root .lp.lp .lp-enter { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: -6px; color: var(--faint); font-weight: 600; font-size: calc(12px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-enter kbd {
+  padding: 2px 7px; border-radius: 6px; border: 1px solid var(--field-b); border-bottom-width: 2px;
+  background: var(--field); color: var(--ink-2); font-family: inherit; font-weight: 800; font-size: calc(11px * var(--app-fs, 1)) !important;
+}
 #root .lp.lp .lp-tool {
   display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border-radius: 10px;
   border: 1px solid var(--field-b); background: transparent; color: var(--ink-2); cursor: pointer;
@@ -681,6 +733,7 @@ const LP_CSS = `
 #root .lp.lp .lp-footer { text-align: center; color: var(--faint); font-weight: 500; font-size: calc(12px * var(--app-fs, 1)) !important; }
 
 @keyframes lp-spin { to { transform: rotate(360deg); } }
+@keyframes lp-ring { from { transform: scale(1); opacity: .7; } to { transform: scale(3); opacity: 0; } }
 @keyframes lp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @keyframes lp-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @keyframes lp-word { from { opacity: 0; transform: translateY(60%); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
@@ -701,6 +754,8 @@ const LP_CSS = `
   #root .lp.lp .lp-side { padding: 40px 24px; }
 }
 @media (max-width: 560px) {
+  #root .lp.lp .lp-enter { display: none; }
+  #root .lp.lp .lp-status { font-size: calc(11px * var(--app-fs, 1)) !important; }
   #root .lp.lp .lp-panel { padding: 14px 16px; }
   #root .lp.lp .lp-card { padding: 16px 0; }
   #root .lp.lp .lp-card-title { font-size: calc(26px * var(--app-fs, 1)) !important; }

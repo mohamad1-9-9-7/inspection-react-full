@@ -116,6 +116,43 @@ const SCREEN_T = {
   },
 };
 
+// Floating notifications that pop around the device - the story each slide tells.
+const TOASTS = {
+  en: {
+    ccp: [["!", "bad", "Deviation on Chiller C", "CAPA-118 opened · QA notified"], ["✓", "ok", "Signed by QA", "Verification complete"]],
+    trace: [["⌕", "info", "Recall scope: 3 branches", "Found in 0.4 s"], ["✓", "ok", "Expiry set automatically", "Shelf life 8 days"]],
+    audit: [["★", "ok", "Branch 10 scored 94 %", "+6 vs last audit"], ["↗", "info", "Findings link sent", "Branch follows up online"]],
+    capa: [["✓", "ok", "CAPA-112 verified", "Closed with photo evidence"], ["⏰", "warn", "NCR-031 due tomorrow", "Owner reminded"]],
+    supplier: [["!", "warn", "Spices supplier below 80", "Re-evaluation requested"], ["📄", "info", "Halal certificate expires in 14 days", "Supplier e-mailed"]],
+    risk: [["↓", "ok", "Residual risk 16 → 4", "Controls approved"], ["🎓", "info", "12 staff passed HACCP quiz", "Attendance sheet ready"]],
+  },
+  ar: {
+    ccp: [["!", "bad", "انحراف في ثلاجة ج", "فُتح CAPA-118 · أُبلغ قسم الجودة"], ["✓", "ok", "وقّعها قسم الجودة", "اكتمل التحقق"]],
+    trace: [["⌕", "info", "نطاق الاستدعاء: 3 فروع", "خلال 0.4 ثانية"], ["✓", "ok", "تاريخ الانتهاء تلقائياً", "الصلاحية 8 أيام"]],
+    audit: [["★", "ok", "فرع 10 حصل على 94 %", "+6 عن التدقيق السابق"], ["↗", "info", "أُرسل رابط الملاحظات", "الفرع يتابع إلكترونياً"]],
+    capa: [["✓", "ok", "تم التحقق من CAPA-112", "أُغلقت بصورة دليل"], ["⏰", "warn", "NCR-031 مستحقة غداً", "تم تذكير المسؤول"]],
+    supplier: [["!", "warn", "مورّد البهارات أقل من 80", "طُلب إعادة التقييم"], ["📄", "info", "شهادة الحلال تنتهي خلال 14 يوماً", "أُرسل بريد للمورّد"]],
+    risk: [["↓", "ok", "المخاطر المتبقية 16 ← 4", "اعتُمدت الضوابط"], ["🎓", "info", "12 موظفاً اجتازوا اختبار HACCP", "كشف الحضور جاهز"]],
+  },
+};
+
+// Counts 0 → n once on mount (respects reduced motion).
+function useCount(n, ms = 1300) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setV(n); return undefined; }
+    let raf; const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms);
+      setV(Math.round(n * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [n, ms]);
+  return v;
+}
+
 /* ------------------------------------------------------------- screens */
 function ScreenCCP({ t }) {
   const rows = [
@@ -168,6 +205,7 @@ function ScreenTrace({ t }) {
 
 function ScreenAudit({ t }) {
   const C = 2 * Math.PI * 40;
+  const score = useCount(94);
   return (
     <div className="ms ms-audit">
       <div className="ms-head"><span className="ms-led" />{t.branch}</div>
@@ -177,7 +215,7 @@ function ScreenAudit({ t }) {
             <circle cx="50" cy="50" r="40" className="ms-ring-bg" />
             <circle cx="50" cy="50" r="40" className="ms-ring-fg" style={{ strokeDasharray: C, "--off": C * 0.06, "--c": C }} />
           </svg>
-          <div className="ms-ring-num"><b>94</b><small>{t.score}</small></div>
+          <div className="ms-ring-num"><b>{score}</b><small>{t.score}</small></div>
         </div>
         <ul className="ms-checks">
           {t.checks.map((c, i) => (
@@ -273,6 +311,22 @@ export default function LoginShowcase({ lang, labels, onDemo }) {
     return () => clearTimeout(timer.current);
   }, [idx, paused, slides.length]);
 
+  // 3D tilt following the cursor - CSS vars only.
+  const tiltRef = useRef(null);
+  const onTilt = (e) => {
+    const el = tiltRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.setProperty("--ry", `${x * 14}deg`);
+    el.style.setProperty("--rx", `${-y * 10}deg`);
+  };
+  const resetTilt = () => {
+    tiltRef.current?.style.removeProperty("--ry");
+    tiltRef.current?.style.removeProperty("--rx");
+  };
+
   const go = (d) => setIdx((i) => (i + d + slides.length) % slides.length);
   const s = slides[idx];
   const Screen = SCREENS[s.key];
@@ -303,9 +357,17 @@ export default function LoginShowcase({ lang, labels, onDemo }) {
             <span className="sc-cta-arrow" aria-hidden="true">{rtl ? "←" : "→"}</span>
           </button>
         </div>
-        <div className="sc-device" aria-hidden="true">
-          <div className="sc-device-bar"><i /><i /><i /><span>inspectpro</span></div>
-          <Screen t={SCREEN_T[lang]} />
+        <div className="sc-device-wrap" ref={tiltRef} onMouseMove={onTilt} onMouseLeave={resetTilt} aria-hidden="true">
+          <div className="sc-device">
+            <div className="sc-device-bar"><i /><i /><i /><span>inspectpro</span></div>
+            <Screen t={SCREEN_T[lang]} />
+          </div>
+          {TOASTS[lang][s.key].map(([ic, tone, title, sub], i) => (
+            <div key={title} className={`sc-toast sc-toast-${i} ${tone}`}>
+              <span className="sc-toast-ic">{ic}</span>
+              <span><b>{title}</b><small>{sub}</small></span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -381,10 +443,31 @@ export const SC_CSS = `
   position: relative; border-radius: 16px; overflow: hidden;
   background: rgba(255,255,255,.97); color: #0f172a;
   box-shadow: 0 40px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.18), 0 0 60px rgba(14,165,164,.25);
-  transform: perspective(1200px) rotateY(-8deg) rotateX(3deg);
+  transform: perspective(1200px) rotateY(var(--ry, -8deg)) rotateX(var(--rx, 3deg));
+  transition: transform .25s ease-out;
   animation: sc-float 7s ease-in-out infinite, sc-pop .8s cubic-bezier(.2,.7,.2,1) both;
 }
-#root .lp.lp[dir="rtl"] .sc-device { transform: perspective(1200px) rotateY(8deg) rotateX(3deg); }
+#root .lp.lp[dir="rtl"] .sc-device { transform: perspective(1200px) rotateY(var(--ry, 8deg)) rotateX(var(--rx, 3deg)); }
+#root .lp.lp .sc-device-wrap { position: relative; padding: 18px 0 26px; }
+#root .lp.lp .sc-toast {
+  position: absolute; z-index: 3; display: flex; align-items: center; gap: 10px;
+  max-width: 270px; padding: 10px 14px 10px 10px; border-radius: 14px;
+  background: rgba(255,255,255,.96); color: #0f172a; backdrop-filter: blur(8px);
+  box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.6);
+  opacity: 0; animation: sc-toast .6s cubic-bezier(.2,.9,.3,1.3) forwards, sc-float 6s 1s ease-in-out infinite;
+}
+#root .lp.lp .sc-toast-0 { top: -4px; inset-inline-end: -22px; animation-delay: 1.4s, 2s; }
+#root .lp.lp .sc-toast-1 { bottom: 0; inset-inline-start: -30px; animation-delay: 2.6s, 3.2s; }
+#root .lp.lp .sc-toast b { display: block; font-weight: 800; font-size: calc(12.5px * var(--app-fs, 1)) !important; line-height: 1.3; }
+#root .lp.lp .sc-toast small { display: block; color: #64748b; font-weight: 600; font-size: calc(11px * var(--app-fs, 1)) !important; }
+#root .lp.lp .sc-toast-ic {
+  width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; display: grid; place-items: center;
+  color: #fff; font-weight: 900; font-size: calc(15px * var(--app-fs, 1)) !important;
+}
+#root .lp.lp .sc-toast.ok .sc-toast-ic { background: linear-gradient(135deg, #10b981, #059669); }
+#root .lp.lp .sc-toast.bad .sc-toast-ic { background: linear-gradient(135deg, #f87171, #dc2626); box-shadow: 0 0 0 0 rgba(239,68,68,.6); animation: sc-ping 1.6s 2s infinite; }
+#root .lp.lp .sc-toast.warn .sc-toast-ic { background: linear-gradient(135deg, #fbbf24, #d97706); }
+#root .lp.lp .sc-toast.info .sc-toast-ic { background: linear-gradient(135deg, #38bdf8, #0284c7); }
 #root .lp.lp .sc-device-bar {
   display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #eef2f7; border-bottom: 1px solid #e2e8f0;
 }
@@ -516,11 +599,17 @@ export const SC_CSS = `
 @keyframes sc-blink { 0%, 100% { opacity: 1; r: 5; } 50% { opacity: .4; r: 8; } }
 @keyframes sc-run { 0% { top: 10px; } 85%, 100% { top: calc(100% - 22px); } }
 @keyframes sc-ring { to { stroke-dashoffset: var(--off); } }
+@keyframes sc-toast { from { opacity: 0; transform: translateY(14px) scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes sc-ping { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.55); } 100% { box-shadow: 0 0 0 14px rgba(239,68,68,0); } }
 @keyframes sc-grow { to { width: var(--w); } }
 @keyframes sc-move { 0% { opacity: 0; left: 66%; top: 6%; } 30% { opacity: 1; } 100% { opacity: 1; left: 6%; top: 66%; } }
 
 @media (max-width: 1180px) {
   #root .lp.lp .sc-stage { grid-template-columns: 1fr; min-height: 0; }
-  #root .lp.lp .sc-device { max-width: 460px; }
+  #root .lp.lp .sc-device-wrap { max-width: 460px; }
+}
+@media (max-width: 640px) {
+  #root .lp.lp .sc-toast { position: relative; inset: auto; margin-top: 10px; max-width: none; }
+  #root .lp.lp .sc-device-wrap { padding: 0; }
 }
 `;
