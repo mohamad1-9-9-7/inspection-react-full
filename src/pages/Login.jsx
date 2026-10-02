@@ -541,6 +541,12 @@ function Login() {
 const LP_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Cairo:wght@500;600;700;800&display=swap');
 
+/* The page has its own light/dark switch (top), so the app-wide night filter stays off here. */
+@media screen {
+  html[data-theme="dark"]:has(main.lp) { filter: none !important; }
+  html[data-theme="dark"]:has(main.lp) img { filter: none !important; }
+}
+
 #root .lp.lp {
   --navy: #0B1E3F; --teal: #0EA5A4; --teal-d: #0f766e;
   --bg: #f4f7fb; --panel: #ffffff; --ink: #0f172a; --ink-2: #334155; --muted: #64748b; --faint: #94a3b8;

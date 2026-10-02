@@ -45,7 +45,7 @@ export const DEMO_EMIRATES = [
 
 const TXT = {
   en: {
-    nav: { features: "Features", pricing: "Pricing", savings: "Savings", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
+    nav: { features: "Features", pricing: "Pricing", savings: "Savings", how: "How it works", about: "About us", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
     pill: "Food-safety & quality management platform",
     pillTag: "New",
     offerTag: "Offer",
@@ -134,7 +134,7 @@ const TXT = {
     lang: "العربية",
   },
   ar: {
-    nav: { features: "المزايا", pricing: "الأسعار", savings: "التوفير", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
+    nav: { features: "المزايا", pricing: "الأسعار", savings: "التوفير", how: "آلية العمل", about: "من نحن", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
     pill: "منصة إدارة سلامة الغذاء والجودة",
     pillTag: "جديد",
     offerTag: "عرض",
@@ -256,6 +256,21 @@ const PLUS = {
     stickyBook: "Book a free demo",
     stickyNote: "30 min · no obligation",
     doneTour: "Meanwhile, take the tour",
+    aboutEyebrow: "About us",
+    aboutTitle: "Built by food-safety people, for food-safety teams",
+    aboutP: [
+      "INSPECT PRO is a UAE-based company building software for food safety and quality. InspectPro started inside the daily work of a multi-branch meat business — real coolers, real receiving checks, real municipality inspections.",
+      "Every screen was shaped by the people who fill the logs and the QA teams who answer to the inspector. That is why it is quick on a phone at the branch, and complete enough for head office and the auditor.",
+    ],
+    aboutChips: ["Based in the UAE", "Arabic & English", "Cloud — no server needed"],
+    values: [
+      ["clipboard", "Inspection-first", "Every record is built to be shown to an inspector or auditor in minutes."],
+      ["route", "From the floor up", "Designed with branch staff and QA teams, not around a template."],
+      ["file", "Your forms, your layout", "Paper forms become digital checklists that keep the same look."],
+      ["check", "Your data stays yours", "Export your records to Excel or PDF any time."],
+    ],
+    tmEyebrow: "Customer stories",
+    tmTitle: "What our customers say",
   },
   ar: {
     stdLbl: "مبني وفق",
@@ -285,6 +300,21 @@ const PLUS = {
     stickyBook: "احجز عرضاً مجانياً",
     stickyNote: "30 دقيقة · دون التزام",
     doneTour: "وإلى ذلك الحين، خذ الجولة",
+    aboutEyebrow: "من نحن",
+    aboutTitle: "صنعه أهل سلامة الغذاء، لفرق سلامة الغذاء",
+    aboutP: [
+      "INSPECT PRO شركة مقرّها الإمارات تبني أنظمة لسلامة الغذاء والجودة. وُلد InspectPro من قلب العمل اليومي في شركة لحوم متعددة الفروع — ثلاجات حقيقية، وفحوصات استلام حقيقية، وزيارات تفتيش بلدية حقيقية.",
+      "كل شاشة صمّمها من يعبّئ السجلات ومن يقف أمام المفتش من فرق الجودة. لذلك هو سريع على الجوال في الفرع، ومتكامل بما يكفي للإدارة والمدقق.",
+    ],
+    aboutChips: ["مقرّنا الإمارات", "عربي وإنجليزي", "سحابي — دون خادم"],
+    values: [
+      ["clipboard", "التفتيش أولًا", "كل سجل مبني ليُعرض على المفتش أو المدقق خلال دقائق."],
+      ["route", "من أرض الفرع", "صُمّم مع موظفي الفروع وفرق الجودة، لا حول قالب جاهز."],
+      ["file", "نماذجك بتصميمها", "تتحول نماذجك الورقية إلى قوائم فحص رقمية بالشكل نفسه."],
+      ["check", "بياناتك ملكك", "صدّر سجلاتك إلى Excel أو PDF في أي وقت."],
+    ],
+    tmEyebrow: "قصص عملائنا",
+    tmTitle: "ماذا يقول عملاؤنا",
   },
 };
 
@@ -501,6 +531,7 @@ export default function DemoRequest() {
             <a href="#pricing">{t.nav.pricing}</a>
             <a href="#savings">{t.nav.savings}</a>
             <a href="#how">{t.nav.how}</a>
+            <a href="#about">{t.nav.about}</a>
             <a href={quizHref} onClick={(e) => { e.preventDefault(); navigate(quizHref); }}>{t.nav.check}</a>
           </nav>
           <div className="dp-nav-act">
@@ -704,6 +735,9 @@ export default function DemoRequest() {
         </div>
       </section>
 
+      {/* ── customer stories (real quotes the owner adds in Platform Center; hidden when none) ── */}
+      <Testimonials items={cfg.testimonials} lang={lang} P={P} />
+
       {/* ── pricing plans ── */}
       <section id="pricing" className="dp-section tight" style={{ paddingTop: 0 }}>
         <div className="dp-wrap">
@@ -725,6 +759,29 @@ export default function DemoRequest() {
             <p className="dp-sub fs-lead">{t.calcSub}</p>
           </div>
           <div className="dp-reveal"><SavingsCalculator lang={lang} onBook={bookFromCalc} /></div>
+        </div>
+      </section>
+
+      {/* ── about us ── */}
+      <section id="about" className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap dp-about">
+          <div className="dp-reveal">
+            <span className="dp-eyebrow fs-xs">{P.aboutEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{P.aboutTitle}</h2>
+            {P.aboutP.map((x) => <p key={x} className="dp-sub fs-md">{x}</p>)}
+            <div className="dp-about-chips">
+              {P.aboutChips.map((c) => <span key={c} className="fs-sm">✓ {c}</span>)}
+            </div>
+          </div>
+          <div className="dp-values">
+            {P.values.map(([ic, h, d], i) => (
+              <div key={h} className="dp-value dp-reveal" style={{ "--d": `${i * 0.08}s` }}>
+                <span className="dp-value-ic"><Icon name={ic} size={22} /></span>
+                <h3 className="fs-md">{h}</h3>
+                <p className="fs-sm">{d}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -886,6 +943,7 @@ export default function DemoRequest() {
         <div className="dp-wrap dp-foot-in fs-sm">
           <BrandLockup size={30} tone="dark" tag="" />
           <div className="dp-foot-links">
+            <a href="#about">{t.nav.about}</a>
             <button type="button" onClick={() => navigate(quizHref)}>{t.footCheck}</button>
             <button type="button" onClick={() => navigate("/")}>{t.footSignIn}</button>
           </div>
@@ -920,6 +978,41 @@ function withExtras(message, interests, when, P) {
   if (day || time) lines.push(`[${P.whenTag}: ${[day, time].filter(Boolean).join(" · ")}]`);
   if (!lines.length) return message;
   return [message, ...lines].filter(Boolean).join("\n");
+}
+
+/* One language per page: a quote shows only on the page of the language it was written in. */
+function Testimonials({ items, lang, P }) {
+  const list = (items || []).filter((x) => x?.[lang]);
+  if (!list.length) return null;
+  return (
+    <section id="stories" className="dp-section tight" style={{ paddingTop: 0 }}>
+      <div className="dp-wrap">
+        <div className="dp-center dp-reveal">
+          <span className="dp-eyebrow fs-xs">{P.tmEyebrow}</span>
+          <h2 className="dp-h2 fs-h2">{P.tmTitle}</h2>
+        </div>
+        <div className="dp-tm-grid">
+          {list.map((x, i) => {
+            const initials = String(x.name).trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+            const stars = Math.min(5, Math.max(1, Number(x.stars) || 5));
+            return (
+              <figure key={`${x.name}-${i}`} className="dp-tm dp-reveal" style={{ "--d": `${i * 0.08}s` }}>
+                <div className="dp-tm-stars fs-md" aria-label={`${stars}/5`}>{"★".repeat(stars)}<span>{"★".repeat(5 - stars)}</span></div>
+                <blockquote className="fs-md">“{x[lang]}”</blockquote>
+                <figcaption>
+                  <span className="dp-tm-av fs-sm" aria-hidden="true">{initials}</span>
+                  <span>
+                    <b className="fs-sm">{x.name}</b>
+                    {(x.role || x.company) && <small className="fs-xs">{[x.role, x.company].filter(Boolean).join(" · ")}</small>}
+                  </span>
+                </figcaption>
+              </figure>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function NextSteps({ P }) {

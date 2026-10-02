@@ -425,8 +425,10 @@ const SHARE_PAGES = [
 ];
 
 /* What the public /demo and /readiness pages advertise: the launch offer (no
-   setup fee until a date), the referral discount, and one real customer story.
+   setup fee until a date), the referral discount, one real customer story, and
+   up to six real customer testimonials.
    The server hides an offer by itself once its date has passed. */
+const EMPTY_TM = { on: false, name: "", role: "", company: "", ar: "", en: "", stars: 5 };
 const plusDays = (n) => new Date(Date.now() + 4 * 3600_000 + n * 864e5).toISOString().slice(0, 10);
 
 function PromoToggle({ on, onChange, label }) {
@@ -444,6 +446,7 @@ function PromoSettings({ saved = {}, onSaved, setMsg }) {
     offer: { on: !!saved.offer?.on, endsAt: saved.offer?.endsAt || plusDays(30) },
     referral: { on: !!saved.referral?.on, pct: saved.referral?.pct ?? 20, months: saved.referral?.months ?? 12 },
     story: { on: !!saved.story?.on, ar: saved.story?.ar || "", en: saved.story?.en || "" },
+    testimonials: (Array.isArray(saved.testimonials) ? saved.testimonials : []).map((x) => ({ ...EMPTY_TM, ...x })),
   });
   const [d, setD] = useState(init);
   const [busy, setBusy] = useState(false);
@@ -452,6 +455,9 @@ function PromoSettings({ saved = {}, onSaved, setMsg }) {
   useEffect(() => { setD(init()); }, [saved]);
 
   const put = (part, patch) => setD((x) => ({ ...x, [part]: { ...x[part], ...patch } }));
+  const putTm = (i, patch) => setD((x) => ({ ...x, testimonials: x.testimonials.map((t, k) => (k === i ? { ...t, ...patch } : t)) }));
+  const addTm = () => setD((x) => ({ ...x, testimonials: [...x.testimonials, { ...EMPTY_TM }].slice(0, 6) }));
+  const dropTm = (i) => setD((x) => ({ ...x, testimonials: x.testimonials.filter((_, k) => k !== i) }));
   const today = plusDays(0);
   const expired = d.offer.on && d.offer.endsAt < today;
 
@@ -462,6 +468,7 @@ function PromoSettings({ saved = {}, onSaved, setMsg }) {
         offer: d.offer,
         referral: { ...d.referral, pct: Number(d.referral.pct), months: Number(d.referral.months) },
         story: d.story,
+        testimonials: d.testimonials.map((x) => ({ ...x, stars: Number(x.stars) || 5 })),
       };
       const res = await fetch(`${API_BASE}/api/demo-config`, {
         method: "PUT",
@@ -482,10 +489,12 @@ function PromoSettings({ saved = {}, onSaved, setMsg }) {
     }
   };
 
+  const liveTm = (saved.testimonials || []).filter((x) => x?.on && x.name && (x.ar || x.en)).length;
   const liveBits = [
     saved.offer?.on && saved.offer?.endsAt >= today && `🎁 ${L("no setup fee until", "بدون رسوم تأسيس لغاية")} ${saved.offer.endsAt}`,
     saved.referral?.on && `🤝 ${saved.referral.pct}% ${L("referral", "إحالة")}`,
     saved.story?.on && (saved.story.ar || saved.story.en) && `💬 ${L("story", "قصة")}`,
+    liveTm > 0 && `⭐ ${liveTm} ${L("testimonials", "آراء عملاء")}`,
   ].filter(Boolean);
 
   const row = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid rgba(15,23,42,.08)" };
@@ -542,6 +551,33 @@ function PromoSettings({ saved = {}, onSaved, setMsg }) {
                   "بس قصة صارت فعلاً، وبإذن العميل — كل لغة بتنعرض على صفحتها.")}
               </span>
             </div>
+          </div>
+
+          <div style={{ ...row, flexDirection: "column", alignItems: "stretch" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 1000 }}>⭐ {L("Customer testimonials (\"What our customers say\" on /demo)", "آراء العملاء (قسم «ماذا يقول عملاؤنا» على /demo)")}</span>
+              <Button tone="muted" style={{ minHeight: 36 }} disabled={d.testimonials.length >= 6} onClick={addTm}>➕ {L("Add testimonial", "إضافة رأي")}</Button>
+            </div>
+            <span style={{ color: "#b45309", fontWeight: 800, fontSize: 12.5 }}>
+              {L("Real customers only, with their permission. The section stays hidden until one is switched on; each quote shows only on the page of its language.",
+                "بس عملاء حقيقيين وبإذنهم. القسم مخفي لحتى تفعّل رأي واحد؛ وكل نص بينعرض بس على صفحة لغته.")}
+            </span>
+            {d.testimonials.map((x, i) => (
+              <div key={i} style={{ display: "grid", gap: 8, padding: 12, borderRadius: 12, border: "1px solid #e2e8f0", background: x.on ? "#f0fdfa" : "#f8fafc" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <PromoToggle on={x.on} onChange={(v) => putTm(i, { on: v })} label={L("Show", "عرض")} />
+                  <input value={x.name} maxLength={80} onChange={(e) => putTm(i, { name: e.target.value })} placeholder={L("Name", "الاسم")} style={{ ...ui.input, flex: "1 1 160px", minHeight: 38 }} />
+                  <input value={x.role} maxLength={80} onChange={(e) => putTm(i, { role: e.target.value })} placeholder={L("Job title", "المسمى الوظيفي")} style={{ ...ui.input, flex: "1 1 140px", minHeight: 38 }} />
+                  <input value={x.company} maxLength={100} onChange={(e) => putTm(i, { company: e.target.value })} placeholder={L("Company", "الشركة")} style={{ ...ui.input, flex: "1 1 160px", minHeight: 38 }} />
+                  <select value={x.stars} onChange={(e) => putTm(i, { stars: Number(e.target.value) })} style={{ ...ui.input, width: "auto", minHeight: 38 }}>
+                    {[5, 4, 3].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+                  </select>
+                  <Button tone="muted" style={{ minHeight: 36 }} onClick={() => dropTm(i)}>✕</Button>
+                </div>
+                <textarea dir="ltr" value={x.en} maxLength={400} onChange={(e) => putTm(i, { en: e.target.value })} placeholder="Quote in English — shown on the English page" style={{ ...ui.input, minHeight: 60, resize: "vertical" }} />
+                <textarea dir="rtl" value={x.ar} maxLength={400} onChange={(e) => putTm(i, { ar: e.target.value })} placeholder="النص بالعربية — يظهر على الصفحة العربية" style={{ ...ui.input, minHeight: 60, resize: "vertical" }} />
+              </div>
+            ))}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(15,23,42,.08)" }}>

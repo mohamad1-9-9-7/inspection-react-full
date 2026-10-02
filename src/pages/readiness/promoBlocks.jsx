@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from "react";
 import API_BASE from "../../config/api";
 
-/** { whatsapp, offer?, referral?, story? } — empty until the server answers. */
+/** { whatsapp, offer?, referral?, story?, testimonials? } — empty until the server answers. */
 export function useDemoConfig() {
   const [cfg, setCfg] = useState({ whatsapp: "" });
   useEffect(() => {
@@ -23,6 +23,7 @@ export function useDemoConfig() {
           offer: j.offer || null,
           referral: j.referral || null,
           story: j.story || null,
+          testimonials: Array.isArray(j.testimonials) ? j.testimonials : [],
         });
       })
       .catch(() => {});

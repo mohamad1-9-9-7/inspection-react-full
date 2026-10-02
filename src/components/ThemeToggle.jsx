@@ -5,8 +5,9 @@ import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { getTheme, setTheme } from "../utils/theme";
 
-// Public sales pages carry their own design (and opt out of night mode).
-const PUBLIC_PAGES = ["/demo", "/readiness"];
+// Public sales pages carry their own design (and opt out of night mode);
+// the login page ("/") has its own light/dark switch at the top.
+const PUBLIC_PAGES = ["/", "/demo", "/readiness"];
 
 export default function ThemeToggle() {
   const [theme, setThemeState] = useState(getTheme);
