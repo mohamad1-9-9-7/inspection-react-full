@@ -16,7 +16,6 @@ import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
 import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
-import LoginShowcase, { SC_CSS } from "./LoginShowcase";
 
 export const DEMO_ACTIVITIES = [
   { v: "meat", en: "Meat / butchery / slaughterhouse", ar: "لحوم / ملاحم / مسالخ" },
@@ -224,17 +223,14 @@ const TXT = {
   },
 };
 
-// Conversion pass (Oct 2026): product tour, interest chips, shorter form,
+// Conversion pass (Oct 2026): interest chips, shorter form,
 // best-time picker, "what happens next", demo host, mobile sticky bar.
-// Interest keys match the LoginShowcase slide keys (login links ?interest=<key>).
+// Interest keys match the login page's product-tour slide keys (login links ?interest=<key>).
+// The tour itself lives only on the login page — it is not repeated here.
 const PLUS = {
   en: {
     stdLbl: "Built around",
     standards: ["HACCP", "ISO 22000", "GMP / GHP", "ISO 45001 (HSE)", "Arabic & English"],
-    tourEyebrow: "Product tour",
-    tourTitle: "Take the 60-second tour",
-    tourSub: "Six modules, running live. Hover to pause — this is how your team will see it.",
-    tour: "Product tour", seeIt: "Book a demo", demoOf: "Get a personal demo of", prev: "Previous", next: "Next",
     interestQ: "What interests you?",
     interests: [["ccp", "🌡️ HACCP & CCP logs"], ["trace", "🔗 Traceability"], ["audit", "📋 Inspections & audits"], ["capa", "🛠️ NCR & CAPA"], ["supplier", "🚚 Supplier control"], ["risk", "🎓 Training & HSE"]],
     interestTag: "Interested in",
@@ -255,7 +251,6 @@ const PLUS = {
     hostQuote: "I will show you your own records inside the system — not a generic slideshow.",
     stickyBook: "Book a free demo",
     stickyNote: "30 min · no obligation",
-    doneTour: "Meanwhile, take the tour",
     aboutEyebrow: "About us",
     aboutTitle: "Built by food-safety people, for food-safety teams",
     aboutP: [
@@ -275,10 +270,6 @@ const PLUS = {
   ar: {
     stdLbl: "مبني وفق",
     standards: ["HACCP", "ISO 22000", "GMP / GHP", "ISO 45001 (السلامة)", "عربي وإنجليزي"],
-    tourEyebrow: "جولة في النظام",
-    tourTitle: "جولة خلال 60 ثانية",
-    tourSub: "ستة أقسام تعمل أمامك مباشرة. مرّر المؤشر للإيقاف — هكذا سيراه فريقك.",
-    tour: "جولة في النظام", seeIt: "احجز عرضاً", demoOf: "احصل على عرض شخصي لـ", prev: "السابق", next: "التالي",
     interestQ: "ما الذي يهمّك؟",
     interests: [["ccp", "🌡️ HACCP ونقاط التحكم"], ["trace", "🔗 التتبع"], ["audit", "📋 التفتيش والتدقيق"], ["capa", "🛠️ عدم المطابقة والإجراءات"], ["supplier", "🚚 رقابة المورّدين"], ["risk", "🎓 التدريب والسلامة"]],
     interestTag: "مهتم بـ",
@@ -299,7 +290,6 @@ const PLUS = {
     hostQuote: "سأعرض لك سجلاتك أنت داخل النظام — لا عرضاً تقديمياً عاماً.",
     stickyBook: "احجز عرضاً مجانياً",
     stickyNote: "30 دقيقة · دون التزام",
-    doneTour: "وإلى ذلك الحين، خذ الجولة",
     aboutEyebrow: "من نحن",
     aboutTitle: "صنعه أهل سلامة الغذاء، لفرق سلامة الغذاء",
     aboutP: [
@@ -562,7 +552,6 @@ export default function DemoRequest() {
             <p className="hint fs-md" style={{ margin: "10px 0 0" }}>{t.doneSub}</p>
             <NextSteps P={P} />
             <div className="dp-done-act">
-              <button type="button" className="dp-btn primary fs-md" onClick={() => document.getElementById("tour")?.scrollIntoView({ behavior: "smooth" })}>▶ {P.doneTour}</button>
               <button type="button" className="dp-btn dark fs-md" onClick={() => navigate(quizHref)}>📊 {t.doneCheck}</button>
               <button type="button" className="dp-btn fs-md" style={{ border: "1px solid #e2e8f0", background: "#fff" }} onClick={() => setDone(false)}>{t.another}</button>
             </div>
@@ -664,7 +653,7 @@ export default function DemoRequest() {
 
   return (
     <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className={`dp${sticky ? " dp-has-sticky" : ""}${docked ? " dp-docked" : ""}`}>
-      <style>{PROMO_CSS}{SC_CSS}</style>
+      <style>{PROMO_CSS}</style>
 
       {/* ── nav ── */}
       <header className={`dp-nav${scrolled ? " scrolled" : ""}`}>
@@ -828,24 +817,6 @@ export default function DemoRequest() {
               <h3 className="fs-h3">{F.supp[0]}</h3>
               <p className="fs-md">{F.supp[1]}</p>
             </article>
-          </div>
-        </div>
-      </section>
-
-      {/* ── live product tour (shared with the login page) ── */}
-      <section id="tour" className="dp-tour-sec">
-        <div className="dp-wrap">
-          <div className="dp-center dp-reveal">
-            <span className="dp-eyebrow fs-xs" style={{ color: "#5eead4" }}>{P.tourEyebrow}</span>
-            <h2 className="dp-h2 fs-h2" style={{ color: "#fff" }}>{P.tourTitle}</h2>
-            <p className="dp-sub fs-lead" style={{ color: "#9fb0c8" }}>{P.tourSub}</p>
-          </div>
-          <div className="lp dp-tour dp-reveal" dir={isAr ? "rtl" : "ltr"} lang={lang}>
-            <LoginShowcase
-              lang={lang}
-              labels={P}
-              onDemo={(k) => { setInterests((a) => (a.includes(k) ? a : [...a, k])); goForm(); }}
-            />
           </div>
         </div>
       </section>

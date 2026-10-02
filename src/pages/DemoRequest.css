@@ -482,20 +482,13 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
   .dp-plans-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ── conversion pass (Oct 2026): standards, tour, host, interests, best time,
+/* ── conversion pass (Oct 2026): standards, host, interests, best time,
    next steps, sticky mobile bar, success confetti ───────────────────────── */
 .dp-std { margin-top: 14px; }
 .dp-std-b { display: inline-flex; align-items: center; gap: 7px; color: #cbd5e1; font-weight: 700; }
 .dp-std-b i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-weight: 900; color: var(--ink); background: var(--mint); }
 #root .dp.dp .dp-std-b i { font-size: 11px !important; }
 
-.dp-tour-sec { position: relative; overflow: hidden; isolation: isolate; padding: 96px 0; background: linear-gradient(160deg, #06132b 0%, #0B1E3F 50%, #0b2f4a 100%); }
-.dp-tour-sec::before {
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  background: radial-gradient(700px circle at 15% 10%, rgba(14, 165, 164, .28), transparent 55%), radial-gradient(600px circle at 90% 90%, rgba(56, 189, 248, .18), transparent 55%);
-}
-.dp-tour { margin-top: 44px; color: #fff; }
-@keyframes lp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
 .dp-host {
   display: flex; gap: 16px; align-items: flex-start; margin-top: 28px; padding: 18px; border-radius: 18px;
@@ -621,7 +614,7 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
    only each section's .dp-wrap content moves left, centred in the space
    beside the window. Physical right in both languages. position:fixed
    (not sticky) because globals.css overflow-x:hidden on #root disables sticky. */
-.dp.dp-docked { --dock-card: 420px; --dock-gap: 24px; --dock-w: calc(var(--dock-card) + var(--dock-gap) * 2); }
+.dp.dp-docked { --dock-card: 480px; --dock-gap: 24px; --dock-w: calc(var(--dock-card) + var(--dock-gap) * 2); }
 .dp-docked .dp-wrap {
   --side: max(20px, calc((100% - var(--dock-w) - 1200px) / 2));
   max-width: none; padding-left: var(--side); padding-right: calc(var(--dock-w) + var(--side));
@@ -650,6 +643,7 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 }
 .dp-docked .dp-nav-links a { white-space: nowrap; }
 .dp-docked .dp-nav-book { display: none; } /* the form is already on screen */
+/* WhatsApp stays on the page side, away from the window. */
 .dp-docked .dp-wa-fab { right: calc(var(--dock-w) - var(--dock-gap) + 8px); }
 /* The form itself is in the window, so this section is just the pitch:
    heading across the top, the three points beside the demo host. */
@@ -666,9 +660,9 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 .dp-docked .dp-values { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1599px) { .dp-docked .dp-values { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* The content column is ~470px narrower than the window, so it switches to
+/* The content column is ~530px narrower than the window, so it switches to
    its tablet grid a little earlier. */
-@media (max-width: 1499px) {
+@media (max-width: 1559px) {
   .dp-docked .dp-hero-grid { grid-template-columns: 1fr; gap: 70px; }
   .dp-docked .dp-stage { max-width: 720px; margin: 0 auto; width: 100%; }
   .dp-docked .dp-bento { grid-template-columns: repeat(2, 1fr); }
