@@ -43,6 +43,8 @@ export const UOM_TO_QTY = {
   CARTONS: "CTN",
   BOX: "CTN",
   BOXES: "CTN",
+  BAG: "BAG",
+  BAGS: "BAG",
   LTR: "LTR",
   LITRE: "LTR",
   LITRES: "LTR",

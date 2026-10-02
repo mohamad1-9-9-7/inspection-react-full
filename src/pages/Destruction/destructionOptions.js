@@ -75,7 +75,7 @@ export const METHODS = [
   OTHER,
 ];
 
-export const QTY_TYPES = ["KG", "PCS", "CTN", "LTR", OTHER];
+export const QTY_TYPES = ["KG", "PCS", "CTN", "BAG", "LTR", OTHER];
 
 /* Units that represent weight — used for the KG totals */
 export const WEIGHT_UNITS = new Set(["KG"]);
