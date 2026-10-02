@@ -705,11 +705,13 @@ export default function DestructionInput() {
       if (field === "qtyType" && value !== OTHER) cur.customQtyType = "";
       if (field === "method" && value !== OTHER) cur.customMethod = "";
 
-      /* Catalog auto-fill: the item code is the only thing that writes the
-         product name — the name cell is read-only, so a code with no catalog
-         match clears it instead of leaving the previous product behind. */
+      /* Catalog auto-fill: a known code writes the product name. The name may
+         also be typed by hand (no code needed), so an unknown code only clears
+         the name when that name had come from the previous catalog code. */
       if (field === "itemCode") {
-        Object.assign(cur, catalogPatch(byCode.get(normalizeCode(value))));
+        const hit = byCode.get(normalizeCode(value));
+        if (hit) Object.assign(cur, catalogPatch(hit));
+        else if (isKnownCode(next[idx]?.itemCode)) cur.productName = "";
       }
 
       next[idx] = cur;
@@ -1256,12 +1258,11 @@ export default function DestructionInput() {
 
                 <td style={td}>
                   <input
-                    style={{ ...inp(idx), ...lockedInput }}
-                    readOnly
-                    tabIndex={-1}
-                    placeholder="From item code"
-                    title="Filled from the item code"
+                    style={inp(idx)}
+                    placeholder="Product name"
+                    title="Filled from the item code, or type the name if there is no code"
                     value={row.productName}
+                    onChange={(e) => handleChange(idx, "productName", e.target.value)}
                   />
                 </td>
 

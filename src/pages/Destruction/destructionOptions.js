@@ -44,6 +44,7 @@ export const BRANCHES = [
   "POS 45",
   "POS 47",
   "POS 48",
+  "حظيرة رقم 48",
   OTHER_BRANCH,
 ];
 
