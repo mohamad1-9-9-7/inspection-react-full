@@ -65,7 +65,7 @@ const T = {
     industries: ["butcheries", "restaurants", "food factories", "warehouses", "retail stores", "bakeries & sweets"],
     heroB: "Every check, record and audit — in one trusted place.",
     trust: ["HACCP & ISO 22000", "Role-based access", "Full audit trail", "Works offline", "English & Arabic"],
-    tour: "Product tour", seeIt: "See it with your data", prev: "Previous", next: "Next",
+    tour: "Product tour", seeIt: "Book a demo", demoOf: "Get a personal demo of", prev: "Previous", next: "Next",
     welcome: "Welcome back",
     greet: ["Good morning", "Good afternoon", "Good evening"],
     status: { checking: "Connecting…", up: "All systems operational", down: "Server unreachable" },
@@ -83,7 +83,7 @@ const T = {
     newTitle: "New to INSPECT PRO?",
     newText: "Get a personal walkthrough for your company — free.",
     demo: "Request a free demo",
-    lang: "العربية", themeDark: "Dark mode", themeLight: "Light mode",
+    pickLang: "Select language", themeDark: "Dark mode", themeLight: "Light mode",
     built: "Built by Eng. Mohammed Abdullah",
     err: {
       empty: "Please enter username and password",
@@ -103,7 +103,7 @@ const T = {
     industries: ["الملاحم", "المطاعم", "مصانع الأغذية", "المستودعات", "متاجر التجزئة", "المخابز والحلويات"],
     heroB: "كل فحص وسجل وتدقيق — في مكان واحد موثوق.",
     trust: ["HACCP و ISO 22000", "صلاحيات حسب الدور", "سجل تدقيق كامل", "يعمل دون اتصال", "عربي وإنجليزي"],
-    tour: "جولة في النظام", seeIt: "شاهده على بياناتك", prev: "السابق", next: "التالي",
+    tour: "جولة في النظام", seeIt: "احجز عرضاً", demoOf: "احصل على عرض شخصي لـ", prev: "السابق", next: "التالي",
     welcome: "أهلاً بعودتك",
     greet: ["صباح الخير", "مساء الخير", "مساء الخير"],
     status: { checking: "جارٍ الاتصال…", up: "جميع الأنظمة تعمل", down: "تعذّر الوصول للخادم" },
@@ -121,7 +121,7 @@ const T = {
     newTitle: "جديد على INSPECT PRO؟",
     newText: "احصل على عرض شخصي مجاني لشركتك.",
     demo: "اطلب عرضاً مجانياً",
-    lang: "English", themeDark: "الوضع الداكن", themeLight: "الوضع الفاتح",
+    pickLang: "اختر اللغة", themeDark: "الوضع الداكن", themeLight: "الوضع الفاتح",
     built: "تطوير م. محمد عبدالله",
     err: {
       empty: "الرجاء إدخال اسم المستخدم وكلمة المرور",
@@ -136,6 +136,33 @@ const T = {
     },
   },
 };
+
+// SVG flags - Windows does not draw flag emoji.
+const FLAG_GB = (
+  <svg className="lp-flag" viewBox="0 0 60 30" aria-hidden="true">
+    <clipPath id="lp-gb"><path d="M0 0v30h60V0z" /></clipPath>
+    <clipPath id="lp-gb-t"><path d="M30 15h30v15zv15H0zH0V0zV0h30z" /></clipPath>
+    <g clipPath="url(#lp-gb)">
+      <path d="M0 0v30h60V0z" fill="#012169" />
+      <path d="M0 0l60 30m0-30L0 30" stroke="#fff" strokeWidth="6" />
+      <path d="M0 0l60 30m0-30L0 30" clipPath="url(#lp-gb-t)" stroke="#C8102E" strokeWidth="4" />
+      <path d="M30 0v30M0 15h60" stroke="#fff" strokeWidth="10" />
+      <path d="M30 0v30M0 15h60" stroke="#C8102E" strokeWidth="6" />
+    </g>
+  </svg>
+);
+const FLAG_AE = (
+  <svg className="lp-flag" viewBox="0 0 12 6" aria-hidden="true">
+    <path fill="#00732F" d="M0 0h12v2H0z" />
+    <path fill="#fff" d="M0 2h12v2H0z" />
+    <path fill="#000" d="M0 4h12v2H0z" />
+    <path fill="#FF0000" d="M0 0h3v6H0z" />
+  </svg>
+);
+const LANGS = [
+  { v: "en", name: "English", flag: FLAG_GB },
+  { v: "ar", name: "العربية", flag: FLAG_AE },
+];
 
 /* Rotating industry word in the hero line. */
 function RotatingWord({ words }) {
@@ -189,6 +216,7 @@ function Login() {
   const [caps, setCaps] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [shake, setShake] = useState(0);
+  const [langOpen, setLangOpen] = useState(false);
   const sideRef = useRef(null);
   const server = useServerStatus();
   const passRef = useRef(null);
@@ -197,8 +225,9 @@ function Login() {
 
   if (location.pathname !== "/") return null;
 
-  const switchLang = () => {
-    const next = lang === "en" ? "ar" : "en";
+  const switchLang = (next) => {
+    setLangOpen(false);
+    if (next === lang) return;
     setLang(next);
     setError("");
     writePref(PREF_LANG, next);
@@ -339,7 +368,7 @@ function Login() {
             <p className="lp-sub">{t.heroB}</p>
           </div>
 
-          <LoginShowcase lang={lang} labels={t} onDemo={() => navigate("/demo")} />
+          <LoginShowcase lang={lang} labels={t} onDemo={(k) => navigate(`/demo?interest=${k}&lang=${lang}`)} />
 
           <div className="lp-trust">
             {t.trust.map((x) => (
@@ -355,9 +384,27 @@ function Login() {
           <span className={`lp-status ${server}`} role="status">
             <span className="lp-status-dot" />{t.status[server]}
           </span>
-          <button type="button" className="lp-tool" onClick={switchLang} aria-label={t.lang}>
-            <Ico name="globe" /> <span>{t.lang}</span>
-          </button>
+          <div className="lp-lang" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setLangOpen(false); }}>
+            <button type="button" className="lp-tool" onClick={() => setLangOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={langOpen}>
+              {LANGS.find((l) => l.v === lang).flag}
+              <span>{LANGS.find((l) => l.v === lang).name}</span>
+              <span className={`lp-caret${langOpen ? " up" : ""}`} aria-hidden="true">▾</span>
+            </button>
+            {langOpen && (
+              <ul className="lp-lang-menu" role="listbox">
+                <li className="lp-lang-h">{t.pickLang}</li>
+                {LANGS.map((l) => (
+                  <li key={l.v}>
+                    <button type="button" role="option" aria-selected={l.v === lang} className={l.v === lang ? "on" : ""} onClick={() => switchLang(l.v)}>
+                      {l.flag}
+                      <span lang={l.v}>{l.name}</span>
+                      {l.v === lang ? <span className="lp-tickm" aria-hidden="true">✓</span> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button
             type="button"
             className="lp-tool lp-tool-icon"
@@ -499,7 +546,7 @@ const LP_CSS = `
   --bg: #f4f7fb; --panel: #ffffff; --ink: #0f172a; --ink-2: #334155; --muted: #64748b; --faint: #94a3b8;
   --field: #f8fafc; --field-b: #dbe4ef; --hover: #eef2f7; --heading: #0B1E3F;
   min-height: 100vh; box-sizing: border-box;
-  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(420px, 0.65fr);
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(480px, 0.75fr);
   background: var(--bg); color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -516,8 +563,8 @@ const LP_CSS = `
   --mx: 50%; --my: 30%;
   position: relative; overflow: hidden; color: #fff;
   background: linear-gradient(160deg, #06132b 0%, #0B1E3F 45%, #0b2f4a 100%);
-  padding: clamp(28px, 4vw, 56px);
-  display: flex;
+  padding: clamp(28px, 3.2vw, 56px) clamp(24px, 3.4vw, 64px);
+  display: flex; align-items: center;
 }
 #root .lp.lp .lp-aurora { position: absolute; inset: -20%; filter: blur(70px); opacity: .75; pointer-events: none; }
 #root .lp.lp .lp-aurora i { position: absolute; border-radius: 50%; }
@@ -539,26 +586,26 @@ const LP_CSS = `
 #root .lp.lp[dir="rtl"] .lp-watermark { right: auto; left: -180px; }
 #root .lp.lp .lp-watermark .lp-arc, #root .lp.lp .lp-watermark .lp-check { stroke: rgba(14,165,164,0.12); }
 #root .lp.lp .lp-side-inner {
-  position: relative; z-index: 1; width: min(980px, 100%); margin: 0 auto;
-  display: flex; flex-direction: column; gap: clamp(22px, 3.2vh, 36px);
+  position: relative; z-index: 1; width: min(1180px, 100%); margin: 0 auto;
+  display: flex; flex-direction: column; gap: clamp(20px, 3vh, 34px);
 }
 #root .lp.lp .lp-brand { display: flex; align-items: center; gap: 16px; animation: lp-up .7s both; }
-#root .lp.lp .lp-brand-mark { width: 56px; height: 56px; flex-shrink: 0; filter: drop-shadow(0 6px 18px rgba(14,165,164,.45)); }
+#root .lp.lp .lp-brand-mark { width: 64px; height: 64px; flex-shrink: 0; filter: drop-shadow(0 6px 18px rgba(14,165,164,.45)); }
 #root .lp.lp .lp-brand-mark .lp-arc { animation: lp-pulse 2.8s ease-in-out infinite; }
 #root .lp.lp .lp-word {
   font-family: Montserrat, system-ui, sans-serif; font-weight: 900;
-  font-size: calc(28px * var(--app-fs, 1)) !important; letter-spacing: 0.03em; line-height: 1;
+  font-size: calc(34px * var(--app-fs, 1)) !important; letter-spacing: 0.03em; line-height: 1;
 }
 #root .lp.lp .lp-word span { color: var(--teal); font-size: inherit !important; }
 #root .lp.lp .lp-tagline {
   margin-top: 8px; font-weight: 700; letter-spacing: 0.22em; color: #9fb3cf;
-  font-size: calc(10.5px * var(--app-fs, 1)) !important;
+  font-size: calc(13px * var(--app-fs, 1)) !important;
 }
-#root .lp.lp[lang="ar"] .lp-tagline { letter-spacing: 0; font-size: calc(12.5px * var(--app-fs, 1)) !important; }
-#root .lp.lp .lp-hero { max-width: 760px; animation: lp-up .7s .08s both; }
+#root .lp.lp[lang="ar"] .lp-tagline { letter-spacing: 0; font-size: calc(15px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-hero { max-width: 980px; animation: lp-up .7s .08s both; }
 #root .lp.lp .lp-title {
   margin: 0; font-weight: 900; line-height: 1.12; letter-spacing: -0.02em;
-  font-size: calc(clamp(30px, 3.2vw, 46px) * var(--app-fs, 1)) !important;
+  font-size: calc(clamp(34px, 3.4vw, 56px) * var(--app-fs, 1)) !important;
 }
 #root .lp.lp[lang="ar"] .lp-title { letter-spacing: 0; line-height: 1.35; }
 #root .lp.lp .lp-rot { display: inline-block; position: relative; vertical-align: bottom; font-size: inherit !important; }
@@ -567,13 +614,13 @@ const LP_CSS = `
   background: linear-gradient(90deg, #5eead4, #38bdf8 60%, #a5f3fc); -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: lp-word .6s cubic-bezier(.2,.7,.2,1) both;
 }
-#root .lp.lp .lp-sub { margin: 14px 0 0; color: #c3d1e6; line-height: 1.6; font-weight: 500; font-size: calc(17px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-sub { margin: 14px 0 0; color: #c3d1e6; line-height: 1.6; font-weight: 500; font-size: calc(clamp(17px, 1.3vw, 21px) * var(--app-fs, 1)) !important; }
 #root .lp.lp .sc { animation: lp-up .7s .16s both; }
-#root .lp.lp .lp-trust { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; animation: lp-up .7s .24s both; }
+#root .lp.lp .lp-trust { display: flex; flex-wrap: wrap; gap: 10px; animation: lp-up .7s .24s both; }
 #root .lp.lp .lp-chip {
-  display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(6px);
-  color: #dbe6f5; font-weight: 600; font-size: calc(12.5px * var(--app-fs, 1)) !important;
+  color: #dbe6f5; font-weight: 600; font-size: calc(15px * var(--app-fs, 1)) !important;
 }
 #root .lp.lp .lp-dot { width: 7px; height: 7px; border-radius: 50%; background: #2dd4bf; box-shadow: 0 0 0 3px rgba(45,212,191,0.2); }
 
@@ -581,7 +628,7 @@ const LP_CSS = `
 #root .lp.lp .lp-panel {
   position: relative; background: var(--panel);
   display: flex; flex-direction: column; align-items: center;
-  padding: 20px clamp(20px, 3vw, 48px) 18px;
+  padding: 20px clamp(24px, 3.4vw, 64px) 18px;
   box-shadow: -30px 0 80px rgba(6,19,43,.25);
   transition: background .3s;
 }
@@ -589,7 +636,7 @@ const LP_CSS = `
 #root .lp.lp .lp-status {
   margin-inline-end: auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
   background: var(--field); border: 1px solid var(--field-b); color: var(--muted); font-weight: 700;
-  font-size: calc(12px * var(--app-fs, 1)) !important;
+  font-size: calc(14px * var(--app-fs, 1)) !important;
 }
 #root .lp.lp .lp-status-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
 #root .lp.lp .lp-status-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: lp-ring 1.8s ease-out infinite; }
@@ -599,48 +646,71 @@ const LP_CSS = `
 #root .lp.lp .lp-status.down .lp-status-dot { background: #ef4444; }
 #root .lp.lp[data-theme="dark"] .lp-status.up { color: #6ee7b7; }
 #root .lp.lp[data-theme="dark"] .lp-status.down { color: #fca5a5; }
-#root .lp.lp .lp-greet { display: block; margin-bottom: 6px; color: var(--teal); font-weight: 800; letter-spacing: .02em; }
-#root .lp.lp .lp-enter { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: -6px; color: var(--faint); font-weight: 600; font-size: calc(12px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-greet { display: block; margin-bottom: 6px; color: var(--teal); font-weight: 800; letter-spacing: .02em; font-size: calc(18px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-enter { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: -6px; color: var(--faint); font-weight: 600; font-size: calc(14px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-enter kbd {
   padding: 2px 7px; border-radius: 6px; border: 1px solid var(--field-b); border-bottom-width: 2px;
   background: var(--field); color: var(--ink-2); font-family: inherit; font-weight: 800; font-size: calc(11px * var(--app-fs, 1)) !important;
 }
 #root .lp.lp .lp-tool {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border-radius: 10px;
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 12px;
+  font-size: calc(15px * var(--app-fs, 1)) !important;
   border: 1px solid var(--field-b); background: transparent; color: var(--ink-2); cursor: pointer;
   font-family: inherit; font-weight: 700; transition: background .15s, color .15s;
 }
 #root .lp.lp .lp-tool:hover { background: var(--hover); color: var(--teal); }
-#root .lp.lp .lp-tool-icon { width: 38px; padding: 0; justify-content: center; }
+#root .lp.lp .lp-lang { position: relative; }
+#root .lp.lp .lp-flag { width: 24px; height: 16px; flex-shrink: 0; border-radius: 3px; box-shadow: 0 0 0 1px rgba(15,23,42,.12); display: block; }
+#root .lp.lp .lp-caret { transition: transform .2s; font-size: calc(11px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-caret.up { transform: rotate(180deg); }
+#root .lp.lp .lp-lang-menu {
+  position: absolute; z-index: 20; top: calc(100% + 8px); inset-inline-end: 0; min-width: 200px;
+  list-style: none; margin: 0; padding: 6px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--field-b); box-shadow: 0 20px 50px rgba(6,19,43,.25);
+  animation: lp-up .2s both;
+}
+#root .lp.lp .lp-lang-menu::before {
+  content: ""; position: absolute; top: -6px; inset-inline-end: 22px; width: 10px; height: 10px; transform: rotate(45deg);
+  background: var(--panel); border-left: 1px solid var(--field-b); border-top: 1px solid var(--field-b);
+}
+#root .lp.lp .lp-lang-h { padding: 8px 10px 6px; color: var(--muted); font-weight: 800; font-size: calc(12px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-lang-menu button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--ink); cursor: pointer; font-family: Cairo, system-ui, sans-serif; font-weight: 700; text-align: start;
+}
+#root .lp.lp .lp-lang-menu button:hover { background: var(--hover); }
+#root .lp.lp .lp-lang-menu button.on { color: var(--teal); }
+#root .lp.lp .lp-tickm { margin-inline-start: auto; font-weight: 900; }
+#root .lp.lp .lp-tool-icon { width: 44px; padding: 0; justify-content: center; }
 #root .lp.lp .lp-tool span { font-family: Cairo, Montserrat, system-ui, sans-serif; }
 
 #root .lp.lp .lp-card {
-  width: min(440px, 100%); margin: auto 0; padding: 28px 0;
+  width: min(540px, 100%); margin: auto 0; padding: 24px 0;
   display: flex; flex-direction: column; animation: lp-up .7s .1s both;
 }
 #root .lp.lp .lp-card-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
-#root .lp.lp .lp-card-mark { width: 44px; height: 44px; }
+#root .lp.lp .lp-card-mark { width: 54px; height: 54px; }
 #root .lp.lp .lp-card-mark .lp-check { stroke-dasharray: 60; stroke-dashoffset: 0; }
 #root .lp.lp .lp-card-mark.is-done .lp-check { animation: lp-tick .6s ease both; }
 #root .lp.lp .lp-card-mark.is-done .lp-arc { animation: lp-spin .6s linear; transform-origin: 52px 52px; }
-#root .lp.lp .lp-card-word { font-family: Montserrat, system-ui, sans-serif; font-weight: 900; letter-spacing: .03em; color: var(--heading); font-size: calc(19px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-card-word { font-family: Montserrat, system-ui, sans-serif; font-weight: 900; letter-spacing: .03em; color: var(--heading); font-size: calc(24px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-card-word b { color: var(--teal); font-size: inherit !important; }
 #root .lp.lp .lp-card-head { margin-bottom: 26px; }
-#root .lp.lp .lp-card-title { margin: 0; font-weight: 900; color: var(--heading); letter-spacing: -.01em; font-size: calc(32px * var(--app-fs, 1)) !important; }
-#root .lp.lp .lp-card-sub { margin: 8px 0 0; color: var(--muted); font-weight: 500; font-size: calc(15px * var(--app-fs, 1)) !important; }
-#root .lp.lp .lp-form { display: grid; gap: 18px; }
+#root .lp.lp .lp-card-title { margin: 0; font-weight: 900; color: var(--heading); letter-spacing: -.01em; font-size: calc(42px * var(--app-fs, 1)) !important; line-height: 1.15; }
+#root .lp.lp .lp-card-sub { margin: 10px 0 0; color: var(--muted); font-weight: 500; font-size: calc(18px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-form { display: grid; gap: 20px; }
 #root .lp.lp .lp-form.is-shake-a { animation: lp-shake .45s; }
 #root .lp.lp .lp-form.is-shake-b { animation: lp-shake2 .45s; }
 #root .lp.lp .lp-field { display: grid; gap: 8px; }
-#root .lp.lp .lp-label { color: var(--ink-2); font-weight: 700; }
+#root .lp.lp .lp-label { color: var(--ink-2); font-weight: 700; font-size: calc(16px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-input-wrap { position: relative; display: block; }
 #root .lp.lp .lp-input-ico { position: absolute; inset-inline-start: 15px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; transition: color .15s; }
 #root .lp.lp .lp-input {
-  width: 100%; min-height: 56px; margin: 0;
-  padding: 14px 16px; padding-inline-start: 46px; border-radius: 14px;
+  width: 100%; min-height: 62px; margin: 0;
+  padding: 14px 18px; padding-inline-start: 52px; border-radius: 14px;
   border: 1.5px solid var(--field-b); background: var(--field); color: var(--ink);
   font-family: inherit; font-weight: 600; box-shadow: none; text-align: start;
-  font-size: calc(15.5px * var(--app-fs, 1)) !important;
+  font-size: calc(18px * var(--app-fs, 1)) !important;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 #root .lp.lp[dir="rtl"] .lp-input { text-align: right; }
@@ -654,17 +724,17 @@ const LP_CSS = `
   color: var(--muted); cursor: pointer; display: grid; place-items: center;
 }
 #root .lp.lp .lp-show:hover { background: var(--hover); color: var(--teal); }
-#root .lp.lp .lp-ico { width: 20px; height: 20px; display: block; flex-shrink: 0; }
-#root .lp.lp .lp-caps { display: inline-flex; align-items: center; gap: 6px; color: #b45309; font-weight: 700; font-size: calc(12.5px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-ico { width: 22px; height: 22px; display: block; flex-shrink: 0; }
+#root .lp.lp .lp-caps { display: inline-flex; align-items: center; gap: 6px; color: #b45309; font-weight: 700; font-size: calc(14.5px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-caps .lp-ico { width: 16px; height: 16px; }
 #root .lp.lp .lp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
-#root .lp.lp .lp-remember { position: relative; display: inline-flex; align-items: center; gap: 9px; color: var(--ink-2); font-weight: 600; cursor: pointer; user-select: none; }
+#root .lp.lp .lp-remember { position: relative; display: inline-flex; align-items: center; gap: 10px; color: var(--ink-2); font-weight: 600; font-size: calc(15.5px * var(--app-fs, 1)) !important; cursor: pointer; user-select: none; }
 #root .lp.lp .lp-remember input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-#root .lp.lp .lp-box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--field-b); background: var(--field); display: grid; place-items: center; transition: background .15s, border-color .15s; }
+#root .lp.lp .lp-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--field-b); background: var(--field); display: grid; place-items: center; transition: background .15s, border-color .15s; }
 #root .lp.lp .lp-remember input:checked + .lp-box { background: var(--teal); border-color: var(--teal); }
 #root .lp.lp .lp-remember input:checked + .lp-box::after { content: "✓"; color: #fff; font-weight: 900; font-size: calc(12px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-remember input:focus-visible + .lp-box { box-shadow: 0 0 0 4px rgba(14,165,164,0.25); }
-#root .lp.lp .lp-link { border: 0; background: none; padding: 4px 0; cursor: pointer; color: var(--teal); font-family: inherit; font-weight: 700; }
+#root .lp.lp .lp-link { border: 0; background: none; padding: 4px 0; cursor: pointer; color: var(--teal); font-family: inherit; font-weight: 700; font-size: calc(15.5px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-link:hover { text-decoration: underline; }
 #root .lp.lp .lp-forgot {
   display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; animation: lp-up .35s both;
@@ -672,20 +742,20 @@ const LP_CSS = `
 }
 #root .lp.lp .lp-forgot .lp-ico { color: var(--teal); margin-top: 2px; }
 #root .lp.lp .lp-forgot strong { display: block; color: var(--heading); }
-#root .lp.lp .lp-forgot span { display: block; font-size: calc(13px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-forgot span { display: block; font-size: calc(15px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-error {
   padding: 12px 14px; border-radius: 12px;
-  background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-weight: 700; line-height: 1.4;
+  background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-weight: 700; line-height: 1.4; font-size: calc(15.5px * var(--app-fs, 1)) !important;
 }
 #root .lp.lp[data-theme="dark"] .lp-error { background: rgba(239,68,68,.12); color: #fecaca; border-color: rgba(239,68,68,.35); }
 #root .lp.lp .lp-submit {
   position: relative; overflow: hidden;
-  min-height: 58px; width: 100%; border-radius: 14px; border: none;
+  min-height: 64px; width: 100%; border-radius: 14px; border: none;
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   background: linear-gradient(135deg, #0B1E3F, #0f766e 65%, #0EA5A4);
   background-size: 180% 100%; background-position: 0 0;
   color: #fff; cursor: pointer; font-weight: 800; font-family: inherit;
-  font-size: calc(16px * var(--app-fs, 1)) !important;
+  font-size: calc(19px * var(--app-fs, 1)) !important;
   box-shadow: 0 16px 34px rgba(11,30,63,0.25);
   transition: transform .16s, box-shadow .16s, background-position .4s, opacity .16s;
 }
@@ -709,12 +779,12 @@ const LP_CSS = `
 }
 #root .lp.lp .lp-secure {
   margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 7px; text-align: center;
-  color: var(--muted); font-weight: 500; font-size: calc(12.5px * var(--app-fs, 1)) !important;
+  color: var(--muted); font-weight: 500; font-size: calc(14.5px * var(--app-fs, 1)) !important;
 }
 #root .lp.lp .lp-secure .lp-ico { width: 15px; height: 15px; color: var(--teal); }
 #root .lp.lp .lp-demo {
   position: relative; overflow: hidden;
-  margin-top: 28px; padding: 18px; border-radius: 16px;
+  margin-top: 26px; padding: 20px 22px; border-radius: 18px;
   background: linear-gradient(135deg, #0B1E3F, #0c3550);
   display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
   box-shadow: 0 14px 30px rgba(11,30,63,.2);
@@ -722,15 +792,15 @@ const LP_CSS = `
 #root .lp.lp .lp-demo > * { position: relative; }
 #root .lp.lp .lp-demo-glow { position: absolute !important; inset: 0; background: radial-gradient(260px 120px at 100% 0%, rgba(14,165,164,.45), transparent 70%); }
 #root .lp.lp[dir="rtl"] .lp-demo-glow { background: radial-gradient(260px 120px at 0% 0%, rgba(14,165,164,.45), transparent 70%); }
-#root .lp.lp .lp-demo-title { display: block; color: #fff; font-weight: 800; font-size: calc(15px * var(--app-fs, 1)) !important; }
-#root .lp.lp .lp-demo-text { display: block; margin-top: 3px; color: #b6c6dd; font-size: calc(12.5px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-demo-title { display: block; color: #fff; font-weight: 800; font-size: calc(18px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-demo-text { display: block; margin-top: 4px; color: #b6c6dd; font-size: calc(15px * var(--app-fs, 1)) !important; }
 #root .lp.lp .lp-demo-btn {
-  min-height: 42px; padding: 0 16px; border-radius: 10px; border: 0;
+  min-height: 48px; padding: 0 20px; border-radius: 12px; border: 0; font-size: calc(16px * var(--app-fs, 1)) !important;
   background: #fff; color: var(--navy); cursor: pointer; font-weight: 800; font-family: inherit; white-space: nowrap;
   transition: transform .15s, box-shadow .15s, background .15s, color .15s;
 }
 #root .lp.lp .lp-demo-btn:hover { background: var(--teal); color: #fff; transform: translateY(-1px); box-shadow: 0 10px 22px rgba(14,165,164,.4); }
-#root .lp.lp .lp-footer { text-align: center; color: var(--faint); font-weight: 500; font-size: calc(12px * var(--app-fs, 1)) !important; }
+#root .lp.lp .lp-footer { text-align: center; color: var(--faint); font-weight: 500; font-size: calc(14px * var(--app-fs, 1)) !important; }
 
 @keyframes lp-spin { to { transform: rotate(360deg); } }
 @keyframes lp-ring { from { transform: scale(1); opacity: .7; } to { transform: scale(3); opacity: 0; } }

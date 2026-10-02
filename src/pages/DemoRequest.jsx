@@ -16,6 +16,7 @@ import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
 import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
+import LoginShowcase, { SC_CSS } from "./LoginShowcase";
 
 export const DEMO_ACTIVITIES = [
   { v: "meat", en: "Meat / butchery / slaughterhouse", ar: "لحوم / ملاحم / مسالخ" },
@@ -223,6 +224,70 @@ const TXT = {
   },
 };
 
+// Conversion pass (Oct 2026): product tour, interest chips, shorter form,
+// best-time picker, "what happens next", demo host, mobile sticky bar.
+// Interest keys match the LoginShowcase slide keys (login links ?interest=<key>).
+const PLUS = {
+  en: {
+    stdLbl: "Built around",
+    standards: ["HACCP", "ISO 22000", "GMP / GHP", "ISO 45001 (HSE)", "Arabic & English"],
+    tourEyebrow: "Product tour",
+    tourTitle: "Take the 60-second tour",
+    tourSub: "Six modules, running live. Hover to pause — this is how your team will see it.",
+    tour: "Product tour", seeIt: "Book a demo", demoOf: "Get a personal demo of", prev: "Previous", next: "Next",
+    interestQ: "What interests you?",
+    interests: [["ccp", "🌡️ HACCP & CCP logs"], ["trace", "🔗 Traceability"], ["audit", "📋 Inspections & audits"], ["capa", "🛠️ NCR & CAPA"], ["supplier", "🚚 Supplier control"], ["risk", "🎓 Training & HSE"]],
+    interestTag: "Interested in",
+    more: "More details (optional)", less: "Fewer details",
+    when: "Best time to talk (optional)",
+    days: [["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"]],
+    times: [["morning", "Morning"], ["afternoon", "Afternoon"], ["evening", "Evening"]],
+    whenTag: "Best time",
+    nextTitle: "What happens next",
+    next3: [
+      ["1", "We reply within one working day", "By WhatsApp or a call — your choice."],
+      ["2", "30-minute live demo", "On your own business type, branches and forms."],
+      ["3", "Clear quote, no obligation", "Start with one branch if you like."],
+    ],
+    hostKicker: "Your demo host",
+    hostName: "Eng. Mohammed Abdullah",
+    hostRole: "The engineer behind INSPECT PRO · Arabic & English",
+    hostQuote: "I will show you your own records inside the system — not a generic slideshow.",
+    stickyBook: "Book a free demo",
+    stickyNote: "30 min · no obligation",
+    doneTour: "Meanwhile, take the tour",
+  },
+  ar: {
+    stdLbl: "مبني وفق",
+    standards: ["HACCP", "ISO 22000", "GMP / GHP", "ISO 45001 (السلامة)", "عربي وإنجليزي"],
+    tourEyebrow: "جولة في النظام",
+    tourTitle: "جولة خلال 60 ثانية",
+    tourSub: "ستة أقسام تعمل أمامك مباشرة. مرّر المؤشر للإيقاف — هكذا سيراه فريقك.",
+    tour: "جولة في النظام", seeIt: "احجز عرضاً", demoOf: "احصل على عرض شخصي لـ", prev: "السابق", next: "التالي",
+    interestQ: "ما الذي يهمّك؟",
+    interests: [["ccp", "🌡️ HACCP ونقاط التحكم"], ["trace", "🔗 التتبع"], ["audit", "📋 التفتيش والتدقيق"], ["capa", "🛠️ عدم المطابقة والإجراءات"], ["supplier", "🚚 رقابة المورّدين"], ["risk", "🎓 التدريب والسلامة"]],
+    interestTag: "مهتم بـ",
+    more: "تفاصيل إضافية (اختياري)", less: "تفاصيل أقل",
+    when: "أفضل وقت للتواصل (اختياري)",
+    days: [["today", "اليوم"], ["tomorrow", "غداً"], ["week", "هذا الأسبوع"]],
+    times: [["morning", "صباحاً"], ["afternoon", "بعد الظهر"], ["evening", "مساءً"]],
+    whenTag: "أفضل وقت",
+    nextTitle: "ماذا يحدث بعد ذلك",
+    next3: [
+      ["1", "نردّ خلال يوم عمل واحد", "عبر واتساب أو مكالمة — كما تفضّل."],
+      ["2", "عرض مباشر لمدة 30 دقيقة", "على نوع نشاطك وفروعك ونماذجك أنت."],
+      ["3", "عرض سعر واضح دون التزام", "ويمكنك البدء بفرع واحد."],
+    ],
+    hostKicker: "مقدّم العرض",
+    hostName: "م. محمد عبدالله",
+    hostRole: "المهندس الذي بنى INSPECT PRO · عربي وإنجليزي",
+    hostQuote: "سأعرض لك سجلاتك أنت داخل النظام — لا عرضاً تقديمياً عاماً.",
+    stickyBook: "احجز عرضاً مجانياً",
+    stickyNote: "30 دقيقة · دون التزام",
+    doneTour: "وإلى ذلك الحين، خذ الجولة",
+  },
+};
+
 const EMPTY = {
   companyName: "", activity: "", branches: "", contactName: "", phone: "", email: "",
   emirate: "", message: "", referredBy: "",
@@ -281,6 +346,15 @@ export default function DemoRequest() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [when, setWhen] = useState({ day: "", time: "" });
+  const [interests, setInterests] = useState(() => {
+    const k = params.get("interest");
+    return PLUS.en.interests.some(([v]) => v === k) ? [k] : [];
+  });
+  const [sticky, setSticky] = useState(false);
+  const P = PLUS[lang];
+  const toggleInterest = (k) => setInterests((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
 
   const rootRef = useRef(null);
   const heroRef = useRef(null);
@@ -318,6 +392,28 @@ export default function DemoRequest() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Arriving from a login-page product tab: go straight to the form.
+  useEffect(() => {
+    if (!params.get("interest")) return undefined;
+    const id = setTimeout(() => document.getElementById("demo-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+    return () => clearTimeout(id);
+  }, [params]);
+
+  // Mobile sticky "book" bar: after the hero, hidden while the form is on screen.
+  useEffect(() => {
+    const formEl = document.getElementById("demo-form");
+    let formVisible = false;
+    const update = () => setSticky(window.scrollY > 520 && !formVisible);
+    let io;
+    if (formEl && typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(([en]) => { formVisible = en.isIntersecting; update(); }, { threshold: 0.05 });
+      io.observe(formEl);
+    }
+    window.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => { window.removeEventListener("scroll", update); if (io) io.disconnect(); };
+  }, []);
+
   // Spotlight + mock-up tilt follow the pointer; CSS variables only, no re-render.
   const onHeroMove = (e) => {
     const h = heroRef.current;
@@ -347,6 +443,7 @@ export default function DemoRequest() {
   // The calculator hands over its branch count, so the form arrives pre-filled.
   const bookFromCalc = (bucket) => {
     setForm((f) => ({ ...f, branches: bucket }));
+    setMoreOpen(true);
     goForm();
   };
 
@@ -365,6 +462,7 @@ export default function DemoRequest() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...f,
+          message: withExtras(f.message, interests, when, P),
           source,
           referrer: (typeof document !== "undefined" && document.referrer) || "",
           lang,
@@ -375,6 +473,9 @@ export default function DemoRequest() {
       if (!res.ok || j.ok === false) throw new Error(t.failed);
       setDone(true);
       setForm(EMPTY);
+      setWhen({ day: "", time: "" });
+      setInterests([]);
+      setMoreOpen(false);
     } catch (err) {
       setError(err?.message || t.failed);
     } finally {
@@ -386,8 +487,8 @@ export default function DemoRequest() {
   const F = t.feats;
 
   return (
-    <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className="dp">
-      <style>{PROMO_CSS}</style>
+    <main ref={rootRef} dir={isAr ? "rtl" : "ltr"} lang={lang} className={`dp${sticky ? " dp-has-sticky" : ""}`}>
+      <style>{PROMO_CSS}{SC_CSS}</style>
 
       {/* ── nav ── */}
       <header className={`dp-nav${scrolled ? " scrolled" : ""}`}>
@@ -496,6 +597,10 @@ export default function DemoRequest() {
           <span className="lbl">{t.forLbl}</span>
           {t.forList.map((x) => <span key={x} className="dp-chip-d">{x}</span>)}
         </div>
+        <div className="dp-wrap dp-strip-in dp-std fs-sm">
+          <span className="lbl">{P.stdLbl}</span>
+          {P.standards.map((x) => <span key={x} className="dp-std-b"><i aria-hidden="true">✓</i>{x}</span>)}
+        </div>
       </div>
 
       {/* ── features ── */}
@@ -546,6 +651,24 @@ export default function DemoRequest() {
               <h3 className="fs-h3">{F.supp[0]}</h3>
               <p className="fs-md">{F.supp[1]}</p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      {/* ── live product tour (shared with the login page) ── */}
+      <section id="tour" className="dp-tour-sec">
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs" style={{ color: "#5eead4" }}>{P.tourEyebrow}</span>
+            <h2 className="dp-h2 fs-h2" style={{ color: "#fff" }}>{P.tourTitle}</h2>
+            <p className="dp-sub fs-lead" style={{ color: "#9fb0c8" }}>{P.tourSub}</p>
+          </div>
+          <div className="lp dp-tour dp-reveal" dir={isAr ? "rtl" : "ltr"} lang={lang}>
+            <LoginShowcase
+              lang={lang}
+              labels={P}
+              onDemo={(k) => { setInterests((a) => (a.includes(k) ? a : [...a, k])); goForm(); }}
+            />
           </div>
         </div>
       </section>
@@ -615,6 +738,15 @@ export default function DemoRequest() {
             <ul className="dp-gets fs-md">
               {t.gets.map((g) => <li key={g}><i className="fs-sm">✓</i><span>{g}</span></li>)}
             </ul>
+            <div className="dp-host">
+              <span className="dp-host-av" aria-hidden="true">MA<i /></span>
+              <div>
+                <small className="fs-2xs">{P.hostKicker}</small>
+                <b className="fs-md">{P.hostName}</b>
+                <span className="fs-xs">{P.hostRole}</span>
+                <q className="fs-sm">{P.hostQuote}</q>
+              </div>
+            </div>
             <div className="dp-side-promos">
               <StoryCard story={cfg.story} lang={lang} />
               <ReferralNote referral={cfg.referral} lang={lang} />
@@ -624,10 +756,13 @@ export default function DemoRequest() {
           <div className="dp-formcard dp-reveal" style={{ "--d": ".08s" }}>
             {done ? (
               <div className="dp-done">
+                <div className="dp-confetti" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ "--i": i }} />)}</div>
                 <div className="dp-done-ic"><Icon name="check" size={40} color="#fff" /></div>
                 <h3 className="fs-h2">{t.doneTitle}</h3>
                 <p className="hint fs-md" style={{ margin: "10px 0 0" }}>{t.doneSub}</p>
+                <NextSteps P={P} />
                 <div className="dp-done-act">
+                  <button type="button" className="dp-btn primary fs-md" onClick={() => document.getElementById("tour")?.scrollIntoView({ behavior: "smooth" })}>▶ {P.doneTour}</button>
                   <button type="button" className="dp-btn dark fs-md" onClick={() => navigate(quizHref)}>📊 {t.doneCheck}</button>
                   <button type="button" className="dp-btn fs-md" style={{ border: "1px solid #e2e8f0", background: "#fff" }} onClick={() => setDone(false)}>{t.another}</button>
                 </div>
@@ -646,34 +781,69 @@ export default function DemoRequest() {
                       {DEMO_ACTIVITIES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
                     </select>
                   </Field>
-                  <Field id="f-br" label={t.branches}>
-                    <select id="f-br" className="dp-input" value={form.branches} onChange={set("branches")}>
-                      <option value="">{t.pick}</option>
-                      {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                  </Field>
-                  <Field id="f-em" label={t.emirate}>
-                    <select id="f-em" className="dp-input" value={form.emirate} onChange={set("emirate")}>
-                      <option value="">{t.pick}</option>
-                      {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
-                    </select>
-                  </Field>
                   <Field id="f-nm" label={t.contact} required>
                     <input id="f-nm" className="dp-input" value={form.contactName} onChange={set("contactName")} autoComplete="name" maxLength={120} />
                   </Field>
                   <Field id="f-ph" label={t.phone} required>
                     <input id="f-ph" className="dp-input" style={{ direction: "ltr" }} type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
                   </Field>
-                  <Field id="f-ml" label={t.email} full>
-                    <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
-                  </Field>
-                  <Field id="f-msg" label={t.message} full>
-                    <textarea id="f-msg" className="dp-input" value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
-                  </Field>
-                  <Field id="f-ref" label={t.referredBy} full>
-                    <input id="f-ref" className="dp-input" value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
-                  </Field>
                 </div>
+
+                <fieldset className="dp-interest">
+                  <legend className="fs-sm">{P.interestQ}</legend>
+                  <div className="dp-interest-grid">
+                    {P.interests.map(([k, l]) => (
+                      <label key={k} className={`dp-check fs-sm${interests.includes(k) ? " on" : ""}`}>
+                        <input type="checkbox" checked={interests.includes(k)} onChange={() => toggleInterest(k)} />
+                        <span className="dp-check-box" aria-hidden="true" />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <div className="dp-when">
+                  <span className="dp-when-l fs-sm">{P.when}</span>
+                  <div className="dp-when-row">
+                    {P.days.map(([v, l]) => (
+                      <button key={v} type="button" className={`dp-pick fs-sm${when.day === v ? " on" : ""}`} aria-pressed={when.day === v} onClick={() => setWhen((w) => ({ ...w, day: w.day === v ? "" : v }))}>{l}</button>
+                    ))}
+                    <span className="dp-when-sep" aria-hidden="true" />
+                    {P.times.map(([v, l]) => (
+                      <button key={v} type="button" className={`dp-pick fs-sm${when.time === v ? " on" : ""}`} aria-pressed={when.time === v} onClick={() => setWhen((w) => ({ ...w, time: w.time === v ? "" : v }))}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <button type="button" className="dp-more fs-sm" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
+                  <span className="dp-more-ic" aria-hidden="true">{moreOpen ? "−" : "+"}</span>
+                  {moreOpen ? P.less : P.more}
+                </button>
+                {moreOpen && (
+                  <div className="dp-fields dp-fields-more">
+                    <Field id="f-br" label={t.branches}>
+                      <select id="f-br" className="dp-input" value={form.branches} onChange={set("branches")}>
+                        <option value="">{t.pick}</option>
+                        {DEMO_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </Field>
+                    <Field id="f-em" label={t.emirate}>
+                      <select id="f-em" className="dp-input" value={form.emirate} onChange={set("emirate")}>
+                        <option value="">{t.pick}</option>
+                        {DEMO_EMIRATES.map((a) => <option key={a.v} value={a.v}>{a[lang]}</option>)}
+                      </select>
+                    </Field>
+                    <Field id="f-ml" label={t.email} full>
+                      <input id="f-ml" className="dp-input" style={{ direction: "ltr" }} type="email" value={form.email} onChange={set("email")} autoComplete="email" maxLength={160} />
+                    </Field>
+                    <Field id="f-msg" label={t.message} full>
+                      <textarea id="f-msg" className="dp-input" value={form.message} onChange={set("message")} placeholder={t.messagePh} maxLength={2000} />
+                    </Field>
+                    <Field id="f-ref" label={t.referredBy} full>
+                      <input id="f-ref" className="dp-input" value={form.referredBy} onChange={set("referredBy")} placeholder={t.referredPh} maxLength={150} />
+                    </Field>
+                  </div>
+                )}
 
                 {/* Honeypot: off-screen and skipped by keyboard / screen readers. */}
                 <div aria-hidden="true" className="dp-honey">
@@ -686,6 +856,7 @@ export default function DemoRequest() {
                   {sending ? t.sending : <>{t.submit} <span className="arr" aria-hidden="true">{arrow}</span></>}
                 </button>
                 <p className="dp-privacy fs-xs">🔒 {t.privacy}</p>
+                <NextSteps P={P} />
               </form>
             )}
           </div>
@@ -722,6 +893,13 @@ export default function DemoRequest() {
         </div>
       </footer>
 
+      <div className={`dp-sticky${sticky && !done ? " on" : ""}`} aria-hidden={!sticky}>
+        <span className="fs-xs">{P.stickyNote}</span>
+        <button type="button" className="dp-btn primary fs-md" onClick={goForm} tabIndex={sticky ? 0 : -1}>
+          {P.stickyBook} <span className="arr" aria-hidden="true">{arrow}</span>
+        </button>
+      </div>
+
       {waHref && (
         <a href={waHref} target="_blank" rel="noopener noreferrer" onClick={countWaTap} className="dp-wa-fab fs-md" aria-label={t.waFab} title={t.waFab}>
           <WaIcon size={30} />
@@ -729,6 +907,34 @@ export default function DemoRequest() {
         </a>
       )}
     </main>
+  );
+}
+
+// Interests + chosen slot ride inside the message, so no server change is needed.
+function withExtras(message, interests, when, P) {
+  const lines = [];
+  const picked = P.interests.filter(([k]) => interests.includes(k)).map(([, l]) => l.replace(/^\S+\s/, ""));
+  if (picked.length) lines.push(`[${P.interestTag}: ${picked.join(", ")}]`);
+  const day = P.days.find(([v]) => v === when.day)?.[1];
+  const time = P.times.find(([v]) => v === when.time)?.[1];
+  if (day || time) lines.push(`[${P.whenTag}: ${[day, time].filter(Boolean).join(" · ")}]`);
+  if (!lines.length) return message;
+  return [message, ...lines].filter(Boolean).join("\n");
+}
+
+function NextSteps({ P }) {
+  return (
+    <div className="dp-next">
+      <b className="fs-sm">{P.nextTitle}</b>
+      <ol>
+        {P.next3.map(([n, h, d]) => (
+          <li key={n}>
+            <span className="dp-next-n fs-xs">{n}</span>
+            <span><strong className="fs-sm">{h}</strong><small className="fs-xs">{d}</small></span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
