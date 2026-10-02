@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
-import { PaperVsTable, SavingsCalculator } from "./DemoValue";
+import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 export const DEMO_ACTIVITIES = [
@@ -44,7 +44,7 @@ export const DEMO_EMIRATES = [
 
 const TXT = {
   en: {
-    nav: { features: "Features", savings: "Savings", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
+    nav: { features: "Features", pricing: "Pricing", savings: "Savings", how: "How it works", check: "Readiness check", signIn: "Sign in", book: "Book a demo" },
     pill: "Food-safety & quality management platform",
     pillTag: "New",
     offerTag: "Offer",
@@ -78,6 +78,9 @@ const TXT = {
     },
     baEyebrow: "Before & after",
     baTitle: "From paper folders to one live screen",
+    priceEyebrow: "Pricing",
+    priceTitle: "Simple pricing, per branch",
+    priceSub: "Every plan starts with a free 30-day pilot on one branch. No setup fee for founding customers.",
     calcEyebrow: "Savings calculator",
     calcTitle: "What does paper cost you?",
     calcSub: "Move the slider to your number of branches.",
@@ -120,7 +123,7 @@ const TXT = {
       ["Does it work in Arabic?", "Yes. Every screen works in Arabic and English, and each user works in their own language."],
       ["Do we need our own server or IT team?", "No. InspectPro runs in the cloud and opens in any browser — on a phone at the branch or a computer at head office."],
       ["Can our current forms be kept?", "Yes. Your paper forms are turned into digital checklists that follow the same layout, and reports print in that layout too."],
-      ["How is it priced?", "Per branch, from AED 990 a month for up to two branches, billed annually. The calculator above shows your number, and you get a written quote after the demo."],
+      ["How is it priced?", "Per branch: Essential AED 249 a month (1–2 branches), Professional AED 399 a month (3 or more), about two months less when billed annually. Factories and large chains get a custom quote."],
     ],
     footRights: "All rights reserved.",
     footSignIn: "Customer sign-in",
@@ -130,7 +133,7 @@ const TXT = {
     lang: "العربية",
   },
   ar: {
-    nav: { features: "المزايا", savings: "التوفير", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
+    nav: { features: "المزايا", pricing: "الأسعار", savings: "التوفير", how: "آلية العمل", check: "فحص الجاهزية", signIn: "تسجيل الدخول", book: "احجز عرضًا" },
     pill: "منصة إدارة سلامة الغذاء والجودة",
     pillTag: "جديد",
     offerTag: "عرض",
@@ -164,6 +167,9 @@ const TXT = {
     },
     baEyebrow: "قبل وبعد",
     baTitle: "من الملفات الورقية إلى شاشة واحدة مباشرة",
+    priceEyebrow: "الأسعار",
+    priceTitle: "أسعار واضحة، لكل فرع",
+    priceSub: "كل باقة تبدأ بتجربة مجانية 30 يومًا على فرع واحد، وبدون رسوم تأسيس للعملاء المؤسسين.",
     calcEyebrow: "حاسبة التوفير",
     calcTitle: "كم تكلّفك السجلات الورقية؟",
     calcSub: "حرّك المؤشر إلى عدد فروعك.",
@@ -206,7 +212,7 @@ const TXT = {
       ["هل يعمل النظام باللغة العربية؟", "نعم. جميع الشاشات تعمل بالعربية والإنجليزية، ويعمل كل مستخدم بلغته."],
       ["هل نحتاج إلى خادم خاص أو فريق تقنية معلومات؟", "لا. يعمل InspectPro سحابيًا ويُفتح من أي متصفح — من الجوال في الفرع أو من الحاسوب في الإدارة."],
       ["هل يمكن الإبقاء على نماذجنا الحالية؟", "نعم. تتحول نماذجكم الورقية إلى قوائم فحص رقمية بالتصميم نفسه، وتُطبع التقارير بذلك التصميم أيضًا."],
-      ["كيف يُحتسب السعر؟", "بحسب عدد الفروع، ابتداءً من 990 درهمًا شهريًا لفرعين، بالدفع السنوي. تعرض لك الحاسبة أعلاه رقمك، وتحصل على عرض سعر مكتوب بعد العرض التجريبي."],
+      ["كيف يُحتسب السعر؟", "لكل فرع: الأساسية 249 درهمًا شهريًا (فرع أو فرعان)، والاحترافية 399 درهمًا شهريًا (3 فروع فأكثر)، وبخصم نحو شهرين عند الدفع السنوي. المصانع والسلاسل الكبيرة تحصل على عرض سعر خاص."],
     ],
     footRights: "جميع الحقوق محفوظة.",
     footSignIn: "دخول العملاء",
@@ -391,6 +397,7 @@ export default function DemoRequest() {
           </a>
           <nav className="dp-nav-links fs-sm" aria-label="Page">
             <a href="#features">{t.nav.features}</a>
+            <a href="#pricing">{t.nav.pricing}</a>
             <a href="#savings">{t.nav.savings}</a>
             <a href="#how">{t.nav.how}</a>
             <a href={quizHref} onClick={(e) => { e.preventDefault(); navigate(quizHref); }}>{t.nav.check}</a>
@@ -571,6 +578,18 @@ export default function DemoRequest() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── pricing plans ── */}
+      <section id="pricing" className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.priceEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.priceTitle}</h2>
+            <p className="dp-sub fs-lead">{t.priceSub}</p>
+          </div>
+          <div className="dp-reveal"><PricingPlans lang={lang} onBook={bookFromCalc} /></div>
         </div>
       </section>
 

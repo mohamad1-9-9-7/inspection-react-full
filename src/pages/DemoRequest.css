@@ -455,3 +455,29 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
   .dp-calc-in, .dp-calc-offer { grid-template-columns: minmax(0, 1fr); }
   .dp-calc-inputs, .dp-calc-out { padding: 24px 20px; }
 }
+
+/* ── pricing plans (DemoValue.jsx PricingPlans) ── */
+.dp-plans-toggle { display: flex; justify-content: center; gap: 6px; margin: 0 auto 22px; padding: 5px; width: max-content; max-width: 100%; border-radius: 14px; background: #fff; border: 1px solid var(--line-l); }
+.dp-plans-toggle button { border: 0; background: transparent; padding: 10px 18px; border-radius: 10px; font-weight: 800; color: var(--muted); cursor: pointer; font-family: inherit; }
+.dp-plans-toggle button.on { background: var(--ink); color: #fff; }
+.dp-plans-toggle em { font-style: normal; margin-inline-start: 6px; padding: 2px 8px; border-radius: 999px; background: #ccfbf1; color: #0f766e; font-weight: 800; }
+.dp-plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.dp-plan { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 26px 24px; border-radius: var(--r); background: #fff; border: 1px solid var(--line-l); box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
+.dp-plan.featured { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: 0 24px 50px rgba(7, 13, 26, .25); }
+.dp-plan .badge { position: absolute; top: -12px; inset-inline-start: 24px; padding: 4px 12px; border-radius: 999px; background: var(--teal); color: #fff; font-weight: 800; }
+.dp-plan .name { font-weight: 900; }
+.dp-plan .for { color: var(--muted); font-weight: 700; }
+.dp-plan.featured .for { color: var(--muted-d); }
+.dp-plan .price { display: flex; align-items: flex-end; gap: 10px; margin: 14px 0 6px; min-height: 64px; }
+.dp-plan .price b { font-weight: 900; line-height: 1; }
+.dp-plan .price span { color: var(--muted); font-weight: 700; line-height: 1.35; }
+.dp-plan.featured .price span { color: var(--muted-d); }
+.dp-plan.featured .price b { color: var(--mint); }
+.dp-plan ul { list-style: none; margin: 8px 0 18px; padding: 0; display: grid; gap: 10px; flex: 1; }
+.dp-plan li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; font-weight: 600; }
+.dp-plan li i { font-style: normal; font-weight: 900; color: var(--teal-d); }
+.dp-plan.featured li i { color: var(--mint); }
+.dp-plan .dp-btn { width: 100%; justify-content: center; }
+@media (max-width: 900px) {
+  .dp-plans-grid { grid-template-columns: minmax(0, 1fr); }
+}

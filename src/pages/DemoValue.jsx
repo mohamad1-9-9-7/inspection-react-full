@@ -9,18 +9,27 @@
 
 import React, { useState } from "react";
 
-/* Pro plan, billed annually, AED. The base covers the first two branches;
-   each further branch is added at its band's rate. */
+/* Per branch, per month, AED. Essential covers 1–2 branches, Professional
+   3 or more; annual billing is about two months free. A volume discount
+   applies to the whole account: 6–15 branches −15 %, 16–25 −25 %. */
 export const PRICING = {
-  base: 990,
-  baseSites: 2,
-  bands: [
-    { upTo: 3, rate: 550 },
-    { upTo: 10, rate: 467.5 },  // −15%
-    { upTo: 25, rate: 412.5 },  // −25%
+  essential: { monthly: 249, annual: 199, maxSites: 2 },
+  professional: { monthly: 399, annual: 329, minSites: 3 },
+  volume: [
+    { from: 16, off: 0.25 },
+    { from: 6, off: 0.15 },
   ],
-  maxSites: 25,                 // above this: custom quote
+  maxSites: 25,                 // above this: custom quote (Enterprise)
 };
+
+export const planFor = (sites) => (sites <= PRICING.essential.maxSites ? "essential" : "professional");
+
+/** Monthly subscription in AED, billed annually. */
+export function monthlyPrice(sites) {
+  const plan = PRICING[planFor(sites)];
+  const off = PRICING.volume.find((v) => sites >= v.from)?.off || 0;
+  return Math.round(sites * plan.annual * (1 - off));
+}
 
 /* Monthly, AED. Supervisor time: ½ hour of paperwork per branch per working
    day (26 days), hourly cost = salary × 1.3 on-costs ÷ 208 hours. QA manager:
@@ -34,18 +43,6 @@ export const SAVINGS = {
   paperPerSite: 60,
   finePerYear: 10000,
 };
-
-export function monthlyPrice(sites) {
-  let price = PRICING.base;
-  let from = PRICING.baseSites;
-  for (const b of PRICING.bands) {
-    if (sites <= from) break;
-    const n = Math.min(sites, b.upTo) - from;
-    if (n > 0) price += n * b.rate;
-    from = b.upTo;
-  }
-  return Math.round(price / 10) * 10;
-}
 
 export function monthlySavings(sites, salary) {
   const hourly = (salary * SAVINGS.onCost) / 208;
@@ -81,7 +78,8 @@ const T = {
     saveLbl: "Paper costs you about",
     perMonth: "AED / month",
     subLbl: "InspectPro subscription",
-    subNote: (d) => `Pro plan, billed annually · about AED ${d} a day`,
+    subNote: (p, d) => `${p} plan, billed annually · about AED ${d} a day`,
+    planName: { essential: "Essential", professional: "Professional" },
     net: (n) => `You keep AED ${n} a month`,
     roi: (x) => `The system returns ${x}× its cost`,
     custom: "More than 25 branches? We prepare a custom quote.",
@@ -110,7 +108,8 @@ const T = {
     saveLbl: "تكلّفك الأوراق نحو",
     perMonth: "درهم / شهريًا",
     subLbl: "اشتراك InspectPro",
-    subNote: (d) => `الباقة الاحترافية، دفع سنوي · نحو ${d} درهم يوميًا`,
+    subNote: (p, d) => `باقة ${p}، دفع سنوي · نحو ${d} درهم يوميًا`,
+    planName: { essential: "الأساسية", professional: "الاحترافية" },
     net: (n) => `يبقى لك ${n} درهم شهريًا`,
     roi: (x) => `يعيد النظام تكلفته ${x} مرة`,
     custom: "أكثر من 25 فرعًا؟ نعدّ لك عرض سعر خاصًا.",
@@ -198,7 +197,7 @@ export function SavingsCalculator({ lang, onBook }) {
             ) : (
               <>
                 <div><b className="fs-kpi" dir="ltr">{fmt(price)}</b> <span className="fs-sm">{t.perMonth}</span></div>
-                <small className="fs-xs">{t.subNote(fmt(price / 30))}</small>
+                <small className="fs-xs">{t.subNote(t.planName[planFor(n)], fmt(price / 30))}</small>
               </>
             )}
           </div>
@@ -228,6 +227,113 @@ export function SavingsCalculator({ lang, onBook }) {
         </div>
       </div>
 
+      <p className="dp-calc-note fs-xs">{t.note}</p>
+    </div>
+  );
+}
+
+/* ───────── Plans — the three packages, monthly ↔ annual ───────── */
+const PLANS_T = {
+  en: {
+    monthly: "Monthly",
+    annual: "Annual",
+    save: "2 months free",
+    perBranch: "AED / branch / month",
+    billedAnnually: "billed annually",
+    billedMonthly: "billed monthly",
+    popular: "Most popular",
+    quote: "Custom quote",
+    choose: "Book a demo",
+    talk: "Talk to us",
+    note: "Prices exclude VAT where it applies. A central kitchen, warehouse or factory counts as a branch. 6–15 branches −15 %, 16 or more −25 %.",
+    plans: [
+      {
+        id: "essential", name: "Essential", for: "For 1–2 branches",
+        feats: ["All daily food-safety logs for your business type", "Limits checked as you type, corrective actions", "OHC cards and training certificates, with expiry alerts", "Excel & PDF exports, works offline", "Arabic & English · unlimited users"],
+      },
+      {
+        id: "professional", name: "Professional", for: "For 3 branches or more",
+        feats: ["Everything in Essential", "Your own forms set up for you", "Every branch live on one screen", "Team training at your site", "Priority support"],
+      },
+      {
+        id: "enterprise", name: "Enterprise", for: "Factories & large chains",
+        feats: ["The full quality system: production & yield, traceability, suppliers, audits, training", "A system built around your operation", "Dedicated onboarding"],
+      },
+    ],
+  },
+  ar: {
+    monthly: "شهري",
+    annual: "سنوي",
+    save: "شهران مجانًا",
+    perBranch: "درهم / فرع / شهريًا",
+    billedAnnually: "بالدفع السنوي",
+    billedMonthly: "بالدفع الشهري",
+    popular: "الأكثر طلبًا",
+    quote: "عرض سعر خاص",
+    choose: "احجز عرضًا",
+    talk: "تواصل معنا",
+    note: "الأسعار لا تشمل ضريبة القيمة المضافة حيث تنطبق. المطبخ المركزي أو المستودع أو المصنع يُحتسب فرعًا. من 6 إلى 15 فرعًا خصم 15%، و16 فرعًا فأكثر خصم 25%.",
+    plans: [
+      {
+        id: "essential", name: "الأساسية", for: "لفرع أو فرعين",
+        feats: ["جميع سجلات سلامة الغذاء اليومية لنوع نشاطك", "فحص الحدود لحظة الإدخال مع الإجراءات التصحيحية", "البطاقات الصحية وشهادات التدريب مع تنبيه قبل الانتهاء", "تصدير Excel وPDF، ويعمل دون إنترنت", "عربي وإنجليزي · مستخدمون بلا حدود"],
+      },
+      {
+        id: "professional", name: "الاحترافية", for: "لـ3 فروع فأكثر",
+        feats: ["كل ما في الأساسية", "نجهّز نماذجك الخاصة لك", "جميع الفروع مباشرةً على شاشة واحدة", "تدريب فريقك في موقعك", "دعم بأولوية"],
+      },
+      {
+        id: "enterprise", name: "المؤسسات", for: "المصانع والسلاسل الكبيرة",
+        feats: ["نظام الجودة الكامل: الإنتاج والمردود، التتبّع، الموردون، التدقيق، التدريب", "نظام مبني حول عملياتك", "تهيئة مخصصة"],
+      },
+    ],
+  },
+};
+
+export function PricingPlans({ lang, onBook }) {
+  const t = PLANS_T[lang];
+  const [annual, setAnnual] = useState(true);
+  return (
+    <div className="dp-plans">
+      <div className="dp-plans-toggle" role="group">
+        <button type="button" className={`fs-sm${!annual ? " on" : ""}`} aria-pressed={!annual} onClick={() => setAnnual(false)}>{t.monthly}</button>
+        <button type="button" className={`fs-sm${annual ? " on" : ""}`} aria-pressed={annual} onClick={() => setAnnual(true)}>
+          {t.annual} <em className="fs-xs">{t.save}</em>
+        </button>
+      </div>
+      <div className="dp-plans-grid">
+        {t.plans.map((p) => {
+          const price = PRICING[p.id];
+          const featured = p.id === "professional";
+          return (
+            <div key={p.id} className={`dp-plan${featured ? " featured" : ""}`}>
+              {featured && <span className="badge fs-xs">{t.popular}</span>}
+              <b className="name fs-md">{p.name}</b>
+              <span className="for fs-sm">{p.for}</span>
+              <div className="price">
+                {price ? (
+                  <>
+                    <b className="fs-stat" dir="ltr">{annual ? price.annual : price.monthly}</b>
+                    <span className="fs-xs">{t.perBranch}<br />{annual ? t.billedAnnually : t.billedMonthly}</span>
+                  </>
+                ) : (
+                  <b className="fs-kpi">{t.quote}</b>
+                )}
+              </div>
+              <ul>
+                {p.feats.map((f) => <li key={f} className="fs-sm"><i aria-hidden="true">✓</i>{f}</li>)}
+              </ul>
+              <button
+                type="button"
+                className={`dp-btn ${featured ? "primary" : "dark"} fs-md`}
+                onClick={() => onBook(p.id === "essential" ? "1" : p.id === "professional" ? "2-5" : "20+")}
+              >
+                {price ? t.choose : t.talk}
+              </button>
+            </div>
+          );
+        })}
+      </div>
       <p className="dp-calc-note fs-xs">{t.note}</p>
     </div>
   );
