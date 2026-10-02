@@ -651,7 +651,20 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 .dp-docked .dp-nav-links a { white-space: nowrap; }
 .dp-docked .dp-nav-book { display: none; } /* the form is already on screen */
 .dp-docked .dp-wa-fab { right: calc(var(--dock-w) - var(--dock-gap) + 8px); }
-.dp-docked .dp-form-grid { grid-template-columns: 1fr; max-width: 760px; }
+/* The form itself is in the window, so this section is just the pitch:
+   heading across the top, the three points beside the demo host. */
+.dp-docked .dp-form-grid { grid-template-columns: 1fr; }
+.dp-docked .dp-form-grid > :first-child { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 40px; align-items: start; }
+.dp-docked .dp-form-grid > :first-child > :is(.dp-eyebrow, .dp-h2, .dp-sub) { grid-column: 1 / -1; }
+.dp-docked .dp-form-grid > :first-child > .dp-sub { max-width: 640px; }
+.dp-docked .dp-form-grid .dp-gets { grid-column: 1; }
+.dp-docked .dp-form-grid :is(.dp-host, .dp-side-promos) { grid-column: 2; margin-top: 28px; }
+.dp-docked .dp-form-grid .dp-side-promos { margin-top: 12px; }
+/* About: copy on top, the four values in a row (two rows when narrow). */
+.dp-docked .dp-about { grid-template-columns: 1fr; gap: 32px; }
+.dp-docked .dp-about .dp-sub { max-width: 720px; }
+.dp-docked .dp-values { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1599px) { .dp-docked .dp-values { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* The content column is ~470px narrower than the window, so it switches to
    its tablet grid a little earlier. */
