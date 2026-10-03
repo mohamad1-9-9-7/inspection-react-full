@@ -143,7 +143,7 @@ const splitRemarks = (v) =>
 
 const joinRemarks = (list) => list.join(", ");
 
-const ORIGINS = ["AUS", "S.A", "BRZ", "NEZ", "LOCAL", "IND", "PAK", "IRAN", "KAZ"];
+const ORIGINS = ["AUS", "S.A", "BRZ", "NEZ", "LOCAL", "IND", "PAK", "IRAN", "KAZ", "LEB"];
 
 /* The catalog carries the ERP unit of measure. KG, PIECES and PLATE are the
    three we have as real options; anything else (LITRE, BOX, CTN…) keeps its own
