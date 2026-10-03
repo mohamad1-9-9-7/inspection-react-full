@@ -81,13 +81,13 @@ const FAQ = {
     ["Does it work in Arabic?", "Yes. Every screen works in Arabic and English, and each user works in their own language."],
     ["Do we need our own server or IT team?", "No. InspectPro runs in the cloud and opens in any browser — on a phone at the branch or a computer at head office."],
     ["Can our current forms be kept?", "Yes. Your paper forms are turned into digital checklists that follow the same layout, and reports print in that layout too."],
-    ["How is it priced?", "Per branch: Essential AED 249 a month (1–2 branches), Professional AED 399 a month (3 or more), about two months less when billed annually. Factories and large chains get a custom quote."],
+    ["How is it priced?", "Per branch, and you choose the plan that fits your budget: Essential AED 350 a month (300 billed annually), Professional 490 (420), Enterprise 690 (590). Professional and Enterprise get −10 % from 5 branches and −15 % from 10. Setup is AED 1,000 once, free on annual billing. More than 20 branches get a custom quote."],
   ],
   ar: [
     ["هل يعمل النظام باللغة العربية؟", "نعم. جميع الشاشات تعمل بالعربية والإنجليزية، ويعمل كل مستخدم بلغته."],
     ["هل نحتاج إلى خادم خاص أو فريق تقنية معلومات؟", "لا. يعمل InspectPro سحابيًا ويُفتح من أي متصفح — من الجوال في الفرع أو من الحاسوب في الإدارة."],
     ["هل يمكن الإبقاء على نماذجنا الحالية؟", "نعم. تتحول نماذجكم الورقية إلى قوائم فحص رقمية بالتصميم نفسه، وتُطبع التقارير بذلك التصميم أيضًا."],
-    ["كيف يُحتسب السعر؟", "لكل فرع: الأساسية 249 درهمًا شهريًا (فرع أو فرعان)، والاحترافية 399 درهمًا شهريًا (3 فروع فأكثر)، وبخصم نحو شهرين عند الدفع السنوي. المصانع والسلاسل الكبيرة تحصل على عرض سعر خاص."],
+    ["كيف يُحتسب السعر؟", "لكل فرع، وأنت تختار الباقة حسب البدجت: الأساسية 350 درهمًا شهريًا (300 بالدفع السنوي)، والاحترافية 490 (420)، والمتكاملة 690 (590). الاحترافية والمتكاملة عليهما خصم 10% من 5 فروع و15% من 10 فروع. رسوم التجهيز 1,000 درهم مرة واحدة، ومجانية بالدفع السنوي. أكثر من 20 فرعًا: عرض سعر خاص."],
   ],
 };
 
@@ -105,7 +105,7 @@ export function jsonLd(path, m) {
       description: m.description,
       image: m.image,
       publisher: { "@id": `${SITE}/#org` },
-      offers: [plan("Essential", 249), plan("Professional", 399)],
+      offers: [plan("Essential", 350), plan("Professional", 490), plan("Enterprise", 690)],
     });
     graph.push({
       "@type": "FAQPage",

@@ -455,6 +455,21 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 }
 
 /* ── pricing plans (DemoValue.jsx PricingPlans) ── */
+.dp-plans-step { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 0 auto 22px; text-align: center; }
+.dp-plans-step > b { font-weight: 900; }
+.dp-plans-sites { display: flex; align-items: center; gap: 12px; }
+.dp-plans-sites button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line-l); background: #fff; font-weight: 900; cursor: pointer; font-family: inherit; color: var(--ink); }
+.dp-plans-sites button:disabled { opacity: .4; cursor: default; }
+.dp-plans-sites output { min-width: 56px; text-align: center; font-weight: 900; }
+.dp-plans-sites .unit { color: var(--muted); font-weight: 700; }
+.dp-plans-presets { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dp-plans-presets button { min-width: 48px; min-height: 36px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-l); background: #fff; font-weight: 800; color: var(--muted); cursor: pointer; font-family: inherit; }
+.dp-plans-presets button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.dp-plan .tag { align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #ccfbf1; color: #0f766e; font-weight: 800; }
+.dp-plan.featured .tag { background: rgba(255, 255, 255, .12); color: var(--mint); }
+.dp-plan .for .off { font-style: normal; color: var(--teal-d); }
+.dp-plan.featured .for .off { color: var(--mint); }
+.dp-plans-step .dp-plans-toggle { margin-bottom: 0; }
 .dp-plans-toggle { display: flex; justify-content: center; gap: 6px; margin: 0 auto 22px; padding: 5px; width: max-content; max-width: 100%; border-radius: 14px; background: #fff; border: 1px solid var(--line-l); }
 .dp-plans-toggle button { border: 0; background: transparent; padding: 10px 18px; border-radius: 10px; font-weight: 800; color: var(--muted); cursor: pointer; font-family: inherit; }
 .dp-plans-toggle button.on { background: var(--ink); color: #fff; }

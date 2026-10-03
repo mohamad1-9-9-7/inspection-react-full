@@ -23,7 +23,7 @@ import {
   apiDeleteQuote, apiListQuotes, apiLoadConfig, apiSaveConfig, apiSaveQuote, computeTotals, cycleById,
   daysLeft, defaultTermsList, dmy, emptyConfig, emptyLine, emptyQuote, fmtMoney, isExpired, lineTotal,
   makeCustomTerm, makeTerm, moduleCatalog, newLineId, nextQuoteNumber, num, priceFor, priceKey,
-  quoteInsights, quoteSummaryText, smartBuildLines, standardPlanFor, statusById, termTemplate, termText,
+  quoteInsights, quoteSummaryText, smartBuildLines, standardPlanFor, standardVolumeOff, STANDARD_PLAN_IDS, statusById, termTemplate, termText,
   termsListOf, themeById, todayISO, validUntil,
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
@@ -1159,7 +1159,7 @@ function ModulePicker({ initialIndustry, companyName, added, priceBook, onClose,
 function SmartBuild({ q, priceBook, industry: ind0, onClose, onBuild }) {
   const { t, lang } = useSettingsLang();
   const L = (en, ar) => t({ en, ar });
-  const [f, setF] = useState({ pricing: "standard", industry: ind0 || "meat", branches: 1, users: 0, modules: "lines", hosting: true, support: true, setup: true, trainingHours: 4, replace: !q.lines.length });
+  const [f, setF] = useState({ pricing: "standard", plan: "", industry: ind0 || "meat", branches: 1, users: 0, modules: "lines", hosting: true, support: true, setup: true, trainingHours: 4, replace: !q.lines.length });
   const set = (p) => setF((cur) => ({ ...cur, ...p }));
   const lines = useMemo(() => smartBuildLines({ ...f, priceBook, cycle: q.cycle }), [f, priceBook, q.cycle]);
   const tot = computeTotals({ ...q, lines });
@@ -1177,11 +1177,24 @@ function SmartBuild({ q, priceBook, industry: ind0, onClose, onBuild }) {
       <Field label={L("Pricing", "التسعير")}>
         <Segmented value={f.pricing} onChange={(v) => set({ pricing: v })} options={[{ id: "standard", label: L("Standard plans (per branch)", "الباقات القياسية (لكل فرع)") }, { id: "custom", label: L("Custom (price book)", "مخصص (دفتر الأسعار)") }]} />
       </Field>
-      {f.pricing === "standard" && (
-        <div className="bpx-sm" style={{ color: "#0f766e", margin: "8px 0 12px" }}>
-          {(() => { const p = STANDARD_PLANS[standardPlanFor(f.branches)]; return L(`${p.en}: AED ${p.monthly} / branch / month, or ${p.annual} billed yearly · 6–15 branches −15 %, 16+ −25 % · hosting, support and modules included`, `${p.ar}: ${p.monthly} درهم / فرع / شهر، أو ${p.annual} بالدفع السنوي · 6–15 فرع خصم 15%، 16+ خصم 25% · الاستضافة والدعم والوحدات مشمولة`); })()}
-        </div>
-      )}
+      {f.pricing === "standard" && (() => {
+        const planId = f.plan || standardPlanFor(f.branches);
+        const p = STANDARD_PLANS[planId];
+        const off = standardVolumeOff(f.branches, planId);
+        return (
+          <>
+            <Field label={L("Plan (the customer's budget)", "الباقة (حسب بدجت العميل)")}>
+              <Segmented value={planId} onChange={(v) => set({ plan: v })} options={STANDARD_PLAN_IDS.map((id) => ({ id, label: `${L(STANDARD_PLANS[id].en, STANDARD_PLANS[id].ar)} · ${STANDARD_PLANS[id].annual}` }))} />
+            </Field>
+            <div className="bpx-sm" style={{ color: "#0f766e", margin: "8px 0 12px" }}>
+              {L(
+                `${p.en}: AED ${p.monthly} / branch / month, or ${p.annual} billed yearly${off ? ` · volume −${off * 100} % applied` : ""} · setup AED ${p.setup}, free on yearly · hosting, support and modules included`,
+                `${p.ar}: ${p.monthly} درهم / فرع / شهر، أو ${p.annual} بالدفع السنوي${off ? ` · خصم عدد الفروع ${off * 100}% مطبّق` : ""} · التجهيز ${p.setup} درهم، مجاني بالدفع السنوي · الاستضافة والدعم والوحدات مشمولة`
+              )}
+            </div>
+          </>
+        );
+      })()}
       <div style={S.grid3}>
         <Field label={L("System", "النظام")}>
           <select style={S.input} value={f.industry} onChange={(e) => set({ industry: e.target.value })}>{industryOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>

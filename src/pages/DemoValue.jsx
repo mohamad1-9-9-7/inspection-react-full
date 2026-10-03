@@ -9,26 +9,37 @@
 
 import React, { useState } from "react";
 
-/* Per branch, per month, AED. Essential covers 1–2 branches, Professional
-   3 or more; annual billing is about two months free. A volume discount
-   applies to the whole account: 6–15 branches −15 %, 16–25 −25 %. */
+/* Per branch, per month, AED (same numbers as STANDARD_PLANS in
+   settings/quotations/quotationCore.js — change both together). The visitor
+   gives a branch count and picks a plan by budget; any plan fits any count.
+   Essential annual (300) is the floor, so it never takes a volume discount;
+   Professional and Enterprise get 5–9 branches −10 %, 10+ −15 %. Setup is
+   charged once and waived on annual billing. */
 export const PRICING = {
-  essential: { monthly: 249, annual: 199, maxSites: 2 },
-  professional: { monthly: 399, annual: 329, minSites: 3 },
+  essential: { monthly: 350, annual: 300, volume: false },
+  professional: { monthly: 490, annual: 420, volume: true },
+  enterprise: { monthly: 690, annual: 590, volume: true },
   volume: [
-    { from: 16, off: 0.25 },
-    { from: 6, off: 0.15 },
+    { from: 10, off: 0.15 },
+    { from: 5, off: 0.10 },
   ],
-  maxSites: 25,                 // above this: custom quote (Enterprise)
+  setup: 1000,
+  maxSites: 20,                 // above this: custom quote
 };
 
-export const planFor = (sites) => (sites <= PRICING.essential.maxSites ? "essential" : "professional");
+/** The plan we suggest for a branch count (the savings calculator uses it). */
+export const planFor = (sites) => (sites <= 2 ? "essential" : "professional");
 
-/** Monthly subscription in AED, billed annually. */
-export function monthlyPrice(sites) {
-  const plan = PRICING[planFor(sites)];
-  const off = PRICING.volume.find((v) => sites >= v.from)?.off || 0;
-  return Math.round(sites * plan.annual * (1 - off));
+export const volumeOff = (sites, planId) =>
+  (PRICING[planId].volume ? PRICING.volume.find((v) => sites >= v.from)?.off || 0 : 0);
+
+/** Price per branch per month in AED, volume discount included. */
+export const branchPrice = (sites, planId, annual = true) =>
+  Math.round(PRICING[planId][annual ? "annual" : "monthly"] * (1 - volumeOff(sites, planId)));
+
+/** Monthly subscription in AED for the whole account, billed annually. */
+export function monthlyPrice(sites, planId = planFor(sites)) {
+  return sites * branchPrice(sites, planId, true);
 }
 
 /* Monthly, AED. Supervisor time: ½ hour of paperwork per branch per working
@@ -79,10 +90,10 @@ const T = {
     perMonth: "AED / month",
     subLbl: "InspectPro subscription",
     subNote: (p, d) => `${p} plan, billed annually · about AED ${d} a day`,
-    planName: { essential: "Essential", professional: "Professional" },
+    planName: { essential: "Essential", professional: "Professional", enterprise: "Enterprise" },
     net: (n) => `You keep AED ${n} a month`,
     roi: (x) => `The system returns ${x}× its cost`,
-    custom: "More than 25 branches? We prepare a custom quote.",
+    custom: "More than 20 branches? We prepare a custom quote.",
     parts: { staff: "Supervisors' paperwork time", qa: "QA manager's reporting time", paper: "Printing, binders and storage", fines: "One avoided fine a year" },
     note: "Estimates: half an hour of paperwork saved per branch per day, three QA-manager days a month per 8 branches, printing, and one AED 10,000 fine avoided a year. The demo confirms your real numbers.",
     cta: "Confirm my numbers in a free demo",
@@ -109,10 +120,10 @@ const T = {
     perMonth: "درهم / شهريًا",
     subLbl: "اشتراك InspectPro",
     subNote: (p, d) => `باقة ${p}، دفع سنوي · نحو ${d} درهم يوميًا`,
-    planName: { essential: "الأساسية", professional: "الاحترافية" },
+    planName: { essential: "الأساسية", professional: "الاحترافية", enterprise: "المتكاملة" },
     net: (n) => `يبقى لك ${n} درهم شهريًا`,
     roi: (x) => `يعيد النظام تكلفته ${x} مرة`,
-    custom: "أكثر من 25 فرعًا؟ نعدّ لك عرض سعر خاصًا.",
+    custom: "أكثر من 20 فرعًا؟ نعدّ لك عرض سعر خاصًا.",
     parts: { staff: "وقت المشرفين في الأوراق", qa: "وقت مدير الجودة في التقارير", paper: "الطباعة والملفات والتخزين", fines: "تجنّب مخالفة واحدة سنويًا" },
     note: "تقديرات: توفير نصف ساعة من الأعمال الورقية لكل فرع يوميًا، وثلاثة أيام شهريًا لمدير الجودة لكل 8 فروع، والطباعة، وتجنّب مخالفة واحدة بقيمة 10,000 درهم سنويًا. يؤكد العرض التجريبي أرقامك الفعلية.",
     cta: "أكّد أرقامي في عرض مجاني",
@@ -232,103 +243,160 @@ export function SavingsCalculator({ lang, onBook }) {
   );
 }
 
-/* ───────── Plans — the three packages, monthly ↔ annual ───────── */
+/* ───────── Plans — branch count first, then a budget to pick ───────── */
 const PLANS_T = {
   en: {
+    step1: "1 · How many branches do you have?",
+    step2: "2 · Choose the monthly budget that suits you",
+    branchesUnit: (n) => (n === 1 ? "branch" : "branches"),
+    over: (n) => `${n}+`,
     monthly: "Monthly",
     annual: "Annual",
-    save: "2 months free",
-    perBranch: "AED / branch / month",
+    save: "save ~15 %",
+    perMonth: "AED / month",
+    perBranch: (p) => `AED ${p} per branch`,
     billedAnnually: "billed annually",
     billedMonthly: "billed monthly",
+    volume: (x) => `−${x} % for your branch count`,
+    setup: (p) => `Setup AED ${p} once`,
+    setupFree: "Setup free",
     popular: "Most popular",
     quote: "Custom quote",
-    choose: "Book a demo",
+    quoteSub: "More than 20 branches: we prepare a price for your group.",
+    choose: "Choose this budget",
     talk: "Talk to us",
-    note: "Prices exclude VAT where it applies. A central kitchen, warehouse or factory counts as a branch. 6–15 branches −15 %, 16 or more −25 %.",
+    note: "Prices exclude VAT where it applies. A central kitchen, warehouse or factory counts as a branch. Professional and Enterprise: 5–9 branches −10 %, 10 or more −15 %.",
+    picked: (plan, n, total, annual) => `Chosen budget: ${plan}, ${n} ${n === 1 ? "branch" : "branches"}, about AED ${total} a month (${annual ? "billed annually" : "billed monthly"}).`,
     plans: [
       {
-        id: "essential", name: "Essential", for: "For 1–2 branches",
+        id: "essential", name: "Essential", tag: "Economy",
         feats: ["All daily food-safety logs for your business type", "Limits checked as you type, corrective actions", "OHC cards and training certificates, with expiry alerts", "Excel & PDF exports, works offline", "Arabic & English · unlimited users"],
       },
       {
-        id: "professional", name: "Professional", for: "For 3 branches or more",
-        feats: ["Everything in Essential", "Your own forms set up for you", "Every branch live on one screen", "Team training at your site", "Priority support"],
+        id: "professional", name: "Professional", tag: "Balanced",
+        feats: ["Everything in Essential", "Every branch live on one screen", "Traceability, suppliers, CAPA and training", "Your own forms set up for you", "Team training at your site · priority support"],
       },
       {
-        id: "enterprise", name: "Enterprise", for: "Factories & large chains",
-        feats: ["The full quality system: production & yield, traceability, suppliers, audits, training", "A system built around your operation", "Dedicated onboarding"],
+        id: "enterprise", name: "Enterprise", tag: "Complete",
+        feats: ["Everything in Professional", "The full quality system: production & yield, audits, HSE", "A system built around your operation", "Dedicated onboarding and account manager"],
       },
     ],
   },
   ar: {
+    step1: "١ · كم فرعًا لديك؟",
+    step2: "٢ · اختر البدجت الشهري الذي يناسبك",
+    branchesUnit: (n) => (n <= 2 ? "فرع" : n <= 10 ? "فروع" : "فرعًا"),
+    over: (n) => `${n}+`,
     monthly: "شهري",
     annual: "سنوي",
-    save: "شهران مجانًا",
-    perBranch: "درهم / فرع / شهريًا",
+    save: "وفّر نحو 15%",
+    perMonth: "درهم / شهريًا",
+    perBranch: (p) => `${p} درهم لكل فرع`,
     billedAnnually: "بالدفع السنوي",
     billedMonthly: "بالدفع الشهري",
+    volume: (x) => `خصم ${x}% لعدد فروعك`,
+    setup: (p) => `التجهيز ${p} درهم مرة واحدة`,
+    setupFree: "التجهيز مجاني",
     popular: "الأكثر طلبًا",
     quote: "عرض سعر خاص",
-    choose: "احجز عرضًا",
+    quoteSub: "أكثر من 20 فرعًا: نعدّ سعرًا خاصًا لمجموعتك.",
+    choose: "اختر هذا البدجت",
     talk: "تواصل معنا",
-    note: "الأسعار لا تشمل ضريبة القيمة المضافة حيث تنطبق. المطبخ المركزي أو المستودع أو المصنع يُحتسب فرعًا. من 6 إلى 15 فرعًا خصم 15%، و16 فرعًا فأكثر خصم 25%.",
+    note: "الأسعار لا تشمل ضريبة القيمة المضافة حيث تنطبق. المطبخ المركزي أو المستودع أو المصنع يُحتسب فرعًا. الاحترافية والمتكاملة: من 5 إلى 9 فروع خصم 10%، و10 فروع فأكثر خصم 15%.",
+    picked: (plan, n, total, annual) => `البدجت المختار: ${plan}، ${n} ${n <= 2 ? "فرع" : n <= 10 ? "فروع" : "فرعًا"}، نحو ${total} درهم شهريًا (${annual ? "بالدفع السنوي" : "بالدفع الشهري"}).`,
     plans: [
       {
-        id: "essential", name: "الأساسية", for: "لفرع أو فرعين",
+        id: "essential", name: "الأساسية", tag: "اقتصادي",
         feats: ["جميع سجلات سلامة الغذاء اليومية لنوع نشاطك", "فحص الحدود لحظة الإدخال مع الإجراءات التصحيحية", "البطاقات الصحية وشهادات التدريب مع تنبيه قبل الانتهاء", "تصدير Excel وPDF، ويعمل دون إنترنت", "عربي وإنجليزي · مستخدمون بلا حدود"],
       },
       {
-        id: "professional", name: "الاحترافية", for: "لـ3 فروع فأكثر",
-        feats: ["كل ما في الأساسية", "نجهّز نماذجك الخاصة لك", "جميع الفروع مباشرةً على شاشة واحدة", "تدريب فريقك في موقعك", "دعم بأولوية"],
+        id: "professional", name: "الاحترافية", tag: "متوازن",
+        feats: ["كل ما في الأساسية", "جميع الفروع مباشرةً على شاشة واحدة", "التتبّع والموردون والإجراءات التصحيحية والتدريب", "نجهّز نماذجك الخاصة لك", "تدريب فريقك في موقعك · دعم بأولوية"],
       },
       {
-        id: "enterprise", name: "المؤسسات", for: "المصانع والسلاسل الكبيرة",
-        feats: ["نظام الجودة الكامل: الإنتاج والمردود، التتبّع، الموردون، التدقيق، التدريب", "نظام مبني حول عملياتك", "تهيئة مخصصة"],
+        id: "enterprise", name: "المتكاملة", tag: "متكامل",
+        feats: ["كل ما في الاحترافية", "نظام الجودة الكامل: الإنتاج والمردود، التدقيق، السلامة المهنية", "نظام مبني حول عملياتك", "تهيئة مخصصة ومدير حساب"],
       },
     ],
   },
 };
 
+const SITE_PRESETS = [1, 3, 5, 10];
+
 export function PricingPlans({ lang, onBook }) {
   const t = PLANS_T[lang];
+  const [sites, setSites] = useState(1);
   const [annual, setAnnual] = useState(true);
+  const over = sites > PRICING.maxSites;
+  const bump = (d) => setSites((n) => Math.min(PRICING.maxSites + 1, Math.max(1, n + d)));
+
   return (
     <div className="dp-plans">
-      <div className="dp-plans-toggle" role="group">
-        <button type="button" className={`fs-sm${!annual ? " on" : ""}`} aria-pressed={!annual} onClick={() => setAnnual(false)}>{t.monthly}</button>
-        <button type="button" className={`fs-sm${annual ? " on" : ""}`} aria-pressed={annual} onClick={() => setAnnual(true)}>
-          {t.annual} <em className="fs-xs">{t.save}</em>
-        </button>
+      <div className="dp-plans-step">
+        <b className="fs-md">{t.step1}</b>
+        <div className="dp-plans-sites">
+          <button type="button" className="fs-md" onClick={() => bump(-1)} disabled={sites <= 1} aria-label="−">−</button>
+          <output className="fs-kpi" dir="ltr" aria-live="polite">{over ? t.over(PRICING.maxSites) : sites}</output>
+          <button type="button" className="fs-md" onClick={() => bump(1)} disabled={over} aria-label="+">+</button>
+          <span className="unit fs-sm">{t.branchesUnit(sites)}</span>
+        </div>
+        <div className="dp-plans-presets" role="group">
+          {SITE_PRESETS.map((n) => (
+            <button key={n} type="button" className={`fs-sm${sites === n ? " on" : ""}`} aria-pressed={sites === n} onClick={() => setSites(n)} dir="ltr">{n}</button>
+          ))}
+          <button type="button" className={`fs-sm${over ? " on" : ""}`} aria-pressed={over} onClick={() => setSites(PRICING.maxSites + 1)} dir="ltr">{t.over(PRICING.maxSites)}</button>
+        </div>
       </div>
+
+      <div className="dp-plans-step">
+        <b className="fs-md">{t.step2}</b>
+        <div className="dp-plans-toggle" role="group">
+          <button type="button" className={`fs-sm${!annual ? " on" : ""}`} aria-pressed={!annual} onClick={() => setAnnual(false)}>{t.monthly}</button>
+          <button type="button" className={`fs-sm${annual ? " on" : ""}`} aria-pressed={annual} onClick={() => setAnnual(true)}>
+            {t.annual} <em className="fs-xs">{t.save}</em>
+          </button>
+        </div>
+      </div>
+
       <div className="dp-plans-grid">
         {t.plans.map((p) => {
-          const price = PRICING[p.id];
           const featured = p.id === "professional";
+          const per = branchPrice(sites, p.id, annual);
+          const total = sites * per;
+          const off = volumeOff(sites, p.id);
           return (
             <div key={p.id} className={`dp-plan${featured ? " featured" : ""}`}>
               {featured && <span className="badge fs-xs">{t.popular}</span>}
+              <span className="tag fs-xs">{p.tag}</span>
               <b className="name fs-md">{p.name}</b>
-              <span className="for fs-sm">{p.for}</span>
               <div className="price">
-                {price ? (
-                  <>
-                    <b className="fs-stat" dir="ltr">{annual ? price.annual : price.monthly}</b>
-                    <span className="fs-xs">{t.perBranch}<br />{annual ? t.billedAnnually : t.billedMonthly}</span>
-                  </>
-                ) : (
+                {over ? (
                   <b className="fs-kpi">{t.quote}</b>
+                ) : (
+                  <>
+                    <b className="fs-stat" dir="ltr">{fmt(total)}</b>
+                    <span className="fs-xs">{t.perMonth}<br />{annual ? t.billedAnnually : t.billedMonthly}</span>
+                  </>
                 )}
               </div>
+              <span className="for fs-sm">
+                {over ? t.quoteSub : (
+                  <>
+                    {t.perBranch(fmt(per))}
+                    {off > 0 && <> · <em className="off">{t.volume(Math.round(off * 100))}</em></>}
+                    <br />{annual ? t.setupFree : t.setup(fmt(PRICING.setup))}
+                  </>
+                )}
+              </span>
               <ul>
                 {p.feats.map((f) => <li key={f} className="fs-sm"><i aria-hidden="true">✓</i>{f}</li>)}
               </ul>
               <button
                 type="button"
                 className={`dp-btn ${featured ? "primary" : "dark"} fs-md`}
-                onClick={() => onBook(p.id === "essential" ? "1" : p.id === "professional" ? "2-5" : "20+")}
+                onClick={() => onBook(branchBucket(sites), over ? "" : t.picked(p.name, sites, fmt(total), annual))}
               >
-                {price ? t.choose : t.talk}
+                {over ? t.talk : t.choose}
               </button>
             </div>
           );

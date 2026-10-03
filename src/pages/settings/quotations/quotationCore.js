@@ -638,27 +638,36 @@ export const SERVICE_PRESETS = [
 
 /* The published per-branch plans (same numbers as the public /demo page,
    pages/DemoValue.jsx PRICING — change both together). AED per branch per
-   month; "annual" is the monthly rate when billed yearly. */
+   month; "annual" is the monthly rate when billed yearly. Any plan fits any
+   branch count — the customer picks by budget. Essential annual (300) is the
+   floor: no volume discount on it. Setup is charged once and waived on a
+   yearly bill. */
 export const STANDARD_PLANS = {
-  essential: { en: "Essential", ar: "الأساسية", monthly: 249, annual: 199, maxBranches: 2, setup: 0 },
-  professional: { en: "Professional", ar: "الاحترافية", monthly: 399, annual: 329, setup: 1500 },
-  volume: [{ from: 16, off: 0.25 }, { from: 6, off: 0.15 }],
+  essential: { en: "Essential", ar: "الأساسية", monthly: 350, annual: 300, volume: false, setup: 1000 },
+  professional: { en: "Professional", ar: "الاحترافية", monthly: 490, annual: 420, volume: true, setup: 1000 },
+  enterprise: { en: "Enterprise", ar: "المتكاملة", monthly: 690, annual: 590, volume: true, setup: 1000 },
+  volume: [{ from: 10, off: 0.15 }, { from: 5, off: 0.10 }],
 };
 
-export const standardPlanFor = (branches) =>
-  (num(branches) <= STANDARD_PLANS.essential.maxBranches ? "essential" : "professional");
+export const STANDARD_PLAN_IDS = ["essential", "professional", "enterprise"];
+
+/** The plan we suggest when nobody picked one. */
+export const standardPlanFor = (branches) => (num(branches) <= 2 ? "essential" : "professional");
+
+export const standardVolumeOff = (branches, planId) =>
+  (STANDARD_PLANS[planId]?.volume ? STANDARD_PLANS.volume.find((v) => num(branches) >= v.from)?.off || 0 : 0);
 
 /** Per-branch price for one billing period of `cycleId`, volume discount
  *  included. Yearly uses the annual rate × 12. */
-export function standardBranchPrice(branches, cycleId) {
-  const plan = STANDARD_PLANS[standardPlanFor(branches)];
-  const off = STANDARD_PLANS.volume.find((v) => num(branches) >= v.from)?.off || 0;
+export function standardBranchPrice(branches, cycleId, planId = standardPlanFor(branches)) {
+  const plan = STANDARD_PLANS[planId] || STANDARD_PLANS.essential;
+  const off = standardVolumeOff(branches, planId);
   const months = cycleById(cycleId).months || 1;
   const rate = cycleId === "yearly" ? plan.annual : plan.monthly;
   return round2(rate * months * (1 - off));
 }
 
-export function smartBuildLines({ industry, branches = 1, users = 0, modules = "lines", hosting = true, support = true, setup = true, trainingHours = 0, priceBook = {}, pricing = "custom", cycle = "monthly" }) {
+export function smartBuildLines({ industry, branches = 1, users = 0, modules = "lines", hosting = true, support = true, setup = true, trainingHours = 0, priceBook = {}, pricing = "custom", cycle = "monthly", plan: planPick = "" }) {
   const out = [];
   const pb = (key) => priceFor(priceBook, key);
   const preset = (key, patch = {}) => {
@@ -667,20 +676,19 @@ export function smartBuildLines({ industry, branches = 1, users = 0, modules = "
   };
 
   /* Standard plan: one per-branch line at the published price, everything
-     else included (0 = "Included"). Setup is free on Essential, and on
-     Professional when billed yearly. */
+     else included (0 = "Included"). Setup is free when billed yearly. */
   if (pricing === "standard") {
     const n = Math.max(1, num(branches));
-    const planId = standardPlanFor(n);
+    const planId = STANDARD_PLAN_IDS.includes(planPick) ? planPick : standardPlanFor(n);
     const plan = STANDARD_PLANS[planId];
-    const off = STANDARD_PLANS.volume.find((v) => n >= v.from)?.off || 0;
+    const off = standardVolumeOff(n, planId);
     const cat = moduleCatalog(industry || "meat");
     out.push(preset("svc:branch", {
       qty: n,
       titleEn: `INSPECT PRO ${plan.en} plan — per branch / site`,
       titleAr: `باقة INSPECT PRO ${plan.ar} — لكل فرع / موقع`,
       details: off ? `Volume discount ${off * 100}% included` : "",
-      unitPrice: standardBranchPrice(n, cycle),
+      unitPrice: standardBranchPrice(n, cycle, planId),
     }));
     if (cat.length) {
       out.push(emptyLine({
@@ -690,8 +698,8 @@ export function smartBuildLines({ industry, branches = 1, users = 0, modules = "
     }
     out.push(preset("svc:hosting", { unitPrice: 0 }));
     out.push(preset("svc:support", { unitPrice: 0 }));
-    out.push(preset("svc:setup", { unitPrice: planId === "professional" && cycle !== "yearly" ? plan.setup : 0 }));
-    if (num(trainingHours) > 0) out.push(preset("svc:training", { qty: num(trainingHours), unitPrice: planId === "professional" ? 0 : pb("svc:training") }));
+    out.push(preset("svc:setup", { unitPrice: cycle !== "yearly" ? plan.setup : 0 }));
+    if (num(trainingHours) > 0) out.push(preset("svc:training", { qty: num(trainingHours), unitPrice: planId !== "essential" ? 0 : pb("svc:training") }));
     return out;
   }
 
