@@ -18,6 +18,7 @@ import { openExternal } from "../../config/externalLinks";
 import { useCompanyManifest } from "../../companies";
 import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
+import LockedCards from "../trial/LockedCards";
 
 function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -495,6 +496,10 @@ export default function GenericIndustryApp() {
                   </button>
                 );
               })}
+              {/* Free trial only: blurred, locked teaser cards (pages/trial/LockedCards). */}
+              {currentUser.companyTrial && !isSuperAdmin && !q && (
+                <LockedCards S={S} Two={Two} accent={ACCENT} startIndex={homeCards.length} />
+              )}
             </div>
           )}
 
