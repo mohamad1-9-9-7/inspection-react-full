@@ -9,7 +9,7 @@
 
 import { writeSubscriptionCache } from "../../utils/subscriptionLock";
 
-export const TRIAL_DAYS = 7;
+export const TRIAL_DAYS = 3;
 
 /** /demo sector → kit system (mirror of SECTOR_KIT in the server's routes/trial.cjs). */
 export const SECTOR_KIT = {

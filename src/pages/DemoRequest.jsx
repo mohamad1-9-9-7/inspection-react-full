@@ -63,7 +63,7 @@ const TXT = {
     ctaDemo: "Book a free demo",
     ctaCheck: "Check your readiness — 2 min",
     ctaPrices: "See prices",
-    ctaTrial: "Try it free — 7 days",
+    ctaTrial: "Try it free — 3 days",
     mock: {
       title: "Dashboard", today: "Today",
       k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
@@ -152,7 +152,7 @@ const TXT = {
     ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
     ctaCheck: "قِس جاهزيتك — دقيقتان",
     ctaPrices: "اطّلع على الأسعار",
-    ctaTrial: "جرّبه مجانًا — 7 أيام",
+    ctaTrial: "جرّبه مجانًا — 3 أيام",
     mock: {
       title: "لوحة التحكم", today: "اليوم",
       k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",

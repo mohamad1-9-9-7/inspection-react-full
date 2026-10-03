@@ -1,5 +1,5 @@
 // src/pages/trial/TrialSignup.jsx
-// "Try it free for 7 days" — the sign-up window on /demo.
+// "Try it free for 3 days" — the sign-up window on /demo.
 //
 // 1. the visitor fills a short form and MUST tick that nothing in a trial is
 //    kept (the server refuses without it);
