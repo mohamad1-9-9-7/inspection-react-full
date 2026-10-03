@@ -490,6 +490,10 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 .dp-plan li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; font-weight: 600; }
 .dp-plan li i { font-style: normal; font-weight: 900; color: var(--teal-d); }
 .dp-plan.featured li i { color: var(--mint); }
+.dp-plan li.base { font-weight: 900; padding-bottom: 10px; border-bottom: 1px dashed var(--line-l); }
+.dp-plan.featured li.base { border-color: rgba(255, 255, 255, .18); }
+.dp-plan li.plus i { display: inline-grid; place-items: center; flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; background: #ccfbf1; color: #0f766e; line-height: 1; }
+.dp-plan.featured li.plus i { background: rgba(94, 234, 212, .16); color: var(--mint); }
 .dp-plan .dp-btn { width: 100%; justify-content: center; }
 @media (max-width: 900px) {
   .dp-plans-grid { grid-template-columns: minmax(0, 1fr); }

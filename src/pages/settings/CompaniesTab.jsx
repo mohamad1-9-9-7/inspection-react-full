@@ -12,7 +12,7 @@ import { deleteImage, uploadImage } from "../../utils/imageUpload";
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
   plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat", module:"almawashi",
-  price:"", currency:"", logo_url:"",
+  price:"", currency:"", logo_url:"", branches:"1",
 };
 
 /* Server refusals → something the owner can act on. */
@@ -22,6 +22,7 @@ const SAVE_ERRORS = {
   status_invalid:   { en: "Unknown status.", ar: "حالة غير معروفة." },
   price_invalid:    { en: "The price must be 0 or more.", ar: "السعر لازم يكون 0 أو أكثر." },
   currency_invalid: { en: "Unsupported currency.", ar: "عملة غير مدعومة." },
+  branches_invalid: { en: "Branches must be a whole number from 1 to 999.", ar: "عدد الفروع لازم يكون رقم صحيح من 1 لـ 999." },
   plan_not_found:   { en: "That plan no longer exists — pick another.", ar: "الخطة غير موجودة — اختر غيرها." },
   logo_must_be_hosted_url: { en: "Upload the picture with the button — a pasted image cannot be saved.", ar: "ارفع الصورة من الزر — ما بتنحفظ صورة ملصوقة." },
   super_admin_required: { en: "Only the platform owner can change companies.", ar: "مالك المنصّة وحده يعدّل الشركات." },
@@ -100,6 +101,7 @@ export default function CompaniesTab() {
       price:         c.price != null ? String(Number(c.price)) : "",
       currency:      c.currency || "",
       logo_url:      c.logo_url || "",
+      branches:      String(c.branches || 1),
     });
     setEditing(c); setMsg("");
   }
@@ -142,6 +144,7 @@ export default function CompaniesTab() {
       // "" = no custom price → the plan's price applies.
       price:      form.price === "" ? null : Number(form.price),
       currency:   form.currency || null,
+      branches:   Math.max(1, parseInt(form.branches, 10) || 1),
     };
     try {
       const isNew = editing === "new";
@@ -323,10 +326,16 @@ export default function CompaniesTab() {
                 <option value="">{t("noPlan")}</option>
                 {plans.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.price > 0 ? `${p.price} ${p.currency}/${t("moShort")}` : t("free")})
+                    {p.name} ({p.price > 0 ? `${p.price} ${p.currency}${p.per_branch ? (lang === "ar" ? " / فرع" : " / branch") : ""}/${t("moShort")}` : t("free")})
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label={lang === "ar" ? "عدد الفروع (للفوترة)" : "Branches (billed)"}>
+              {/* A per-branch plan costs its price × this count, less the
+                  volume discount (server: routes/billing.cjs PLAN_PRICE_SQL). */}
+              <input type="number" min="1" max="999" step="1" value={form.branches}
+                onChange={e => setForm(f=>({...f,branches:e.target.value}))} style={inputStyle} />
             </Field>
             <Field label={t("businessType")}>
               {/* What KIND of business it is (keys its permission list). The
@@ -389,7 +398,7 @@ export default function CompaniesTab() {
                   <div style={{ display:"flex", gap:8 }}>
                     <input type="number" min="0" step="any" value={form.price}
                       onChange={e => setForm(f=>({...f,price:e.target.value}))}
-                      placeholder={plan ? `${plan.price} (${lang === "ar" ? "سعر الخطة" : "plan price"})` : "—"}
+                      placeholder={plan ? `${plan.price}${plan.per_branch ? ` × ${form.branches || 1}` : ""} (${lang === "ar" ? "سعر الخطة" : "plan price"})` : "—"}
                       style={{ ...inputStyle, flex:1 }} />
                     <select value={form.currency} onChange={e => setForm(f=>({...f,currency:e.target.value}))} style={{ ...inputStyle, width:110 }}>
                       <option value="">{plan?.currency || "AED"}</option>

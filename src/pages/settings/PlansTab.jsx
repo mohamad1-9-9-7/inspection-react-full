@@ -251,7 +251,7 @@ export default function PlansTab() {
                   <div style={{ fontSize:20, fontWeight:900 }}>
                     {plan.price > 0 ? `${plan.price}` : t("free")}
                   </div>
-                  {plan.price > 0 && <div style={{ fontSize:13, opacity:.85 }}>{plan.currency}/{t("moShort")}</div>}
+                  {plan.price > 0 && <div style={{ fontSize:13, opacity:.85 }}>{plan.currency}{plan.per_branch ? (lang === "ar" ? " / فرع" : " / branch") : ""}/{t("moShort")}</div>}
                 </div>
 
                 {/* Info */}

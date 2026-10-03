@@ -388,8 +388,17 @@ export function PricingPlans({ lang, onBook }) {
                   </>
                 )}
               </span>
+              {/* Higher plans open with "Everything in …" and mark what they ADD with +. */}
               <ul>
-                {p.feats.map((f) => <li key={f} className="fs-sm"><i aria-hidden="true">✓</i>{f}</li>)}
+                {p.feats.map((f, i) => {
+                  const base = p.id !== "essential" && i === 0;
+                  const extra = p.id !== "essential" && i > 0;
+                  return (
+                    <li key={f} className={`fs-sm${base ? " base" : ""}${extra ? " plus" : ""}`}>
+                      <i aria-hidden="true">{extra ? "+" : "✓"}</i>{f}
+                    </li>
+                  );
+                })}
               </ul>
               <button
                 type="button"
