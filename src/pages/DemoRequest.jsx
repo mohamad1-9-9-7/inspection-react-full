@@ -17,6 +17,7 @@ import { BrandLockup } from "./readiness/brand";
 import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { usePublicTitle } from "../config/pageTitles";
 import { useSiteStats } from "../utils/siteStats";
+import { SECTORS, SECTOR_ORDER, SECTOR_UI, withSector } from "./demoSectors";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=100070850094338";
@@ -68,8 +69,6 @@ const TXT = {
       f1: "Cooler 03 · 2.4 °C", f1s: "Within limit",
       f2: "NCR-0012", f2s: "Closed with evidence",
     },
-    forLbl: "Built for",
-    forList: ["Meat & butchery", "Sweets & bakery", "Restaurants", "Central kitchens", "Food factories", "Retail & cold stores"],
     featEyebrow: "Platform",
     featTitle: "Everything an inspector asks for, in one place",
     featSub: "Daily logs, audits and follow-ups your team fills on the phone — and head office sees the same day.",
@@ -158,8 +157,6 @@ const TXT = {
       f1: "ثلاجة 03 · 2.4 °م", f1s: "ضمن الحد المسموح",
       f2: "NCR-0012", f2s: "أُغلقت بدليل موثّق",
     },
-    forLbl: "مصمَّم لـ",
-    forList: ["اللحوم والملاحم", "الحلويات والمخابز", "المطاعم", "المطابخ المركزية", "مصانع الأغذية", "التجزئة والتخزين المبرّد"],
     featEyebrow: "المنصة",
     featTitle: "كل ما يطلبه المفتش، في مكان واحد",
     featSub: "سجلات يومية وتدقيق ومتابعة يعبّئها فريقك من الجوال — وتطّلع عليها الإدارة في اليوم نفسه.",
@@ -380,7 +377,11 @@ export default function DemoRequest() {
     // English by default; Arabic only when the link asks for it (?lang=ar) or the visitor taps the switch.
     return q === "ar" ? "ar" : "en";
   });
-  const t = TXT[lang];
+  // "What's your business?" — the hero, mock-up and pain cards follow the pick; ?sector= opens one directly.
+  const [sector, setSector] = useState(() => (SECTORS[params.get("sector")] ? params.get("sector") : ""));
+  const t = withSector(TXT[lang], sector, lang);
+  const sec = sector ? SECTORS[sector][lang] : null;
+  const SU = SECTOR_UI[lang];
   const isAr = lang === "ar";
   usePublicTitle("/demo", lang);
   // Visitor stats (Platform Center → Demo Requests): how far down people get, and what they click.
@@ -389,7 +390,7 @@ export default function DemoRequest() {
   const markFormStart = () => { if (!formStarted.current) { formStarted.current = true; track("form_start"); } };
   const arrow = isAr ? "←" : "→";
 
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => ({ ...EMPTY, activity: sector }));
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
@@ -551,6 +552,19 @@ export default function DemoRequest() {
     } finally {
       setSending(false);
     }
+  };
+
+  const pickSector = (v) => {
+    const next = v === sector ? "" : v;
+    setSector(next);
+    if (next) track("cta", `sector-${next}`);
+    // The form follows the pick unless the visitor already chose a type themselves.
+    setForm((f) => (!f.activity || f.activity === sector ? { ...f, activity: next } : f));
+    try {
+      const u = new URL(window.location.href);
+      if (next) u.searchParams.set("sector", next); else u.searchParams.delete("sector");
+      window.history.replaceState(window.history.state, "", u);
+    } catch { /* the address bar is a convenience only */ }
   };
 
   const m = t.mock;
@@ -775,14 +789,45 @@ export default function DemoRequest() {
       {/* ── built for ── */}
       <div className="dp-strip">
         <div className="dp-wrap dp-strip-in fs-sm">
-          <span className="lbl">{t.forLbl}</span>
-          {t.forList.map((x) => <span key={x} className="dp-chip-d">{x}</span>)}
+          <span className="lbl">{SU.ask}</span>
+          {SECTOR_ORDER.map((v) => (
+            <button key={v} type="button" className={`dp-chip-d dp-sec${sector === v ? " on" : ""}`} aria-pressed={sector === v} onClick={() => pickSector(v)}>
+              {SECTORS[v][lang].chip}
+            </button>
+          ))}
+          {sector && <button type="button" className="dp-sec-all" onClick={() => pickSector("")}>✕ {SU.all}</button>}
         </div>
         <div className="dp-wrap dp-strip-in dp-std fs-sm">
           <span className="lbl">{P.stdLbl}</span>
           {P.standards.map((x) => <span key={x} className="dp-std-b"><i aria-hidden="true">✓</i>{x}</span>)}
         </div>
       </div>
+
+      {/* ── what we solve for the picked sector (no dp-reveal: it mounts after load) ── */}
+      {sec && (
+        <section id="sector" className="dp-section tight dp-sec-pains">
+          <div className="dp-wrap">
+            <div className="dp-center">
+              <span className="dp-eyebrow fs-xs">{SU.painEyebrow}</span>
+              <h2 className="dp-h2 fs-h2">{SU.painTitle(sec.who)}</h2>
+            </div>
+            <div className="dp-steps">
+              {sec.pains.map(([ic, h, p]) => (
+                <div key={h} className="dp-step">
+                  <span className="n fs-md" aria-hidden="true">{ic}</span>
+                  <h3 className="fs-h3">{h}</h3>
+                  <p className="fs-md">{p}</p>
+                </div>
+              ))}
+            </div>
+            <div className="dp-center" style={{ marginTop: 28 }}>
+              <button type="button" className="dp-btn primary fs-md" onClick={(e) => goForm(e, `sector-${sector}`)}>
+                {t.ctaDemo} <span className="arr" aria-hidden="true">{arrow}</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── features ── */}
       <section id="features" className="dp-section">
