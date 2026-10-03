@@ -56,6 +56,7 @@ const TXT = {
     lead: "InspectPro replaces paper logs with one live platform for HACCP, ISO 22000, internal audits, traceability and suppliers — so any record is in front of the inspector in minutes, not days.",
     ctaDemo: "Book a free demo",
     ctaCheck: "Check your readiness — 2 min",
+    ctaPrices: "See prices",
     mock: {
       title: "Dashboard", today: "Today",
       k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
@@ -145,6 +146,7 @@ const TXT = {
     lead: "يستبدل InspectPro السجلات الورقية بمنصة واحدة مباشرة لـ HACCP و ISO 22000 والتدقيق الداخلي والتتبّع والموردين — ليكون أي سجل بين يدي المفتش خلال دقائق، لا أيام.",
     ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
     ctaCheck: "قِس جاهزيتك — دقيقتان",
+    ctaPrices: "اطّلع على الأسعار",
     mock: {
       title: "لوحة التحكم", today: "اليوم",
       k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",
@@ -710,6 +712,7 @@ export default function DemoRequest() {
               <button type="button" className="dp-btn ghost-d fs-md" onClick={() => navigate(quizHref)}>
                 📊 {t.ctaCheck}
               </button>
+              <a href="#pricing" className="dp-btn ghost-d fs-md">💰 {t.ctaPrices}</a>
             </div>
           </div>
 
@@ -831,6 +834,18 @@ export default function DemoRequest() {
         </div>
       </section>
 
+      {/* ── pricing plans ── */}
+      <section id="pricing" className="dp-section tight" style={{ paddingTop: 0 }}>
+        <div className="dp-wrap">
+          <div className="dp-center dp-reveal">
+            <span className="dp-eyebrow fs-xs">{t.priceEyebrow}</span>
+            <h2 className="dp-h2 fs-h2">{t.priceTitle}</h2>
+            <p className="dp-sub fs-lead">{t.priceSub}</p>
+          </div>
+          <div className="dp-reveal"><PricingPlans lang={lang} onBook={(b, note) => bookFromCalc(b, "pricing", note)} /></div>
+        </div>
+      </section>
+
       {/* ── before / after ── */}
       <section className="dp-section tight" style={{ paddingTop: 0 }}>
         <div className="dp-wrap">
@@ -864,18 +879,6 @@ export default function DemoRequest() {
 
       {/* ── customer stories (real quotes the owner adds in Platform Center; hidden when none) ── */}
       <Testimonials items={cfg.testimonials} lang={lang} P={P} />
-
-      {/* ── pricing plans ── */}
-      <section id="pricing" className="dp-section tight" style={{ paddingTop: 0 }}>
-        <div className="dp-wrap">
-          <div className="dp-center dp-reveal">
-            <span className="dp-eyebrow fs-xs">{t.priceEyebrow}</span>
-            <h2 className="dp-h2 fs-h2">{t.priceTitle}</h2>
-            <p className="dp-sub fs-lead">{t.priceSub}</p>
-          </div>
-          <div className="dp-reveal"><PricingPlans lang={lang} onBook={(b, note) => bookFromCalc(b, "pricing", note)} /></div>
-        </div>
-      </section>
 
       {/* ── savings calculator + offer ── */}
       <section id="savings" className="dp-section tight" style={{ paddingTop: 0 }}>
