@@ -68,6 +68,7 @@ const ORG = {
   slogan: "Food safety · Quality · Compliance",
   areaServed: ["AE", "SA", "QA", "KW", "BH", "OM"],
   address: { "@type": "PostalAddress", addressCountry: "AE" },
+  sameAs: ["https://www.facebook.com/profile.php?id=100070850094338"],
 };
 const plan = (name, price) => ({
   "@type": "Offer",

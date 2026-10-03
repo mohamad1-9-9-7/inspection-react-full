@@ -334,6 +334,7 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 .dp-foot a, .dp-foot button { color: #cbd5e1; text-decoration: none; font-weight: 700; background: none; border: 0; cursor: pointer; padding: 0; display: inline-flex; align-items: center; min-height: 32px; } /* comfortable tap target */
 .dp-foot a:hover, .dp-foot button:hover { color: #fff; }
 .dp-foot-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.dp-foot-social { gap: 6px; }
 
 /* ── WhatsApp floating button ───────────────────────────── */
 .dp-wa-fab {
