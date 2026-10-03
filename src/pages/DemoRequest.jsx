@@ -9,7 +9,7 @@
 // the owner in Platform Center → Demo Requests). `?src=linkedin` (or any value)
 // on the link is saved with the request, so each channel can be counted.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import "./DemoRequest.css";
@@ -19,6 +19,9 @@ import { usePublicTitle } from "../config/pageTitles";
 import { useSiteStats } from "../utils/siteStats";
 import { SECTORS, SECTOR_ORDER, SECTOR_UI, withSector } from "./demoSectors";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
+
+// The free-trial window loads only when opened (it pulls in the demo-record generator).
+const TrialSignup = lazy(() => import("./trial/TrialSignup"));
 
 const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=100070850094338";
 
@@ -60,6 +63,7 @@ const TXT = {
     ctaDemo: "Book a free demo",
     ctaCheck: "Check your readiness — 2 min",
     ctaPrices: "See prices",
+    ctaTrial: "Try it free — 7 days",
     mock: {
       title: "Dashboard", today: "Today",
       k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
@@ -148,6 +152,7 @@ const TXT = {
     ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
     ctaCheck: "قِس جاهزيتك — دقيقتان",
     ctaPrices: "اطّلع على الأسعار",
+    ctaTrial: "جرّبه مجانًا — 7 أيام",
     mock: {
       title: "لوحة التحكم", today: "اليوم",
       k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",
@@ -402,6 +407,9 @@ export default function DemoRequest() {
     return PLUS.en.interests.some(([v]) => v === k) ? [k] : [];
   });
   const [sticky, setSticky] = useState(false);
+  // ?trial=1 (a Facebook post, an ad) opens the free-trial window straight away.
+  const [trialOpen, setTrialOpen] = useState(() => params.get("trial") === "1");
+  const openTrial = (where) => { track("cta", `trial-${where}`); setTrialOpen(true); };
   // Wide screens: the form lives in a fixed panel on the right, always in view.
   const docked = useMedia(DOCK_QUERY);
   const dockRef = useRef(null);
@@ -725,6 +733,9 @@ export default function DemoRequest() {
               <button type="button" className="dp-btn primary fs-md" onClick={(e) => goForm(e, "hero")}>
                 {t.ctaDemo} <span className="arr" aria-hidden="true">{arrow}</span>
               </button>
+              <button type="button" className="dp-btn ghost-d fs-md dp-trial-cta" onClick={() => openTrial("hero")}>
+                🚀 {t.ctaTrial}
+              </button>
               <button type="button" className="dp-btn ghost-d fs-md" onClick={() => navigate(quizHref)}>
                 📊 {t.ctaCheck}
               </button>
@@ -821,7 +832,10 @@ export default function DemoRequest() {
               ))}
             </div>
             <div className="dp-center" style={{ marginTop: 28 }}>
-              <button type="button" className="dp-btn primary fs-md" onClick={(e) => goForm(e, `sector-${sector}`)}>
+              <button type="button" className="dp-btn primary fs-md" onClick={() => openTrial(`sector-${sector}`)}>
+                🚀 {t.ctaTrial}
+              </button>
+              <button type="button" className="dp-btn dark fs-md" onClick={(e) => goForm(e, `sector-${sector}`)} style={{ marginInlineStart: 10 }}>
                 {t.ctaDemo} <span className="arr" aria-hidden="true">{arrow}</span>
               </button>
             </div>
@@ -1008,6 +1022,12 @@ export default function DemoRequest() {
           </div>
         </div>
       </section>
+
+      {trialOpen && (
+        <Suspense fallback={null}>
+          <TrialSignup lang={lang} sector={sector} source={source} track={track} onClose={() => setTrialOpen(false)} />
+        </Suspense>
+      )}
 
       {/* ── footer ── */}
       <footer className="dp-foot">

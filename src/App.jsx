@@ -22,6 +22,8 @@ import { isItemAllowed } from "./utils/sectionItems";
 import { useInventoryOfficer } from "./pages/workforce/workforceAccess";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
+// Free-trial companies: a bar on every screen that nothing is kept (renders nothing otherwise).
+const TrialBanner = lazy(() => import("./pages/trial/TrialBanner"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 
 // Lazy imports
@@ -838,6 +840,7 @@ export default function App() {
     >
       <NotificationManager />
       <OutboxBar />
+      <Suspense fallback={null}><TrialBanner /></Suspense>
       <GlobalDatePicker />
       <GlobalTimePicker />
       <ThemeToggle />

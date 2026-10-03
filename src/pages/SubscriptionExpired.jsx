@@ -22,14 +22,66 @@ export function getSupportContact() {
 
 export default function SubscriptionExpired() {
   const navigate         = useNavigate();
-  const { t, dir, isAr } = useSettingsLang();
+  const { t, isAr: settingsAr } = useSettingsLang();
   const user             = getUser();
+  // A trial speaks the language its visitor signed up in on /demo.
+  const isAr             = user.companyTrial && user.trialLang ? user.trialLang === "ar" : settingsAr;
+  const dir              = isAr ? "rtl" : "ltr";
   const isSuperAdmin     = user.isSuperAdmin || false;
   const support          = getSupportContact();
 
   function handleLogout() {
     clearAppSession();
     navigate("/");
+  }
+
+  /* A free-trial company (pages/trial): nothing in it is kept, so the screen
+     says so plainly and points at subscribing, not at renewing. */
+  if (user.companyTrial && !isSuperAdmin) {
+    return (
+      <div dir={dir} style={{
+        minHeight: "100vh", background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Cairo, sans-serif", padding: 24,
+      }}>
+        <div style={{
+          background: "#fff", borderRadius: 20, padding: "48px 40px", maxWidth: 500, width: "100%",
+          textAlign: "center", boxShadow: "0 24px 80px rgba(0,0,0,.35)",
+        }}>
+          <div style={{ fontSize: 64, marginBottom: 18, lineHeight: 1 }}>⏳</div>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: "#1e293b", marginBottom: 10 }}>
+            {isAr ? "انتهت التجربة المجانية" : "Your free trial has ended"}
+          </h1>
+          <p style={{ color: "#64748b", fontSize: 15, marginBottom: 18, lineHeight: 1.7 }}>
+            {isAr
+              ? "شكرًا لتجربة InspectPro. هذا الحساب التجريبي مقفل الآن."
+              : "Thank you for trying InspectPro. This trial account is now locked."}
+          </p>
+          <div style={{
+            background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412", borderRadius: 12,
+            padding: "14px 16px", marginBottom: 24, fontWeight: 700, lineHeight: 1.6, textAlign: isAr ? "right" : "left",
+          }}>
+            ⚠️ {isAr
+              ? "تُحذف جميع بيانات هذا الحساب نهائيًا ولا يمكن استعادتها. عند الاشتراك ننشئ لك شركة جديدة من البداية."
+              : "All data in this account is being deleted for good and cannot be recovered. When you subscribe, we set up a new company for you from scratch."}
+          </div>
+          <button
+            onClick={() => { clearAppSession(); navigate(`/demo${isAr ? "?lang=ar" : ""}#demo-form`); }}
+            style={{
+              background: "linear-gradient(135deg, #0f766e, #14b8a6)", color: "#fff", border: "none", borderRadius: 12,
+              padding: "13px 28px", fontWeight: 800, fontSize: 15, cursor: "pointer", width: "100%", marginBottom: 10,
+            }}
+          >
+            {isAr ? "اشترك — تواصل معنا" : "Subscribe — contact us"}
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{ background: "transparent", color: "#94a3b8", border: "none", padding: 10, fontWeight: 600, fontSize: 13, cursor: "pointer", width: "100%" }}
+          >
+            {isAr ? "الدخول بحساب آخر" : "Sign in with a different account"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -95,6 +95,7 @@ const T = {
       too_many_attempts: "Too many attempts - wait 1 minute",
       company_disabled: "This company is disabled. Contact the platform administrator.",
       subscription_lapsed: "This company's subscription has ended. Contact the platform administrator.",
+      trial_ended: "Your free trial has ended and its data is being deleted. Subscribe to start with a new account.",
       failed: "Login failed",
       network: "Could not connect to server",
     },
@@ -133,6 +134,7 @@ const T = {
       too_many_attempts: "محاولات كثيرة - انتظر دقيقة",
       company_disabled: "هذه الشركة معطّلة. تواصل مع مدير المنصّة.",
       subscription_lapsed: "انتهى اشتراك هذه الشركة. تواصل مع مدير المنصّة.",
+      trial_ended: "انتهت التجربة المجانية وتُحذف بياناتها. اشترك للبدء بحساب جديد.",
       failed: "تعذّر تسجيل الدخول",
       network: "تعذّر الاتصال بالخادم",
     },
@@ -313,6 +315,9 @@ function Login() {
             // null = platform account (super-admin). The in-app subscription
             // lock in App.jsx only ever judges an account by its OWN company.
             companyId: data.user.companyId || null,
+            // Self-service trial (pages/trial): the in-app bar counts down to this date.
+            companyTrial: !!data.user.company?.isTrial,
+            companyEndDate: data.user.company?.endDate ? String(data.user.company.endDate).slice(0, 10) : null,
             type: "named",
             loginAt: Date.now(),
           })
@@ -338,7 +343,8 @@ function Login() {
         setTimeout(() => navigate(target), 650);
         return;
       }
-      fail(t.err[data.error] || t.err.failed);
+      const code = data.error === "subscription_lapsed" && data.company?.isTrial ? "trial_ended" : data.error;
+      fail(t.err[code] || t.err.failed);
     } catch {
       fail(t.err.network);
     }
