@@ -1,5 +1,6 @@
 # Working rules for Claude
 
-- Always work directly on `main`: commit to `main` and push to `origin main`.
+- Always work directly on `main` and commit locally. Do NOT push until the owner says so
+  ("منرفع"); changes are batched and reviewed on the local server first.
   Do not create or push feature branches unless the owner asks for one.
-- Before pushing, fetch `origin main` and rebase/merge so the push is a fast-forward.
+- When the owner asks to push, fetch `origin main` and rebase/merge so the push is a fast-forward.
