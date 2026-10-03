@@ -108,10 +108,36 @@ export default function VisitorStats() {
     };
   }, [data, L]);
 
-  const ctaLabel = (d) => ({
-    hero: L("Hero button", "زر الواجهة"), nav: L("Top menu", "القائمة العلوية"), sticky: L("Mobile bottom bar", "شريط الجوال السفلي"),
-    pricing: L("Pricing plan", "باقة الأسعار"), calc: L("Savings calculator", "حاسبة التوفير"), offer: L("Offer banner", "شريط العرض"),
-  }[d] || d || "—");
+  /* /demo sector keys (pages/demoSectors.js) — for "sector-meat", "trial-sector-meat"… */
+  const sectorName = (k) => ({
+    meat: L("Meat", "لحوم"), restaurant: L("Restaurants", "مطاعم"), kitchen: L("Central kitchens", "مطابخ مركزية"),
+    sweets: L("Sweets", "حلويات"), factory: L("Factories", "مصانع"), retail: L("Supermarkets", "سوبرماركت"),
+    distribution: L("Distribution", "توزيع"),
+  }[k] || k);
+  const ctaLabel = (d) => {
+    const fixed = {
+      hero: L("Hero button", "زر الواجهة"), nav: L("Top menu", "القائمة العلوية"), sticky: L("Mobile bottom bar", "شريط الجوال السفلي"),
+      pricing: L("Pricing plan", "باقة الأسعار"), calc: L("Savings calculator", "حاسبة التوفير"), offer: L("Offer banner", "شريط العرض"),
+      "trial-hero": L("🚀 Free trial — hero button", "🚀 تجربة مجانية — زر الواجهة"),
+      "trial-submit": L("🚀 Free trial — form sent", "🚀 تجربة مجانية — أرسل الفورم"),
+    }[d];
+    if (fixed) return fixed;
+    const s = String(d || "");
+    if (s.startsWith("trial-sector-")) return L(`🚀 Free trial — ${sectorName(s.slice(13))} section`, `🚀 تجربة مجانية — قسم ${sectorName(s.slice(13))}`);
+    if (s.startsWith("sector-")) return L(`Picked sector: ${sectorName(s.slice(7))}`, `اختار قطاع: ${sectorName(s.slice(7))}`);
+    return s || "—";
+  };
+  /* ?src= values the marketing posts use, and the referrers siteStats.js detects. */
+  const sourceLabel = (k) => {
+    const s = String(k || "direct");
+    const known = {
+      direct: L("Direct / typed", "مباشر / كتب الرابط"),
+      instagram: "📸 Instagram", facebook: "📘 Facebook", "fb-reel": L("📘 Facebook — reel", "📘 فيسبوك — ريل"),
+      "fb-post": L("📘 Facebook — post", "📘 فيسبوك — بوست"), linkedin: "💼 LinkedIn", whatsapp: "💬 WhatsApp",
+      google: "🔎 Google", bing: "🔎 Bing", x: "𝕏 X / Twitter", tiktok: "🎵 TikTok", youtube: "▶️ YouTube",
+    }[s];
+    return known || s;
+  };
   const deviceLabel = (d) => ({ mobile: L("Mobile", "جوال"), tablet: L("Tablet", "تابلت"), desktop: L("Computer", "كمبيوتر") }[d] || L("Unknown", "غير معروف"));
   const countryLabel = (cc) => (cc ? (lang === "ar" ? COUNTRY_AR : COUNTRY_EN)[cc] || cc : L("Unknown", "غير معروف"));
 
@@ -166,7 +192,7 @@ export default function VisitorStats() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
             <Panel title={L("Where they came from", "منين إجوا")}>
-              <Breakdown rows={v.sources} label={(k) => k || "direct"} L={L} withLeads />
+              <Breakdown rows={v.sources} label={sourceLabel} L={L} withLeads />
             </Panel>
             <Panel title={L("Countries", "الدول")}>
               <Breakdown rows={v.countries} label={countryLabel} L={L} withLeads />
@@ -177,7 +203,7 @@ export default function VisitorStats() {
             <Panel title={L("Page language", "لغة الصفحة")}>
               <Breakdown rows={v.langs} label={(k) => (k === "ar" ? L("Arabic", "عربي") : L("English", "إنجليزي"))} L={L} withLeads />
             </Panel>
-            <Panel title={L("Which 'Book a demo' button they used", "أي زر «احجز عرضاً» استعملوا")}>
+            <Panel title={L("Which button they used (demo, free trial, sector)", "أي زر استعملوا (عرض، تجربة مجانية، قطاع)")}>
               <Breakdown rows={v.ctas.map((r) => ({ k: r.detail, visits: r.n }))} label={ctaLabel} L={L} unit={L("clicks", "ضغطة")} />
             </Panel>
             <Panel title={L("Login page", "صفحة الدخول")}>
