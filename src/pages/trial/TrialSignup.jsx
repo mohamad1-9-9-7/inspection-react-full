@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { DEMO_ACTIVITIES } from "../DemoRequest";
 import { SECTOR_KIT, TRIAL_DAYS, storeTrialSession } from "./trialSession";
+import { MOBILE_COUNTRIES, countryOf, normalizeMobile } from "./phone";
 
 const DEMO_DAYS = 14;
 const PARALLEL = 4;
@@ -23,7 +24,7 @@ const T = {
   en: {
     title: `Try InspectPro free for ${TRIAL_DAYS} days`,
     sub: "Your own company, filled with realistic sample records. Open it on your phone and fill a check yourself.",
-    company: "Company name", contact: "Your name", phone: "Mobile / WhatsApp", email: "E-mail (optional)",
+    company: "Company name", contact: "Your name", phone: "Mobile / WhatsApp", country: "Country code", email: "E-mail (optional)",
     sector: "Business type", password: "Choose a password", passwordHint: "At least 8 characters",
     pick: "Select…",
     warnTitle: "This is a trial account",
@@ -40,11 +41,11 @@ const T = {
     loginNote: (u) => `To sign in again later: username ${u} and the password you chose.`,
     err: {
       required: "Please fill in the company name, your name, phone, business type and a password.",
-      bad_phone: "Please enter a valid phone number.",
+      bad_phone: (c) => `Please enter a valid ${c.en} mobile number: ${c.len} digits, e.g. ${c.example}.`,
       bad_email: "That e-mail address does not look right.",
       weak_password: "The password needs at least 8 characters.",
       not_accepted: "Please tick the box to confirm you understand the data will not be kept.",
-      trial_used: "This phone number has already had a free trial. Book a demo and we will help you.",
+      trial_used: "This mobile number has already been used for a free trial — each number gets one. Book a demo and we will help you.",
       trial_full: "Too many trials started today. Please try again tomorrow, or book a demo.",
       too_many: "Too many attempts from this device. Please try again later.",
       failed: "We could not start the trial. Please try again.",
@@ -53,7 +54,7 @@ const T = {
   ar: {
     title: `جرّب InspectPro مجانًا لمدة ${TRIAL_DAYS} أيام`,
     sub: "شركة خاصة بك فيها سجلات تجريبية واقعية. افتحها من جوالك وعبّئ فحصًا بنفسك.",
-    company: "اسم الشركة", contact: "اسمك", phone: "الجوال / واتساب", email: "البريد الإلكتروني (اختياري)",
+    company: "اسم الشركة", contact: "اسمك", phone: "الجوال / واتساب", country: "رمز الدولة", email: "البريد الإلكتروني (اختياري)",
     sector: "نوع النشاط", password: "اختر كلمة مرور", passwordHint: "8 أحرف على الأقل",
     pick: "اختر…",
     warnTitle: "هذا حساب تجريبي",
@@ -70,11 +71,11 @@ const T = {
     loginNote: (u) => `للدخول لاحقًا: اسم المستخدم ${u} وكلمة المرور التي اخترتها.`,
     err: {
       required: "يرجى تعبئة اسم الشركة واسمك والجوال ونوع النشاط وكلمة المرور.",
-      bad_phone: "يرجى إدخال رقم جوال صحيح.",
+      bad_phone: (c) => `يرجى إدخال رقم جوال صحيح في ${c.ar}: ${c.len} أرقام، مثل ${c.example}.`,
       bad_email: "البريد الإلكتروني غير صحيح.",
       weak_password: "كلمة المرور يجب أن تكون 8 أحرف على الأقل.",
       not_accepted: "يرجى التأشير على المربع لتأكيد أنك تفهم أن البيانات لن تُحفظ.",
-      trial_used: "هذا الرقم استخدم التجربة المجانية من قبل. احجز عرضًا وسنساعدك.",
+      trial_used: "هذا الرقم استُخدم للتجربة المجانية من قبل — لكل رقم تجربة واحدة. احجز عرضًا وسنساعدك.",
       trial_full: "بدأ عدد كبير من التجارب اليوم. حاول غدًا أو احجز عرضًا.",
       too_many: "محاولات كثيرة من هذا الجهاز. حاول لاحقًا.",
       failed: "تعذّر بدء التجربة. حاول مرة أخرى.",
@@ -116,7 +117,7 @@ export default function TrialSignup({ lang, sector, source, onClose, track }) {
   const t = T[lang] || T.en;
   const isAr = lang === "ar";
   const [f, setF] = useState({
-    companyName: "", contactName: "", phone: "", email: "",
+    companyName: "", contactName: "", phone: "", phoneCountry: "AE", email: "",
     sector: SECTOR_KIT[sector] ? sector : "", password: "",
   });
   const [accept, setAccept] = useState(false);
@@ -142,8 +143,8 @@ export default function TrialSignup({ lang, sector, source, onClose, track }) {
     setError("");
     const d = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v).trim()]));
     if (!d.companyName || !d.contactName || !d.phone || !d.sector || !f.password) return setError(t.err.required);
-    const digits = d.phone.replace(/\D/g, "");
-    if (digits.length < 7 || digits.length > 15) return setError(t.err.bad_phone);
+    const mobile = normalizeMobile(d.phoneCountry, d.phone);
+    if (!mobile) return setError(t.err.bad_phone(countryOf(d.phoneCountry)));
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email)) return setError(t.err.bad_email);
     if (f.password.length < 8) return setError(t.err.weak_password);
     if (!accept) return setError(t.err.not_accepted);
@@ -158,7 +159,10 @@ export default function TrialSignup({ lang, sector, source, onClose, track }) {
       });
       if (res.status === 429) throw new Error(t.err.too_many);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok || !data.user) throw new Error(t.err[data.error] || t.err.failed);
+      if (!res.ok || !data.ok || !data.user) {
+        const msg = data.error === "bad_phone" ? t.err.bad_phone(countryOf(d.phoneCountry)) : t.err[data.error];
+        throw new Error(msg || t.err.failed);
+      }
 
       storeTrialSession(data, lang);
       setUsername(data.user.username);
@@ -195,7 +199,12 @@ export default function TrialSignup({ lang, sector, source, onClose, track }) {
               </div>
               <div className="dp-field">
                 <label htmlFor="t-phone" className="fs-sm">{t.phone}<em> *</em></label>
-                <input id="t-phone" className="dp-input" type="tel" dir="ltr" value={f.phone} onChange={set("phone")} autoComplete="tel" placeholder="+971 5x xxx xxxx" maxLength={40} />
+                <div className="dp-trial-phone" dir="ltr" style={{ display: "grid", gridTemplateColumns: "minmax(104px, auto) 1fr", gap: 8 }}>
+                  <select className="dp-input" aria-label={t.country} value={f.phoneCountry} onChange={set("phoneCountry")}>
+                    {MOBILE_COUNTRIES.map((c) => <option key={c.id} value={c.id}>{c.flag} +{c.code}</option>)}
+                  </select>
+                  <input id="t-phone" className="dp-input" type="tel" inputMode="tel" value={f.phone} onChange={set("phone")} autoComplete="tel-national" placeholder={countryOf(f.phoneCountry).example} maxLength={20} />
+                </div>
               </div>
               <div className="dp-field">
                 <label htmlFor="t-email" className="fs-sm">{t.email}</label>
