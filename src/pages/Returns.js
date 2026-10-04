@@ -518,6 +518,20 @@ function mergeRowGroup(rows, idxs) {
 /* ===== Helpers: Images API ===== */
 const MAX_IMAGES_PER_ROW = 8;
 
+/** The images on a paste event. `items` first: Firefox and some copy sources
+    (a snip, "Copy image" in a browser) leave `files` empty and only fill
+    `items`; `files` is the fallback for the browsers that do the opposite. */
+function imagesFromClipboard(e) {
+  const cd = e?.clipboardData;
+  if (!cd) return [];
+  const fromItems = Array.from(cd.items || [])
+    .filter((i) => i.kind === "file" && String(i.type || "").startsWith("image/"))
+    .map((i) => i.getAsFile())
+    .filter(Boolean);
+  if (fromItems.length) return fromItems;
+  return Array.from(cd.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+}
+
 /* ===== Server item catalog (session-cached) =====
    fetchServerItems() is a no-store read of ~18 KB that fired on every mount,
    for a list that changes a few times a month. Hold it for the session; the
@@ -773,9 +787,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   useEffect(() => {
     if (!open) return;
     const onPaste = (e) => {
-      const files = Array.from(e.clipboardData?.files || []).filter((f) =>
-        String(f.type || "").startsWith("image/")
-      );
+      const files = imagesFromClipboard(e);
       if (files.length) {
         e.preventDefault();
         uploadFiles(files);
@@ -1007,20 +1019,22 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
    reads while typing. Now the control IS the evidence: a row with no photo
    shows a dashed camera tile that asks for one, and a row that has photos
    shows the first one with the count over it. Both open the same manager. */
-function PhotoButton({ images = [], onClick }) {
+function PhotoButton({ images = [], onClick, uploading = 0 }) {
   const count = images.length;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rt-photo${count ? "" : " is-empty"}`}
+      className={`rt-photo${count || uploading ? "" : " is-empty"}`}
       title={
         count
-          ? `${count} photo${count === 1 ? "" : "s"} on this row — click to view, add or remove`
-          : "Add a photo of this item"
+          ? `${count} photo${count === 1 ? "" : "s"} on this row — click to view, add or remove. Or click any box on this row and paste a copied picture (Ctrl+V).`
+          : "Add a photo of this item — or click any box on this row and paste a copied picture (Ctrl+V)"
       }
     >
-      {count ? (
+      {uploading > 0 ? (
+        <span className="rt-photo-txt">⏳ Uploading {uploading}…</span>
+      ) : count ? (
         <>
           <span className="rt-photo-thumb">
             <img src={thumbUrl(images[0], 96)} alt="" />
@@ -2749,6 +2763,88 @@ export default function Returns() {
     }
   };
 
+  /* ===== Paste a picture straight onto a row =====
+     Copy a picture anywhere (WhatsApp, a screenshot, "Copy image" in a
+     browser), click any box on the row - or just point at it - and press
+     Ctrl+V: it uploads to that row with no window and no file browser.
+     The photo window and the note dialogs keep their own paste while open. */
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const hoverRowRef = useRef(-1);
+  const [uploadingRows, setUploadingRows] = useState({}); // { rowIdx: count }
+
+  const pasteImagesToRow = async (idx, files) => {
+    const room = MAX_IMAGES_PER_ROW - safeArr(rowsRef.current?.[idx]?.images).length;
+    if (room <= 0) {
+      setSaveMsg(`⚠️ Row ${idx + 1} already holds ${MAX_IMAGES_PER_ROW} photos — remove one first.`);
+      setTimeout(() => setSaveMsg(""), 3000);
+      return;
+    }
+    const batch = files.slice(0, room);
+    setUploadingRows((m) => ({ ...m, [idx]: (m[idx] || 0) + batch.length }));
+    const urls = [];
+    let failed = 0;
+    for (const f of batch) {
+      try {
+        urls.push(await uploadImage(f, "returns_photo"));
+      } catch (err) {
+        failed++;
+        console.error("paste upload failed:", err);
+      }
+      setUploadingRows((m) => {
+        const left = (m[idx] || 1) - 1;
+        const next = { ...m };
+        if (left > 0) next[idx] = left;
+        else delete next[idx];
+        return next;
+      });
+    }
+    if (urls.length) {
+      setRows((prev) =>
+        prev.map((r, i) => (i === idx ? { ...r, images: [...safeArr(r.images), ...urls] } : r))
+      );
+    }
+    const skipped = files.length - batch.length;
+    const notes = [];
+    if (urls.length) notes.push(`${urls.length} photo${urls.length === 1 ? "" : "s"} added to row ${idx + 1}`);
+    if (failed) notes.push(`${failed} failed to upload`);
+    if (skipped) notes.push(`${skipped} skipped (max ${MAX_IMAGES_PER_ROW} per row)`);
+    setSaveMsg(`${failed || skipped ? "⚠️" : "✅"} ${notes.join(" — ")}.`);
+    setTimeout(() => setSaveMsg(""), 3000);
+  };
+
+  const pasteImagesRef = useRef(pasteImagesToRow);
+  pasteImagesRef.current = pasteImagesToRow;
+  const focusedCellRef = useRef(focusedCell);
+  focusedCellRef.current = focusedCell;
+  const dialogOpen = imageModalOpen || scanOpen || importOpen || addItemOpen;
+
+  useEffect(() => {
+    if (dialogOpen) return undefined;
+    const onPaste = (e) => {
+      if (e.defaultPrevented) return;
+      // Excel puts a picture of the copied cells on the clipboard beside the
+      // text: a paste that carries text is a text paste, never a photo
+      if ((e.clipboardData?.getData("text/plain") || "").trim()) return;
+      const files = imagesFromClipboard(e);
+      if (!files.length) return;
+      const at = focusedCellRef.current();
+      const idx = at ? at.row : hoverRowRef.current;
+      if (idx < 0 || idx >= (rowsRef.current?.length || 0)) {
+        // focus inside some other box or window: leave that paste alone
+        if (document.activeElement && document.activeElement !== document.body) return;
+        e.preventDefault();
+        setSaveMsg("⚠️ Click a box on the row the picture belongs to, then press Ctrl+V again.");
+        setTimeout(() => setSaveMsg(""), 3500);
+        return;
+      }
+      e.preventDefault();
+      pasteImagesRef.current(idx, files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [dialogOpen]);
+
   /* ===== Duplicate rows: find them, and offer to fold them into one ===== */
   const dupGroups = useMemo(() => findDuplicateGroups(rows), [rows]);
 
@@ -3405,6 +3501,11 @@ export default function Returns() {
         ref={tableRef}
         onKeyDown={handleTableKeyDown}
         onPaste={handleTablePaste}
+        onMouseOver={(e) => {
+          const tr = e.target.closest?.("tr[data-row]");
+          hoverRowRef.current = tr ? Number(tr.getAttribute("data-row")) : -1;
+        }}
+        onMouseLeave={() => { hoverRowRef.current = -1; }}
       >
         <table
           style={{
@@ -3706,6 +3807,7 @@ export default function Returns() {
                   <td style={td}>
                     <PhotoButton
                       images={safeArr(row.images)}
+                      uploading={uploadingRows[idx] || 0}
                       onClick={() => openImagesFor(idx)}
                     />
                   </td>
