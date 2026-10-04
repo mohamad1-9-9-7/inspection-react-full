@@ -32,6 +32,7 @@ import { MAWASHI_LOGO_B64 } from "../../assets/mawashi-logo-b64";
 import { arrangeItems, GROUP_LABEL } from "../shared/itemSortGroup";
 import { getRefNo, isPendingRef } from "../../utils/reportRef";
 import { itemReasons, REASON_SEP } from "./destructionOptions";
+import ImageLightbox from "../shared/ImageLightbox";
 
 /* API report type — also the key the reference prefix is looked up by. */
 const TYPE = "destruction_record";
@@ -2227,35 +2228,10 @@ function PasswordModal({ show, onSubmit, onCancel, title = "Enter Password" }) {
   );
 }
 
+/* The read-only viewer (zoom, rotate, download, copy, print, full screen)
+   lives in shared/ImageLightbox so every browse page gets the same tools. */
 function ImageViewerModal({ open, images = [], title = "", onClose }) {
-  const [preview, setPreview] = useState(images[0] || "");
-  useEffect(() => { if (open) setPreview(images[0] || ""); }, [open, images]);
-  return (
-    <ModalShell open={open} onClose={onClose} title={`Images${title ? ` — ${title}` : ""}`} width={1100}>
-      {preview ? (
-        <div style={{ marginBottom: 12 }}>
-          <img src={preview} alt="preview" style={{
-            width: "100%", maxHeight: "65vh", objectFit: "contain", borderRadius: 10,
-            border: `1px solid ${T.border}`,
-          }} />
-        </div>
-      ) : (
-        <div style={{ ...sx.muted, textAlign: "center", padding: 30 }}>No images.</div>
-      )}
-      {images.length > 1 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
-          {images.map((src, i) => (
-            <button key={i} onClick={() => setPreview(src)} style={{
-              border: `2px solid ${preview === src ? T.primary : T.border}`,
-              borderRadius: 8, padding: 0, overflow: "hidden", cursor: "pointer", background: T.card,
-            }}>
-              <img src={src} alt={`thumb-${i}`} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
-            </button>
-          ))}
-        </div>
-      )}
-    </ModalShell>
-  );
+  return <ImageLightbox open={open} images={images} title={title} onClose={onClose} />;
 }
 
 function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, currentSnapshot }) {
