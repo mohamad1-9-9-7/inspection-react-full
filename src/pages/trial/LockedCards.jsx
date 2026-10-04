@@ -10,6 +10,11 @@
 import React from "react";
 import { HomeSection, HomeGroup, LockedCard } from "../generic/HomeSection";
 
+/* Daily reports a free trial sees but cannot open (kit schema keys — the
+   type is `<industry>_<key>`). The core logs stay open so the trial is real;
+   these advanced ones tease what a subscription adds. */
+export const TRIAL_LOCKED_REPORT_KEYS = ["non_conformance", "thermometer_check", "waste", "visitors"];
+
 export const LOCKED_CARDS = [
   { id: "training", icon: "🎓", grad: "linear-gradient(135deg,#7c3aed,#4f46e5)", label: "Internal Training", labelAr: "التدريب الداخلي" },
   { id: "maintenance", icon: "🛠️", grad: "linear-gradient(135deg,#ea580c,#c2410c)", label: "Maintenance", labelAr: "الصيانة" },

@@ -5,7 +5,7 @@
 // Entry / View — and each opens the report full width (GenericIndustryApp).
 
 import React from "react";
-import { HomeSection, HomeGroup, OpenCard } from "./HomeSection";
+import { HomeSection, HomeGroup, OpenCard, LockedCard } from "./HomeSection";
 
 const GROUP_COLORS = {
   operations: "#0f766e",
@@ -18,7 +18,8 @@ const GROUP_COLORS = {
 const FALLBACK_COLOR = "#475569";
 
 /** `reports` = the (already search-filtered) reports of `card`. */
-export default function DailyReportsSection({ card, reports, Two, accent, onOpen }) {
+/** `isLocked(type)` → that report shows as a locked teaser (free trial). */
+export default function DailyReportsSection({ card, reports, Two, accent, onOpen, isLocked = () => false }) {
   const groups = [...(card.groups || [])];
   const known = new Set(groups.map((g) => g.id));
   if (reports.some((r) => !known.has(r.group))) groups.push({ id: null, icon: "📄", label: "Other", labelAr: "أخرى" });
@@ -45,7 +46,9 @@ export default function DailyReportsSection({ card, reports, Two, accent, onOpen
         return (
           <HomeGroup key={g.id || "other"} Two={Two} icon={g.icon} color={color} label={g.label} labelAr={g.labelAr} count={items.length}>
             {items.map((r) => (
-              <OpenCard key={r.type} item={r} color={color} accent={accent} index={n++} onOpen={() => onOpen(r.type)} />
+              isLocked(r.type)
+                ? <LockedCard key={r.type} item={r} color={color} accent={accent} index={n++} Two={Two} />
+                : <OpenCard key={r.type} item={r} color={color} accent={accent} index={n++} onOpen={() => onOpen(r.type)} />
             ))}
           </HomeGroup>
         );

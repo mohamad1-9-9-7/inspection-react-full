@@ -18,7 +18,7 @@ import { openExternal } from "../../config/externalLinks";
 import { useCompanyManifest } from "../../companies";
 import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
-import LockedCards, { LockedIsoSection } from "../trial/LockedCards";
+import LockedCards, { LockedIsoSection, TRIAL_LOCKED_REPORT_KEYS } from "../trial/LockedCards";
 import DailyReportsSection from "./DailyReportsSection";
 import KitToolsSection from "./KitToolsSection";
 import { KIT_INDUSTRY_IDS } from "../../industries/catalog";
@@ -212,6 +212,10 @@ export default function GenericIndustryApp() {
   const repType = params.get("rep") || null;
   const repReport = reportsCard && repType && !card ? reportsCard.reports.find((r) => r.type === repType) : null;
   const flatCard = isKitFlat && card?.reports ? card : null;
+  // Free trial: a few advanced daily reports are locked teasers — not even by URL.
+  const isTrialUser = !!currentUser.companyTrial && !isSuperAdmin;
+  const isLockedType = (type) => isKitFlat && isTrialUser && TRIAL_LOCKED_REPORT_KEYS.some((k) => type === `${industry}_${k}`);
+  const lockedOpen = (repReport && isLockedType(repReport.type)) || (flatCard && activeType && isLockedType(activeType));
 
   useEffect(() => {
     if (!templateLoading && !template) navigate("/named-dashboard", { replace: true });
@@ -235,6 +239,11 @@ export default function GenericIndustryApp() {
       }, { replace: true });
     }
   }, [card, activeType, setParams, isKitFlat]);
+
+  // A trial-locked report reached by link goes back home.
+  useEffect(() => {
+    if (lockedOpen) setParams(new URLSearchParams(), { replace: true });
+  }, [lockedOpen, setParams]);
 
   if (!template) return templateLoading ? <Loading /> : null;
 
@@ -288,7 +297,7 @@ export default function GenericIndustryApp() {
   // Kit companies: Settings is a button in the hero bar (beside Logout), not a card.
   const settingsCard = isKitFlat ? cards.find((c) => c.kind === "hub" && c.id === "settings") : null;
   const homeCards = cards.filter((c) => c !== entryCard && c !== viewCard && c !== settingsCard && matches(c));
-  const showTrialLocked = !!currentUser.companyTrial && !isSuperAdmin && !q;
+  const showTrialLocked = isTrialUser && !q;
 
   return (
     <main className="gia" style={S.page} dir="ltr">
@@ -537,6 +546,7 @@ export default function GenericIndustryApp() {
               Two={Two}
               accent={ACCENT}
               onOpen={(type) => go({ rep: type })}
+              isLocked={isLockedType}
             />
           )}
           {/* Kit companies: the remaining cards (+ trial teasers) in the same look. */}
@@ -557,7 +567,7 @@ export default function GenericIndustryApp() {
       )}
 
       {/* ── Kit report, inner picker: Entry + View (as far as granted) ── */}
-      {repReport && (
+      {repReport && !lockedOpen && (
         <div style={S.homeWrap}>
           <div style={S.homeIntro}>
             <div style={S.introTitle}>{repReport.icon || "📄"} <Two en={repReport.label} ar={repReport.labelAr} /></div>
@@ -593,7 +603,7 @@ export default function GenericIndustryApp() {
       )}
 
       {/* ── Kit report page: FULL WIDTH, no sidebar ── */}
-      {flatCard && activeType && (
+      {flatCard && activeType && !lockedOpen && (
         <section style={S.main}>
           <div style={{ ...S.mainHead, flexWrap: "wrap" }}>
             <span style={S.mainHeadIcon}>{found?.report.icon || "📄"}</span>
