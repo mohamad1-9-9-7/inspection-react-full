@@ -17,7 +17,10 @@ const CSS = `
   .hs-title{font-weight:1000;color:#0f172a;line-height:1.2}
   .hs-sub{color:#475569;font-weight:700;margin-top:2px}
   .hs-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;font-weight:900;white-space:nowrap}
-  .hs-group{margin-top:24px}
+  /* Groups flow into two balanced columns; every card is the same size. */
+  .hs-cols{margin-top:22px;column-count:2;column-gap:26px}
+  .hs-group{break-inside:avoid;display:inline-block;width:100%;margin:0 0 24px;vertical-align:top}
+  @media (max-width:1100px){.hs-cols{column-count:1}}
   .hs-gh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .hs-gbadge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:var(--c);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--c) 30%,transparent)}
   .hs-gdot{width:26px;height:26px;border-radius:999px;display:grid;place-items:center;flex-shrink:0;background:rgba(255,255,255,.22)}
@@ -25,8 +28,9 @@ const CSS = `
   .hs-gname .gia-ar{opacity:.9}
   .hs-gline{flex:1;height:2px;border-radius:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--c) 45%,transparent),transparent)}
   .hs-gcount{font-weight:1000;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1.5px solid color-mix(in srgb,var(--c) 35%,#fff);border-radius:999px;padding:2px 10px}
-  .hs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px}
-  .hs-card{position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;text-align:start;width:100%;box-sizing:border-box;padding:15px 15px 15px 13px;border-radius:15px;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff) 0%,#fff 62%);border:1.5px solid color-mix(in srgb,var(--c) 30%,#e2e8f0);border-inline-start:5px solid var(--c);box-shadow:0 6px 16px color-mix(in srgb,var(--c) 12%,transparent);font:inherit;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;animation:giaIn .3s ease both}
+  .hs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  @media (max-width:560px){.hs-grid{grid-template-columns:1fr}}
+  .hs-card{position:relative;overflow:hidden;min-height:118px;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;text-align:start;width:100%;box-sizing:border-box;padding:15px 15px 15px 13px;border-radius:15px;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff) 0%,#fff 62%);border:1.5px solid color-mix(in srgb,var(--c) 30%,#e2e8f0);border-inline-start:5px solid var(--c);box-shadow:0 6px 16px color-mix(in srgb,var(--c) 12%,transparent);font:inherit;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;animation:giaIn .3s ease both}
   .hs-card:hover{transform:translateY(-3px);border-color:var(--c);box-shadow:0 16px 32px color-mix(in srgb,var(--c) 24%,transparent)}
   .hs-card.is-open{cursor:pointer}
   .hs-card.is-open:focus-visible{outline:3px solid color-mix(in srgb,var(--c) 50%,transparent);outline-offset:2px}
@@ -79,7 +83,7 @@ export function HomeSection({ Two, icon, logoBg, title, titleAr, sub, subAr, pil
         </div>
         {pill && <span className="hs-pill" style={pillStyle}><Two en={pill} ar={pillAr} /></span>}
       </div>
-      {children}
+      <div className="hs-cols">{children}</div>
     </section>
   );
 }
