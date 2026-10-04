@@ -18,7 +18,7 @@ import { openExternal } from "../../config/externalLinks";
 import { useCompanyManifest } from "../../companies";
 import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
-import LockedCards from "../trial/LockedCards";
+import LockedCards, { LockedIsoSection } from "../trial/LockedCards";
 
 function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -502,6 +502,8 @@ export default function GenericIndustryApp() {
               )}
             </div>
           )}
+          {/* Free trial only: the ISO & HACCP modules, grouped and locked. */}
+          {currentUser.companyTrial && !isSuperAdmin && !q && <LockedIsoSection Two={Two} accent={ACCENT} />}
 
           <footer style={S.homeFooter}>Built by Eng. Mohammed Abdullah</footer>
         </div>
