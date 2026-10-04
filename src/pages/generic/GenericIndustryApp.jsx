@@ -199,6 +199,19 @@ export default function GenericIndustryApp() {
     ? cards.find((c) => c.id !== card.id && c.reports && (c.kind === "viewer") !== (card.kind === "viewer"))
     : null;
 
+  /* Kit companies (restaurant / retail / warehouse / factory): no report
+     sidebar. Every report is its own card on the home screen; opening one
+     (?rep=<type>) shows two cards — Entry and View — and each opens its page
+     full width (the usual ?card=<entry|viewer card>&type=<type>, so links made
+     inside a report keep working). */
+  const isKitFlat = KIT_INDUSTRY_IDS.includes(industry);
+  const entryCard = isKitFlat ? cards.find((c) => c.kind === "entry" && c.reports?.length) : null;
+  const viewCard = isKitFlat ? cards.find((c) => c.kind === "viewer" && c.reports?.length) : null;
+  const reportsCard = entryCard || viewCard;
+  const repType = params.get("rep") || null;
+  const repReport = reportsCard && repType && !card ? reportsCard.reports.find((r) => r.type === repType) : null;
+  const flatCard = isKitFlat && card?.reports ? card : null;
+
   useEffect(() => {
     if (!templateLoading && !template) navigate("/named-dashboard", { replace: true });
   }, [template, templateLoading, navigate]);
@@ -210,15 +223,17 @@ export default function GenericIndustryApp() {
 
   // When a report card is opened without a report, auto-select its first one.
   // Pair cards (OHC) are excluded — they show their two inner cards first.
+  // Kit companies have no list to pick from, so a bare report card goes home.
   useEffect(() => {
     if (card && card.kind !== "pair" && card.kind !== "hub" && !activeType && card.reports?.length) {
       setParams((prev) => {
         const p = new URLSearchParams(prev);
-        p.set("type", card.reports[0].type);
+        if (isKitFlat) p.delete("card");
+        else p.set("type", card.reports[0].type);
         return p;
       }, { replace: true });
     }
-  }, [card, activeType, setParams]);
+  }, [card, activeType, setParams, isKitFlat]);
 
   if (!template) return templateLoading ? <Loading /> : null;
 
@@ -233,7 +248,7 @@ export default function GenericIndustryApp() {
       const p = new URLSearchParams(prev);
       // date/reportId/tab belong to one report's edit link (e.g. NCR → Edit);
       // leaving them behind would re-open that record on the next report.
-      ["card", "type", "mode", "date", "reportId", "tab"].forEach((k) => p.delete(k));
+      ["card", "type", "mode", "rep", "date", "reportId", "tab"].forEach((k) => p.delete(k));
       Object.entries(next || {}).forEach(([k, v]) => { if (v) p.set(k, v); });
       return p;
     });
@@ -266,13 +281,10 @@ export default function GenericIndustryApp() {
 
   const q = query.trim().toLowerCase();
   const matches = (x) => !q || [x.label, x.desc, x.labelAr, x.descAr].some((v) => String(v || "").toLowerCase().includes(q));
-  /* Kit companies: the Daily Reports card is spread out on the home screen as
-     its own section (one card per report) instead of one tile. */
-  const dailyCard = KIT_INDUSTRY_IDS.includes(industry)
-    ? cards.find((c) => c.kind === "entry" && c.reports?.length && c.groups)
-    : null;
-  const dailyReports = dailyCard ? dailyCard.reports.filter(matches) : [];
-  const homeCards = cards.filter((c) => c !== dailyCard && matches(c));
+  /* Kit companies: Daily Reports + View Reports become one home section (a
+     card per report) instead of two tiles. */
+  const dailyReports = reportsCard ? reportsCard.reports.filter(matches) : [];
+  const homeCards = cards.filter((c) => c !== entryCard && c !== viewCard && matches(c));
 
   return (
     <main className="gia" style={S.page} dir="ltr">
@@ -379,7 +391,7 @@ export default function GenericIndustryApp() {
             </div>
             <div style={S.heroActions}>
               <span style={S.clock}>{timeStr}</span>
-              <button style={S.btn} onClick={() => go({})}>🏠 <Two en="Home" ar="الرئيسية" /></button>
+              <button style={{ ...S.btn, ...S.btnLight }} onClick={() => go({})}>🏠 <Two en="Home" ar="الرئيسية" /></button>
               {isSuperAdmin && (
                 <button style={S.btn} onClick={() => { clearActiveCompany(); navigate("/select-company"); }}>
                   🏢 <Two en="Switch" ar="تبديل" />
@@ -393,7 +405,7 @@ export default function GenericIndustryApp() {
       )}
 
       {/* ── Home: rich hero + search + cards ── */}
-      {!card && (
+      {!card && !repReport && (
         <div style={S.homeShell}>
           <section style={S.bigHero}>
             <div aria-hidden="true" style={S.bigHeroGlow} />
@@ -511,11 +523,11 @@ export default function GenericIndustryApp() {
           )}
           {dailyReports.length > 0 && (
             <DailyReportsSection
-              card={dailyCard}
+              card={reportsCard}
               reports={dailyReports}
               Two={Two}
               accent={ACCENT}
-              onOpen={(type) => go({ card: dailyCard.id, type })}
+              onOpen={(type) => go({ rep: type })}
             />
           )}
           {/* Free trial only: the ISO & HACCP modules, grouped and locked. */}
@@ -523,6 +535,85 @@ export default function GenericIndustryApp() {
 
           <footer style={S.homeFooter}>Built by Eng. Mohammed Abdullah</footer>
         </div>
+      )}
+
+      {/* ── Kit report, inner picker: Entry + View (as far as granted) ── */}
+      {repReport && (
+        <div style={S.homeWrap}>
+          <div style={S.homeIntro}>
+            <div style={S.introTitle}>{repReport.icon || "📄"} <Two en={repReport.label} ar={repReport.labelAr} /></div>
+            {repReport.desc && <div style={S.introSub}><Two en={repReport.desc} ar={repReport.descAr} /></div>}
+            <button style={{ ...S.btn, marginTop: 12, color: ACCENT, borderColor: "rgba(15,118,110,.3)", background: "#ccfbf1" }} onClick={() => go({})}>
+              ← <Two en="Home" ar="الرئيسية" />
+            </button>
+          </div>
+          <div style={S.grid}>
+            {[
+              entryCard && { c: entryCard, label: "Entry", labelAr: "إدخال", desc: "Fill in today's sheet", descAr: "تعبئة ورقة اليوم", icon: "✍️", grad: "linear-gradient(135deg,#0f766e,#14b8a6)", foot: <Two en="Open" ar="فتح" /> },
+              viewCard && { c: viewCard, label: "View", labelAr: "عرض", desc: "Browse, edit and export the saved sheets", descAr: "تصفّح الأوراق المحفوظة وتعديلها وتصديرها", icon: "🗂️", grad: "linear-gradient(135deg,#0891b2,#0e7490)", foot: <Two en="Browse" ar="تصفح" /> },
+            ].filter(Boolean).map((x, i) => (
+              <button
+                key={x.c.id}
+                className="gia-card"
+                style={{ ...S.card, animationDelay: `${i * 0.05}s` }}
+                onClick={() => go({ card: x.c.id, type: repReport.type })}
+              >
+                <div style={S.cardTop}>
+                  <div style={{ ...S.cardIcon, background: x.grad }}>{x.icon}</div>
+                </div>
+                <div className="gia-ct" style={S.cardTitle}>{x.label}<div className="gia-ar gia-card-ar" lang="ar" dir="rtl" style={{ color: ACCENT, marginTop: 3 }}>{x.labelAr}</div></div>
+                <div style={S.cardDesc}>{x.desc}<div className="gia-ar" lang="ar" dir="rtl" style={{ marginTop: 2 }}>{x.descAr}</div></div>
+                <div style={S.cardFoot}>
+                  <span>{x.foot}</span>
+                  <span aria-hidden="true">→</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Kit report page: FULL WIDTH, no sidebar ── */}
+      {flatCard && activeType && (
+        <section style={S.main}>
+          <div style={{ ...S.mainHead, flexWrap: "wrap" }}>
+            <span style={S.mainHeadIcon}>{found?.report.icon || "📄"}</span>
+            <span style={S.mainHeadTitle}>{found ? <Two en={found.report.label} ar={found.report.labelAr} /> : activeType}</span>
+            <span style={S.mainHeadTag}>
+              {flatCard.kind === "viewer" ? <Two en="View" ar="عرض" /> : <Two en="Entry" ar="إدخال" />}
+            </span>
+            <span style={{ marginInlineStart: "auto", display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
+              {twinCard && (
+                <button style={{ ...S.btn, ...S.btnLight }} onClick={() => go({ card: twinCard.id, type: activeType })}>
+                  {twinCard.kind === "viewer" ? <>🗂️ <Two en="View" ar="عرض" /></> : <>✍️ <Two en="Entry" ar="إدخال" /></>}
+                </button>
+              )}
+              <button style={{ ...S.btn, color: ACCENT, borderColor: "rgba(15,118,110,.3)", background: "#ccfbf1" }} onClick={() => go({ rep: activeType })}>
+                ← <Two en="Back" ar="رجوع" />
+              </button>
+              <button style={{ ...S.btn, ...S.btnLight }} onClick={() => go({})}>🏠 <Two en="Home" ar="الرئيسية" /></button>
+            </span>
+          </div>
+          <div style={S.mainBody}>
+            {Leaf && found?.report?.guide && (
+              <ReportGuide
+                key={`${flatCard.id}:${found.report.type}`}
+                id={found.report.type}
+                guide={found.report.guide}
+                compact={flatCard.kind === "viewer"}
+              />
+            )}
+            {Leaf ? (
+              <CompanyBoundary module={moduleKey || industry} resetKey={leafKey} onHome={() => go({})}>
+                <Suspense fallback={<Loading />}>
+                  <Leaf />
+                </Suspense>
+              </CompanyBoundary>
+            ) : (
+              <div style={S.loading}><Two en="Report not found." ar="التقرير غير موجود." /></div>
+            )}
+          </div>
+        </section>
       )}
 
       {/* ── Pair card (e.g. OHC), inner picker: two centered cards ── */}
@@ -590,7 +681,7 @@ export default function GenericIndustryApp() {
       )}
 
       {/* ── Card: sidebar + full-width report ── */}
-      {card && !isPair && !isHub && (
+      {card && !isPair && !isHub && !flatCard && (
         <div className="gia-shell">
           <SideNav
             card={card}
@@ -652,6 +743,7 @@ const S = {
   heroActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   clock: { fontWeight: 900, fontVariantNumeric: "tabular-nums", opacity: .9, marginInlineEnd: 4 },
   btn: { minHeight: 40, padding: "0 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", backdropFilter: "blur(6px)" },
+  btnLight: { color: "#0f172a", borderColor: "rgba(15,23,42,.14)", background: "#fff", backdropFilter: "none" },
   btnDanger: { minHeight: 40, padding: "0 14px", borderRadius: 10, border: "1px solid rgba(254,202,202,.3)", background: "rgba(220,38,38,.32)", color: "#fff", fontWeight: 800, cursor: "pointer" },
 
   homeWrap: { width: "100%", boxSizing: "border-box", margin: 0, padding: "14px clamp(10px,1.2vw,18px) 24px" },

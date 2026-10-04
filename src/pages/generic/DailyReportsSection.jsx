@@ -1,8 +1,8 @@
 // src/pages/generic/DailyReportsSection.jsx
 // The "Daily Reports" card spread out on the home screen of a kit company
 // (restaurant / retail / warehouse / factory): every report as its own card,
-// grouped like the sidebar (card.groups + report.group). A card opens its
-// report directly — same URL as picking it in the sidebar.
+// grouped (card.groups + report.group). A card opens a small picker —
+// Entry / View — and each opens the report full width (GenericIndustryApp).
 
 import React from "react";
 import { HomeSection, HomeGroup, OpenCard } from "./HomeSection";
