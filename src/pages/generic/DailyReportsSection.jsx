@@ -24,6 +24,8 @@ export default function DailyReportsSection({ card, reports, Two, accent, onOpen
   const known = new Set(groups.map((g) => g.id));
   if (reports.some((r) => !known.has(r.group))) groups.push({ id: null, icon: "📄", label: "Other", labelAr: "أخرى" });
 
+  const locked = card.reports.filter((r) => isLocked(r.type)).length;
+  const open = card.reports.length - locked;
   let n = 0;
   return (
     <HomeSection
@@ -33,8 +35,8 @@ export default function DailyReportsSection({ card, reports, Two, accent, onOpen
       bg="linear-gradient(180deg,#f8fafc 0%,#fff 46%)"
       title={card.label}
       titleAr={card.labelAr}
-      sub={`${card.reports.length} reports ready to fill in today`}
-      subAr={`${card.reports.length} تقرير جاهز للتعبئة اليوم`}
+      sub={`${open} reports ready to fill in today${locked ? ` · ${locked} more after subscribing` : ""}`}
+      subAr={`${open} تقرير جاهز للتعبئة اليوم${locked ? ` · ${locked} إضافية بعد الاشتراك` : ""}`}
       pill="✓ Ready to use"
       pillAr="جاهز للاستخدام"
       pillStyle={{ background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" }}
