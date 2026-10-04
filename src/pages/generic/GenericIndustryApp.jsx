@@ -20,6 +20,7 @@ import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
 import LockedCards, { LockedIsoSection } from "../trial/LockedCards";
 import DailyReportsSection from "./DailyReportsSection";
+import KitToolsSection from "./KitToolsSection";
 import { KIT_INDUSTRY_IDS } from "../../industries/catalog";
 
 function getCurrentUser() {
@@ -285,6 +286,7 @@ export default function GenericIndustryApp() {
      card per report) instead of two tiles. */
   const dailyReports = reportsCard ? reportsCard.reports.filter(matches) : [];
   const homeCards = cards.filter((c) => c !== entryCard && c !== viewCard && matches(c));
+  const showTrialLocked = !!currentUser.companyTrial && !isSuperAdmin && !q;
 
   return (
     <main className="gia" style={S.page} dir="ltr">
@@ -480,7 +482,7 @@ export default function GenericIndustryApp() {
                 </>
               )}
             </div>
-          ) : (homeCards.length > 0 || !q) && (
+          ) : !isKitFlat && (homeCards.length > 0 || !q) && (
             <div style={S.grid}>
               {homeCards.map((c, i) => {
                 const on = hovered === c.id;
@@ -530,8 +532,18 @@ export default function GenericIndustryApp() {
               onOpen={(type) => go({ rep: type })}
             />
           )}
+          {/* Kit companies: the remaining cards (+ trial teasers) in the same look. */}
+          {isKitFlat && (homeCards.length > 0 || showTrialLocked) && (
+            <KitToolsSection
+              cards={homeCards}
+              showLocked={showTrialLocked}
+              Two={Two}
+              accent={ACCENT}
+              onOpen={(c) => (c.href ? openExternal(c.href) : go({ card: c.id }))}
+            />
+          )}
           {/* Free trial only: the ISO & HACCP modules, grouped and locked. */}
-          {currentUser.companyTrial && !isSuperAdmin && !q && <LockedIsoSection Two={Two} accent={ACCENT} />}
+          {showTrialLocked && <LockedIsoSection Two={Two} accent={ACCENT} />}
 
           <footer style={S.homeFooter}>Built by Eng. Mohammed Abdullah</footer>
         </div>
