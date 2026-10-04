@@ -19,7 +19,8 @@ const CSS = `
   .hs-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;font-weight:900;white-space:nowrap}
   /* Groups flow into two balanced columns; every card is the same size. */
   .hs-cols{margin-top:22px;column-count:2;column-gap:26px}
-  .hs-group{break-inside:avoid;display:inline-block;width:100%;margin:0 0 24px;vertical-align:top}
+  /* Each group sits in its own see-through panel, faintly tinted by its colour. */
+  .hs-group{break-inside:avoid;display:inline-block;width:100%;box-sizing:border-box;margin:0 0 22px;vertical-align:top;padding:14px 14px 16px;border-radius:20px;background:linear-gradient(160deg,color-mix(in srgb,var(--c) 7%,transparent) 0%,color-mix(in srgb,var(--c) 2%,transparent) 100%);border:1.5px solid color-mix(in srgb,var(--c) 18%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.75),0 8px 22px color-mix(in srgb,var(--c) 7%,transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   @media (max-width:1100px){.hs-cols{column-count:1}}
   .hs-gh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .hs-gbadge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:var(--c);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--c) 30%,transparent)}
@@ -91,8 +92,8 @@ export function HomeSection({ Two, icon, logoBg, title, titleAr, sub, subAr, pil
 /** One heading + its grid of cards. */
 export function HomeGroup({ Two, icon, color, label, labelAr, count, children }) {
   return (
-    <div className="hs-group">
-      <div className="hs-gh" style={{ "--c": color }}>
+    <div className="hs-group" style={{ "--c": color }}>
+      <div className="hs-gh">
         <span className="hs-gbadge">
           <span className="hs-gdot" aria-hidden="true">{icon}</span>
           <span className="hs-gname"><Two en={label} ar={labelAr} /></span>
