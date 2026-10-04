@@ -31,12 +31,18 @@ export default function VisitorStats() {
 
   const load = useCallback(async (d) => {
     setState("loading");
-    try {
-      const res = await fetch(`${API_BASE}/api/site-stats?days=${d}`, { cache: "no-store" });
-      if (res.status === 404) { setState("missing"); return; }
+    const get = async (n) => {
+      const res = await fetch(`${API_BASE}/api/site-stats?days=${n}`, { cache: "no-store" });
+      if (res.status === 404) return "missing";
       const j = await res.json().catch(() => ({}));
       if (!res.ok || j.ok === false) throw new Error(j.error || res.status);
-      setData(j);
+      return j;
+    };
+    try {
+      // The doubled window minus this one = the previous period, for the growth arrows.
+      const [cur, wide] = await Promise.all([get(d), get(d * 2).catch(() => null)]);
+      if (cur === "missing") { setState("missing"); return; }
+      setData({ ...cur, wide: wide && wide !== "missing" ? wide : null });
       setState("ok");
     } catch {
       setState("error");
@@ -47,22 +53,37 @@ export default function VisitorStats() {
   const v = useMemo(() => {
     if (!data) return null;
     const ev = data.events || [];
-    const visits = sum(ev, (r) => r.event === "visit");
-    const views = sum(ev, (r) => r.event === "view");
-    const leads = sum(data.leads || []);
+    const totals = (j) => ({
+      visits: sum(j.events || [], (r) => r.event === "visit"),
+      views: sum(j.events || [], (r) => r.event === "view"),
+      leads: sum(j.leads || []),
+      wa: sum(j.events || [], (r) => r.event === "wa"),
+    });
+    const now = totals(data);
+    const { visits, views, leads } = now;
+    // previous period = doubled window minus this one (null when that fetch failed)
+    let prev = null;
+    if (data.wide) {
+      const w = totals(data.wide);
+      prev = Object.fromEntries(Object.keys(now).map((k) => [k, Math.max(0, w[k] - now[k])]));
+    }
     const of = (page, event, detail) => sum(ev, (r) => r.page === page && r.event === event && (detail == null || r.detail === detail));
 
-    // one bar per day, empty days included
+    // one row per day, empty days included
+    const FIELD = { visit: "n", view: "views", form_start: "starts", lead: "leads" };
     const byDay = new Map();
     for (const r of data.daily || []) {
-      if (r.event !== "visit") continue;
-      byDay.set(r.day, (byDay.get(r.day) || 0) + (Number(r.n) || 0));
+      const f = FIELD[r.event];
+      if (!f) continue;
+      const o = byDay.get(r.day) || { n: 0, views: 0, starts: 0, leads: 0 };
+      o[f] += Number(r.n) || 0;
+      byDay.set(r.day, o);
     }
     const series = [];
     const start = new Date(`${data.since}T00:00:00Z`);
     for (let i = 0; i < data.days; i++) {
       const d = new Date(start.getTime() + i * 864e5).toISOString().slice(0, 10);
-      series.push({ day: d, n: byDay.get(d) || 0 });
+      series.push({ day: d, n: 0, views: 0, starts: 0, leads: 0, ...byDay.get(d) });
     }
 
     const split = (rows) => {
@@ -83,7 +104,8 @@ export default function VisitorStats() {
 
     return {
       visits, views, leads,
-      wa: sum(ev, (r) => r.event === "wa"),
+      wa: now.wa,
+      prev,
       series,
       demo: [
         [L("Visited /demo", "زاروا /demo"), of("demo", "visit")],
@@ -174,15 +196,28 @@ export default function VisitorStats() {
       {open && v && state !== "missing" && (
         <div style={{ marginTop: 12, display: "grid", gap: 14, opacity: state === "loading" ? 0.55 : 1, transition: "opacity .2s" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-            <Kpi label={L("Visitors", "زوّار")} value={v.visits} hint={L("one per browser per day", "زائر واحد لكل متصفح باليوم")} />
-            <Kpi label={L("Page views", "مشاهدات")} value={v.views} />
-            <Kpi label={L("Requests received", "طلبات وصلت")} value={v.leads} />
-            <Kpi label={L("Visitor → request", "زائر ← طلب")} value={pct(v.leads, v.visits)} hint={L("conversion rate", "نسبة التحويل")} />
-            <Kpi label={L("WhatsApp taps", "ضغطات واتساب")} value={v.wa} />
+            <Kpi label={L("Visitors", "زوّار")} value={v.visits} hint={L("one per browser per day", "زائر واحد لكل متصفح باليوم")}
+              delta={v.prev && <Delta cur={v.visits} prev={v.prev.visits} L={L} />} />
+            <Kpi label={L("Page views", "مشاهدات")} value={v.views} delta={v.prev && <Delta cur={v.views} prev={v.prev.views} L={L} />} />
+            <Kpi label={L("Requests received", "طلبات وصلت")} value={v.leads} delta={v.prev && <Delta cur={v.leads} prev={v.prev.leads} L={L} />} />
+            <Kpi label={L("Visitor → request", "زائر ← طلب")} value={pct(v.leads, v.visits)} hint={L("conversion rate", "نسبة التحويل")}
+              delta={v.prev && v.prev.visits > 0 && (
+                <span style={{ color: MUTED }}>{L(`was ${pct(v.prev.leads, v.prev.visits)}`, `كانت ${pct(v.prev.leads, v.prev.visits)}`)}</span>
+              )} />
+            <Kpi label={L("WhatsApp taps", "ضغطات واتساب")} value={v.wa} delta={v.prev && <Delta cur={v.wa} prev={v.prev.wa} L={L} />} />
           </div>
+          {v.prev && (
+            <p style={{ margin: "-6px 0 0", color: MUTED, fontWeight: 700, fontSize: 12 }}>
+              {L(`Arrows compare with the ${days} days before.`, `الأسهم مقارنة بالـ${days} يوم اللي قبلها.`)}
+            </p>
+          )}
 
           <Panel title={L("Visitors per day", "الزوّار باليوم")}>
             <DailyBars series={v.series} lang={lang} L={L} />
+          </Panel>
+
+          <Panel title={L("Day log", "سجل الأيام")}>
+            <DayLog series={v.series} lang={lang} L={L} />
           </Panel>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
@@ -223,14 +258,80 @@ export default function VisitorStats() {
   );
 }
 
-function Kpi({ label, value, hint }) {
+function Kpi({ label, value, hint, delta }) {
   return (
     <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 12px", background: "#fff" }}>
       {/* globals.css forces 14px on every element; a doubled class wins and still follows the Aa size setting. */}
       <style>{`#root .vs-kpi.vs-kpi { font-size: calc(24px * var(--app-fs, 1)) !important; }`}</style>
       <div className="vs-kpi" style={{ fontWeight: 1000, color: INK, lineHeight: 1.15 }}>{value}</div>
       <div style={{ color: MUTED, fontWeight: 800, fontSize: 12.5 }}>{label}</div>
+      {delta && <div style={{ fontWeight: 900, fontSize: 12 }}>{delta}</div>}
       {hint && <div style={{ color: "#94a3b8", fontWeight: 700, fontSize: 11.5 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/* Growth vs the previous period: ▲ green, ▼ red, "new" when there was nothing before. */
+function Delta({ cur, prev, L }) {
+  if (!prev && !cur) return <span style={{ color: MUTED }}>—</span>;
+  if (!prev) return <span style={{ color: "#059669" }}>▲ {L("new", "جديد")}</span>;
+  const p = Math.round(((cur - prev) / prev) * 100);
+  if (p === 0) return <span style={{ color: MUTED }}>= 0%</span>;
+  return (
+    <span style={{ color: p > 0 ? "#059669" : "#dc2626" }} title={L(`before: ${prev}`, `قبل: ${prev}`)}>
+      {p > 0 ? "▲" : "▼"} {Math.abs(p)}% <span style={{ color: MUTED, fontWeight: 700 }}>({L("was", "كان")} {prev})</span>
+    </span>
+  );
+}
+
+/* Newest day first; change column compares each day's visitors with the day before. */
+function DayLog({ series, lang, L }) {
+  const [all, setAll] = useState(false);
+  const rows = series.map((d, i) => ({ ...d, before: i ? series[i - 1].n : null })).reverse();
+  const shown = all ? rows : rows.slice(0, 10);
+  const fmt = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString(lang === "ar" ? "ar-AE" : "en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const th = { textAlign: "start", padding: "6px 8px", color: MUTED, fontWeight: 900, fontSize: 12, borderBottom: `1px solid ${TRACK}`, whiteSpace: "nowrap" };
+  const td = { padding: "6px 8px", fontWeight: 800, color: INK, borderBottom: `1px solid #f1f5f9`, whiteSpace: "nowrap" };
+  const change = (n, b) => {
+    if (b == null) return "";
+    if (n === b) return <span style={{ color: MUTED }}>=</span>;
+    return <span style={{ color: n > b ? "#059669" : "#dc2626" }}>{n > b ? "▲" : "▼"} {Math.abs(n - b)}</span>;
+  };
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={th}>{L("Day", "اليوم")}</th>
+            <th style={th}>{L("Visitors", "زوّار")}</th>
+            <th style={th}>{L("vs day before", "عن اليوم اللي قبله")}</th>
+            <th style={th}>{L("Views", "مشاهدات")}</th>
+            <th style={th}>{L("Started form", "بلّشوا النموذج")}</th>
+            <th style={th}>{L("Requests", "طلبات")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((d) => {
+            const empty = !d.n && !d.views && !d.starts && !d.leads;
+            return (
+              <tr key={d.day} style={{ opacity: empty ? 0.45 : 1 }}>
+                <td style={td}>{fmt(d.day)}</td>
+                <td style={td}>{d.n}</td>
+                <td style={td}>{change(d.n, d.before)}</td>
+                <td style={td}>{d.views}</td>
+                <td style={td}>{d.starts}</td>
+                <td style={{ ...td, color: d.leads ? "#059669" : INK }}>{d.leads}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rows.length > 10 && (
+        <button type="button" onClick={() => setAll((a) => !a)}
+          style={{ marginTop: 8, border: "1px solid #cbd5e1", background: "#fff", borderRadius: 999, padding: "4px 12px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", color: INK }}>
+          {all ? L("Show fewer", "عرض أقل") : L(`Show all ${rows.length} days`, `عرض كل الـ${rows.length} يوم`)}
+        </button>
+      )}
     </div>
   );
 }
