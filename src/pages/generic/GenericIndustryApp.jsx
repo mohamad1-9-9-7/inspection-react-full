@@ -19,6 +19,8 @@ import { useCompanyManifest } from "../../companies";
 import CompanyBoundary from "../../companies/CompanyBoundary";
 import ReportGuide from "./ReportGuide";
 import LockedCards, { LockedIsoSection } from "../trial/LockedCards";
+import DailyReportsSection from "./DailyReportsSection";
+import { KIT_INDUSTRY_IDS } from "../../industries/catalog";
 
 function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -263,9 +265,14 @@ export default function GenericIndustryApp() {
   const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
   const q = query.trim().toLowerCase();
-  const homeCards = cards.filter(
-    (c) => !q || [c.label, c.desc, c.labelAr, c.descAr].some((x) => String(x || "").toLowerCase().includes(q))
-  );
+  const matches = (x) => !q || [x.label, x.desc, x.labelAr, x.descAr].some((v) => String(v || "").toLowerCase().includes(q));
+  /* Kit companies: the Daily Reports card is spread out on the home screen as
+     its own section (one card per report) instead of one tile. */
+  const dailyCard = KIT_INDUSTRY_IDS.includes(industry)
+    ? cards.find((c) => c.kind === "entry" && c.reports?.length && c.groups)
+    : null;
+  const dailyReports = dailyCard ? dailyCard.reports.filter(matches) : [];
+  const homeCards = cards.filter((c) => c !== dailyCard && matches(c));
 
   return (
     <main className="gia" style={S.page} dir="ltr">
@@ -447,7 +454,7 @@ export default function GenericIndustryApp() {
             </div>
           </section>
 
-          {homeCards.length === 0 ? (
+          {homeCards.length === 0 && dailyReports.length === 0 ? (
             <div style={S.emptyBox}>
               {cards.length === 0 ? (
                 <>
@@ -461,7 +468,7 @@ export default function GenericIndustryApp() {
                 </>
               )}
             </div>
-          ) : (
+          ) : (homeCards.length > 0 || !q) && (
             <div style={S.grid}>
               {homeCards.map((c, i) => {
                 const on = hovered === c.id;
@@ -501,6 +508,15 @@ export default function GenericIndustryApp() {
                 <LockedCards S={S} Two={Two} accent={ACCENT} startIndex={homeCards.length} />
               )}
             </div>
+          )}
+          {dailyReports.length > 0 && (
+            <DailyReportsSection
+              card={dailyCard}
+              reports={dailyReports}
+              Two={Two}
+              accent={ACCENT}
+              onOpen={(type) => go({ card: dailyCard.id, type })}
+            />
           )}
           {/* Free trial only: the ISO & HACCP modules, grouped and locked. */}
           {currentUser.companyTrial && !isSuperAdmin && !q && <LockedIsoSection Two={Two} accent={ACCENT} />}

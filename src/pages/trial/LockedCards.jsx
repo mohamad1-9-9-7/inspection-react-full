@@ -8,6 +8,7 @@
 // much a subscription really adds. Dubai Municipality lives inside it.
 
 import React from "react";
+import { HomeSection, HomeGroup, LockedCard } from "../generic/HomeSection";
 
 export const LOCKED_CARDS = [
   { id: "training", icon: "🎓", grad: "linear-gradient(135deg,#7c3aed,#4f46e5)", label: "Internal Training", labelAr: "التدريب الداخلي" },
@@ -105,95 +106,31 @@ const ISO_GROUPS = [
 
 const ISO_COUNT = ISO_GROUPS.reduce((n, g) => n + g.items.length, 0);
 
-// Class-based sizes: globals.css forces 14px on every #root element, so inline
-// font sizes would be ignored (same pattern as the gia-* rules).
-const ISO_CSS = `
-  .lki{margin-top:30px;border-radius:20px;padding:22px clamp(14px,1.6vw,26px) 26px;background:linear-gradient(180deg,#f0fdfa 0%,#fff 46%);border:1px solid rgba(15,118,110,.16);box-shadow:0 18px 40px rgba(15,23,42,.06)}
-  .lki-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;border-bottom:1px solid rgba(15,118,110,.14)}
-  .lki-brand{display:flex;align-items:center;gap:14px;min-width:0}
-  .lki-logo{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#0f766e,#0891b2);box-shadow:0 12px 24px rgba(15,118,110,.3);flex-shrink:0}
-  .lki-title{font-weight:1000;color:#0f172a;line-height:1.2}
-  .lki-sub{color:#64748b;font-weight:700;margin-top:2px}
-  .lki-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;background:#0f172a;color:#fff;font-weight:900;white-space:nowrap}
-  .lki-group{margin-top:22px}
-  .lki-gh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-  .lki-gdot{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
-  .lki-gname{font-weight:1000;color:#0f172a}
-  .lki-gline{flex:1;height:1px;background:linear-gradient(90deg,rgba(15,23,42,.14),transparent)}
-  .lki-gcount{font-weight:900;color:#64748b;background:#f1f5f9;border-radius:999px;padding:3px 10px}
-  .lki-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:12px}
-  .lki-card{position:relative;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;padding:14px 14px 14px 12px;border-radius:14px;background:#fff;border:1px solid rgba(15,23,42,.08);border-inline-start-width:4px;cursor:not-allowed;user-select:none;transition:transform .16s ease,box-shadow .16s ease;animation:giaIn .3s ease both}
-  .lki-card:hover{transform:translateY(-2px);box-shadow:0 14px 28px rgba(15,23,42,.08)}
-  .lki-ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center}
-  .lki-name{font-weight:950;color:#0f172a;line-height:1.3;padding-inline-end:22px}
-  .lki-desc{color:#64748b;font-weight:600;line-height:1.45;margin-top:4px}
-  .lki-lock{position:absolute;top:10px;inset-inline-end:10px;opacity:.55}
-  #root .gia.gia .lki-logo{font-size:26px !important}
-  #root .gia.gia .lki-title{font-size:20px !important}
-  #root .gia.gia .lki-sub,#root .gia.gia .lki-pill{font-size:13px !important}
-  #root .gia.gia .lki-gdot{font-size:16px !important}
-  #root .gia.gia .lki-gname{font-size:15px !important}
-  #root .gia.gia .lki-gcount{font-size:11.5px !important}
-  #root .gia.gia .lki-ic{font-size:20px !important}
-  #root .gia.gia .lki-name{font-size:14.5px !important}
-  #root .gia.gia .lki-desc{font-size:12.5px !important}
-  #root .gia.gia .lki-lock{font-size:13px !important}
-`;
-
 /** ISO & HACCP section for a trial home: every module, grouped, locked. */
 export function LockedIsoSection({ Two, accent }) {
   let n = 0;
   return (
-    <section className="lki" aria-label={`ISO 22000 & HACCP — ${ISO_COUNT} modules, available after subscribing`}>
-      <style>{ISO_CSS}</style>
-      <div className="lki-head">
-        <div className="lki-brand">
-          <div className="lki-logo" aria-hidden="true">🛡️</div>
-          <div style={{ minWidth: 0 }}>
-            <div className="lki-title"><Two en="ISO 22000 & HACCP" ar="ISO 22000 و HACCP" /></div>
-            <div className="lki-sub">
-              <Two en={`${ISO_COUNT} modules for a complete food safety management system`} ar={`${ISO_COUNT} وحدة لنظام متكامل لإدارة سلامة الغذاء`} />
-            </div>
-          </div>
-        </div>
-        <span className="lki-pill">🔒 <Two en="After subscribing" ar="بعد الاشتراك" /></span>
-      </div>
-
+    <HomeSection
+      Two={Two}
+      icon="🛡️"
+      logoBg="linear-gradient(135deg,#0f766e,#0891b2)"
+      bg="linear-gradient(180deg,#f0fdfa 0%,#fff 46%)"
+      title="ISO 22000 & HACCP"
+      titleAr="ISO 22000 و HACCP"
+      sub={`${ISO_COUNT} modules for a complete food safety management system`}
+      subAr={`${ISO_COUNT} وحدة لنظام متكامل لإدارة سلامة الغذاء`}
+      pill="🔒 After subscribing"
+      pillAr="بعد الاشتراك"
+      pillStyle={{ background: "#0f172a", color: "#fff" }}
+      label={`ISO 22000 & HACCP — ${ISO_COUNT} modules, available after subscribing`}
+    >
       {ISO_GROUPS.map((g) => (
-        <div key={g.id} className="lki-group">
-          <div className="lki-gh">
-            <span className="lki-gdot" style={{ background: `${g.color}1a`, color: g.color }} aria-hidden="true">{g.icon}</span>
-            <span className="lki-gname"><Two en={g.label} ar={g.labelAr} /></span>
-            <span className="lki-gline" aria-hidden="true" />
-            <span className="lki-gcount">{g.items.length}</span>
-          </div>
-          <div className="lki-grid">
-            {g.items.map((it) => (
-              <div
-                key={it.label}
-                className="lki-card"
-                role="group"
-                aria-disabled="true"
-                title="Available after subscribing · متاح بعد الاشتراك"
-                style={{ borderInlineStartColor: g.color, animationDelay: `${(n++) * 0.03}s` }}
-              >
-                <span className="lki-lock" aria-hidden="true">🔒</span>
-                <div className="lki-ic" style={{ background: `${g.color}14` }} aria-hidden="true">{it.icon}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="lki-name">
-                    {it.label}
-                    <div className="gia-ar gia-card-ar" lang="ar" dir="rtl" style={{ color: accent, marginTop: 2 }}>{it.labelAr}</div>
-                  </div>
-                  <div className="lki-desc">
-                    {it.desc}
-                    <div className="gia-ar" lang="ar" dir="rtl" style={{ marginTop: 2 }}>{it.descAr}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <HomeGroup key={g.id} Two={Two} icon={g.icon} color={g.color} label={g.label} labelAr={g.labelAr} count={g.items.length}>
+          {g.items.map((it) => (
+            <LockedCard key={it.label} item={it} color={g.color} accent={accent} index={n++} Two={Two} />
+          ))}
+        </HomeGroup>
       ))}
-    </section>
+    </HomeSection>
   );
 }
