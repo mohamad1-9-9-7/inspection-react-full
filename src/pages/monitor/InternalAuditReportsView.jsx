@@ -400,7 +400,12 @@ export default function InternalAuditReportsView() {
   const [collapsedInit, setCollapsedInit] = useState(false);
 
   // Image viewer (lightbox)
-  const [viewerSrc, setViewerSrc] = useState(null);
+  /* { items: [src], index } — the whole cell's photos, so ‹ › walks them. */
+  const [viewer, setViewer] = useState(null);
+  const openViewer = (items, index) => {
+    const clean = (items || []).filter(Boolean);
+    if (clean.length) setViewer({ items: clean, index: Math.max(0, Math.min(index || 0, clean.length - 1)) });
+  };
 
   // فتح/إغلاق لكل تقرير بشكل منفصل
   const [openCards, setOpenCards] = useState(() => new Set());
@@ -1831,6 +1836,21 @@ export default function InternalAuditReportsView() {
                               )}
                             </div>
                             <div>
+                              <b>Branch Supervisor:</b>{" "}
+                              {isEditing ? (
+                                <input
+                                  style={inputInline}
+                                  onClick={(e) => e.stopPropagation()}
+                                  value={header.branchSupervisor || ""}
+                                  onChange={(e) =>
+                                    editHeader("branchSupervisor", e.target.value)
+                                  }
+                                />
+                              ) : (
+                                header.branchSupervisor || "-"
+                              )}
+                            </div>
+                            <div>
                               <b>Next Audit:</b>{" "}
                               {isEditing ? (
                                 <input
@@ -2144,12 +2164,12 @@ export default function InternalAuditReportsView() {
                                                   i
                                                 )
                                               }
-                                              onView={setViewerSrc}
+                                              onView={openViewer}
                                             />
                                           ) : (
                                             <Thumbs
                                               list={row.evidenceImgs}
-                                              onView={setViewerSrc}
+                                              onView={openViewer}
                                             />
                                           )}
                                         </div>
@@ -2173,7 +2193,7 @@ export default function InternalAuditReportsView() {
                                                     i
                                                   )
                                                 }
-                                                onView={setViewerSrc}
+                                                onView={openViewer}
                                               />
                                               <textarea
                                                 style={{ ...riskNotesArea, marginTop: 8, minHeight: 56 }}
@@ -2193,7 +2213,7 @@ export default function InternalAuditReportsView() {
                                                   ...getRowClosedEvidenceImages(row),
                                                   ...getBranchEvidenceForRow(p, ridx),
                                                 ]))}
-                                                onView={setViewerSrc}
+                                                onView={openViewer}
                                               />
                                               {(row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx)) && (
                                                 <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12, fontWeight: 700, color: "#854d0e", whiteSpace: "pre-wrap" }}>
@@ -2418,8 +2438,16 @@ export default function InternalAuditReportsView() {
           </section>
         </div>
 
-        {viewerSrc && (
-          <Lightbox src={viewerSrc} onClose={() => setViewerSrc(null)} />
+        {viewer && (
+          <Lightbox
+            items={viewer.items}
+            index={viewer.index}
+            onIndex={(i) => setViewer((prev) => prev && {
+              ...prev,
+              index: ((i % prev.items.length) + prev.items.length) % prev.items.length,
+            })}
+            onClose={() => setViewer(null)}
+          />
         )}
 
         <EmailSendModal
@@ -2487,12 +2515,14 @@ function Thumbs({ list, onView }) {
   if (!arr.length) return <span style={{ opacity: 0.6 }}>-</span>;
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {arr.slice(0, 6).map((src, i) => (
+      {/* Every photo is shown — the old 6-photo cap hid anything a branch sent
+          beyond the sixth behind an unclickable "+N". */}
+      {arr.map((src, i) => (
         <img
           key={i}
           src={src}
           alt="evidence"
-          onClick={() => onView && onView(src)}
+          onClick={() => onView && onView(arr, i)}
           title="Click to preview"
           style={{
             width: 56,
@@ -2504,11 +2534,6 @@ function Thumbs({ list, onView }) {
           }}
         />
       ))}
-      {arr.length > 6 && (
-        <span style={{ fontSize: 12, opacity: 0.7 }}>
-          +{arr.length - 6}
-        </span>
-      )}
     </div>
   );
 }
@@ -2535,7 +2560,7 @@ function ImageField({ list, onAdd, onRemove, onView }) {
             <img
               src={src}
               alt=""
-              onClick={() => onView && onView(src)}
+              onClick={() => onView && onView(normalizedList, i)}
               title="Click to preview"
               style={{
                 width: "100%",
@@ -2579,36 +2604,106 @@ function ImageField({ list, onAdd, onRemove, onView }) {
 }
 
 /* ===== Lightbox ===== */
-function Lightbox({ src, onClose }) {
+/* Cloudinary is another origin, so the `download` attribute alone is ignored —
+   fetch the bytes into a blob first; fall back to opening the photo. */
+async function downloadPhoto(url, index) {
+  const clean = String(url || "").split("?")[0];
+  const ext = (clean.match(/\.[a-z0-9]{2,5}$/i) || [".jpg"])[0];
+  const name = clean.split("/").pop() || `evidence-${index + 1}${ext}`;
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const href = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
+/* Same viewer as the branch evidence link (InspectionEvidencePublic.jsx):
+   ‹ › through the cell's photos, counter, Download / Open / Close, Esc and
+   the arrow keys. Clicking the dark backdrop closes it. */
+function Lightbox({ items, index, onIndex, onClose }) {
+  const total = items.length;
+  const src = items[index];
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") onIndex(index + 1);
+      else if (e.key === "ArrowLeft") onIndex(index - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, onClose, onIndex]);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  if (!src) return null;
+  const stop = (e) => e.stopPropagation();
+
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,.7)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        cursor: "zoom-out",
-      }}
-      title="Click to close"
-    >
-      <img
-        src={src}
-        alt="preview"
-        style={{
-          maxWidth: "90vw",
-          maxHeight: "90vh",
-          borderRadius: 12,
-          boxShadow: "0 10px 30px rgba(0,0,0,.4)",
-          background: "#fff",
-        }}
-      />
+    <div onClick={onClose} role="dialog" aria-modal="true" aria-label="Photo viewer" style={lb.wrap}>
+      <div style={lb.bar} onClick={stop}>
+        <div style={{ fontWeight: 900 }}>
+          Photo {index + 1} / {total}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" style={lb.primary} onClick={() => downloadPhoto(src, index)}>⤓ Download</button>
+          <button type="button" style={lb.btn} onClick={() => window.open(src, "_blank", "noopener")}>↗ Open</button>
+          <button type="button" style={lb.btn} onClick={onClose}>✕ Close</button>
+        </div>
+      </div>
+      <div style={lb.stage}>
+        {total > 1 && (
+          <button type="button" style={lb.nav} onClick={(e) => { stop(e); onIndex(index - 1); }} aria-label="Previous photo">‹</button>
+        )}
+        <img src={src} alt={`Evidence ${index + 1}`} style={lb.img} onClick={stop} />
+        {total > 1 && (
+          <button type="button" style={lb.nav} onClick={(e) => { stop(e); onIndex(index + 1); }} aria-label="Next photo">›</button>
+        )}
+      </div>
+      {total > 1 && (
+        <div style={lb.strip} onClick={stop}>
+          {items.map((s, i) => (
+            <img
+              key={`${s}-${i}`}
+              src={s}
+              alt=""
+              onClick={() => onIndex(i)}
+              style={{ ...lb.mini, ...(i === index ? lb.miniOn : null) }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+const lb = {
+  wrap: { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(8,15,23,.9)", display: "flex", flexDirection: "column", padding: "clamp(10px, 2vw, 24px)", boxSizing: "border-box", cursor: "zoom-out" },
+  bar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", color: "#fff", marginBottom: 10, cursor: "default" },
+  btn: { background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.32)", borderRadius: 6, padding: "9px 14px", fontWeight: 900, cursor: "pointer" },
+  primary: { background: "#0f766e", color: "#fff", border: "1px solid #0b5d57", borderRadius: 6, padding: "9px 16px", fontWeight: 900, cursor: "pointer" },
+  /* minHeight 0 + a definite flex basis is what lets the photo shrink to fit
+     instead of pushing the bar and the strip off screen. */
+  stage: { flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 },
+  img: { maxWidth: "calc(100% - 120px)", maxHeight: "100%", objectFit: "contain", borderRadius: 8, boxShadow: "0 30px 60px rgba(0,0,0,.5)", background: "#0b1220", cursor: "default" },
+  nav: { width: 46, height: 46, flex: "0 0 auto", borderRadius: 999, border: "1px solid rgba(255,255,255,.32)", background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 22, fontWeight: 900, cursor: "pointer" },
+  strip: { display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginTop: 10, cursor: "default" },
+  mini: { width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: "2px solid transparent", opacity: 0.6, cursor: "pointer" },
+  miniOn: { borderColor: "#5eead4", opacity: 1 },
+};
 
 /* ===== Styles ===== */
 const BORDER = C.border;

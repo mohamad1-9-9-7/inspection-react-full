@@ -87,6 +87,10 @@ export default function Inspection() {
   const [date, setDate] = useState(draft?.date || new Date().toISOString().slice(0,10));
   const [reportNo, setReportNo] = useState(draft?.reportNo || "");
   const [auditBy, setAuditBy] = useState(draft?.auditBy || "MOHAMAD ABDULLAH (QA)");
+  /* The branch supervisor who must answer the findings. Pre-fills the name box
+     on the branch evidence link (InspectionEvidencePublic.jsx) so the branch
+     doesn't have to type it before every save. */
+  const [supervisor, setSupervisor] = useState(draft?.supervisor || "");
   /* ⚠️ `location` was retired — the Branch dropdown is now the single source of
      truth. Legacy reports still carry header.location, so every READ path keeps
      it as a last-resort fallback; nothing new ever writes it. */
@@ -120,7 +124,7 @@ export default function Inspection() {
     const t = setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
-          branch, date, reportNo, auditBy,
+          branch, date, reportNo, auditBy, supervisor,
           rows, commentNextAudit, nextAudit, reviewedBy,
           savedAt: Date.now(),
         }));
@@ -129,7 +133,7 @@ export default function Inspection() {
       } catch {}
     }, 1500);
     return () => clearTimeout(t);
-  }, [branch, date, reportNo, auditBy, rows, commentNextAudit, nextAudit, reviewedBy]);
+  }, [branch, date, reportNo, auditBy, supervisor, rows, commentNextAudit, nextAudit, reviewedBy]);
 
   /* Calc helpers — extended KPIs */
   const kpis = useMemo(() => {
@@ -183,7 +187,7 @@ export default function Inspection() {
     if (!window.confirm(tt("Reset the form? All unsaved data will be lost.", "إعادة تعيين النموذج؟ كل البيانات غير المحفوظة ستضيع."))) return;
     setRows([makeEmptyRow(), makeEmptyRow(), makeEmptyRow()]);
     setReportNo(""); setCommentNextAudit(""); setReviewedBy("");
-    setBranch(""); setNextAudit("nil");
+    setBranch(""); setNextAudit("nil"); setSupervisor("");
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
   };
 
@@ -250,7 +254,8 @@ export default function Inspection() {
           date,
           reportNo,
           branch,
-          auditConductedBy: auditBy
+          auditConductedBy: auditBy,
+          branchSupervisor: supervisor.trim()
           /* `location` is intentionally NOT written any more — see the note
              next to the state declarations at the top of this file. */
         },
@@ -335,6 +340,7 @@ export default function Inspection() {
       setCommentNextAudit("");
       setNextAudit("nil");
       setReviewedBy("");
+      setSupervisor("");
 
       setTimeout(() => {
         setModal({ open: false, stage: "idle", message: "" });
@@ -545,6 +551,7 @@ export default function Inspection() {
           <div><b>Date:</b> {date}</div>
           <div><b>Report No:</b> {reportNo || "—"}</div>
           <div><b>Audited By:</b> {auditBy}</div>
+          {supervisor.trim() && <div><b>Branch Supervisor:</b> {supervisor}</div>}
         </div>
       </div>
 
@@ -617,6 +624,10 @@ export default function Inspection() {
               <option value="">{tt("-- Select Branch --", "-- اختر الفرع --")}</option>
               {BRANCH_LIST.map(b=> <option key={b.code} value={b.code}>{b.icon} {isAr ? b.labelAr : b.labelEn}</option>)}
             </select>
+          </label>
+          <label style={metaCell}>
+            <span>{tt("Branch Supervisor", "مشرف الفرع")}</span>
+            <input value={supervisor} onChange={(e)=>setSupervisor(e.target.value)} placeholder={tt("e.g. Ahmad Ali", "مثال: أحمد علي")} style={metaInput} autoComplete="off"/>
           </label>
         </div>
       </div>

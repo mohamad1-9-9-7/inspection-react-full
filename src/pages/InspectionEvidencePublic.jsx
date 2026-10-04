@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getRowVerification, isClosedStatus, verificationTone } from "../utils/auditVerification";
 
@@ -42,14 +42,36 @@ const LINK_MESSAGES = {
     "This link is not valid — the report may have been deleted or the address was mistyped. / هذا الرابط غير صالح، ربما تم حذف التقرير أو أن العنوان غير صحيح.",
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/* The server allows 30 uploads a minute per IP, and branch phones sit on weak
+   signal. A 429, a 5xx or a dropped connection is retried with a growing wait
+   instead of failing the whole save — that failure used to land in a banner at
+   the top of the page that nobody scrolled up to read. */
 async function uploadImage(file) {
   if (!file || !file.type?.startsWith("image/")) throw new Error("Only image files are allowed.");
   if (file.size > MAX_IMAGE_BYTES) throw new Error(`${file.name} is larger than 15 MB.`);
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) throw new Error(data?.error || "Upload failed");
+  const waits = [3000, 10000, 25000];
+  let res = null;
+  let data = {};
+  for (let attempt = 0; ; attempt++) {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+      data = await res.json().catch(() => ({}));
+    } catch {
+      res = null;
+      data = {};
+    }
+    const retryable = !res || res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= waits.length) break;
+    await sleep(waits[attempt]);
+  }
+  if (!res) throw new Error(`${file.name}: no internet connection. / لا يوجد اتصال بالإنترنت.`);
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(`${file.name}: ${res.status === 429 ? "too many photos at once, wait a minute" : data?.error || "upload failed"}. / فشل رفع الصورة.`);
+  }
   return {
     url: data.optimized_url || data.url,
     originalUrl: data.url || data.optimized_url,
@@ -147,6 +169,12 @@ function submittedNoteMap(payload) {
 
 function submittedByName(payload) {
   return String(payload?.fields?.closedEvidenceUploadedBy || payload?.public?.submission?.closedEvidenceUploadedBy || "").trim();
+}
+
+/* What the name box starts with: whoever saved last, else the supervisor QA
+   wrote on the report (Inspection.jsx → header.branchSupervisor). */
+function defaultUploaderName(payload) {
+  return submittedByName(payload) || String(payload?.header?.branchSupervisor || "").trim();
 }
 
 function imageSrc(img) {
@@ -361,7 +389,7 @@ const S = {
   lbBtn: { background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.32)", borderRadius: 6, padding: "10px 14px", fontWeight: 900, fontSize: 14, cursor: "pointer" },
   lbPrimary: { background: "#0f766e", color: "#fff", border: "1px solid #0b5d57", borderRadius: 6, padding: "10px 16px", fontWeight: 950, fontSize: 14, cursor: "pointer" },
   lbStage: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 0 },
-  lbImg: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, boxShadow: "0 30px 60px rgba(0,0,0,.5)", background: "#0b1220" },
+  lbImg: { maxWidth: "calc(100% - 120px)", maxHeight: "100%", objectFit: "contain", borderRadius: 8, boxShadow: "0 30px 60px rgba(0,0,0,.5)", background: "#0b1220" },
   lbNav: { width: 46, height: 46, flex: "0 0 auto", borderRadius: 999, border: "1px solid rgba(255,255,255,.32)", background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 20, fontWeight: 1000, cursor: "pointer" },
   pendingTag: { position: "absolute", left: 6, bottom: 6, padding: "3px 7px", borderRadius: 999, background: "rgba(15,118,110,.94)", color: "#fff", fontSize: 12, fontWeight: 950 },
   btn: { background: "#006b63", color: "#fff", border: "1px solid #00584f", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
@@ -370,6 +398,9 @@ const S = {
   msg: { padding: 12, borderRadius: 8, background: "#ecfeff", border: "1px solid #a5f3fc", color: "#155e75", fontWeight: 800, marginBottom: 12 },
   err: { padding: 12, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontWeight: 800, marginBottom: 12 },
   hint: { padding: 10, borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 14, fontWeight: 850, marginTop: 8 },
+  flagged: { borderColor: "#dc2626", borderWidth: 3, borderStyle: "solid", boxShadow: "0 0 0 4px rgba(220,38,38,.18)" },
+  flagText: { margin: "6px 0", padding: "8px 10px", borderRadius: 6, background: "#dc2626", color: "#fff", fontSize: 14, fontWeight: 900, lineHeight: 1.5 },
+  unsent: { marginTop: 8, padding: "8px 10px", borderRadius: 6, background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e", fontSize: 14, fontWeight: 900, lineHeight: 1.5 },
   missing: { padding: 10, borderRadius: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: 14, fontWeight: 850, marginTop: 8 },
   actions: { position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 0 4px", background: "linear-gradient(180deg,rgba(244,248,247,0),#f4f8f7 36%)", flexWrap: "wrap" },
 };
@@ -452,6 +483,25 @@ export default function InspectionEvidencePublic() {
   const [deadLink, setDeadLink] = useState("");
   /* { items: [{src, name}], index, title } while a photo is open full-size. */
   const [viewer, setViewer] = useState(null);
+  /* What the last Save/Send stopped on: { key: "name" | rowIndex, text }.
+     The page scrolls to it and paints it red, because the old top-of-page
+     banner sat far above the buttons and branches took silence for success. */
+  const [flag, setFlag] = useState(null);
+  /* After a refused final Send, every finding still without a photo is red. */
+  const [showMissing, setShowMissing] = useState(false);
+  const nameRef = useRef(null);
+  const rowRefs = useRef({});
+
+  const jumpTo = useCallback((key, text) => {
+    setFlag({ key, text });
+    /* Wait one frame so the red state is painted before scrolling to it. */
+    requestAnimationFrame(() => {
+      const el = key === "name" ? nameRef.current : rowRefs.current[key];
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (key === "name") el.focus({ preventScroll: true });
+    });
+  }, []);
 
   const openViewer = useCallback((items, index, title) => {
     const clean = (items || []).filter((it) => it && it.src);
@@ -481,7 +531,7 @@ export default function InspectionEvidencePublic() {
         setRecord(rep);
         const p = rep?.payload || {};
         setNotes(submittedNoteMap(p));
-        setUploadedBy(submittedByName(p));
+        setUploadedBy(defaultUploaderName(p));
         setSubmittedFlag(
           !!p?.public?.submission?.closedEvidenceSubmittedAt ||
           !!p?.fields?.closedEvidenceSubmittedAt ||
@@ -583,13 +633,30 @@ export default function InspectionEvidencePublic() {
   const hasPendingChanges =
     Object.values(uploads).some((images) => Array.isArray(images) && images.length > 0) ||
     Object.keys(notes).some((idx) => String(notes[idx] || "") !== String(submittedNoteMap(payload)[idx] || "")) ||
-    uploadedBy.trim() !== submittedByName(payload);
+    uploadedBy.trim() !== defaultUploaderName(payload);
+  const unsentCount = Object.values(uploads).reduce(
+    (n, images) => n + (Array.isArray(images) ? images.filter((img) => img?.pending).length : 0),
+    0
+  );
+
+  /* Picking a photo does not send it. Closing the tab with photos still on
+     the phone is how "we sent them" turned into nothing on the QA side. */
+  useEffect(() => {
+    if (!unsentCount) return undefined;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsentCount]);
 
   async function handleFiles(rowIndex, files) {
     const list = Array.from(files || []);
     if (!list.length) return;
     setErr("");
     setMsg("");
+    setFlag((prev) => (prev?.key === rowIndex ? null : prev));
     try {
       const staged = list.map((file) => {
         if (!file.type?.startsWith("image/")) throw new Error("Only image files are allowed.");
@@ -604,9 +671,8 @@ export default function InspectionEvidencePublic() {
         };
       });
       setUploads((prev) => ({ ...prev, [rowIndex]: [...(prev[rowIndex] || []), ...staged] }));
-      setMsg("Images selected only. They will be saved when you press Save Progress or Send Evidence. / تم اختيار الصور فقط، وسيتم حفظها عند الضغط على حفظ التقدم أو الإرسال.");
     } catch (e) {
-      setErr(e?.message || "Image selection failed");
+      jumpTo(rowIndex, e?.message || "Image selection failed");
     }
   }
 
@@ -641,7 +707,25 @@ export default function InspectionEvidencePublic() {
       const ready = uploads[rowIndex] || [];
       const savedReady = [];
       for (const img of ready) {
-        savedReady.push(img?.pending && img.file ? await uploadImage(img.file) : img);
+        if (!(img?.pending && img.file)) {
+          savedReady.push(img);
+          continue;
+        }
+        let uploaded;
+        try {
+          uploaded = await uploadImage(img.file);
+        } catch (e) {
+          e.rowIndex = rowIndex;
+          throw e;
+        }
+        savedReady.push(uploaded);
+        /* Swap the staged photo for the uploaded one straight away, so a retry
+           after a later failure doesn't upload it a second time. */
+        setUploads((prev) => ({
+          ...prev,
+          [rowIndex]: (prev[rowIndex] || []).map((it) => (it === img ? uploaded : it)),
+        }));
+        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
       }
       const images = [...previous, ...savedReady].map(normalizeEvidenceImage).filter(Boolean);
       const item = { rowIndex, images, note: String(notes[rowIndex] || "") };
@@ -657,16 +741,21 @@ export default function InspectionEvidencePublic() {
       Object.values(previousEvidence).some((images) => Array.isArray(images) && images.length > 0) ||
       Object.values(uploads).some((images) => Array.isArray(images) && images.length > 0) ||
       Object.values(notes).some((note) => String(note || "").trim());
-    if (!hasAnythingToSave) {
-      setErr("Please upload at least one Closed Evidence image or write a note before saving.");
+    /* Every refusal below takes the user TO the thing that is missing. */
+    setErr("");
+    setMsg("");
+    if (!uploadedBy.trim()) {
+      jumpTo("name", "Write the supervisor name here first. / اكتب اسم المشرف هنا أولاً.");
       return;
     }
-    if (!uploadedBy.trim()) {
-      setErr("Please write the supervisor name before saving. / الرجاء كتابة اسم الشخص الذي رفع الصور قبل الحفظ.");
+    if (!hasAnythingToSave) {
+      setShowMissing(true);
+      jumpTo(openRowIndexes[0], "Add a Closed Evidence photo here. / أضف صورة الإغلاق هنا.");
       return;
     }
     if (final && !allOpenRowsHaveEvidence) {
-      setErr(missingMessage || "Final submission requires Closed Evidence photos for every open item.");
+      setShowMissing(true);
+      jumpTo(missingOpenRows[0], `A photo is still missing here. ${missingMessage}`);
       return;
     }
     if (!reportId) {
@@ -674,8 +763,7 @@ export default function InspectionEvidencePublic() {
       return;
     }
     setSaving(true);
-    setErr("");
-    setMsg("");
+    setFlag(null);
     try {
       const closedEvidenceUpdates = await buildClosedEvidenceUpdates();
       if (!closedEvidenceUpdates.length) {
@@ -697,6 +785,7 @@ export default function InspectionEvidencePublic() {
         if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl);
       });
       setUploads({});
+      setShowMissing(false);
       setSubmittedFlag(final);
       setMsg(final
         ? "Evidence sent. QA will review each finding and either close it or send it back with a reason. / تم إرسال الأدلة، ستقوم الجودة بمراجعة كل بند وإغلاقه أو إعادته مع ذكر السبب."
@@ -704,7 +793,11 @@ export default function InspectionEvidencePublic() {
     } catch (e) {
       /* A link can expire between opening the page and pressing Send. */
       if (LINK_MESSAGES[e?.code]) setDeadLink(LINK_MESSAGES[e.code]);
-      else setErr(e?.message || "Save failed");
+      else if (Number.isInteger(e?.rowIndex)) {
+        jumpTo(e.rowIndex, `${e.message} Nothing was sent — press the button again. / لم يتم الإرسال، اضغط الزر مرة أخرى.`);
+      } else {
+        setErr(`${e?.message || "Save failed"} — nothing was sent, please try again. / لم يتم الإرسال، حاول مرة أخرى.`);
+      }
     } finally {
       setSaving(false);
     }
@@ -756,8 +849,9 @@ export default function InspectionEvidencePublic() {
             <div style={{ fontSize: 14, fontWeight: 800, color: "#475569", lineHeight: 1.7 }}>{deadLink}</div>
           </div>
         )}
-        {err && <div style={S.err}>{err}</div>}
-        {msg && <div style={S.msg}>{msg}</div>}
+        {/* Once the report is on screen, save feedback is shown beside the
+            buttons instead (see the actions bar) — up here nobody saw it. */}
+        {!record && err && <div style={S.err}>{err}</div>}
 
         {!loading && !deadLink && record && (
           <>
@@ -784,6 +878,7 @@ export default function InspectionEvidencePublic() {
                   style={{
                     ...S.uploaderCard,
                     ...(!done && !uploadedBy.trim() ? S.uploaderCardMissing : null),
+                    ...(flag?.key === "name" && !uploadedBy.trim() ? S.flagged : null),
                   }}
                 >
                   <div style={S.uploaderTop}>
@@ -804,15 +899,19 @@ export default function InspectionEvidencePublic() {
                     <>
                       <input
                         id="uploadedBy"
+                        ref={nameRef}
                         style={{ ...S.uploaderInput, ...(uploadedBy.trim() ? null : S.uploaderInputMissing) }}
                         value={uploadedBy}
-                        onChange={(e) => setUploadedBy(e.target.value)}
+                        onChange={(e) => {
+                          setUploadedBy(e.target.value);
+                          setFlag((prev) => (prev?.key === "name" ? null : prev));
+                        }}
                         placeholder="e.g. Ahmad Ali / مثال: أحمد علي"
                         autoComplete="name"
                       />
                       {!uploadedBy.trim() && (
                         <div style={{ marginTop: 6, fontSize: 13, fontWeight: 900, color: "#b91c1c" }}>
-                          Required before saving or sending. / مطلوب قبل الحفظ أو الإرسال.
+                          {flag?.key === "name" ? `⬆ ${flag.text}` : "Required before saving or sending. / مطلوب قبل الحفظ أو الإرسال."}
                         </div>
                       )}
                     </>
@@ -889,6 +988,9 @@ export default function InspectionEvidencePublic() {
                   /* Locked while QA holds it; unlocked the moment QA rejects.
                      A closed finding is locked for good — view only. */
                   const locked = isClosed || v.state === "pending" || v.state === "accepted";
+                  const rowFlag = flag?.key === idx ? flag.text : "";
+                  const rowMissing = !locked && !hasEvidence && showMissing;
+                  const rowUnsent = ready.filter((img) => img?.pending).length;
                   const tone = verificationTone(v.state);
                   const subLine = isClosed
                     ? "Closed — view only / مغلق — للعرض فقط"
@@ -914,10 +1016,12 @@ export default function InspectionEvidencePublic() {
                 return (
                   <div
                     key={idx}
+                    ref={(el) => { rowRefs.current[idx] = el; }}
                     style={{
                       ...S.row,
                       ...(v.state === "rejected" ? { borderColor: "#fca5a5", borderWidth: 2 } : null),
                       ...(isClosed ? { borderColor: "#bbf7d0", background: "#f7fefb" } : null),
+                      ...(rowMissing || rowFlag ? S.flagged : null),
                     }}
                   >
                     <div style={S.rowTop}>
@@ -995,7 +1099,20 @@ export default function InspectionEvidencePublic() {
                           : "Verified and closed by QA. / تم التحقق والإغلاق من قبل الجودة."}
                       </div>
                     ) : (
-                      <input type="file" accept="image/*" multiple style={S.file} disabled={saving} onChange={(e) => handleFiles(idx, e.target.files)} />
+                      <>
+                        {(rowFlag || rowMissing) && (
+                          <div style={S.flagText}>
+                            ⬇ {rowFlag || "A Closed Evidence photo is required here. / مطلوب صورة إغلاق لهذا البند."}
+                          </div>
+                        )}
+                        <input type="file" accept="image/*" multiple style={S.file} disabled={saving} onChange={(e) => { handleFiles(idx, e.target.files); e.target.value = ""; }} />
+                      </>
+                    )}
+                    {rowUnsent > 0 && (
+                      <div style={S.unsent}>
+                        ⚠ {rowUnsent} photo(s) NOT sent yet — press Save Progress or Send Evidence at the bottom. /
+                        {" "}{rowUnsent} صورة لم تُرسل بعد، اضغط حفظ التقدم أو إرسال في الأسفل.
+                      </div>
                     )}
                     {closedItems.length > 0 && (
                       <div style={S.thumbs}>
@@ -1030,7 +1147,9 @@ export default function InspectionEvidencePublic() {
                               <img src={imageSrc(img)} alt={img.name || "Selected closed evidence"} style={S.thumb} />
                             </button>
                             <button type="button" style={S.removeThumb} onClick={() => removePendingImage(idx, imgIdx)} title="Remove selected image">x</button>
-                            <span style={S.pendingTag}>Selected</span>
+                            <span style={{ ...S.pendingTag, ...(img?.pending ? { background: "rgba(217,119,6,.95)" } : null) }}>
+                              {img?.pending ? "Not sent / لم تُرسل" : "Uploaded"}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -1056,6 +1175,23 @@ export default function InspectionEvidencePublic() {
             </section>
 
             <div style={S.actions}>
+              {(err || msg || flag || unsentCount > 0) && (
+                <div style={{ flexBasis: "100%" }}>
+                  {err && <div style={{ ...S.err, marginBottom: 0 }}>{err}</div>}
+                  {!err && flag && (
+                    <div style={{ ...S.err, marginBottom: 0 }}>
+                      ⬆ {flag.text} {flag.key === "name" ? "" : `(Finding #${Number(flag.key) + 1} / البند #${Number(flag.key) + 1})`}
+                    </div>
+                  )}
+                  {!err && !flag && msg && <div style={{ ...S.msg, marginBottom: 0 }}>{msg}</div>}
+                  {!err && !flag && !msg && unsentCount > 0 && (
+                    <div style={{ ...S.unsent, marginTop: 0 }}>
+                      ⚠ {unsentCount} photo(s) are only on this phone — they reach QA when you press a button below. /
+                      {" "}{unsentCount} صورة موجودة على الجهاز فقط، لن تصل للجودة قبل الضغط على أحد الأزرار.
+                    </div>
+                  )}
+                </div>
+              )}
               <button style={S.ghost} disabled>
                 {!nothingPending
                   ? `${completedOpenRows}/${openRowIndexes.length} open item(s) with evidence`
@@ -1069,7 +1205,10 @@ export default function InspectionEvidencePublic() {
                 </button>
               )}
               {!done && !nothingPending && (
-                <button style={{ ...S.btn, opacity: saving || !allOpenRowsHaveEvidence ? 0.55 : 1 }} onClick={() => saveEvidence({ final: true })} disabled={saving || !allOpenRowsHaveEvidence}>
+                /* Stays clickable while photos are missing: pressing it now takes
+                   the user to the first finding without one, instead of a dead
+                   button that explains nothing. */
+                <button style={{ ...S.btn, opacity: saving || !allOpenRowsHaveEvidence ? 0.55 : 1 }} onClick={() => saveEvidence({ final: true })} disabled={saving}>
                   {saving ? "Working..." : "Send Evidence"}
                 </button>
               )}
