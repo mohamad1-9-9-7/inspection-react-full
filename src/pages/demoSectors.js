@@ -8,8 +8,25 @@
 export const SECTOR_ORDER = ["meat", "restaurant", "kitchen", "sweets", "factory", "retail", "distribution"];
 
 export const SECTOR_UI = {
-  en: { ask: "What's your business?", all: "Show all", painEyebrow: "Made for your business", painTitle: (s) => `What InspectPro solves for ${s}` },
-  ar: { ask: "ما نشاطك؟", all: "عرض الكل", painEyebrow: "مصمَّم لنشاطك", painTitle: (s) => `كيف يخدم InspectPro ${s}` },
+  en: {
+    ask: "What's your business?", all: "Show all", painEyebrow: "Made for your business", painTitle: (s) => `What InspectPro solves for ${s}`,
+    flexEyebrow: "One platform, seven businesses", flexTitle: "Pick your business and see what changes", flexMore: "See it for my business",
+  },
+  ar: {
+    ask: "ما نشاطك؟", all: "عرض الكل", painEyebrow: "مصمَّم لنشاطك", painTitle: (s) => `كيف يخدم InspectPro ${s}`,
+    flexEyebrow: "منصة واحدة، سبعة أنشطة", flexTitle: "اختر نشاطك وشاهد ما يتغيّر", flexMore: "اعرضه لنشاطي",
+  },
+};
+
+/* Accordion panel look per sector: emoji + a light tint (Soft Sky family) and its accent. */
+export const SECTOR_LOOK = {
+  meat: { emo: "🥩", bg: "#fff1f2", ac: "#be123c" },
+  restaurant: { emo: "🍳", bg: "#fff7ed", ac: "#c2410c" },
+  kitchen: { emo: "🍲", bg: "#fefce8", ac: "#a16207" },
+  sweets: { emo: "🧁", bg: "#fdf4ff", ac: "#a21caf" },
+  factory: { emo: "🏭", bg: "#eef2ff", ac: "#4338ca" },
+  retail: { emo: "🛒", bg: "#ecfeff", ac: "#0e7490" },
+  distribution: { emo: "🚚", bg: "#f0fdf4", ac: "#15803d" },
 };
 
 export const SECTORS = {

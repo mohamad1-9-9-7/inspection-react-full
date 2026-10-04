@@ -18,6 +18,7 @@ import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
 import { usePublicTitle } from "../config/pageTitles";
 import { useSiteStats } from "../utils/siteStats";
 import { SECTORS, SECTOR_ORDER, SECTOR_UI, withSector } from "./demoSectors";
+import DemoSectorFlex from "./DemoSectorFlex";
 import { BeforeAfter, PROMO_CSS, ReferralNote, StoryCard, useDemoConfig } from "./readiness/promoBlocks";
 
 // The free-trial window loads only when opened (it pulls in the demo-record generator).
@@ -575,6 +576,12 @@ export default function DemoRequest() {
     } catch { /* the address bar is a convenience only */ }
   };
 
+  // accordion "see it for my business": pick the sector (unless already picked) and jump to its pains
+  const exploreSector = (v) => {
+    if (v !== sector) pickSector(v);
+    setTimeout(() => document.getElementById("sector")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
+
   const m = t.mock;
   const F = t.feats;
 
@@ -842,6 +849,9 @@ export default function DemoRequest() {
           </div>
         </section>
       )}
+
+      <DemoSectorFlex lang={lang} sector={sector} ctaTrial={t.ctaTrial} arrow={arrow}
+        onTrial={(v) => openTrial(`sector-${v}`)} onExplore={exploreSector} />
 
       {/* ── features ── */}
       <section id="features" className="dp-section">
