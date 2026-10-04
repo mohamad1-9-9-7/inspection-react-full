@@ -1028,8 +1028,8 @@ function PhotoButton({ images = [], onClick, uploading = 0 }) {
       className={`rt-photo${count || uploading ? "" : " is-empty"}`}
       title={
         count
-          ? `${count} photo${count === 1 ? "" : "s"} on this row — click to view, add or remove. Or click any box on this row and paste a copied picture (Ctrl+V).`
-          : "Add a photo of this item — or click any box on this row and paste a copied picture (Ctrl+V)"
+          ? `${count} photo${count === 1 ? "" : "s"} on this row — click to view, add or remove. Or point at this row and paste a copied picture (Ctrl+V).`
+          : "Add a photo of this item — or point at this row and paste a copied picture (Ctrl+V)"
       }
     >
       {uploading > 0 ? (
@@ -2765,8 +2765,9 @@ export default function Returns() {
 
   /* ===== Paste a picture straight onto a row =====
      Copy a picture anywhere (WhatsApp, a screenshot, "Copy image" in a
-     browser), click any box on the row - or just point at it - and press
-     Ctrl+V: it uploads to that row with no window and no file browser.
+     browser), point at the row - the highlighted one - and press Ctrl+V: it
+     uploads to that row with no window and no file browser. No click needed;
+     with the mouse off the table it falls back to the row being typed in.
      The photo window and the note dialogs keep their own paste while open. */
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -2828,13 +2829,14 @@ export default function Returns() {
       if ((e.clipboardData?.getData("text/plain") || "").trim()) return;
       const files = imagesFromClipboard(e);
       if (!files.length) return;
+      // the row under the mouse (the highlighted one) wins over an older click
       const at = focusedCellRef.current();
-      const idx = at ? at.row : hoverRowRef.current;
+      const idx = hoverRowRef.current >= 0 ? hoverRowRef.current : at ? at.row : -1;
       if (idx < 0 || idx >= (rowsRef.current?.length || 0)) {
         // focus inside some other box or window: leave that paste alone
         if (document.activeElement && document.activeElement !== document.body) return;
         e.preventDefault();
-        setSaveMsg("⚠️ Click a box on the row the picture belongs to, then press Ctrl+V again.");
+        setSaveMsg("⚠️ Point the mouse at the row the picture belongs to, then press Ctrl+V again.");
         setTimeout(() => setSaveMsg(""), 3500);
         return;
       }
