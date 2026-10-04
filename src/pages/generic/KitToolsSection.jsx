@@ -1,6 +1,6 @@
 // src/pages/generic/KitToolsSection.jsx
-// The rest of a kit company's home cards (OHC, external certificates,
-// settings…) in the same grouped look as the Daily Reports section, plus —
+// The rest of a kit company's home cards (OHC, external certificates — Settings
+// is a hero-bar button) in the same grouped look as Daily Reports, plus —
 // on a free trial only — the locked "more with a subscription" modules.
 
 import React from "react";

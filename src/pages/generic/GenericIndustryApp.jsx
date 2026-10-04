@@ -285,7 +285,9 @@ export default function GenericIndustryApp() {
   /* Kit companies: Daily Reports + View Reports become one home section (a
      card per report) instead of two tiles. */
   const dailyReports = reportsCard ? reportsCard.reports.filter(matches) : [];
-  const homeCards = cards.filter((c) => c !== entryCard && c !== viewCard && matches(c));
+  // Kit companies: Settings is a button in the hero bar (beside Logout), not a card.
+  const settingsCard = isKitFlat ? cards.find((c) => c.kind === "hub" && c.id === "settings") : null;
+  const homeCards = cards.filter((c) => c !== entryCard && c !== viewCard && c !== settingsCard && matches(c));
   const showTrialLocked = !!currentUser.companyTrial && !isSuperAdmin && !q;
 
   return (
@@ -443,6 +445,11 @@ export default function GenericIndustryApp() {
                   {isSuperAdmin && (
                     <button type="button" style={S.heroBtn} onClick={() => { clearActiveCompany(); navigate("/select-company"); }}>
                       🏢 <Two en="Switch Company" ar="تبديل الشركة" />
+                    </button>
+                  )}
+                  {settingsCard && (
+                    <button type="button" style={S.heroBtn} onClick={() => go({ card: settingsCard.id })}>
+                      ⚙️ <Two en="Settings" ar="الإعدادات" />
                     </button>
                   )}
                   <button type="button" style={S.heroBtnDanger} onClick={logout}><Two en="Logout" ar="خروج" /></button>
@@ -682,6 +689,16 @@ export default function GenericIndustryApp() {
       {/* ── Hub card (e.g. HACCP): full-width, no sidebar, no report picker ── */}
       {isHub && (
         <section style={S.main}>
+          {/* Kit Settings opens from the hero bar, so give it a way home. */}
+          {isKitFlat && (
+            <div style={S.mainHead}>
+              <span style={S.mainHeadIcon}>{card.icon}</span>
+              <span style={S.mainHeadTitle}><Two en={card.label} ar={card.labelAr} /></span>
+              <button style={{ ...S.btn, marginInlineStart: "auto", color: ACCENT, borderColor: "rgba(15,118,110,.3)", background: "#ccfbf1" }} onClick={() => go({})}>
+                🏠 <Two en="Home" ar="الرئيسية" />
+              </button>
+            </div>
+          )}
           <div style={{ ...S.mainBody, padding: 0 }}>
             {Leaf ? (
               <CompanyBoundary module={moduleKey || industry} resetKey={leafKey} onHome={() => go({})}><Suspense fallback={<Loading />}><Leaf /></Suspense></CompanyBoundary>
