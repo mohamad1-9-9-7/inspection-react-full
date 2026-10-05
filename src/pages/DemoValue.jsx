@@ -7,7 +7,8 @@
 // Prices and savings assumptions live in PRICING / SAVINGS below. They are
 // estimates for a sales page; the written quote after the demo is what binds.
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import API_BASE from "../config/api";
 
 /* Per branch, per month, AED (same numbers as STANDARD_PLANS in
    settings/quotations/quotationCore.js — change both together). The visitor
@@ -36,6 +37,61 @@ export const volumeOff = (sites, planId) =>
 /** Price per branch per month in AED, volume discount included. */
 export const branchPrice = (sites, planId, annual = true) =>
   Math.round(PRICING[planId][annual ? "annual" : "monthly"] * (1 - volumeOff(sites, planId)));
+
+/* Promo codes (Platform Center → Promo codes; server routes/promoCodes.cjs).
+   One code per person who brings customers; it takes a percent or AED off the
+   per-branch monthly price. The server decides whether a code is usable. */
+export const promoPrice = (per, promo) => {
+  if (!promo) return per;
+  const off = promo.kind === "aed" ? promo.amount : per * (promo.amount / 100);
+  return Math.max(0, Math.round(per - off));
+};
+
+const PROMO_KEY = "inspectpro.promo";
+
+/** The visitor's code: from ?code= on the link, or typed on the page. Checked on the server. */
+export function usePromo(initialCode) {
+  const [promo, setPromo] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  const apply = useCallback(async (raw) => {
+    const code = String(raw || "").trim().toUpperCase();
+    if (!code) return false;
+    setChecking(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/promo-codes/check?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (res.status === 429) { setError("busy"); return false; }
+      if (!res.ok || !j.promo) { setError("invalid"); setPromo(null); return false; }
+      setPromo(j.promo);
+      try { sessionStorage.setItem(PROMO_KEY, j.promo.code); } catch { /* private mode */ }
+      return true;
+    } catch {
+      setError("offline");
+      return false;
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  const clear = useCallback(() => {
+    setPromo(null);
+    setError("");
+    try { sessionStorage.removeItem(PROMO_KEY); } catch { /* private mode */ }
+  }, []);
+
+  // The link's code wins; otherwise the one applied earlier in this visit.
+  useEffect(() => {
+    let saved = "";
+    try { saved = sessionStorage.getItem(PROMO_KEY) || ""; } catch { /* private mode */ }
+    const code = initialCode || saved;
+    if (code) apply(code);
+  }, [initialCode, apply]);
+
+  return { promo, apply, clear, checking, error };
+}
 
 /** Monthly subscription in AED for the whole account, billed annually. */
 export function monthlyPrice(sites, planId = planFor(sites)) {
@@ -262,6 +318,15 @@ const PLANS_T = {
     setupFree: "Setup free",
     was: (p) => `AED ${p} on monthly billing`,
     yearSave: (p) => `You save AED ${p} a year`,
+    orAnnual: (p, y) => `or AED ${p} a month on annual billing, save AED ${y} a year`,
+    promoAsk: "Have a promo code?",
+    promoPh: "Enter your code",
+    promoApply: "Apply",
+    promoOn: (c, off) => `Code ${c} applied: ${off}`,
+    promoOff: (pr) => (pr.kind === "aed" ? `AED ${pr.amount} off per branch a month` : `${pr.amount} % off`),
+    promoRemove: "Remove code",
+    promoErr: { invalid: "This code isn't valid or has expired.", busy: "Too many tries, please wait a little.", offline: "Couldn't check the code, please try again." },
+    pickedCode: (c) => ` Promo code: ${c}.`,
     popular: "Most popular",
     quote: "Custom quote",
     quoteSub: "More than 20 branches: we prepare a price for your group.",
@@ -301,6 +366,15 @@ const PLANS_T = {
     setupFree: "التجهيز مجاني",
     was: (p) => `${p} درهم بالدفع الشهري`,
     yearSave: (p) => `توفّر ${p} درهم في السنة`,
+    orAnnual: (p, y) => `أو ${p} درهم شهريًا بالدفع السنوي، وتوفّر ${y} درهم في السنة`,
+    promoAsk: "لديك كود خصم؟",
+    promoPh: "أدخل الكود",
+    promoApply: "تطبيق",
+    promoOn: (c, off) => `تم تطبيق الكود ${c}: ${off}`,
+    promoOff: (pr) => (pr.kind === "aed" ? `خصم ${pr.amount} درهم لكل فرع شهريًا` : `خصم ${pr.amount}%`),
+    promoRemove: "إزالة الكود",
+    promoErr: { invalid: "الكود غير صالح أو انتهت صلاحيته.", busy: "محاولات كثيرة، انتظر قليلًا.", offline: "تعذّر التحقق من الكود، حاول مرة أخرى." },
+    pickedCode: (c) => ` كود الخصم: ${c}.`,
     popular: "الأكثر طلبًا",
     quote: "عرض سعر خاص",
     quoteSub: "أكثر من 20 فرعًا: نعدّ سعرًا خاصًا لمجموعتك.",
@@ -327,10 +401,17 @@ const PLANS_T = {
 
 const SITE_PRESETS = [1, 3, 5, 10];
 
-export function PricingPlans({ lang, onBook }) {
+export function PricingPlans({ lang, onBook, promoState }) {
   const t = PLANS_T[lang];
   const [sites, setSites] = useState(1);
   const [annual, setAnnual] = useState(true);
+  const promo = promoState?.promo || null;
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeDraft, setCodeDraft] = useState("");
+  const submitCode = async (e) => {
+    e.preventDefault();
+    if (await promoState.apply(codeDraft)) setCodeDraft("");
+  };
   const over = sites > PRICING.maxSites;
   const bump = (d) => setSites((n) => Math.min(PRICING.maxSites + 1, Math.max(1, n + d)));
 
@@ -360,17 +441,43 @@ export function PricingPlans({ lang, onBook }) {
             {t.annual} <em className="fs-xs">{t.save}</em>
           </button>
         </div>
+        {promoState && (promo ? (
+          <div className="dp-promo on fs-sm" role="status">
+            <span>🏷️ {t.promoOn(promo.code, t.promoOff(promo))}</span>
+            <button type="button" className="fs-xs" onClick={promoState.clear}>{t.promoRemove}</button>
+          </div>
+        ) : !codeOpen && !promoState.error ? (
+          <button type="button" className="dp-promo-ask fs-sm" onClick={() => setCodeOpen(true)}>{t.promoAsk}</button>
+        ) : (
+          <form className="dp-promo fs-sm" onSubmit={submitCode}>
+            <input
+              className="dp-input" dir="ltr" value={codeDraft} maxLength={30} autoFocus
+              onChange={(e) => setCodeDraft(e.target.value.toUpperCase())}
+              placeholder={t.promoPh} aria-label={t.promoPh}
+            />
+            <button type="submit" className="dp-btn dark fs-sm" disabled={promoState.checking || !codeDraft.trim()}>
+              {promoState.checking ? "…" : t.promoApply}
+            </button>
+            {promoState.error && <span className="err fs-xs" role="alert">{t.promoErr[promoState.error] || t.promoErr.invalid}</span>}
+          </form>
+        ))}
       </div>
 
       <div className="dp-plans-grid">
         {t.plans.map((p) => {
           const featured = p.id === "professional";
-          const per = branchPrice(sites, p.id, annual);
+          const basePer = branchPrice(sites, p.id, annual);
+          const per = promoPrice(basePer, promo);
           const total = sites * per;
           const off = volumeOff(sites, p.id);
-          // Before/after is real: the struck "before" is the same plan on monthly billing.
+          /* Before/after is real: the struck "before" is the same plan on monthly
+             billing (annual), or its list price before the promo code (monthly). */
           const monthlyTotal = sites * branchPrice(sites, p.id, false);
-          const showWas = annual && !over && monthlyTotal > total;
+          const wasTotal = annual ? monthlyTotal : sites * basePer;
+          const showWas = !over && wasTotal > total;
+          // Monthly: point at what the same plan costs on annual billing.
+          const annualTotal = sites * promoPrice(branchPrice(sites, p.id, true), promo);
+          const showAnnualHint = !annual && !over && annualTotal < total;
           return (
             <div key={p.id} className={`dp-plan${featured ? " featured" : ""}`}>
               {featured && <span className="badge fs-xs">{t.popular}</span>}
@@ -378,8 +485,8 @@ export function PricingPlans({ lang, onBook }) {
               <b className="name fs-md">{p.name}</b>
               {showWas && (
                 <span className="was fs-sm">
-                  <s dir="ltr" aria-label={t.was(fmt(monthlyTotal))}>{fmt(monthlyTotal)}</s>
-                  <em className="fs-xs">{t.yearSave(fmt((monthlyTotal - total) * 12))}</em>
+                  <s dir="ltr" aria-label={annual ? t.was(fmt(wasTotal)) : undefined}>{fmt(wasTotal)}</s>
+                  <em className="fs-xs">{t.yearSave(fmt((wasTotal - total) * 12))}</em>
                 </span>
               )}
               <div className={`price${showWas ? " after" : ""}`}>
@@ -398,6 +505,7 @@ export function PricingPlans({ lang, onBook }) {
                     {t.perBranch(fmt(per))}
                     {off > 0 && <> · <em className="off">{t.volume(Math.round(off * 100))}</em></>}
                     <br />{annual ? <><s className="setup-was">{t.setup(fmt(PRICING.setup))}</s> {t.setupFree}</> : t.setup(fmt(PRICING.setup))}
+                    {showAnnualHint && <><br /><button type="button" className="annual-hint" onClick={() => setAnnual(true)}>{t.orAnnual(fmt(annualTotal), fmt((total - annualTotal) * 12))}</button></>}
                   </>
                 )}
               </span>
@@ -416,7 +524,7 @@ export function PricingPlans({ lang, onBook }) {
               <button
                 type="button"
                 className={`dp-btn ${featured ? "primary" : "dark"} fs-md`}
-                onClick={() => onBook(branchBucket(sites), over ? "" : t.picked(p.name, sites, fmt(total), annual))}
+                onClick={() => onBook(branchBucket(sites), over ? "" : t.picked(p.name, sites, fmt(total), annual) + (promo ? t.pickedCode(promo.code) : ""))}
               >
                 {over ? t.talk : t.choose}
               </button>

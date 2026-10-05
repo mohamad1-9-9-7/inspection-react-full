@@ -57,6 +57,7 @@ const norm = (r = {}) => ({
   referrer: r.referrer || "",
   lang: r.lang || "",
   referredBy: r.referred_by || r.referredBy || "",
+  promoCode: r.promo_code || r.promoCode || "",
   // Set only on leads from the /readiness check.
   quizScore: Number.isInteger(r.quiz_score ?? r.quizScore) ? (r.quiz_score ?? r.quizScore) : null,
   quizAnswers: r.quiz_answers || r.quizAnswers || null,
@@ -174,18 +175,18 @@ export default function DemoRequestsTab() {
     const q = query.trim().toLowerCase();
     return rows
       .filter((r) => filter === "all" || r.status === filter)
-      .filter((r) => !q || [r.companyName, r.contactName, r.phone, r.email, r.notes, r.source]
+      .filter((r) => !q || [r.companyName, r.contactName, r.phone, r.email, r.notes, r.source, r.promoCode]
         .some((v) => String(v).toLowerCase().includes(q)))
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }, [rows, filter, query]);
 
   const exportCsv = () => {
     const head = lang === "ar"
-      ? ["التاريخ", "الحالة", "الشركة", "النشاط", "الفروع", "الإمارة", "جهة التواصل", "المسمى", "الهاتف", "الإيميل", "الرسالة", "المصدر", "الملاحظات"]
-      : ["Date", "Status", "Company", "Business type", "Branches", "Emirate", "Contact", "Job title", "Phone", "Email", "Message", "Source", "Notes"];
+      ? ["التاريخ", "الحالة", "الشركة", "النشاط", "الفروع", "الإمارة", "جهة التواصل", "المسمى", "الهاتف", "الإيميل", "الرسالة", "المصدر", "كود الخصم", "الملاحظات"]
+      : ["Date", "Status", "Company", "Business type", "Branches", "Emirate", "Contact", "Job title", "Phone", "Email", "Message", "Source", "Promo code", "Notes"];
     const lines = shown.map((r) => [
       fmtWhen(r.createdAt, lang), statusLabel(r.status, lang), r.companyName, activityLabel(r.activity, lang), r.branches,
-      emirateLabel(r.emirate, lang), r.contactName, r.jobTitle, r.phone, r.email, r.message, r.source, r.notes,
+      emirateLabel(r.emirate, lang), r.contactName, r.jobTitle, r.phone, r.email, r.message, r.source, r.promoCode, r.notes,
     ].map(csvCell).join(","));
     const blob = new Blob(["﻿" + [head.map(csvCell).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -287,6 +288,11 @@ export default function DemoRequestsTab() {
                       {r.referredBy && (
                         <span title={L("Referral: this company may earn the referral discount", "إحالة: الشركة اللي أحالت ممكن تستحق خصم الإحالة")} style={{ marginInlineStart: 8, padding: "1px 8px", borderRadius: 999, background: "#dbeafe", color: "#1d4ed8", fontWeight: 900, fontSize: 12.5 }}>
                           🤝 {r.referredBy}
+                        </span>
+                      )}
+                      {r.promoCode && (
+                        <span title={L("Came with this promo code (Platform Center → Promo Codes)", "إجا بهالكود (مركز المنصة ← أكواد الخصم)")} dir="ltr" style={{ marginInlineStart: 8, padding: "1px 8px", borderRadius: 999, background: "#ccfbf1", color: "#0f766e", fontWeight: 900, fontSize: 12.5 }}>
+                          🏷️ {r.promoCode}
                         </span>
                       )}
                     </div>

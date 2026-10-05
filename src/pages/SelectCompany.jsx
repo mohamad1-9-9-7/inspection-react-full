@@ -39,12 +39,14 @@ const AccountsManagementTab = lazy(() => import("./settings/AccountsManagementTa
 const BillingPlansTab       = lazy(() => import("./settings/BillingPlansTab"));
 const SecurityControlsTab   = lazy(() => import("./settings/SecurityControlsTab"));
 const DemoRequestsTab       = lazy(() => import("./settings/DemoRequestsTab"));
+const PromoCodesTab         = lazy(() => import("./settings/PromoCodesTab"));
 
 const CENTER_TABS = [
   { id: "companies", icon: "🏢", en: "Companies",              ar: "الشركات",             hint: "Pick a company to work inside it",                              hintAr: "اختر شركة لتشتغل جوّاها" },
   { id: "accounts",  icon: "👥", en: "Accounts & Permissions", ar: "الحسابات والصلاحيات", hint: "Every company's accounts and what they can open",               hintAr: "حسابات كل الشركات وشو بيقدروا يفتحوا" },
   { id: "billing",   icon: "💳", en: "Billing & Subscriptions", ar: "الاشتراكات والفوترة", hint: "Revenue, companies, plans, quotations and invoices",           hintAr: "الإيراد، الشركات، الخطط، عروض الأسعار والفواتير" },
   { id: "leads",     icon: "📨", en: "Demo Requests",          ar: "طلبات العرض التجريبي", hint: "Companies that asked for a demo on the public /demo page",      hintAr: "الشركات اللي طلبت عرض تجريبي من صفحة /demo" },
+  { id: "promo",     icon: "🏷️", en: "Promo Codes",            ar: "أكواد الخصم",          hint: "A code per person who brings customers — discount, validity, and who came through it", hintAr: "كود لكل شخص بيجبلك عملاء — الخصم، الصلاحية، ومين إجا عن طريقه" },
   { id: "security",  icon: "🛡️", en: "Security & Server",      ar: "الأمان والسيرفر",      hint: "Record deletion, read-only mode, session timeout and screen lock", hintAr: "حذف السجلات، وضع القراءة فقط، مهلة الجلسة وقفل الشاشة" },
 ];
 
@@ -319,6 +321,7 @@ export default function SelectCompany() {
                 {tab === "billing" && <BillingPlansTab />}
                 {tab === "security" && <SecurityControlsTab />}
                 {tab === "leads" && <DemoRequestsTab />}
+                {tab === "promo" && <PromoCodesTab />}
               </Suspense>
             </section>
           )}

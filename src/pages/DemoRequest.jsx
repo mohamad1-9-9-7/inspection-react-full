@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../config/api";
 import "./DemoRequest.css";
 import { BrandLockup } from "./readiness/brand";
-import { PaperVsTable, PricingPlans, SavingsCalculator } from "./DemoValue";
+import { PaperVsTable, PricingPlans, SavingsCalculator, usePromo } from "./DemoValue";
 import { usePublicTitle } from "../config/pageTitles";
 import { useSiteStats } from "../utils/siteStats";
 import { SECTORS, SECTOR_ORDER, SECTOR_UI, withSector } from "./demoSectors";
@@ -425,6 +425,12 @@ export default function DemoRequest() {
 
   const source = useMemo(() => (params.get("src") || params.get("utm_source") || "").slice(0, 60), [params]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // A promo code (?code=TAWFIQ on the link the owner sent, or typed by the
+  // visitor) discounts the prices and rides on the lead / trial, so the owner
+  // knows who brought this customer.
+  const linkCode = useMemo(() => (params.get("code") || "").slice(0, 30), [params]);
+  const promoState = usePromo(linkCode);
+  const promoCode = promoState.promo?.code || "";
 
   // WhatsApp number, launch offer, referral and customer story are all set by
   // the owner in Platform Center → Demo Requests; anything unset is not shown.
@@ -543,6 +549,7 @@ export default function DemoRequest() {
           ...f,
           message: withExtras(f.message, interests, when, P),
           source,
+          promoCode,
           referrer: (typeof document !== "undefined" && document.referrer) || "",
           lang,
         }),
@@ -913,7 +920,7 @@ export default function DemoRequest() {
             <h2 className="dp-h2 fs-h2">{t.priceTitle}</h2>
             <p className="dp-sub fs-lead">{t.priceSub}</p>
           </div>
-          <div className="dp-reveal"><PricingPlans lang={lang} onBook={(b, note) => bookFromCalc(b, "pricing", note)} /></div>
+          <div className="dp-reveal"><PricingPlans lang={lang} promoState={promoState} onBook={(b, note) => bookFromCalc(b, "pricing", note)} /></div>
         </div>
       </section>
 
@@ -1035,7 +1042,7 @@ export default function DemoRequest() {
 
       {trialOpen && (
         <Suspense fallback={null}>
-          <TrialSignup lang={lang} sector={sector} source={source} track={track} onClose={() => setTrialOpen(false)} />
+          <TrialSignup lang={lang} sector={sector} source={source} promoCode={promoCode} track={track} onClose={() => setTrialOpen(false)} />
         </Suspense>
       )}
 

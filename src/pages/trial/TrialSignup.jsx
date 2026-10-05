@@ -112,7 +112,7 @@ async function fillDemo(industry, companyId, token, onTick) {
   await Promise.all(Array.from({ length: PARALLEL }, worker));
 }
 
-export default function TrialSignup({ lang, sector, source, onClose, track }) {
+export default function TrialSignup({ lang, sector, source, promoCode, onClose, track }) {
   const navigate = useNavigate();
   const t = T[lang] || T.en;
   const isAr = lang === "ar";
@@ -155,7 +155,7 @@ export default function TrialSignup({ lang, sector, source, onClose, track }) {
       const res = await fetch(`${API_BASE}/api/trial/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...d, password: f.password, accept: true, lang, source }),
+        body: JSON.stringify({ ...d, password: f.password, accept: true, lang, source, promoCode }),
       });
       if (res.status === 429) throw new Error(t.err.too_many);
       const data = await res.json().catch(() => ({}));
