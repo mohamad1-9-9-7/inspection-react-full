@@ -260,6 +260,8 @@ const PLANS_T = {
     volume: (x) => `−${x} % for your branch count`,
     setup: (p) => `Setup AED ${p} once`,
     setupFree: "Setup free",
+    was: (p) => `AED ${p} on monthly billing`,
+    yearSave: (p) => `You save AED ${p} a year`,
     popular: "Most popular",
     quote: "Custom quote",
     quoteSub: "More than 20 branches: we prepare a price for your group.",
@@ -297,6 +299,8 @@ const PLANS_T = {
     volume: (x) => `خصم ${x}% لعدد فروعك`,
     setup: (p) => `التجهيز ${p} درهم مرة واحدة`,
     setupFree: "التجهيز مجاني",
+    was: (p) => `${p} درهم بالدفع الشهري`,
+    yearSave: (p) => `توفّر ${p} درهم في السنة`,
     popular: "الأكثر طلبًا",
     quote: "عرض سعر خاص",
     quoteSub: "أكثر من 20 فرعًا: نعدّ سعرًا خاصًا لمجموعتك.",
@@ -364,12 +368,21 @@ export function PricingPlans({ lang, onBook }) {
           const per = branchPrice(sites, p.id, annual);
           const total = sites * per;
           const off = volumeOff(sites, p.id);
+          // Before/after is real: the struck "before" is the same plan on monthly billing.
+          const monthlyTotal = sites * branchPrice(sites, p.id, false);
+          const showWas = annual && !over && monthlyTotal > total;
           return (
             <div key={p.id} className={`dp-plan${featured ? " featured" : ""}`}>
               {featured && <span className="badge fs-xs">{t.popular}</span>}
               <span className="tag fs-xs">{p.tag}</span>
               <b className="name fs-md">{p.name}</b>
-              <div className="price">
+              {showWas && (
+                <span className="was fs-sm">
+                  <s dir="ltr" aria-label={t.was(fmt(monthlyTotal))}>{fmt(monthlyTotal)}</s>
+                  <em className="fs-xs">{t.yearSave(fmt((monthlyTotal - total) * 12))}</em>
+                </span>
+              )}
+              <div className={`price${showWas ? " after" : ""}`}>
                 {over ? (
                   <b className="fs-kpi">{t.quote}</b>
                 ) : (
@@ -384,7 +397,7 @@ export function PricingPlans({ lang, onBook }) {
                   <>
                     {t.perBranch(fmt(per))}
                     {off > 0 && <> · <em className="off">{t.volume(Math.round(off * 100))}</em></>}
-                    <br />{annual ? t.setupFree : t.setup(fmt(PRICING.setup))}
+                    <br />{annual ? <><s className="setup-was">{t.setup(fmt(PRICING.setup))}</s> {t.setupFree}</> : t.setup(fmt(PRICING.setup))}
                   </>
                 )}
               </span>
