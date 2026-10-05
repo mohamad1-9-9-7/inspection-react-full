@@ -24,6 +24,11 @@ import { useInventoryOfficer } from "./pages/workforce/workforceAccess";
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 // Free-trial companies: a bar on every screen that nothing is kept (renders nothing otherwise).
 const TrialBanner = lazy(() => import("./pages/trial/TrialBanner"));
+// A company admin's own subscription + invoices, and the renewal bar that points at it.
+const MyBilling = lazy(() => import("./pages/billing/MyBilling"));
+const BillingDueBanner = lazy(() => import("./pages/billing/BillingDueBanner"));
+// Public: a promo code holder's own page (what the code brought + commission).
+const ReferrerPortal = lazy(() => import("./pages/referrer/ReferrerPortal"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 
 // Lazy imports
@@ -583,7 +588,9 @@ function getCurrentUser() {
   }
 }
 
-function ProtectedRoute({ children }) {
+/* allowExpired: the page a lapsed company needs in order to pay (/my-billing)
+   stays open to a session that is already signed in. */
+function ProtectedRoute({ children, allowExpired = false }) {
   const { pathname } = useLocation();
   let isAuthed = false;
   let isSuperAdmin = false;
@@ -605,7 +612,7 @@ function ProtectedRoute({ children }) {
     isAuthed = false;
   }
   if (!isAuthed) return <Navigate to="/" replace />;
-  if (isSubscriptionExpired() && !isSuperAdmin) return <Navigate to="/subscription-expired" replace />;
+  if (isSubscriptionExpired() && !isSuperAdmin && !allowExpired) return <Navigate to="/subscription-expired" replace />;
   /* Company separation: an account of any company that is not on the meat
      system (sweets, restaurant, supermarket, warehouse, manufacturing…) lives
      ONLY inside /company-app. Every other protected route is the Al Mawashi
@@ -613,7 +620,7 @@ function ProtectedRoute({ children }) {
      now it bounces back to the account's own app. The server already scopes
      every row to the account's company; this closes the screens as well.
      The super-admin is exempt (it moves between companies on purpose). */
-  if (!isSuperAdmin && industry !== "meat" && pathname !== "/company-app") {
+  if (!isSuperAdmin && industry !== "meat" && pathname !== "/company-app" && pathname !== "/my-billing") {
     return <Navigate to="/company-app" replace />;
   }
   return children;
@@ -841,6 +848,7 @@ export default function App() {
       <NotificationManager />
       <OutboxBar />
       <Suspense fallback={null}><TrialBanner /></Suspense>
+      <Suspense fallback={null}><BillingDueBanner /></Suspense>
       <GlobalDatePicker />
       <GlobalTimePicker />
       <ThemeToggle />
@@ -854,6 +862,10 @@ export default function App() {
         <Route path="/demo" element={<DemoRequest />} />
         {/* Public: inspection-readiness check (lead magnet) — no login */}
         <Route path="/readiness" element={<ReadinessCheck />} />
+        {/* Public: a referrer's private page — the token in the link is the key */}
+        <Route path="/ref/:token" element={<ReferrerPortal />} />
+        {/* 💳 A company admin's subscription, invoices and payment receipts */}
+        <Route path="/my-billing" element={<ProtectedRoute allowExpired><MyBilling /></ProtectedRoute>} />
         {/* 🔍 Inspection module — the icon opens a hub, not the form directly */}
         <Route
           path="/inspection"

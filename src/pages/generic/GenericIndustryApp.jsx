@@ -22,6 +22,7 @@ import LockedCards, { LockedIsoSection, TRIAL_LOCKED_REPORT_KEYS } from "../tria
 import DailyReportsSection from "./DailyReportsSection";
 import KitToolsSection from "./KitToolsSection";
 import { KIT_INDUSTRY_IDS } from "../../industries/catalog";
+import { isBillingAdmin } from "../billing/myBillingCore";
 
 function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -454,6 +455,11 @@ export default function GenericIndustryApp() {
                   {isSuperAdmin && (
                     <button type="button" style={S.heroBtn} onClick={() => { clearActiveCompany(); navigate("/select-company"); }}>
                       🏢 <Two en="Switch Company" ar="تبديل الشركة" />
+                    </button>
+                  )}
+                  {isBillingAdmin(currentUser) && (
+                    <button type="button" style={S.heroBtn} onClick={() => navigate("/my-billing")}>
+                      💳 <Two en="Subscription" ar="الاشتراك" />
                     </button>
                   )}
                   {settingsCard && (

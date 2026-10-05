@@ -25,6 +25,7 @@ import {
 import { buildInvoiceHtml, downloadInvoicePdf, printInvoice } from "./invoiceDocument";
 import SellerProfileTab from "../SellerProfileTab";
 import ScaledDoc from "../_shared/ScaledDoc";
+import PaymentProofsPanel from "./PaymentProofsPanel";
 
 const audit = (entry) => { try { Promise.resolve(logSettingsAudit(entry)).catch(() => {}); } catch { /* ignore */ } };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -126,6 +127,9 @@ export default function InvoicesTab() {
 
       <StatusMessage message={msg} />
 
+      {/* Receipts customers uploaded from /my-billing — confirm = paid + extended. */}
+      <PaymentProofsPanel onChanged={() => load()} />
+
 
       <div style={sx.toolbar}>
         <input style={{ ...ui.input, flex: "1 1 240px", minHeight: 46 }} value={query} onChange={(e) => setQuery(e.target.value)}
@@ -170,7 +174,7 @@ export default function InvoicesTab() {
             <tbody>
               {visible.map((i) => (
                 <tr key={i.id} onClick={() => setOpenId(i.id)} style={{ cursor: "pointer" }} className="inv-row">
-                  <td style={{ ...ui.td, fontWeight: 900, color: "#0f766e", whiteSpace: "nowrap" }}>{i.invoice_number}</td>
+                  <td style={{ ...ui.td, fontWeight: 900, color: "#0f766e", whiteSpace: "nowrap" }}>{i.invoice_number}{i.kind === "promo_lock" ? <span title={L("Rate lock (customer asked for a year at the promo rate)", "تثبيت سعر (العميل طلب سنة بسعر الخصم)")}> 🔒</span> : null}</td>
                   <td style={ui.td}>{i.company_name || "—"}</td>
                   <td style={{ ...ui.td, whiteSpace: "nowrap" }}>{fmtDate(i.issue_date)}</td>
                   <td style={{ ...ui.td, whiteSpace: "nowrap" }}>{fmtDate(i.due_date)}</td>

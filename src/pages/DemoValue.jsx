@@ -48,6 +48,7 @@ export const promoPrice = (per, promo) => {
 };
 
 const PROMO_KEY = "inspectpro.promo";
+const VISIT_KEY = "inspectpro.promo.visit";
 
 /** The visitor's code: from ?code= on the link, or typed on the page. Checked on the server. */
 export function usePromo(initialCode) {
@@ -55,13 +56,14 @@ export function usePromo(initialCode) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
 
-  const apply = useCallback(async (raw) => {
+  // visit: a landing from the holder's link — counted once per browser session (referrer page stats).
+  const apply = useCallback(async (raw, { visit = false } = {}) => {
     const code = String(raw || "").trim().toUpperCase();
     if (!code) return false;
     setChecking(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/promo-codes/check?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/promo-codes/check?code=${encodeURIComponent(code)}${visit ? "&visit=1" : ""}`, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (res.status === 429) { setError("busy"); return false; }
       if (!res.ok || !j.promo) { setError("invalid"); setPromo(null); return false; }
@@ -87,7 +89,15 @@ export function usePromo(initialCode) {
     let saved = "";
     try { saved = sessionStorage.getItem(PROMO_KEY) || ""; } catch { /* private mode */ }
     const code = initialCode || saved;
-    if (code) apply(code);
+    if (!code) return;
+    let visit = false;
+    if (initialCode) {
+      try {
+        visit = sessionStorage.getItem(VISIT_KEY) !== String(initialCode).toUpperCase();
+        if (visit) sessionStorage.setItem(VISIT_KEY, String(initialCode).toUpperCase());
+      } catch { /* private mode: not counted */ }
+    }
+    apply(code, { visit });
   }, [initialCode, apply]);
 
   return { promo, apply, clear, checking, error };

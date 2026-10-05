@@ -20,15 +20,18 @@ export default function BillingOverviewTab({ onGo }) {
   const [msg, setMsg] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [proofs, setProofs] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setMsg(null);
     try {
-      const [comp, inv] = await Promise.all([
+      const [comp, inv, pr] = await Promise.all([
         fetch(`${API_BASE}/api/companies`).then((r) => r.json()).catch(() => ({})),
         apiListInvoices(lang).catch(() => []),
+        fetch(`${API_BASE}/api/payment-proofs?status=pending`).then((r) => r.json()).catch(() => ({})),
       ]);
+      setProofs(pr?.ok && Array.isArray(pr.proofs) ? pr.proofs : []);
       setCompanies(comp?.ok && Array.isArray(comp.companies) ? comp.companies : []);
       setInvoices(Array.isArray(inv) ? inv : []);
     } catch (e) {
@@ -67,7 +70,7 @@ export default function BillingOverviewTab({ onGo }) {
     return { kpi, expired, soon, overdueInv, gaps, mrr: mrrByCurrency(companies) };
   }, [companies, invoices, L]);
 
-  const actions = view.overdueInv.length + view.expired.length + view.soon.length + view.gaps.length;
+  const actions = proofs.length + view.overdueInv.length + view.expired.length + view.soon.length + view.gaps.length;
 
   return (
     <div style={ui.page} dir={dir}>
@@ -102,6 +105,11 @@ export default function BillingOverviewTab({ onGo }) {
 
             {actions === 0 && <div style={sx.ok}>✓ {L("Nothing to chase — every company is paid up and in date.", "ما في شي — كل الشركات دافعة وضمن المدة.")}</div>}
 
+            {proofs.map((p) => (
+              <Row key={`p${p.id}`} tone="amber" onOpen={onGo && (() => onGo("invoices"))} openLabel={L("Review", "مراجعة")}
+                title={`📎 ${p.company_name} · ${p.invoice_number}`}
+                sub={`${L("Payment receipt waiting for you", "إيصال دفع بانتظارك")} · ${fmtMoney(p.amount, p.currency)}`} />
+            ))}
             {view.overdueInv.map((i) => (
               <Row key={`i${i.id}`} tone="red" onOpen={onGo && (() => onGo("invoices"))} openLabel={L("Invoices", "الفواتير")}
                 title={`${i.company_name || "—"} · ${i.invoice_number}`}

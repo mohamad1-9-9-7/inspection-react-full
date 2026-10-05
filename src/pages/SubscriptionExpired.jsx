@@ -3,6 +3,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang } from "./settings/_shared/settingsI18n";
 import { clearAppSession } from "../utils/authFetch";
+import { isBillingAdmin } from "./billing/myBillingCore";
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -127,6 +128,19 @@ export default function SubscriptionExpired() {
             ℹ️ {t("subExpMention")}
           </div>
         </div>
+
+        {/* A company admin can pay right away: invoices + receipt upload stay open (/my-billing). */}
+        {isBillingAdmin(user) && (
+          <button
+            onClick={() => navigate("/my-billing")}
+            style={{
+              background: "linear-gradient(135deg, #0369a1, #0ea5e9)", color: "#fff", border: "none", borderRadius: 12,
+              padding: "13px 28px", fontWeight: 800, fontSize: 15, cursor: "pointer", width: "100%", marginBottom: 10,
+            }}
+          >
+            💳 {isAr ? "عرض الفواتير ورفع إيصال الدفع" : "View invoices & upload the payment receipt"}
+          </button>
+        )}
 
         {/* Super admin bypass */}
         {isSuperAdmin && (

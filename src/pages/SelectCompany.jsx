@@ -102,6 +102,7 @@ export default function SelectCompany() {
     try { window.scrollTo({ top: 0 }); } catch {}
   };
   const [companies, setCompanies] = useState([]);
+  const [pendingProofs, setPendingProofs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(""); // "" | "load" | "net"
   const [now, setNow] = useState(new Date());
@@ -122,6 +123,9 @@ export default function SelectCompany() {
   async function load() {
     setLoading(true);
     setErr("");
+    // Receipts customers sent from /my-billing — a badge on Billing until reviewed.
+    fetch(`${API_BASE}/api/payment-proofs/count`).then((r) => r.json())
+      .then((j) => setPendingProofs(j?.ok ? Number(j.pending) || 0 : 0)).catch(() => {});
     try {
       const r = await fetch(`${API_BASE}/api/companies`);
       const d = await r.json();
@@ -277,6 +281,9 @@ export default function SelectCompany() {
                 <span className="pc-nav-label">{tabLabel(x)}</span>
               </span>
               {x.id === "companies" && <span className="pc-nav-n">{counts.all}</span>}
+              {x.id === "billing" && pendingProofs > 0 && (
+                <span className="pc-nav-n" style={{ background: "#f59e0b", color: "#111827" }} title={L("Payment receipts to review", "إيصالات دفع بانتظار المراجعة")}>📎 {pendingProofs}</span>
+              )}
             </button>
           ))}
         </nav>

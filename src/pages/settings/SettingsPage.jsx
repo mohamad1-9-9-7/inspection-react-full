@@ -32,6 +32,7 @@ import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
 import ReferenceNumberBackfill from "../admin/ReferenceNumberBackfill";
 import { getSecuritySettings } from "./SecurityControlsTab";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
+import { isBillingAdmin } from "../billing/myBillingCore";
 
 import { isItemAllowed } from "../../utils/sectionItems";
 
@@ -425,6 +426,11 @@ export default function SettingsPage() {
                   {timeStr}
                 </button>
                 <LangToggle lang={lang} toggle={toggle} style={styles.langButton} />
+                {isBillingAdmin(currentUser) && (
+                  <button type="button" className="settings-hero-button" onClick={() => navigate("/my-billing")} style={styles.heroButton("ghost")}>
+                    💳 {lang === "ar" ? "اشتراكي وفواتيري" : "Subscription & invoices"}
+                  </button>
+                )}
                 <button type="button" className="settings-hero-button" onClick={() => navigate(-1)} style={styles.heroButton("ghost")}>
                   <FiArrowLeft aria-hidden="true" />
                   {t("back")}

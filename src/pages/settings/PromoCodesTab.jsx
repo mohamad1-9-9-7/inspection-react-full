@@ -6,18 +6,24 @@
 // listed under it — that is how the owner knows who brought which customers.
 // English or Arabic, following the Platform Center's one language button.
 //
+// Each holder can also get a private REFERRER PAGE (/ref/<token>): their link,
+// what it brought (visits, demos, trials, customers) and their commission —
+// commission % of what their customers pay (before VAT) for the first N
+// months, minus the payouts recorded here.
+//
 // Server: routes/promoCodes.cjs in the inspection-server repo
-// (GET/POST /api/promo-codes, PATCH/DELETE /api/promo-codes/:id, super-admin).
+// (GET/POST /api/promo-codes, PATCH/DELETE /api/promo-codes/:id, portal + payouts, super-admin).
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { Button, ConfirmModal, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import { useSettingsLang } from "./_shared/settingsI18n";
-import { getPublicOrigin } from "../../config/publicOrigin";
+import { buildPublicUrl, getPublicOrigin } from "../../config/publicOrigin";
 import { DEMO_STATUSES } from "./DemoRequestsTab";
 
 const todayDubai = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
-const EMPTY = { code: "", kind: "pct", amount: "", holder: "", holderPhone: "", notes: "", expiresAt: "", maxUses: "", active: true };
+const EMPTY = { code: "", kind: "pct", amount: "", holder: "", holderPhone: "", notes: "", expiresAt: "", maxUses: "", active: true, commissionPct: "", commissionMonths: "12" };
+const money = (n, c = "AED") => `${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
 
 const norm = (r = {}) => ({
   id: r.id,
@@ -32,6 +38,12 @@ const norm = (r = {}) => ({
   maxUses: r.max_uses ?? null,
   uses: Number(r.uses) || 0,
   createdAt: r.created_at || "",
+  commissionPct: Number(r.commission_pct) || 0,
+  commissionMonths: r.commission_months ?? null,
+  portalToken: r.portal_token || "",
+  customers: Number(r.customers) || 0,
+  visits: Number(r.visits) || 0,
+  earnings: Array.isArray(r.earnings) ? r.earnings : [],
 });
 
 async function readJson(res, fallback) {
@@ -61,6 +73,8 @@ export default function PromoCodesTab() {
   const L = useCallback((en, ar) => (lang === "ar" ? ar : en), [lang]);
   const [codes, setCodes] = useState([]);
   const [leads, setLeads] = useState([]);
+  const [payouts, setPayouts] = useState([]);
+  const [toolsId, setToolsId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [form, setForm] = useState(null); // null = closed; { ...EMPTY, id? } = adding / editing
@@ -81,6 +95,8 @@ export default function PromoCodesTab() {
     bad_date: L("Invalid expiry date.", "تاريخ الانتهاء غير صحيح."),
     bad_max_uses: L("Max uses must be a whole number from 1.", "الحد الأقصى للاستخدام لازم يكون رقم صحيح من 1 وطالع."),
     code_taken: L("This code already exists — pick another.", "هالكود موجود — اختار غيره."),
+    bad_commission: L("Commission: 0–50 %.", "العمولة: من 0 إلى 50%."),
+    bad_commission_months: L("Commission months: 1–120, or empty for always.", "أشهر العمولة: من 1 إلى 120، أو فاضي = دايماً."),
   };
   const errText = (e) => ERR[e.message] || e.message;
 
@@ -92,6 +108,7 @@ export default function PromoCodesTab() {
       const j = await readJson(res, L("Could not load promo codes", "تعذّر تحميل الأكواد"));
       setCodes((j.codes || []).map(norm));
       setLeads(j.leads || []);
+      setPayouts(j.payouts || []);
       setMsg(null);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ ${e.message}` });
@@ -134,6 +151,8 @@ export default function PromoCodesTab() {
         code: form.code, kind: form.kind, amount: Number(form.amount), holder: form.holder,
         holderPhone: form.holderPhone, notes: form.notes, expiresAt: form.expiresAt || "",
         maxUses: form.maxUses === "" ? null : Number(form.maxUses), active: form.active,
+        commissionPct: form.commissionPct === "" ? 0 : Number(form.commissionPct),
+        commissionMonths: form.commissionMonths === "" ? null : Number(form.commissionMonths),
       };
       const res = await fetch(`${API_BASE}/api/promo-codes${form.id ? `/${form.id}` : ""}`, {
         method: form.id ? "PATCH" : "POST",
@@ -261,6 +280,12 @@ export default function PromoCodesTab() {
             <Field label={L("Max uses (empty = unlimited)", "أقصى عدد استخدام (فاضي = بلا حد)")}>
               <input type="number" min={1} value={form.maxUses} onChange={put("maxUses")} dir="ltr" style={inp} />
             </Field>
+            <Field label={L("Their commission % (of what customers pay, before VAT)", "عمولته % (مما يدفعه العملاء، قبل الضريبة)")}>
+              <input type="number" min={0} max={50} step="any" value={form.commissionPct} onChange={put("commissionPct")} dir="ltr" placeholder="0" style={inp} />
+            </Field>
+            <Field label={L("…for each customer's first N months (empty = always)", "…خلال أول N شهر لكل عميل (فاضي = دايماً)")}>
+              <input type="number" min={1} max={120} value={form.commissionMonths} onChange={put("commissionMonths")} dir="ltr" style={inp} />
+            </Field>
           </div>
           <Field label={L("My notes", "ملاحظاتي")} style={{ marginTop: 12 }}>
             <textarea value={form.notes} onChange={put("notes")} maxLength={2000} style={{ ...inp, minHeight: 70, resize: "vertical" }}
@@ -312,6 +337,15 @@ export default function PromoCodesTab() {
                         {won > 0 && <> · <span style={{ color: "#047857", fontWeight: 900 }}>{won} {L("won", "اشتركوا")}</span></>}
                       </span>
                     </div>
+                    <div style={{ color: "#475569", fontWeight: 750, marginTop: 4 }}>
+                      👀 {c.visits} {L("visits", "زيارة")} · 🤝 {c.customers} {L("customers", "عميل")}
+                      {c.commissionPct > 0 && c.earnings.map((e) => (
+                        <span key={e.currency}> · 💰 {money(e.earned, e.currency)} {L("earned", "مستحق")}
+                          {e.balance > 0 && <b style={{ color: "#b45309" }}> · {money(e.balance, e.currency)} {L("still due", "باقي له")}</b>}
+                        </span>
+                      ))}
+                      {c.portalToken && <span style={{ color: "#0369a1" }}> · 🔑 {L("referrer page on", "صفحة المُحيل فعّالة")}</span>}
+                    </div>
                     {c.notes && <div style={{ color: "#64748b", fontWeight: 650, marginTop: 4, whiteSpace: "pre-wrap" }}>📝 {c.notes}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -321,10 +355,17 @@ export default function PromoCodesTab() {
                     )}
                     <Button onClick={() => setOpenId(open ? null : c.id)} disabled={!its.length}>👥 {its.length}</Button>
                     <Button onClick={() => toggle(c)}>{c.active ? L("Disable", "تعطيل") : L("Enable", "تفعيل")}</Button>
-                    <Button onClick={() => setForm({ ...EMPTY, ...c, oldCode: c.code, amount: String(c.amount), maxUses: c.maxUses == null ? "" : String(c.maxUses) })}>✏️</Button>
+                    <Button onClick={() => setToolsId(toolsId === c.id ? null : c.id)}>💰 {L("Referrer", "المُحيل")}</Button>
+                    <Button onClick={() => setForm({ ...EMPTY, ...c, oldCode: c.code, amount: String(c.amount), maxUses: c.maxUses == null ? "" : String(c.maxUses),
+                      commissionPct: c.commissionPct ? String(c.commissionPct) : "", commissionMonths: c.commissionMonths == null ? "" : String(c.commissionMonths) })}>✏️</Button>
                     <Button tone="danger" onClick={() => setPendingDelete(c)} title={L("Delete", "حذف")}>🗑</Button>
                   </div>
                 </div>
+                {toolsId === c.id && (
+                  <ReferrerTools c={c} L={L} payouts={payouts.filter((p) => p.promo_code_id === c.id)}
+                    onCode={(row) => { const saved = norm(row); setCodes((prev) => prev.map((x) => (x.id === saved.id ? { ...saved, earnings: x.earnings } : x))); }}
+                    onChanged={load} setMsg={setMsg} />
+                )}
                 {open && its.length > 0 && (
                   <div style={{ ...ui.subtleCard, marginTop: 10, marginBottom: 0, display: "grid", gap: 6 }}>
                     {its.map((l) => {
@@ -363,6 +404,122 @@ export default function PromoCodesTab() {
 }
 
 const inp = { ...ui.input, minHeight: 40, width: "100%", boxSizing: "border-box" };
+
+/* The holder's private page (/ref/<token>) and the commission paid to them. */
+function ReferrerTools({ c, L, payouts, onCode, onChanged, setMsg }) {
+  const [busy, setBusy] = useState("");
+  const [amount, setAmount] = useState("");
+  const [paidOn, setPaidOn] = useState(todayDubai());
+  const [note, setNote] = useState("");
+  const [askNew, setAskNew] = useState(false);
+  const page = c.portalToken ? buildPublicUrl(`/ref/${c.portalToken}`) : "";
+
+  const run = async (k, fn) => {
+    setBusy(k);
+    try { await fn(); } catch (e) { setMsg({ kind: "err", text: `❌ ${e.message}` }); }
+    setBusy("");
+  };
+  const portal = (method) => run("portal", async () => {
+    const j = await readJson(await fetch(`${API_BASE}/api/promo-codes/${c.id}/portal`, { method }), L("Failed", "فشل"));
+    onCode(j.code);
+    setAskNew(false);
+    setMsg({ kind: "ok", text: method === "POST" ? `✅ ${L("Referrer page link ready", "رابط صفحة المُحيل جاهز")}` : `✅ ${L("Referrer page switched off", "صفحة المُحيل انطفت")}` });
+  });
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(page); setMsg({ kind: "ok", text: `✅ ${L("Copied", "انتسخ")} ${page}` }); }
+    catch { setMsg({ kind: "info", text: page }); }
+  };
+  const wa = () => {
+    const d = waNumber(c.holderPhone);
+    const text = [
+      c.holder ? L(`Hi ${c.holder},`, `مرحبا ${c.holder}،`) : L("Hi,", "مرحبا،"),
+      L("This is your private INSPECT PRO page — your link, who came through it, and your commission:", "هذي صفحتك الخاصة من INSPECT PRO — رابطك، مين إجا عن طريقه، وعمولتك:"),
+      page,
+      L("Keep it to yourself — anyone with this link can see the page.", "خلّيها إلك — أي حدا معه الرابط بيشوف الصفحة."),
+    ].join("\n");
+    return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
+  };
+  const addPayout = () => run("payout", async () => {
+    await readJson(await fetch(`${API_BASE}/api/promo-codes/${c.id}/payouts`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: Number(amount), paidOn, note }),
+    }), L("Failed", "فشل"));
+    setAmount(""); setNote("");
+    setMsg({ kind: "ok", text: `✅ ${L("Payout recorded", "انسجلت الدفعة")}` });
+    onChanged();
+  });
+  const delPayout = (p) => run(`del${p.id}`, async () => {
+    await readJson(await fetch(`${API_BASE}/api/promo-payouts/${p.id}`, { method: "DELETE" }), L("Failed", "فشل"));
+    onChanged();
+  });
+
+  return (
+    <div style={{ ...ui.subtleCard, marginTop: 10, marginBottom: 0, display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: 8 }}>
+        <b>🔑 {L("Referrer page", "صفحة المُحيل")}</b>
+        <span style={{ color: "#475569", fontWeight: 650 }}>
+          {L("A private page for this person: their link, visits, demos, trials, customers and commission. No login — the link is the key.",
+            "صفحة خاصة لهالشخص: رابطه، الزيارات، الطلبات، التجارب، العملاء والعمولة. بدون تسجيل دخول — الرابط هو المفتاح.")}
+        </span>
+        {!c.portalToken ? (
+          <div><Button tone="primary" disabled={!!busy} onClick={() => portal("POST")}>{busy === "portal" ? "…" : L("Create the page link", "اعمل رابط الصفحة")}</Button></div>
+        ) : (
+          <>
+            <div dir="ltr" style={{ padding: "6px 10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, wordBreak: "break-all", fontWeight: 700 }}>{page}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Button onClick={copy}>🔗 {L("Copy", "نسخ")}</Button>
+              <a href={page} target="_blank" rel="noreferrer" style={linkBtn}>👁 {L("Open", "فتح")}</a>
+              {waNumber(c.holderPhone) && <a href={wa()} target="_blank" rel="noreferrer" style={{ ...linkBtn, color: "#15803d" }}>{L("Send on WhatsApp", "ابعت واتساب")}</a>}
+              {!askNew ? (
+                <Button onClick={() => setAskNew(true)}>{L("New link…", "رابط جديد…")}</Button>
+              ) : (
+                <>
+                  <span style={{ color: "#b45309", fontWeight: 800 }}>{L("The old link stops working.", "الرابط القديم بيوقف.")}</span>
+                  <Button tone="primary" disabled={!!busy} onClick={() => portal("POST")}>{L("Replace", "استبدال")}</Button>
+                  <Button onClick={() => setAskNew(false)}>{L("Cancel", "إلغاء")}</Button>
+                </>
+              )}
+              <Button tone="danger" disabled={!!busy} onClick={() => portal("DELETE")}>{L("Switch off", "إيقاف")}</Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        <b>💰 {L("Commission", "العمولة")}</b>
+        {c.commissionPct > 0 ? (
+          <span style={{ color: "#475569", fontWeight: 700 }}>
+            {L(`${c.commissionPct}% of paid invoices (before VAT)${c.commissionMonths ? `, first ${c.commissionMonths} months of each customer` : ""}.`,
+              `${c.commissionPct}% من الفواتير المدفوعة (قبل الضريبة)${c.commissionMonths ? `، أول ${c.commissionMonths} شهر لكل عميل` : ""}.`)}
+            {c.earnings.map((e) => (
+              <span key={e.currency}> {L("Earned", "المستحق")} {money(e.earned, e.currency)} · {L("paid", "المدفوع")} {money(e.paid, e.currency)} · <b>{L("due", "الباقي")} {money(e.balance, e.currency)}</b></span>
+            ))}
+          </span>
+        ) : (
+          <span style={{ color: "#64748b", fontWeight: 700 }}>{L("No commission set — edit the code (✏️) to add one.", "ما في عمولة — عدّل الكود (✏️) لتضيفها.")}</span>
+        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input type="number" min={0} step="any" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={L("Amount paid (AED)", "المبلغ المدفوع (درهم)")} dir="ltr" style={{ ...inp, width: 170 }} />
+          <input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} style={{ ...inp, width: 170 }} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={L("Note (e.g. bank transfer)", "ملاحظة (مثلاً تحويل بنكي)")} style={{ ...inp, flex: "1 1 180px", width: "auto" }} />
+          <Button tone="primary" disabled={!!busy || !(Number(amount) > 0)} onClick={addPayout}>{busy === "payout" ? "…" : L("Record payout", "سجّل دفعة")}</Button>
+        </div>
+        {payouts.length > 0 && (
+          <div style={{ display: "grid", gap: 4 }}>
+            {payouts.map((p) => (
+              <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontWeight: 750 }}>
+                <span style={{ color: "#64748b" }}>{p.paid_on}</span>
+                <b>{money(p.amount, p.currency)}</b>
+                {p.note && <span style={{ color: "#475569" }}>{p.note}</span>}
+                <Button tone="danger" disabled={!!busy} onClick={() => delPayout(p)} title={L("Delete", "حذف")}>🗑</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 const linkBtn = { display: "inline-flex", alignItems: "center", minHeight: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontWeight: 850, textDecoration: "none", color: "#0f172a" };
 
 function Field({ label, children, style }) {
