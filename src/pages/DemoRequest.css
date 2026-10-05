@@ -511,13 +511,14 @@ textarea.dp-input { min-height: 96px; resize: vertical; }
 .dp-plan .for .annual-hint { margin-top: 6px; padding: 0; border: 0; background: none; font: inherit; font-weight: 800; color: var(--teal-d); text-align: start; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .dp-plan.featured .for .annual-hint { color: var(--mint); }
 /* promo code: ask → field → applied chip (DemoValue.jsx usePromo) */
-.dp-promo-ask { margin-top: 4px; padding: 4px 8px; border: 0; background: none; font: inherit; font-weight: 800; color: var(--teal-d); text-decoration: underline dashed; text-underline-offset: 4px; cursor: pointer; }
-.dp-promo { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; }
-.dp-promo .dp-input { width: 190px; min-height: 42px; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; text-align: center; }
-.dp-promo .dp-btn { min-height: 42px; padding: 0 18px; }
-.dp-promo .err { flex-basis: 100%; text-align: center; color: #b91c1c; font-weight: 800; }
-.dp-promo.on { padding: 8px 8px 8px 14px; border-radius: 999px; background: #ccfbf1; color: #0f766e; font-weight: 800; }
-.dp-promo.on button { padding: 4px 10px; border: 0; border-radius: 999px; background: rgba(15, 118, 110, .12); color: #0f766e; font: inherit; font-weight: 800; cursor: pointer; }
+.dp-promo { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(460px, 100%); margin-top: 6px; padding: 16px 18px; border-radius: 16px; background: #fff; border: 2px dashed #5eead4; box-shadow: 0 10px 26px rgba(15, 118, 110, .08); }
+.dp-promo .ask { font-weight: 900; color: var(--ink); }
+.dp-promo .row { display: flex; gap: 8px; width: 100%; }
+.dp-promo .dp-input { flex: 1; min-width: 0; min-height: 52px; text-transform: uppercase; letter-spacing: .08em; font-weight: 900; text-align: center; }
+.dp-promo .dp-btn { min-height: 52px; padding: 0 24px; flex-shrink: 0; }
+.dp-promo .err { text-align: center; color: #b91c1c; font-weight: 800; }
+.dp-promo.on { flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 12px 12px 12px 18px; border: 2px solid #5eead4; border-radius: 999px; background: #ccfbf1; color: #0f766e; font-weight: 900; }
+.dp-promo.on button { padding: 6px 14px; border: 0; border-radius: 999px; background: rgba(15, 118, 110, .14); color: #0f766e; font: inherit; font-weight: 800; cursor: pointer; }
 .dp-plan ul { list-style: none; margin: 8px 0 18px; padding: 0; display: grid; gap: 10px; flex: 1; }
 .dp-plan li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; font-weight: 600; }
 .dp-plan li i { font-style: normal; font-weight: 900; color: var(--teal-d); }

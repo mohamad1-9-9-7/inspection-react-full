@@ -406,7 +406,6 @@ export function PricingPlans({ lang, onBook, promoState }) {
   const [sites, setSites] = useState(1);
   const [annual, setAnnual] = useState(true);
   const promo = promoState?.promo || null;
-  const [codeOpen, setCodeOpen] = useState(false);
   const [codeDraft, setCodeDraft] = useState("");
   const submitCode = async (e) => {
     e.preventDefault();
@@ -442,23 +441,25 @@ export function PricingPlans({ lang, onBook, promoState }) {
           </button>
         </div>
         {promoState && (promo ? (
-          <div className="dp-promo on fs-sm" role="status">
+          <div className="dp-promo on fs-md" role="status">
             <span>🏷️ {t.promoOn(promo.code, t.promoOff(promo))}</span>
-            <button type="button" className="fs-xs" onClick={promoState.clear}>{t.promoRemove}</button>
+            <button type="button" className="fs-sm" onClick={promoState.clear}>{t.promoRemove}</button>
           </div>
-        ) : !codeOpen && !promoState.error ? (
-          <button type="button" className="dp-promo-ask fs-sm" onClick={() => setCodeOpen(true)}>{t.promoAsk}</button>
         ) : (
-          <form className="dp-promo fs-sm" onSubmit={submitCode}>
-            <input
-              className="dp-input" dir="ltr" value={codeDraft} maxLength={30} autoFocus
-              onChange={(e) => setCodeDraft(e.target.value.toUpperCase())}
-              placeholder={t.promoPh} aria-label={t.promoPh}
-            />
-            <button type="submit" className="dp-btn dark fs-sm" disabled={promoState.checking || !codeDraft.trim()}>
-              {promoState.checking ? "…" : t.promoApply}
-            </button>
-            {promoState.error && <span className="err fs-xs" role="alert">{t.promoErr[promoState.error] || t.promoErr.invalid}</span>}
+          // Always on show: the people the owner sends a code to should not have to hunt for it.
+          <form className="dp-promo fs-md" onSubmit={submitCode}>
+            <label htmlFor="promo-code" className="ask fs-md">🏷️ {t.promoAsk}</label>
+            <div className="row">
+              <input
+                id="promo-code" className="dp-input fs-md" dir="ltr" value={codeDraft} maxLength={30}
+                onChange={(e) => setCodeDraft(e.target.value.toUpperCase())}
+                placeholder={t.promoPh} autoComplete="off"
+              />
+              <button type="submit" className="dp-btn primary fs-md" disabled={promoState.checking || !codeDraft.trim()}>
+                {promoState.checking ? "…" : t.promoApply}
+              </button>
+            </div>
+            {promoState.error && <span className="err fs-sm" role="alert">{t.promoErr[promoState.error] || t.promoErr.invalid}</span>}
           </form>
         ))}
       </div>
