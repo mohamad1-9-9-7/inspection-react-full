@@ -7,12 +7,14 @@ import { logSettingsAudit } from "../../utils/settingsAudit";
 import { industryOptions } from "../../industries";
 import { defaultModuleFor, moduleOptions, MODULES } from "../../companies";
 import { companyStatus, currencyOf, daysLeft, priceOf } from "./_shared/companyBilling";
+import { promoMonthlyOff, promoRunsOn } from "./invoices/invoiceCore";
 import { deleteImage, uploadImage } from "../../utils/imageUpload";
 
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
   plan_id:"", status:"active", start_date:"", end_date:"", notes:"", industry:"meat", module:"almawashi",
   price:"", currency:"", logo_url:"", branches:"1",
+  promo_code:"", promo_until:"",
 };
 
 /* Server refusals → something the owner can act on. */
@@ -24,6 +26,7 @@ const SAVE_ERRORS = {
   currency_invalid: { en: "Unsupported currency.", ar: "عملة غير مدعومة." },
   branches_invalid: { en: "Branches must be a whole number from 1 to 999.", ar: "عدد الفروع لازم يكون رقم صحيح من 1 لـ 999." },
   plan_not_found:   { en: "That plan no longer exists — pick another.", ar: "الخطة غير موجودة — اختر غيرها." },
+  promo_not_found:  { en: "That promo code doesn't exist (Platform Center → Promo codes).", ar: "كود الخصم غير موجود (مركز المنصّة ← أكواد الخصم)." },
   logo_must_be_hosted_url: { en: "Upload the picture with the button — a pasted image cannot be saved.", ar: "ارفع الصورة من الزر — ما بتنحفظ صورة ملصوقة." },
   super_admin_required: { en: "Only the platform owner can change companies.", ar: "مالك المنصّة وحده يعدّل الشركات." },
 };
@@ -55,6 +58,7 @@ export default function CompaniesTab() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
   const [uploading, setUploading] = useState(false);
+  const [promoCodes, setPromoCodes] = useState([]);
 
   const u = getUser();
   // سوبر أدمن حقيقي بس — أدمن عادي (حتى لو بمستوى الأدمن) ما بيدير شركات
@@ -67,12 +71,14 @@ export default function CompaniesTab() {
   async function load() {
     setLoading(true);
     try {
-      const [c, p] = await Promise.all([
+      const [c, p, pc] = await Promise.all([
         fetch(`${API_BASE}/api/companies`).then(r => r.json()),
         fetch(`${API_BASE}/api/plans`).then(r => r.json()),
+        isSuperAdmin ? fetch(`${API_BASE}/api/promo-codes`).then(r => r.json()).catch(() => ({})) : {},
       ]);
       if (c.ok) setCompanies(c.companies);
       if (p.ok) setPlans(p.plans.filter(x => x.is_active));
+      if (pc?.ok) setPromoCodes(pc.codes || []);
     } catch { }
     setLoading(false);
   }
@@ -102,6 +108,8 @@ export default function CompaniesTab() {
       currency:      c.currency || "",
       logo_url:      c.logo_url || "",
       branches:      String(c.branches || 1),
+      promo_code:    c.promo_code || "",
+      promo_until:   c.promo_until?.substring(0,10) || "",
     });
     setEditing(c); setMsg("");
   }
@@ -145,6 +153,9 @@ export default function CompaniesTab() {
       price:      form.price === "" ? null : Number(form.price),
       currency:   form.currency || null,
       branches:   Math.max(1, parseInt(form.branches, 10) || 1),
+      // A new code is frozen on the company by the server; no last day → a year from the start date.
+      promo_code: form.promo_code || "",
+      promo_until: form.promo_code ? form.promo_until || null : null,
     };
     try {
       const isNew = editing === "new";
@@ -408,6 +419,48 @@ export default function CompaniesTab() {
                 );
               })()}
             </Field>
+            <Field label={lang === "ar" ? "🏷️ كود خصم (السنة الأولى فقط)" : "🏷️ Promo code (first year only)"}>
+              {(() => {
+                const saved = editing && editing !== "new" && editing.promo_code === form.promo_code && form.promo_code ? editing : null;
+                const known = promoCodes.some(p => p.code === form.promo_code);
+                const offText = (kind, amount) => kind === "aed"
+                  ? (lang === "ar" ? `${Number(amount)} درهم/فرع` : `AED ${Number(amount)}/branch`)
+                  : `${Number(amount)}%`;
+                return (
+                  <div style={{ display:"grid", gap:6 }}>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <select value={form.promo_code}
+                        onChange={e => setForm(f => ({ ...f, promo_code: e.target.value, promo_until: "" }))}
+                        style={{ ...inputStyle, flex:1 }}>
+                        <option value="">{lang === "ar" ? "— بدون كود —" : "— No code —"}</option>
+                        {form.promo_code && !known && <option value={form.promo_code}>{form.promo_code}</option>}
+                        {promoCodes.map(p => (
+                          <option key={p.id} value={p.code}>
+                            {p.code} · −{offText(p.kind, p.amount)}{p.holder ? ` · ${p.holder}` : ""}{!p.active ? (lang === "ar" ? " (موقوف)" : " (off)") : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {form.promo_code && (
+                        <input type="date" value={form.promo_until} title={lang === "ar" ? "آخر يوم للخصم" : "Last day of the discount"}
+                          onChange={e => setForm(f => ({ ...f, promo_until: e.target.value }))}
+                          style={{ ...inputStyle, width:170 }} />
+                      )}
+                    </div>
+                    {form.promo_code && (
+                      <div style={{ fontSize:13, color:"#0f766e", fontWeight:700 }}>
+                        {saved
+                          ? (lang === "ar"
+                              ? `مثبّت على الشركة: −${offText(saved.promo_kind, saved.promo_amount)} حتى ${saved.promo_until || "—"}`
+                              : `Frozen on this company: −${offText(saved.promo_kind, saved.promo_amount)} until ${saved.promo_until || "—"}`)
+                          : (lang === "ar"
+                              ? "بيتثبّت الخصم عند الحفظ — بدون تاريخ = سنة من تاريخ البداية."
+                              : "The discount is frozen on save — no date = one year from the start date.")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </Field>
             <Field label={t("startDate")}>
               <input type="date" value={form.start_date} onChange={e => setForm(f=>({...f,start_date:e.target.value}))} style={inputStyle} />
             </Field>
@@ -463,6 +516,15 @@ export default function CompaniesTab() {
                           💳 {c.plan_name || (lang === "ar" ? "بدون خطة" : "No plan")}
                           {c.monthlyValue > 0 ? ` · ${c.monthlyValue.toLocaleString("en-US")} ${c.currencyShown}/mo` : ""}
                           {c.customPrice && <span style={{ marginInlineStart:6, color:"#b45309" }}>· {lang === "ar" ? "سعر خاص" : "custom"}</span>}
+                        </span>
+                      )}
+                      {c.promo_code && (
+                        <span title={lang === "ar" ? "كود خصم — السنة الأولى" : "Promo code — first year"}
+                          style={{ fontSize:14, fontWeight:700, borderRadius:20, padding:"3px 12px",
+                                   background: promoRunsOn(c) ? "#ccfbf1" : "#f1f5f9", color: promoRunsOn(c) ? "#0f766e" : "#64748b" }}>
+                          🏷️ {c.promo_code}
+                          {promoRunsOn(c) && promoMonthlyOff(c) > 0 ? ` · −${promoMonthlyOff(c).toLocaleString("en-US")} ${c.currencyShown}/mo` : ""}
+                          {c.promo_until ? ` · ${promoRunsOn(c) ? (lang === "ar" ? "حتى" : "until") : (lang === "ar" ? "انتهى" : "ended")} ${c.promo_until.substring(0,10)}` : ""}
                         </span>
                       )}
                     </div>

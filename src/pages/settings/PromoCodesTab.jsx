@@ -72,8 +72,8 @@ export default function PromoCodesTab() {
   const origin = getPublicOrigin();
   const linkOf = (code) => `${origin}/demo?code=${encodeURIComponent(code)}`;
   const offText = (c) => (c.kind === "aed"
-    ? L(`AED ${c.amount} off / branch / month`, `خصم ${c.amount} درهم لكل فرع شهريًا`)
-    : L(`${c.amount} % off`, `خصم ${c.amount}%`));
+    ? L(`AED ${c.amount} off / branch / month · first year`, `خصم ${c.amount} درهم لكل فرع شهريًا · السنة الأولى`)
+    : L(`${c.amount} % off · first year`, `خصم ${c.amount}% · السنة الأولى`));
 
   const ERR = {
     bad_code: L("The code must be 3–30 letters or numbers (- and _ allowed).", "الكود لازم يكون من 3 إلى 30 حرف إنجليزي أو رقم (مسموح - و _)."),

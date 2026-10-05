@@ -254,6 +254,7 @@ export const emptyQuote = (defaults = {}) => ({
   cycle: "monthly",
   contractMonths: 12,
   freeMonths: 0,        // free subscription months from the signing date
+  promo: null,          // { code, kind: "pct"|"aed", amount, holder } — first 12 months only
   // client
   companyId: null,
   clientName: "",
@@ -321,6 +322,32 @@ export function freeMonthsText(q, lang = "en") {
     : `The first ${n} months of the subscription are free of charge, counted from the contract signing date; the first subscription invoice is issued at the start of month ${n + 1}.`;
 }
 
+/* A promo code (Platform Center → Promo codes) on a quotation: the discount
+   runs for the FIRST YEAR only — months 1-12 from signing, so free months
+   eat into it. 'pct' = % off the monthly subscription, 'aed' = AED off per
+   branch a month (branches = the qty of the recurring per-branch lines).
+   Never more than the subscription itself; there is no 300 floor on it. */
+export const PROMO_MONTHS = 12;
+export function promoOf(q) {
+  const p = q?.promo;
+  return p && p.code && num(p.amount) > 0 && cycleById(q?.cycle).months > 0 ? p : null;
+}
+
+/* The sentence printed with the payment terms when a promo code applies. */
+export function promoText(q, lang = "en") {
+  const p = promoOf(q);
+  if (!p) return "";
+  const t = computeTotals(q);
+  if (!t.promoMonths) return "";
+  const amt = fmtMoney(t.promoMonthly, q?.currency);
+  if (lang === "ar") {
+    const what = p.kind === "aed" ? `خصم ${fmtNum(p.amount)} درهم لكل فرع شهرياً` : `خصم ${fmtNum(p.amount)}% على الاشتراك`;
+    return `كود الخصم ${p.code}: ${what} (${amt} شهرياً) لمدة ${t.promoMonths} شهراً ضمن السنة الأولى من تاريخ توقيع العقد، ثم يُطبَّق السعر الكامل.`;
+  }
+  const what = p.kind === "aed" ? `AED ${fmtNum(p.amount)} off per branch a month` : `${fmtNum(p.amount)}% off the subscription`;
+  return `Promo code ${p.code}: ${what} (${amt} a month) for ${t.promoMonths} month${t.promoMonths === 1 ? "" : "s"} within the first year from the contract signing date; the full price applies after that.`;
+}
+
 export function computeTotals(q) {
   const all = q?.lines || [];
   const lines = all.filter((l) => !l.optional);
@@ -345,16 +372,32 @@ export function computeTotals(q) {
   const periods = cyc.months > 0 ? months / cyc.months : 0;
   const freeMonths = freeMonthsOf(q);
   const freeValue = cyc.months > 0 ? round2(recurringTotal / cyc.months * freeMonths) : 0;
-  const contractValue = round2(recurringTotal * periods + oneTimeTotal - freeValue);
+  // Promo code: the paid months inside the first year, after any free ones.
+  const promo = promoOf(q);
+  const promoMonths = promo && recurringNet > 0 ? Math.max(0, Math.min(PROMO_MONTHS, months) - freeMonths) : 0;
+  let promoMonthlyNet = 0;
+  if (promoMonths) {
+    const perMonthNet = recurringNet / cyc.months;
+    const branches = lines.filter((l) => l.kind !== "one_time" && l.unit === "branch").reduce((s, l) => s + num(l.qty), 0) || 1;
+    const off = promo.kind === "aed" ? num(promo.amount) * branches : (perMonthNet * num(promo.amount)) / 100;
+    promoMonthlyNet = round2(Math.min(perMonthNet, off));
+  }
+  const promoMonthly = round2(promoMonthlyNet * (1 + vPct));
+  const promoValue = round2(promoMonthly * promoMonths);
+  // The first subscription invoice covers one cycle — the promo months in it come off.
+  const firstSubscriptionInvoice = round2(recurringTotal - promoMonthly * Math.min(cyc.months, promoMonths));
+
+  const contractValue = round2(recurringTotal * periods + oneTimeTotal - freeValue - promoValue);
   const monthlyEquivalent = cyc.months > 0 ? round2(recurringTotal / cyc.months) : 0;
-  const savings = round2((recurring + oneTime) * dPct + freeValue + all.reduce((s, l) => s + (l.optional ? 0 : num(l.qty) * num(l.unitPrice) - lineTotal(l)), 0));
+  const savings = round2((recurring + oneTime) * dPct + freeValue + promoValue + all.reduce((s, l) => s + (l.optional ? 0 : num(l.qty) * num(l.unitPrice) - lineTotal(l)), 0));
 
   return {
     recurring, recurringDiscount, recurringNet, recurringVat, recurringTotal,
     oneTime, oneTimeDiscount, oneTimeNet, oneTimeVat, oneTimeTotal,
     optional, periods, contractValue, monthlyEquivalent, savings, freeMonths, freeValue,
+    promoMonths, promoMonthly, promoValue, firstSubscriptionInvoice,
     // with free months the subscription is not billed on signing — only one-time fees are
-    firstInvoice: round2((freeMonths ? 0 : recurringTotal) + oneTimeTotal),
+    firstInvoice: round2((freeMonths ? 0 : firstSubscriptionInvoice) + oneTimeTotal),
   };
 }
 

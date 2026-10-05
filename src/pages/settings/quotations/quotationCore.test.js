@@ -86,3 +86,32 @@ describe("standard plans", () => {
     expect(ct({ cycle: "yearly", lines: yearly, discountPct: 0, vatPct: 0 }).oneTimeTotal).toBe(0);
   });
 });
+
+describe("promo code — first year only", () => {
+  const branchLine = emptyLine({ titleEn: "Per branch", qty: 3, unit: "branch", unitPrice: 420, kind: "recurring" });
+  const q = { cycle: "monthly", contractMonths: 24, currency: "AED", discountPct: 0, vatPct: 0, lines: [branchLine] };
+
+  test("percent off the first 12 months, full price after", () => {
+    const t = computeTotals({ ...q, promo: { code: "TAWFIQ", kind: "pct", amount: 10 } });
+    expect(t.promoMonths).toBe(12);
+    expect(t.promoMonthly).toBe(126);
+    expect(t.promoValue).toBe(1512);
+    expect(t.contractValue).toBe(1260 * 24 - 1512);
+    expect(t.firstInvoice).toBe(1134);
+  });
+
+  test("AED off per branch; free months eat into the year; can go under 300", () => {
+    const t = computeTotals({ ...q, freeMonths: 2, promo: { code: "X1X", kind: "aed", amount: 150 } });
+    expect(t.promoMonths).toBe(10);
+    expect(t.promoMonthly).toBe(450);
+    expect(t.promoValue).toBe(4500);
+    expect(t.firstSubscriptionInvoice).toBe(810);
+  });
+
+  test("yearly cycle: the whole first invoice is discounted; no code → unchanged", () => {
+    const y = { ...q, cycle: "yearly", lines: [emptyLine({ qty: 1, unitPrice: 12000, kind: "recurring" })] };
+    expect(computeTotals({ ...y, promo: { code: "ABC", kind: "pct", amount: 10 } }).firstInvoice).toBe(10800);
+    expect(computeTotals(y).firstInvoice).toBe(12000);
+    expect(computeTotals(y).promoValue).toBe(0);
+  });
+});

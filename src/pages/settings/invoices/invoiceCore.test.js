@@ -1,4 +1,4 @@
-import { day, invoiceKpis, moneyMap, nextPeriod, priceOf, statusOf } from "./invoiceCore";
+import { day, invoiceKpis, moneyMap, netPriceOf, nextPeriod, priceOf, promoLineFor, promoMonthlyOff, promoRunsOn, statusOf } from "./invoiceCore";
 
 jest.mock("../../../config/api", () => ({ __esModule: true, default: "", API_BASE: "", IMAGE_API_BASE: "" }));
 
@@ -70,5 +70,24 @@ describe("amount in words", () => {
     expect(amountInWords(1250.5, "AED")).toBe("UAE Dirhams One Thousand Two Hundred Fifty and Fifty Fils Only");
     expect(amountInWords(2001021, "USD")).toBe("US Dollars Two Million One Thousand Twenty-One Only");
     expect(amountInWords(0)).toBe("UAE Dirhams Zero Only");
+  });
+});
+
+describe("company promo code", () => {
+  const c = { price: 1000, branches: 2, promo_code: "TAWFIQ", promo_kind: "pct", promo_amount: "10.00", promo_until: "2027-09-30" };
+
+  test("runs until promo_until, then stops", () => {
+    expect(promoRunsOn(c, "2027-09-30")).toBe(true);
+    expect(promoRunsOn(c, "2027-10-01")).toBe(false);
+    expect(netPriceOf(c, "2026-12-01")).toBe(900);
+    expect(netPriceOf(c, "2027-10-01")).toBe(1000);
+  });
+
+  test("AED per branch, capped at the price; a negative invoice line", () => {
+    expect(promoMonthlyOff({ ...c, promo_kind: "aed", promo_amount: 150 })).toBe(300);
+    expect(promoMonthlyOff({ ...c, promo_kind: "aed", promo_amount: 900 })).toBe(1000);
+    expect(promoLineFor(c, "2026-11-01").unit_price).toBe(-100);
+    expect(promoLineFor(c, "2027-11-01")).toBeNull();
+    expect(promoLineFor({ price: 1000 }, "2026-11-01")).toBeNull();
   });
 });

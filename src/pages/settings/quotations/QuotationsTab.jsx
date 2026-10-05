@@ -24,7 +24,7 @@ import {
   daysLeft, defaultTermsList, dmy, emptyConfig, emptyLine, emptyQuote, fmtMoney, isExpired, lineTotal,
   makeCustomTerm, makeTerm, moduleCatalog, newLineId, nextQuoteNumber, num, priceFor, priceKey,
   quoteInsights, quoteSummaryText, smartBuildLines, standardPlanFor, standardVolumeOff, STANDARD_PLAN_IDS, statusById, termTemplate, termText,
-  termsListOf, themeById, todayISO, validUntil,
+  termsListOf, themeById, todayISO, validUntil, PROMO_MONTHS,
 } from "./quotationCore";
 import { buildQuoteHtml, downloadQuotePdf, downloadQuoteXlsx, printQuote } from "./quotationExport";
 import { allowedVatPct, licenseLine, loadSeller, normalizeSeller } from "../_shared/sellerProfile";
@@ -410,6 +410,9 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
     set({
       companyId: c.id, clientName: c.name || "", clientContact: c.contact_name || "",
       clientEmail: c.contact_email || "", clientPhone: c.contact_phone || "", industry: c.industry || "meat",
+      ...(c.promo_code && Number(c.promo_amount) > 0
+        ? { promo: { code: c.promo_code, kind: c.promo_kind === "aed" ? "aed" : "pct", amount: Number(c.promo_amount), holder: "" } }
+        : {}),
     });
   };
 
@@ -633,6 +636,9 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
               <Field label={`🎁 ${L("Free months (from signing)", "أشهر مجانية (من التوقيع)")}`}>
                 <Stepper value={q.freeMonths || 0} disabled={cyc.months === 0} max={Math.max(0, num(q.contractMonths))} onChange={(v) => set({ freeMonths: v })} presets={[0, 1, 2, 3]} />
               </Field>
+              <Field label={`🏷️ ${L(`Promo code (first ${PROMO_MONTHS} months)`, `كود خصم (أول ${PROMO_MONTHS} شهر)`)}`}>
+                <PromoPicker value={q.promo} disabled={cyc.months === 0} onChange={(promo) => set({ promo })} />
+              </Field>
               <Field label={L("Overall discount %", "خصم إجمالي %")}>
                 <Stepper value={q.discountPct} step={0.5} max={100} onChange={(v) => set({ discountPct: v })} presets={[0, 5, 10, 15, 20]} suffix="%" />
               </Field>
@@ -659,7 +665,7 @@ function QuoteEditor({ initial, companies, plans, existing, config, seller, save
               )}
               {cyc.months > 0 && totals.recurring > 0 && (
                 <TotalCard th={th} accent title={`${L("Contract value", "قيمة العقد")} · ${num(q.contractMonths)} ${L("mo", "شهر")}`}
-                  rows={[[(totals.freeMonths ? L("Due on signing", "المستحق عند التوقيع") : L("First invoice", "الفاتورة الأولى")), totals.firstInvoice], [L("Monthly equivalent", "ما يعادل شهرياً"), totals.monthlyEquivalent]]}
+                  rows={[[(totals.freeMonths ? L("Due on signing", "المستحق عند التوقيع") : L("First invoice", "الفاتورة الأولى")), totals.firstInvoice], [L("Monthly equivalent", "ما يعادل شهرياً"), totals.monthlyEquivalent], ...(totals.promoMonths ? [[`🏷️ ${q.promo.code} · ${totals.promoMonths} ${L("mo", "شهر")}`, -totals.promoValue]] : [])]}
                   total={totals.contractValue} currency={q.currency} />
               )}
             </div>
@@ -801,6 +807,7 @@ function SidePanel({ q, opts, totals, insights, th, onPreview, onDuplicate }) {
         <SumRow k={L("One-time", "مرة واحدة")} v={fmtMoney(totals.oneTimeTotal, q.currency)} show={totals.oneTime > 0 && totals.recurring > 0} />
         <SumRow k={(totals.freeMonths ? L("Due on signing", "المستحق عند التوقيع") : L("First invoice", "الفاتورة الأولى"))} v={fmtMoney(totals.firstInvoice, q.currency)} show={totals.recurring > 0 && totals.oneTime > 0} />
         <SumRow k={`🎁 ${L("Free", "مجاني")} · ${totals.freeMonths} ${L("mo", "شهر")}`} v={`− ${fmtMoney(totals.freeValue, q.currency)}`} show={totals.freeMonths > 0} />
+        <SumRow k={`🏷️ ${q.promo?.code || ""} · ${totals.promoMonths} ${L("mo", "شهر")}`} v={`− ${fmtMoney(totals.promoValue, q.currency)}`} show={totals.promoMonths > 0} />
         <SumRow k={`${L("Contract", "العقد")} · ${num(q.contractMonths)} ${L("mo", "شهر")}`} v={fmtMoney(totals.contractValue, q.currency)} show={cyc.months > 0 && totals.recurring > 0} />
         <SumRow k={L("Client saves", "توفير العميل")} v={fmtMoney(totals.savings, q.currency)} show={totals.savings > 0} />
         <SumRow k={L("Optional add-ons", "إضافات اختيارية")} v={fmtMoney(totals.optional, q.currency)} show={totals.optional > 0} />
@@ -1371,6 +1378,44 @@ function Modal({ title, sub, children, footer, onClose, wide }) {
         <div style={{ padding: "18px 22px", overflow: "auto", flex: 1 }}>{children}</div>
         {footer && <div style={S.modalFoot}>{footer}</div>}
       </div>
+    </div>
+  );
+}
+
+/* The promo codes the owner made (Platform Center → Promo codes). The
+   discount is copied into the quotation when picked, so a later edit of
+   the code never changes a quotation already sent. */
+function PromoPicker({ value, onChange, disabled }) {
+  const { t } = useSettingsLang();
+  const L = (en, ar) => t({ en, ar });
+  const [codes, setCodes] = useState([]);
+  useEffect(() => {
+    let live = true;
+    fetch(`${API_BASE}/api/promo-codes`, { cache: "no-store" }).then((r) => r.json())
+      .then((j) => { if (live && j?.ok) setCodes(j.codes || []); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const off = (p) => (p.kind === "aed" ? L(`AED ${Number(p.amount)}/branch`, `${Number(p.amount)} درهم/فرع`) : `${Number(p.amount)}%`);
+  const known = codes.some((c) => c.code === value?.code);
+  return (
+    <div style={{ opacity: disabled ? 0.5 : 1 }}>
+      <select style={S.input} disabled={disabled} value={value?.code || ""}
+        onChange={(e) => {
+          const c = codes.find((x) => x.code === e.target.value);
+          if (!e.target.value) onChange(null);
+          else if (c) onChange({ code: c.code, kind: c.kind, amount: Number(c.amount), holder: c.holder || "" });
+        }}>
+        <option value="">{L("— No code —", "— بدون كود —")}</option>
+        {value?.code && !known && <option value={value.code}>{value.code} · −{off(value)}</option>}
+        {codes.map((c) => (
+          <option key={c.id} value={c.code}>{c.code} · −{off(c)}{c.holder ? ` · ${c.holder}` : ""}{!c.active ? L(" (off)", " (موقوف)") : ""}</option>
+        ))}
+      </select>
+      {value?.code && (
+        <div className="bpx-sm" style={{ marginTop: 6, color: "#0f766e", fontWeight: 700 }}>
+          −{off(value)} · {L("first year only, then the full price", "السنة الأولى فقط، بعدها السعر الكامل")}
+        </div>
+      )}
     </div>
   );
 }

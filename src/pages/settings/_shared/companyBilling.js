@@ -3,9 +3,9 @@
 // month", shared by the Billing tabs. Before this, Overview / Plans /
 // Companies each had their own copy and showed three different MRRs.
 
-import { currencyOf, priceOf } from "../invoices/invoiceCore";
+import { currencyOf, netPriceOf, priceOf } from "../invoices/invoiceCore";
 
-export { currencyOf, priceOf };
+export { currencyOf, netPriceOf, priceOf };
 
 /* Whole days from today to the end date (negative = passed); null = none. */
 export function daysLeft(endDate) {
@@ -31,12 +31,13 @@ export function companyStatus(c) {
 }
 
 /* Monthly recurring revenue per currency — paying (active) companies only,
-   each at its own custom price, else its plan's. Never adds AED to USD. */
+   each at its own custom price, else its plan's, less its promo code while
+   that runs (first year). Never adds AED to USD. */
 export function mrrByCurrency(companies) {
   const out = {};
   for (const c of companies || []) {
     if (companyStatus(c) !== "active") continue;
-    const p = priceOf(c);
+    const p = netPriceOf(c);
     if (!p) continue;
     const cur = currencyOf(c);
     out[cur] = (out[cur] || 0) + p;

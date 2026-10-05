@@ -20,7 +20,7 @@ import { loadSeller, normalizeSeller, sellerGaps } from "../_shared/sellerProfil
 import { logSettingsAudit } from "../../../utils/settingsAudit";
 import {
   STATUS, apiInvoiceAction, apiIssueInvoice, apiListInvoices, currencyOf, day, fmtDate, fmtMoney,
-  moneyMap, nextPeriod, priceOf, statusOf, todayISO,
+  moneyMap, nextPeriod, priceOf, promoLineFor, statusOf, todayISO,
 } from "./invoiceCore";
 import { buildInvoiceHtml, downloadInvoicePdf, printInvoice } from "./invoiceDocument";
 import SellerProfileTab from "../SellerProfileTab";
@@ -207,6 +207,11 @@ export default function InvoicesTab() {
           onChanged={(inv, action) => {
             audit({ area: "invoices", action, target: inv.invoice_number, before: opened, after: inv, reason: action });
             upsert(inv);
+            // A payment (or its undo) may have moved the company's end date.
+            if (action === "mark_paid" || action === "mark_unpaid") {
+              fetch(`${API_BASE}/api/companies`).then((r) => r.json())
+                .then((j) => { if (j?.ok) setCompanies(j.companies || []); }).catch(() => {});
+            }
           }}
         />
       )}
@@ -239,7 +244,9 @@ function IssueModal({ companies, invoices, seller, onClose, onIssued }) {
     if (!company) return;
     const p = nextPeriod(company, invoices);
     setPeriod(p);
-    setLines([{ description: `Subscription — ${company.plan_name || "custom"} plan`, qty: 1, unit_price: priceOf(company) }]);
+    // A promo code in its first year adds its own discount line.
+    const promo = promoLineFor(company, p.start);
+    setLines([{ description: `Subscription — ${company.plan_name || "custom"} plan`, qty: 1, unit_price: priceOf(company) }, ...(promo ? [promo] : [])]);
     setConfirming(false);
   }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -248,7 +255,8 @@ function IssueModal({ companies, invoices, seller, onClose, onIssued }) {
   const subtotal = round2(lines.reduce((s, l) => s + round2((Number(l.qty) || 0) * (Number(l.unit_price) || 0)), 0));
   const vatAmount = round2((subtotal * vat) / 100);
   const total = round2(subtotal + vatAmount);
-  const lineProblem = !lines.length || lines.some((l) => !String(l.description).trim() || !(Number(l.qty) > 0) || !(Number(l.unit_price) >= 0));
+  // A negative price is a discount line; the invoice as a whole never goes below zero.
+  const lineProblem = !lines.length || subtotal < 0 || lines.some((l) => !String(l.description).trim() || !(Number(l.qty) > 0) || l.unit_price === "" || !Number.isFinite(Number(l.unit_price)));
   const periodProblem = period.start && period.end && period.end < period.start;
   const blocked = !company || lineProblem || periodProblem;
 
@@ -323,7 +331,7 @@ function IssueModal({ companies, invoices, seller, onClose, onIssued }) {
               <div key={i} className="inv-line">
                 <input style={inp(!String(l.description).trim())} value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder={L("Description", "الوصف")} />
                 <input type="number" min="0" step="any" style={inp(!(Number(l.qty) > 0))} value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} title={L("Qty", "الكمية")} />
-                <input type="number" min="0" step="any" style={inp(!(Number(l.unit_price) >= 0))} value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} title={L("Unit price", "سعر الوحدة")} />
+                <input type="number" step="any" style={inp(l.unit_price === "" || !Number.isFinite(Number(l.unit_price)))} value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} title={L("Unit price", "سعر الوحدة")} />
                 <button type="button" style={sx.iconBtn} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((_, k) => k !== i))} title={L("Remove line", "حذف البند")}>✕</button>
               </div>
             ))}
@@ -439,6 +447,11 @@ function InvoiceModal({ invoice: inv, onClose, onChanged }) {
                   <Field label={L("Paid on", "تاريخ الدفع")}><input type="date" style={inp()} value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></Field>
                   <Field label={L("Reference (transfer no.)", "المرجع (رقم الحوالة)")}><input style={inp()} value={ref} onChange={(e) => setRef(e.target.value)} /></Field>
                 </div>
+                {inv.company_id && day(inv.period_end) && (
+                  <div className="bpx-sm" style={{ color: "#0f766e", fontWeight: 700 }}>
+                    📅 {L(`Paying extends ${inv.company_name}'s subscription to ${fmtDate(inv.period_end)} (if it ends earlier).`, `الدفع بيمدّد اشتراك ${inv.company_name} لـ ${fmtDate(inv.period_end)} (إذا كان بينتهي قبل).`)}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <Button tone="primary" disabled={!!busy} onClick={() => act({ action: "mark_paid", paid_at: paidAt, payment_ref: ref }, "mark_paid")}>{busy ? "…" : L("Confirm payment", "تأكيد الدفع")}</Button>
                   <Button tone="muted" onClick={() => setMode(null)}>{L("Cancel", "إلغاء")}</Button>
@@ -459,7 +472,13 @@ function InvoiceModal({ invoice: inv, onClose, onChanged }) {
             {status === "paid" && (
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <span className="bpx-sm" style={{ color: "#166534", fontWeight: 900 }}>✓ {L("Paid", "مدفوعة")}</span>
-                <Button tone="muted" disabled={!!busy} onClick={() => act({ action: "mark_unpaid" }, "mark_unpaid")}>{L("Undo — it was not paid", "تراجع — ما اندفعت")}</Button>
+                {day(inv.extended_to) && (
+                  <span className="bpx-sm" style={{ color: "#0f766e", fontWeight: 700 }}>
+                    📅 {L(`Subscription extended to ${fmtDate(inv.extended_to)}`, `الاشتراك تمدّد لـ ${fmtDate(inv.extended_to)}`)}
+                  </span>
+                )}
+                <Button tone="muted" disabled={!!busy} onClick={() => act({ action: "mark_unpaid" }, "mark_unpaid")}
+                  title={day(inv.extended_to) ? L(`Also puts the subscription back to ${fmtDate(inv.prev_company_end)}`, `وبيرجّع الاشتراك لـ ${fmtDate(inv.prev_company_end)}`) : undefined}>{L("Undo — it was not paid", "تراجع — ما اندفعت")}</Button>
               </div>
             )}
             {status === "void" && <div className="bpx-sm" style={{ color: "#475569" }}>{L("This invoice is void. Issue a new one if needed.", "هالفاتورة ملغاة. أصدر وحدة جديدة إذا لزم.")}</div>}

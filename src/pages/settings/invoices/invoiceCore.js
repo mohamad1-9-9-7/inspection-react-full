@@ -91,6 +91,35 @@ export function nextPeriod(company, invoices, today = todayISO()) {
 export const priceOf = (c) => Number(c?.price ?? c?.plan_price ?? 0);
 export const currencyOf = (c) => c?.currency || c?.plan_currency || "AED";
 
+/* The company's promo code (Companies → Promo code) — frozen on the company
+   when attached, and only for its first year: it applies to a period that
+   STARTS on or before promo_until. */
+export const promoRunsOn = (c, iso = todayISO()) =>
+  !!(c?.promo_code && c?.promo_until && Number(c?.promo_amount) > 0 && iso && day(iso) <= day(c.promo_until));
+
+/* What the promo takes off one month: a percentage of the monthly price, or
+   AED per billed branch — never more than the price itself. */
+export function promoMonthlyOff(c) {
+  const price = priceOf(c);
+  const amount = Number(c?.promo_amount) || 0;
+  if (!(price > 0) || !(amount > 0)) return 0;
+  const off = c.promo_kind === "aed" ? amount * Math.max(1, Number(c.branches) || 1) : (price * amount) / 100;
+  return Math.min(price, Math.round((off + Number.EPSILON) * 100) / 100);
+}
+
+/* What the company pays a month on `iso` (the promo while it runs). */
+export const netPriceOf = (c, iso = todayISO()) => priceOf(c) - (promoRunsOn(c, iso) ? promoMonthlyOff(c) : 0);
+
+/* The invoice line for the promo, or null: one month's discount as its own
+   negative line, so the invoice shows the list price and what came off. */
+export function promoLineFor(c, periodStart) {
+  if (!promoRunsOn(c, periodStart)) return null;
+  const off = promoMonthlyOff(c);
+  if (!off) return null;
+  const what = c.promo_kind === "aed" ? `AED ${Number(c.promo_amount)} off per branch` : `${Number(c.promo_amount)}% off`;
+  return { description: `Promo code ${c.promo_code} — ${what} (first year, until ${fmtDate(c.promo_until)})`, qty: 1, unit_price: -off };
+}
+
 /* Headline numbers, per currency (never add AED to USD). */
 export function invoiceKpis(invoices, today = todayISO()) {
   const month = today.slice(0, 7);
@@ -119,7 +148,7 @@ export const moneyMap = (m, zeroCur) =>
 const ERRORS = {
   company_required:  { en: "Choose a company.", ar: "اختار شركة." },
   company_not_found: { en: "That company no longer exists.", ar: "الشركة غير موجودة." },
-  lines_invalid:     { en: "Every line needs a description, a quantity above 0 and a price of 0 or more.", ar: "كل بند بحاجة وصف وكمية أكبر من 0 وسعر 0 أو أكثر." },
+  lines_invalid:     { en: "Every line needs a description and a quantity above 0, and the total can't go below zero.", ar: "كل بند بحاجة وصف وكمية أكبر من 0، والمجموع ما بينزل تحت الصفر." },
   period_invalid:    { en: "The period ends before it starts.", ar: "الفترة بتنتهي قبل ما تبلّش." },
   not_unpaid:        { en: "Only an unpaid invoice can be marked paid.", ar: "بس الفاتورة غير المدفوعة بتنعلّم مدفوعة." },
   not_paid:          { en: "This invoice is not marked paid.", ar: "الفاتورة مش معلّمة مدفوعة." },
