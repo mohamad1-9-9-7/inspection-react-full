@@ -15,6 +15,8 @@ import { MAWASHI_LOGO_B64 } from "../assets/mawashi-logo-b64";
 import { arrangeItems, GROUP_LABEL } from "./shared/itemSortGroup";
 import { getRefNo, isPendingRef } from "../utils/reportRef";
 import ImageLightbox from "./shared/ImageLightbox";
+import { useNavigate } from "react-router-dom";
+import { isItemAllowed } from "../utils/sectionItems";
 
 /* Left date-tree panel: remember whether the user folded it away (UI preference only). */
 const TREE_HIDDEN_KEY = "browseReturns.treeHidden";
@@ -2980,6 +2982,7 @@ const SEARCH_QUICK_ACTIONS = [
 ];
 
 export default function BrowseReturns() {
+  const navigate = useNavigate();
   /* --- Data --- */
   const [returnsData, setReturnsData] = useState([]);
   const [changesData, setChangesData] = useState([]);
@@ -6757,6 +6760,27 @@ export default function BrowseReturns() {
               ))}
             </div>
           )}
+
+          {/* مطابقة الفرع — a branch filter opens that branch's reconciliation
+              against the Odoo disposal file, for the month being looked at. */}
+          {posSel.some((p) => p && p !== "—") && isItemAllowed("returns", "disposalLog.compare") && (() => {
+            const ym = String(selectedDate || filterTo || filterFrom || new Date().toISOString()).slice(0, 7);
+            return (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
+                <span style={{ ...sx.mutedS, marginRight: 4 }}>⚖️ مطابقة الفرع مع أودو ({ym}):</span>
+                {posSel.filter((p) => p && p !== "—").map((p) => (
+                  <IconBtn
+                    key={p}
+                    icon={FiActivity}
+                    title={`Reconcile ${p}'s destroyed returns against the Odoo disposal file for ${ym}`}
+                    onClick={() => navigate(`/disposal-log/compare?branch=${encodeURIComponent(p)}&period=${ym}`)}
+                  >
+                    Match {p}
+                  </IconBtn>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Tabs */}

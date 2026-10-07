@@ -39,6 +39,7 @@ import {
   SOURCES,
   SOURCE_META,
   TYPE,
+  branchKeyOf,
   buildChangeIndex,
   buildDailyComparison,
   buildMonthlyComparison,
@@ -314,6 +315,18 @@ export default function DisposalLogCompare() {
   const [expanded, setExpanded] = useState({});
   const [copied, copy] = useCopy();
 
+  /* Links from the returns page: ?branch=POS 10&period=2026-09 */
+  const urlParams = useMemo(() => {
+    try {
+      const p = new URLSearchParams(location.search);
+      return { branch: p.get("branch") || "", period: p.get("period") || "" };
+    } catch {
+      return { branch: "", period: "" };
+    }
+  }, [location.search]);
+  const [branchFocus, setBranchFocus] = useState(urlParams.branch);
+  const wantedPeriod = useRef(urlParams.period);
+
   /* ── load the imported logs ── */
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -324,7 +337,9 @@ export default function DisposalLogCompare() {
         String(recordPeriod(b)).localeCompare(String(recordPeriod(a)))
       );
       setLogs(sorted);
-      setSelectedId((prev) => prev || getRecordId(sorted[0]) || "");
+      /* ?period=YYYY-MM (from the returns page) picks that month's import. */
+      const wanted = sorted.find((r) => recordPeriod(r) === wantedPeriod.current);
+      setSelectedId((prev) => prev || getRecordId(wanted || sorted[0]) || "");
     } catch (e) {
       setError(e?.message || "Could not load the imported logs.");
     } finally {
@@ -436,13 +451,40 @@ export default function DisposalLogCompare() {
     [bySource, sources]
   );
 
+  /* ── branch focus — مطابقة الفرع ──
+     Reconcile ONE branch: its lines in the Odoo file against its own
+     returns. Every view (month, days, products, findings, export) then reads
+     that branch only. Customer returns carry no branch, so they drop out
+     while a branch is focused. `?branch=POS 10` arrives from the returns page. */
+  const branchChoices = useMemo(() => {
+    const m = new Map();
+    for (const r of [...odooRows, ...mineRows]) {
+      const k = branchKeyOf(r.branch);
+      if (k && !m.has(k)) m.set(k, r.branch);
+    }
+    return Array.from(m, ([key, label]) => ({ key, label })).sort((a, b) =>
+      String(a.label).localeCompare(String(b.label), undefined, { numeric: true })
+    );
+  }, [odooRows, mineRows]);
+
+  const focusKey = branchKeyOf(branchFocus);
+  const odooFocus = useMemo(
+    () => (focusKey ? odooRows.filter((r) => branchKeyOf(r.branch) === focusKey) : odooRows),
+    [odooRows, focusKey]
+  );
+  const mineFocus = useMemo(
+    () => (focusKey ? mineRows.filter((r) => branchKeyOf(r.branch) === focusKey) : mineRows),
+    [mineRows, focusKey]
+  );
+  const focusLabel = focusKey ? branchChoices.find((b) => b.key === focusKey)?.label || branchFocus : "";
+
   const excludeKeys = useMemo(() => excludeSet(excluded), [excluded]);
 
   const cmp = useMemo(
-    () => buildDailyComparison(odooRows, mineRows, {
+    () => buildDailyComparison(odooFocus, mineFocus, {
       dayWindow, splitByBranch, tolerance, unitMode, exclude: excludeKeys,
     }),
-    [odooRows, mineRows, dayWindow, splitByBranch, tolerance, unitMode, excludeKeys]
+    [odooFocus, mineFocus, dayWindow, splitByBranch, tolerance, unitMode, excludeKeys]
   );
 
   /* Arrow keys walk the tree and "/" jumps to the search box — a month is
@@ -677,8 +719,8 @@ export default function DisposalLogCompare() {
 
   /* Same rows, read over the whole month. Day lags cannot create a gap here. */
   const month = useMemo(
-    () => buildMonthlyComparison(odooRows, mineRows, { tolerance, tolPct, unitMode, exclude: excludeKeys }),
-    [odooRows, mineRows, tolerance, tolPct, unitMode, excludeKeys]
+    () => buildMonthlyComparison(odooFocus, mineFocus, { tolerance, tolPct, unitMode, exclude: excludeKeys }),
+    [odooFocus, mineFocus, tolerance, tolPct, unitMode, excludeKeys]
   );
 
   /* A month line opens straight into its days. */
@@ -1022,6 +1064,7 @@ export default function DisposalLogCompare() {
     const summary = [
       ["Odoo disposal log ⇄ branch returns"],
       ["Month", monthLabel(period)],
+      ["Branch", focusKey ? focusLabel : "All branches"],
       ["Odoo file lines", cmp.totals.odooLines],
       ["Our disposal lines", cmp.totals.mineLines],
       ...SOURCES.map((k) => [`  · ${SOURCE_META[k].label}`, sources.includes(k) ? (bySource[k] || []).length : "off"]),
@@ -1075,7 +1118,7 @@ export default function DisposalLogCompare() {
         { name: "Products", aoa: products },
         { name: "Branches", aoa: branches },
       ],
-      `disposal-vs-returns-${period || "month"}.xlsx`
+      `disposal-vs-returns-${period || "month"}${focusKey ? `-${focusKey}` : ""}.xlsx`
     );
   };
 
@@ -1181,6 +1224,18 @@ export default function DisposalLogCompare() {
                     {r?.payload?.meta?.fileName ? ` · ${r.payload.meta.fileName}` : ""}
                   </option>
                 ))}
+              </select>
+            </Field>
+
+            <Field label="Branch — مطابقة فرع واحد">
+              <select value={focusKey ? focusLabel : ""} onChange={(e) => setBranchFocus(e.target.value)}>
+                <option value="">All branches — كل الفروع</option>
+                {branchChoices.map((b) => (
+                  <option key={b.key} value={b.label}>{b.label}</option>
+                ))}
+                {focusKey && !branchChoices.some((b) => b.key === focusKey) && (
+                  <option value={focusLabel}>{focusLabel} (nothing this month)</option>
+                )}
               </select>
             </Field>
 
@@ -1302,6 +1357,25 @@ export default function DisposalLogCompare() {
             </div>
           )}
 
+          {urlParams.period && !loading && logs.length > 0 && !useHandoff && period && period !== urlParams.period && (
+            <div className="dlx-note dlx-noteWarn">
+              No Odoo file is imported for {monthLabel(urlParams.period)} — showing {monthLabel(period)} instead.
+              Import that month first to reconcile it.
+            </div>
+          )}
+
+          {focusKey && (
+            <div className="dlx-note dlx-noteBusy" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span>
+                ⚖️ Branch reconciliation — مطابقة الفرع: <b>{focusLabel}</b> · Odoo {odooFocus.length} line(s) against {mineFocus.length} of ours.
+                Customer returns carry no branch, so they are left out while a branch is chosen.
+              </span>
+              <button className="dlx-btn dlx-soft" style={{ marginInlineStart: "auto" }} onClick={() => setBranchFocus("")}>
+                ✕ All branches
+              </button>
+            </div>
+          )}
+
           {(error || msg) && <div className={`dlx-note ${error ? "dlx-noteErr" : "dlx-noteOk"}`}>{error || msg}</div>}
           {(loading || loadingReturns) && <div className="dlx-note dlx-noteBusy">Loading…</div>}
         </section>
@@ -1312,7 +1386,7 @@ export default function DisposalLogCompare() {
             <div className="dlx-cardHead">
               <span className="dlx-step">B</span>
               <div>
-                <h2>{monthLabel(period)} — headline</h2>
+                <h2>{monthLabel(period)}{focusKey ? ` · ${focusLabel}` : ""} — headline</h2>
                 <p dir="rtl">{monthLabelAr(period)} · النتيجة العامة قبل الدخول في التفاصيل</p>
               </div>
             </div>
