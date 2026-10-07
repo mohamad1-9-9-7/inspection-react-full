@@ -73,6 +73,7 @@ import {
   useLocalPref,
 } from "./disposalLogKit";
 import MonthlyReconciliation from "./MonthlyReconciliation";
+import ProductStory from "./ProductStory";
 
 /* ============================================================
    server
@@ -709,6 +710,18 @@ export default function DisposalLogCompare() {
       return !q || `${p.code} ${p.product}`.toLowerCase().includes(q);
     });
   }, [cmp.products, query, hideClean, isZero]);
+
+  /* The day rows behind each product line, for its story. */
+  const [storyOpen, setStoryOpen] = useState({});
+  const rowsByProduct = useMemo(() => {
+    const m = new Map();
+    for (const r of cmp.rows) {
+      const k = `${r.codeKey}||${r.fam}`;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    }
+    return m;
+  }, [cmp.rows]);
 
   const visibleBranches = useMemo(
     () => (hideClean ? cmp.branches.filter((b) => !isZero(b.diff)) : cmp.branches),
@@ -1629,6 +1642,7 @@ export default function DisposalLogCompare() {
                 <table className="dlx-table">
                   <thead>
                     <tr>
+                      <th title="Story">📖</th>
                       <th>CODE</th><th>PRODUCT</th><th>UNIT</th><th className="num">DAYS</th>
                       <th className="num">ODOO</th><th className="num">RETURNS</th><th className="num">DIFFERENCE</th>
                       <th className="num">CLEAN DAYS</th>
@@ -1636,8 +1650,23 @@ export default function DisposalLogCompare() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleProducts.map((p) => (
-                      <tr key={p.key}>
+                    {visibleProducts.map((p) => {
+                      const hasStory = !isZero(p.diff) || p.issues > 0;
+                      const open = hasStory && !!storyOpen[p.key];
+                      return (
+                      <React.Fragment key={p.key}>
+                      <tr className={open ? "open" : ""}>
+                        <td>
+                          {hasStory && (
+                            <button
+                              className="dlx-rowBtn"
+                              onClick={() => setStoryOpen((m) => ({ ...m, [p.key]: !m[p.key] }))}
+                              title="Show this product's month story: what happened, where and when"
+                            >
+                              {open ? "▾" : "▸"} 📖
+                            </button>
+                          )}
+                        </td>
                         <td className="mono">{p.code || "—"}</td>
                         <td className="wrap">{p.product}</td>
                         <td>{p.fam}</td>
@@ -1650,7 +1679,29 @@ export default function DisposalLogCompare() {
                           <button className="dlx-del" title="Leave this product out of the comparison" onClick={() => excludeProduct(p)}>⊘</button>
                         </td>
                       </tr>
-                    ))}
+                      {open && (
+                        <tr className="dlx-sub">
+                          <td colSpan={10}>
+                            <ProductStory
+                              product={p}
+                              rows={rowsByProduct.get(p.key) || []}
+                              tolerance={cmp.tolerance}
+                              onOpenDay={(d) => {
+                                setView("days");
+                                setScope("day");
+                                setSelectedDate(d);
+                                setQuery(p.code || p.product);
+                                setStatusFilter("all");
+                                setBranchFilter("all");
+                                setSourceFilter("all");
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
