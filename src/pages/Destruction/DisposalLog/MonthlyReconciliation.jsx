@@ -15,7 +15,7 @@
 import React, { useMemo, useState } from "react";
 import { DAY_STATUS, DAY_STATUS_META, NO_BRANCH_LABEL, SOURCE_META, fmt3, formatDMY, monthLabel, num } from "./disposalLogOptions";
 import { EmptyState, Pill, SearchInput, Segmented, Toggle, downloadSheets, useCopy, useLocalPref } from "./disposalLogKit";
-import CommentThread, { commentCount } from "./CommentThread";
+import CommentThread, { CorrectedMark, commentCount } from "./CommentThread";
 
 const STATUS_TONE = {
   [DAY_STATUS.MATCH]: "green",
@@ -82,6 +82,8 @@ export default function MonthlyReconciliation({
   comments = {},
   onAddComment,
   onDeleteComment,
+  corrected = {},
+  onToggleCorrected,
 }) {
   const [by, setBy] = useLocalPref("disposalLog.cmp.monthBy", "product");
   const [diffOnly, setDiffOnly] = useLocalPref("disposalLog.cmp.monthDiffOnly", false);
@@ -109,11 +111,17 @@ export default function MonthlyReconciliation({
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = all.filter((r) => {
-      if (diffOnly && r.status === DAY_STATUS.MATCH && !r.hiddenSplit) return false;
-      if (statusFilter === "split") {
-        if (!r.hiddenSplit) return false;
-      } else if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (unreviewedOnly && (r.status === DAY_STATUS.MATCH || reviewed[`M|${period}|${by}|${r.key}`])) return false;
+      const isCorrected = !!corrected[`M|${period}|${by}|${r.key}`];
+      if (statusFilter === "corrected") {
+        /* Corrected lines show whatever they read now — matched or not. */
+        if (!isCorrected) return false;
+      } else {
+        if (diffOnly && r.status === DAY_STATUS.MATCH && !r.hiddenSplit) return false;
+        if (statusFilter === "split") {
+          if (!r.hiddenSplit) return false;
+        } else if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      }
+      if (unreviewedOnly && (r.status === DAY_STATUS.MATCH || isCorrected || reviewed[`M|${period}|${by}|${r.key}`])) return false;
       if (branchFilter !== "all" && !r.branches.includes(branchFilter)) return false;
       if (!q) return true;
       const hay = by === "branch"
@@ -122,7 +130,7 @@ export default function MonthlyReconciliation({
       return hay.toLowerCase().includes(q);
     });
     return list.sort(SORTS[sortKey]?.fn || SORTS.gap.fn);
-  }, [all, by, diffOnly, statusFilter, unreviewedOnly, branchFilter, query, sortKey, reviewed, period]);
+  }, [all, by, diffOnly, statusFilter, unreviewedOnly, branchFilter, query, sortKey, reviewed, corrected, period]);
 
   /* Totals per unit family for what is on screen, and the Pareto reading of
      the gap: how few lines carry most of it. Kilos and plates never share a
@@ -186,13 +194,14 @@ export default function MonthlyReconciliation({
       aoa = [
         [
           ...(by === "branchProduct" ? ["BRANCH"] : ["BRANCHES"]), "CODE", "PRODUCT", "CATEGORY", "UNIT", "ODOO QTY", "OUR QTY",
-          "DIFFERENCE", "DIFFERENCE %", "ODOO DAYS", "OUR DAYS", "REGISTER", "STATUS", "REVIEW NOTE",
+          "DIFFERENCE", "DIFFERENCE %", "ODOO DAYS", "OUR DAYS", "REGISTER", "STATUS", "CORRECTED", "REVIEW NOTE",
         ],
         ...rows.map((r) => [
           r.branches.join(", "), r.code, r.product, r.category, r.units.join("/"), num(r.odooQty), num(r.mineQty),
           num(r.diff), r.diffPct == null ? "" : Math.round(r.diffPct * 10) / 10, r.odooDays.length, r.mineDays.length,
           r.sources.map((k) => SOURCE_META[k].label).join(" + "),
           `${DAY_STATUS_META[r.status].label}${r.hiddenSplit ? " (branches differ)" : ""}`,
+          corrected[reviewKey(r)] ? `Yes${corrected[reviewKey(r)].note ? `: ${corrected[reviewKey(r)].note}` : ""}` : "",
           reviewed[reviewKey(r)]?.note || (reviewed[reviewKey(r)] ? "reviewed" : ""),
         ]),
       ];
@@ -258,8 +267,37 @@ export default function MonthlyReconciliation({
         </Pill>
       )}
       {reviewed[reviewKey(r)] && <Pill tone="green" title={reviewed[reviewKey(r)].note || "Reviewed"}>✓ reviewed</Pill>}
+      <CorrectedMark mark={corrected[reviewKey(r)]} nowDiff={nowDiffOf(r)} eps={month.tolerance} />
     </td>
   );
+
+  /* A branch row has no single difference (kilos and plates never add up), so
+     "settled" for it means every product inside it reconciles. */
+  const nowDiffOf = (r) =>
+    by === "branch" ? (r.issues ? Math.max(r.absDiff, 1) : 0) : r.status === DAY_STATUS.MATCH ? 0 : r.diff;
+
+  const correctBtn = (r, label) =>
+    onToggleCorrected && (r.status !== DAY_STATUS.MATCH || r.hiddenSplit || corrected[reviewKey(r)]) ? (
+      <button
+        className={corrected[reviewKey(r)] ? "dlx-undo" : "dlx-iconBtn"}
+        title={
+          corrected[reviewKey(r)]
+            ? `Corrected${corrected[reviewKey(r)].by ? ` by ${corrected[reviewKey(r)].by}` : ""}${corrected[reviewKey(r)].note ? `: ${corrected[reviewKey(r)].note}` : ""} — click to remove the mark`
+            : "Mark as corrected — تم تصحيحها (it differed and has been put right)"
+        }
+        onClick={() =>
+          onToggleCorrected(reviewKey(r), label, {
+            odoo: num(r.odooQty),
+            mine: num(r.mineQty),
+            diff: by === "branch" ? (r.byFam || []).reduce((s, f) => s + f.diff, 0) : num(r.diff),
+          })
+        }
+      >
+        {corrected[reviewKey(r)] ? "✔" : "🔧"}
+      </button>
+    ) : null;
+
+  const correctedN = all.filter((r) => corrected[reviewKey(r)]).length;
 
   const chips = [
     { k: "all", label: "All", n: counts.rows, tone: "slate" },
@@ -270,6 +308,7 @@ export default function MonthlyReconciliation({
     ...(by === "product" && month.totals.hiddenSplit
       ? [{ k: "split", label: "Month matches, branches differ", n: month.totals.hiddenSplit, tone: "violet" }]
       : []),
+    { k: "corrected", label: "✔ Corrected — تم تصحيحها", n: correctedN, tone: "green" },
   ];
 
   const productCols = 14;
@@ -420,6 +459,7 @@ export default function MonthlyReconciliation({
                       </td>
                       {statusCell(b)}
                       <td style={{ whiteSpace: "nowrap" }}>
+                        {correctBtn(b, `${b.branchLabel} for ${monthLabel(period)}`)}
                         {reviewBtn(b, `${b.branchLabel} for ${monthLabel(period)}`)}
                         <button className="dlx-iconBtn" title="Open this branch in the day-by-day table" onClick={() => onOpenDays({ branch: b.branchLabel })}>📅</button>
                       </td>
@@ -529,6 +569,7 @@ export default function MonthlyReconciliation({
                       </td>
                       {statusCell(r)}
                       <td style={{ whiteSpace: "nowrap" }}>
+                        {correctBtn(r, label)}
                         {reviewBtn(r, label)}
                         <button
                           className="dlx-iconBtn"

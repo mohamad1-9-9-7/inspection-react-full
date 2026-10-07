@@ -48,6 +48,34 @@ export function commentsAsText(list) {
     .join(" | ");
 }
 
+/**
+ * "✔ Corrected" on a line that was marked as put right. Green when the data
+ * now agrees; amber when the mark is there but the numbers still differ —
+ * the fix was promised and has not reached Odoo / the returns yet.
+ */
+export function CorrectedMark({ mark, nowDiff, eps = 0.005 }) {
+  if (!mark) return null;
+  const settled = Math.abs(Number(nowDiff) || 0) <= eps;
+  const was = mark.was && Number.isFinite(Number(mark.was.diff))
+    ? `${mark.was.diff > 0 ? "+" : ""}${Math.round(mark.was.diff * 1000) / 1000}`
+    : "";
+  const title = [
+    `Marked corrected${mark.by ? ` by ${mark.by}` : ""}${mark.at ? ` on ${formatDMY(String(mark.at).slice(0, 10))}` : ""}`,
+    was ? `Difference when marked: ${was}` : "",
+    mark.note ? `Fix: ${mark.note}` : "",
+    settled ? "The data now agrees." : "The numbers still differ — the fix has not reached the data yet.",
+  ].filter(Boolean).join("\n");
+  return (
+    <span className={`dlx-pill dlx-pill-${settled ? "green" : "amber"}`} title={title}>
+      ✔ Corrected{was ? ` (was ${was})` : ""}{settled ? "" : " · pending"}
+    </span>
+  );
+}
+
+export function correctedCount(corrected, keys) {
+  return keys.filter((k) => corrected?.[k]).length;
+}
+
 const thumbBox = {
   width: 76, height: 76, borderRadius: 10, objectFit: "cover", display: "block",
   border: "1px solid #dbe4ee", background: "#f1f5f9",

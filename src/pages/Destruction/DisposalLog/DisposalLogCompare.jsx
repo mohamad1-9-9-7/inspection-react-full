@@ -74,7 +74,7 @@ import {
 } from "./disposalLogKit";
 import MonthlyReconciliation from "./MonthlyReconciliation";
 import ProductStory from "./ProductStory";
-import CommentThread, { commentCount, commentsAsText } from "./CommentThread";
+import CommentThread, { CorrectedMark, commentCount, commentsAsText } from "./CommentThread";
 
 /* ============================================================
    server
@@ -154,17 +154,18 @@ async function loadCompareConfig() {
     excluded: Array.isArray(rec?.payload?.excluded) ? rec.payload.excluded : [],
     reviewed: obj(rec?.payload?.reviewed),
     comments: obj(rec?.payload?.comments),
+    corrected: obj(rec?.payload?.corrected),
   };
 }
 
-async function saveCompareConfig({ excluded, reviewed, comments }) {
+async function saveCompareConfig({ excluded, reviewed, comments, corrected }) {
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       reporter: "disposal-compare",
       type: EXCLUDE_TYPE,
-      payload: { reportDate: EXCLUDE_KEY, excluded, reviewed, comments, savedAt: Date.now() },
+      payload: { reportDate: EXCLUDE_KEY, excluded, reviewed, comments, corrected, savedAt: Date.now() },
     }),
   });
   if (!res.ok) throw new Error(`Could not save (${res.status})`);
@@ -274,6 +275,9 @@ export default function DisposalLogCompare() {
      row; `commentsRef` lets an exclusion/review save carry them unchanged. */
   const [comments, setComments] = useState({});
   const commentsRef = useRef({});
+  /* Lines marked "was different, now corrected": key → { note, by, at, was }. */
+  const [corrected, setCorrected] = useState({});
+  const correctedRef = useRef({});
   /* Nothing is written until the config was actually read — a save built on
      a failed read would erase the team's exclusions, notes and comments. */
   const configReady = useRef(false);
@@ -339,6 +343,8 @@ export default function DisposalLogCompare() {
         setReviewed(cfg.reviewed);
         setComments(cfg.comments);
         commentsRef.current = cfg.comments;
+        setCorrected(cfg.corrected);
+        correctedRef.current = cfg.corrected;
         configReady.current = true;
       })
       .catch(() => {
@@ -484,7 +490,7 @@ export default function DisposalLogCompare() {
     setReviewed(nextReviewed);
     setExcludeBusy(true);
     try {
-      await saveCompareConfig({ excluded: nextExcluded, reviewed: nextReviewed, comments: commentsRef.current });
+      await saveCompareConfig({ excluded: nextExcluded, reviewed: nextReviewed, comments: commentsRef.current, corrected: correctedRef.current });
     } catch (e) {
       setError(e?.message || "Could not save.");
     } finally {
@@ -496,26 +502,99 @@ export default function DisposalLogCompare() {
      A comment is written onto the LATEST server copy (read → merge → save),
      so two people commenting at once do not erase each other, and whatever
      the other person changed meanwhile arrives with it. */
-  const changeComments = useCallback(async (key, mutate) => {
+  const changeConfig = useCallback(async (mutate, failMsg = "Could not save.") => {
     try {
       const fresh = await loadCompareConfig();
-      const list = Array.isArray(fresh.comments[key]) ? fresh.comments[key] : [];
-      const nextList = mutate(list);
-      const next = { ...fresh.comments };
-      if (nextList.length) next[key] = nextList;
-      else delete next[key];
-      await saveCompareConfig({ excluded: fresh.excluded, reviewed: fresh.reviewed, comments: next });
+      const next = mutate(fresh);
+      await saveCompareConfig(next);
       configReady.current = true;
-      commentsRef.current = next;
-      setComments(next);
-      setExcluded(fresh.excluded);
-      setReviewed(fresh.reviewed);
+      commentsRef.current = next.comments;
+      correctedRef.current = next.corrected;
+      setComments(next.comments);
+      setCorrected(next.corrected);
+      setExcluded(next.excluded);
+      setReviewed(next.reviewed);
       return true;
     } catch (e) {
-      setError(e?.message || "Could not save the comment.");
+      setError(e?.message || failMsg);
       return false;
     }
   }, []);
+
+  const changeComments = useCallback(
+    (key, mutate) =>
+      changeConfig((fresh) => {
+        const list = Array.isArray(fresh.comments[key]) ? fresh.comments[key] : [];
+        const nextList = mutate(list);
+        const comments = { ...fresh.comments };
+        if (nextList.length) comments[key] = nextList;
+        else delete comments[key];
+        return { ...fresh, comments };
+      }, "Could not save the comment."),
+    [changeConfig]
+  );
+
+  /* ── corrected ──
+     "This differed and has been put right" — not the same as "reviewed"
+     (a difference we accept). The difference as it stood when it was marked
+     is kept, so the line can later say whether the data now actually agrees.
+     Marking also drops a line into the comment thread, so the history of the
+     line reads in one place. */
+  const toggleCorrected = useCallback(
+    async (key, commentKey, label, snapshot) => {
+      if (corrected[key]) {
+        if (!window.confirm(`Remove the "corrected" mark from ${label}?`)) return;
+        await changeConfig((fresh) => {
+          const next = { ...fresh.corrected };
+          delete next[key];
+          return { ...fresh, corrected: next };
+        });
+        return;
+      }
+      const note = window.prompt(`Mark ${label} as CORRECTED.\n\nWhat was fixed? (optional — e.g. "voucher reversed in Odoo", "return qty edited")`, "");
+      if (note === null) return;
+      const by = currentUserName();
+      const at = new Date().toISOString();
+      const text = String(note || "").trim();
+      await changeConfig((fresh) => {
+        const list = Array.isArray(fresh.comments[commentKey]) ? fresh.comments[commentKey] : [];
+        return {
+          ...fresh,
+          corrected: { ...fresh.corrected, [key]: { note: text, by, at, was: snapshot } },
+          comments: {
+            ...fresh.comments,
+            [commentKey]: [
+              ...list,
+              {
+                id: `${Date.now().toString(36)}c`,
+                text: `✔ Marked corrected (was ${snapshot ? `${snapshot.diff > 0 ? "+" : ""}${fmt3(snapshot.diff)}` : "different"})${text ? `: ${text}` : ""}`,
+                by,
+                at,
+              },
+            ],
+          },
+        };
+      });
+    },
+    [corrected, changeConfig]
+  );
+
+  /* The ✔ / 🔧 button that sets or clears the corrected mark. */
+  const correctBtn = (key, label, row) => (
+    <button
+      className={corrected[key] ? "dlx-undo" : "dlx-iconBtn"}
+      title={
+        corrected[key]
+          ? `Corrected${corrected[key].by ? ` by ${corrected[key].by}` : ""}${corrected[key].note ? `: ${corrected[key].note}` : ""} — click to remove the mark`
+          : "Mark as corrected — تم تصحيحها (it differed and has been put right)"
+      }
+      onClick={() =>
+        toggleCorrected(key, key, label, { odoo: num(row.odooQty), mine: num(row.mineQty), diff: num(row.diff) })
+      }
+    >
+      {corrected[key] ? "✔" : "🔧"}
+    </button>
+  );
 
   /* Comment keys: a product's month, and one day line. */
   const productCommentKey = (p) => `P|${period}|${p.key}`;
@@ -646,15 +725,16 @@ export default function DisposalLogCompare() {
   }, [cmp.rows, scope, selectedDate, weekRange, branchFilter, sourceFilter, query]);
 
   const scopedCounts = useMemo(() => {
-    const c = { all: scopedRows.length, unit: 0, shifted: 0 };
+    const c = { all: scopedRows.length, unit: 0, shifted: 0, corrected: 0 };
     for (const s of Object.values(DAY_STATUS)) c[s] = 0;
     for (const r of scopedRows) {
       c[r.status] += 1;
       if (r.unitMismatch) c.unit += 1;
       if (r.shiftDays) c.shifted += 1;
+      if (corrected[`D|${r.date}|${r.codeKey}|${r.fam}`]) c.corrected += 1;
     }
     return c;
-  }, [scopedRows]);
+  }, [scopedRows, corrected]);
 
   const visibleRows = useMemo(() => {
     const order = {
@@ -673,18 +753,22 @@ export default function DisposalLogCompare() {
     };
     return scopedRows
       .filter((r) => {
+        const isCorrected = !!corrected[`D|${r.date}|${r.codeKey}|${r.fam}`];
         if (statusFilter === "unit") {
           if (!r.unitMismatch) return false;
         } else if (statusFilter === "shifted") {
           if (!r.shiftDays) return false;
+        } else if (statusFilter === "corrected") {
+          /* Corrected lines show whatever they read now — matched or not. */
+          return isCorrected;
         } else if (statusFilter !== "all" && r.status !== statusFilter) return false;
         if (dayDiffOnly && r.status === DAY_STATUS.MATCH) return false;
         if (minGap > 0 && r.status !== DAY_STATUS.MATCH && r.absDiff < minGap) return false;
-        if (unreviewedOnly && (r.status === DAY_STATUS.MATCH || reviewed[`${r.date}|${r.codeKey}|${r.fam}`])) return false;
+        if (unreviewedOnly && (r.status === DAY_STATUS.MATCH || isCorrected || reviewed[`${r.date}|${r.codeKey}|${r.fam}`])) return false;
         return true;
       })
       .sort(sorters[daySort] || sorters.status);
-  }, [scopedRows, statusFilter, dayDiffOnly, minGap, unreviewedOnly, reviewed, daySort]);
+  }, [scopedRows, statusFilter, dayDiffOnly, minGap, unreviewedOnly, reviewed, corrected, daySort]);
 
   /* For a line found on one side only: the nearest line of the same product
      found on the OTHER side only, outside the day window. Usually the same
@@ -771,13 +855,22 @@ export default function DisposalLogCompare() {
   const cleanProducts = useMemo(() => cmp.products.filter((p) => isZero(p.diff)).length, [cmp.products, isZero]);
   const cleanBranches = useMemo(() => cmp.branches.filter((b) => isZero(b.diff)).length, [cmp.branches, isZero]);
 
+  /* Products marked "was different, now corrected" — their own filter. */
+  const [productCorrectedOnly, setProductCorrectedOnly] = useState(false);
+  const correctedProducts = useMemo(
+    () => cmp.products.filter((p) => corrected[`P|${period}|${p.key}`]).length,
+    [cmp.products, corrected, period]
+  );
+
   const visibleProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return cmp.products.filter((p) => {
-      if (hideClean && isZero(p.diff)) return false;
+      if (productCorrectedOnly) {
+        if (!corrected[`P|${period}|${p.key}`]) return false;
+      } else if (hideClean && isZero(p.diff)) return false;
       return !q || `${p.code} ${p.product}`.toLowerCase().includes(q);
     });
-  }, [cmp.products, query, hideClean, isZero]);
+  }, [cmp.products, query, hideClean, isZero, productCorrectedOnly, corrected, period]);
 
   /* The day rows behind each product line, for its story. */
   const [storyOpen, setStoryOpen] = useState({});
@@ -911,13 +1004,19 @@ export default function DisposalLogCompare() {
   const exportExcel = async () => {
     const head = [
       "DATE", "OUR DATE", "SHIFT (days)", "DATED BY CHANGE", "BRANCH", "CUSTOMER", "REGISTER",
-      "CODE", "PRODUCT", "CATEGORY", "UNIT", "ODOO QTY", "OUR QTY", "DIFFERENCE", "STATUS", "COMMENTS",
+      "CODE", "PRODUCT", "CATEGORY", "UNIT", "ODOO QTY", "OUR QTY", "DIFFERENCE", "STATUS", "CORRECTED", "COMMENTS",
     ];
     const commentText = (key) => commentsAsText(comments[key]);
+    const correctedText = (key) => {
+      const c = corrected[key];
+      if (!c) return "";
+      return `Yes${c.was ? ` (was ${fmt3(c.was.diff)})` : ""}${c.by ? ` by ${c.by}` : ""}${c.at ? ` ${formatDMY(String(c.at).slice(0, 10))}` : ""}${c.note ? `: ${c.note}` : ""}`;
+    };
     const body = visibleRows.map((r) => [
       r.date, r.mineDate || "", r.shiftDays || 0, r.datedByChange || 0, r.branches.join(", "), r.customers.join(", "),
       r.sources.map((k) => SOURCE_META[k].label).join(" + "), r.code, r.product, r.category,
       r.units.join("/"), num(r.odooQty), num(r.mineQty), num(r.diff), DAY_STATUS_META[r.status].label,
+      correctedText(dayCommentKey(r)),
       commentText(dayCommentKey(r)),
     ]);
     const summary = [
@@ -941,8 +1040,8 @@ export default function DisposalLogCompare() {
       ...cmp.totals.byFam.map((f) => [f.fam, f.odoo, f.mine, f.diff]),
     ];
     const products = [
-      ["CODE", "PRODUCT", "UNIT FAMILY", "DAYS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED DAYS", "DAYS WITH ISSUES", "COMMENTS"],
-      ...cmp.products.map((p) => [p.code, p.product, p.fam, p.days, p.odooQty, p.mineQty, p.diff, p.match, p.issues, commentText(productCommentKey(p))]),
+      ["CODE", "PRODUCT", "UNIT FAMILY", "DAYS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED DAYS", "DAYS WITH ISSUES", "CORRECTED", "COMMENTS"],
+      ...cmp.products.map((p) => [p.code, p.product, p.fam, p.days, p.odooQty, p.mineQty, p.diff, p.match, p.issues, correctedText(productCommentKey(p)), commentText(productCommentKey(p))]),
     ];
     const branches = [
       ["BRANCH", "ROWS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED", "QTY DIFF", "ONLY ODOO", "ONLY RETURNS", "MATCH %"],
@@ -1306,6 +1405,8 @@ export default function DisposalLogCompare() {
               comments={comments}
               onAddComment={addComment}
               onDeleteComment={deleteComment}
+              corrected={corrected}
+              onToggleCorrected={(key, label, snap) => toggleCorrected(key, key, label, snap)}
               onExclude={excludeProduct}
               onOpenDays={openDays}
             />
@@ -1388,6 +1489,7 @@ export default function DisposalLogCompare() {
                     { k: DAY_STATUS.RETURNS_ONLY, label: "Only in ours", n: scopedCounts[DAY_STATUS.RETURNS_ONLY], tone: "blue" },
                     { k: "shifted", label: "Paired across days", n: scopedCounts.shifted, tone: "violet" },
                     { k: "unit", label: "≠ unit", n: scopedCounts.unit, tone: "violet" },
+                    { k: "corrected", label: "✔ Corrected — تم تصحيحها", n: scopedCounts.corrected, tone: "green" },
                   ].map((c) => (
                     <Pill
                       key={c.k}
@@ -1589,8 +1691,11 @@ export default function DisposalLogCompare() {
                                         ✓ reviewed
                                       </Pill>
                                     )}
+                                    <CorrectedMark mark={corrected[dayCommentKey(r)]} nowDiff={r.diff} eps={cmp.tolerance} />
                                   </td>
                                   <td style={{ whiteSpace: "nowrap" }}>
+                                    {(r.status !== DAY_STATUS.MATCH || corrected[dayCommentKey(r)]) &&
+                                      correctBtn(dayCommentKey(r), `${r.code || r.product} on ${formatDMY(r.date)}`, r)}
                                     {r.status !== DAY_STATUS.MATCH && (
                                       <button
                                         className={reviewed[reviewKeyOf(r)] ? "dlx-undo" : "dlx-iconBtn"}
@@ -1722,6 +1827,12 @@ export default function DisposalLogCompare() {
                   label={`Hide products with no difference — إخفاء المطابق (${cleanProducts})`}
                   title="Hide products whose month DIFFERENCE is 0, whatever the days show"
                 />
+                <Toggle
+                  checked={productCorrectedOnly}
+                  onChange={setProductCorrectedOnly}
+                  label={`✔ Corrected only — تم تصحيحها (${correctedProducts})`}
+                  title="Show only the products marked as corrected, whatever they read now"
+                />
                 <span className="dlx-muted">
                   {visibleProducts.length} of {cmp.products.length} shown · sorted by the biggest gap over the whole month.
                 </span>
@@ -1764,6 +1875,7 @@ export default function DisposalLogCompare() {
                               💬 {nComments}
                             </Pill>
                           )}
+                          <CorrectedMark mark={corrected[productCommentKey(p)]} nowDiff={p.diff} eps={cmp.tolerance} />
                         </td>
                         <td>{p.fam}</td>
                         <td className="num">{p.days}</td>
@@ -1772,7 +1884,11 @@ export default function DisposalLogCompare() {
                         <td className={`num ${p.diff > 0 ? "pos" : p.diff < 0 ? "neg" : ""}`}>{signed(p.diff)}</td>
                         <td className="num">{p.match}/{p.days}</td>
                         <td>
-                          <button className="dlx-del" title="Leave this product out of the comparison" onClick={() => excludeProduct(p)}>⊘</button>
+                          <span style={{ whiteSpace: "nowrap", display: "inline-flex", gap: 4 }}>
+                            {(hasStory || corrected[productCommentKey(p)]) &&
+                              correctBtn(productCommentKey(p), `${p.code || p.product} for ${monthLabel(period)}`, p)}
+                            <button className="dlx-del" title="Leave this product out of the comparison" onClick={() => excludeProduct(p)}>⊘</button>
+                          </span>
                         </td>
                       </tr>
                       {open && (
