@@ -133,7 +133,7 @@ function buildStory(p, rows, eps) {
   return lines;
 }
 
-export default function ProductStory({ product, rows, tolerance = 0.005, onOpenDay }) {
+export default function ProductStory({ product, rows, tolerance = 0.005, onOpenDay, children }) {
   const eps = Math.max(Number(tolerance) || 0, 0.0005);
 
   const timeline = useMemo(() => {
@@ -228,6 +228,8 @@ export default function ProductStory({ product, rows, tolerance = 0.005, onOpenD
           ))}
         </tbody>
       </table>
+
+      {children}
     </div>
   );
 }

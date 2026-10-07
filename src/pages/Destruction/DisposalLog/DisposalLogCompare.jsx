@@ -23,7 +23,7 @@
 // Nothing here writes to a report. The only write is the delete button, which
 // removes an imported Odoo month.
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import {
@@ -74,6 +74,7 @@ import {
 } from "./disposalLogKit";
 import MonthlyReconciliation from "./MonthlyReconciliation";
 import ProductStory from "./ProductStory";
+import CommentThread, { commentCount, commentsAsText } from "./CommentThread";
 
 /* ============================================================
    server
@@ -142,24 +143,28 @@ async function loadCompareConfig() {
     cache: "no-store",
     headers: { Accept: "application/json" },
   });
-  if (!res.ok) return [];
+  /* Throw rather than return empty: a save built on a failed read would
+     wipe everyone's exclusions, notes and comments. */
+  if (!res.ok) throw new Error(`Could not read the comparison settings (${res.status})`);
   const json = await res.json().catch(() => []);
   const rows = Array.isArray(json) ? json : json?.data ?? json?.items ?? [];
   const rec = rows.find((r) => String(r?.payload?.reportDate || "") === EXCLUDE_KEY) || rows[0];
+  const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
   return {
     excluded: Array.isArray(rec?.payload?.excluded) ? rec.payload.excluded : [],
-    reviewed: rec?.payload?.reviewed && typeof rec.payload.reviewed === "object" ? rec.payload.reviewed : {},
+    reviewed: obj(rec?.payload?.reviewed),
+    comments: obj(rec?.payload?.comments),
   };
 }
 
-async function saveCompareConfig({ excluded, reviewed }) {
+async function saveCompareConfig({ excluded, reviewed, comments }) {
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       reporter: "disposal-compare",
       type: EXCLUDE_TYPE,
-      payload: { reportDate: EXCLUDE_KEY, excluded, reviewed, savedAt: Date.now() },
+      payload: { reportDate: EXCLUDE_KEY, excluded, reviewed, comments, savedAt: Date.now() },
     }),
   });
   if (!res.ok) throw new Error(`Could not save (${res.status})`);
@@ -265,6 +270,13 @@ export default function DisposalLogCompare() {
   const [changeLogs, setChangeLogs] = useState({ branch: [], customer: [] });
   const [excluded, setExcluded] = useState([]);
   const [reviewed, setReviewed] = useState({});
+  /* Comment threads: key → [{ id, text, by, at }]. Kept in the same config
+     row; `commentsRef` lets an exclusion/review save carry them unchanged. */
+  const [comments, setComments] = useState({});
+  const commentsRef = useRef({});
+  /* Nothing is written until the config was actually read — a save built on
+     a failed read would erase the team's exclusions, notes and comments. */
+  const configReady = useRef(false);
   const [showExcluded, setShowExcluded] = useState(false);
   const [unreviewedOnly, setUnreviewedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -325,10 +337,14 @@ export default function DisposalLogCompare() {
       .then((cfg) => {
         setExcluded(cfg.excluded);
         setReviewed(cfg.reviewed);
+        setComments(cfg.comments);
+        commentsRef.current = cfg.comments;
+        configReady.current = true;
       })
       .catch(() => {
         setExcluded([]);
         setReviewed({});
+        setComments({});
       });
   }, []);
 
@@ -460,17 +476,69 @@ export default function DisposalLogCompare() {
   /* ── the exclusion list ── */
   const [excludeBusy, setExcludeBusy] = useState(false);
   const persistConfig = useCallback(async (nextExcluded, nextReviewed) => {
+    if (!configReady.current) {
+      setError("The comparison settings could not be read, so nothing was saved. Reload the page and try again.");
+      return;
+    }
     setExcluded(nextExcluded);
     setReviewed(nextReviewed);
     setExcludeBusy(true);
     try {
-      await saveCompareConfig({ excluded: nextExcluded, reviewed: nextReviewed });
+      await saveCompareConfig({ excluded: nextExcluded, reviewed: nextReviewed, comments: commentsRef.current });
     } catch (e) {
       setError(e?.message || "Could not save.");
     } finally {
       setExcludeBusy(false);
     }
   }, []);
+
+  /* ── comments ──
+     A comment is written onto the LATEST server copy (read → merge → save),
+     so two people commenting at once do not erase each other, and whatever
+     the other person changed meanwhile arrives with it. */
+  const changeComments = useCallback(async (key, mutate) => {
+    try {
+      const fresh = await loadCompareConfig();
+      const list = Array.isArray(fresh.comments[key]) ? fresh.comments[key] : [];
+      const nextList = mutate(list);
+      const next = { ...fresh.comments };
+      if (nextList.length) next[key] = nextList;
+      else delete next[key];
+      await saveCompareConfig({ excluded: fresh.excluded, reviewed: fresh.reviewed, comments: next });
+      configReady.current = true;
+      commentsRef.current = next;
+      setComments(next);
+      setExcluded(fresh.excluded);
+      setReviewed(fresh.reviewed);
+      return true;
+    } catch (e) {
+      setError(e?.message || "Could not save the comment.");
+      return false;
+    }
+  }, []);
+
+  /* Comment keys: a product's month, and one day line. */
+  const productCommentKey = (p) => `P|${period}|${p.key}`;
+  const dayCommentKey = (r) => `D|${r.date}|${r.codeKey}|${r.fam}`;
+
+  const addComment = useCallback(
+    (key, text, meta = {}) =>
+      changeComments(key, (list) => [
+        ...list,
+        {
+          id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+          text: String(text || "").trim(),
+          by: currentUserName(),
+          at: new Date().toISOString(),
+          ...meta,
+        },
+      ]),
+    [changeComments]
+  );
+  const deleteComment = useCallback(
+    (key, id) => changeComments(key, (list) => list.filter((c) => c.id !== id)),
+    [changeComments]
+  );
   const persistExcluded = useCallback(
     (next) => persistConfig(next, reviewed),
     [persistConfig, reviewed]
@@ -843,12 +911,14 @@ export default function DisposalLogCompare() {
   const exportExcel = async () => {
     const head = [
       "DATE", "OUR DATE", "SHIFT (days)", "DATED BY CHANGE", "BRANCH", "CUSTOMER", "REGISTER",
-      "CODE", "PRODUCT", "CATEGORY", "UNIT", "ODOO QTY", "OUR QTY", "DIFFERENCE", "STATUS",
+      "CODE", "PRODUCT", "CATEGORY", "UNIT", "ODOO QTY", "OUR QTY", "DIFFERENCE", "STATUS", "COMMENTS",
     ];
+    const commentText = (key) => commentsAsText(comments[key]);
     const body = visibleRows.map((r) => [
       r.date, r.mineDate || "", r.shiftDays || 0, r.datedByChange || 0, r.branches.join(", "), r.customers.join(", "),
       r.sources.map((k) => SOURCE_META[k].label).join(" + "), r.code, r.product, r.category,
       r.units.join("/"), num(r.odooQty), num(r.mineQty), num(r.diff), DAY_STATUS_META[r.status].label,
+      commentText(dayCommentKey(r)),
     ]);
     const summary = [
       ["Odoo disposal log ⇄ branch returns"],
@@ -871,8 +941,8 @@ export default function DisposalLogCompare() {
       ...cmp.totals.byFam.map((f) => [f.fam, f.odoo, f.mine, f.diff]),
     ];
     const products = [
-      ["CODE", "PRODUCT", "UNIT FAMILY", "DAYS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED DAYS", "DAYS WITH ISSUES"],
-      ...cmp.products.map((p) => [p.code, p.product, p.fam, p.days, p.odooQty, p.mineQty, p.diff, p.match, p.issues]),
+      ["CODE", "PRODUCT", "UNIT FAMILY", "DAYS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED DAYS", "DAYS WITH ISSUES", "COMMENTS"],
+      ...cmp.products.map((p) => [p.code, p.product, p.fam, p.days, p.odooQty, p.mineQty, p.diff, p.match, p.issues, commentText(productCommentKey(p))]),
     ];
     const branches = [
       ["BRANCH", "ROWS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED", "QTY DIFF", "ONLY ODOO", "ONLY RETURNS", "MATCH %"],
@@ -1233,6 +1303,9 @@ export default function DisposalLogCompare() {
               onTolPct={setTolPct}
               reviewed={reviewed}
               onToggleReviewed={toggleReviewedKey}
+              comments={comments}
+              onAddComment={addComment}
+              onDeleteComment={deleteComment}
               onExclude={excludeProduct}
               onOpenDays={openDays}
             />
@@ -1465,7 +1538,14 @@ export default function DisposalLogCompare() {
                                     ) : null}
                                   </td>
                                   <td className="mono">{r.code || "—"}</td>
-                                  <td className="wrap">{r.product}</td>
+                                  <td className="wrap">
+                                    {r.product}
+                                    {commentCount(comments, dayCommentKey(r)) > 0 && (
+                                      <Pill tone="teal" title="Open the line to read the comments" onClick={() => toggleRow(r.key)}>
+                                        💬 {commentCount(comments, dayCommentKey(r))}
+                                      </Pill>
+                                    )}
+                                  </td>
                                   <td className="wrap">
                                     {r.branches.map((b) => <Pill key={b} tone="teal">{b}</Pill>)}
                                     {r.customers.slice(0, 3).map((c) => <Pill key={c} tone="violet" title="Customer return">{c}</Pill>)}
@@ -1592,6 +1672,14 @@ export default function DisposalLogCompare() {
                                           </table>
                                         </div>
                                       </div>
+                                      <div style={{ marginTop: 8 }}>
+                                        <CommentThread
+                                          title={`Comments on ${r.code || r.product} — ${formatDMY(r.date)}`}
+                                          list={comments[dayCommentKey(r)]}
+                                          onAdd={(text, images) => addComment(dayCommentKey(r), text, { images, code: r.code, product: r.product })}
+                                          onDelete={(id) => deleteComment(dayCommentKey(r), id)}
+                                        />
+                                      </div>
                                     </td>
                                   </tr>
                                 )}
@@ -1651,7 +1739,8 @@ export default function DisposalLogCompare() {
                   </thead>
                   <tbody>
                     {visibleProducts.map((p) => {
-                      const hasStory = !isZero(p.diff) || p.issues > 0;
+                      const nComments = commentCount(comments, productCommentKey(p));
+                      const hasStory = !isZero(p.diff) || p.issues > 0 || nComments > 0;
                       const open = hasStory && !!storyOpen[p.key];
                       return (
                       <React.Fragment key={p.key}>
@@ -1668,7 +1757,14 @@ export default function DisposalLogCompare() {
                           )}
                         </td>
                         <td className="mono">{p.code || "—"}</td>
-                        <td className="wrap">{p.product}</td>
+                        <td className="wrap">
+                          {p.product}
+                          {nComments > 0 && (
+                            <Pill tone="teal" title="Open the story to read the comments" onClick={() => setStoryOpen((m) => ({ ...m, [p.key]: true }))}>
+                              💬 {nComments}
+                            </Pill>
+                          )}
+                        </td>
                         <td>{p.fam}</td>
                         <td className="num">{p.days}</td>
                         <td className="num">{fmt3(p.odooQty)}</td>
@@ -1695,7 +1791,14 @@ export default function DisposalLogCompare() {
                                 setBranchFilter("all");
                                 setSourceFilter("all");
                               }}
-                            />
+                            >
+                              <CommentThread
+                                title={`Comments on ${p.code || p.product} — ${monthLabel(period)}`}
+                                list={comments[productCommentKey(p)]}
+                                onAdd={(text, images) => addComment(productCommentKey(p), text, { images, code: p.code, product: p.product })}
+                                onDelete={(id) => deleteComment(productCommentKey(p), id)}
+                              />
+                            </ProductStory>
                           </td>
                         </tr>
                       )}

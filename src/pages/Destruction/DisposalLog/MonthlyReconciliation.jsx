@@ -15,6 +15,7 @@
 import React, { useMemo, useState } from "react";
 import { DAY_STATUS, DAY_STATUS_META, NO_BRANCH_LABEL, SOURCE_META, fmt3, formatDMY, monthLabel, num } from "./disposalLogOptions";
 import { EmptyState, Pill, SearchInput, Segmented, Toggle, downloadSheets, useCopy, useLocalPref } from "./disposalLogKit";
+import CommentThread, { commentCount } from "./CommentThread";
 
 const STATUS_TONE = {
   [DAY_STATUS.MATCH]: "green",
@@ -78,6 +79,9 @@ export default function MonthlyReconciliation({
   onToggleReviewed,
   onExclude,
   onOpenDays,
+  comments = {},
+  onAddComment,
+  onDeleteComment,
 }) {
   const [by, setBy] = useLocalPref("disposalLog.cmp.monthBy", "product");
   const [diffOnly, setDiffOnly] = useLocalPref("disposalLog.cmp.monthDiffOnly", false);
@@ -222,6 +226,27 @@ export default function MonthlyReconciliation({
       >
         {reviewed[reviewKey(r)] ? "✓" : "☐"}
       </button>
+    ) : null;
+
+  /* Comments share the review key: one month line, one thread. */
+  const commentBadge = (r) => {
+    const n = commentCount(comments, reviewKey(r));
+    return n > 0 ? (
+      <Pill tone="teal" title="Open the line to read the comments" onClick={() => setExpanded((m) => ({ ...m, [r.key]: true }))}>
+        💬 {n}
+      </Pill>
+    ) : null;
+  };
+  const thread = (r, label) =>
+    onAddComment ? (
+      <div style={{ marginTop: 8 }}>
+        <CommentThread
+          title={`Comments on ${label}`}
+          list={comments[reviewKey(r)]}
+          onAdd={(text, images) => onAddComment(reviewKey(r), text, { images, code: r.code || "", product: r.product || r.branchLabel || "" })}
+          onDelete={(id) => onDeleteComment(reviewKey(r), id)}
+        />
+      </div>
     ) : null;
 
   const statusCell = (r) => (
@@ -374,7 +399,10 @@ export default function MonthlyReconciliation({
                   <React.Fragment key={b.key}>
                     <tr className={open ? "open" : ""}>
                       <td><button className="dlx-rowBtn" onClick={() => toggle(b.key)} title="Show this branch's products">{open ? "▾" : "▸"}</button></td>
-                      <td><Pill tone="teal">{b.branchLabel}</Pill></td>
+                      <td>
+                        <Pill tone="teal">{b.branchLabel}</Pill>
+                        {commentBadge(b)}
+                      </td>
                       <td className="num">{b.products}</td>
                       <td className="num">{b.match}</td>
                       <td className="num">{b.qtyDiff || ""}</td>
@@ -423,6 +451,7 @@ export default function MonthlyReconciliation({
                               ))}
                             </tbody>
                           </table>
+                          {thread(b, `${b.branchLabel} — ${monthLabel(period)}`)}
                         </td>
                       </tr>
                     )}
@@ -479,7 +508,10 @@ export default function MonthlyReconciliation({
                         {r.branches.length > 3 && <Pill tone="slate" title={r.branches.join(", ")}>+{r.branches.length - 3}</Pill>}
                       </td>
                       <td className="mono">{r.code || "—"}</td>
-                      <td className="wrap">{r.product}</td>
+                      <td className="wrap">
+                        {r.product}
+                        {commentBadge(r)}
+                      </td>
                       <td>
                         {r.units.join(" / ") || r.fam}
                         {r.unitMismatch && <Pill tone="violet" title="Odoo and our registers use different unit names">≠ unit</Pill>}
@@ -545,6 +577,7 @@ export default function MonthlyReconciliation({
                               </table>
                             </div>
                           </div>
+                          {thread(r, `${r.code || r.product}${by === "branchProduct" ? ` @ ${r.branchLabel}` : ""} — ${monthLabel(period)}`)}
                         </td>
                       </tr>
                     )}
