@@ -694,11 +694,27 @@ export default function DisposalLogCompare() {
       .sort((a, b) => String(a.fam).localeCompare(String(b.fam)));
   }, [visibleRows]);
 
+  /* "No difference" = every one of its days matched. Such a line has nothing
+     to look at, and on a 300-product month it is most of the table. */
+  const [hideClean, setHideClean] = useLocalPref("disposalLog.cmp.hideClean", false);
+  const cleanProducts = useMemo(() => cmp.products.filter((p) => p.issues === 0).length, [cmp.products]);
+  const cleanBranches = useMemo(
+    () => cmp.branches.filter((b) => b.qtyDiff + b.odooOnly + b.returnsOnly === 0).length,
+    [cmp.branches]
+  );
+
   const visibleProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return cmp.products;
-    return cmp.products.filter((p) => `${p.code} ${p.product}`.toLowerCase().includes(q));
-  }, [cmp.products, query]);
+    return cmp.products.filter((p) => {
+      if (hideClean && p.issues === 0) return false;
+      return !q || `${p.code} ${p.product}`.toLowerCase().includes(q);
+    });
+  }, [cmp.products, query, hideClean]);
+
+  const visibleBranches = useMemo(
+    () => (hideClean ? cmp.branches.filter((b) => b.qtyDiff + b.odooOnly + b.returnsOnly > 0) : cmp.branches),
+    [cmp.branches, hideClean]
+  );
 
   const toggleRow = (key) => setExpanded((m) => ({ ...m, [key]: !m[key] }));
   const toggleAction = (a) =>
@@ -1600,7 +1616,15 @@ export default function DisposalLogCompare() {
             <>
               <div className="dlx-tools">
                 <SearchInput value={query} onChange={setQuery} placeholder="Product code or name…" />
-                <span className="dlx-muted">Sorted by the biggest gap over the whole month.</span>
+                <Toggle
+                  checked={hideClean}
+                  onChange={setHideClean}
+                  label={`Hide products with no difference — إخفاء المطابق (${cleanProducts})`}
+                  title="Hide products whose every day matched on both sides"
+                />
+                <span className="dlx-muted">
+                  {visibleProducts.length} of {cmp.products.length} shown · sorted by the biggest gap over the whole month.
+                </span>
               </div>
               <div className="dlx-tableWrap">
                 <table className="dlx-table">
@@ -1660,6 +1684,16 @@ export default function DisposalLogCompare() {
           )}
 
           {view === "branches" && (
+            <>
+            <div className="dlx-tools">
+              <Toggle
+                checked={hideClean}
+                onChange={setHideClean}
+                label={`Hide branches with no difference — إخفاء المطابق (${cleanBranches})`}
+                title="Hide branches whose every line matched on both sides"
+              />
+              <span className="dlx-muted">{visibleBranches.length} of {cmp.branches.length} shown</span>
+            </div>
             <div className="dlx-tableWrap">
               <table className="dlx-table">
                 <thead>
@@ -1670,7 +1704,7 @@ export default function DisposalLogCompare() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cmp.branches.map((b) => (
+                  {visibleBranches.map((b) => (
                     <tr key={b.branch}>
                       <td><Pill tone="teal">{b.branch}</Pill></td>
                       <td className="num">{b.rows}</td>
@@ -1687,6 +1721,7 @@ export default function DisposalLogCompare() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </section>
 
