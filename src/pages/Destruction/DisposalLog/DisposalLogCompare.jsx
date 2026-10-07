@@ -694,26 +694,25 @@ export default function DisposalLogCompare() {
       .sort((a, b) => String(a.fam).localeCompare(String(b.fam)));
   }, [visibleRows]);
 
-  /* "No difference" = every one of its days matched. Such a line has nothing
-     to look at, and on a 300-product month it is most of the table. */
+  /* "No difference" = the DIFFERENCE column is zero (within the quantity
+     tolerance), however many days disagreed on the way there — how the days
+     pair up is the user's call through the day window. */
   const [hideClean, setHideClean] = useLocalPref("disposalLog.cmp.hideClean", false);
-  const cleanProducts = useMemo(() => cmp.products.filter((p) => p.issues === 0).length, [cmp.products]);
-  const cleanBranches = useMemo(
-    () => cmp.branches.filter((b) => b.qtyDiff + b.odooOnly + b.returnsOnly === 0).length,
-    [cmp.branches]
-  );
+  const isZero = useCallback((d) => Math.abs(num(d)) <= Math.max(cmp.tolerance, 0.0005), [cmp.tolerance]);
+  const cleanProducts = useMemo(() => cmp.products.filter((p) => isZero(p.diff)).length, [cmp.products, isZero]);
+  const cleanBranches = useMemo(() => cmp.branches.filter((b) => isZero(b.diff)).length, [cmp.branches, isZero]);
 
   const visibleProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return cmp.products.filter((p) => {
-      if (hideClean && p.issues === 0) return false;
+      if (hideClean && isZero(p.diff)) return false;
       return !q || `${p.code} ${p.product}`.toLowerCase().includes(q);
     });
-  }, [cmp.products, query, hideClean]);
+  }, [cmp.products, query, hideClean, isZero]);
 
   const visibleBranches = useMemo(
-    () => (hideClean ? cmp.branches.filter((b) => b.qtyDiff + b.odooOnly + b.returnsOnly > 0) : cmp.branches),
-    [cmp.branches, hideClean]
+    () => (hideClean ? cmp.branches.filter((b) => !isZero(b.diff)) : cmp.branches),
+    [cmp.branches, hideClean, isZero]
   );
 
   const toggleRow = (key) => setExpanded((m) => ({ ...m, [key]: !m[key] }));
@@ -1620,7 +1619,7 @@ export default function DisposalLogCompare() {
                   checked={hideClean}
                   onChange={setHideClean}
                   label={`Hide products with no difference — إخفاء المطابق (${cleanProducts})`}
-                  title="Hide products whose every day matched on both sides"
+                  title="Hide products whose month DIFFERENCE is 0, whatever the days show"
                 />
                 <span className="dlx-muted">
                   {visibleProducts.length} of {cmp.products.length} shown · sorted by the biggest gap over the whole month.
@@ -1690,7 +1689,7 @@ export default function DisposalLogCompare() {
                 checked={hideClean}
                 onChange={setHideClean}
                 label={`Hide branches with no difference — إخفاء المطابق (${cleanBranches})`}
-                title="Hide branches whose every line matched on both sides"
+                title="Hide branches whose month DIFFERENCE is 0, whatever the days show"
               />
               <span className="dlx-muted">{visibleBranches.length} of {cmp.branches.length} shown</span>
             </div>
