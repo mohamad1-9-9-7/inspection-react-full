@@ -1606,9 +1606,9 @@ export default function App() {
           <Route
             path="import"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="returns" item="disposalLog.import">
                 <DisposalLogImport />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           {/* day × product reconciliation against our own registers.
@@ -1618,9 +1618,9 @@ export default function App() {
           <Route
             path="compare"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="returns" item="disposalLog.compare">
                 <DisposalLogCompare />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
         </Route>

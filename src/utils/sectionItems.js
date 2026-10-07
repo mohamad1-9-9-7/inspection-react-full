@@ -47,9 +47,9 @@ export const SECTION_ITEMS = {
         { id: "destruction.browse",  icon: "🗑️", label: "Browse" },
         { id: "destruction.create",  icon: "📝", label: "Create" },
       ]},
-      { id: "disposalLog",     icon: "⚖️", label: "Odoo Disposal Log", subItems: [
-        { id: "disposalLog.compare", icon: "⚖️", label: "Comparison" },
-        { id: "disposalLog.import",  icon: "📥", label: "Import" },
+      { id: "disposalLog",     icon: "⚖️", label: "Disposal Reconciliation (Odoo)", subItems: [
+        { id: "disposalLog.compare", icon: "⚖️", label: "Disposal vs Returns comparison" },
+        { id: "disposalLog.import",  icon: "📥", label: "Import Odoo disposal file" },
       ]},
     ],
   },
