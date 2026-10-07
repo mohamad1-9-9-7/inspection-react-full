@@ -286,7 +286,10 @@ export default function DisposalLogCompare() {
   /* The whole month first: does it add up per product / per branch? The
      day-by-day table is where a difference found there gets explained. */
   const [view, setView] = useLocalPref("disposalLog.cmp.view2", "month"); // month | days | products | branches | findings
-  const [scope, setScope] = useState("day"); // day | all
+  const [scope, setScope] = useState("day"); // day | week | all
+  const [dayDiffOnly, setDayDiffOnly] = useLocalPref("disposalLog.cmp.dayDiffOnly", false);
+  const [minGap, setMinGap] = useLocalPref("disposalLog.cmp.minGap", 0);
+  const [daySort, setDaySort] = useLocalPref("disposalLog.cmp.daySort", "status");
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -429,7 +432,16 @@ export default function DisposalLogCompare() {
         document.querySelector(".dlx-search input")?.focus();
         return;
       }
-      if (typing || view !== "days" || scope !== "day") return;
+      if (typing || view !== "days" || scope === "all") return;
+      /* "n" jumps to the next day that still has a difference. */
+      if (e.key === "n" || e.key === "N") {
+        const next = cmp.days.find((d) => d.issues > 0 && d.date > selectedDate) || cmp.days.find((d) => d.issues > 0);
+        if (next) {
+          e.preventDefault();
+          setSelectedDate(next.date);
+        }
+        return;
+      }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       const list = cmp.days.map((d) => d.date);
       const i = list.indexOf(selectedDate);
@@ -537,32 +549,135 @@ export default function DisposalLogCompare() {
     }
   };
 
-  const visibleRows = useMemo(() => {
+  /* The week (Mon–Sun) around the picked day, for the "This week" scope. */
+  const weekRange = useMemo(() => {
+    if (!selectedDate) return null;
+    const d = new Date(`${selectedDate}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    const from = d.toISOString().slice(0, 10);
+    d.setUTCDate(d.getUTCDate() + 6);
+    return { from, to: d.toISOString().slice(0, 10) };
+  }, [selectedDate]);
+
+  /* Everything the scope (day / week / month) and the side filters let
+     through — before the status filter, so the status chips can count it. */
+  const scopedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return cmp.rows
+    return cmp.rows.filter((r) => {
+      if (scope === "day" && selectedDate && r.date !== selectedDate) return false;
+      if (scope === "week" && weekRange && (r.date < weekRange.from || r.date > weekRange.to)) return false;
+      if (branchFilter !== "all" && !r.branches.includes(branchFilter)) return false;
+      if (sourceFilter !== "all" && !r.sources.includes(sourceFilter)) return false;
+      if (!q) return true;
+      return `${r.code} ${r.product} ${r.branches.join(" ")} ${r.customers.join(" ")} ${r.category}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [cmp.rows, scope, selectedDate, weekRange, branchFilter, sourceFilter, query]);
+
+  const scopedCounts = useMemo(() => {
+    const c = { all: scopedRows.length, unit: 0, shifted: 0 };
+    for (const s of Object.values(DAY_STATUS)) c[s] = 0;
+    for (const r of scopedRows) {
+      c[r.status] += 1;
+      if (r.unitMismatch) c.unit += 1;
+      if (r.shiftDays) c.shifted += 1;
+    }
+    return c;
+  }, [scopedRows]);
+
+  const visibleRows = useMemo(() => {
+    const order = {
+      [DAY_STATUS.ODOO_ONLY]: 0,
+      [DAY_STATUS.QTY_DIFF]: 1,
+      [DAY_STATUS.RETURNS_ONLY]: 2,
+      [DAY_STATUS.MATCH]: 3,
+    };
+    const byStatus = (a, b) => order[a.status] - order[b.status] || b.absDiff - a.absDiff;
+    const sorters = {
+      status: (a, b) => a.date.localeCompare(b.date) || byStatus(a, b),
+      gap: (a, b) => b.absDiff - a.absDiff || a.date.localeCompare(b.date),
+      code: (a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }) || a.date.localeCompare(b.date),
+      product: (a, b) => String(a.product).localeCompare(String(b.product)) || a.date.localeCompare(b.date),
+      branch: (a, b) => String(a.branches[0] || "~").localeCompare(String(b.branches[0] || "~")) || a.date.localeCompare(b.date) || byStatus(a, b),
+    };
+    return scopedRows
       .filter((r) => {
-        if (scope === "day" && selectedDate && r.date !== selectedDate) return false;
-        if (statusFilter !== "all" && r.status !== statusFilter) return false;
-        if (branchFilter !== "all" && !r.branches.includes(branchFilter)) return false;
-        if (sourceFilter !== "all" && !r.sources.includes(sourceFilter)) return false;
+        if (statusFilter === "unit") {
+          if (!r.unitMismatch) return false;
+        } else if (statusFilter === "shifted") {
+          if (!r.shiftDays) return false;
+        } else if (statusFilter !== "all" && r.status !== statusFilter) return false;
+        if (dayDiffOnly && r.status === DAY_STATUS.MATCH) return false;
+        if (minGap > 0 && r.status !== DAY_STATUS.MATCH && r.absDiff < minGap) return false;
         if (unreviewedOnly && (r.status === DAY_STATUS.MATCH || reviewed[`${r.date}|${r.codeKey}|${r.fam}`])) return false;
-        if (!q) return true;
-        return `${r.code} ${r.product} ${r.branches.join(" ")} ${r.customers.join(" ")} ${r.category}`
-          .toLowerCase()
-          .includes(q);
+        return true;
       })
-      .sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        const order = {
-          [DAY_STATUS.ODOO_ONLY]: 0,
-          [DAY_STATUS.QTY_DIFF]: 1,
-          [DAY_STATUS.RETURNS_ONLY]: 2,
-          [DAY_STATUS.MATCH]: 3,
-        };
-        if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
-        return b.absDiff - a.absDiff;
-      });
-  }, [cmp.rows, scope, selectedDate, statusFilter, branchFilter, sourceFilter, unreviewedOnly, reviewed, query]);
+      .sort(sorters[daySort] || sorters.status);
+  }, [scopedRows, statusFilter, dayDiffOnly, minGap, unreviewedOnly, reviewed, daySort]);
+
+  /* For a line found on one side only: the nearest line of the same product
+     found on the OTHER side only, outside the day window. Usually the same
+     event dated further apart than the window allows — one click opens it. */
+  const counterpartOf = useMemo(() => {
+    const groupOf = (r) => String(r.key).split("||").slice(0, 3).join("||");
+    const idx = new Map();
+    for (const r of cmp.rows) {
+      if (r.status !== DAY_STATUS.ODOO_ONLY && r.status !== DAY_STATUS.RETURNS_ONLY) continue;
+      const k = `${groupOf(r)}##${r.status}`;
+      if (!idx.has(k)) idx.set(k, []);
+      idx.get(k).push(r);
+    }
+    const dayGap = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+    return (r) => {
+      if (r.status !== DAY_STATUS.ODOO_ONLY && r.status !== DAY_STATUS.RETURNS_ONLY) return null;
+      const other = r.status === DAY_STATUS.ODOO_ONLY ? DAY_STATUS.RETURNS_ONLY : DAY_STATUS.ODOO_ONLY;
+      const list = idx.get(`${groupOf(r)}##${other}`);
+      if (!list?.length) return null;
+      let best = null;
+      for (const c of list) {
+        const g = dayGap(r.date, c.date);
+        if (!best || Math.abs(g) < Math.abs(best.gap)) best = { row: c, gap: g };
+      }
+      return best;
+    };
+  }, [cmp.rows]);
+
+  /* Days that still hold an open difference, for "next issue day". */
+  const issueDays = useMemo(() => cmp.days.filter((d) => d.issues > 0).map((d) => d.date), [cmp.days]);
+  const stepDay = (dir) => {
+    const list = cmp.days.map((d) => d.date);
+    const i = list.indexOf(selectedDate);
+    const next = list[Math.max(0, Math.min(list.length - 1, (i < 0 ? 0 : i) + dir))];
+    if (next) setSelectedDate(next);
+  };
+  const nextIssueDay = () => {
+    if (!issueDays.length) return;
+    const next = issueDays.find((d) => d > selectedDate) || issueDays[0];
+    setSelectedDate(next);
+    if (scope === "all") setScope("day");
+  };
+
+  /* One reason for every open difference on screen — the usual end of a
+     review: "all of these are the Warqa kitchen transfer, known". */
+  const reviewAllVisible = () => {
+    const open = visibleRows.filter((r) => r.status !== DAY_STATUS.MATCH && !reviewed[reviewKeyOf(r)]);
+    if (!open.length) return;
+    const note = window.prompt(
+      `Mark ${open.length} open difference(s) on screen as reviewed.\n\nOne reason for all of them (optional):`,
+      ""
+    );
+    if (note === null) return;
+    const stamp = { note: String(note || "").trim(), by: currentUserName(), at: new Date().toISOString() };
+    const next = { ...reviewed };
+    for (const r of open) next[reviewKeyOf(r)] = stamp;
+    persistConfig(excluded, next);
+  };
+
+  const allExpanded = visibleRows.length > 0 && visibleRows.every((r) => expanded[r.key]);
+  const toggleAllRows = () =>
+    setExpanded(allExpanded ? {} : Object.fromEntries(visibleRows.map((r) => [r.key, true])));
 
   /* Totals for what is on screen, split by unit family. */
   const visibleFamTotals = useMemo(() => {
@@ -1103,15 +1218,30 @@ export default function DisposalLogCompare() {
                   onChange={setScope}
                   options={[
                     { value: "day", label: "One day" },
+                    { value: "week", label: "This week" },
                     { value: "all", label: `All ${cmp.rows.length} lines` },
                   ]}
                 />
-                <SearchInput value={query} onChange={setQuery} placeholder="Product code or name…" />
-                <select className="dlx-iconBtn" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="all">All statuses</option>
-                  {Object.entries(DAY_STATUS_META).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
-                  ))}
+                <SearchInput value={query} onChange={setQuery} placeholder="Product code or name…" hint="press /" />
+                <select className="dlx-iconBtn" value={daySort} onChange={(e) => setDaySort(e.target.value)} title="Sort the table">
+                  <option value="status">↕ Date, then worst first</option>
+                  <option value="gap">↕ Biggest gap first</option>
+                  <option value="code">↕ Product code</option>
+                  <option value="product">↕ Product name</option>
+                  <option value="branch">↕ Branch</option>
+                </select>
+                <select
+                  className="dlx-iconBtn"
+                  value={minGap}
+                  onChange={(e) => setMinGap(Number(e.target.value))}
+                  title="Hide differences smaller than this (matched lines are not affected)"
+                >
+                  <option value={0}>Gap: any size</option>
+                  <option value={0.5}>Gap ≥ 0.5</option>
+                  <option value={1}>Gap ≥ 1</option>
+                  <option value={5}>Gap ≥ 5</option>
+                  <option value={10}>Gap ≥ 10</option>
+                  <option value={25}>Gap ≥ 25</option>
                 </select>
                 <select className="dlx-iconBtn" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
                   <option value="all">All branches</option>
@@ -1122,22 +1252,52 @@ export default function DisposalLogCompare() {
                   {SOURCES.map((k) => <option key={k} value={k}>{SOURCE_META[k].label}</option>)}
                 </select>
                 <Toggle
+                  checked={dayDiffOnly}
+                  onChange={setDayDiffOnly}
+                  label="Differences only — المختلف فقط"
+                  title="Hide matched lines (reviewed differences stay visible)"
+                />
+                <Toggle
                   checked={unreviewedOnly}
                   onChange={setUnreviewedOnly}
                   label="Open issues only"
                   title="Hide matched lines and anything already reviewed"
                 />
-                {(query || statusFilter !== "all" || branchFilter !== "all" || sourceFilter !== "all" || unreviewedOnly) && (
+                {(query || statusFilter !== "all" || branchFilter !== "all" || sourceFilter !== "all" || unreviewedOnly || dayDiffOnly || minGap > 0) && (
                   <button
                     className="dlx-btn dlx-soft"
                     onClick={() => {
                       setQuery(""); setStatusFilter("all"); setBranchFilter("all");
-                      setSourceFilter("all"); setUnreviewedOnly(false);
+                      setSourceFilter("all"); setUnreviewedOnly(false); setDayDiffOnly(false); setMinGap(0);
                     }}
                   >
                     ✕ Clear filters
                   </button>
                 )}
+              </div>
+
+              {/* Status chips: count what the scope holds, click to filter. */}
+              <div className="dlx-tools">
+                <div className="dlx-legend" style={{ margin: 0 }}>
+                  {[
+                    { k: "all", label: "All", n: scopedCounts.all, tone: "slate" },
+                    { k: DAY_STATUS.MATCH, label: "Matched", n: scopedCounts[DAY_STATUS.MATCH], tone: "green" },
+                    { k: DAY_STATUS.QTY_DIFF, label: "Quantity differs", n: scopedCounts[DAY_STATUS.QTY_DIFF], tone: "amber" },
+                    { k: DAY_STATUS.ODOO_ONLY, label: "Only in Odoo", n: scopedCounts[DAY_STATUS.ODOO_ONLY], tone: "red" },
+                    { k: DAY_STATUS.RETURNS_ONLY, label: "Only in ours", n: scopedCounts[DAY_STATUS.RETURNS_ONLY], tone: "blue" },
+                    { k: "shifted", label: "Paired across days", n: scopedCounts.shifted, tone: "violet" },
+                    { k: "unit", label: "≠ unit", n: scopedCounts.unit, tone: "violet" },
+                  ].map((c) => (
+                    <Pill
+                      key={c.k}
+                      tone={statusFilter === c.k ? c.tone : "slate"}
+                      onClick={() => setStatusFilter(statusFilter === c.k && c.k !== "all" ? "all" : c.k)}
+                      title={`Show ${c.label.toLowerCase()}`}
+                    >
+                      {statusFilter === c.k ? "● " : ""}{c.label} · {c.n}
+                    </Pill>
+                  ))}
+                </div>
               </div>
 
               <DailyChart
@@ -1175,11 +1335,46 @@ export default function DisposalLogCompare() {
 
                 <div className="dlx-panel">
                   <div className="dlx-panelHead">
+                    {scope !== "all" && (
+                      <span style={{ display: "inline-flex", gap: 4 }}>
+                        <button className="dlx-iconBtn" onClick={() => stepDay(-1)} title="Previous day (↑)">◀</button>
+                        <button className="dlx-iconBtn" onClick={() => stepDay(1)} title="Next day (↓)">▶</button>
+                      </span>
+                    )}
                     <h3>
                       {scope === "day"
                         ? selectedDate ? `${formatDMY(selectedDate)} — ${visibleRows.length} product line(s)` : "Pick a day"
-                        : `${monthLabel(period)} — ${visibleRows.length} product line(s)`}
+                        : scope === "week" && weekRange
+                          ? `Week ${formatDMY(weekRange.from)} → ${formatDMY(weekRange.to)} — ${visibleRows.length} product line(s)`
+                          : `${monthLabel(period)} — ${visibleRows.length} product line(s)`}
                     </h3>
+                    {scope === "day" && dayIndex.get(selectedDate) && (
+                      <Pill
+                        tone={dayIndex.get(selectedDate).issues ? "amber" : "green"}
+                        title="Share of this day's product lines that agree on both sides"
+                      >
+                        {Math.round((dayIndex.get(selectedDate).match / Math.max(1, dayIndex.get(selectedDate).rows)) * 100)}% matched
+                      </Pill>
+                    )}
+                    <button
+                      className="dlx-btn dlx-soft"
+                      onClick={nextIssueDay}
+                      disabled={!issueDays.length}
+                      title={`Jump to the next day that still has a difference (n) — ${issueDays.length} day(s) with issues`}
+                    >
+                      ⏭ Next issue day
+                    </button>
+                    <button className="dlx-btn dlx-soft" onClick={toggleAllRows} disabled={!visibleRows.length}>
+                      {allExpanded ? "▴ Collapse all" : "▾ Expand all"}
+                    </button>
+                    <button
+                      className="dlx-btn dlx-soft"
+                      onClick={reviewAllVisible}
+                      disabled={!visibleRows.some((r) => r.status !== DAY_STATUS.MATCH && !reviewed[reviewKeyOf(r)])}
+                      title="Mark every open difference on screen as reviewed, with one reason"
+                    >
+                      ☑ Review all on screen
+                    </button>
                     <div className="dlx-sp">
                       {scope === "day" && dayIndex.get(selectedDate)?.byFam.map((f) => (
                         <Pill key={f.fam} tone={Math.abs(f.diff) < 0.005 ? "green" : "amber"}>
@@ -1267,6 +1462,20 @@ export default function DisposalLogCompare() {
                                   <td className={`num ${r.diff > 0 ? "pos" : r.diff < 0 ? "neg" : ""}`}>{signed(r.diff)}</td>
                                   <td>
                                     <Pill tone={STATUS_TONE[r.status]}>{meta.icon} {meta.label}</Pill>
+                                    {(() => {
+                                      const near = counterpartOf(r);
+                                      if (!near || Math.abs(near.gap) > 10) return null;
+                                      const side = near.row.status === DAY_STATUS.ODOO_ONLY ? "Odoo" : "ours";
+                                      return (
+                                        <Pill
+                                          tone="violet"
+                                          title={`The same product is ${side === "Odoo" ? "in Odoo" : "in our registers"} on ${formatDMY(near.row.date)} with nothing on the other side — probably the same event, dated ${Math.abs(near.gap)} day(s) apart. Click to open that day.`}
+                                          onClick={() => { setSelectedDate(near.row.date); setScope("day"); }}
+                                        >
+                                          ↔ {side} {formatDMY(near.row.date).slice(0, 5)} ({near.gap > 0 ? "+" : ""}{near.gap}d) {fmt3(side === "Odoo" ? near.row.odooQty : near.row.mineQty)}
+                                        </Pill>
+                                      );
+                                    })()}
                                     {reviewed[reviewKeyOf(r)] && (
                                       <Pill tone="green" title={reviewed[reviewKeyOf(r)].note || "Reviewed"}>
                                         ✓ reviewed
