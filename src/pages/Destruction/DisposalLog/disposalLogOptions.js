@@ -1077,3 +1077,227 @@ export function buildDailyComparison(odooRows, mineRows, opts = {}) {
 
   return { rows, days, branches, products, totals, splitByBranch, dayWindow, tolerance, unitMode };
 }
+
+
+/* ============================================================
+   Whole-month reconciliation
+   ============================================================
+   The first question every month is not "which day" but "does the month
+   add up": for each product (or each branch), everything Odoo destroyed in
+   the month against everything our registers destroyed in the same month,
+   whatever day either side wrote it on. Day lags, late action changes and a
+   voucher posted on the 3rd for a return written on the 1st all vanish here,
+   so what is left is a real difference — and only then is the day-by-day
+   table worth opening.
+
+   Three shapes, all from one pass:
+     • product          — one line per product (per unit family unless merged)
+     • branch × product — the same, split per branch
+     • branch           — rolled up from branch × product, so its status says
+                          how many of the branch's products reconcile; adding
+                          kilos of one product to plates of another would give
+                          a figure that hides every gap.
+   ============================================================ */
+export const MONTH_BY = ["product", "branch", "branchProduct"];
+
+export const NO_BRANCH_LABEL = "No branch (customer returns)";
+
+/** Within tolerance: absolute, or a share of the larger side, whichever is wider. */
+function withinTolerance(odooQty, mineQty, tolerance, tolPct) {
+  const diff = Math.abs(mineQty - odooQty);
+  const pctAllow = tolPct > 0 ? (Math.max(Math.abs(odooQty), Math.abs(mineQty)) * tolPct) / 100 : 0;
+  return diff <= Math.max(tolerance, pctAllow);
+}
+
+function statusOf(hasOdoo, hasMine, ok) {
+  if (hasOdoo && !hasMine) return DAY_STATUS.ODOO_ONLY;
+  if (!hasOdoo && hasMine) return DAY_STATUS.RETURNS_ONLY;
+  return ok ? DAY_STATUS.MATCH : DAY_STATUS.QTY_DIFF;
+}
+
+const SET_FIELDS = ["fams", "units", "odooUnits", "mineUnits", "sources", "customers", "odooDays", "mineDays"];
+
+function blankAgg(extra) {
+  const g = { code: "", product: "", category: "", odooQty: 0, mineQty: 0, odooLines: 0, mineLines: 0, ...extra };
+  for (const s of SET_FIELDS) g[s] = new Set();
+  return g;
+}
+
+export function buildMonthlyComparison(odooRows, mineRows, opts = {}) {
+  const tolerance = Number.isFinite(Number(opts.tolerance)) ? Number(opts.tolerance) : 0.005;
+  const tolPct = Math.max(0, Number(opts.tolPct) || 0);
+  const unitMode = opts.unitMode === "merge" ? "merge" : "family";
+
+  const skip = opts.exclude instanceof Set ? opts.exclude : excludeSet(opts.exclude);
+  const keep = (r) => !skip.size || !skip.has(productCodeKey(r.code, r.product) || normKey(r.product));
+
+  /* branch × product is the atom; the other two shapes are read from it. */
+  const atoms = new Map();
+  const add = (e, side) => {
+    const fam = unitFamily(e.uom);
+    const codeKey = productCodeKey(e.code, e.product) || normKey(e.product) || "?";
+    const famKey = unitMode === "merge" ? "*" : fam;
+    const bKey = branchKeyOf(e.branch) || "";
+    const key = `${bKey}||${codeKey}||${famKey}`;
+    let a = atoms.get(key);
+    if (!a) {
+      a = blankAgg({ key, bKey, codeKey, famKey, branch: "" });
+      atoms.set(key, a);
+    }
+    const q = num(e.qty);
+    const u = normalizeUom(e.uom);
+    const d = String(e.date || "").slice(0, 10);
+    if (side === "odoo") {
+      a.odooQty += q; a.odooLines += 1; a.odooUnits.add(u);
+      if (d) a.odooDays.add(d);
+      if (e.branch) a.branch = e.branch; // Odoo's resolved name reads best
+    } else {
+      a.mineQty += q; a.mineLines += 1; a.mineUnits.add(u);
+      if (d) a.mineDays.add(d);
+      if (!a.branch && e.branch) a.branch = e.branch;
+      if (e.source) a.sources.add(e.source);
+      if (e.customer) a.customers.add(e.customer);
+    }
+    a.fams.add(fam);
+    a.units.add(u);
+    if (!a.code && e.code) a.code = e.code;
+    if (!a.product && e.product) a.product = e.product;
+    if (!a.category && e.category) a.category = e.category;
+  };
+  safeArr(odooRows).filter(keep).forEach((e) => add(e, "odoo"));
+  safeArr(mineRows).filter(keep).forEach((e) => add(e, "mine"));
+
+  const finish = (g) => {
+    const diff = g.mineQty - g.odooQty;
+    const fams = [...g.fams].sort();
+    const oU = [...g.odooUnits].sort().join("/");
+    const mU = [...g.mineUnits].sort().join("/");
+    return {
+      ...g,
+      fam: fams.join(" + ") || "—",
+      fams,
+      units: [...g.units].sort(),
+      unitMismatch: !!oU && !!mU && oU !== mU,
+      sources: SOURCES.filter((x) => g.sources.has(x)),
+      customers: [...g.customers].sort(),
+      odooDays: [...g.odooDays].sort(),
+      mineDays: [...g.mineDays].sort(),
+      diff,
+      absDiff: Math.abs(diff),
+      diffPct: g.odooQty ? (diff / g.odooQty) * 100 : null,
+      status: statusOf(g.odooLines > 0, g.mineLines > 0, withinTolerance(g.odooQty, g.mineQty, tolerance, tolPct)),
+    };
+  };
+
+  const branchProducts = [...atoms.values()].map((a) => ({
+    ...finish(a),
+    branchLabel: a.branch || NO_BRANCH_LABEL,
+    branches: [a.branch || NO_BRANCH_LABEL],
+  }));
+
+  /* ── per product, whatever the branch ── */
+  const pMap = new Map();
+  for (const a of atoms.values()) {
+    const k = `${a.codeKey}||${a.famKey}`;
+    let g = pMap.get(k);
+    if (!g) {
+      g = blankAgg({ key: k, codeKey: a.codeKey, famKey: a.famKey, branchSet: new Set() });
+      pMap.set(k, g);
+    }
+    g.odooQty += a.odooQty;
+    g.mineQty += a.mineQty;
+    g.odooLines += a.odooLines;
+    g.mineLines += a.mineLines;
+    for (const s of SET_FIELDS) a[s].forEach((v) => g[s].add(v));
+    g.branchSet.add(a.branch || NO_BRANCH_LABEL);
+    if (!g.code && a.code) g.code = a.code;
+    if (!g.product && a.product) g.product = a.product;
+    if (!g.category && a.category) g.category = a.category;
+  }
+  const products = [...pMap.values()].map((g) => {
+    const { branchSet, ...rest } = g;
+    const row = finish(rest);
+    row.branches = [...branchSet].sort();
+    row.children = branchProducts
+      .filter((b) => b.codeKey === g.codeKey && b.famKey === g.famKey)
+      .sort((x, y) => y.absDiff - x.absDiff);
+    /* The month adds up while the branches disagree: one site's surplus
+       hides another's shortfall. Worth flagging on its own. */
+    row.hiddenSplit = row.status === DAY_STATUS.MATCH && row.children.some((c) => c.status !== DAY_STATUS.MATCH);
+    return row;
+  });
+
+  /* ── per branch, rolled up from its products ── */
+  const bMap = new Map();
+  for (const r of branchProducts) {
+    let g = bMap.get(r.bKey);
+    if (!g) {
+      g = {
+        key: r.bKey || "—", bKey: r.bKey, branchLabel: r.branchLabel, children: [],
+        products: 0, match: 0, qtyDiff: 0, odooOnly: 0, returnsOnly: 0,
+        odooLines: 0, mineLines: 0, famQty: new Map(),
+      };
+      bMap.set(r.bKey, g);
+    }
+    g.children.push(r);
+    g.products += 1;
+    if (r.status === DAY_STATUS.MATCH) g.match += 1;
+    else if (r.status === DAY_STATUS.QTY_DIFF) g.qtyDiff += 1;
+    else if (r.status === DAY_STATUS.ODOO_ONLY) g.odooOnly += 1;
+    else g.returnsOnly += 1;
+    g.odooLines += r.odooLines;
+    g.mineLines += r.mineLines;
+    const f = g.famQty.get(r.fam) || { fam: r.fam, odoo: 0, mine: 0 };
+    f.odoo += r.odooQty;
+    f.mine += r.mineQty;
+    g.famQty.set(r.fam, f);
+  }
+  const branches = [...bMap.values()].map(({ famQty, ...g }) => {
+    const issues = g.qtyDiff + g.odooOnly + g.returnsOnly;
+    const byFam = [...famQty.values()]
+      .map((f) => ({ ...f, diff: f.mine - f.odoo }))
+      .sort((a, b) => String(a.fam).localeCompare(String(b.fam)));
+    let status;
+    if (!issues) status = DAY_STATUS.MATCH;
+    else if (!g.mineLines) status = DAY_STATUS.ODOO_ONLY;
+    else if (!g.odooLines) status = DAY_STATUS.RETURNS_ONLY;
+    else status = DAY_STATUS.QTY_DIFF;
+    return {
+      ...g,
+      branches: [g.branchLabel],
+      byFam,
+      issues,
+      absDiff: byFam.reduce((s, f) => s + Math.abs(f.diff), 0),
+      matchRate: g.products ? Math.round((g.match / g.products) * 100) : 0,
+      children: g.children.sort((x, y) => y.absDiff - x.absDiff),
+      status,
+    };
+  });
+
+  const count = (list) => {
+    const c = {
+      rows: list.length,
+      match: list.filter((r) => r.status === DAY_STATUS.MATCH).length,
+      qtyDiff: list.filter((r) => r.status === DAY_STATUS.QTY_DIFF).length,
+      odooOnly: list.filter((r) => r.status === DAY_STATUS.ODOO_ONLY).length,
+      returnsOnly: list.filter((r) => r.status === DAY_STATUS.RETURNS_ONLY).length,
+    };
+    c.matchRate = c.rows ? Math.round((c.match / c.rows) * 100) : 0;
+    return c;
+  };
+
+  return {
+    products,
+    branches,
+    branchProducts,
+    totals: {
+      product: count(products),
+      branch: count(branches),
+      branchProduct: count(branchProducts),
+      hiddenSplit: products.filter((p) => p.hiddenSplit).length,
+    },
+    tolerance,
+    tolPct,
+    unitMode,
+  };
+}

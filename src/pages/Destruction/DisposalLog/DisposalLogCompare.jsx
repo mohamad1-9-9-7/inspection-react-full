@@ -41,6 +41,7 @@ import {
   TYPE,
   buildChangeIndex,
   buildDailyComparison,
+  buildMonthlyComparison,
   excludeSet,
   flattenCustomerReturns,
   flattenDestructionRecords,
@@ -52,6 +53,7 @@ import {
   monthKeyOf,
   monthLabel,
   monthLabelAr,
+  NO_BRANCH_LABEL,
   num,
   recordPeriod,
   safeArr,
@@ -70,6 +72,7 @@ import {
   useCopy,
   useLocalPref,
 } from "./disposalLogKit";
+import MonthlyReconciliation from "./MonthlyReconciliation";
 
 /* ============================================================
    server
@@ -279,7 +282,10 @@ export default function DisposalLogCompare() {
   const [unitMode, setUnitMode] = useLocalPref("disposalLog.cmp.unitMode", "merge");
   const [useChangeDates, setUseChangeDates] = useLocalPref("disposalLog.cmp.useChangeDates", true);
   const [treeHidden, setTreeHidden] = useLocalPref("disposalLog.cmp.treeHidden", false);
-  const [view, setView] = useState("days"); // days | products | branches
+  const [tolPct, setTolPct] = useLocalPref("disposalLog.cmp.tolPct", 0);
+  /* The whole month first: does it add up per product / per branch? The
+     day-by-day table is where a difference found there gets explained. */
+  const [view, setView] = useLocalPref("disposalLog.cmp.view2", "month"); // month | days | products | branches | findings
   const [scope, setScope] = useState("day"); // day | all
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
@@ -461,8 +467,8 @@ export default function DisposalLogCompare() {
      is kept beside the row so the next reader sees the explanation instead of
      re-investigating the same 0.4 kg. */
   const reviewKeyOf = (r) => `${r.date}|${r.codeKey}|${r.fam}`;
-  const toggleReviewed = (r) => {
-    const k = reviewKeyOf(r);
+  const toggleReviewed = (r) => toggleReviewedKey(reviewKeyOf(r), `${r.code || r.product} on ${formatDMY(r.date)}`);
+  const toggleReviewedKey = (k, label) => {
     if (reviewed[k]) {
       const next = { ...reviewed };
       delete next[k];
@@ -470,7 +476,7 @@ export default function DisposalLogCompare() {
       return;
     }
     const note = window.prompt(
-      `Mark ${r.code || r.product} on ${formatDMY(r.date)} as reviewed.\n\nWhy is this difference acceptable? (optional)`,
+      `Mark ${label} as reviewed.\n\nWhy is this difference acceptable? (optional)`,
       ""
     );
     if (note === null) return;
@@ -508,6 +514,28 @@ export default function DisposalLogCompare() {
     () => Array.from(new Set(cmp.rows.flatMap((r) => r.branches))).filter(Boolean).sort(),
     [cmp.rows]
   );
+
+  /* Same rows, read over the whole month. Day lags cannot create a gap here. */
+  const month = useMemo(
+    () => buildMonthlyComparison(odooRows, mineRows, { tolerance, tolPct, unitMode, exclude: excludeKeys }),
+    [odooRows, mineRows, tolerance, tolPct, unitMode, excludeKeys]
+  );
+
+  /* A month line opens straight into its days. */
+  const openDays = ({ query: q = "", branch = "" } = {}) => {
+    setView("days");
+    setScope("all");
+    setStatusFilter("all");
+    setUnreviewedOnly(false);
+    setQuery(q);
+    if (branch === NO_BRANCH_LABEL) {
+      setBranchFilter("all");
+      setSourceFilter("customer");
+    } else {
+      setBranchFilter(branch && branchOptions.includes(branch) ? branch : "all");
+      setSourceFilter("all");
+    }
+  };
 
   const visibleRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -707,9 +735,30 @@ export default function DisposalLogCompare() {
       ["BRANCH", "ROWS", "ODOO QTY", "RETURNS QTY", "DIFFERENCE", "MATCHED", "QTY DIFF", "ONLY ODOO", "ONLY RETURNS", "MATCH %"],
       ...cmp.branches.map((b) => [b.branch, b.rows, b.odooQty, b.mineQty, b.diff, b.match, b.qtyDiff, b.odooOnly, b.returnsOnly, b.matchRate]),
     ];
+    const monthProducts = [
+      ["CODE", "PRODUCT", "UNIT", "BRANCHES", "ODOO QTY", "OUR QTY", "DIFFERENCE", "DIFFERENCE %", "STATUS"],
+      ...month.products.map((p) => [
+        p.code, p.product, p.units.join("/"), p.branches.join(", "), num(p.odooQty), num(p.mineQty), num(p.diff),
+        p.diffPct == null ? "" : Math.round(p.diffPct * 10) / 10,
+        `${DAY_STATUS_META[p.status].label}${p.hiddenSplit ? " (branches differ)" : ""}`,
+      ]),
+    ];
+    const monthBranches = [
+      ["BRANCH", "PRODUCTS", "MATCHED", "QTY DIFF", "ONLY ODOO", "ONLY OURS", "MATCH %", "UNIT FAMILY", "ODOO", "OURS", "DIFFERENCE"],
+      ...month.branches.flatMap((b) => b.byFam.map((f, i) => [
+        i ? "" : b.branchLabel, i ? "" : b.products, i ? "" : b.match, i ? "" : b.qtyDiff, i ? "" : b.odooOnly,
+        i ? "" : b.returnsOnly, i ? "" : b.matchRate, f.fam, num(f.odoo), num(f.mine), num(f.diff),
+      ])),
+    ];
+    summary.splice(2, 0,
+      ["Month match by product %", month.totals.product.matchRate],
+      ["Month match by branch %", month.totals.branch.matchRate],
+    );
     await downloadSheets(
       [
         { name: "Summary", aoa: summary },
+        { name: "Month by product", aoa: monthProducts },
+        { name: "Month by branch", aoa: monthBranches },
         { name: "Day x Product", aoa: [head, ...body] },
         { name: "Products", aoa: products },
         { name: "Branches", aoa: branches },
@@ -957,7 +1006,14 @@ export default function DisposalLogCompare() {
             </div>
 
             <div className="dlx-kpis">
-              <Kpi label="Match rate" ar="نسبة التطابق" value={`${t.matchRate}%`} tone={t.matchRate >= 80 ? "green" : t.matchRate >= 60 ? "amber" : "red"}
+              <Kpi
+                label="Month match (products)"
+                ar="مطابقة الشهر لكل صنف"
+                value={`${month.totals.product.matchRate}%`}
+                tone={month.totals.product.matchRate >= 80 ? "green" : month.totals.product.matchRate >= 60 ? "amber" : "red"}
+                sub={`${month.totals.product.match} of ${month.totals.product.rows} products`}
+              />
+              <Kpi label="Match rate (by day)" ar="نسبة التطابق اليومي" value={`${t.matchRate}%`} tone={t.matchRate >= 80 ? "green" : t.matchRate >= 60 ? "amber" : "red"}
                 sub={`${t.match} of ${t.rows} lines`} />
               <Kpi label="Quantity differs" ar="فرق بالكمية" value={t.qtyDiff} tone="amber" />
               <Kpi label="Only in Odoo" ar="في أودو فقط" value={t.odooOnly} tone="red" sub="destroyed but never returned" />
@@ -999,22 +1055,45 @@ export default function DisposalLogCompare() {
           <div className="dlx-cardHead">
             <span className="dlx-step">C</span>
             <div>
-              <h2>Day by day, product by product</h2>
-              <p dir="rtl">الفرق لكل يوم ولكل منتج على حدة — اضغط أي سطر لرؤية مصدره من الجهتين</p>
+              {view === "month" ? (
+                <>
+                  <h2>The whole month — per product, per branch</h2>
+                  <p dir="rtl">مطابقة الشهر كاملاً أولاً لكل صنف أو لكل فرع — ثم افتح أيام أي سطر مختلف بزر 📅</p>
+                </>
+              ) : (
+                <>
+                  <h2>Day by day, product by product</h2>
+                  <p dir="rtl">الفرق لكل يوم ولكل منتج على حدة — اضغط أي سطر لرؤية مصدره من الجهتين</p>
+                </>
+              )}
             </div>
             <div className="dlx-headRight">
               <Segmented
                 value={view}
                 onChange={setView}
                 options={[
+                  { value: "month", label: "📆 Whole month — الشهر كاملاً" },
                   { value: "days", label: "Days" },
-                  { value: "products", label: "Products" },
-                  { value: "branches", label: "Branches" },
+                  { value: "products", label: "Products by day" },
+                  { value: "branches", label: "Branches by day" },
                   { value: "findings", label: `Findings${findings.length ? ` (${findings.length})` : ""}` },
                 ]}
               />
             </div>
           </div>
+
+          {view === "month" && (
+            <MonthlyReconciliation
+              month={month}
+              period={period}
+              tolPct={tolPct}
+              onTolPct={setTolPct}
+              reviewed={reviewed}
+              onToggleReviewed={toggleReviewedKey}
+              onExclude={excludeProduct}
+              onOpenDays={openDays}
+            />
+          )}
 
           {view === "days" && (
             <>
