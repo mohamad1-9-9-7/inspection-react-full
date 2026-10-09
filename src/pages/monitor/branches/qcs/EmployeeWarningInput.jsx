@@ -6,11 +6,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { uploadImage, deleteImage, thumbUrl } from "../../../../utils/imageUpload";
 import { keepPhotoOrUpload, isKeptPhoto, dropKeptPhoto } from "../../../../utils/offlineOutbox";
-import { useStaffDirectory, normalizeEmpNo, normalizeName } from "../_shared/staffRegistry";
+import { useStaffDirectory, normalizeEmpNo, normalizeName, COMPANY_DIRECTORY } from "../_shared/staffRegistry";
 import {
   TYPE, DOC_META, LEVELS, CATEGORIES, SITES, levelById, dmy,
   fetchWarnings, historyFor,
 } from "./employeeWarningCore";
+
+/* Company register (OHC EMPLOYEES) — the same source the training and OHC
+   screens read: typing the employee number fills the name, job and branch. */
+const COMPANY_BY_NO = new Map(COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d]));
+const COMPANY_BY_NAME = new Map(COMPANY_DIRECTORY.map((d) => [normalizeName(d.name), d]));
 
 const todayISO = () => {
   const d = new Date();
@@ -56,7 +61,18 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const { roster: staff, byNo, byName } = useStaffDirectory(TYPE);
+  /* The QA staff directory wins (its job/branch are kept current); the company
+     register covers everyone else. */
+  const { byNo, byName } = useStaffDirectory(TYPE);
+  const fill = (dir, co) => {
+    if (!dir && !co) return {};
+    return {
+      employeeNo: dir?.empNo || co?.empNo || "",
+      employeeName: dir?.name || co?.name || "",
+      ...((dir?.job || co?.job) ? { position: dir?.job || co?.job } : {}),
+      ...(co?.branch ? { site: co.branch } : {}),
+    };
+  };
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -68,13 +84,14 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
   const setIn = (k, sub, v) => setF((p) => ({ ...p, [k]: { ...p[k], [sub]: v } }));
 
   const setEmpNo = (v) => setF((p) => {
-    const m = byNo.get(normalizeEmpNo(v));
-    return { ...p, employeeNo: v, ...(m ? { employeeName: m.name } : {}) };
+    const k = normalizeEmpNo(v);
+    return { ...p, ...fill(byNo.get(k), COMPANY_BY_NO.get(k)), employeeNo: v };
   });
   const setEmpName = (v) => setF((p) => {
-    const m = byName.get(normalizeName(v));
-    return { ...p, employeeName: v, ...(m ? { employeeNo: m.empNo } : {}) };
+    const k = normalizeName(v);
+    return { ...p, ...fill(byName.get(k), COMPANY_BY_NAME.get(k)), employeeName: v };
   });
+  const empFound = !!COMPANY_BY_NO.get(normalizeEmpNo(f.employeeNo)) || !!byNo.get(normalizeEmpNo(f.employeeNo));
 
   const hasWho = !!(f.employeeNo.trim() || f.employeeName.trim());
   const history = useMemo(
@@ -186,15 +203,22 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
         </div>
       </div>
 
-      <datalist id="ew-empno">{staff.map((s) => <option key={s.empNo} value={s.empNo}>{s.name}</option>)}</datalist>
-      <datalist id="ew-empname">{staff.map((s) => <option key={s.empNo} value={s.name}>{s.empNo}</option>)}</datalist>
+      <datalist id="ew-empno">{COMPANY_DIRECTORY.map((d) => <option key={d.empNo} value={d.empNo}>{d.name}</option>)}</datalist>
+      <datalist id="ew-empname">{COMPANY_DIRECTORY.map((d) => <option key={d.empNo} value={d.name}>{d.empNo}</option>)}</datalist>
       <datalist id="ew-sites">{SITES.map((s) => <option key={s} value={s} />)}</datalist>
 
       {/* Employee */}
       <div style={grid()}>
         <Field title="Date"><input style={input} type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
-        <Field title="Employee No"><input style={input} list="ew-empno" placeholder="No." value={f.employeeNo} onChange={(e) => setEmpNo(e.target.value)} /></Field>
-        <Field title="Employee Name *"><input style={input} list="ew-empname" placeholder="Name" value={f.employeeName} onChange={(e) => setEmpName(e.target.value)} /></Field>
+        <Field title="Employee No">
+          <input style={input} list="ew-empno" placeholder="Type the employee number" value={f.employeeNo} onChange={(e) => setEmpNo(e.target.value)} />
+          {f.employeeNo.trim() && (
+            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: empFound ? "#16a34a" : "#b45309" }}>
+              {empFound ? "✓ Found in the employee register" : "Not in the register — type the name"}
+            </div>
+          )}
+        </Field>
+        <Field title="Employee Name *"><input style={input} list="ew-empname" placeholder="Filled from the number" value={f.employeeName} onChange={(e) => setEmpName(e.target.value)} /></Field>
         <Field title="Position"><input style={input} placeholder="e.g. Butcher" value={f.position} onChange={(e) => set("position", e.target.value)} /></Field>
         <Field title="Site / Branch"><input style={input} list="ew-sites" value={f.site} onChange={(e) => set("site", e.target.value)} /></Field>
       </div>
