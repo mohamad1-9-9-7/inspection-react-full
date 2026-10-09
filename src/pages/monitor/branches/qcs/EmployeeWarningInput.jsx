@@ -212,7 +212,7 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
         <Field title="Date"><input style={input} type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
         <Field title="Employee No">
           <input style={input} list="ew-empno" placeholder="Type the employee number" value={f.employeeNo} onChange={(e) => setEmpNo(e.target.value)} />
-          {f.employeeNo.trim() && (
+          {!!f.employeeNo.trim() && (
             <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: empFound ? "#16a34a" : "#b45309" }}>
               {empFound ? "✓ Found in the employee register" : "Not in the register — type the name"}
             </div>
@@ -231,15 +231,14 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
           ) : (
             <>
               <b style={{ color: "#9a3412" }}>
-                {history.active.length} active warning{history.active.length === 1 ? "" : "s"} in the last 12 months
-                {history.list.length > history.active.length ? ` (${history.list.length} in total)` : ""} — suggested step: {levelById(history.suggested).en}
+                {`${history.active.length} active warning${history.active.length === 1 ? "" : "s"} in the last 12 months${history.list.length > history.active.length ? ` (${history.list.length} in total)` : ""} — suggested step: ${levelById(history.suggested).en}`}
               </b>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {history.list.slice(0, 8).map((r) => {
                   const l = levelById(r.payload?.level);
                   return (
                     <span key={r._id} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 999, border: `1px solid ${l.color}`, color: l.color, background: "#fff", fontWeight: 700 }}>
-                      {dmy(r.payload?.date)} · {l.en}
+                      {`${dmy(r.payload?.date)} · ${l.en}`}
                     </span>
                   );
                 })}
@@ -277,7 +276,7 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
               <button key={c.id} type="button" onClick={() => toggleCat(c.id)}
                 style={{ padding: "7px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700,
                   border: `1px solid ${on ? "#0f3d2e" : "#cbd5e1"}`, background: on ? "#0f3d2e" : "#fff", color: on ? "#fff" : "#334155" }}>
-                {on ? "✓ " : ""}{c.en}
+                {`${on ? "✓ " : ""}${c.en}`}
               </button>
             );
           })}
@@ -307,7 +306,7 @@ export default function EmployeeWarningInput({ type = TYPE, reporter = "qcs" } =
               </div>
             ))}
             <label style={{ width: 110, height: 84, borderRadius: 10, border: "2px dashed #94a3b8", display: "grid", placeItems: "center", cursor: "pointer", color: "#475569", fontWeight: 800, textAlign: "center", fontSize: 12, background: "#fff" }}>
-              {uploading ? `⏳ ${uploading}…` : <span>📷<br />Add photo</span>}
+              <span>{uploading ? `⏳ ${uploading}…` : "📷 Add photo"}</span>
               <input type="file" accept="image/*" multiple style={{ display: "none" }}
                 onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
             </label>

@@ -172,12 +172,12 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>⚠️ Employee Warnings — Records</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           <button onClick={() => setLevelFilter("")} style={{ ...btn(levelFilter ? "#fff" : "#0f172a", levelFilter ? "#0f172a" : "#fff", "#0f172a"), padding: "4px 12px", fontSize: 12 }}>
-            All · {records.length}
+            {`All · ${records.length}`}
           </button>
           {LEVELS.map((l) => (
             <button key={l.id} onClick={() => setLevelFilter(levelFilter === l.id ? "" : l.id)}
               style={{ ...btn(levelFilter === l.id ? l.color : "#fff", levelFilter === l.id ? "#fff" : l.color, l.color), padding: "4px 12px", fontSize: 12 }}>
-              {l.en} · {countByLevel[l.id] || 0}
+              {`${l.en} · ${countByLevel[l.id] || 0}`}
             </button>
           ))}
         </div>
@@ -212,7 +212,7 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 6, marginTop: 4, alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {(rp.categories || []).map(catEn).join(", ")}{(rp.photos || []).length ? ` · 📷${rp.photos.length}` : ""}
+                      {`${(rp.categories || []).map(catEn).join(", ")}${(rp.photos || []).length ? ` · 📷${rp.photos.length}` : ""}`}
                     </span>
                     <LevelPill id={rp.level} />
                   </div>
@@ -231,7 +231,7 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: lv.color }}>{lv.en}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>{p.headerTop?.documentNo} · {dmy(p.date)}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{`${p.headerTop?.documentNo || ""} · ${dmy(p.date)}`}</div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <button onClick={() => printWarning(p)} style={btn("#0f172a")}>🖨 Print</button>
@@ -259,7 +259,7 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
               <Block title="Description of the violation" text={p.description} />
               {(p.photos || []).length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 900, marginBottom: 6 }}>📷 Photos ({p.photos.length})</div>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>{`📷 Photos (${p.photos.length})`}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {p.photos.map((u) => (
                       <a key={u} href={u} target="_blank" rel="noreferrer">
@@ -280,13 +280,13 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
               </div>
 
               <div style={{ marginTop: 14 }}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Other warnings for this employee ({others.length})</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>{`Other warnings for this employee (${others.length})`}</div>
                 {others.length === 0 ? <div style={{ color: "#94a3b8" }}>None.</div> : (
                   <div style={{ display: "grid", gap: 4 }}>
                     {others.map((r) => (
                       <button key={recId(r)} onClick={() => setSelectedId(recId(r))}
                         style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer" }}>
-                        <span>{dmy(r.payload?.date)} · {(r.payload?.categories || []).map(catEn).join(", ")}</span>
+                        <span>{`${dmy(r.payload?.date)} · ${(r.payload?.categories || []).map(catEn).join(", ")}`}</span>
                         <LevelPill id={r.payload?.level} />
                       </button>
                     ))}
