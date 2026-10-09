@@ -27,27 +27,35 @@ import { uploadImage } from "../../../../utils/imageUpload";
 
 /* Columns judged C / NC on arrival. */
 const TICK_COLS = [
-  { key: "vehicleClean",   label: "Vehicle clean",    w: 110 },
-  { key: "handlerHygiene", label: "Handler hygiene",  w: 120 },
-  { key: "appearanceOK",   label: "Appearance",       w: 105 },
-  { key: "firmnessOK",     label: "Firmness",         w: 100 },
-  { key: "smellOK",        label: "Smell",            w: 95 },
-  { key: "packagingGood",  label: "Packaging intact", w: 125 },
+  { key: "vehicleClean",   label: "Vehicle clean",    w: 104 },
+  { key: "handlerHygiene", label: "Handler hygiene",  w: 104 },
+  { key: "appearanceOK",   label: "Appearance",       w: 104 },
+  { key: "firmnessOK",     label: "Firmness",         w: 96 },
+  { key: "smellOK",        label: "Smell",            w: 90 },
+  { key: "packagingGood",  label: "Packaging intact", w: 104 },
 ];
 
 const TEXT_COLS = [
-  { key: "itemCode",  label: "Item code",       type: "code",    w: 120 },
-  { key: "foodItem",  label: "Food item",       type: "product", w: 180 },
-  { key: "netWeight", label: "Net weight (kg)", type: "number",  w: 110 },
-  { key: "foodTemp",  label: "Food °C",         type: "number",  w: 95 },
+  { key: "itemCode",  label: "Item code",       type: "code",    w: 130 },
+  { key: "foodItem",  label: "Food item",       type: "product", w: 280 },
+  { key: "netWeight", label: "Net weight (kg)", type: "number",  w: 120 },
+  { key: "foodTemp",  label: "Food °C",         type: "number",  w: 100 },
 ];
 
 const TAIL_COLS = [
-  { key: "countryOfOrigin", label: "Country of origin", type: "text", w: 130 },
-  { key: "productionDate",  label: "Production date",   type: "date", w: 140 },
-  { key: "expiryDate",      label: "Expiry date",       type: "date", w: 140 },
-  { key: "remarks",         label: "Remarks",           type: "text", w: 180 },
+  { key: "countryOfOrigin", label: "Country of origin", type: "text", w: 150 },
+  { key: "productionDate",  label: "Production date",   type: "date", w: 170 },
+  { key: "expiryDate",      label: "Expiry date",       type: "date", w: 170 },
+  { key: "remarks",         label: "Remarks",           type: "text", w: 240 },
 ];
+
+/* Fixed-layout table: every column keeps its width and the sheet scrolls
+   sideways instead of squeezing inputs until dates and names are cut off. */
+const NO_W = 48;
+const DEL_W = 52;
+const TABLE_W = NO_W + DEL_W + [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].reduce((s, c) => s + c.w, 0);
+/* # + code + name stay pinned while scrolling to the C/NC and date columns. */
+const STICKY_AT = { no: 0, itemCode: NO_W, foodItem: NO_W + TEXT_COLS[0].w };
 
 const LINE_KEYS = [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].map((c) => c.key);
 /* Fields that belong to the delivery, not the line. */
@@ -136,6 +144,22 @@ const STYLES = `
   .rl-banner { margin:10px 0; padding:10px 14px; border-radius:12px; font-weight:700; }
   .rl-banner.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
   .rl-banner.warn { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .rl-table { table-layout:fixed; min-width:100%; }
+  .rl-table thead th { white-space:normal; line-height:1.25; padding:10px 6px; vertical-align:middle; }
+  .rl-table tbody td { padding:6px 5px; }
+  .rl-table tbody tr { height:auto; }
+  .rl-table .ph-input { padding:9px 10px; min-height:42px; }
+  .rl-table .ph-select { padding:9px 4px; min-height:42px; }
+  .rl-table input[type="date"] { padding-inline:8px; }
+  .rl-table input[type="number"] { text-align:center; }
+  @media (min-width: 900px) {
+    .rl-table .rl-sticky { position:sticky; z-index:2; background:#fff; }
+    .rl-table thead .rl-sticky { background:#0f172a; z-index:3; }
+    .rl-table tbody tr:nth-child(even) .rl-sticky { background:#fafbfc; }
+    .rl-table tbody tr:hover .rl-sticky { background:#eff6ff; }
+    .rl-table .rl-sticky-last { box-shadow: 6px 0 8px -6px rgba(15,23,42,.25); }
+    [dir="rtl"] .rl-table .rl-sticky-last { box-shadow: -6px 0 8px -6px rgba(15,23,42,.25); }
+  }
   .rl-photos { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; align-items:center; }
   .rl-photo { width:96px; height:72px; border:1px dashed #cbd5e1; border-radius:10px; display:grid; place-items:center; position:relative; overflow:hidden; background:#f8fafc; cursor:pointer; color:#64748b; font-weight:700; }
   .rl-photo img { width:100%; height:100%; object-fit:cover; }
@@ -359,6 +383,14 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
   }
 
   const alignStart = isAr ? "right" : "left";
+  /* Props for a pinned cell (#, code, name); plain cells get only their class. */
+  const stickyCell = (key, cls = "") => {
+    if (!(key in STICKY_AT)) return cls ? { className: cls } : {};
+    return {
+      className: `${cls} rl-sticky${key === "foodItem" ? " rl-sticky-last" : ""}`.trim(),
+      style: { insetInlineStart: STICKY_AT[key] },
+    };
+  };
 
   return (
     <FormShell dir={dir}>
@@ -440,22 +472,27 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
             </div>
 
             <div className="ph-table-wrap ph-scroll-x">
-              <table className="ph-table" style={{ minWidth: 1280 }}>
+              <table className="ph-table rl-table" style={{ width: TABLE_W }}>
+                <colgroup>
+                  <col style={{ width: NO_W }} />
+                  {[...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].map((c) => <col key={c.key} style={{ width: c.w }} />)}
+                  <col style={{ width: DEL_W }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style={{ width: 44 }}>{t("ph_col_no")}</th>
-                    {TEXT_COLS.map((c) => <th key={c.key} style={{ width: c.w }}>{c.label}</th>)}
-                    {TICK_COLS.map((c) => <th key={c.key} className="ph-col-compact" style={{ width: c.w }}>{c.label}</th>)}
-                    {TAIL_COLS.map((c) => <th key={c.key} style={{ width: c.w, textAlign: alignStart }}>{c.label}</th>)}
-                    <th style={{ width: 52 }} className="no-print" />
+                    <th {...stickyCell("no")}>{t("ph_col_no")}</th>
+                    {TEXT_COLS.map((c) => <th key={c.key} {...stickyCell(c.key)}>{c.label}</th>)}
+                    {TICK_COLS.map((c) => <th key={c.key}>{c.label}</th>)}
+                    {TAIL_COLS.map((c) => <th key={c.key} style={{ textAlign: alignStart }}>{c.label}</th>)}
+                    <th className="no-print" />
                   </tr>
                 </thead>
                 <tbody>
                   {d.rows.map((row, ri) => (
                     <tr key={ri}>
-                      <td className="ph-num">{ri + 1}</td>
+                      <td {...stickyCell("no", "ph-num")}>{ri + 1}</td>
                       {TEXT_COLS.map((c) => (
-                        <td key={c.key}>
+                        <td key={c.key} {...stickyCell(c.key)}>
                           {c.type === "code" ? (
                             <ItemCodeInput code={row.itemCode || ""} name={row.foodItem || ""}
                               onChange={(pair) => updateProduct(di, ri, pair)} className="ph-input" />
