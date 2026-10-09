@@ -26,6 +26,7 @@ const VisitorChecklistInput         = lazy(() => import("./qcs/VisitorChecklistI
 const StaffSicknessInput            = lazy(() => import("./qcs/StaffSicknessInput"));
 const EmployeeReturnToWorkInput     = lazy(() => import("./qcs/EmployeeReturnToWorkInput"));
 const ProductRejectionInput         = lazy(() => import("./qcs/ProductRejectionInput"));
+const EmployeeWarningInput          = lazy(() => import("./qcs/EmployeeWarningInput"));
 
 /* ===== Icons (modern stroke icons) ===== */
 const Icon = ({ children, size = 20 }) => (
@@ -90,6 +91,7 @@ const TABS = [
   { key: "car",                  group: "quality",    title: "Corrective Action",      subtitle: "CAPA report",                  Icon: IconWrench,    accent: "#0891b2", Comp: CorrectiveActionReportInput },
   { key: "internalAudit",        group: "quality",    title: "Internal Audit",         subtitle: "Audit checklist",              Icon: IconClipboard, accent: "#0f766e", Comp: InternalAuditInput },
   { key: "productRejection",     group: "quality",    title: "Product Rejection",      subtitle: "Rejection report",             Icon: IconReject,    accent: "#dc2626", Comp: ProductRejectionInput },
+  { key: "employeeWarning",      group: "quality",    title: "Employee Warning",       subtitle: "Internal warning / notice",    Icon: IconAlert,     accent: "#b91c1c", Comp: EmployeeWarningInput },
 
   // ── Waste & Pest ──
   { key: "garbageDisposal",      group: "waste",      title: "Garbage Disposal",       subtitle: "Daily disposal log",           Icon: IconTrash,     accent: "#64748b", Comp: GarbageDisposalInput },

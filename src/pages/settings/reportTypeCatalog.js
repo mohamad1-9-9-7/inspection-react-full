@@ -101,6 +101,7 @@ export const BRANCHES = [
       ["qcs_visitor_checklist",                  "Visitor Checklist",            "People & Visitors"],
       ["qcs_staff_sickness",                     "Staff Sickness",               "People & Visitors"],
       ["qcs_employee_return_to_work",            "Employee Return to Work",      "People & Visitors"],
+      ["qcs_employee_warning",                   "Employee Warning",             "People & Visitors"],
       ["ftr1_preloading_inspection",             "FTR 1 - Preloading",           "Food Truck Preloading"],
       ["ftr2_preloading_inspection",             "FTR 2 - Preloading",           "Food Truck Preloading"],
       ["qcs_coolers_config",                     "Cooler Definitions (config)",  "Settings"],

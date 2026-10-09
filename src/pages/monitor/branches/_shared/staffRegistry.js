@@ -59,6 +59,7 @@ export const STAFF_FORMS = [
 
   // ── QCS people forms (pickers, not row pre-fill) ──
   { key: "qcs_staff_sickness",     reportType: "qcs_staff_sickness",           site: "QCS", siteAr: "القصيص", en: "Staff Sickness", ar: "مرض الموظفين",  autoFills: false, wired: true },
+  { key: "qcs_employee_warning",   reportType: "qcs_employee_warning",         site: "QCS", siteAr: "القصيص", en: "Employee Warning", ar: "إنذار موظف", autoFills: false, wired: true },
   { key: "qcs_return_to_work",     reportType: "qcs_employee_return_to_work",  site: "QCS", siteAr: "القصيص", en: "Return to Work", ar: "العودة للعمل",  autoFills: false, wired: true },
 
   // ── Sweets people forms ──

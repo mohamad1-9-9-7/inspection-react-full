@@ -43,6 +43,9 @@ const EmployeeReturnToWorkView          = lazy(() => import("./EmployeeReturnToW
 // 🆕 Product Rejection view
 const ProductRejectionView              = lazy(() => import("./ProductRejectionView"));
 
+// 🆕 Employee Warning / Notice view
+const EmployeeWarningView               = lazy(() => import("./EmployeeWarningView"));
+
 const CC_HEADER = {
   documentTitle: "QCS — Daily Cleanliness",
   documentNo: "FS-QM/REC/CLN",
@@ -75,6 +78,7 @@ const DASH_TYPES = [
   { type: "qcs_staff_sickness",     key: "staff_sickness", icon: "🩺",  titleEn: "Staff Sickness",     titleAr: "أمراض الموظفين",     accent: "#0f3d2e" },
   { type: "qcs_employee_return_to_work", key: "return_to_work",    icon: "🏥", titleEn: "Return to Work",      titleAr: "العودة للعمل",        accent: "#0b5236" },
   { type: "qcs_product_rejection",       key: "product_rejection", icon: "🚫", titleEn: "Product Rejection",   titleAr: "رفض المنتجات",        accent: "#dc2626" },
+  { type: "qcs_employee_warning",        key: "employee_warning",  icon: "⚠️", titleEn: "Employee Warning",    titleAr: "إنذارات الموظفين",    accent: "#b91c1c" },
 ];
 
 const TABS = [
@@ -112,6 +116,7 @@ const TABS = [
   { key: "staff_sickness", icon: "🩺",  label: "Staff Sickness", labelAr: "أمراض الموظفين",         element: <StaffSicknessView /> },
   { key: "return_to_work",    icon: "🏥",  label: "Return to Work", labelAr: "العودة للعمل",         element: <EmployeeReturnToWorkView /> },
   { key: "product_rejection", icon: "🚫",  label: "Product Rejection", labelAr: "رفض المنتجات",      element: <ProductRejectionView /> },
+  { key: "employee_warning",  icon: "⚠️", label: "Employee Warning", labelAr: "إنذارات الموظفين",    element: <EmployeeWarningView /> },
 ];
 
 export default function QCSReportsView() {
