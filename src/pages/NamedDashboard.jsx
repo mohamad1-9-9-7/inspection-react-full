@@ -8,6 +8,7 @@ import { confirmLogoutWithOutbox } from "../utils/offlineOutbox";
 import { getActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { useInventoryOfficer } from "./workforce/workforceAccess";
 import { DM_CHECKED_URL, openExternal } from "../config/externalLinks";
+import TodayFoodSafetyStrip from "./dashboard/TodayFoodSafetyStrip";
 
 /* ══════════════════════════════════════════
    OPERATOR PICKER — who is working now?
@@ -1287,6 +1288,8 @@ export default function NamedDashboard() {
             </div>
           </div>
         </section>
+
+        <TodayFoodSafetyStrip />
 
         <section className="named-toolbar" style={nd.toolbar}>
           <label style={nd.searchWrap}>
