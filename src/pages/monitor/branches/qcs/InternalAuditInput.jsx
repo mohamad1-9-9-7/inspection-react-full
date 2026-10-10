@@ -1,467 +1,219 @@
 // src/pages/monitor/branches/qcs/InternalAuditInput.jsx
+// QCS Internal Audit — input.
+//
+// ~200 questions in 31 sections. Instead of one endless page of dropdowns the
+// auditor works ONE section at a time: a section list with live progress on
+// the side, big Yes / OK / No / N/A buttons per question, "mark the rest" for
+// sections that are all fine, and a one-click "Add as finding" on any No.
+// Findings and sign-off are the last two steps; Save works from any step.
+//
+// The saved payload is unchanged (headerTop / headRow / checklist /
+// auditRecommendation / footer), so the view and old records are unaffected.
 import React, { useMemo, useState } from "react";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import { AUDIT_DOC, AUDIT_GROUPS } from "./internalAuditChecklist";
 
-/* ===== API base ===== */
+const TYPE = "qcs_internal_audit";
 
-
-/* ===== Constants ===== */
-const TYPE   = "qcs_internal_audit";
-const BRANCH = "QCS";
-
-const DOC_META = {
-  docTitle: "INTERNAL AUDIT – QCS",
-  docNo: "FS-QA/INA-QCS-W/01",
-  issueNo: "01",
-  revision: "00",
-  issueDate: "2025-11-01", // 01/11/2025 ثابتة
-};
-
-/* ===== UI helpers ===== */
-const card = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 16,
-};
-const table = { width: "100%", borderCollapse: "collapse" };
-const th = {
-  border: "1px solid #cbd5e1",
-  background: "#f1f5f9",
-  padding: "8px",
-  textAlign: "left",
-  fontWeight: 800,
-};
-const td = {
-  border: "1px solid #cbd5e1",
-  padding: "6px 8px",
-  verticalAlign: "top",
-};
-const input = {
-  width: "100%",
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-  padding: "6px 8px",
-  boxSizing: "border-box",
-  background: "#fff",
-};
-const select = { ...input };
-const textarea = { ...input, minHeight: 90, resize: "vertical" };
-const btn = (bg = "#2563eb") => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  padding: "10px 14px",
-  fontWeight: 800,
-  cursor: "pointer",
-  boxShadow: "0 4px 12px rgba(0,0,0,.12)",
-});
-
-/* ===== Checklist model ===== */
-const OPTS = ["Yes", "No", "NA", "OK"];
-
-// النصوص حرفيًا كما زودتها دون اختصار
-const GROUPS = [
-  {
-    title: "1 PERSONAL HYGIENE",
-    items: [
-      { code: "1.1", text: "Health cards are available for all employees" },
-      { code: "1.2", text: "Employees wear clean and proper attire including Effective hair restraints." },
-      { code: "1.3", text: "Staff personal habits are not a source of contamination." },
-      { code: "1.4", text: "Jewellery limited to a plain ring, finger nails short, clean and no artificial, shaving etc." },
-      { code: "1.5", text: "Hands washed properly, frequently and at appropriate time & the hand washing instructions properly followed." },
-      { code: "1.6", text: "Disposable gloves are readily available" },
-      { code: "1.7", text: "Employees do not eat, drink, chew gum, smoke or use tobacco inside the food preparation area but in designated areas away from preparation." },
-      { code: "1.8", text: "Employees maintain adequate personal cleanliness and appear in good health." },
-      { code: "1.9", text: "Are hand sinks unobstructed, operational, clean and as per the Dubai Municipality standards?" },
-      { code: "1.10", text: "Employee restrooms are operational and clean." },
-      { code: "1.11", text: "The wash basins are supplied with soap or detergents" },
-      { code: "1.12", text: "Person who is affected by or is a carrier of a communicable disease (eg. Gastroenteritis, a severe cold, sore throat, cough, influenza) or infected people are working in the food packaging area" },
-      { code: "1.13", text: "All cuts and wounds are covered by a waterproof blue Band-Aid containing a metalized thread. There are adequate first-aid facilities stocked with approved Band-Aids" },
-    ],
-  },
-  {
-    title: "2 RECEIVING & PREPARATION",
-    items: [
-      { code: "2.1", text: "All food raw materials stored & packed are from approved sources." },
-      { code: "2.2", text: "Temp of the receiving material is checked" },
-      { code: "2.3", text: "Receiving materials log is maintained" },
-      { code: "2.4", text: "Equipment, utensils and food contact surfaces are properly washed & sanitized before every use." },
-      { code: "2.5", text: "There are no wooden utensils or equipment’s present" },
-      { code: "2.6", text: "Packaging is planned as per the Scheduled sale so ingredients are kept out of the temperature danger zone to the extent possible." },
-      { code: "2.7", text: "Procedure is in place to prevent cross contamination." },
-      { code: "2.8", text: "Food is handled with utensils, such as single use gloves or tongs." },
-      { code: "2.9", text: "Raw materials is packed in small batches to limit the time it is in the danger zone" },
-      { code: "2.10", text: "Others" },
-    ],
-  },
-  {
-    title: "3 AC / CHILLERS",
-    items: [
-      { code: "3.1", text: "Thermo- monitors available & accurate" },
-      { code: "3.2", text: "Calibration of thermo- monitors, weighing machine etc preventive maintenance strictly followed." },
-      { code: "3.3", text: "Inspection Per meter maintained & ingredients stored 6 inches off floor in walk in cooling equipment." },
-      { code: "3.4", text: "Chiller units are clean and neat." },
-      { code: "3.5", text: "No cardboard boxes found in the chiller." },
-      { code: "3.6", text: "All materials is properly wrapped, labelled & dated." },
-      { code: "3.7", text: "The FIFO (First in First Out) Stock rotation followed." },
-      { code: "3.8", text: "Temperature of all chillers are monitored & documented at the start & end of each shift." },
-      { code: "3.9", text: "Others. / Nil" },
-    ],
-  },
-  {
-    title: "4 CLEANING & SANITIZING",
-    items: [
-      { code: "4.1", text: "All chemicals are stored away from Raw materials" },
-      { code: "4.2", text: "Documented cleaning schedule for all raw materials contact surfaces." },
-      { code: "4.3", text: "Proper water supply to all hand washing sinks & sinks properly set up for washing" },
-      { code: "4.4", text: "Approved & food grade cleaning chemicals used." },
-      { code: "4.5", text: "Chemicals used as per manufactures recommendations & MSDS maintained." },
-      { code: "4.6", text: "All Equipment’s are clean and free from grease, raw materials particles, musk etc." },
-      { code: "4.7", text: "Documented cleaning schedule followed and up to date." },
-      { code: "4.8", text: "Floor, walls, doors, ceilings are clean." },
-      { code: "4.9", text: "Area below the working tables, behind equipment’s is clean" },
-      { code: "4.10", text: "Portability of the water is tested and documented." },
-      { code: "4.11", text: "Drainage tray, cover and grills are clean and free from accumulation." },
-      { code: "4.12", text: "Cleaning activity monitored & documented." },
-      { code: "4.13", text: "Cleaning chemicals & equipment’s are stored in separate lockable facility away from the production & washing area." },
-      { code: "4.14", text: "Others / Nil" },
-    ],
-  },
-  {
-    title: "5 UTENSILS & EQUIPMENT’S",
-    items: [
-      { code: "5.1", text: "All equipment and utensils are of durable, non-corrosive & non-absorbent materials" },
-      { code: "5.2", text: "All equipment & utensils are cleaned & sanitized Between uses as necessary" },
-      { code: "5.3", text: "Work Surface and utensils are clean" },
-      { code: "5.4", text: "Work surfaces are cleaned and sanitized between uses." },
-      { code: "5.5", text: "All machines are calibrated on predetermined frequency and documented" },
-      { code: "5.6", text: "Clean utensils are handled in a manner to prevent cross contamination." },
-      { code: "5.7", text: "All utensils and equipment’s are free from strains, grease" },
-      { code: "5.8", text: "All large equipment’s are cleaned & sanitized before & after every use." },
-      { code: "5.9", text: "Preventive maintenance of all equipment’s and building are carried out on routine basis and documented." },
-      { code: "5.10", text: "Shelves are clean." },
-      { code: "5.11", text: "Other raw Materials" },
-      { code: "5.12", text: "Light fittings have protective covers to prevent contamination of food with broken glass" },
-      { code: "5.13", text: "There is adequate lighting in all hand washing areas, dressing and locker rooms, toilets and in all areas where chocolate and chocolate ingredients are examined, processed, or stored and where equipment’s is cleaned." },
-    ],
-  },
-  {
-    title: "6 REFUSE STORAGE AND DISPOSAL",
-    items: [
-      { code: "6.1", text: "Refuse bin are clean and maintained" },
-      { code: "6.2", text: "Foot operating system of all refuse bins working properly." },
-      { code: "6.3", text: "Refuse bins are emptied when it is 75% full" },
-    ],
-  },
-  {
-    title: "7 PEST CONTROL",
-    items: [
-      { code: "7.1", text: "All doors are provided with a self-closing device, electrical air curtain or plastic strip curtains." },
-      { code: "7.2", text: "EFK servicing records" },
-      { code: "7.3", text: "No signs of pest activity" },
-      { code: "7.4", text: "All pest control records available as per DM requirements." },
-      { code: "7.5", text: "Are there adequate physical control devices installed." },
-      { code: "7.6", text: "Others" },
-    ],
-  },
-  {
-    title: "8 CCP RECORD REVIEW",
-    items: [
-      { code: "8.1", text: "CCP’s are defined appropriately?" },
-      { code: "8.2", text: "Verification & Validation of CCP’s?" },
-      { code: "8.3", text: "Any deviations in CCP’s?" },
-    ],
-  },
-  {
-    title: "9 GENERAL",
-    items: [
-      { code: "9.1", text: "Microbiological analysis result" },
-      { code: "9.2", text: "Traceability Record" },
-      { code: "9.3", text: "Finished products are covered/ enclosed to prevent contamination by insects, dust or foreign matter" },
-      { code: "9.4", text: "Customer complaints records are available & updated." },
-      { code: "9.5", text: "All people have appropriate trainings" },
-      { code: "9.6", text: "Management Review Meetings" },
-      { code: "9.7", text: "Updating of FSMS Manual" },
-    ],
-  },
-  {
-    title: "10 VEHICLES",
-    items: [
-      { code: "10.1", text: "Delivery vehicles are constructed and maintained in order to prevent food from being contaminated and to prevent the deterioration of packets." },
-    ],
-  },
-  {
-    title: "11 FOOD SAFETY RESPONSIBILITIES AND RESOURCES",
-    items: [
-      { code: "11.1", text: "Is there at least one person identified as accountable and responsible for development, implementation and ongoing maintenance of the Food safety systems?" },
-      { code: "11.2", text: "Verify that:\n• the FSMS system (the Food safety plan) is developed, reviewed and managed by a multi-disciplinary team\n• key personnel identified as FSMS team members have adequate FSMS training and appropriate experience. Records sighted." },
-    ],
-  },
-  {
-    title: "13 FOOD SAFETY POLICY",
-    items: [
-      { code: "13.1", text: "Food safety policy requires that:\n• company product safety policy is defined\n• the policy shall refer to the company’s intentions to:\n• meet its obligations to produce safe and legal products\n• to comply with food safety regulations\n• meet its obligations to customers.\n• company product safety policy is clearly communicated to employees and implemented." },
-      { code: "13.2", text: "Does the company have a quality policy or mission statement?" },
-      { code: "13.3", text: "Is there a documented Quality system in place?\nDoes it include HACCP documentation?" },
-      { code: "13.4", text: "Is the Quality system accredited and, if so, by whom?" },
-      { code: "13.5", text: "Do the Hazard audit tables reflect the risks associated with the product?" },
-      { code: "13.6", text: "Does the company have a documented Customer complaints handling procedure?" },
-      { code: "13.7", text: "Does the company have a documented Recall procedure?" },
-    ],
-  },
-  {
-    title: "14 HACCP METHODOLOGY AND DOCUMENTATION",
-    items: [
-      { code: "14.1", text: "Has the Food safety plan been based on the Codex Alimentarius HACCP principles and is reference made to relevant legislation, codes of practice or guidelines?\nDoes the Food safety plan identify, monitor and manage physical, chemical or microbiological risks in products and processes?" },
-    ],
-  },
-  {
-    title: "15 PRODUCT INFORMATION / SPECIFICATIONS",
-    items: [
-      { code: "15.1", text: "Layouts of the production process\nCheck these are documented to ensure consideration to:\n• regulatory layout requirements\n• the possibility of cross-contamination\n• air currents in high-risk areas\n• pest control plans." },
-      { code: "PRPs", text: "Prerequisite programs (PRPs)\nSupport programs are established, implemented and maintained across the entire production system and are to a level as deemed appropriate by the HACCP team. PRPs are to assist in controlling:\n• the likelihood of food safety hazards occurring\n• contamination of products including cross-contamination\n• maintaining food safety in product and process environment\nThey include but are not limited to the following:" },
-    ],
-  },
-  {
-    title: "16 SUPPLY CHAIN MANAGEMENT",
-    items: [
-      { code: "16.1", text: "Does the Raw material risk assessment drive the Incoming inspection and test plan?" },
-      { code: "16.2", text: "Are all goods received and inspected as prescribed by the Inspection and test quality plan?" },
-      { code: "16.3", text: "Is there a system for handling supplier related non-conformances? Do records show evidence of corrective actions when incidents occur?" },
-      { code: "16.4", text: "Do procedures exist for approval and removal of suppliers from the Approved supplier system?\nDoes it also include approval of emergency alternative suppliers?" },
-    ],
-  },
-  {
-    title: "17 DESIGN OF PRODUCTION FACILITIES",
-    items: [
-      { code: "17.1", text: "Are there adequate standards maintained to safeguard the product? Consider, as needed:\n• product flow (e.g. for raw and Roasted ingredients)\n• building interior (e.g. lighting, floors, employee facilities)\n• building exterior (e.g. location, waste management)\n• utilities (e.g. water, air)." },
-    ],
-  },
-  {
-    title: "18 EMPLOYEE HYGIENE POLICY",
-    items: [
-      { code: "18.1", text: "Are there hygiene and security policies and procedures?\nDoes the company communicate the hygiene requirements to all employees, visitors and contractors?\nCheck that records are maintained for details of visitor’s entry and departure into process area, as appropriate." },
-      { code: "18.2", text: "Are the following prohibited in processing areas?\n• watches\n• jewellery – including earrings, bracelets and rings\n• nail polish and false fingernails\n• smoking\n• eating and drinking.\nAre personal items stored outside the process areas? If not, is this justified on the basis of risk?" },
-      { code: "18.3", text: "Check there are processes to manage staff:\n• washing hands policy, including the use of sanitiser and/or gloves\n• if they have an infectious disease as prescribed?" },
-      { code: "18.4", text: "Is hand washing facilities located in toilets, amenities rooms and cleaning areas?\nIn areas where employees handle Products?\nSupplied with warm running water?\nAntibacterial soap, paper towel and bin supplied?" },
-      { code: "18.5", text: "Are good hygiene practices observed to be followed by employees?\nAre hair covers provided and worn in processing and packaging areas?" },
-      { code: "18.6", text: "Are employee uniforms supplied? Are employee uniforms laundered in house? Is consideration given to temperature of laundering water?\nIf employees supply their own clothing, is it clean and adequate for the tasks performed?" },
-      { code: "18.7", text: "Are adequate, clean uniforms provided? (ie no top pockets, no buttons, uniforms not worn off site)\nAre uniforms cleaned or laundered by an external laundry service?" },
-      { code: "18.8", text: "Are hands washed?" },
-      { code: "18.9", text: "Are gloves provided for operators and is there a procedure for the use and changing of the item?" },
-      { code: "18.10", text: "Are there injury procedures for protection of employee wounds?" },
-      { code: "18.11", text: "Is personnel movement restricted from raw to processed food areas, where applicable?" },
-    ],
-  },
-  {
-    title: "19 FACTORY HYGIENE POLICY: WALK THROUGH",
-    items: [
-      { code: "19.1", text: "Exclusion of physical contaminant hazards in high-risk food processing areas.\nWhere they cannot be excluded, are there adequate control measures documented and implemented for:" },
-      { code: "19.2", text: "• glass" },
-      { code: "19.3", text: "• metal" },
-      { code: "19.4", text: "• bone" },
-      { code: "19.5", text: "• wood" },
-      { code: "19.6", text: "• rubber" },
-      { code: "19.7", text: "• plastics (soft)" },
-      { code: "19.8", text: "• plastics (hard)" },
-      { code: "19.9", text: "• other (e.g. insects)" },
-      { code: "19.10", text: "Do customer complaint trends demonstrate that the hazards listed above are under sufficient control? If not, specify in what category it is not." },
-      { code: "19.11", text: "All packaging material that comes into contact with food products is made of material that doesn’t contaminate food? Packaging material specifications sighted stating packaging material is food grade." },
-      { code: "19.12", text: "During the packing process, is product protected from damage, including contamination?" },
-      { code: "19.13", text: "Are packaging materials stored in appropriate conditions and clearly identified?" },
-      { code: "19.14", text: "Is there in-line metal detection?\nWhat checks are performed to ensure the detector is working properly?\nHow often are checks performed?" },
-      { code: "19.15", text: "Is there any scalping in the process?" },
-      { code: "19.16", text: "Are checks carried out on weighing devices?\nWhat is the frequency of the calibration?" },
-      { code: "19.17", text: "What other processes are carried out during the packing process?" },
-      { code: "19.18", text: "Garbage is stored appropriately and bins are provided?" },
-      { code: "19.19", text: "Are there devices to reduce contaminant hazards?\n• Has there been consideration to use of magnets, sieves, screens, metal detectors, X-ray machines and/or fine filters?\n• Where present, are devices positioned at appropriate locations to ensure maximum product protection?\n• How often are checks carried out?" },
-      { code: "19.20", text: "Dropped product policy \nAre there controls to ensure that product that is dropped on unsanitised or contaminated surface is discarded to eliminate contamination to product?" },
-      { code: "19.21", text: "Are incoming goods deliveries checked? If so, what records are taken?" },
-      { code: "19.22", text: "Are raw materials stored so as to prevent contamination? Are food products arriving for repacking stored under appropriate conditions and clearly identified?" },
-      { code: "19.23", text: "Is the incoming goods receipt area maintained in a clean and hygienic manner?\nAre floors, walls and ceilings maintained in good condition?" },
-      { code: "19.24", text: "Is there adequate ventilation to remove fumes?" },
-      { code: "19.25", text: "Vents are not located directly near exposed packaging?" },
-      { code: "19.26", text: "Is there adequate lighting? (refer to AS1680 for recommendations)" },
-      { code: "19.27", text: "Are premises maintained in a clean and hygienic manner?" },
-      { code: "19.28", text: "Are floors in good condition and clean?" },
-      { code: "19.29", text: "Are walls and ceilings sealed to prevent entry of dirt, dust and pests? Are they maintained in a clean condition?" },
-      { code: "19.30", text: "Are pipes that pass through external openings sealed to prevent the entry of pests?" },
-      { code: "19.31", text: "Can fittings and fixtures be easily cleaned?" },
-      { code: "19.32", text: "Are packaging lines designed so as to prevent cross-contamination?" },
-      { code: "19.33", text: "Wood and glass, paper and plastic off cuts minimised in manufacturing areas? No potential to contaminate packaging?" },
-      { code: "19.34", text: "Is there adequate product traceability, date coding on inner and outer cartons?" },
-      { code: "19.35", text: "Despatch area – is the final packed product stored and transported under appropriate conditions?" },
-      { code: "19.36", text: "Is this area hygienic?" },
-      { code: "19.37", text: "What end product testing is carried out?\nMicrobiological?\nChemical?" },
-    ],
-  },
-  {
-    title: "20 CHEMICAL CONTROL",
-    items: [
-      { code: "20.1", text: "Has the company conducted a food safety hazard assessment of the chemicals used?" },
-      { code: "20.2", text: "Are food-grade lubricants used on food contact equipment?" },
-      { code: "20.3", text: "Are non-food-grade chemicals stored and handled so as to minimise potential contamination? (eg paints, cleaners, detergents, diesel, battery fluids, inkjet thinners, etc?)" },
-    ],
-  },
-  {
-    title: "21 PEST CONTROL",
-    items: [
-      { code: "21.1", text: "Is there a program to minimise the entry of rodents, insects and birds in the manufacturing and warehousing areas?" },
-      { code: "21.2", text: "Are there storage bait station maps identifying their type and location?" },
-      { code: "21.3", text: "Is one of the technicians a registered pest controller? Is the contractor licensed for chemical applications where needed? Records sighted." },
-      { code: "21.4", text: "Electronic pest devices to trap insects are located correctly and do not scatter dead insects onto food?" },
-      { code: "21.5", text: "Are the pest control chemicals approved for use in food plants? Are they stored correctly?" },
-      { code: "21.6", text: "Are there points of possible ingress of pests? For example, are doors in the processing storage area closed or are there holes in the walls? Is there any evidence of infestation?" },
-      { code: "21.7", text: "Is there regular removal of waste and rubbish to prevent harbourage?" },
-    ],
-  },
-  {
-    title: "23 CLEANING AND SANITATION",
-    items: [
-      { code: "23.1", text: "Are cleaning and sanitation requirements established, documented and implemented? This should include: responsibility, task to be performed, chemicals and equipment used." },
-      { code: "23.2", text: "Are there records to prove compliance to the Cleaning and sanitation schedule?" },
-      { code: "23.3", text: "Who is responsible for cleaning?" },
-      { code: "23.4", text: "Are cleaning chemicals fit for purpose and stored appropriately?" },
-      { code: "23.5", text: "What types of chemicals are used?\nDetergent - \nSanitiser - \nWhat is the name of the supplier?" },
-      { code: "23.6", text: "Is cleaning equipment stored in a hygienic manner?\nSeparate cleaning equipment used for amenities area?" },
-      { code: "23.7", text: "Are there Material safety data sheets (MSDS) for all chemicals used on site?" },
-      { code: "23.8", text: "Is there a system for verifying the effectiveness of the sanitation program? Consider, where appropriate:\n• preoperational inspections\n• environmental monitoring using rapid methods and/or microbiological swabbing\n• allergen validation, if required.\nAre records of results and corrective actions maintained?" },
-      { code: "23.9", text: "Is there evidence that corrective action occurs when incomplete or inadequate sanitation has been identified?" },
-      { code: "23.10", text: "No evidence of dirt or debris in production areas?" },
-      { code: "23.11", text: "Are walls, floors and ceilings clean?" },
-    ],
-  },
-  {
-    title: "24 EQUIPMENT MAINTENANCE AND CALIBRATION",
-    items: [
-      { code: "24.1", text: "Do records show activities by maintenance personnel have added to the customer complaints? For example, has foreign matter been found in product, etc?" },
-      { code: "24.2", text: "Are Food safety control points managed by breakdown maintenance? Are hygiene controls complied with when work occurs in high-risk hygiene areas?" },
-      { code: "24.3", text: "Are Food safety control points managed by preventative maintenance programs? If yes, have these been done at the prescribed frequencies?" },
-      { code: "24.4", text: "Are calibration procedures developed, documented and implemented to ensure that all parameters in the Food safety plan read accurately at the time of use?\nDo they refer to:\n• frequency of calibration\n• criteria for degree of accuracy\n• methods for calibration checks and reference to recognised standards\n• method of identifying equipment when it is found to be out of calibration\n• when equipment is found to be out of calibration, the progress for assessment of impact on integrity\n• records of all calibration checks, of authorised calibration personnel and corrective actions as required?" },
-    ],
-  },
-  {
-    title: "25 TRAINING",
-    items: [
-      { code: "25.1", text: "Have procedures been developed, documented and implemented to ensure activities, duties and functions that have an effect on the Food safety plan are undertaken by a suitably trained person?" },
-      { code: "25.2", text: "Are there suitable induction processes for visitors, contractors and casuals?\nDo records exist of these occurring?" },
-      { code: "25.3", text: "How is training provided? In house or third party? Are records kept?" },
-    ],
-  },
-  {
-    title: "26 TRANSPORTATION",
-    items: [
-      { code: "26.1", text: "Have procedures been developed and implemented to ensure activities related to storage and distribution of the food products are undertaken to a defined standard?" },
-      { code: "26.2", text: "Are any parts of the transportation loops undertaken by outside contractors?\nIf yes, what controls exist to ensure standards are defined, understood and periodically verified?" },
-    ],
-  },
-  {
-    title: "27 DOCUMENT CONTROL",
-    items: [
-      { code: "27.1", text: "Check that procedures exist for document control which ensure that systems are developed for:\n• approval and issuing of new documents\n• identifying general changes and changes to the revision status of documents\n• accessing documents at points of use\n• identifying and controlling the distribution of documents\n• preventing the use of obsolete documents." },
-    ],
-  },
-  {
-    title: "28 RECORDS",
-    items: [
-      { code: "28.1", text: "The company has a record filing system to ensure easy retrieval of the obligatory records and data. These are:" },
-      { code: "28.2", text: "• validation records to substantiate food safety characteristics of the product, including shelf life" },
-      { code: "28.3", text: "• detailed records by the HACCP teams with respect to the Risk assessments and also the establishment of the Critical control points (CCPs)" },
-      { code: "28.4", text: "• records of any subsequent HACCP reviews or introduced changes to the HACCP plans" },
-      { code: "28.5", text: "• expertise and training of employees involved in the HACCP team and CCP monitoring" },
-      { code: "28.6", text: "• CCP monitoring and reports (dated and signed)" },
-      { code: "28.7", text: "• records of CCP deviations and corrective actions" },
-      { code: "28.8", text: "• records of non-conformities and corrective actions including customer complaints, product withdrawals and recalls" },
-      { code: "28.9", text: "• records of traceability for use from raw material up to and including the delivery of products" },
-      { code: "28.10", text: "• audit reports and verification reports" },
-      { code: "28.11", text: "• management reviews" },
-      { code: "28.12", text: "• process and product evaluations and tests" },
-    ],
-  },
-  {
-    title: "29 CHANGE CONTROL",
-    items: [
-      { code: "29.1", text: "Is there a system for identifying changed conditions to trigger a new review of HACCP systems? For example, new final products, new ingredients, changed suppliers and/or new equipment?\nAre these changes assessed for their impact on the Food safety plan and its prerequisite programs?" },
-    ],
-  },
-  {
-    title: "30 IMPROVEMENTS POINTS INSIDE OF COMPANY",
-    items: [
-      { code: "30.1", text: "- There is separate room for sensitive material\n- Racking system 100% installed" },
-    ],
-  },
-  {
-    title: "31 ISO 22000:2018 REQUIREMENTS",
-    items: [
-      { code: "31.1", text: "Internal audits are planned; competent auditors assigned; reports issued; corrective actions followed up." },
-      { code: "31.2", text: "Management review inputs, decisions, and documented outputs available for the last cycle." },
-      { code: "31.3", text: "Nonconformity & corrective action process in place: containment, root cause, action, effectiveness verification, records." },
-      { code: "31.4", text: "HACCP-based Food Safety Plan implemented: hazard analysis, control measures, monitoring, corrections/corrective actions, verification, records." },
-      { code: "31.5", text: "Control of monitoring & measuring devices: calibration status identified; records maintained; action taken when out-of-calibration." },
-      { code: "31.6", text: "External & internal communication includes customer feedback/complaints; trends are reviewed and actions recorded." },
-      { code: "31.7", text: "Documented information is controlled, current at point of use, and retrievable (procedures, SOPs, records)." },
-    ],
-  },
-  {
-    title: "32 HALAL REQUIREMENTS (UAE.S 2055-1)",
-    items: [
-      { code: "32.1", text: "End-to-end Halal assurance across receiving, processing, packing, storage, transport, display/service (scope defined and applied)." },
-      { code: "32.2", text: "Raw materials, additives, and packaging verified free from non-Halal derivatives; documentary evidence on file." },
-      { code: "32.3", text: "Segregation to prevent mixing/contamination with non-Halal: dedicated areas/tools or validated cleaning in place." },
-      { code: "32.4", text: "Cleaning & chemicals approved and free of prohibited animal/ethanol derivatives; MSDS and approvals maintained." },
-      { code: "32.5", text: "Halal logo/claims used only after certification body approval; labels/artwork controlled; non-approved stock quarantined." },
-      { code: "32.6", text: "Traceability & mass balance maintained for Halal materials/products; records demonstrate one-step up/down linkage." },
-      { code: "32.7", text: "Transport/storage protect Halal status; clear identification, separation, and vehicle/container hygiene controls." },
-    ],
-  },
+/* Stored values stay exactly what the old form saved. */
+const ANSWERS = [
+  { value: "Yes", label: "Yes", tone: "yes" },
+  { value: "OK",  label: "OK",  tone: "ok" },
+  { value: "No",  label: "No",  tone: "no" },
+  { value: "NA",  label: "N/A", tone: "na" },
 ];
+const FINDING_STATUS = ["OPEN", "IN PROGRESS", "CLOSED", "ON HOLD"];
+const FINDING_TYPES = ["Major non-conformity", "Minor non-conformity", "Observation", "Opportunity for improvement"];
 
-/* ===== Component ===== */
+const STEP_FINDINGS = "findings";
+const STEP_SIGN = "sign";
+
+const blankChecklist = () => {
+  const o = {};
+  AUDIT_GROUPS.forEach((g) => g.items.forEach((it) => { o[it.code] = { status: "", remarks: "" }; }));
+  return o;
+};
+const blankRec = () => ({ finding: "", type: "", action: "", resp: "", targetDate: "", status: "OPEN" });
+const blankMeta = () => ({ conductedBy: "", verifiedBy: "", dateOfAudit: "", area: "", auditorName: "", auditorSignDate: "" });
+const firstLine = (t) => String(t || "").split("\n")[0].trim();
+const shortTitle = (t) => String(t).replace(/^\d+\s+/, "");
+
+/* Doubled class + !important: globals.css forces #root * to 14px. Sizes follow
+   the Aa text-size setting through --app-fs. */
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const CSS = `
+#root .ia.ia { color:#0f172a; background:#f5f8fc; border-radius:16px; padding:16px; }
+#root .ia.ia * { box-sizing:border-box; }
+#root .ia.ia .ia-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+#root .ia.ia .ia-title { font-size:${fs(22)}; font-weight:900; margin:0; }
+#root .ia.ia .ia-doc { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+#root .ia.ia .ia-doc span { font-size:${fs(12)}; font-weight:700; color:#475569; background:#fff; border:1px solid #e2e8f0; border-radius:999px; padding:3px 10px; }
+
+#root .ia.ia .ia-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px; margin-bottom:12px; }
+#root .ia.ia .ia-card-t { font-size:${fs(13)}; font-weight:900; color:#334155; letter-spacing:.06em; text-transform:uppercase; margin-bottom:10px; }
+#root .ia.ia .ia-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:10px; }
+#root .ia.ia label.ia-f { display:flex; flex-direction:column; gap:5px; }
+#root .ia.ia .ia-f > span { font-size:${fs(12.5)}; font-weight:800; color:#475569; }
+#root .ia.ia .ia-f > span b { color:#dc2626; }
+#root .ia.ia .ia-in { width:100%; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 12px; font-size:${fs(15)}; font-family:inherit; color:#0f172a; background:#fff; min-height:44px; }
+#root .ia.ia .ia-in:focus { outline:none; border-color:#0ea5e9; box-shadow:0 0 0 3px rgba(14,165,233,.15); }
+#root .ia.ia textarea.ia-in { min-height:84px; resize:vertical; line-height:1.5; }
+
+/* progress strip */
+#root .ia.ia .ia-prog { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+#root .ia.ia .ia-bar { flex:1 1 220px; height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden; }
+#root .ia.ia .ia-bar > i { display:block; height:100%; background:linear-gradient(90deg,#0ea5e9,#14b8a6); border-radius:999px; transition:width .25s; }
+#root .ia.ia .ia-prog-n { font-size:${fs(14)}; font-weight:900; }
+#root .ia.ia .ia-pills { display:flex; gap:6px; flex-wrap:wrap; }
+#root .ia.ia .ia-pill { font-size:${fs(12.5)}; font-weight:800; border-radius:999px; padding:3px 10px; }
+#root .ia.ia .t-yes { background:#dcfce7; color:#15803d; }
+#root .ia.ia .t-ok  { background:#dbeafe; color:#1d4ed8; }
+#root .ia.ia .t-no  { background:#fee2e2; color:#b91c1c; }
+#root .ia.ia .t-na  { background:#f1f5f9; color:#475569; }
+#root .ia.ia .t-score { background:#0f766e; color:#fff; }
+
+/* body: section list + step */
+#root .ia.ia .ia-body { display:grid; grid-template-columns:300px minmax(0,1fr); gap:12px; align-items:start; }
+#root .ia.ia .ia-nav { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:8px; max-height:calc(100vh - 140px); overflow-y:auto; }
+#root .ia.ia .ia-nav-btn { width:100%; display:flex; align-items:center; gap:8px; text-align:left; background:transparent; border:1px solid transparent; border-radius:10px; padding:8px 10px; cursor:pointer; font-family:inherit; color:#0f172a; }
+#root .ia.ia .ia-nav-btn:hover { background:#f1f5f9; }
+#root .ia.ia .ia-nav-btn.on { background:#e0f2fe; border-color:#7dd3fc; }
+#root .ia.ia .ia-nav-no { flex-shrink:0; width:26px; height:26px; border-radius:8px; display:grid; place-items:center; font-size:${fs(12)}; font-weight:900; background:#f1f5f9; color:#475569; }
+#root .ia.ia .ia-nav-btn.done .ia-nav-no { background:#14b8a6; color:#fff; }
+#root .ia.ia .ia-nav-tx { flex:1; min-width:0; }
+#root .ia.ia .ia-nav-name { font-size:${fs(13)}; font-weight:800; line-height:1.25; display:block; }
+#root .ia.ia .ia-nav-sub { font-size:${fs(11.5)}; font-weight:700; color:#64748b; display:block; margin-top:2px; }
+#root .ia.ia .ia-nav-bad { flex-shrink:0; font-size:${fs(11.5)}; font-weight:900; color:#b91c1c; background:#fee2e2; border-radius:999px; padding:1px 8px; }
+#root .ia.ia .ia-nav-sep { height:1px; background:#e2e8f0; margin:6px 4px; }
+#root .ia.ia .ia-nav-pick { display:none; }
+
+#root .ia.ia .ia-sec-h { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+#root .ia.ia .ia-sec-t { font-size:${fs(19)}; font-weight:900; margin:0; }
+#root .ia.ia .ia-sec-s { font-size:${fs(13)}; font-weight:700; color:#64748b; margin-top:2px; }
+#root .ia.ia .ia-bulk { display:flex; gap:6px; flex-wrap:wrap; }
+
+#root .ia.ia .ia-q { border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+#root .ia.ia .ia-q.is-no { border-color:#fca5a5; background:#fffafa; }
+#root .ia.ia .ia-q.is-done { border-color:#d1fae5; }
+#root .ia.ia .ia-q-top { display:flex; gap:10px; align-items:flex-start; }
+#root .ia.ia .ia-code { flex-shrink:0; font-size:${fs(12)}; font-weight:900; color:#0369a1; background:#e0f2fe; border-radius:8px; padding:3px 8px; margin-top:2px; }
+#root .ia.ia .ia-q-tx { flex:1; font-size:${fs(15.5)}; line-height:1.55; white-space:pre-wrap; font-weight:600; color:#1e293b; }
+#root .ia.ia .ia-q-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+#root .ia.ia .ia-seg { display:inline-flex; border:1.5px solid #cbd5e1; border-radius:11px; overflow:hidden; flex-shrink:0; }
+#root .ia.ia .ia-seg button { border:0; border-right:1px solid #e2e8f0; background:#fff; min-width:64px; min-height:42px; padding:0 12px; font-size:${fs(14)}; font-weight:900; color:#475569; cursor:pointer; font-family:inherit; }
+#root .ia.ia .ia-seg button:last-child { border-right:0; }
+#root .ia.ia .ia-seg button:hover { background:#f8fafc; }
+#root .ia.ia .ia-seg button.on.yes { background:#16a34a; color:#fff; }
+#root .ia.ia .ia-seg button.on.ok  { background:#2563eb; color:#fff; }
+#root .ia.ia .ia-seg button.on.no  { background:#dc2626; color:#fff; }
+#root .ia.ia .ia-seg button.on.na  { background:#64748b; color:#fff; }
+#root .ia.ia .ia-rem { flex:1 1 240px; min-height:42px; }
+#root .ia.ia .ia-q.is-no .ia-rem { border-color:#fca5a5; }
+
+#root .ia.ia .ia-btn { border-radius:10px; min-height:40px; padding:0 14px; font-size:${fs(13.5)}; font-weight:800; cursor:pointer; font-family:inherit; border:1.5px solid #cbd5e1; background:#fff; color:#334155; }
+#root .ia.ia .ia-btn:hover { border-color:#0ea5e9; color:#0369a1; }
+#root .ia.ia .ia-btn.pri { background:#0f766e; border-color:#0f766e; color:#fff; }
+#root .ia.ia .ia-btn.pri:hover { filter:brightness(1.08); color:#fff; }
+#root .ia.ia .ia-btn.red { background:#fff1f2; border-color:#fecaca; color:#b91c1c; }
+#root .ia.ia .ia-btn.added { background:#f0fdf4; border-color:#bbf7d0; color:#15803d; cursor:default; }
+#root .ia.ia .ia-btn:disabled { opacity:.55; cursor:not-allowed; }
+#root .ia.ia .ia-stepnav { display:flex; justify-content:space-between; gap:10px; margin-top:6px; flex-wrap:wrap; }
+
+#root .ia.ia .ia-rec { border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+#root .ia.ia .ia-rec-h { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+#root .ia.ia .ia-rec-n { font-size:${fs(14)}; font-weight:900; color:#0f766e; }
+#root .ia.ia .ia-empty { padding:22px; text-align:center; color:#64748b; font-weight:700; font-size:${fs(14)}; border:1.5px dashed #cbd5e1; border-radius:12px; background:#fff; }
+
+#root .ia.ia .ia-save { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:12px 16px; }
+#root .ia.ia .ia-msg { font-size:${fs(14)}; font-weight:800; }
+#root .ia.ia .ia-msg.ok { color:#15803d; }
+#root .ia.ia .ia-msg.err { color:#b91c1c; }
+
+@media (max-width: 1000px) {
+  #root .ia.ia .ia-body { grid-template-columns:1fr; }
+  #root .ia.ia .ia-nav { display:none; }
+  #root .ia.ia .ia-nav-pick { display:block; margin-bottom:10px; }
+}
+@media (max-width: 560px) {
+  #root .ia.ia { padding:10px; }
+  #root .ia.ia .ia-seg { width:100%; }
+  #root .ia.ia .ia-seg button { flex:1; min-width:0; }
+}
+`;
+
 export default function InternalAuditInput() {
-  const [meta, setMeta] = useState({
-    conductedBy: "",
-    verifiedBy: "",
-    dateOfAudit: "",
-    area: "",
-    auditorName: "",
-    auditorSignDate: "",
-  });
-
-  const initialChecklist = useMemo(() => {
-    const obj = {};
-    GROUPS.forEach(g => g.items.forEach(it => {
-      obj[it.code] = { status: "", remarks: "" };
-    }));
-    return obj;
-  }, []);
-  const [checklist, setChecklist] = useState(initialChecklist);
-
-  const [recs, setRecs] = useState([
-    { finding:"", type:"", action:"", resp:"", targetDate:"", status:"" },
-  ]);
-
+  const [meta, setMeta] = useState(blankMeta);
+  const [checklist, setChecklist] = useState(blankChecklist);
+  const [recs, setRecs] = useState([]);
+  const [step, setStep] = useState(0); // section index, or STEP_FINDINGS / STEP_SIGN
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState({ text: "", tone: "" });
 
-  function setMetaVal(k, v){ setMeta(p => ({ ...p, [k]: v })); }
-  function setCell(code, field, v){
-    setChecklist(p => ({ ...p, [code]: { ...(p[code]||{}), [field]: v } }));
-  }
-  function addRec(){ setRecs(p => [...p, { finding:"", type:"", action:"", resp:"", targetDate:"", status:"" }]); }
-  function delRec(idx){ setRecs(p => p.filter((_,i)=>i!==idx)); }
-  function setRec(idx, field, v){ setRecs(p => p.map((r,i)=> i===idx ? { ...r, [field]: v } : r)); }
+  const setMetaVal = (k, v) => setMeta((p) => ({ ...p, [k]: v }));
+  const setCell = (code, field, v) => setChecklist((p) => ({ ...p, [code]: { ...(p[code] || {}), [field]: v } }));
+  const answer = (code, v) => setCell(code, "status", checklist[code]?.status === v ? "" : v); // tap again = clear
 
-  async function handleSave(){
-    if (!meta.dateOfAudit) return alert("يرجى إدخال Date Of Audit.");
+  /* ── progress ── */
+  const stats = useMemo(() => {
+    let yes = 0, ok = 0, no = 0, na = 0, total = 0;
+    const perGroup = AUDIT_GROUPS.map((g) => {
+      let done = 0, bad = 0;
+      g.items.forEach((it) => {
+        total += 1;
+        const s = checklist[it.code]?.status;
+        if (s) done += 1;
+        if (s === "Yes") yes += 1; else if (s === "OK") ok += 1; else if (s === "No") { no += 1; bad += 1; } else if (s === "NA") na += 1;
+      });
+      return { done, bad, total: g.items.length };
+    });
+    const answered = yes + ok + no + na;
+    const scored = yes + ok + no;
+    return { yes, ok, no, na, total, answered, perGroup, score: scored ? Math.round(((yes + ok) / scored) * 100) : null };
+  }, [checklist]);
+
+  const findingCodes = useMemo(() => new Set(recs.map((r) => r.fromCode).filter(Boolean)), [recs]);
+  const noWithoutRemark = useMemo(
+    () => AUDIT_GROUPS.flatMap((g) => g.items).filter((it) => checklist[it.code]?.status === "No" && !String(checklist[it.code]?.remarks || "").trim()).length,
+    [checklist]
+  );
+
+  /* ── bulk + findings ── */
+  const markRest = (gi, value) => setChecklist((p) => {
+    const next = { ...p };
+    AUDIT_GROUPS[gi].items.forEach((it) => { if (!next[it.code]?.status) next[it.code] = { ...(next[it.code] || {}), status: value }; });
+    return next;
+  });
+  const addFinding = (it) => {
+    const remark = String(checklist[it.code]?.remarks || "").trim();
+    setRecs((p) => [...p, {
+      ...blankRec(),
+      fromCode: it.code,
+      finding: `${it.code} — ${firstLine(it.text)}${remark ? `\nFound: ${remark}` : ""}`,
+      type: "Minor non-conformity",
+    }]);
+  };
+  const setRec = (i, k, v) => setRecs((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const delRec = (i) => setRecs((p) => p.filter((_, j) => j !== i));
+
+  const goto = (s) => { setStep(s); try { document.querySelector(".ia-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* old browsers */ } };
+  const sectionCount = AUDIT_GROUPS.length;
+  const stepIndex = typeof step === "number" ? step : step === STEP_FINDINGS ? sectionCount : sectionCount + 1;
+  const stepOrder = [...AUDIT_GROUPS.map((_, i) => i), STEP_FINDINGS, STEP_SIGN];
+
+  /* ── save ── */
+  async function handleSave() {
+    if (!meta.dateOfAudit) { setMsg({ text: "⚠️ Enter the Date of Audit (top of the page).", tone: "err" }); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    const left = stats.total - stats.answered;
+    if (left > 0 && !window.confirm(`${left} question(s) are still unanswered. Save anyway?`)) return;
+    if (noWithoutRemark > 0 && !window.confirm(`${noWithoutRemark} "No" answer(s) have no remarks. Save anyway?`)) return;
+
     const payload = {
       headerTop: {
-        documentTitle: DOC_META.docTitle,
-        documentNo: DOC_META.docNo,
-        issueNo: DOC_META.issueNo,
-        revisionNo: DOC_META.revision,
-        issueDate: DOC_META.issueDate,
+        documentTitle: AUDIT_DOC.docTitle,
+        documentNo: AUDIT_DOC.docNo,
+        issueNo: AUDIT_DOC.issueNo,
+        revisionNo: AUDIT_DOC.revision,
+        issueDate: AUDIT_DOC.issueDate,
       },
       headRow: {
         conductedBy: meta.conductedBy,
@@ -469,16 +221,16 @@ export default function InternalAuditInput() {
         dateOfAudit: meta.dateOfAudit,
         area: meta.area,
       },
-      checklist: GROUPS.map(g => ({
+      checklist: AUDIT_GROUPS.map((g) => ({
         title: g.title,
-        items: g.items.map(it => ({
+        items: g.items.map((it) => ({
           code: it.code,
           text: it.text,
-          status: (checklist[it.code]?.status || ""),
-          remarks: (checklist[it.code]?.remarks || ""),
+          status: checklist[it.code]?.status || "",
+          remarks: checklist[it.code]?.remarks || "",
         })),
       })),
-      auditRecommendation: recs,
+      auditRecommendation: recs.filter((r) => String(r.finding || r.action || "").trim()),
       footer: {
         auditorName: meta.auditorName,
         auditorSignDate: meta.auditorSignDate,
@@ -486,173 +238,230 @@ export default function InternalAuditInput() {
       savedAt: Date.now(),
     };
 
-    try{
-      setSaving(true); setMsg("Saving…");
-      // Without a connection the record waits on this device and is sent
-      // later (utils/reportOutbox.js); the form is cleared either way.
-      const { queued } = await saveReport({ body: { reporter:"qcs", type: TYPE, payload }, label: "Internal Audit" });
-      setMsg(queued ? queuedMessage("en") : "✅ Saved successfully");
-    }catch(e){
+    try {
+      setSaving(true);
+      setMsg({ text: "Saving…", tone: "" });
+      const { queued } = await saveReport({ body: { reporter: "qcs", type: TYPE, payload }, label: "Internal Audit" });
+      // Start a clean sheet so a second Save cannot file the same audit twice.
+      setMeta(blankMeta()); setChecklist(blankChecklist()); setRecs([]); setStep(0);
+      setMsg({ text: queued ? queuedMessage("en") : "✅ Audit saved. The form is ready for the next one.", tone: "ok" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
       console.error(e);
-      setMsg("❌ Failed to save");
-    }finally{
+      setMsg({ text: "❌ Save failed: " + (e?.message || "please try again"), tone: "err" });
+    } finally {
       setSaving(false);
-      setTimeout(()=>setMsg(""), 3000);
     }
   }
 
-  return (
-    <div style={card}>
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-        <div style={{ fontWeight:900, fontSize:18 }}>INTERNAL AUDIT — Input</div>
-        <div style={{ color:"#64748b", fontWeight:700 }}>
-          DOC: {DOC_META.docNo} • Issue No: {DOC_META.issueNo} • Revision: {DOC_META.revision} • Issue Date: 01/11/2025
-        </div>
-      </div>
+  /* ── renderers ── */
+  const navButton = (i) => {
+    const g = AUDIT_GROUPS[i];
+    const st = stats.perGroup[i];
+    const done = st.done === st.total;
+    return (
+      <button key={g.title} type="button" className={`ia-nav-btn ${step === i ? "on" : ""} ${done ? "done" : ""}`} onClick={() => goto(i)}>
+        <span className="ia-nav-no">{done ? "✓" : i + 1}</span>
+        <span className="ia-nav-tx">
+          <span className="ia-nav-name">{shortTitle(g.title)}</span>
+          <span className="ia-nav-sub">{st.done} / {st.total} answered</span>
+        </span>
+        {st.bad > 0 && <span className="ia-nav-bad">{st.bad} No</span>}
+      </button>
+    );
+  };
 
-      {/* Meta rows */}
-      <table style={{ ...table, marginBottom:12 }}>
-        <tbody>
-          <tr>
-            <td style={{ ...th, width:160 }}>Conducted By</td>
-            <td style={td}><input style={input} value={meta.conductedBy} onChange={e=>setMetaVal("conductedBy", e.target.value)} /></td>
-            <td style={{ ...th, width:160 }}>Verified By</td>
-            <td style={td}><input style={input} value={meta.verifiedBy} onChange={e=>setMetaVal("verifiedBy", e.target.value)} /></td>
-          </tr>
-          <tr>
-            <td style={th}>Date Of Audit</td>
-            <td style={td}>
-              <input type="date" style={input} value={meta.dateOfAudit} onChange={e=>setMetaVal("dateOfAudit", e.target.value)} />
-            </td>
-            <td style={th}>Area</td>
-            <td style={td}><input style={input} value={meta.area} onChange={e=>setMetaVal("area", e.target.value)} /></td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* Checklist */}
-      {GROUPS.map((g, gi) => (
-        <div key={gi} style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight:900, background:"#e5e7eb", padding:"6px 8px", border:"1px solid #cbd5e1" }}>
-            {g.title}
+  const renderSection = (gi) => {
+    const g = AUDIT_GROUPS[gi];
+    const st = stats.perGroup[gi];
+    return (
+      <>
+        <div className="ia-sec-h">
+          <div>
+            <h3 className="ia-sec-t">{shortTitle(g.title)}</h3>
+            <div className="ia-sec-s">Section {gi + 1} of {sectionCount} · {st.done} / {st.total} answered{st.bad ? ` · ${st.bad} No` : ""}</div>
           </div>
-          <table style={table}>
-            <colgroup>
-              <col style={{ width:"5%" }} />
-              <col style={{ width:"55%" }} />
-              <col style={{ width:"12%" }} />
-              <col style={{ width:"12%" }} />
-              <col style={{ width:"16%" }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th style={th}>#</th>
-                <th style={th}>Area / Question</th>
-                <th style={th}>Status</th>
-                <th style={th}>Remarks</th>
-                <th style={th}>—</th>
-              </tr>
-            </thead>
-            <tbody>
-              {g.items.map((it) => (
-                <tr key={it.code}>
-                  <td style={td}>{it.code}</td>
-                  <td style={td}><div style={{ whiteSpace:"pre-wrap" }}>{it.text}</div></td>
-                  <td style={td}>
-                    <select
-                      style={select}
-                      value={checklist[it.code]?.status || ""}
-                      onChange={e=>setCell(it.code, "status", e.target.value)}
-                    >
-                      <option value=""></option>
-                      {OPTS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  </td>
-                  <td style={td}>
-                    <input
-                      style={input}
-                      value={checklist[it.code]?.remarks || ""}
-                      onChange={e=>setCell(it.code, "remarks", e.target.value)}
-                      placeholder="Remarks"
-                    />
-                  </td>
-                  <td style={td}>
-                    <span style={{ color:"#94a3b8" }}>optional</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {st.done < st.total && (
+            <div className="ia-bulk">
+              <button type="button" className="ia-btn" onClick={() => markRest(gi, "Yes")}>✓ Mark the rest Yes</button>
+              <button type="button" className="ia-btn" onClick={() => markRest(gi, "NA")}>Mark the rest N/A</button>
+            </div>
+          )}
+        </div>
+
+        {g.items.map((it) => {
+          const cur = checklist[it.code] || {};
+          const isNo = cur.status === "No";
+          return (
+            <div key={it.code} className={`ia-q ${isNo ? "is-no" : cur.status ? "is-done" : ""}`}>
+              <div className="ia-q-top">
+                <span className="ia-code">{it.code}</span>
+                <div className="ia-q-tx">{it.text}</div>
+              </div>
+              <div className="ia-q-row">
+                <div className="ia-seg" role="group" aria-label={`Answer ${it.code}`}>
+                  {ANSWERS.map((a) => (
+                    <button key={a.value} type="button" className={`${a.tone} ${cur.status === a.value ? "on" : ""}`}
+                      onClick={() => answer(it.code, a.value)} aria-pressed={cur.status === a.value}>{a.label}</button>
+                  ))}
+                </div>
+                <input className="ia-in ia-rem" value={cur.remarks || ""} onChange={(e) => setCell(it.code, "remarks", e.target.value)}
+                  placeholder={isNo ? "What was found? (needed for a finding)" : "Remarks (optional)"} />
+                {isNo && (findingCodes.has(it.code)
+                  ? <button type="button" className="ia-btn added" disabled>✓ Added to findings</button>
+                  : <button type="button" className="ia-btn red" onClick={() => addFinding(it)}>＋ Add as finding</button>)}
+              </div>
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
+  const renderFindings = () => (
+    <>
+      <div className="ia-sec-h">
+        <div>
+          <h3 className="ia-sec-t">Findings &amp; actions</h3>
+          <div className="ia-sec-s">Each finding needs an action, an owner and a target date. “Add as finding” on a No answer fills one in for you.</div>
+        </div>
+        <button type="button" className="ia-btn" onClick={() => setRecs((p) => [...p, blankRec()])}>＋ Add finding</button>
+      </div>
+      {recs.length === 0 && <div className="ia-empty">No findings yet{stats.no ? ` — there are ${stats.no} "No" answers you can turn into findings.` : "."}</div>}
+      {recs.map((r, i) => (
+        <div key={i} className="ia-rec">
+          <div className="ia-rec-h">
+            <span className="ia-rec-n">Finding {i + 1}{r.fromCode ? ` · from ${r.fromCode}` : ""}</span>
+            <button type="button" className="ia-btn red" onClick={() => delRec(i)}>Remove</button>
+          </div>
+          <div className="ia-grid">
+            <label className="ia-f" style={{ gridColumn: "1 / -1" }}><span>Audit finding</span>
+              <textarea className="ia-in" value={r.finding} onChange={(e) => setRec(i, "finding", e.target.value)} /></label>
+            <label className="ia-f"><span>Finding type</span>
+              <select className="ia-in" value={r.type} onChange={(e) => setRec(i, "type", e.target.value)}>
+                <option value="">—</option>
+                {[...new Set([...FINDING_TYPES, r.type].filter(Boolean))].map((t) => <option key={t}>{t}</option>)}
+              </select></label>
+            <label className="ia-f"><span>Responsibility</span>
+              <input className="ia-in" value={r.resp} onChange={(e) => setRec(i, "resp", e.target.value)} placeholder="Who will fix it" /></label>
+            <label className="ia-f"><span>Target date</span>
+              <input type="date" className="ia-in" value={r.targetDate} onChange={(e) => setRec(i, "targetDate", e.target.value)} /></label>
+            <label className="ia-f"><span>Status</span>
+              <select className="ia-in" value={r.status} onChange={(e) => setRec(i, "status", e.target.value)}>
+                {FINDING_STATUS.map((s) => <option key={s}>{s}</option>)}
+              </select></label>
+            <label className="ia-f" style={{ gridColumn: "1 / -1" }}><span>Action to be taken</span>
+              <textarea className="ia-in" value={r.action} onChange={(e) => setRec(i, "action", e.target.value)} /></label>
+          </div>
         </div>
       ))}
+    </>
+  );
 
-      {/* Audit Recommendation */}
-      <div style={{ fontWeight:900, background:"#e5e7eb", padding:"6px 8px", border:"1px solid #cbd5e1", marginTop:16 }}>
-        AUDIT RECOMMENDATION
+  const renderSign = () => (
+    <>
+      <div className="ia-sec-h">
+        <div>
+          <h3 className="ia-sec-t">Sign-off</h3>
+          <div className="ia-sec-s">{stats.answered} of {stats.total} answered · {recs.length} finding(s){stats.score != null ? ` · ${stats.score}% compliance` : ""}</div>
+        </div>
       </div>
-      <div style={{ overflowX:"auto" }}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>S/N</th>
-              <th style={th}>Audit Finding</th>
-              <th style={th}>Finding Type</th>
-              <th style={th}>Action to be taken</th>
-              <th style={th}>Responsibility</th>
-              <th style={th}>Target Date</th>
-              <th style={th}>Status</th>
-              <th style={th}>—</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recs.map((r, i) => (
-              <tr key={i}>
-                <td style={td}>{i+1}</td>
-                <td style={td}><textarea style={textarea} value={r.finding} onChange={e=>setRec(i,"finding",e.target.value)} /></td>
-                <td style={td}><input style={input} value={r.type} onChange={e=>setRec(i,"type",e.target.value)} /></td>
-                <td style={td}><textarea style={textarea} value={r.action} onChange={e=>setRec(i,"action",e.target.value)} /></td>
-                <td style={td}><input style={input} value={r.resp} onChange={e=>setRec(i,"resp",e.target.value)} /></td>
-                <td style={td}><input type="date" style={input} value={r.targetDate} onChange={e=>setRec(i,"targetDate",e.target.value)} /></td>
-                <td style={td}>
-                  <select style={select} value={r.status} onChange={e=>setRec(i,"status",e.target.value)}>
-                    <option value=""></option>
-                    <option>OPEN</option>
-                    <option>IN PROGRESS</option>
-                    <option>CLOSED</option>
-                    <option>ON HOLD</option>
-                  </select>
-                </td>
-                <td style={td}>
-                  <button onClick={()=>delRec(i)} style={btn("#ef4444")}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ marginTop:8 }}>
-          <button onClick={addRec} style={btn("#0b132b")}>+ Add Row</button>
+      <div className="ia-grid">
+        <label className="ia-f"><span>Auditor name</span>
+          <input className="ia-in" value={meta.auditorName} onChange={(e) => setMetaVal("auditorName", e.target.value)} /></label>
+        <label className="ia-f"><span>Sign date</span>
+          <input type="date" className="ia-in" value={meta.auditorSignDate} onChange={(e) => setMetaVal("auditorSignDate", e.target.value)} /></label>
+      </div>
+    </>
+  );
+
+  const pct = Math.round((stats.answered / stats.total) * 100);
+  const prev = stepOrder[stepIndex - 1];
+  const next = stepOrder[stepIndex + 1];
+  const stepName = (s) => (s === STEP_FINDINGS ? "Findings" : s === STEP_SIGN ? "Sign-off" : shortTitle(AUDIT_GROUPS[s].title));
+
+  return (
+    <div className="ia" dir="ltr" lang="en">
+      <style>{CSS}</style>
+
+      <div className="ia-head">
+        <div>
+          <h2 className="ia-title">Internal Audit — QCS</h2>
+          <div className="ia-doc">
+            <span>Doc {AUDIT_DOC.docNo}</span><span>Issue {AUDIT_DOC.issueNo}</span>
+            <span>Rev {AUDIT_DOC.revision}</span><span>Issued 01/11/2025</span>
+          </div>
         </div>
       </div>
 
-      {/* Footer sign */}
-      <table style={{ ...table, marginTop:16 }}>
-        <tbody>
-          <tr>
-            <td style={{ ...th, width:160 }}>Auditor Name</td>
-            <td style={td}><input style={input} value={meta.auditorName} onChange={e=>setMetaVal("auditorName", e.target.value)} /></td>
-            <td style={{ ...th, width:160 }}>Date</td>
-            <td style={td}><input type="date" style={input} value={meta.auditorSignDate} onChange={e=>setMetaVal("auditorSignDate", e.target.value)} /></td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="ia-card">
+        <div className="ia-card-t">Audit details</div>
+        <div className="ia-grid">
+          <label className="ia-f"><span>Date of audit <b>*</b></span>
+            <input type="date" className="ia-in" value={meta.dateOfAudit} onChange={(e) => setMetaVal("dateOfAudit", e.target.value)} /></label>
+          <label className="ia-f"><span>Area</span>
+            <input className="ia-in" value={meta.area} onChange={(e) => setMetaVal("area", e.target.value)} placeholder="e.g. QCS warehouse" /></label>
+          <label className="ia-f"><span>Conducted by</span>
+            <input className="ia-in" value={meta.conductedBy} onChange={(e) => setMetaVal("conductedBy", e.target.value)} /></label>
+          <label className="ia-f"><span>Verified by</span>
+            <input className="ia-in" value={meta.verifiedBy} onChange={(e) => setMetaVal("verifiedBy", e.target.value)} /></label>
+        </div>
+      </div>
 
-      {/* Actions */}
-      <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:12 }}>
-        <button onClick={handleSave} disabled={saving} style={btn("#2563eb")}>
-          {saving ? "Saving…" : "Save"}
+      <div className="ia-card">
+        <div className="ia-prog">
+          <span className="ia-prog-n">{stats.answered} / {stats.total} answered</span>
+          <div className="ia-bar" aria-label={`${pct}% answered`}><i style={{ width: `${pct}%` }} /></div>
+          <div className="ia-pills">
+            <span className="ia-pill t-yes">Yes {stats.yes}</span>
+            <span className="ia-pill t-ok">OK {stats.ok}</span>
+            <span className="ia-pill t-no">No {stats.no}</span>
+            <span className="ia-pill t-na">N/A {stats.na}</span>
+            {stats.score != null && <span className="ia-pill t-score">{stats.score}% compliance</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="ia-anchor" />
+      <div className="ia-body">
+        <nav className="ia-nav" aria-label="Audit sections">
+          {AUDIT_GROUPS.map((_, i) => navButton(i))}
+          <div className="ia-nav-sep" />
+          <button type="button" className={`ia-nav-btn ${step === STEP_FINDINGS ? "on" : ""}`} onClick={() => goto(STEP_FINDINGS)}>
+            <span className="ia-nav-no">📌</span>
+            <span className="ia-nav-tx"><span className="ia-nav-name">Findings &amp; actions</span><span className="ia-nav-sub">{recs.length} finding(s)</span></span>
+          </button>
+          <button type="button" className={`ia-nav-btn ${step === STEP_SIGN ? "on" : ""}`} onClick={() => goto(STEP_SIGN)}>
+            <span className="ia-nav-no">✍️</span>
+            <span className="ia-nav-tx"><span className="ia-nav-name">Sign-off</span><span className="ia-nav-sub">Auditor + date</span></span>
+          </button>
+        </nav>
+
+        <div>
+          <select className="ia-in ia-nav-pick" value={String(step)} aria-label="Go to section"
+            onChange={(e) => { const v = e.target.value; goto(/^\d+$/.test(v) ? Number(v) : v); }}>
+            {AUDIT_GROUPS.map((g, i) => (
+              <option key={g.title} value={i}>{i + 1}. {shortTitle(g.title)} — {stats.perGroup[i].done}/{stats.perGroup[i].total}{stats.perGroup[i].bad ? ` · ${stats.perGroup[i].bad} No` : ""}</option>
+            ))}
+            <option value={STEP_FINDINGS}>📌 Findings &amp; actions ({recs.length})</option>
+            <option value={STEP_SIGN}>✍️ Sign-off</option>
+          </select>
+
+          <div className="ia-card">
+            {typeof step === "number" ? renderSection(step) : step === STEP_FINDINGS ? renderFindings() : renderSign()}
+            <div className="ia-stepnav">
+              {prev !== undefined ? <button type="button" className="ia-btn" onClick={() => goto(prev)}>← {stepName(prev)}</button> : <span />}
+              {next !== undefined && <button type="button" className="ia-btn pri" onClick={() => goto(next)}>{stepName(next)} →</button>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="ia-save">
+        <span className={`ia-msg ${msg.tone}`}>{msg.text || `${stats.answered} of ${stats.total} answered · ${recs.length} finding(s)`}</span>
+        <button type="button" className="ia-btn pri" onClick={handleSave} disabled={saving} style={{ minWidth: 160 }}>
+          {saving ? "Saving…" : "💾 Save audit"}
         </button>
-        {msg && <span style={{ alignSelf:"center", fontWeight:800, color:"#334155" }}>{msg}</span>}
       </div>
     </div>
   );

@@ -1,89 +1,144 @@
 // src/pages/monitor/branches/qcs/InternalAuditView.jsx
-import React, { useState, useEffect, useCallback } from "react";
+// QCS Internal Audit — saved audits.
+//
+// List: one card per audit with its compliance score, No count and open
+// findings. Detail: score + counts up top, the findings as cards, then the
+// checklist — opening on the problems ("No" answers) when there are any, with
+// All / No / With remarks / Unanswered filters and per-section progress bars.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
 
-/* ===== API base ===== */
-
-
 const TYPE = "qcs_internal_audit";
 
-/* ===== helpers ===== */
-const getId = (r) => r?._id || r?.id || null; // ✅ normalize ID
-
-/* ===== Status colors ===== */
-const STATUS_COLOR = {
-  Yes: { bg: "#dcfce7", color: "#16a34a", border: "#bbf7d0" },
-  No:  { bg: "#fee2e2", color: "#dc2626", border: "#fecaca" },
-  NA:  { bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" },
-  OK:  { bg: "#dbeafe", color: "#2563eb", border: "#bfdbfe" },
-  "":  { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
-};
-
-const FINDING_STATUS_COLOR = {
-  OPEN:          { bg: "#fee2e2", color: "#dc2626" },
-  "IN PROGRESS": { bg: "#fef9c3", color: "#ca8a04" },
-  CLOSED:        { bg: "#dcfce7", color: "#16a34a" },
-  "ON HOLD":     { bg: "#f3f4f6", color: "#6b7280" },
-};
-
-/* ===== Helpers ===== */
 const fmt = (d) => {
   if (!d) return "—";
   try { return new Date(d).toLocaleDateString("en-GB"); } catch { return d; }
 };
+const shortTitle = (t) => String(t || "").replace(/^\d+\s+/, "");
 
-const StatusBadge = ({ value }) => {
-  const s = STATUS_COLOR[value] || STATUS_COLOR[""];
-  return (
-    <span style={{
-      display: "inline-block", padding: "2px 10px", borderRadius: 999,
-      fontSize: 12, fontWeight: 700,
-      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-    }}>{value || "—"}</span>
-  );
-};
-
-const FindingBadge = ({ value }) => {
-  const s = FINDING_STATUS_COLOR[value] || { bg: "#f3f4f6", color: "#6b7280" };
-  return (
-    <span style={{
-      display: "inline-block", padding: "2px 10px", borderRadius: 999,
-      fontSize: 12, fontWeight: 700, background: s.bg, color: s.color,
-    }}>{value || "—"}</span>
-  );
-};
-
-/* ===== Score calculator ===== */
 const calcScore = (checklist) => {
-  if (!checklist) return null;
   let yes = 0, no = 0, ok = 0, na = 0, total = 0;
-  checklist.forEach(g =>
-    g.items.forEach(it => {
-      total++;
-      if (it.status === "Yes") yes++;
-      else if (it.status === "No") no++;
-      else if (it.status === "OK") ok++;
-      else if (it.status === "NA") na++;
-    })
-  );
-  const answered = yes + no + ok;
-  const score = answered > 0 ? Math.round(((yes + ok) / answered) * 100) : null;
-  return { yes, no, ok, na, total, score };
+  (checklist || []).forEach((g) => (g.items || []).forEach((it) => {
+    total += 1;
+    if (it.status === "Yes") yes += 1;
+    else if (it.status === "No") no += 1;
+    else if (it.status === "OK") ok += 1;
+    else if (it.status === "NA") na += 1;
+  }));
+  const scored = yes + no + ok;
+  return { yes, no, ok, na, total, blank: total - yes - no - ok - na, score: scored ? Math.round(((yes + ok) / scored) * 100) : null };
 };
+const scoreTone = (s) => (s == null ? "na" : s >= 80 ? "good" : s >= 60 ? "mid" : "bad");
+const isOpenFinding = (r) => r?.status === "OPEN" || r?.status === "IN PROGRESS" || !r?.status;
 
-/* ===== Main component ===== */
+const STATUS_LABEL = { Yes: "Yes", OK: "OK", No: "No", NA: "N/A" };
+const STATUS_TONE = { Yes: "yes", OK: "ok", No: "no", NA: "na" };
+const FIND_TONE = { OPEN: "no", "IN PROGRESS": "mid", CLOSED: "yes", "ON HOLD": "na" };
+
+const FILTERS = [
+  { key: "no", label: "No answers" },
+  { key: "remarks", label: "With remarks" },
+  { key: "blank", label: "Unanswered" },
+  { key: "all", label: "All questions" },
+];
+const keep = (it, f) =>
+  f === "all" ? true :
+  f === "no" ? it.status === "No" :
+  f === "remarks" ? !!String(it.remarks || "").trim() :
+  !it.status;
+
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const CSS = `
+#root .iav.iav { color:#0f172a; padding:4px; }
+#root .iav.iav * { box-sizing:border-box; }
+#root .iav.iav .v-head { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+#root .iav.iav .v-title { font-size:${fs(22)}; font-weight:900; margin:0; }
+#root .iav.iav .v-sub { font-size:${fs(13)}; font-weight:700; color:#64748b; margin-top:4px; }
+#root .iav.iav .v-btn { border-radius:10px; min-height:40px; padding:0 14px; font-size:${fs(13.5)}; font-weight:800; cursor:pointer; font-family:inherit; border:1.5px solid #cbd5e1; background:#fff; color:#334155; }
+#root .iav.iav .v-btn:hover { border-color:#0ea5e9; color:#0369a1; }
+#root .iav.iav .v-btn.on { background:#0f766e; border-color:#0f766e; color:#fff; }
+#root .iav.iav .v-btn.red { background:#fff1f2; border-color:#fecaca; color:#b91c1c; }
+#root .iav.iav .v-in { width:100%; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 12px; font-size:${fs(15)}; font-family:inherit; min-height:44px; }
+#root .iav.iav .v-in:focus { outline:none; border-color:#0ea5e9; box-shadow:0 0 0 3px rgba(14,165,233,.15); }
+#root .iav.iav .v-state { padding:40px 16px; text-align:center; color:#64748b; font-weight:700; font-size:${fs(15)}; background:#fff; border:1.5px dashed #cbd5e1; border-radius:14px; }
+#root .iav.iav .v-state.err { color:#b91c1c; border-color:#fecaca; background:#fff7f7; }
+
+#root .iav.iav .v-pill { display:inline-block; font-size:${fs(12.5)}; font-weight:800; border-radius:999px; padding:3px 10px; }
+#root .iav.iav .t-yes, #root .iav.iav .t-good { background:#dcfce7; color:#15803d; }
+#root .iav.iav .t-ok { background:#dbeafe; color:#1d4ed8; }
+#root .iav.iav .t-no, #root .iav.iav .t-bad { background:#fee2e2; color:#b91c1c; }
+#root .iav.iav .t-na { background:#f1f5f9; color:#475569; }
+#root .iav.iav .t-mid { background:#fef9c3; color:#a16207; }
+
+/* list */
+#root .iav.iav .v-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr)); gap:12px; margin-top:12px; }
+#root .iav.iav .v-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; gap:14px; align-items:center; transition:border-color .15s, box-shadow .15s; text-align:left; font-family:inherit; width:100%; }
+#root .iav.iav .v-card:hover { border-color:#7dd3fc; box-shadow:0 8px 20px rgba(15,23,42,.07); }
+#root .iav.iav .v-ring { flex-shrink:0; width:64px; height:64px; border-radius:50%; display:grid; place-items:center; font-size:${fs(16)}; font-weight:900; }
+#root .iav.iav .v-ring.good { background:conic-gradient(#16a34a var(--p), #e2e8f0 0); }
+#root .iav.iav .v-ring.mid  { background:conic-gradient(#ca8a04 var(--p), #e2e8f0 0); }
+#root .iav.iav .v-ring.bad  { background:conic-gradient(#dc2626 var(--p), #e2e8f0 0); }
+#root .iav.iav .v-ring.na   { background:#e2e8f0; }
+#root .iav.iav .v-ring > span { width:50px; height:50px; border-radius:50%; background:#fff; display:grid; place-items:center; }
+#root .iav.iav .v-card-tx { flex:1; min-width:0; }
+#root .iav.iav .v-card-d { font-size:${fs(16)}; font-weight:900; }
+#root .iav.iav .v-card-m { font-size:${fs(13)}; font-weight:700; color:#64748b; margin-top:3px; }
+#root .iav.iav .v-card-p { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+
+/* detail */
+#root .iav.iav .v-top { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:16px; display:flex; gap:18px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+#root .iav.iav .v-top .v-ring { width:92px; height:92px; font-size:${fs(22)}; }
+#root .iav.iav .v-top .v-ring > span { width:72px; height:72px; }
+#root .iav.iav .v-meta { flex:1; min-width:240px; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+#root .iav.iav .v-meta div { background:#f8fafc; border:1px solid #eef2f7; border-radius:10px; padding:8px 12px; }
+#root .iav.iav .v-meta b { display:block; font-size:${fs(11.5)}; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.05em; }
+#root .iav.iav .v-meta span { font-size:${fs(15)}; font-weight:800; }
+#root .iav.iav .v-sec-t { font-size:${fs(15)}; font-weight:900; margin:18px 0 10px; display:flex; align-items:center; gap:8px; }
+#root .iav.iav .v-recs { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr)); gap:10px; }
+#root .iav.iav .v-rec { background:#fff; border:1px solid #e2e8f0; border-left:5px solid #94a3b8; border-radius:12px; padding:12px 14px; }
+#root .iav.iav .v-rec.no { border-left-color:#dc2626; }
+#root .iav.iav .v-rec.mid { border-left-color:#ca8a04; }
+#root .iav.iav .v-rec.yes { border-left-color:#16a34a; }
+#root .iav.iav .v-rec-f { font-size:${fs(15)}; font-weight:800; white-space:pre-wrap; line-height:1.5; margin:6px 0; }
+#root .iav.iav .v-rec-a { font-size:${fs(14)}; color:#334155; white-space:pre-wrap; line-height:1.5; }
+#root .iav.iav .v-rec-m { font-size:${fs(12.5)}; font-weight:700; color:#64748b; margin-top:8px; display:flex; gap:12px; flex-wrap:wrap; }
+#root .iav.iav .v-filters { display:flex; gap:6px; flex-wrap:wrap; }
+#root .iav.iav .v-grp { background:#fff; border:1px solid #e2e8f0; border-radius:14px; margin-bottom:10px; overflow:hidden; }
+#root .iav.iav .v-grp-h { display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; background:#f8fafc; border:0; width:100%; font-family:inherit; text-align:left; }
+#root .iav.iav .v-grp-n { font-size:${fs(15)}; font-weight:900; flex:1; min-width:0; }
+#root .iav.iav .v-grp-bar { width:120px; height:8px; background:#e2e8f0; border-radius:999px; overflow:hidden; flex-shrink:0; }
+#root .iav.iav .v-grp-bar i { display:block; height:100%; background:#16a34a; }
+#root .iav.iav .v-q { display:flex; gap:12px; padding:10px 14px; border-top:1px solid #f1f5f9; align-items:flex-start; }
+#root .iav.iav .v-q.no { background:#fffafa; }
+#root .iav.iav .v-code { flex-shrink:0; font-size:${fs(12)}; font-weight:900; color:#0369a1; background:#e0f2fe; border-radius:8px; padding:3px 8px; margin-top:2px; }
+#root .iav.iav .v-q-tx { flex:1; min-width:0; font-size:${fs(15)}; line-height:1.55; white-space:pre-wrap; }
+#root .iav.iav .v-q-r { font-size:${fs(14)}; color:#b91c1c; font-weight:700; margin-top:4px; white-space:pre-wrap; }
+#root .iav.iav .v-q-r.plain { color:#475569; }
+#root .iav.iav .v-q .v-pill { flex-shrink:0; min-width:48px; text-align:center; }
+@media (max-width: 640px) { #root .iav.iav .v-grp-bar { display:none; } }
+`;
+
+function Ring({ score }) {
+  const tone = scoreTone(score);
+  return (
+    <div className={`v-ring ${tone}`} style={{ "--p": `${score || 0}%` }}>
+      <span>{score == null ? "—" : `${score}%`}</span>
+    </div>
+  );
+}
+
 export default function InternalAuditView() {
-  const [records, setRecords]             = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState("");
-  const [selected, setSelected]           = useState(null);
-  const [deleting, setDeleting]           = useState(null);
-  const [search, setSearch]               = useState("");
-  const [expandedGroups, setExpandedGroups] = useState({});
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [closed, setClosed] = useState({});
 
-  /* ── Fetch list ── */
   const fetchRecords = useCallback(async () => {
     try {
       setLoading(true);
@@ -92,11 +147,13 @@ export default function InternalAuditView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data.reports || data.data || []);
-      // ✅ normalize: كل record يحصل على _id موحد
       const normalized = arr.map((r, i) => ({ ...r, _id: r._id || r.id || `rec-${i}` }));
-      setRecords(normalized.sort((a, b) => (b.payload?.savedAt || 0) - (a.payload?.savedAt || 0)));
-    } catch (e) {
-      setError("Failed to load records. Please try again.");
+      normalized.sort((a, b) =>
+        String(b.payload?.headRow?.dateOfAudit || "").localeCompare(String(a.payload?.headRow?.dateOfAudit || "")) ||
+        (b.payload?.savedAt || 0) - (a.payload?.savedAt || 0));
+      setRecords(normalized);
+    } catch {
+      setError("Could not load the audits. Press Refresh to try again.");
     } finally {
       setLoading(false);
     }
@@ -104,402 +161,197 @@ export default function InternalAuditView() {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  /* ── Delete ── */
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this audit record?")) return;
+    if (!window.confirm("Delete this audit permanently?")) return;
     try {
       setDeleting(id);
-      // ✅ id مضمون مش undefined لأننا normalize فوق
       const res = await fetch(`${API_BASE}/api/reports/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      setRecords(p => p.filter(r => r._id !== id));
+      setRecords((p) => p.filter((r) => r._id !== id));
       if (selected?._id === id) setSelected(null);
     } catch {
-      alert("Failed to delete.");
+      alert("Delete failed.");
     } finally {
       setDeleting(null);
     }
   };
 
-  /* ── Toggle group expand ── */
-  const toggleGroup = (title) =>
-    setExpandedGroups(p => ({ ...p, [title]: !p[title] }));
-
-  const expandAll = (checklist) => {
-    const obj = {};
-    checklist?.forEach(g => { obj[g.title] = true; });
-    setExpandedGroups(obj);
+  const open = (rec) => {
+    const sc = calcScore(rec.payload?.checklist);
+    setFilter(sc.no > 0 ? "no" : "all"); // open on the problems when there are any
+    setClosed({});
+    setSelected(rec);
+    window.scrollTo({ top: 0 });
   };
 
-  const collapseAll = () => setExpandedGroups({});
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return records;
+    return records.filter((r) => {
+      const p = r.payload || {};
+      return [p.headRow?.conductedBy, p.headRow?.area, p.headRow?.dateOfAudit, fmt(p.headRow?.dateOfAudit), p.footer?.auditorName]
+        .some((v) => String(v || "").toLowerCase().includes(q));
+    });
+  }, [records, search]);
 
-  /* ── Filtered list ── */
-  const filtered = records.filter(r => {
-    const p = r.payload || {};
-    const q = search.toLowerCase();
-    return (
-      !q ||
-      (p.headRow?.conductedBy  || "").toLowerCase().includes(q) ||
-      (p.headRow?.area         || "").toLowerCase().includes(q) ||
-      (p.headRow?.dateOfAudit  || "").includes(q) ||
-      (p.footer?.auditorName   || "").toLowerCase().includes(q)
-    );
-  });
-
-  /* ===========================
-     LIST VIEW
-  =========================== */
+  /* ================= LIST ================= */
   if (!selected) {
     return (
-      <div style={{ fontFamily: "'Inter', system-ui, sans-serif", padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div className="iav" dir="ltr" lang="en">
+        <style>{CSS}</style>
+        <div className="v-head">
           <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              📋 Internal Audit — Records
-            </h2>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>QCS · FS-QA/INA-QCS-W/01</p>
+            <h2 className="v-title">Internal Audits</h2>
+            <div className="v-sub">QCS · FS-QA/INA-QCS-W/01 · {records.length} audit(s)</div>
           </div>
-          <button
-            onClick={fetchRecords}
-            style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
-          >
-            ↻ Refresh
-          </button>
+          <button type="button" className="v-btn" onClick={fetchRecords} disabled={loading}>{loading ? "Loading…" : "↻ Refresh"}</button>
         </div>
+        <input className="v-in" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Search by date, area, auditor…" />
 
-        {/* Search */}
-        <div style={{ position: "relative", marginBottom: 16 }}>
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 16 }}>🔍</span>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by auditor, area, or date..."
-            style={{
-              width: "100%", boxSizing: "border-box",
-              border: "1.5px solid #e2e8f0", borderRadius: 10,
-              padding: "10px 12px 10px 36px", fontSize: 14,
-              color: "#0f172a", outline: "none",
-            }}
-          />
-        </div>
-
-        {/* States */}
-        {loading && (
-          <div style={{ textAlign: "center", padding: 60, color: "#64748b", fontSize: 15 }}>
-            ⏳ Loading records...
-          </div>
-        )}
-        {error && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 16, color: "#dc2626", fontWeight: 600 }}>
-            ⚠️ {error}
-          </div>
-        )}
-
+        {loading && <div className="v-state" style={{ marginTop: 12 }}>Loading audits…</div>}
+        {!loading && error && <div className="v-state err" style={{ marginTop: 12 }}>⚠️ {error}</div>}
         {!loading && !error && filtered.length === 0 && (
-          <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontSize: 15 }}>
-            {search ? "No records match your search." : "No audit records found."}
-          </div>
+          <div className="v-state" style={{ marginTop: 12 }}>{search ? "No audits match your search." : "No audits saved yet."}</div>
         )}
 
-        {/* Records list */}
-        {!loading && !error && filtered.map((rec) => {
-          const p  = rec.payload || {};
-          const h  = p.headRow  || {};
-          const ft = p.footer   || {};
-          const sc = calcScore(p.checklist);
-          const openFindings = (p.auditRecommendation || [])
-            .filter(r => r.status === "OPEN" || r.status === "IN PROGRESS").length;
-
-          return (
-            <div
-              key={rec._id} // ✅ مضمون مش undefined
-              style={{
-                background: "#fff", border: "1.5px solid #e2e8f0",
-                borderRadius: 14, padding: "16px 20px", marginBottom: 10,
-                cursor: "pointer", transition: "box-shadow 0.15s, border-color 0.15s",
-              }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(37,99,235,0.10)"; e.currentTarget.style.borderColor = "#93c5fd"; }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
-              onClick={() => { setSelected(rec); expandAll(p.checklist); }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-
-                {/* Left */}
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a", marginBottom: 4 }}>
-                    📅 {fmt(h.dateOfAudit)}
-                    {h.area && <span style={{ color: "#64748b", fontWeight: 500, marginLeft: 8 }}>· {h.area}</span>}
-                  </div>
-                  <div style={{ fontSize: 13, color: "#64748b", display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    {h.conductedBy && <span>👤 <b>{h.conductedBy}</b></span>}
-                    {ft.auditorName && <span>✍️ {ft.auditorName}</span>}
-                    {h.verifiedBy  && <span>✅ Verified by: <SignatureName name={h.verifiedBy} underline={false} inline /></span>}
+        <div className="v-list">
+          {!loading && !error && filtered.map((rec) => {
+            const p = rec.payload || {};
+            const h = p.headRow || {};
+            const sc = calcScore(p.checklist);
+            const openF = (p.auditRecommendation || []).filter(isOpenFinding).length;
+            return (
+              <div key={rec._id} className="v-card" role="button" tabIndex={0}
+                onClick={() => open(rec)} onKeyDown={(e) => { if (e.key === "Enter") open(rec); }}>
+                <Ring score={sc.score} />
+                <div className="v-card-tx">
+                  <div className="v-card-d">{fmt(h.dateOfAudit)}{h.area ? ` · ${h.area}` : ""}</div>
+                  <div className="v-card-m">{h.conductedBy ? `By ${h.conductedBy}` : "Auditor not recorded"}</div>
+                  <div className="v-card-p">
+                    {sc.no > 0 && <span className="v-pill t-no">{sc.no} No</span>}
+                    {openF > 0 && <span className="v-pill t-mid">{openF} open finding{openF > 1 ? "s" : ""}</span>}
+                    {sc.no === 0 && openF === 0 && <span className="v-pill t-yes">No issues</span>}
+                    <span className="v-pill t-na">{sc.total - sc.blank}/{sc.total} answered</span>
                   </div>
                 </div>
-
-                {/* Right — badges */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  {sc?.score != null && (
-                    <span style={{
-                      background: sc.score >= 80 ? "#dcfce7" : sc.score >= 60 ? "#fef9c3" : "#fee2e2",
-                      color:      sc.score >= 80 ? "#16a34a" : sc.score >= 60 ? "#ca8a04" : "#dc2626",
-                      fontWeight: 800, fontSize: 13, padding: "4px 12px", borderRadius: 999,
-                    }}>
-                      {sc.score}% Compliance
-                    </span>
-                  )}
-                  {openFindings > 0 && (
-                    <span style={{ background: "#fee2e2", color: "#dc2626", fontWeight: 700, fontSize: 12, padding: "3px 10px", borderRadius: 999 }}>
-                      {openFindings} open finding{openFindings > 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {canDelete("daily") && (
-                    <button
-                      onClick={e => { e.stopPropagation(); handleDelete(rec._id); }} // ✅
-                      disabled={deleting === rec._id}
-                      style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                     data-delete-action="true">
-                      {deleting === rec._id ? "…" : "🗑 Delete"}
-                    </button>
-                  )}
-                </div>
+                {canDelete("daily") && (
+                  <button type="button" className="v-btn red" data-delete-action="true" disabled={deleting === rec._id}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(rec._id); }}>
+                    {deleting === rec._id ? "…" : "Delete"}
+                  </button>
+                )}
               </div>
-
-              {/* Mini stats */}
-              {sc && (
-                <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-                  {[
-                    { label: "Yes",   val: sc.yes,   color: "#16a34a", bg: "#dcfce7" },
-                    { label: "No",    val: sc.no,    color: "#dc2626", bg: "#fee2e2" },
-                    { label: "OK",    val: sc.ok,    color: "#2563eb", bg: "#dbeafe" },
-                    { label: "N/A",   val: sc.na,    color: "#6b7280", bg: "#f3f4f6" },
-                    { label: "Total", val: sc.total, color: "#0f172a", bg: "#f1f5f9" },
-                  ].map(s => (
-                    <span key={s.label} style={{ fontSize: 12, fontWeight: 700, color: s.color, background: s.bg, padding: "2px 10px", borderRadius: 999 }}>
-                      {s.label}: {s.val}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   }
 
-  /* ===========================
-     DETAIL VIEW
-  =========================== */
-  const p    = selected.payload || {};
-  const h    = p.headRow        || {};
-  const hTop = p.headerTop      || {};
-  const ft   = p.footer         || {};
-  const sc   = calcScore(p.checklist);
+  /* ================= DETAIL ================= */
+  const p = selected.payload || {};
+  const h = p.headRow || {};
+  const hTop = p.headerTop || {};
+  const ft = p.footer || {};
+  const sc = calcScore(p.checklist);
   const recs = p.auditRecommendation || [];
+  const groups = (p.checklist || [])
+    .map((g, gi) => ({ ...g, gi, shown: (g.items || []).filter((it) => keep(it, filter)) }))
+    .filter((g) => filter === "all" || g.shown.length > 0);
+  const counts = { no: sc.no, remarks: (p.checklist || []).reduce((n, g) => n + (g.items || []).filter((it) => String(it.remarks || "").trim()).length, 0), blank: sc.blank, all: sc.total };
 
   return (
-    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-
-      {/* Back */}
-      <button
-        onClick={() => setSelected(null)}
-        style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 16px", fontWeight: 700, cursor: "pointer", marginBottom: 20, fontSize: 18, color: "#374151" }}
-      >
-        ← Back to Records
-      </button>
-
-      {/* Document header */}
-      <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>
-              {hTop.documentTitle || "INTERNAL AUDIT – QCS"}
-            </h2>
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
-              {hTop.documentNo} · Issue No: {hTop.issueNo} · Revision: {hTop.revisionNo} · Issue Date: 01/11/2025
-            </p>
-          </div>
-          {sc?.score != null && (
-            <div style={{ textAlign: "center" }}>
-              <div style={{
-                fontSize: 28, fontWeight: 900,
-                color: sc.score >= 80 ? "#16a34a" : sc.score >= 60 ? "#ca8a04" : "#dc2626",
-              }}>{sc.score}%</div>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Compliance Score</div>
-            </div>
-          )}
+    <div className="iav" dir="ltr" lang="en">
+      <style>{CSS}</style>
+      <div className="v-head">
+        <div>
+          <button type="button" className="v-btn" onClick={() => setSelected(null)}>← All audits</button>
+          <h2 className="v-title" style={{ marginTop: 10 }}>Internal Audit — {fmt(h.dateOfAudit)}</h2>
+          <div className="v-sub">{hTop.documentNo || "FS-QA/INA-QCS-W/01"} · Issue {hTop.issueNo || "01"} · Rev {hTop.revisionNo || "00"}</div>
         </div>
-
-        {/* Score bar */}
-        {sc?.score != null && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 999,
-                width: `${sc.score}%`,
-                background: sc.score >= 80 ? "#22c55e" : sc.score >= 60 ? "#eab308" : "#ef4444",
-                transition: "width 0.6s ease",
-              }} />
-            </div>
-            <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-              {[
-                { label: "Yes",   val: sc.yes,   color: "#16a34a" },
-                { label: "No",    val: sc.no,    color: "#dc2626" },
-                { label: "OK",    val: sc.ok,    color: "#2563eb" },
-                { label: "N/A",   val: sc.na,    color: "#6b7280" },
-                { label: "Total", val: sc.total, color: "#0f172a" },
-              ].map(s => (
-                <span key={s.label} style={{ fontSize: 13, fontWeight: 700, color: s.color }}>
-                  {s.label}: {s.val}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Meta info */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginBottom: 16 }}>
-        {[
-          { label: "Conducted By",  value: h.conductedBy },
-          { label: "Verified By",   value: h.verifiedBy  },
-          { label: "Date of Audit", value: fmt(h.dateOfAudit) },
-          { label: "Area",          value: h.area        },
-          { label: "Auditor Name",  value: ft.auditorName },
-          { label: "Auditor Date",  value: fmt(ft.auditorSignDate) },
-        ].map(m => (
-          <div key={m.label} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{m.label}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</p>
-          </div>
-        ))}
+      <div className="v-top">
+        <Ring score={sc.score} />
+        <div className="v-meta">
+          <div><b>Area</b><span>{h.area || "—"}</span></div>
+          <div><b>Conducted by</b><span>{h.conductedBy || "—"}</span></div>
+          <div><b>Verified by</b><span>{h.verifiedBy ? <SignatureName name={h.verifiedBy} underline={false} inline /> : "—"}</span></div>
+          <div><b>Auditor</b><span>{ft.auditorName || "—"}{ft.auditorSignDate ? ` · ${fmt(ft.auditorSignDate)}` : ""}</span></div>
+        </div>
+        <div className="v-card-p" style={{ width: "100%" }}>
+          <span className="v-pill t-yes">Yes {sc.yes}</span>
+          <span className="v-pill t-ok">OK {sc.ok}</span>
+          <span className="v-pill t-no">No {sc.no}</span>
+          <span className="v-pill t-na">N/A {sc.na}</span>
+          {sc.blank > 0 && <span className="v-pill t-na">Unanswered {sc.blank}</span>}
+        </div>
       </div>
 
-      {/* Expand/Collapse */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button onClick={() => expandAll(p.checklist)} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12, color: "#374151" }}>
-          ↓ Expand All
-        </button>
-        <button onClick={collapseAll} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12, color: "#374151" }}>
-          ↑ Collapse All
-        </button>
+      <div className="v-sec-t">📌 Findings &amp; actions <span className="v-pill t-na">{recs.length}</span></div>
+      {recs.length === 0 ? <div className="v-state">No findings were recorded for this audit.</div> : (
+        <div className="v-recs">
+          {recs.map((r, i) => {
+            const tone = FIND_TONE[r.status] || "na";
+            return (
+              <div key={i} className={`v-rec ${tone}`}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <b style={{ color: "#64748b" }}>#{i + 1}{r.type ? ` · ${r.type}` : ""}</b>
+                  <span className={`v-pill t-${tone}`}>{r.status || "—"}</span>
+                </div>
+                <div className="v-rec-f">{r.finding || "—"}</div>
+                {r.action && <div className="v-rec-a"><b>Action:</b> {r.action}</div>}
+                <div className="v-rec-m">
+                  <span>👤 {r.resp || "No owner"}</span>
+                  <span>📅 {r.targetDate ? fmt(r.targetDate) : "No target date"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="v-sec-t" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+        <span>✅ Checklist</span>
+        <div className="v-filters">
+          {FILTERS.map((f) => (
+            <button key={f.key} type="button" className={`v-btn ${filter === f.key ? "on" : ""}`} onClick={() => setFilter(f.key)}>
+              {f.label} ({counts[f.key]})
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Checklist groups */}
-      {(p.checklist || []).map((g, gi) => {
-        const isOpen   = expandedGroups[g.title] !== false;
-        const groupNo  = g.items.filter(i => i.status === "No").length;
-        const groupYes = g.items.filter(i => i.status === "Yes" || i.status === "OK").length;
-
+      {groups.length === 0 && <div className="v-state">Nothing to show for this filter.</div>}
+      {groups.map((g) => {
+        const items = g.items || [];
+        const good = items.filter((it) => it.status === "Yes" || it.status === "OK").length;
+        const bad = items.filter((it) => it.status === "No").length;
+        const scored = items.filter((it) => it.status && it.status !== "NA").length;
+        const isClosed = closed[g.gi];
         return (
-          <div key={`group-${gi}`} style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, marginBottom: 10, overflow: "hidden" }}> {/* ✅ key محدد */}
-            <div
-              onClick={() => toggleGroup(g.title)}
-              style={{
-                background: "#f8fafc", padding: "12px 16px",
-                borderBottom: isOpen ? "1px solid #e2e8f0" : "none",
-                cursor: "pointer", userSelect: "none",
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-              }}
-            >
-              <span style={{ fontWeight: 800, fontSize: 18, color: "#0f172a" }}>{g.title}</span>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {groupNo > 0 && (
-                  <span style={{ background: "#fee2e2", color: "#dc2626", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>
-                    {groupNo} ✗
-                  </span>
-                )}
-                {groupYes > 0 && (
-                  <span style={{ background: "#dcfce7", color: "#16a34a", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>
-                    {groupYes} ✓
-                  </span>
-                )}
-                <span style={{ color: "#94a3b8", fontSize: 14 }}>{isOpen ? "▲" : "▼"}</span>
+          <div key={g.gi} className="v-grp">
+            <button type="button" className="v-grp-h" onClick={() => setClosed((c) => ({ ...c, [g.gi]: !c[g.gi] }))} aria-expanded={!isClosed}>
+              <span className="v-grp-n">{shortTitle(g.title)}</span>
+              {bad > 0 && <span className="v-pill t-no">{bad} No</span>}
+              <span className="v-grp-bar" title={`${good} of ${scored} compliant`}><i style={{ width: `${scored ? (good / scored) * 100 : 0}%` }} /></span>
+              <span style={{ color: "#94a3b8" }}>{isClosed ? "▼" : "▲"}</span>
+            </button>
+            {!isClosed && g.shown.map((it) => (
+              <div key={it.code} className={`v-q ${it.status === "No" ? "no" : ""}`}>
+                <span className="v-code">{it.code}</span>
+                <div className="v-q-tx">
+                  {it.text}
+                  {String(it.remarks || "").trim() && <div className={`v-q-r ${it.status === "No" ? "" : "plain"}`}>💬 {it.remarks}</div>}
+                </div>
+                <span className={`v-pill t-${STATUS_TONE[it.status] || "na"}`}>{STATUS_LABEL[it.status] || "—"}</span>
               </div>
-            </div>
-
-            {isOpen && (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <colgroup>
-                    <col style={{ width: "5%" }} />
-                    <col style={{ width: "55%" }} />
-                    <col style={{ width: "12%" }} />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr style={{ background: "#f1f5f9" }}>
-                      {["#", "Area / Question", "Status", "Remarks"].map(col => (
-                        <th key={col} style={{ border: "1px solid #e2e8f0", padding: "8px 10px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#475569" }}>{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.items.map((it, ii) => (
-                      <tr key={`${gi}-${it.code}`} style={{ background: ii % 2 === 0 ? "#fff" : "#fafafa" }}> {/* ✅ key فريد */}
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 12, fontWeight: 700, color: "#64748b", verticalAlign: "top" }}>{it.code}</td>
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{it.text}</td>
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", verticalAlign: "top" }}>
-                          <StatusBadge value={it.status} />
-                        </td>
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top" }}>
-                          {it.remarks || <span style={{ color: "#cbd5e1" }}>—</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            ))}
           </div>
         );
       })}
 
-      {/* Audit Recommendations */}
-      {recs.length > 0 && (
-        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, marginTop: 16, overflow: "hidden" }}>
-          <div style={{ background: "#f8fafc", padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>
-            <span style={{ fontWeight: 800, fontSize: 18, color: "#0f172a" }}>📌 Audit Recommendations</span>
-            <span style={{ marginLeft: 8, fontSize: 12, color: "#64748b" }}>{recs.length} item{recs.length > 1 ? "s" : ""}</span>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#f1f5f9" }}>
-                  {["#", "Finding", "Type", "Action", "Responsibility", "Target Date", "Status"].map(col => (
-                    <th key={col} style={{ border: "1px solid #e2e8f0", padding: "8px 10px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recs.map((r, i) => (
-                  <tr key={`rec-${i}`} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}> {/* ✅ key محدد */}
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, fontWeight: 700, color: "#64748b", verticalAlign: "top" }}>{i + 1}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 180 }}>{r.finding || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.type || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 160 }}>{r.action || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.resp || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmt(r.targetDate)}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", verticalAlign: "top" }}>
-                      <FindingBadge value={r.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Saved at */}
-      {p.savedAt && (
-        <p style={{ textAlign: "right", fontSize: 11, color: "#cbd5e1", marginTop: 16 }}>
-          Saved: {new Date(p.savedAt).toLocaleString("en-GB")}
-        </p>
-      )}
+      {p.savedAt && <div className="v-sub" style={{ textAlign: "right", marginTop: 12 }}>Saved {new Date(p.savedAt).toLocaleString("en-GB")}</div>}
     </div>
   );
 }
