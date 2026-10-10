@@ -18,6 +18,8 @@ const S = {
   topActions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   filters: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 },
   input: { padding: "9px 12px", border: "1.5px solid #cbd5e1", borderRadius: 10, fontSize: 14, fontWeight: 700, fontFamily: "inherit", minWidth: 180 },
+  monthNav: { display: "inline-flex", alignItems: "center", gap: 2, border: "1.5px solid #cbd5e1", borderRadius: 10, background: "#fff", padding: "0 4px" },
+  monthArrow: { border: "none", background: "transparent", fontSize: 22, fontWeight: 900, color: "#15803d", cursor: "pointer", padding: "2px 8px", lineHeight: 1 },
   btn: { background: "#fff", color: "#0f172a", border: "1.5px solid #cbd5e1", padding: "8px 16px", borderRadius: 999, cursor: "pointer", fontWeight: 800, fontSize: 13 },
   btnPdf: { background: "linear-gradient(180deg,#16a34a,#15803d)", color: "#fff", border: "none", padding: "8px 18px", borderRadius: 999, cursor: "pointer", fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", gap: 6 },
   btnDanger: { background: "linear-gradient(180deg,#ef4444,#dc2626)", color: "#fff", border: "1.5px solid #b91c1c", padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 800, fontSize: 12 },
@@ -207,11 +209,35 @@ async function buildGarbagePDF(records, includeImages) {
   return doc;
 }
 
+/* Month helpers (Dubai business month). The page reads ONE month at a time —
+   it used to download every disposal record ever saved (with all photo
+   links) on open and filter in the browser, which only grows. */
+function thisMonthDubai() {
+  try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }).slice(0, 7); }
+  catch { return new Date().toISOString().slice(0, 7); }
+}
+function monthRange(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, "0")}` };
+}
+function shiftMonth(ym, delta) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+const monthLabel = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+};
+const byDateDesc = (a, b) => String(b?.payload?.reportDate || "").localeCompare(String(a?.payload?.reportDate || ""));
+
 export default function GarbageDisposalView() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
-  const [month, setMonth] = useState("");
+  const [month, setMonth] = useState(thisMonthDubai);
   const [wasteFilter, setWasteFilter] = useState("all");
   const [preview, setPreview] = useState({ open: false, src: "" });
 
@@ -219,17 +245,21 @@ export default function GarbageDisposalView() {
   const [exportModal, setExportModal] = useState({ open: false, rangeMode: "all", from: "", to: "", includeImages: true });
   const [exporting, setExporting] = useState(false);
 
-  async function load() {
+  async function load(ym = month) {
     setLoading(true);
+    setLoadError("");
     try {
-      const arr = await listReports(TYPE, { limit: REPORTS_MAX_LIMIT });
-      arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
+      const arr = await listReports(TYPE, { ...monthRange(ym), limit: REPORTS_MAX_LIMIT });
+      arr.sort(byDateDesc);
       setItems(arr);
-    } catch { setItems([]); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setItems([]);
+      setLoadError(String(e?.message || e));
+    } finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(month); }, [month]);
 
   async function del(id) {
     if (!window.confirm("Delete this record permanently?")) return;
@@ -252,11 +282,10 @@ export default function GarbageDisposalView() {
       const txt = [p.location, p.vendor?.name, p.vendor?.invoiceNumber, p.disposedBy, p.supervisor, p.notes]
         .map((x) => String(x || "").toLowerCase()).join(" ");
       const matchesQ = !q || txt.includes(q);
-      const matchesMonth = !month || String(p.reportDate || "").startsWith(month);
       const matchesType = wasteFilter === "all" || p.wasteType === wasteFilter;
-      return matchesQ && matchesMonth && matchesType;
+      return matchesQ && matchesType;
     });
-  }, [items, search, month, wasteFilter]);
+  }, [items, search, wasteFilter]);
 
   const kpis = useMemo(() => {
     const total = filtered.length;
@@ -278,25 +307,19 @@ export default function GarbageDisposalView() {
     };
   }, [filtered]);
 
-  const exportCount = useMemo(() => {
-    if (exportModal.rangeMode === "all") return filtered.length;
-    return filtered.filter(r => {
-      const d = r?.payload?.reportDate || "";
-      return (!exportModal.from || d >= exportModal.from) && (!exportModal.to || d <= exportModal.to);
-    }).length;
-  }, [filtered, exportModal.rangeMode, exportModal.from, exportModal.to]);
+  const rangeReady = exportModal.rangeMode === "all" || (exportModal.from && exportModal.to && exportModal.from <= exportModal.to);
 
   async function doExport() {
-    let recs = filtered;
-    if (exportModal.rangeMode === "range") {
-      recs = filtered.filter(r => {
-        const d = r?.payload?.reportDate || "";
-        return (!exportModal.from || d >= exportModal.from) && (!exportModal.to || d <= exportModal.to);
-      });
-    }
-    if (recs.length === 0) { alert("No records found for the selected export range."); return; }
+    if (!rangeReady) { alert("Choose both dates (From must be before To)."); return; }
     setExporting(true);
     try {
+      let recs = filtered;
+      if (exportModal.rangeMode === "range") {
+        // Fetched for exactly these dates — the screen only holds one month.
+        recs = await listReports(TYPE, { from: exportModal.from, to: exportModal.to, limit: REPORTS_MAX_LIMIT });
+        recs.sort(byDateDesc);
+      }
+      if (recs.length === 0) { alert("No records found for the selected export range."); return; }
       const doc = await buildGarbagePDF(recs, exportModal.includeImages);
       doc.save(`Garbage_Disposal_${new Date().toISOString().slice(0, 10)}.pdf`);
       setExportModal(m => ({ ...m, open: false }));
@@ -317,7 +340,7 @@ export default function GarbageDisposalView() {
         <ReportActions
           onPdf={() => setExportModal(m => ({ ...m, open: true }))}
           onJson={exportJSON}
-          onRefresh={load}
+          onRefresh={() => load(month)}
           refreshing={loading}
           jsonDisabled={filtered.length === 0}
         />
@@ -337,19 +360,29 @@ export default function GarbageDisposalView() {
 
       <div style={S.filters}>
         <input style={S.input} placeholder="Search by company, location, name, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        <input type="month" style={S.input} value={month} onChange={(e) => setMonth(e.target.value)} />
+        <div style={S.monthNav}>
+          <button type="button" style={S.monthArrow} onClick={() => setMonth((m) => shiftMonth(m, -1))} title="Previous month" aria-label="Previous month">‹</button>
+          <input type="month" style={{ ...S.input, minWidth: 0, border: "none", padding: "6px 4px" }} value={month}
+            onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} aria-label="Month" />
+          <button type="button" style={S.monthArrow} onClick={() => setMonth((m) => shiftMonth(m, 1))}
+            disabled={month >= thisMonthDubai()} title="Next month" aria-label="Next month">›</button>
+        </div>
+        {month !== thisMonthDubai() && (
+          <button style={S.btn} onClick={() => setMonth(thisMonthDubai())}>This month</button>
+        )}
         <select style={S.input} value={wasteFilter} onChange={(e) => setWasteFilter(e.target.value)}>
           <option value="all">All types</option>
           {wasteTypes.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        {(search || month || wasteFilter !== "all") && (
-          <button style={S.btn} onClick={() => { setSearch(""); setMonth(""); setWasteFilter("all"); }}>Clear filters</button>
+        {(search || wasteFilter !== "all") && (
+          <button style={S.btn} onClick={() => { setSearch(""); setWasteFilter("all"); }}>Clear filters</button>
         )}
       </div>
 
-      {loading && <div style={S.empty}>Loading...</div>}
-      {!loading && filtered.length === 0 && (
-        <div style={S.empty}>{items.length === 0 ? "No records yet." : "No matching results."}</div>
+      {loading && <div style={S.empty}>Loading {monthLabel(month)}…</div>}
+      {!loading && loadError && <div style={S.empty}>Could not load {monthLabel(month)}. Press Refresh to try again.</div>}
+      {!loading && !loadError && filtered.length === 0 && (
+        <div style={S.empty}>{items.length === 0 ? `No disposal records in ${monthLabel(month)}.` : "No matching results."}</div>
       )}
 
       {filtered.length > 0 && (
@@ -444,7 +477,7 @@ export default function GarbageDisposalView() {
                 <input type="radio" name="gb_range" value="all"
                   checked={exportModal.rangeMode === "all"}
                   onChange={() => setExportModal(m => ({ ...m, rangeMode: "all" }))} />
-                <span style={S.radioLabel}>All displayed records ({filtered.length})</span>
+                <span style={S.radioLabel}>Records on screen — {monthLabel(month)} ({filtered.length})</span>
               </label>
 
               <label style={S.radioRow}>
@@ -473,7 +506,7 @@ export default function GarbageDisposalView() {
 
               {exportModal.rangeMode === "range" && (
                 <div style={{ marginTop: 8, paddingInlineStart: 22, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                  {exportCount} records will be exported
+                  Records in these dates are fetched when you export.
                 </div>
               )}
             </div>
@@ -494,8 +527,8 @@ export default function GarbageDisposalView() {
               <button style={S.btnCancel} onClick={() => setExportModal(m => ({ ...m, open: false }))} disabled={exporting}>
                 Cancel
               </button>
-              <button style={S.btnExport(exporting)} onClick={doExport} disabled={exporting}>
-                {exporting ? "Exporting..." : `Export (${exportCount} records)`}
+              <button style={S.btnExport(exporting)} onClick={doExport} disabled={exporting || !rangeReady}>
+                {exporting ? "Exporting..." : exportModal.rangeMode === "all" ? `Export (${filtered.length} records)` : "Export date range"}
               </button>
             </div>
           </div>
