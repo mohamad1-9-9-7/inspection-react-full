@@ -139,8 +139,11 @@ export default function BranchCertificates({ branch }) {
 
   const reportDate = site ? `cert-${site.slug}` : "";
 
+  /* Depends on the reportDate STRING only. siteOf() builds a new object on
+     every render, so depending on `site` re-ran this after each setState and
+     the page never left "Loading…". */
   const load = useCallback(async () => {
-    if (!site) return;
+    if (!reportDate) { setLoading(false); return; }
     setLoading(true);
     try {
       const row = await getReportRowByDate(TYPE, reportDate);
@@ -150,7 +153,7 @@ export default function BranchCertificates({ branch }) {
     } finally {
       setLoading(false);
     }
-  }, [site, reportDate]);
+  }, [reportDate]);
 
   useEffect(() => { load(); }, [load]);
 
