@@ -1,11 +1,11 @@
 // src/pages/monitor/DailyMonitorDashboard.jsx
 // /monitor — the Daily Reports hub: a short "how daily recording works" guide,
 // the critical limits staff check against, then every branch as a card that
-// says what is recorded there and opens either today's forms (/monitor/<slug>)
-// or the past reports (/admin/<slug>).
+// says what is recorded there and opens today's forms (/monitor/<slug>).
+// Full width on purpose — the owner wants the hub to fill the screen.
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { branchAllowed, hasSection } from "../../utils/perms";
+import { branchAllowed } from "../../utils/perms";
 
 /* Branches with a real entry page behind them. POS 7/14/16/17/18/21/25/31/34/
    35/36/37/38/41/42/43/44/45 were listed here too, but /monitor/<slug> has no
@@ -75,7 +75,7 @@ const LIMITS = [
 const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
 const CSS = `
 #root .dm.dm { min-height:100vh; background:#f4f8fd; color:#0f172a; padding:20px clamp(12px,3vw,36px) 48px; }
-#root .dm.dm .dm-in { max-width:1240px; margin:0 auto; }
+#root .dm.dm .dm-in { width:100%; }
 
 #root .dm.dm .dm-hero { position:relative; overflow:hidden; display:flex; justify-content:space-between; align-items:center; gap:18px; flex-wrap:wrap;
   background:linear-gradient(120deg,#e0f2fe 0%,#eef6ff 45%,#ecfdf5 100%); border:1px solid #cfe3f7; border-radius:18px; padding:22px clamp(16px,3vw,30px); }
@@ -126,8 +126,6 @@ const CSS = `
 #root .dm.dm .dm-btn { flex:1; min-height:44px; border-radius:11px; font-size:${fs(13.5)}; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:inherit; transition:filter .15s, background .15s, color .15s; }
 #root .dm.dm .dm-btn-enter { background:var(--cc); color:#fff; border:1px solid var(--cc); }
 #root .dm.dm .dm-btn-enter:hover { filter:brightness(1.08); }
-#root .dm.dm .dm-btn-view { background:#fff; color:#334155; border:1px solid #cbd5e1; }
-#root .dm.dm .dm-btn-view:hover { border-color:var(--cc); color:var(--cc); background:var(--cs); }
 #root .dm.dm .dm-btn:focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
 #root .dm.dm .dm-empty { margin-top:18px; padding:40px 16px; text-align:center; color:#64748b; font-weight:700; font-size:${fs(14)}; background:#fff; border:1px dashed #cbd5e1; border-radius:14px; }
 
@@ -159,9 +157,6 @@ export default function DailyMonitorDashboard() {
   /* perms.js is the single source of truth for allowedBranches. */
   const visibleBranches = branches.filter((b) => branchAllowed("daily", b.id));
   const isRestrictedToBranches = visibleBranches.length < branches.length;
-  /* The view pages sit behind AdminRoute (section "admin"); only offer that
-     door to accounts it would actually let in. */
-  const canViewBranch = (id) => hasSection("admin") && branchAllowed("admin", id);
 
   /* QCS + Production share the "Central" row; the rest get one group each. */
   const sections = [];
@@ -182,7 +177,7 @@ export default function DailyMonitorDashboard() {
             <div className="dm-eyebrow">Food safety · Daily records</div>
             <h1 className="dm-title">Daily Reports Hub</h1>
             <div className="dm-lead">
-              Choose a branch to fill in today's checks, or open its past reports.
+              Choose a branch to fill in today's checks.
               Accurate daily records are the evidence for every audit and inspection.
             </div>
           </div>
@@ -266,11 +261,6 @@ export default function DailyMonitorDashboard() {
                       <button type="button" className="dm-btn dm-btn-enter" onClick={() => navigate(`/monitor/${slug}`)}>
                         ✏️ Enter reports
                       </button>
-                      {canViewBranch(b.id) && (
-                        <button type="button" className="dm-btn dm-btn-view" onClick={() => navigate(`/admin/${slug}`)}>
-                          📊 View reports
-                        </button>
-                      )}
                     </div>
                   </div>
                 );
