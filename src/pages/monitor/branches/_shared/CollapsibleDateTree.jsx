@@ -128,12 +128,12 @@ export default function CollapsibleDateTree({
         </button>
       </div>
       <div style={S.totals}>
-        {totals.items} تقرير · {totals.days} يوم
+        {totals.items} report{totals.items === 1 ? "" : "s"} · {totals.days} day{totals.days === 1 ? "" : "s"}
       </div>
 
       {groupedNav.length === 0 && (
         <div style={{ fontSize: 12, color: COLORS.sub, padding: 8 }}>
-          لا توجد تقارير.
+          No reports yet.
         </div>
       )}
 

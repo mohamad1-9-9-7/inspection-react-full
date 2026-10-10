@@ -312,7 +312,7 @@ export default function FTR1PreloadingViewer() {
     } catch (e) {
       console.error(e);
       setDaysTree([]);
-      setError("فشل جلب شجرة التواريخ.");
+      setError("Couldn't load the report dates.");
     } finally {
       setLoading(false);
     }
@@ -347,13 +347,13 @@ export default function FTR1PreloadingViewer() {
 
     try {
       const full = await getReportById(id);
-      if (!full) { setError("تعذّر فتح هذا التقرير."); return; }
+      if (!full) { setError("Couldn't open this report."); return; }
       const row = { ...full, payload: ensureObject(full.payload) };
       recordCache.current.set(String(id), row);
       setReport(row);
     } catch (e) {
       console.error(e);
-      setError("تعذّر فتح هذا التقرير.");
+      setError("Couldn't open this report.");
     }
   }
 
@@ -381,7 +381,7 @@ export default function FTR1PreloadingViewer() {
   async function saveEdit() {
     if (!report) return;
     const id = report.id || report._id;
-    if (!id) return alert("لا يمكن حفظ: المعرّف غير متوفر.");
+    if (!id) return alert("Can't save: this record has no id.");
     try {
       const norm = normalizeTable(report?.payload);
       const newPayload = {
@@ -412,15 +412,15 @@ export default function FTR1PreloadingViewer() {
       setEditMode(false);
     } catch (e) {
       console.error(e);
-      alert("❌ فشل الحفظ. تأكد من PUT /api/reports/:id.");
+      alert("❌ Save failed. Please try again.");
     }
   }
 
   async function deleteReport() {
     if (!report) return;
     const id = report.id || report._id;
-    if (!id) return alert("لا يمكن الحذف: المعرّف غير متوفر.");
-    if (!window.confirm("هل تريد حذف هذا التقرير نهائيًا؟")) return;
+    if (!id) return alert("Can't delete: this record has no id.");
+    if (!window.confirm("Delete this report permanently?")) return;
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -441,7 +441,7 @@ export default function FTR1PreloadingViewer() {
       setReport(null);
     } catch (e) {
       console.error(e);
-      alert("❌ فشل الحذف. تأكد من DELETE /api/reports/:id.");
+      alert("❌ Delete failed. Please try again.");
     }
   }
 
@@ -541,7 +541,7 @@ export default function FTR1PreloadingViewer() {
   const sign = getSignoff(report?.payload || {});
 
   return (
-    <div>
+    <div dir="ltr" lang="en" style={{ textAlign: "left" }}>
       {/* ===== ترويسة AL MAWASHI ===== */}
       <div style={headWrap}>
         <div style={brandRow}>
@@ -696,7 +696,7 @@ export default function FTR1PreloadingViewer() {
                 {columns.length === 0 && (
                   <tr>
                     <td style={{ ...td, textAlign: "center" }} colSpan={rows.length + 1}>
-                      لا توجد أعمدة/عينات للعرض.
+                      No samples to show.
                     </td>
                   </tr>
                 )}
@@ -708,7 +708,7 @@ export default function FTR1PreloadingViewer() {
           <div style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 900, color: COLORS.ink, marginBottom: 8 }}>Attached Photos (per sample)</div>
             {!hasAnyPhotos ? (
-              <div style={{ color: COLORS.sub, fontSize: 13 }}>لا توجد صور مرفقة لهذا التقرير.</div>
+              <div style={{ color: COLORS.sub, fontSize: 13 }}>No photos attached to this report.</div>
             ) : (
               <div style={photoGrid}>
                 {columns.map((c, i) => {

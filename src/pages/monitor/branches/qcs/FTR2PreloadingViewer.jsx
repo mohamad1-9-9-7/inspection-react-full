@@ -350,11 +350,11 @@ export default function FTR2PreloadingViewer() {
         await openItem(tree[0].months[0].days[0].items[0]);
       } else {
         setReport(null);
-        setError("لا توجد تقارير محفوظة لـ FTR2.");
+        setError("No saved reports for FTR 2 yet.");
       }
     } catch (e) {
       console.error(e);
-      setError("فشل جلب التقارير من الخادم.");
+      setError("Couldn't load reports from the server.");
       setYmdTree([]);
       setReport(null);
     } finally {
@@ -391,13 +391,13 @@ export default function FTR2PreloadingViewer() {
 
     try {
       const full = await getReportById(id);
-      if (!full) { setError("تعذّر فتح هذا التقرير."); return; }
+      if (!full) { setError("Couldn't open this report."); return; }
       const row = { ...full, payload: ensureObject(full.payload) };
       recordCache.current.set(String(id), row);
       setReport(row);
     } catch (e) {
       console.error(e);
-      setError("تعذّر فتح هذا التقرير.");
+      setError("Couldn't open this report.");
     }
   }
 
@@ -417,7 +417,7 @@ export default function FTR2PreloadingViewer() {
   async function saveEdit() {
     if (!report) return;
     const id = report.id || report._id;
-    if (!id) return alert("لا يمكن الحفظ: لا يوجد معرّف للسجل.");
+    if (!id) return alert("Can't save: this record has no id.");
     try {
       const norm = normalizeTable(report?.payload);
       const newPayload = {
@@ -441,15 +441,15 @@ export default function FTR2PreloadingViewer() {
       setEditMode(false);
     } catch (e) {
       console.error(e);
-      alert("❌ فشل الحفظ. تأكد من PUT /api/reports/:id.");
+      alert("❌ Save failed. Please try again.");
     }
   }
 
   async function deleteReport() {
     if (!report) return;
     const id = report.id || report._id;
-    if (!id) return alert("لا يمكن الحذف: لا يوجد معرّف.");
-    if (!window.confirm("حذف هذا التقرير نهائيًا؟")) return;
+    if (!id) return alert("Can't delete: this record has no id.");
+    if (!window.confirm("Delete this report permanently?")) return;
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -457,7 +457,7 @@ export default function FTR2PreloadingViewer() {
       await buildDaysTree();
     } catch (e) {
       console.error(e);
-      alert("❌ فشل الحذف. تأكد من DELETE /api/reports/:id.");
+      alert("❌ Delete failed. Please try again.");
     }
   }
 
@@ -506,7 +506,7 @@ export default function FTR2PreloadingViewer() {
   }, [ymdTree]);
 
   return (
-    <div>
+    <div dir="ltr" lang="en" style={{ textAlign: "left" }}>
       {/* === ترويسة بنمط الصورة === */}
       <div style={headWrap}>
         <div style={brandRow}>
@@ -633,7 +633,7 @@ export default function FTR2PreloadingViewer() {
                 {columns.length === 0 && (
                   <tr>
                     <td style={{ ...td, textAlign: "center" }} colSpan={rows.length + 1}>
-                      لا توجد أعمدة/عينات للعرض.
+                      No samples to show.
                     </td>
                   </tr>
                 )}
