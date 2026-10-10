@@ -16,9 +16,9 @@ const IS_SAME_ORIGIN = (() => { try { return new URL(API_BASE).origin === window
 const TYPE = "qcs_stock_rotation";
 
 const COMPLIANCE_COLORS = {
-  compliant: { color: "#16a34a", label: "✅ مطابق" },
-  minor:     { color: "#f59e0b", label: "⚠️ مخالفة طفيفة" },
-  major:     { color: "#dc2626", label: "❌ مخالفة جسيمة" },
+  compliant: { color: "#16a34a", label: "✅ Compliant" },
+  minor:     { color: "#f59e0b", label: "⚠️ Minor" },
+  major:     { color: "#dc2626", label: "❌ Major" },
 };
 
 const S = {
@@ -77,13 +77,13 @@ export default function StockRotationView() {
 
   async function deleteRecord(id) {
     if (!id) return;
-    if (!window.confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
+    if (!window.confirm("Delete this record permanently?")) return;
     try {
       const res = await fetch(`${API_BASE}/api/reports/${id}`, { method: "DELETE", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await load();
     } catch (e) {
-      alert("فشل الحذف: " + (e?.message || e));
+      alert("Delete failed: " + (e?.message || e));
     }
   }
 
@@ -119,10 +119,10 @@ export default function StockRotationView() {
   const totalNearExpiry = filtered.reduce((s, r) => s + (Number(r?.payload?.summary?.nearExpiryQty) || 0), 0);
 
   return (
-    <div>
+    <div dir="ltr" lang="en" style={{ textAlign: "left" }}>
       <div style={S.topbar}>
-        <h2 style={S.title}>📦 تدقيق دوران المخزون / Stock Rotation Audits</h2>
-        <button style={S.btn} onClick={load} disabled={loading}>{loading ? "⏳ تحديث..." : "🔄 تحديث"}</button>
+        <h2 style={S.title}>📦 Stock Rotation Audits</h2>
+        <button style={S.btn} onClick={load} disabled={loading}>{loading ? "⏳ Refreshing..." : "🔄 Refresh"}</button>
       </div>
 
       {/* Filters */}
@@ -130,23 +130,23 @@ export default function StockRotationView() {
         <div style={S.filters}>
           <input
             style={S.input}
-            placeholder="🔍 بحث (موقع، كود، اسم صنف...)"
+            placeholder="🔍 Search (location, code, product...)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <input type="month" style={S.input} value={month} onChange={(e) => setMonth(e.target.value)} />
           <select style={S.input} value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
-            {locations.map((l) => <option key={l} value={l}>{l === "all" ? "جميع المواقع" : l}</option>)}
+            {locations.map((l) => <option key={l} value={l}>{l === "all" ? "All locations" : l}</option>)}
           </select>
           <select style={S.input} value={complianceFilter} onChange={(e) => setComplianceFilter(e.target.value)}>
-            <option value="all">كل التقييمات</option>
-            <option value="compliant">مطابق فقط</option>
-            <option value="minor">مخالفة طفيفة</option>
-            <option value="major">مخالفة جسيمة</option>
+            <option value="all">All results</option>
+            <option value="compliant">Compliant only</option>
+            <option value="minor">Minor</option>
+            <option value="major">Major</option>
           </select>
           {(search || month || locationFilter !== "all" || complianceFilter !== "all") && (
             <button style={S.btn} onClick={() => { setSearch(""); setMonth(""); setLocationFilter("all"); setComplianceFilter("all"); }}>
-              مسح المرشحات
+              Clear filters
             </button>
           )}
         </div>
@@ -154,31 +154,31 @@ export default function StockRotationView() {
 
       {/* KPIs */}
       <div style={S.kpiRow}>
-        <div style={S.kpi}><div style={S.kpiLabel}>إجمالي التدقيقات</div><div style={{ ...S.kpiValue, color: "#0ea5e9" }}>{totalAudits}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>إجمالي الأصناف</div><div style={{ ...S.kpiValue, color: "#7c3aed" }}>{totalItems}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>منتهية الصلاحية</div><div style={{ ...S.kpiValue, color: "#dc2626" }}>{totalExpired}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>قريبة الانتهاء</div><div style={{ ...S.kpiValue, color: "#f59e0b" }}>{totalNearExpiry}</div></div>
+        <div style={S.kpi}><div style={S.kpiLabel}>Total audits</div><div style={{ ...S.kpiValue, color: "#0ea5e9" }}>{totalAudits}</div></div>
+        <div style={S.kpi}><div style={S.kpiLabel}>Total items</div><div style={{ ...S.kpiValue, color: "#7c3aed" }}>{totalItems}</div></div>
+        <div style={S.kpi}><div style={S.kpiLabel}>Expired</div><div style={{ ...S.kpiValue, color: "#dc2626" }}>{totalExpired}</div></div>
+        <div style={S.kpi}><div style={S.kpiLabel}>Near expiry</div><div style={{ ...S.kpiValue, color: "#f59e0b" }}>{totalNearExpiry}</div></div>
       </div>
 
       {/* Records table */}
       {loading ? (
-        <div style={S.empty}>⏳ جاري التحميل...</div>
+        <div style={S.empty}>⏳ Loading...</div>
       ) : filtered.length === 0 ? (
-        <div style={S.empty}>لا توجد سجلات.</div>
+        <div style={S.empty}>No records yet.</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>التاريخ</th>
-                <th style={S.th}>الموقع</th>
-                <th style={S.th}>منطقة التخزين</th>
-                <th style={S.th}>الطريقة</th>
-                <th style={S.th}>الأصناف</th>
-                <th style={S.th}>منتهية</th>
-                <th style={S.th}>قريبة الانتهاء</th>
-                <th style={S.th}>التقييم</th>
-                <th style={S.th}>المدقق</th>
+                <th style={S.th}>Date</th>
+                <th style={S.th}>Location</th>
+                <th style={S.th}>Storage area</th>
+                <th style={S.th}>Method</th>
+                <th style={S.th}>Items</th>
+                <th style={S.th}>Expired</th>
+                <th style={S.th}>Near expiry</th>
+                <th style={S.th}>Result</th>
+                <th style={S.th}>Auditor</th>
                 <th style={S.th}></th>
               </tr>
             </thead>
@@ -199,9 +199,9 @@ export default function StockRotationView() {
                     <td style={S.td}>{p.auditedBy || "—"}</td>
                     <td style={S.td}>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button style={S.btnDetails} onClick={() => setDetail(r)}>تفاصيل</button>
+                        <button style={S.btnDetails} onClick={() => setDetail(r)}>Details</button>
                         {canDelete("daily") && (
-                          <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
+                          <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">Delete</button>
                         )}
                       </div>
                     </td>
@@ -221,27 +221,27 @@ export default function StockRotationView() {
           <div style={S.modalOverlay} onClick={() => setDetail(null)}>
             <div style={S.modal} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950 }}>تفاصيل التدقيق — {fmtDate(p.reportDate)}</h3>
-                <button style={S.btn} onClick={() => setDetail(null)}>إغلاق ✕</button>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950 }}>Audit details — {fmtDate(p.reportDate)}</h3>
+                <button style={S.btn} onClick={() => setDetail(null)}>Close ✕</button>
               </div>
 
               <div style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                <div><b>الموقع:</b> {p.location}</div>
-                <div><b>منطقة التخزين:</b> {p.storageArea}</div>
-                <div><b>الطريقة:</b> {p.rotationMethod}</div>
-                <div><b>المدقق:</b> <SignatureName name={p.auditedBy} underline={false} inline /></div>
-                <div><b>المعتمد:</b> <SignatureName name={p.verifiedBy} underline={false} inline /></div>
-                <div><b>وقت التدقيق:</b> {p.auditTime || "—"}</div>
+                <div><b>Location:</b> {p.location}</div>
+                <div><b>Storage area:</b> {p.storageArea}</div>
+                <div><b>Method:</b> {p.rotationMethod}</div>
+                <div><b>Audited by:</b> <SignatureName name={p.auditedBy} underline={false} inline /></div>
+                <div><b>Verified by:</b> <SignatureName name={p.verifiedBy} underline={false} inline /></div>
+                <div><b>Audit time:</b> {p.auditTime || "—"}</div>
               </div>
 
-              <h4 style={{ margin: "12px 0 6px", fontWeight: 900 }}>الأصناف المدققة ({items.length})</h4>
+              <h4 style={{ margin: "12px 0 6px", fontWeight: 900 }}>Audited items ({items.length})</h4>
               <div style={S.itemHead}>
-                <div>كود</div>
-                <div>الصنف</div>
-                <div>الدفعة</div>
-                <div>الانتهاء</div>
-                <div>الكمية</div>
-                <div>الترتيب</div>
+                <div>Code</div>
+                <div>Product</div>
+                <div>Batch</div>
+                <div>Expiry</div>
+                <div>Qty</div>
+                <div>Position</div>
               </div>
               {items.map((it, i) => {
                 const days = Number(it.daysToExpiry);
@@ -260,14 +260,14 @@ export default function StockRotationView() {
 
               {(p.findings || p.correctiveActions) && (
                 <div style={{ marginTop: 12, padding: 10, background: "#f8fafc", borderRadius: 8 }}>
-                  {p.findings && <div style={{ marginBottom: 6 }}><b>الملاحظات:</b> {p.findings}</div>}
-                  {p.correctiveActions && <div><b>الإجراءات التصحيحية:</b> {p.correctiveActions}</div>}
+                  {p.findings && <div style={{ marginBottom: 6 }}><b>Findings:</b> {p.findings}</div>}
+                  {p.correctiveActions && <div><b>Corrective actions:</b> {p.correctiveActions}</div>}
                 </div>
               )}
 
               {Array.isArray(p.images?.extras) && p.images.extras.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <h4 style={{ margin: "0 0 6px", fontWeight: 900 }}>الصور</h4>
+                  <h4 style={{ margin: "0 0 6px", fontWeight: 900 }}>Photos</h4>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
                     {p.images.extras.map((u, i) => (
                       <img key={i} src={u} alt={`Audit attachment ${i + 1}`}

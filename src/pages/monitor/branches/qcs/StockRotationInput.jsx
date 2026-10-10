@@ -27,27 +27,27 @@ const LOCATIONS = [
   "FTR 2 • Mamzar Park",
   "Production (PRD)",
   "OHC",
-  "Other / أخرى",
+  "Other",
 ];
 
 const STORAGE_AREAS = [
-  "Chiller / المبرد",
-  "Freezer / الفريزر",
-  "Dry Store / المخزن الجاف",
-  "Display Fridge / ثلاجة العرض",
-  "Display Freezer / فريزر العرض",
-  "Other / أخرى",
+  "Chiller",
+  "Freezer",
+  "Dry Store",
+  "Display Fridge",
+  "Display Freezer",
+  "Other",
 ];
 
 const ROTATION_METHODS = [
-  "FIFO (First In First Out) / الأقدم أولاً",
-  "FEFO (First Expired First Out) / الأقرب انتهاءً أولاً",
+  "FIFO (First In First Out)",
+  "FEFO (First Expired First Out)",
 ];
 
 const COMPLIANCE_OPTIONS = [
-  { value: "compliant", label: "✅ مطابق / Compliant", color: "#16a34a" },
-  { value: "minor", label: "⚠️ مخالفة طفيفة / Minor", color: "#f59e0b" },
-  { value: "major", label: "❌ مخالفة جسيمة / Major", color: "#dc2626" },
+  { value: "compliant", label: "✅ Compliant", color: "#16a34a" },
+  { value: "minor", label: "⚠️ Minor non-conformity", color: "#f59e0b" },
+  { value: "major", label: "❌ Major non-conformity", color: "#dc2626" },
 ];
 
 /* Without a connection the photo is kept on the device (blob: URL) and
@@ -189,7 +189,7 @@ export default function StockRotationInput() {
     const files = Array.from(fileList || []).filter((f) => String(f.type || "").startsWith("image/"));
     if (!files.length) return;
     const remaining = MAX_EXTRA_IMAGES - extraImages.length;
-    if (remaining <= 0) { showMsg("err", `الحد الأقصى ${MAX_EXTRA_IMAGES} صور`); return; }
+    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} photos`); return; }
     try {
       setBusy(true);
       const urls = [];
@@ -198,9 +198,9 @@ export default function StockRotationInput() {
       }
       if (urls.length) {
         setExtraImages((prev) => [...prev, ...urls].slice(0, MAX_EXTRA_IMAGES));
-        showMsg("ok", `✅ تم رفع ${urls.length} صورة`);
+        showMsg("ok", `✅ ${urls.length} photo(s) uploaded`);
       } else {
-        showMsg("err", "ما تم رفع أي صورة");
+        showMsg("err", "No photo was uploaded");
       }
     } finally {
       setBusy(false);
@@ -232,9 +232,9 @@ export default function StockRotationInput() {
   }
 
   async function save() {
-    if (!date) { showMsg("err", "اختر التاريخ"); return; }
-    if (!auditedBy.trim()) { showMsg("err", "أدخل اسم القائم بالتدقيق"); return; }
-    if (items.length === 0) { showMsg("err", "أضف على الأقل صنفاً واحداً للتدقيق"); return; }
+    if (!date) { showMsg("err", "Choose the date"); return; }
+    if (!auditedBy.trim()) { showMsg("err", "Enter the auditor's name (Audited By)"); return; }
+    if (items.length === 0) { showMsg("err", "Add at least one item to audit"); return; }
 
     const payload = {
       reportDate: date,
@@ -269,14 +269,14 @@ export default function StockRotationInput() {
 
     try {
       setBusy(true);
-      showMsg("info", "جاري الحفظ...");
+      showMsg("info", "Saving...");
       // Without a connection the record waits on this device and is sent
       // later (utils/reportOutbox.js); the form is cleared either way.
       const { queued } = await saveReport({ body: { reporter: "qcs", type: TYPE, payload }, label: "Stock Rotation" });
-      showMsg("ok", queued ? queuedMessage("ar") : "✅ تم حفظ السجل بنجاح");
+      showMsg("ok", queued ? queuedMessage("en") : "✅ Record saved");
       resetForm();
     } catch (e) {
-      showMsg("err", "❌ فشل الحفظ: " + (e?.message || e));
+      showMsg("err", "❌ Save failed: " + (e?.message || e));
     } finally {
       setBusy(false);
     }
@@ -291,38 +291,38 @@ export default function StockRotationInput() {
   const wrongPositionCount = items.filter((it) => !it.positionCorrect).length;
 
   return (
-    <div style={S.page}>
+    <div style={S.page} dir="ltr" lang="en">
       {/* ===== Audit Info ===== */}
       <div style={S.card}>
-        <h2 style={S.title}>📦 تدقيق دوران المخزون / Stock Rotation Audit (FIFO/FEFO)</h2>
-        <div style={S.sub}>تدقيق ترتيب الأصناف وتواريخ الإنتاج/الانتهاء حسب نظام FIFO أو FEFO</div>
+        <h2 style={S.title}>📦 Stock Rotation Audit (FIFO / FEFO)</h2>
+        <div style={S.sub}>Check that stock is arranged by production / expiry date under FIFO or FEFO.</div>
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>التاريخ / Date *</label>
+            <label style={S.label}>Date *</label>
             <input type="date" style={S.input} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>الموقع / Location</label>
+            <label style={S.label}>Location</label>
             <select style={S.input} value={location} onChange={(e) => setLocation(e.target.value)}>
               {LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
             </select>
           </div>
           <div>
-            <label style={S.label}>وقت التدقيق / Audit Time</label>
+            <label style={S.label}>Audit Time</label>
             <input type="time" style={S.input} value={auditTime} onChange={(e) => setAuditTime(e.target.value)} />
           </div>
         </div>
 
         <div style={S.row2}>
           <div>
-            <label style={S.label}>منطقة التخزين / Storage Area</label>
+            <label style={S.label}>Storage Area</label>
             <select style={S.input} value={storageArea} onChange={(e) => setStorageArea(e.target.value)}>
               {STORAGE_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
           <div>
-            <label style={S.label}>طريقة الدوران / Rotation Method</label>
+            <label style={S.label}>Rotation Method</label>
             <select style={S.input} value={rotationMethod} onChange={(e) => setRotationMethod(e.target.value)}>
               {ROTATION_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
@@ -333,24 +333,24 @@ export default function StockRotationInput() {
       {/* ===== Items ===== */}
       <div style={S.card}>
         <div style={S.itemHead}>
-          <h3 style={S.title}>📋 الأصناف المدققة / Audited Items</h3>
+          <h3 style={S.title}>📋 Audited Items</h3>
           <button type="button" style={S.btnSmall} onClick={() => setItems([...items, newItem()])}>
-            + إضافة صنف
+            + Add item
           </button>
         </div>
 
         {/* Quick stats */}
         {items.length > 0 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            <span style={S.badge("#0ea5e9")}>الأصناف: {items.length}</span>
-            {expiredCount > 0 && <span style={S.badge("#dc2626")}>منتهية: {expiredCount}</span>}
-            {nearExpiryCount > 0 && <span style={S.badge("#f59e0b")}>قريبة الانتهاء (≤7 أيام): {nearExpiryCount}</span>}
-            {wrongPositionCount > 0 && <span style={S.badge("#dc2626")}>وضع خاطئ: {wrongPositionCount}</span>}
+            <span style={S.badge("#0ea5e9")}>Items: {items.length}</span>
+            {expiredCount > 0 && <span style={S.badge("#dc2626")}>Expired: {expiredCount}</span>}
+            {nearExpiryCount > 0 && <span style={S.badge("#f59e0b")}>Near expiry (≤7 days): {nearExpiryCount}</span>}
+            {wrongPositionCount > 0 && <span style={S.badge("#dc2626")}>Wrong position: {wrongPositionCount}</span>}
           </div>
         )}
 
         {items.length === 0 && (
-          <div style={{ ...S.sub, fontStyle: "italic" }}>لم تتم إضافة أصناف بعد. اضغط "إضافة صنف" لتسجيل صنف للتدقيق.</div>
+          <div style={{ ...S.sub, fontStyle: "italic" }}>No items yet. Press "Add item" to record one.</div>
         )}
 
         {items.map((it, idx) => {
@@ -361,69 +361,69 @@ export default function StockRotationInput() {
             <div key={it.id} style={{ ...S.itemCard, borderLeft: `4px solid ${isExpired ? "#dc2626" : isNear ? "#f59e0b" : "#16a34a"}` }}>
               <div style={S.itemHead}>
                 <span style={{ fontWeight: 900, fontSize: 13 }}>
-                  صنف #{idx + 1}
-                  {isExpired && <span style={{ ...S.badge("#dc2626"), marginInlineStart: 8 }}>منتهٍ</span>}
-                  {isNear && <span style={{ ...S.badge("#f59e0b"), marginInlineStart: 8 }}>قريب الانتهاء</span>}
-                  {!it.positionCorrect && <span style={{ ...S.badge("#dc2626"), marginInlineStart: 8 }}>وضع خاطئ</span>}
+                  Item #{idx + 1}
+                  {isExpired && <span style={{ ...S.badge("#dc2626"), marginInlineStart: 8 }}>Expired</span>}
+                  {isNear && <span style={{ ...S.badge("#f59e0b"), marginInlineStart: 8 }}>Near expiry</span>}
+                  {!it.positionCorrect && <span style={{ ...S.badge("#dc2626"), marginInlineStart: 8 }}>Wrong position</span>}
                 </span>
-                <button type="button" style={S.btnDanger} onClick={() => removeItem(it.id)}>حذف</button>
+                <button type="button" style={S.btnDanger} onClick={() => removeItem(it.id)}>Remove</button>
               </div>
 
               <div style={S.row3}>
                 <div>
-                  <label style={S.label}>كود الصنف / Code</label>
+                  <label style={S.label}>Item Code</label>
                   <input style={S.input} value={it.productCode} onChange={(e) => updateItem(it.id, "productCode", e.target.value)} placeholder="71001..." />
                 </div>
                 <div>
-                  <label style={S.label}>اسم الصنف / Product Name</label>
+                  <label style={S.label}>Product Name</label>
                   <input style={S.input} value={it.productName} onChange={(e) => updateItem(it.id, "productName", e.target.value)} />
                 </div>
                 <div>
-                  <label style={S.label}>رقم الدفعة / Batch No.</label>
+                  <label style={S.label}>Batch No.</label>
                   <input style={S.input} value={it.batchNo} onChange={(e) => updateItem(it.id, "batchNo", e.target.value)} />
                 </div>
               </div>
 
               <div style={S.row3}>
                 <div>
-                  <label style={S.label}>تاريخ الإنتاج / Production Date</label>
+                  <label style={S.label}>Production Date</label>
                   <input type="date" style={S.input} value={it.productionDate} onChange={(e) => updateItem(it.id, "productionDate", e.target.value)} />
                 </div>
                 <div>
-                  <label style={S.label}>تاريخ الانتهاء / Expiry Date</label>
+                  <label style={S.label}>Expiry Date</label>
                   <input type="date" style={S.input} value={it.expiryDate} onChange={(e) => updateItem(it.id, "expiryDate", e.target.value)} />
                 </div>
                 <div>
-                  <label style={S.label}>الأيام المتبقية / Days to Expiry</label>
+                  <label style={S.label}>Days to Expiry</label>
                   <input style={{ ...S.input, background: isExpired ? "#fee2e2" : isNear ? "#fef3c7" : "#dcfce7", fontWeight: 900 }} value={it.daysToExpiry} readOnly />
                 </div>
               </div>
 
               <div style={S.row3}>
                 <div>
-                  <label style={S.label}>الكمية / Quantity</label>
+                  <label style={S.label}>Quantity</label>
                   <input type="number" min="0" style={S.input} value={it.quantity} onChange={(e) => updateItem(it.id, "quantity", e.target.value)} />
                 </div>
                 <div>
-                  <label style={S.label}>الوحدة / Unit</label>
+                  <label style={S.label}>Unit</label>
                   <select style={S.input} value={it.unit} onChange={(e) => updateItem(it.id, "unit", e.target.value)}>
                     {["PC", "KG", "BOX", "PACK", "CARTON", "BAG"].map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={S.label}>الترتيب صحيح؟ / Position Correct?</label>
+                  <label style={S.label}>Position Correct?</label>
                   <select
                     style={{ ...S.input, background: it.positionCorrect ? "#dcfce7" : "#fee2e2", fontWeight: 900 }}
                     value={it.positionCorrect ? "yes" : "no"}
                     onChange={(e) => updateItem(it.id, "positionCorrect", e.target.value === "yes")}
                   >
-                    <option value="yes">✅ نعم / Yes</option>
-                    <option value="no">❌ لا / No</option>
+                    <option value="yes">✅ Yes</option>
+                    <option value="no">❌ No</option>
                   </select>
                 </div>
               </div>
 
-              <label style={S.label}>ملاحظات / Remarks</label>
+              <label style={S.label}>Remarks</label>
               <input style={S.input} value={it.remarks} onChange={(e) => updateItem(it.id, "remarks", e.target.value)} placeholder="..." />
             </div>
           );
@@ -432,9 +432,9 @@ export default function StockRotationInput() {
 
       {/* ===== Compliance Summary ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>✅ ملخص المطابقة / Compliance Summary</h3>
+        <h3 style={S.title}>✅ Compliance Summary</h3>
 
-        <label style={S.label}>التقييم العام / Overall Compliance</label>
+        <label style={S.label}>Overall Compliance</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
           {COMPLIANCE_OPTIONS.map((opt) => (
             <button
@@ -460,41 +460,41 @@ export default function StockRotationInput() {
 
         <div style={S.row2}>
           <div>
-            <label style={S.label}>عدد الأصناف القريبة الانتهاء / Near-Expiry Count</label>
+            <label style={S.label}>Near-Expiry Count</label>
             <input type="number" min="0" style={S.input} value={nearExpiryQty} onChange={(e) => setNearExpiryQty(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>عدد الأصناف المنتهية / Expired Count</label>
+            <label style={S.label}>Expired Count</label>
             <input type="number" min="0" style={S.input} value={expiredQty} onChange={(e) => setExpiredQty(e.target.value)} />
           </div>
         </div>
 
-        <label style={S.label}>الملاحظات / Findings</label>
-        <textarea style={S.textarea} value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="الأصناف القديمة موضوعة خلف الجديدة، أو وجد منتج منتهٍ..." />
+        <label style={S.label}>Findings</label>
+        <textarea style={S.textarea} value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="e.g. older stock placed behind newer stock, an expired product found..." />
 
-        <label style={S.label}>الإجراءات التصحيحية / Corrective Actions</label>
-        <textarea style={S.textarea} value={correctiveActions} onChange={(e) => setCorrectiveActions(e.target.value)} placeholder="إعادة الترتيب، عزل المنتجات المنتهية، تدريب الموظفين..." />
+        <label style={S.label}>Corrective Actions</label>
+        <textarea style={S.textarea} value={correctiveActions} onChange={(e) => setCorrectiveActions(e.target.value)} placeholder="e.g. re-arranged, expired products isolated, staff retrained..." />
       </div>
 
       {/* ===== Sign-off ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>✍️ التوقيع / Sign-off</h3>
+        <h3 style={S.title}>✍️ Sign-off</h3>
         <div style={S.row2}>
           <div>
-            <label style={S.label}>القائم بالتدقيق / Audited By *</label>
-            <input style={S.input} value={auditedBy} onChange={(e) => setAuditedBy(e.target.value)} placeholder="اسم الموظف" />
+            <label style={S.label}>Audited By *</label>
+            <input style={S.input} value={auditedBy} onChange={(e) => setAuditedBy(e.target.value)} placeholder="Employee name" />
           </div>
           <div>
-            <label style={S.label}>المعتمد / Verified By</label>
-            <input style={S.input} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} placeholder="اسم المشرف" />
+            <label style={S.label}>Verified By</label>
+            <input style={S.input} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} placeholder="Supervisor name" />
           </div>
         </div>
       </div>
 
       {/* ===== Photos ===== */}
       <div style={S.card}>
-        <h3 style={S.title}>📷 صور التدقيق / Audit Photos (اختياري)</h3>
-        <div style={S.sub}>صور للأرفف، الأصناف المنتهية، الترتيب، إلخ (حتى {MAX_EXTRA_IMAGES} صور)</div>
+        <h3 style={S.title}>📷 Audit Photos (optional)</h3>
+        <div style={S.sub}>Shelves, expired items, arrangement, etc. (up to {MAX_EXTRA_IMAGES} photos)</div>
 
         <input
           ref={extrasRef}
@@ -522,9 +522,9 @@ export default function StockRotationInput() {
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}>إلغاء / Reset</button>
+        <button style={S.btnSecondary} onClick={resetForm} disabled={busy}>Reset</button>
         <button style={S.btnPrimary} onClick={save} disabled={busy}>
-          {busy ? "⏳ جاري..." : "💾 حفظ / Save"}
+          {busy ? "⏳ Saving..." : "💾 Save"}
         </button>
       </div>
 
