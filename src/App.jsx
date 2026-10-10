@@ -675,8 +675,11 @@ function AnySectionRoute({ sections, children }) {
   );
 }
 
-function AdminRoute({ children }) {
-  return <SectionRoute section="admin">{children}</SectionRoute>;
+/* `branch` = the branch a view page belongs to. Without it an account limited
+   to one branch could open any other branch's reports by typing its URL —
+   the /monitor cards hid the button, but the route itself let them in. */
+function AdminRoute({ branch, children }) {
+  return <SectionRoute section="admin" branch={branch}>{children}</SectionRoute>;
 }
 
 // ⏳ مؤشر تحميل فوري لصفحات الفروع الثقيلة
@@ -1311,7 +1314,7 @@ export default function App() {
         <Route
           path="/admin/ftr1"
           element={
-            <AdminRoute>
+            <AdminRoute branch="FTR 1">
               <BranchSuspense><FTR1ReportView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1319,7 +1322,7 @@ export default function App() {
         <Route
           path="/admin/ftr2"
           element={
-            <AdminRoute>
+            <AdminRoute branch="FTR 2">
               <BranchSuspense><FTR2ReportView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1327,7 +1330,7 @@ export default function App() {
         <Route
           path="/admin/production"
           element={
-            <AdminRoute>
+            <AdminRoute branch="PRODUCTION">
               <BranchSuspense><PRDReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1335,7 +1338,7 @@ export default function App() {
         <Route
           path="/admin/pos15"
           element={
-            <AdminRoute>
+            <AdminRoute branch="POS 15">
               <BranchSuspense><POS15ReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1343,7 +1346,7 @@ export default function App() {
         <Route
           path="/admin/pos6"
           element={
-            <AdminRoute>
+            <AdminRoute branch="POS 6">
               <BranchSuspense><POS6ReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1353,7 +1356,7 @@ export default function App() {
         <Route
           path="/admin/pos19"
           element={
-            <AdminRoute>
+            <AdminRoute branch="POS 19">
               <BranchSuspense><POS19DailyView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1363,7 +1366,7 @@ export default function App() {
         <Route
           path="/admin/pos11"
           element={
-            <AdminRoute>
+            <AdminRoute branch="POS 11">
               <BranchSuspense><POS11ReportsViewLayout /></BranchSuspense>
             </AdminRoute>
           }
@@ -1373,7 +1376,7 @@ export default function App() {
         <Route
           path="/admin/pos10"
           element={
-            <AdminRoute>
+            <AdminRoute branch="POS 10">
               <BranchSuspense><POS10ReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1383,7 +1386,7 @@ export default function App() {
         <Route
           path="/admin/monitor/branches/qcs/fresh-chicken-reports"
           element={
-            <AdminRoute>
+            <AdminRoute branch="QCS">
               <BranchSuspense><FreshChickenReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1393,7 +1396,7 @@ export default function App() {
         <Route
           path="/admin/monitor/branches/qcs/reports"
           element={
-            <AdminRoute>
+            <AdminRoute branch="QCS">
               <BranchSuspense><QCSReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1406,7 +1409,7 @@ export default function App() {
         <Route
           path="/admin/monitor/qcs"
           element={
-            <AdminRoute>
+            <AdminRoute branch="QCS">
               <BranchSuspense><QCSReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1414,7 +1417,7 @@ export default function App() {
         <Route
           path="/admin/qcs"
           element={
-            <AdminRoute>
+            <AdminRoute branch="QCS">
               <BranchSuspense><QCSReportsView /></BranchSuspense>
             </AdminRoute>
           }
@@ -1473,9 +1476,11 @@ export default function App() {
         <Route
           path="/qcs-raw-material-view"
           element={
-            <ProtectedRoute>
+            // was any logged-in account. qcsView = the dashboard card; daily /
+            // admin = the QCS input form and the report views link here too.
+            <AnySectionRoute sections={["qcsView", "daily", "admin"]}>
               <QCSRawMaterialView />
-            </ProtectedRoute>
+            </AnySectionRoute>
           }
         />
 
@@ -1483,7 +1488,7 @@ export default function App() {
         <Route
           path="/admin/all-reports-view"
           element={
-            <AdminRoute>
+            <AdminRoute branch="QCS">
               <AllReportsView />
             </AdminRoute>
           }
