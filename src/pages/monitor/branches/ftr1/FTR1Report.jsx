@@ -1,130 +1,34 @@
 // src/pages/monitor/branches/ftr1/FTR1Report.jsx
-import React, { useState } from "react";
-import FTR1PersonalHygiene from "./FTR1PersonalHygiene";
-import FTR1DailyCleanliness from "./FTR1DailyCleanliness";
-import FTR1Temperature from "./FTR1Temperature";
-import FTR1OilCalibration from "./FTR1OilCalibration";
-import FTR1ReceivingLog from "./FTR1ReceivingLog";
+// FTR 1 — Input Tabs. Same shared hub as POS 6/10/11/15/19 (BranchInputLayout):
+// sidebar list, active tab in ?tab=, one form loaded at a time.
+import React, { lazy } from "react";
+import BranchInputLayout from "../_shared/BranchInputLayout";
 
-/* ✅ التبويب/الملف الجديد: Cooking Temperature Log */
-import FTR1CookingTemperatureLogInput from "./FTR1CookingTemperatureLogInput";
+const FTR1PersonalHygiene            = lazy(() => import("./FTR1PersonalHygiene"));
+const FTR1DailyCleanliness           = lazy(() => import("./FTR1DailyCleanliness"));
+const FTR1Temperature                = lazy(() => import("./FTR1Temperature"));
+const FTR1OilCalibration             = lazy(() => import("./FTR1OilCalibration"));
+const FTR1ReceivingLog               = lazy(() => import("./FTR1ReceivingLog"));
+const FTR1CookingTemperatureLogInput = lazy(() => import("./FTR1CookingTemperatureLogInput"));
+
+const config = {
+  branch: "FTR 1",
+  source: "ftr1-tabs",
+  title: "📋 FTR 1 — Operations Inputs",
+  description:
+    "All input tabs (Personal Hygiene, Daily Cleanliness, Temperature, Oil Calibration, Receiving Log and Cooking Temperature Log) in one place.",
+  defaultTab: "personal",
+  // keys kept from the old tab bar so existing links/bookmarks still land
+  tabs: [
+    { key: "personal",  label: "🧑‍🔬 Personal Hygiene",   Component: FTR1PersonalHygiene,            loadingText: "Loading Personal Hygiene…" },
+    { key: "daily",     label: "🧹 Daily Cleanliness",    Component: FTR1DailyCleanliness,           loadingText: "Loading Daily Cleanliness…" },
+    { key: "temp",      label: "🌡️ Temperature",          Component: FTR1Temperature,                loadingText: "Loading Temperature…" },
+    { key: "oil",       label: "🛢️ Oil Calibration",      Component: FTR1OilCalibration,             loadingText: "Loading Oil Calibration…" },
+    { key: "receiving", label: "🚚 Receiving Log",        Component: FTR1ReceivingLog,               loadingText: "Loading Receiving Log…" },
+    { key: "cook",     label: "🍳 Cooking Temp Log",     Component: FTR1CookingTemperatureLogInput, loadingText: "Loading Cooking Temp Log…" },
+  ],
+};
 
 export default function FTR1Report() {
-  const [activeTab, setActiveTab] = useState("personal");
-
-  const tabs = [
-    { key: "personal",  label: "🧑‍🔬 Personal Hygiene" },
-    { key: "daily",     label: "🧹 Daily Cleanliness" },
-    { key: "temp",      label: "🌡️ Temperature" },
-    { key: "oil",       label: "🛢️ Oil Calibration" },
-    { key: "receiving", label: "🚚 Receiving Log (FTR-1)" },
-    /* ✅ التبويب المضاف */
-    { key: "cook",      label: "🍳 Cooking Temp Log" },
-  ];
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "personal":
-        return <FTR1PersonalHygiene />;
-      case "daily":
-        return <FTR1DailyCleanliness />;
-      case "temp":
-        return <FTR1Temperature />;
-      case "oil":
-        return <FTR1OilCalibration />;
-      case "receiving":
-        return <FTR1ReceivingLog />;
-      /* ✅ محتوى التبويب الجديد */
-      case "cook":
-        return <FTR1CookingTemperatureLogInput />;
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: "2rem",
-        background: "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: "16px",
-          padding: "2rem",
-          boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-          maxWidth: "95%",
-          margin: "0 auto",
-        }}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2
-            style={{
-              fontSize: "1.9rem",
-              marginBottom: "0.5rem",
-              color: "#1f2937",
-            }}
-          >
-            📋 FTR 1 Reports
-          </h2>
-          <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All tabs for hygiene, cleanliness, temperature, oil calibration, cooking temp, and receiving in one place
-          </p>
-        </div>
-
-        {/* Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-            flexWrap: "wrap",
-          }}
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                flex: "1",
-                minWidth: "200px",
-                padding: "12px 20px",
-                borderRadius: "10px",
-                fontWeight: "600",
-                cursor: "pointer",
-                border: "1.5px solid #d1d5db",
-                background: activeTab === tab.key ? "#2563eb" : "#f3f4f6",
-                color: activeTab === tab.key ? "#fff" : "#111827",
-                boxShadow:
-                  activeTab === tab.key
-                    ? "0 4px 12px rgba(37,99,235,0.25)"
-                    : "none",
-                transition: "all 0.2s",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tabs Content */}
-        <div
-          style={{
-            background: "#fafafa",
-            border: "1.5px solid #e5e7eb",
-            borderRadius: "12px",
-            padding: "1.5rem",
-            boxShadow: "inset 0 0 6px rgba(0,0,0,0.05)",
-            minHeight: "400px",
-          }}
-        >
-          {renderContent()}
-        </div>
-      </div>
-    </div>
-  );
+  return <BranchInputLayout config={config} />;
 }
