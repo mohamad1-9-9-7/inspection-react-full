@@ -27,6 +27,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import BranchSidebarHub from "./BranchSidebarHub";
+import BranchCertificates, { hasCertificates } from "./BranchCertificates";
 
 /* Accents cycle so neighbouring tabs never share a colour. */
 const ACCENTS = [
@@ -80,7 +81,14 @@ function LoadingTab({ text }) {
 }
 
 export default function BranchInputLayout({ config }) {
-  const { branch, source, description, defaultTab, tabs = [] } = config || {};
+  const { branch, source, description, defaultTab, tabs: baseTabs = [] } = config || {};
+
+  /* Certified sites get their own certificates tab (open / download). */
+  const tabs = useMemo(() => {
+    if (!hasCertificates(branch) || baseTabs.some((t) => t.key === "certificates")) return baseTabs;
+    const CertTab = () => <BranchCertificates branch={branch} />;
+    return [...baseTabs, { key: "certificates", label: "📜 Certificates", subtitle: "ISO 22000 · HACCP", Component: CertTab }];
+  }, [branch, baseTabs]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = searchParams.get("tab");

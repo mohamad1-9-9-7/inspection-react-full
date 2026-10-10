@@ -7,8 +7,11 @@ import QcsSidebarHub, {
   QCS_GROUPS,
   IconBox, IconSnow, IconHygiene, IconCleaning, IconChicken, IconTruck, IconFlask, IconPackage,
   IconAlert, IconWrench, IconClipboard, IconTrash, IconMeat, IconBug, IconRotate, IconUserCheck,
-  IconHealth, IconReturn, IconReject,
+  IconHealth, IconReturn, IconReject, IconShield,
 } from "./_shared/QcsSidebarHub";
+import BranchCertificates from "./_shared/BranchCertificates";
+
+const QcsCertificates = () => <BranchCertificates branch="QCS" />;
 
 /* ===== Lazy Inputs ===== */
 const QCSRawMaterialInspection      = lazy(() => import("./shipment_recc/QCSRawMaterialInspection"));
@@ -68,10 +71,13 @@ const TABS = [
   // ── People & Health ──
   { key: "staffSickness",        group: "people",     title: "Staff Sickness",         subtitle: "Illness / occupational injury",Icon: IconHealth,    accent: "#ec4899", Comp: StaffSicknessInput },
   { key: "returnToWork",         group: "people",     title: "Return to Work",         subtitle: "Fitness clearance",            Icon: IconReturn,    accent: "#10b981", Comp: EmployeeReturnToWorkInput },
+
+  // ── Certificates (open / download) ──
+  { key: "certificates",         group: "certs",      title: "Certificates",           subtitle: "ISO 22000 · HACCP",            Icon: IconShield,    accent: "#ca8a04", Comp: QcsCertificates },
 ];
 
 /* Shared with the reports hub so both menus group the same way. */
-const GROUPS = QCS_GROUPS;
+const GROUPS = [...QCS_GROUPS, { key: "certs", label: "CERTIFICATES", color: "#facc15", Icon: IconShield }];
 
 /* The sidebar layout lives in _shared/QcsSidebarHub (shared with the QCS
    reports hub, QCSReportsView). This file only lists the input forms. */

@@ -16,6 +16,7 @@ import QcsSidebarHub, { IconChart } from "./QcsSidebarHub";
 import PrintStyles from "./PrintStyles";
 import PrintButton from "./PrintButton";
 import { BRANCHES } from "../../../../config/branches";
+import BranchCertificates, { hasCertificates } from "./BranchCertificates";
 
 /* "POS-19" → "POS 19" → the registry label ("Al Warqa Kitchen"). */
 function branchLabelOf(code) {
@@ -39,8 +40,9 @@ const SECTIONS = [
   { key: "quality",     label: "QUALITY & COMPLIANCE",  color: "#c084fc", test: /conform|ncr|correct|capa|audit|reject|complaint|inspect|product|finished|label|quality|halal|allergen/ },
 ];
 const OTHER = { key: "other", label: "OTHER REPORTS", color: "#94a3b8" };
+const CERTS = { key: "certs", label: "CERTIFICATES", color: "#facc15" };
 /* Sidebar order (matching order above is only about which test wins). */
-const DISPLAY_ORDER = ["overview", "receiving", "temperature", "hygiene", "quality", "waste", "people", "other"];
+const DISPLAY_ORDER = ["overview", "receiving", "temperature", "hygiene", "quality", "waste", "people", "other", "certs"];
 const OVERVIEW = { key: "overview", label: "OVERVIEW", color: "#22d3ee", Icon: IconChart };
 
 const sectionOf = (tab) => {
@@ -70,9 +72,16 @@ export default function BranchDailyView({
   const code = String(branchCode || "").replace(/-/g, " ").trim();
   const branchName = branchLabelOf(branchCode);
 
+  /* Certified sites get their certificates (open / download) as a tab. */
+  const allTabs = useMemo(() => (
+    hasCertificates(code) && !tabs.some((t) => t.key === "certificates")
+      ? [...tabs, { key: "certificates", icon: "📜", label: "Certificates", subtitle: "ISO 22000 · HACCP", group: "certs", element: <BranchCertificates branch={code} /> }]
+      : tabs
+  ), [tabs, code]);
+
   const { hubTabs, groups } = useMemo(() => {
-    const colorOf = Object.fromEntries([OVERVIEW, ...SECTIONS, OTHER].map((g) => [g.key, g.color]));
-    const hubTabs = tabs.map((t) => {
+    const colorOf = Object.fromEntries([OVERVIEW, ...SECTIONS, OTHER, CERTS].map((g) => [g.key, g.color]));
+    const hubTabs = allTabs.map((t) => {
       const group = sectionOf(t);
       return {
         key: t.key,
@@ -85,14 +94,14 @@ export default function BranchDailyView({
       };
     });
     const used = new Set(hubTabs.map((t) => t.group));
-    const known = [OVERVIEW, ...SECTIONS, OTHER]
+    const known = [OVERVIEW, ...SECTIONS, OTHER, CERTS]
       .map(({ key, label, color, Icon }) => ({ key, label, color, Icon: Icon || IconChart }))
       .sort((a, b) => DISPLAY_ORDER.indexOf(a.key) - DISPLAY_ORDER.indexOf(b.key));
     // A custom `group` a caller passed gets its own heading at the end.
     const custom = [...used].filter((g) => !known.some((k) => k.key === g))
       .map((g) => ({ key: g, label: String(g).toUpperCase(), color: OTHER.color, Icon: IconChart }));
     return { hubTabs, groups: [...known, ...custom] };
-  }, [tabs]);
+  }, [allTabs]);
 
   return (
     <>

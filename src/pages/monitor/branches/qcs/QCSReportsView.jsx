@@ -9,8 +9,9 @@ import QcsSidebarHub, {
   QCS_GROUPS,
   IconBox, IconSnow, IconHygiene, IconCleaning, IconChicken, IconTruck, IconFlask, IconPackage,
   IconAlert, IconWrench, IconClipboard, IconTrash, IconMeat, IconBug, IconRotate, IconUserCheck,
-  IconHealth, IconReturn, IconReject, IconChart,
+  IconHealth, IconReturn, IconReject, IconChart, IconShield,
 } from "../_shared/QcsSidebarHub";
+import BranchCertificates from "../_shared/BranchCertificates";
 
 // Resilient lazy: retries the chunk fetch and self-heals after a deploy /
 // network blip instead of white-screening the route (see lazyWithRetry.js).
@@ -94,6 +95,7 @@ const DASH_TYPES = [
 const GROUPS = [
   { key: "overview", label: "OVERVIEW", color: "#22d3ee", Icon: IconChart },
   ...QCS_GROUPS,
+  { key: "certs", label: "CERTIFICATES", color: "#facc15", Icon: IconShield },
 ];
 
 const TABS = [
@@ -140,6 +142,9 @@ const TABS = [
   // ── People & Health ──
   { key: "staff_sickness", group: "people",     title: "Staff Sickness",         subtitle: "Illness / occupational injury", Icon: IconHealth,    accent: "#ec4899", element: <StaffSicknessView /> },
   { key: "return_to_work", group: "people",     title: "Return to Work",         subtitle: "Fitness clearance",             Icon: IconReturn,    accent: "#10b981", element: <EmployeeReturnToWorkView /> },
+
+  // ── Certificates (open / download) ──
+  { key: "certificates",   group: "certs",      title: "Certificates",           subtitle: "ISO 22000 · HACCP",             Icon: IconShield,    accent: "#ca8a04", element: <BranchCertificates branch="QCS" /> },
 ];
 
 export default function QCSReportsView() {
