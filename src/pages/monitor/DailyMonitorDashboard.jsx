@@ -88,14 +88,16 @@ const CSS = `
 #root .dm.dm .dm-today-s { font-size:${fs(12)}; font-weight:700; color:#0369a1; margin-top:6px; }
 
 #root .dm.dm .dm-guide { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:12px; margin-top:14px; }
-#root .dm.dm .dm-panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:14px 16px; }
+#root .dm.dm .dm-panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:14px 16px; display:flex; flex-direction:column; }
 #root .dm.dm .dm-panel-t { font-size:${fs(12)}; font-weight:900; color:#334155; letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
-#root .dm.dm .dm-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-#root .dm.dm .dm-step { background:#f8fbff; border:1px solid #e6eef8; border-radius:12px; padding:10px 12px; }
-#root .dm.dm .dm-step-h { display:flex; align-items:center; gap:8px; }
-#root .dm.dm .dm-step-n { width:22px; height:22px; border-radius:999px; background:#0ea5e9; color:#fff; display:grid; place-items:center; font-size:${fs(12)}; font-weight:900; flex-shrink:0; }
-#root .dm.dm .dm-step-t { font-size:${fs(13)}; font-weight:900; color:#0f172a; }
-#root .dm.dm .dm-step-x { font-size:${fs(12)}; color:#64748b; font-weight:600; line-height:1.5; margin-top:6px; }
+/* flex:1 + stretched cards: the panel is as tall as the limits panel beside it, so the steps fill it instead of leaving a blank band underneath. */
+#root .dm.dm .dm-steps { flex:1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:stretch; }
+#root .dm.dm .dm-step { position:relative; background:linear-gradient(180deg,#f8fbff,#eef6ff); border:1px solid #dbe8f6; border-radius:12px; padding:14px 14px 12px; display:flex; flex-direction:column; }
+#root .dm.dm .dm-step-ic { position:absolute; top:10px; inset-inline-end:12px; font-size:${fs(26)}; opacity:.9; }
+#root .dm.dm .dm-step-h { display:flex; align-items:center; gap:8px; padding-inline-end:34px; }
+#root .dm.dm .dm-step-n { width:28px; height:28px; border-radius:999px; background:#0ea5e9; color:#fff; display:grid; place-items:center; font-size:${fs(14)}; font-weight:900; flex-shrink:0; }
+#root .dm.dm .dm-step-t { font-size:${fs(15)}; font-weight:900; color:#0f172a; }
+#root .dm.dm .dm-step-x { font-size:${fs(13)}; color:#475569; font-weight:600; line-height:1.55; margin-top:8px; padding-inline-end:6px; }
 #root .dm.dm .dm-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 #root .dm.dm .dm-limit { display:flex; align-items:center; gap:8px; background:#f0fdfa; border:1px solid #ccfbf1; border-radius:10px; padding:8px 10px; }
 #root .dm.dm .dm-limit-i { font-size:${fs(18)}; }
@@ -198,6 +200,7 @@ export default function DailyMonitorDashboard() {
             <div className="dm-steps">
               {STEPS.map((s, i) => (
                 <div key={s.title} className="dm-step">
+                  <span className="dm-step-ic" aria-hidden="true">{s.icon}</span>
                   <div className="dm-step-h">
                     <span className="dm-step-n">{i + 1}</span>
                     <span className="dm-step-t">{s.title}</span>
