@@ -63,7 +63,6 @@ const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
 const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
 const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
 const MrpAudit = lazy(() => import("./pages/mrp/MrpAudit.jsx"));
-const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 
 const DailyMonitorDashboard = lazy(() =>
   import("./pages/monitor/DailyMonitorDashboard")
@@ -664,6 +663,18 @@ function InventoryRoute({ section, item, children }) {
   return <Navigate to="/named-dashboard" replace />;
 }
 
+/* /monitor serves both doors: entering reports ("daily") and viewing them
+   ("admin"). Either section opens the hub; each card shows only the buttons
+   that account may use. */
+function AnySectionRoute({ sections, children }) {
+  const allowed = sections.some((s) => hasSection(s));
+  return (
+    <ProtectedRoute>
+      {allowed ? children : <Navigate to="/named-dashboard" replace />}
+    </ProtectedRoute>
+  );
+}
+
 function AdminRoute({ children }) {
   return <SectionRoute section="admin">{children}</SectionRoute>;
 }
@@ -1004,14 +1015,9 @@ export default function App() {
           }
         />
 
-        <Route
-          path="/admin"
-          element={
-            <AdminRoute>
-              <AdminDashboard />
-            </AdminRoute>
-          }
-        />
+        {/* The old "QMS Admin" shell was one tab of branch tiles opening the
+            report views; those doors now sit on /monitor next to Enter. */}
+        <Route path="/admin" element={<Navigate to="/monitor" replace />} />
         {/* ⏰ Expiry Center — مركز تواريخ الانتهاء */}
         <Route
           path="/admin/expiry-center"
@@ -1113,9 +1119,9 @@ export default function App() {
           <Route
             index
             element={
-              <SectionRoute section="daily">
+              <AnySectionRoute sections={["daily", "admin"]}>
                 <DailyMonitorDashboard />
-              </SectionRoute>
+              </AnySectionRoute>
             }
           />
 

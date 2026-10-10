@@ -1,11 +1,12 @@
 // src/pages/monitor/DailyMonitorDashboard.jsx
 // /monitor — the Daily Reports hub: a short "how daily recording works" guide,
 // the critical limits staff check against, then every branch as a card that
-// says what is recorded there and opens today's forms (/monitor/<slug>).
-// Full width on purpose — the owner wants the hub to fill the screen.
+// says what is recorded there and opens today's forms (/monitor/<slug>) or the
+// past reports (/admin/<slug>). It replaced the old "QMS Admin" card (/admin
+// now redirects here). Full width on purpose — the owner wants it full-screen.
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { branchAllowed } from "../../utils/perms";
+import { branchAllowed, hasSection } from "../../utils/perms";
 
 /* Branches with a real entry page behind them. POS 7/14/16/17/18/21/25/31/34/
    35/36/37/38/41/42/43/44/45 were listed here too, but /monitor/<slug> has no
@@ -128,6 +129,15 @@ const CSS = `
 #root .dm.dm .dm-btn { flex:1; min-height:44px; border-radius:11px; font-size:${fs(13.5)}; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:inherit; transition:filter .15s, background .15s, color .15s; }
 #root .dm.dm .dm-btn-enter { background:var(--cc); color:#fff; border:1px solid var(--cc); }
 #root .dm.dm .dm-btn-enter:hover { filter:brightness(1.08); }
+/* View = a light tinted twin of Enter, so the two doors read as different
+   jobs at a glance (filled = write, tinted = read). */
+#root .dm.dm .dm-btn-view { background:var(--cs); color:color-mix(in srgb, var(--cc) 80%, #0f172a); border:1.5px solid color-mix(in srgb, var(--cc) 40%, transparent); }
+#root .dm.dm .dm-btn-view:hover { background:#fff; border-color:var(--cc); }
+#root .dm.dm .dm-btn { justify-content:flex-start; padding:8px 12px; min-height:52px; text-align:start; }
+#root .dm.dm .dm-btn-ic { font-size:${fs(18)}; flex-shrink:0; }
+#root .dm.dm .dm-btn-tx { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+#root .dm.dm .dm-btn-tx b { font-size:${fs(13.5)}; font-weight:900; }
+#root .dm.dm .dm-btn-tx small { font-size:${fs(11)}; font-weight:600; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #root .dm.dm .dm-btn:focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
 #root .dm.dm .dm-empty { margin-top:18px; padding:40px 16px; text-align:center; color:#64748b; font-weight:700; font-size:${fs(14)}; background:#fff; border:1px dashed #cbd5e1; border-radius:14px; }
 
@@ -157,7 +167,12 @@ export default function DailyMonitorDashboard() {
   };
 
   /* perms.js is the single source of truth for allowedBranches. */
-  const visibleBranches = branches.filter((b) => branchAllowed("daily", b.id));
+  /* Two doors per branch: "daily" = enter today's forms, "admin" = view past
+     reports (the view routes sit behind AdminRoute). A branch is listed when
+     the account may use at least one of them. */
+  const canEnter = (id) => hasSection("daily") && branchAllowed("daily", id);
+  const canView  = (id) => hasSection("admin") && branchAllowed("admin", id);
+  const visibleBranches = branches.filter((b) => canEnter(b.id) || canView(b.id));
   const isRestrictedToBranches = visibleBranches.length < branches.length;
 
   /* QCS + Production share the "Central" row; the rest get one group each. */
@@ -179,7 +194,7 @@ export default function DailyMonitorDashboard() {
             <div className="dm-eyebrow">Food safety · Daily records</div>
             <h1 className="dm-title">Daily Reports Hub</h1>
             <div className="dm-lead">
-              Choose a branch to fill in today's checks.
+              Choose a branch to fill in today's checks or review its past reports.
               Accurate daily records are the evidence for every audit and inspection.
             </div>
           </div>
@@ -261,9 +276,18 @@ export default function DailyMonitorDashboard() {
                       </div>
                     </div>
                     <div className="dm-actions">
-                      <button type="button" className="dm-btn dm-btn-enter" onClick={() => navigate(`/monitor/${slug}`)}>
-                        ✏️ Enter reports
-                      </button>
+                      {canEnter(b.id) && (
+                        <button type="button" className="dm-btn dm-btn-enter" onClick={() => navigate(`/monitor/${slug}`)}>
+                          <span className="dm-btn-ic" aria-hidden="true">✏️</span>
+                          <span className="dm-btn-tx"><b>Enter reports</b><small>Fill today's forms</small></span>
+                        </button>
+                      )}
+                      {canView(b.id) && (
+                        <button type="button" className="dm-btn dm-btn-view" onClick={() => navigate(`/admin/${slug}`)}>
+                          <span className="dm-btn-ic" aria-hidden="true">📊</span>
+                          <span className="dm-btn-tx"><b>View reports</b><small>Past records &amp; exports</small></span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

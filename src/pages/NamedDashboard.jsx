@@ -184,11 +184,6 @@ const op = {
 /* ── Each role: label · route · icon · unique gradient ── */
 const ALL_ROLES = [
   {
-    id: "admin", label: "Admin", route: "/admin", icon: "👑",
-    grad: "linear-gradient(135deg,#f59e0b,#d97706)",
-    glow: "rgba(245,158,11,.45)",
-  },
-  {
     id: "kpi", label: "KPI Dashboard", route: "/kpi", icon: "📈",
     grad: "linear-gradient(135deg,#0f766e,#14b8a6)",
     glow: "rgba(20,184,166,.45)",
@@ -199,7 +194,9 @@ const ALL_ROLES = [
     glow: "rgba(59,130,246,.45)",
   },
   {
-    id: "daily", label: "Daily Monitor", route: "/monitor", icon: "📅",
+    // "admin" = View reports — its doors live on /monitor now, so an
+    // account holding only that section still needs this card.
+    id: "daily", label: "Daily Monitor", route: "/monitor", icon: "📅", anyOf: ["admin"],
     grad: "linear-gradient(135deg,#06b6d4,#0284c7)",
     glow: "rgba(6,182,212,.45)",
   },

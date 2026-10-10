@@ -86,7 +86,7 @@ const MASTER_BRANCHES = [
 ];
 
 const SECTIONS = [
-  { id: "admin",            icon: "👑",   nameKey: "amSecAdmin" },
+  { id: "admin",            icon: "📊",   nameKey: "amSecAdmin" },
   { id: "kpi",              icon: "📈",   nameKey: "amSecKpi" },
   { id: "inspector",        icon: "🔍",   nameKey: "amSecInspector" },
   { id: "daily",            icon: "📅",   nameKey: "amSecDaily" },
@@ -145,7 +145,7 @@ const EMPTY_FORM = {
 };
 
 const BRANCH_THEMES = {
-  admin:            { icon:"👑",  title:"Admin",             bg:"#fffbeb", border:"#fde68a", accent:"#b45309", chipOn:"#fef3c7", chipOnText:"#78350f", badgeBg:"#fef3c7", badgeBorder:"#fcd34d", badgeText:"#78350f" },
+  admin:            { icon:"📊",  title:"View reports",             bg:"#fffbeb", border:"#fde68a", accent:"#b45309", chipOn:"#fef3c7", chipOnText:"#78350f", badgeBg:"#fef3c7", badgeBorder:"#fcd34d", badgeText:"#78350f" },
   kpi:              { icon:"📈",  title:"KPI Dashboard",     bg:"#ecfdf5", border:"#99f6e4", accent:"#0f766e", chipOn:"#ccfbf1", chipOnText:"#134e4a", badgeBg:"#ccfbf1", badgeBorder:"#5eead4", badgeText:"#134e4a" },
   inspector:        { icon:"🔍",  title:"Inspector",         bg:"#eff6ff", border:"#bfdbfe", accent:"#1d4ed8", chipOn:"#dbeafe", chipOnText:"#1e3a8a", badgeBg:"#dbeafe", badgeBorder:"#93c5fd", badgeText:"#1e3a8a" },
   daily:            { icon:"📅",  title:"Daily Monitor",     bg:"#ecfeff", border:"#a5f3fc", accent:"#0e7490", chipOn:"#cffafe", chipOnText:"#155e75", badgeBg:"#cffafe", badgeBorder:"#67e8f9", badgeText:"#155e75" },
