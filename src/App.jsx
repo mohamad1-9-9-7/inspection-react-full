@@ -348,6 +348,8 @@ const ExternalDocumentsView = lazy(() => import("./pages/haccp and iso/ExternalD
 
 // 📜 Food Safety Policy (ISO 5.2)
 const FoodSafetyPolicyView = lazy(() => import("./pages/haccp and iso/FoodSafetyPolicy/FoodSafetyPolicyView"));
+// 📜 Site Certificates (ISO 22000 / HACCP per certified site)
+const SiteCertificates = lazy(() => import("./pages/haccp and iso/SiteCertificates"));
 
 // 🚨 Real Product Recall (ISO 8.9.5)
 const RealRecallInput = lazy(() => import("./pages/haccp and iso/RealRecall/RealRecallInput"));
@@ -1722,6 +1724,16 @@ export default function App() {
           }
         />
         <Route path="/iso-haccp" element={<Navigate to="/haccp-iso" replace />} />
+
+        {/* 📜 Site Certificates — attach / replace per site (edit needs iso write) */}
+        <Route
+          path="/haccp-iso/site-certificates"
+          element={
+            <SectionRoute section="iso" item="site-certificates">
+              <SiteCertificates />
+            </SectionRoute>
+          }
+        />
 
         {/* 🕵️ Audit Trail (admin only — page guards itself too) */}
         <Route

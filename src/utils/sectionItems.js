@@ -110,6 +110,7 @@ export const SECTION_ITEMS = {
         { id: "kitchen.menu-nutrition", icon: "🔥", label: "Menu Calories & Nutrition" },
       ]},
       { id: "licenses-contracts",    icon: "📋", label: "Licenses & Contracts" },
+      { id: "site-certificates",     icon: "📜", label: "Site Certificates" },
       { id: "dm-inspection",         icon: "🔍", label: "DM Inspection" },
       { id: "supplier-evaluation",   icon: "✅", label: "Supplier Evaluation" },
       { id: "sop-ssop",              icon: "📘", label: "SOP & sSOP" },

@@ -84,6 +84,14 @@ const sections = [
     route: "/haccp-iso/kitchen",
   },
 
+  // 📜 Site Certificates — ISO 22000 / HACCP per certified site (SGS)
+  {
+    id: "site-certificates",
+    title: "📜 Site Certificates",
+    subtitle: "ISO 22000 & HACCP (SGS) per site — attach each branch's own certificate; branches open & download theirs",
+    route: "/haccp-iso/site-certificates",
+  },
+
   {
     id: "licenses-contracts",
     title: "Licenses & Contracts",
@@ -661,6 +669,7 @@ const categoryById = {
   "product-details": "operations",
   kitchen: "operations",
   "licenses-contracts": "governance",
+  "site-certificates": "governance",
   "dm-inspection": "records",
   "supplier-evaluation": "operations",
   "sop-ssop": "operations",
