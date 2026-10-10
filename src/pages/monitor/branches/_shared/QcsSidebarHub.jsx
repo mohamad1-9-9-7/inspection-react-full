@@ -129,6 +129,10 @@ export default function QcsSidebarHub({
   defaultKey,
   storagePrefix = "qcs_nav",
   itemNoun = "forms",
+  brandTitle = "QCS",
+  topbarExtra = null,   // (activeTab) => node, e.g. a print button
+  bodyDir,              // "rtl" for report pages written right-to-left
+  viewer = false,       // report-view hubs: table/grid fixes for the pages inside
 }) {
   const LS_PINNED   = `${storagePrefix}_pinned_v1`;
   const LS_GROUPS   = `${storagePrefix}_closed_groups_v1`;
@@ -236,6 +240,17 @@ export default function QcsSidebarHub({
     setSidebarCollapsed((v) => { writeLS(LS_COLLAPSE, !v); return !v; });
   }, [LS_COLLAPSE]);
 
+  /* Panels (e.g. an Overview dashboard) can open another tab by event. */
+  useEffect(() => {
+    const onSwitch = (e) => { const key = e?.detail; if (key && TAB_IDS.has(key)) selectTab(key); };
+    window.addEventListener("branch:switch-tab", onSwitch);
+    window.addEventListener("prd:switch-tab", onSwitch);
+    return () => {
+      window.removeEventListener("branch:switch-tab", onSwitch);
+      window.removeEventListener("prd:switch-tab", onSwitch);
+    };
+  }, [TAB_IDS, selectTab]);
+
   /* ── Ctrl/⌘+K focuses search ── */
   useEffect(() => {
     const onKey = (e) => {
@@ -277,11 +292,11 @@ export default function QcsSidebarHub({
   });
 
   return (
-    <div className={`qcs-hub ${sidebarCollapsed ? "collapsed" : ""}`}>
+    <div className={`qcs-hub ${sidebarCollapsed ? "collapsed" : ""} ${viewer ? "is-viewer" : ""}`}>
       <style>{STYLES}</style>
 
       {/* ── Sidebar ── */}
-      <aside className={`qcs-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+      <aside className={`qcs-sidebar no-print ${sidebarCollapsed ? "collapsed" : ""}`}>
         {/* Brand */}
         <div className="qcs-brand">
           <div className="qcs-brand-icon">
@@ -289,7 +304,7 @@ export default function QcsSidebarHub({
           </div>
           {!sidebarCollapsed && (
             <div className="qcs-brand-text">
-              <div className="qcs-brand-title">QCS</div>
+              <div className="qcs-brand-title">{brandTitle}</div>
               <div className="qcs-brand-sub">{brandSub}</div>
             </div>
           )}
@@ -452,7 +467,7 @@ export default function QcsSidebarHub({
       {/* ── Main ── */}
       <main className="qcs-main">
         {/* Top bar */}
-        <header className="qcs-topbar">
+        <header className="qcs-topbar no-print">
           <div className="qcs-topbar-left">
             <div
               className="qcs-topbar-icon"
@@ -466,6 +481,7 @@ export default function QcsSidebarHub({
             </div>
           </div>
           <div className="qcs-topbar-right">
+            {topbarExtra ? topbarExtra(activeTab) : null}
             <div className="qcs-date-chip">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -477,8 +493,8 @@ export default function QcsSidebarHub({
         </header>
 
         {/* Breadcrumb */}
-        <div className="qcs-breadcrumb">
-          <span>QCS</span>
+        <div className="qcs-breadcrumb no-print">
+          <span>{brandTitle}</span>
           <span className="qcs-sep">›</span>
           <span>{crumb}</span>
           <span className="qcs-sep">›</span>
@@ -494,7 +510,7 @@ export default function QcsSidebarHub({
             </div>
           }>
             {/* key: each page mounts fresh, the way it did when opened alone */}
-            <React.Fragment key={activeTab.key}>{body}</React.Fragment>
+            <div key={activeTab.key} dir={bodyDir}>{body}</div>
           </Suspense>
         </section>
       </main>
@@ -504,6 +520,25 @@ export default function QcsSidebarHub({
 
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  /* ── Report-view hubs only (viewer prop) — carried over from the old
+     BranchDailyView. globals.css squeezes fixed-layout tables to 100% and lets
+     text break ANYWHERE ("FLOO R/ WALL S"); here a word stays whole and a wide
+     table scrolls instead of crushing. */
+  #root .qcs-hub.is-viewer .qcs-panel table td,
+  #root .qcs-hub.is-viewer .qcs-panel table th { word-break: normal; overflow-wrap: break-word; }
+  #root .qcs-hub.is-viewer .qcs-panel table[style*="table-layout"],
+  #root .qcs-hub.is-viewer .qcs-panel table[style*="tableLayout"] { max-width: none !important; }
+  .qcs-hub.is-viewer .qcs-panel button:disabled,
+  .qcs-hub.is-viewer .qcs-panel label[aria-disabled="true"] { opacity: .45; cursor: not-allowed; filter: grayscale(.4); }
+  @media (max-width: 900px) {
+    /* the views lay out "date tree | report" as an inline 260–300px + 1fr grid;
+       on a phone that left the report a 40px column — stack them. */
+    #root .qcs-hub.is-viewer .qcs-panel [style*="grid-template-columns"][style*="px minmax(0"],
+    #root .qcs-hub.is-viewer .qcs-panel [style*="grid-template-columns"][style*="px 1fr"] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
 
   .qcs-hub {
     /* Same accent as the Production hub, so the two screens read as one system. */

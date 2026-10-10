@@ -153,6 +153,7 @@ export default function QCSReportsView() {
       defaultKey="overview"
       storagePrefix="qcs_view_nav"
       itemNoun="reports"
+      viewer
     />
   );
 }
