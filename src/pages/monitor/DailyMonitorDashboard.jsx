@@ -110,7 +110,7 @@ const CSS = `
 #root .dm.dm .dm-group-t { font-size:${fs(13)}; font-weight:900; color:#334155; letter-spacing:.08em; text-transform:uppercase; }
 #root .dm.dm .dm-group-n { font-size:${fs(11)}; font-weight:900; color:#0369a1; background:#e0f2fe; border-radius:999px; padding:2px 9px; }
 #root .dm.dm .dm-group::after { content:""; flex:1; height:1px; background:#dbe5f0; }
-#root .dm.dm .dm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr)); gap:12px; }
+#root .dm.dm .dm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(calc(330px * var(--app-fs, 1)),100%),1fr)); gap:12px; }
 
 #root .dm.dm .dm-card { position:relative; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:16px 16px 14px; display:flex; flex-direction:column; gap:12px;
   box-shadow:0 1px 2px rgba(15,23,42,.04); transition:border-color .15s, box-shadow .15s, transform .15s; }
@@ -125,7 +125,8 @@ const CSS = `
 #root .dm.dm .dm-chips { display:flex; flex-wrap:wrap; gap:6px; }
 #root .dm.dm .dm-chip { font-size:${fs(12)}; font-weight:700; color:#334155; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:3px 8px; }
 #root .dm.dm .dm-chip-more { color:#64748b; background:#fff; border-style:dashed; }
-#root .dm.dm .dm-actions { display:flex; gap:8px; margin-top:auto; padding-top:4px; }
+/* wrap: with a large Aa text size two buttons no longer fit one row — they stack instead of spilling past the card edge. */
+#root .dm.dm .dm-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:4px; }
 #root .dm.dm .dm-btn { flex:1; min-height:44px; border-radius:11px; font-size:${fs(13.5)}; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:inherit; transition:filter .15s, background .15s, color .15s; }
 #root .dm.dm .dm-btn-enter { background:var(--cc); color:#fff; border:1px solid var(--cc); }
 #root .dm.dm .dm-btn-enter:hover { filter:brightness(1.08); }
@@ -133,10 +134,10 @@ const CSS = `
    jobs at a glance (filled = write, tinted = read). */
 #root .dm.dm .dm-btn-view { background:var(--cs); color:color-mix(in srgb, var(--cc) 80%, #0f172a); border:1.5px solid color-mix(in srgb, var(--cc) 40%, transparent); }
 #root .dm.dm .dm-btn-view:hover { background:#fff; border-color:var(--cc); }
-#root .dm.dm .dm-btn { justify-content:flex-start; padding:8px 12px; min-height:52px; text-align:start; }
+#root .dm.dm .dm-btn { flex:1 1 calc(140px * var(--app-fs, 1)); min-width:0; justify-content:flex-start; padding:8px 12px; min-height:52px; text-align:start; }
 #root .dm.dm .dm-btn-ic { font-size:${fs(18)}; flex-shrink:0; }
 #root .dm.dm .dm-btn-tx { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
-#root .dm.dm .dm-btn-tx b { font-size:${fs(13.5)}; font-weight:900; }
+#root .dm.dm .dm-btn-tx b { font-size:${fs(13.5)}; font-weight:900; white-space:nowrap; }
 #root .dm.dm .dm-btn-tx small { font-size:${fs(11)}; font-weight:600; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #root .dm.dm .dm-btn:focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
 #root .dm.dm .dm-empty { margin-top:18px; padding:40px 16px; text-align:center; color:#64748b; font-weight:700; font-size:${fs(14)}; background:#fff; border:1px dashed #cbd5e1; border-radius:14px; }
