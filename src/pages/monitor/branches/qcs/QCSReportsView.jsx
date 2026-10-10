@@ -1,14 +1,22 @@
 // src/pages/monitor/branches/qcs/QCSReportsView.jsx
-// QCS — Daily Viewer Hub (unified design).
+// QCS — reports hub. Same sidebar as the QCS input hub (QCSReport.jsx): one
+// shared component, _shared/QcsSidebarHub, so the two menus cannot drift.
+// The open report lives in ?rtab= (unchanged keys, old links still land).
 import React from "react";
 import lazyWithRetry from "../../../../utils/lazyWithRetry";
-import BranchDailyView from "../_shared/BranchDailyView";
 import BranchDashboard from "../_shared/BranchDashboard";
+import QcsSidebarHub, {
+  QCS_GROUPS,
+  IconBox, IconSnow, IconHygiene, IconCleaning, IconChicken, IconTruck, IconFlask, IconPackage,
+  IconAlert, IconWrench, IconClipboard, IconTrash, IconMeat, IconBug, IconRotate, IconUserCheck,
+  IconHealth, IconReturn, IconReject, IconChart,
+} from "../_shared/QcsSidebarHub";
 
 // Resilient lazy: retries the chunk fetch and self-heals after a deploy /
 // network blip instead of white-screening the route (see lazyWithRetry.js).
 const lazy = lazyWithRetry;
 
+const QCSRawMaterialView                = lazy(() => import("../../../admin/QCSRawMaterialView"));
 const CoolersView                       = lazy(() => import("./CoolersView"));
 const PersonalHygieneView               = lazy(() => import("./PersonalHygieneView"));
 const DailyCleanlinessView              = lazy(() => import("./DailyCleanlinessView"));
@@ -81,16 +89,25 @@ const DASH_TYPES = [
   { type: "qcs_employee_warning",        key: "employee_warning",  icon: "⚠️", titleEn: "Employee Warning",    titleAr: "إنذارات الموظفين",    accent: "#b91c1c" },
 ];
 
+/* Overview first, then the same sections as the input hub. Titles match the
+   input form each report comes from. */
+const GROUPS = [
+  { key: "overview", label: "OVERVIEW", color: "#22d3ee", Icon: IconChart },
+  ...QCS_GROUPS,
+];
+
 const TABS = [
-  { key: "overview", icon: "📊", label: "Overview", labelAr: "نظرة عامة",
-    element: <BranchDashboard branchName="QCS" branchNameAr="مراقبة الجودة" reportTypes={DASH_TYPES} accent="#0f766e" />
-  },
-  { key: "coolers",        icon: "🧊",  label: "Coolers", labelAr: "البرادات",                element: <CoolersView /> },
-  { key: "ph",             icon: "🧼",  label: "Personal Hygiene", labelAr: "النظافة الشخصية",       element: <PersonalHygieneView /> },
-  {
-    key: "clean",
-    icon: "🧹",
-    label: "Daily Cleanliness", labelAr: "النظافة اليومية",
+  { key: "overview", group: "overview", title: "Overview", subtitle: "All QCS reports at a glance", Icon: IconChart, accent: "#0f766e",
+    element: <BranchDashboard branchName="QCS" branchNameAr="مراقبة الجودة" reportTypes={DASH_TYPES} accent="#0f766e" /> },
+
+  // ── Receiving & Storage ──
+  { key: "raw_material",   group: "receiving",  title: "Raw Material Receipt",   subtitle: "Shipment inspections",          Icon: IconBox,       accent: "#0ea5e9", element: <QCSRawMaterialView /> },
+  { key: "coolers",        group: "receiving",  title: "Coolers Temperatures",   subtitle: "Cold chain monitoring",         Icon: IconSnow,      accent: "#3b82f6", element: <CoolersView /> },
+  { key: "stock_rotation", group: "receiving",  title: "Stock Rotation",         subtitle: "FIFO / FEFO audits",            Icon: IconRotate,    accent: "#6366f1", element: <StockRotationView /> },
+
+  // ── Hygiene & Cleaning ──
+  { key: "ph",             group: "hygiene",    title: "Personal Hygiene",       subtitle: "Employee checklists",           Icon: IconHygiene,   accent: "#14b8a6", element: <PersonalHygieneView /> },
+  { key: "clean",          group: "hygiene",    title: "Daily Cleanliness",      subtitle: "Facility cleaning records",     Icon: IconCleaning,  accent: "#22c55e",
     element: (
       <DailyCleanlinessView
         ccHeader={CC_HEADER}
@@ -98,35 +115,44 @@ const TABS = [
         cleanlinessRows={[]}
         ccFooter={{ checkedBy: "", verifiedBy: "" }}
       />
-    ),
-  },
-  { key: "fresh",          icon: "🍗",  label: "Fresh Chicken", labelAr: "الدجاج الطازج",          element: <FreshChickenReportsView /> },
-  { key: "ftr1_preload",   icon: "🚚",  label: "FTR 1 • Preloading", labelAr: "تحميل FTR 1",     element: <FTR1PreloadingViewer /> },
-  { key: "ftr2_preload",   icon: "🚚",  label: "FTR 2 • Preloading", labelAr: "تحميل FTR 2",     element: <FTR2PreloadingViewer /> },
-  { key: "rm_ing",         icon: "🧪",  label: "RM — Ingredients", labelAr: "المكونات",       element: <RMInspectionReportIngredientsView /> },
-  { key: "rm_pack",        icon: "📦",  label: "RM — Packaging", labelAr: "التعبئة",         element: <RMInspectionReportPackagingView /> },
-  { key: "nc_reports",     icon: "🚫",  label: "Non-Conformance", labelAr: "عدم المطابقة",        element: <NonConformanceReportsView /> },
-  { key: "car_reports",    icon: "🛠️", label: "Corrective Action", labelAr: "الإجراء التصحيحي",      element: <CorrectiveActionReportsView /> },
-  { key: "internal_audit", icon: "📋",  label: "Internal Audit", labelAr: "التدقيق الداخلي",         element: <InternalAuditView /> },
-  { key: "garbage",        icon: "🗑️", label: "Garbage Disposal", labelAr: "التخلص من النفايات",       element: <GarbageDisposalView /> },
-  { key: "meat_waste",     icon: "🥩",  label: "Meat Waste", labelAr: "هدر اللحوم",             element: <MeatWasteDisposalView /> },
-  { key: "pest_control",   icon: "🐀",  label: "Pest Control", labelAr: "مكافحة الحشرات",           element: <PestControlView /> },
-  { key: "stock_rotation", icon: "📦",  label: "Stock Rotation", labelAr: "دوران المخزون",         element: <StockRotationView /> },
-  { key: "visitor",        icon: "🧍",  label: "Visitor Checklist", labelAr: "قائمة الزوار",      element: <VisitorChecklistView /> },
-  { key: "staff_sickness", icon: "🩺",  label: "Staff Sickness", labelAr: "أمراض الموظفين",         element: <StaffSicknessView /> },
-  { key: "return_to_work",    icon: "🏥",  label: "Return to Work", labelAr: "العودة للعمل",         element: <EmployeeReturnToWorkView /> },
-  { key: "product_rejection", icon: "🚫",  label: "Product Rejection", labelAr: "رفض المنتجات",      element: <ProductRejectionView /> },
-  { key: "employee_warning",  icon: "⚠️", label: "Employee Warning", labelAr: "إنذارات الموظفين",    element: <EmployeeWarningView /> },
+    ) },
+  { key: "visitor",        group: "hygiene",    title: "Visitor Checklist",      subtitle: "Entry screening",               Icon: IconUserCheck, accent: "#84cc16", element: <VisitorChecklistView /> },
+
+  // ── Product Inspection ──
+  { key: "fresh",          group: "inspection", title: "Fresh Chicken",          subtitle: "Al Qusais receiving",           Icon: IconChicken,   accent: "#f59e0b", element: <FreshChickenReportsView /> },
+  { key: "ftr2_preload",   group: "inspection", title: "Meat Inspection FTR 2",  subtitle: "Mamzar Park • pre-loading",     Icon: IconTruck,     accent: "#e11d48", element: <FTR2PreloadingViewer /> },
+  { key: "ftr1_preload",   group: "inspection", title: "Meat Inspection FTR 1",  subtitle: "Mushrif Park • pre-loading",    Icon: IconTruck,     accent: "#be123c", element: <FTR1PreloadingViewer /> },
+  { key: "rm_ing",         group: "inspection", title: "Physical — Ingredients", subtitle: "Ingredient inspection reports", Icon: IconFlask,     accent: "#a855f7", element: <RMInspectionReportIngredientsView /> },
+  { key: "rm_pack",        group: "inspection", title: "Physical — Packaging",   subtitle: "Packaging inspection reports",  Icon: IconPackage,   accent: "#8b5cf6", element: <RMInspectionReportPackagingView /> },
+
+  // ── Quality & Compliance ──
+  { key: "nc_reports",     group: "quality",    title: "Non-Conformance",        subtitle: "NCR reports",                   Icon: IconAlert,     accent: "#f97316", element: <NonConformanceReportsView /> },
+  { key: "car_reports",    group: "quality",    title: "Corrective Action",      subtitle: "CAPA reports",                  Icon: IconWrench,    accent: "#0891b2", element: <CorrectiveActionReportsView /> },
+  { key: "internal_audit", group: "quality",    title: "Internal Audit",         subtitle: "Audit checklists",              Icon: IconClipboard, accent: "#0f766e", element: <InternalAuditView /> },
+  { key: "product_rejection", group: "quality", title: "Product Rejection",      subtitle: "Rejection reports",             Icon: IconReject,    accent: "#dc2626", element: <ProductRejectionView /> },
+  { key: "employee_warning",  group: "quality", title: "Employee Warning",       subtitle: "Warnings / notices",            Icon: IconAlert,     accent: "#b91c1c", element: <EmployeeWarningView /> },
+
+  // ── Waste & Pest ──
+  { key: "garbage",        group: "waste",      title: "Garbage Disposal",       subtitle: "Disposal log",                  Icon: IconTrash,     accent: "#64748b", element: <GarbageDisposalView /> },
+  { key: "meat_waste",     group: "waste",      title: "Meat Waste Disposal",    subtitle: "Condemned product log",         Icon: IconMeat,      accent: "#b45309", element: <MeatWasteDisposalView /> },
+  { key: "pest_control",   group: "waste",      title: "Pest Control",           subtitle: "Monitoring log",                Icon: IconBug,       accent: "#7c3aed", element: <PestControlView /> },
+
+  // ── People & Health ──
+  { key: "staff_sickness", group: "people",     title: "Staff Sickness",         subtitle: "Illness / occupational injury", Icon: IconHealth,    accent: "#ec4899", element: <StaffSicknessView /> },
+  { key: "return_to_work", group: "people",     title: "Return to Work",         subtitle: "Fitness clearance",             Icon: IconReturn,    accent: "#10b981", element: <EmployeeReturnToWorkView /> },
 ];
 
 export default function QCSReportsView() {
   return (
-    <BranchDailyView
-      branchCode="QCS"
-      title="عرض تقارير<br/>الجودة"
-      subtitle="Daily Viewer Hub"
+    <QcsSidebarHub
       tabs={TABS}
-      defaultTabKey="overview"
+      groups={GROUPS}
+      brandSub="Reports"
+      crumb="Reports"
+      param="rtab"
+      defaultKey="overview"
+      storagePrefix="qcs_view_nav"
+      itemNoun="reports"
     />
   );
 }
