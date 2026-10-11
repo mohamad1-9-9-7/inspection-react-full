@@ -176,6 +176,8 @@ const BRANCHES = [
   "POS 36",
   "POS 37",
   "POS 43",
+  "POS 47",
+  "POS 48",
   "FTR 1 - MUSHRIF food truck",
   "FTR 2 - Mamzar food truck",
 ];
