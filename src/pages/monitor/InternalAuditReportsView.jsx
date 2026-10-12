@@ -492,6 +492,18 @@ export default function InternalAuditReportsView() {
   const monthsFor = (y) =>
     Array.from(new Set(normalized.filter((r) => y == null || r.y === y).map((r) => r.m))).sort((a, b) => a - b);
 
+  /* ===== UI language toggle (per page) ===== */
+  const [pageLang, setPageLang] = useState(() => {
+    try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
+  });
+  const isAr = pageLang === "ar";
+  const tt = (en, ar) => isAr ? ar : en;
+  const togglePageLang = () => {
+    const next = isAr ? "en" : "ar";
+    setPageLang(next);
+    try { localStorage.setItem("internal_audit_lang", next); } catch {}
+  };
+
   /* ===== KPIs computed from the live data ===== */
   const kpis = useMemo(() => {
     const total = normalized.length;
@@ -535,17 +547,58 @@ export default function InternalAuditReportsView() {
     };
   }, [normalized, branches]);
 
-  /* ===== UI language toggle (per page) ===== */
-  const [pageLang, setPageLang] = useState(() => {
-    try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
+  /* ===== Branch comparison =====
+     One row per audited branch: how much of its findings are closed, what is
+     still open, and how long ago it was last audited. Branches from the master
+     list with no report at all are kept aside behind a toggle. */
+  const [cmpOpen, setCmpOpen] = useState(() => {
+    try { return localStorage.getItem("ia_cmp_open") !== "0"; } catch { return true; }
   });
-  const isAr = pageLang === "ar";
-  const tt = (en, ar) => isAr ? ar : en;
-  const togglePageLang = () => {
-    const next = isAr ? "en" : "ar";
-    setPageLang(next);
-    try { localStorage.setItem("internal_audit_lang", next); } catch {}
+  const toggleCmp = () => {
+    setCmpOpen((v) => {
+      try { localStorage.setItem("ia_cmp_open", v ? "0" : "1"); } catch {}
+      return !v;
+    });
   };
+  const [cmpSort, setCmpSort] = useState({ key: "open", dir: -1 });
+  const [cmpShowNever, setCmpShowNever] = useState(false);
+
+  const branchCompare = useMemo(() => {
+    const map = new Map();
+    for (const r of normalized) {
+      if (!r.branch) continue;
+      const b = map.get(r.branch) || { code: r.branch, reports: 0, total: 0, closed: 0, open: 0, awaiting: 0, lastTs: 0 };
+      const st = findingStats(r.table);
+      b.reports += 1;
+      b.total += r.table.length;
+      b.closed += st.closed;
+      b.open += st.open + st.awaiting;
+      b.awaiting += st.awaiting;
+      b.lastTs = Math.max(b.lastTs, r.ts);
+      map.set(r.branch, b);
+    }
+    const now = Date.now();
+    const list = Array.from(map.values()).map((b) => ({
+      ...b,
+      closure: b.total ? Math.round((b.closed / b.total) * 100) : null,
+      days: Math.max(0, Math.floor((now - b.lastTs) / 86400000)),
+    }));
+    const never = BRANCH_CODES.filter((c) => !map.has(c));
+    return { list, never };
+  }, [normalized]);
+
+  const cmpRows = useMemo(() => {
+    const { key, dir } = cmpSort;
+    const val = (b) => (key === "branch" ? getBranchLabel(b.code, pageLang) : key === "closure" ? (b.closure ?? -1) : b[key]);
+    return [...branchCompare.list].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const c = typeof x === "string" ? x.localeCompare(y) : x - y;
+      return c * dir || b.open - a.open;
+    });
+  }, [branchCompare, cmpSort, pageLang]);
+
+  const sortBy = (key) =>
+    setCmpSort((prev) => (prev.key === key ? { key, dir: -prev.dir } : { key, dir: key === "branch" ? 1 : -1 }));
 
   /* ===== actions ===== */
   const refresh = async () => {
@@ -1663,6 +1716,95 @@ export default function InternalAuditReportsView() {
         <Stat label={tt("Awaiting QA", "بانتظار تحقق الجودة")} value={kpis.awaitingQa} tone={kpis.awaitingQa ? "info" : "mute"} hint={tt("branch evidence to review", "أدلة فروع للمراجعة")} />
       </div>
 
+      {/* ====== Branch comparison ====== */}
+      {branchCompare.list.length > 0 && (
+        <div className="ia-card ia-no-print ia-cmp">
+          <div className="ia-sec-head" style={{ marginBottom: cmpOpen ? 14 : 0 }}>
+            <div>
+              <div className="ia-h2">{tt("Branch comparison", "مقارنة الفروع")} <span className="ia-count">{branchCompare.list.length}</span></div>
+              {cmpOpen && (
+                <div className="ia-sm ia-mute" style={{ marginTop: 3 }}>
+                  {tt("All reports to date. Click a branch to show only its reports.", "حسب كل التقارير. اضغط على فرع لعرض تقاريره فقط.")}
+                </div>
+              )}
+            </div>
+            <button type="button" className="ia-btn sm" onClick={toggleCmp}>
+              {cmpOpen ? tt("Hide", "إخفاء") : tt("Show", "عرض")}
+            </button>
+          </div>
+
+          {cmpOpen && (
+            <>
+              <div className="ia-tbl-scroll">
+                <div className="ia-cmp-tbl">
+                  <div className="ia-cmp-row ia-cmp-head">
+                    {[
+                      ["branch", tt("Branch", "الفرع")],
+                      ["reports", tt("Audits", "التدقيقات")],
+                      ["closure", tt("Closure", "الإغلاق")],
+                      ["open", tt("Open findings", "ملاحظات مفتوحة")],
+                      ["awaiting", tt("Awaiting QA", "بانتظار الجودة")],
+                      ["days", tt("Last audit", "آخر تدقيق")],
+                    ].map(([k, label]) => (
+                      <button key={k} type="button" onClick={() => sortBy(k)} className={cmpSort.key === k ? "on" : ""}>
+                        {label}{cmpSort.key === k ? (cmpSort.dir > 0 ? " ▲" : " ▼") : ""}
+                      </button>
+                    ))}
+                  </div>
+                  {cmpRows.map((b) => {
+                    const active = branchFilter === b.code;
+                    const ageTone = b.days <= 30 ? "ok" : b.days <= 60 ? "warn" : "bad";
+                    return (
+                      <button
+                        type="button"
+                        key={b.code}
+                        className={`ia-cmp-row${active ? " on" : ""}`}
+                        onClick={() => setBranchFilter(active ? "" : b.code)}
+                        title={active ? tt("Show all branches again", "إظهار كل الفروع") : tt("Show this branch only", "عرض هذا الفرع فقط")}
+                      >
+                        <span className="ia-cmp-name">{getBranchLabel(b.code, pageLang)}</span>
+                        <span>{b.reports}</span>
+                        <span className="ia-cmp-closure">
+                          {b.closure == null ? <span className="ia-empty">—</span> : (
+                            <>
+                              <span className="ia-bar"><span style={{ width: `${b.closure}%`, background: pctColor(b.closure) }} /></span>
+                              <b>{b.closure}%</b>
+                            </>
+                          )}
+                        </span>
+                        <span>{b.open ? <span className="ia-pill sm t-bad">{b.open}</span> : <span className="ia-pill sm t-ok">0</span>}</span>
+                        <span>{b.awaiting ? <span className="ia-pill sm t-info">{b.awaiting}</span> : <span className="ia-empty">—</span>}</span>
+                        <span className="ia-cmp-last">
+                          <span>{new Date(b.lastTs).toLocaleDateString("en-GB")}</span>
+                          <span className={`ia-pill sm t-${ageTone}`}>
+                            {b.days === 0 ? tt("today", "اليوم") : tt(`${b.days} d ago`, `قبل ${b.days} يوم`)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {branchCompare.never.length > 0 && (
+                <div className="ia-cmp-never">
+                  <button type="button" onClick={() => setCmpShowNever((v) => !v)}>
+                    {cmpShowNever ? "▾" : "▸"} {tt(`${branchCompare.never.length} branches with no audit on record`, `${branchCompare.never.length} فرع بدون أي تدقيق مسجّل`)}
+                  </button>
+                  {cmpShowNever && (
+                    <div className="ia-chips" style={{ marginTop: 10 }}>
+                      {branchCompare.never.map((c) => (
+                        <span key={c} className="ia-pill sm t-mute">{getBranchLabel(c, pageLang)}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="ia-body">
         {/* ====== Report list ====== */}
         <aside className="ia-panel ia-no-print">
@@ -2194,6 +2336,23 @@ const IA_CSS = `
 #root .ia.ia .ia-quote { background:#f7fafd; border:1px solid var(--line); border-radius:10px; padding:12px 14px; white-space:pre-wrap; line-height:1.6; }
 #root .ia.ia .ia-state { padding:36px 16px; text-align:center; color:var(--mute); }
 #root .ia.ia .ia-error { color:#b42318; }
+
+#root .ia.ia .ia-cmp-tbl { min-width:760px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+#root .ia.ia .ia-cmp-row { display:grid; grid-template-columns:minmax(200px,1.6fr) 90px minmax(160px,1.2fr) 120px 120px minmax(170px,1fr); align-items:center; width:100%; border:0; border-top:1px solid var(--line); background:#fff; padding:0; text-align:start; font-family:inherit; color:var(--ink); cursor:pointer; }
+#root .ia.ia .ia-cmp-row > * { padding:10px 12px; min-width:0; }
+#root .ia.ia .ia-cmp-row:hover { background:#f7fafd; }
+#root .ia.ia .ia-cmp-row.on { background:var(--accentSoft); box-shadow:inset 3px 0 0 var(--accent); }
+#root .ia.ia .ia-cmp-head { background:#f6f9fd; border-top:0; cursor:default; }
+#root .ia.ia .ia-cmp-head:hover { background:#f6f9fd; }
+#root .ia.ia .ia-cmp-head button { border:0; background:transparent; text-align:start; font-family:inherit; font-weight:600; color:var(--ink2); font-size:${fs(12.5)}; cursor:pointer; white-space:nowrap; }
+#root .ia.ia .ia-cmp-head button.on { color:var(--accent); }
+#root .ia.ia .ia-cmp-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#root .ia.ia .ia-cmp-closure { display:flex; align-items:center; gap:10px; }
+#root .ia.ia .ia-cmp-closure .ia-bar { flex:1; margin-top:0; }
+#root .ia.ia .ia-cmp-last { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--ink2); }
+#root .ia.ia .ia-cmp-never { margin-top:12px; }
+#root .ia.ia .ia-cmp-never > button { border:0; background:transparent; color:var(--mute); cursor:pointer; font-family:inherit; font-weight:600; padding:0; }
+#root .ia.ia .ia-cmp-never > button:hover { color:var(--accent); }
 
 @media (max-width: 1100px) {
   #root .ia.ia .ia-body { grid-template-columns:1fr; }
