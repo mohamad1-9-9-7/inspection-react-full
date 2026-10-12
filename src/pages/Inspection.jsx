@@ -805,7 +805,7 @@ export default function Inspection() {
                 />
               </div>
 
-              <div style={tdFixed(140, {display:"flex", flexDirection:"column"})}>
+              <div style={tdText}>
                 <select
                   value={r.risk}
                   onChange={e=>updateRow(idx,{risk:e.target.value})}
@@ -1038,39 +1038,42 @@ function ImageField({ list, uploading, onAdd, onRemove, label = "Upload", hint }
   const canAdd = count < 5 && !uploading;
 
   return (
-    <div>
-      <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-        {(list||[]).map((src,i)=>(
-          <a key={i} href={src} target="_blank" rel="noopener noreferrer"
-             style={{position:"relative", width:60, height:60, border:"1.5px solid #cbd5e1", borderRadius:8, overflow:"hidden", display:"block", textDecoration:"none"}}>
-            <img src={src} alt="evidence" style={{width:"100%", height:"100%", objectFit:"cover"}}/>
-            <button onClick={(e)=>{e.preventDefault(); onRemove(i);}} title="Remove" style={thumbX}>×</button>
-          </a>
-        ))}
+    <div style={{display:"flex", flexDirection:"column", gap:6}}>
+      {(count > 0 || uploading) && (
+        <div style={{display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:5}}>
+          {(list||[]).map((src,i)=>(
+            <a key={i} href={src} target="_blank" rel="noopener noreferrer" style={thumbBox}>
+              <img src={src} alt="evidence" style={{width:"100%", height:"100%", objectFit:"cover", display:"block"}}/>
+              <button onClick={(e)=>{e.preventDefault(); onRemove(i);}} title="Remove" style={thumbX}>×</button>
+            </a>
+          ))}
+          {uploading && (
+            <div style={{...thumbBox, border:"2px dashed #94a3b8", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, background:"#fef3c7"}}>
+              ⏳
+            </div>
+          )}
+        </div>
+      )}
 
-        {uploading && (
-          <div style={{width:60, height:60, border:"2px dashed #94a3b8", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, background:"#fef3c7"}}>
-            ⏳
-          </div>
-        )}
-      </div>
-
-      <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}} className="ins-upload-btn">
-        <label title={hint} style={{...uploadBtn, opacity: canAdd ? 1 : 0.5, pointerEvents: canAdd ? "auto" : "none"}}>
-          {uploading ? "⏳" : `📎 ${label} ${count}/5`}
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            style={{display:"none"}}
-            onChange={(e)=> {
-              const files = e.target.files;
-              onAdd(files);
-              e.target.value = "";
-            }}
-          />
-        </label>
-      </div>
+      <label title={hint} className="ins-upload-btn" style={{...uploadBtn, opacity: canAdd ? 1 : 0.5, pointerEvents: canAdd ? "auto" : "none"}}>
+        {uploading ? "⏳" : <>📎 {label} <span style={{opacity:.7}}>{count}/5</span></>}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          style={{display:"none"}}
+          onChange={(e)=> {
+            const files = e.target.files;
+            onAdd(files);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      {count === 0 && !uploading && (
+        <span className="ins-no-print" style={{fontSize:10.5, color:"#94a3b8", textAlign:"center", lineHeight:1.3}}>
+          📋 Ctrl+V
+        </span>
+      )}
     </div>
   );
 }
@@ -1100,7 +1103,9 @@ function KpiTile({ icon, label, value, color, bg }) {
 /* ===== Styles ===== */
 const BORDER        = "#cbd5e1";
 const BORDER_STRONG = "#64748b";
-const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 180px 130px 120px";
+/* text columns share the room; the photo columns only need three thumbnails
+   across, the risk column room for its notes */
+const COLS = "1.35fr 1.1fr 1.35fr 172px 172px 230px 130px 112px";
 
 const pageWrap   = {
   padding:"18px",
@@ -1222,8 +1227,9 @@ const saveBtnBig = {
   boxShadow:"0 12px 24px rgba(22,163,74,.40)",
 };
 const smallBtn   = { padding:"6px 10px", borderRadius:8, border:`1px solid ${BORDER}`, background:"#fff", cursor:"pointer", fontSize:13 };
-const uploadBtn  = { display:"inline-block", fontSize:11, border:`1px solid ${BORDER}`, borderRadius:8, padding:"5px 10px", cursor:"pointer", background:"linear-gradient(135deg,#dbeafe,#eff6ff)", color:"#1e40af", fontWeight:900, fontFamily:"inherit" };
-const thumbX     = { position:"absolute", top:2, insetInlineEnd:2, width:20, height:20, borderRadius:"50%", border:"none", background:"rgba(239,68,68,.95)", color:"#fff", cursor:"pointer", lineHeight:"20px", fontWeight:1000, fontSize:13 };
+const uploadBtn  = { display:"flex", alignItems:"center", justifyContent:"center", gap:5, width:"100%", boxSizing:"border-box", fontSize:11.5, border:"1.5px dashed #93c5fd", borderRadius:9, padding:"7px 8px", cursor:"pointer", background:"#eff6ff", color:"#1e40af", fontWeight:900, fontFamily:"inherit", whiteSpace:"nowrap" };
+const thumbBox   = { position:"relative", aspectRatio:"1 / 1", border:"1.5px solid #cbd5e1", borderRadius:8, overflow:"hidden", display:"block", textDecoration:"none", background:"#f8fafc" };
+const thumbX     = { position:"absolute", top:2, insetInlineEnd:2, width:17, height:17, padding:0, borderRadius:"50%", border:"none", background:"rgba(239,68,68,.95)", color:"#fff", cursor:"pointer", lineHeight:"17px", fontWeight:1000, fontSize:12 };
 const modalBackdrop = { position:"fixed", inset:0, background:"rgba(0,0,0,.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex: 9999 };
 const modalCard = { width: 320, maxWidth: "90vw", background:"#fff", border:"1px solid #e5e7eb", borderRadius:12, boxShadow:"0 20px 50px rgba(0,0,0,.25)", padding:"16px 18px", textAlign:"center" };
 const spinner = { width: 36, height: 36, borderRadius:"50%", border: "4px solid #e5e7eb", borderTop: "4px solid #16a34a", margin: "0 auto", animation: "spin 1s linear infinite" };
