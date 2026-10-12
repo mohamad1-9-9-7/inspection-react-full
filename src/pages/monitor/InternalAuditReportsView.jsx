@@ -1,6 +1,5 @@
 // src/pages/monitor/InternalAuditReportsView.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import SignatureName from "../shared/SignatureName";
 import {
   buildInspectionEvidencePublic,
@@ -197,24 +196,24 @@ function getBranchEvidenceUploadedBy(payload = {}) {
 function getBranchEvidenceStatus(payload = {}) {
   const table = Array.isArray(payload.table) ? payload.table : [];
   const allClosed = table.length > 0 && table.every((row) => String(row?.status || "").toLowerCase() === "closed");
-  if (allClosed) return { label: "Closed by QA", bg: "#dcfce7", color: "#166534" };
+  if (allClosed) return { label: "Closed by QA", ar: "أغلقتها الجودة", tone: "ok", bg: "#dcfce7", color: "#166534" };
   /* Findings waiting on a QA verdict outrank every other state — this is the
      queue somebody has to work through. */
   const awaiting = countAwaitingQa(table);
   if (awaiting > 0) {
-    return { label: `${awaiting} Awaiting QA Verification`, bg: "#dbeafe", color: "#1d4ed8" };
+    return { label: `${awaiting} Awaiting QA Verification`, ar: `${awaiting} بانتظار تحقق الجودة`, tone: "info", bg: "#dbeafe", color: "#1d4ed8" };
   }
   const rejected = table.filter((row) => getRowVerification(row).state === "rejected").length;
   if (rejected > 0) {
-    return { label: `${rejected} Rejected — resubmit`, bg: "#fee2e2", color: "#991b1b" };
+    return { label: `${rejected} Rejected — resubmit`, ar: `${rejected} مرفوضة — إعادة إرسال`, tone: "bad", bg: "#fee2e2", color: "#991b1b" };
   }
   if (payload?.fields?.closedEvidenceSubmittedAt || payload?.public?.status === "evidence_submitted") {
-    return { label: "Evidence Submitted", bg: "#dbeafe", color: "#1d4ed8" };
+    return { label: "Evidence Submitted", ar: "تم إرسال الأدلة", tone: "info", bg: "#dbeafe", color: "#1d4ed8" };
   }
   if (payload?.fields?.closedEvidenceProgressSavedAt || payload?.public?.status === "evidence_in_progress" || getBranchEvidenceUpdates(payload).length > 0) {
-    return { label: "Evidence In Progress", bg: "#fef3c7", color: "#92400e" };
+    return { label: "Evidence In Progress", ar: "الأدلة قيد الرفع", tone: "warn", bg: "#fef3c7", color: "#92400e" };
   }
-  return { label: "Pending Evidence", bg: "#fee2e2", color: "#991b1b" };
+  return { label: "Pending Evidence", ar: "بانتظار الأدلة", tone: "bad", bg: "#fee2e2", color: "#991b1b" };
 }
 
 function mergeBranchEvidenceIntoPayload(payload = {}) {
@@ -305,21 +304,6 @@ function toTsFromHeaderDate(s) {
   return 0;
 }
 
-/* date tree from normalized views (Year -> Month -> Day) */
-function buildDateTreeFromViews(list) {
-  const tree = {};
-  list.forEach((v) => {
-    const d = new Date(v.ts || Date.now());
-    const y = d.getUTCFullYear();
-    const m = d.getUTCMonth() + 1;
-    const day = d.getUTCDate();
-    (tree[y] ||= {});
-    (tree[y][m] ||= {});
-    tree[y][m][day] = (tree[y][m][day] || 0) + 1;
-  });
-  return tree;
-}
-
 /* ✅ Upload image to Cloudinary via /api/images → returns URL.
  *    Replaces the old base64 path that was bloating the DB and crashing the server.
  *    Keeps the same client-side compression to <=1280px / quality 0.8 to keep uploads small. */
@@ -362,23 +346,7 @@ function calcClosedPct(table = []) {
   return Math.round((closed / total) * 100);
 }
 
-/* ===== Color palette ===== */
-const C = {
-  border: "#9aa3b8",
-  borderStrong: "#64748b",
-  cardBg: "#ffffff",
-  bandBlue: "#e9f0ff",
-  bandGreen: "#e9fbe7",
-  bandSilver: "#f5f7fa",
-  zebra: "#f8fafc",
-  headerGradFrom: "#e8f1ff",
-  headerGradTo: "#e7ffef",
-  badgeFrom: "#34d399",
-  badgeTo: "#60a5fa",
-};
-
 export default function InternalAuditReportsView() {
-  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);   // ✅ auto-load on mount (DB is now lightweight after migration)
   const [branchFilter, setBranchFilter] = useState("");
@@ -389,15 +357,13 @@ export default function InternalAuditReportsView() {
   // Date tree filters
   const [yearFilter, setYearFilter] = useState(null);
   const [monthFilter, setMonthFilter] = useState(null);
-  const [dayFilter, setDayFilter] = useState(null);
+  /* list: all | action (not fully closed) | closed ; findings: all | open | awaiting | closed */
+  const [listFilter, setListFilter] = useState("all");
+  const [findingFilter, setFindingFilter] = useState("all");
 
   // Inline edit state
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(null); // full raw report (server schema)
-
-  // Accordion (collapsed months): key = "YYYY-MM"
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  const [collapsedInit, setCollapsedInit] = useState(false);
 
   // Image viewer (lightbox)
   /* { items: [src], index } — the whole cell's photos, so ‹ › walks them. */
@@ -407,8 +373,6 @@ export default function InternalAuditReportsView() {
     if (clean.length) setViewer({ items: clean, index: Math.max(0, Math.min(index || 0, clean.length - 1)) });
   };
 
-  // فتح/إغلاق لكل تقرير بشكل منفصل
-  const [openCards, setOpenCards] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
 
   // refs لكروت التقارير (لاستخراج PDF من نفس التصميم)
@@ -501,7 +465,11 @@ export default function InternalAuditReportsView() {
       .filter((x) => !branchFilter || x.branch === branchFilter)
       .filter((x) => !yearFilter || x.y === yearFilter)
       .filter((x) => !monthFilter || x.m === monthFilter)
-      .filter((x) => !dayFilter || x.d === dayFilter)
+      .filter((x) => {
+        if (listFilter === "all") return true;
+        const done = x.table.length > 0 && x.percentageClosed === 100;
+        return listFilter === "closed" ? done : !done;
+      })
       .filter((x) =>
         !q ||
         [x.branch, x.title, x.auditBy, x.reportNo].some((v) =>
@@ -509,7 +477,7 @@ export default function InternalAuditReportsView() {
         )
       )
       .sort((a, b) => b.ts - a.ts);
-  }, [normalized, branchFilter, q, yearFilter, monthFilter, dayFilter]);
+  }, [normalized, branchFilter, q, yearFilter, monthFilter, listFilter]);
 
   const branches = useMemo(() => {
     const s = new Set();
@@ -517,10 +485,12 @@ export default function InternalAuditReportsView() {
     return Array.from(s).sort();
   }, [normalized]);
 
-  const dateTree = useMemo(
-    () => buildDateTreeFromViews(normalized),
+  const years = useMemo(
+    () => Array.from(new Set(normalized.map((r) => r.y))).sort((a, b) => b - a),
     [normalized]
   );
+  const monthsFor = (y) =>
+    Array.from(new Set(normalized.filter((r) => y == null || r.y === y).map((r) => r.m))).sort((a, b) => a - b);
 
   /* ===== KPIs computed from the live data ===== */
   const kpis = useMemo(() => {
@@ -538,19 +508,19 @@ export default function InternalAuditReportsView() {
       ? Math.round(normalized.reduce((a, r) => a + (Number(r.percentageClosed) || 0), 0) / total)
       : 0;
 
-    // count of "no" answers across all tables (open findings)
-    let openFindings = 0, totalFindings = 0;
+    /* Every finding that is not closed counts as open — the old count only
+       matched the literal words "open"/"no", so "In Progress" rows vanished. */
+    let openFindings = 0, totalFindings = 0, awaitingQa = 0;
     for (const r of normalized) {
-      for (const row of (r.table || [])) {
-        // Look for status / closed / answer-like fields
-        const status = String(row.status || row.closed || row.answer || row.compliance || "").toLowerCase();
-        if (status) totalFindings++;
-        if (status === "no" || status === "open" || status === "not closed") openFindings++;
-      }
+      const st = findingStats(r.table);
+      totalFindings += r.table.length;
+      openFindings += st.open + st.awaiting;
+      awaitingQa += st.awaiting;
     }
 
     const branchCount = branches.length;
-    const lastAudit = normalized[0];
+    /* normalized keeps the server order — pick the newest by date. */
+    const lastAudit = normalized.reduce((best, r) => (!best || r.ts > best.ts ? r : best), null);
 
     return {
       total,
@@ -559,6 +529,7 @@ export default function InternalAuditReportsView() {
       avgClosure,
       openFindings,
       totalFindings,
+      awaitingQa,
       branchCount,
       lastAuditDate: lastAudit ? new Date(lastAudit.ts).toLocaleDateString("en-GB") : "—",
     };
@@ -1022,7 +993,7 @@ export default function InternalAuditReportsView() {
       );
 
       const el = cardRefs.current[view.id];
-      if (!el) { alert("Open the report card first, then export."); return; }
+      if (!el) { alert("Select the report first, then export."); return; }
 
       const A4_W    = 841.89;
       const A4_H    = 595.28;
@@ -1049,7 +1020,8 @@ export default function InternalAuditReportsView() {
       const clone = el.cloneNode(true);
       clone.querySelectorAll(".pdf-no-print").forEach((d) => d.remove());
       clone.style.cssText = `position:fixed;left:-9999px;top:0;width:${el.offsetWidth}px;background:#fff;padding:8px;box-sizing:border-box;`;
-      document.body.appendChild(clone);
+      /* Inside the page root, so the scoped #root .ia.ia stylesheet still applies. */
+      (el.closest(".ia") || document.body).appendChild(clone);
 
       // ── 3. Measure row positions before rendering ──
       await new Promise((r) => setTimeout(r, 80));
@@ -1072,7 +1044,7 @@ export default function InternalAuditReportsView() {
         height: clone.scrollHeight,
         windowHeight: clone.scrollHeight + 200,
       });
-      document.body.removeChild(clone);
+      clone.remove();
 
       // ── 5. Find smart page break points (never cut mid-row) ──
       const contH_px = CONT_H * (canvas.width / A4_W); // content height in canvas px
@@ -1221,1251 +1193,676 @@ export default function InternalAuditReportsView() {
     }
     if (!selectedId || !rows.some((r) => r.id === selectedId)) {
       setSelectedId(rows[0].id);
-      setOpenCards(new Set());
     }
   }, [rows, selectedId]);
 
-  useEffect(() => {
-    if (!collapsedInit && groups.length) {
-      setCollapsed(new Set());
-      setCollapsedInit(true);
-      setOpenCards(new Set());
-    }
-  }, [groups, collapsedInit, rows]);
-
-  const toggleMonth = (key) => {
-    setCollapsed((prev) => {
-      const s = new Set(prev);
-      if (s.has(key)) s.delete(key);
-      else s.add(key);
-      return s;
-    });
-  };
-  const toggleCard = (id) => {
-    setOpenCards((prev) => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id);
-      else s.add(id);
-      return s;
-    });
-  };
-
-  const selectReport = (id) => {
-    setSelectedId(id);
-    setOpenCards(new Set());
-  };
+  /* Reset the findings filter whenever another report is opened. */
+  useEffect(() => { setFindingFilter("all"); }, [selectedId]);
 
   const monthName = (m) =>
-    new Date(Date.UTC(2000, m - 1, 1)).toLocaleString("en", {
+    new Date(Date.UTC(2000, m - 1, 1)).toLocaleString(isAr ? "ar" : "en", {
       month: "long",
     });
 
-  return (
-    <div
-      className="ia-shell ia-page"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "280px minmax(0, 1fr)",
-        gap: 16,
-        padding: 16,
-        fontFamily: "Arial, sans-serif",
-        direction: "ltr",
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
-      }}
-    >
-      <style>{`
-        @media print {
-          .ia-no-print { display: none !important; }
-          body { background: #fff !important; }
-        }
-        @media (max-width: 1180px) {
-          .ia-shell { grid-template-columns: 1fr !important; }
-          .ia-date-tree { position: relative !important; top: auto !important; max-height: none !important; }
-          .ia-workspace { grid-template-columns: 1fr !important; }
-          .ia-report-rail { position: relative !important; top: auto !important; max-height: none !important; }
-        }
-        @media (max-width: 720px) {
-          .ia-page { padding: 10px !important; }
-          .ia-title-row { align-items: flex-start !important; }
-          .ia-tools { border-radius: 10px !important; }
-        }
-      `}</style>
-      {/* ====== Modern Date Tree Sidebar ====== */}
-      <aside style={treeAside} className="ia-no-print ia-date-tree">
-        <div style={treeHeader}>
-          <span style={{ fontSize: 16 }}>🗂️</span>
-          <span style={{ fontWeight: 1000, fontSize: 13 }}>{tt("Date Tree", "شجرة التواريخ")}</span>
-          <span style={treeCountBadge}>{normalized.length}</span>
-        </div>
+  const selected = rows.find((r) => r.id === selectedId) || null;
+  const anyFilter = !!(branchFilter || q || yearFilter != null || monthFilter != null || listFilter !== "all");
+  const clearFilters = () => {
+    setBranchFilter(""); setQ(""); setYearFilter(null); setMonthFilter(null); setListFilter("all");
+  };
 
-        <button
-          type="button"
-          style={treeAllBtn(yearFilter == null && monthFilter == null && dayFilter == null)}
-          onClick={() => { setYearFilter(null); setMonthFilter(null); setDayFilter(null); }}
-        >
-          📁 {tt("All Reports", "كل التقارير")}
-          <span style={treeCountBadgeSm}>{normalized.length}</span>
-        </button>
+  const statusText = (s) => {
+    const k = String(s || "").trim().toLowerCase();
+    if (!k) return "—";
+    if (!isAr) return s;
+    return { open: "مفتوحة", "in progress": "قيد التنفيذ", "pending qa verification": "بانتظار تحقق الجودة", closed: "مغلقة" }[k] || s;
+  };
+  const riskText = (s) => {
+    const k = String(s || "").trim().toLowerCase();
+    if (!k) return "";
+    if (!isAr) return s;
+    return { high: "عالية", medium: "متوسطة", low: "منخفضة" }[k] || s;
+  };
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
-          {Object.keys(dateTree).sort((a, b) => b - a).map((y) => {
-            const yOpen = yearFilter === Number(y);
-            const yCount = Object.values(dateTree[y]).reduce((a, mObj) => a + Object.values(mObj).reduce((b, day) => b + (day?.length || 0), 0), 0);
-            return (
-              <div key={y}>
-                <button
-                  type="button"
-                  style={treeYearBtn(yOpen)}
-                  onClick={() => {
-                    if (yOpen) { setYearFilter(null); setMonthFilter(null); setDayFilter(null); }
-                    else { setYearFilter(Number(y)); setMonthFilter(null); setDayFilter(null); }
-                  }}
-                >
-                  <span style={treeChev}>{yOpen ? "▼" : "▶"}</span>
-                  <span style={{ fontWeight: 1000, fontSize: 13 }}>📅 {y}</span>
-                  <span style={treeCountBadgeSm}>{yCount}</span>
-                </button>
-                {yOpen && (
-                  <div style={{ marginInlineStart: 14, marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
-                    {Object.keys(dateTree[y]).sort((a, b) => Number(b) - Number(a)).map((m) => {
-                      const mOpen = monthFilter === Number(m);
-                      const mCount = Object.values(dateTree[y][m]).reduce((a, day) => a + (day?.length || 0), 0);
-                      return (
-                        <div key={m}>
-                          <button
-                            type="button"
-                            style={treeMonthBtn(mOpen)}
-                            onClick={() => {
-                              if (mOpen) { setMonthFilter(null); setDayFilter(null); }
-                              else { setMonthFilter(Number(m)); setDayFilter(null); }
-                            }}
-                          >
-                            <span style={treeChev}>{mOpen ? "▼" : "▶"}</span>
-                            <span style={{ fontWeight: 900, fontSize: 12 }}>
-                              {monthName(Number(m))}
-                            </span>
-                            <span style={treeCountBadgeSm}>{mCount}</span>
-                          </button>
-                          {mOpen && (
-                            <div style={{ marginInlineStart: 14, marginTop: 3, display: "flex", flexDirection: "column", gap: 2 }}>
-                              {Object.keys(dateTree[y][m]).sort((a, b) => Number(b) - Number(a)).map((d) => {
-                                const dActive = dayFilter === Number(d);
-                                const dCount = dateTree[y][m][d]?.length || 0;
-                                return (
-                                  <button
-                                    key={d}
-                                    type="button"
-                                    style={treeDayBtn(dActive)}
-                                    onClick={() => setDayFilter(dActive ? null : Number(d))}
-                                  >
-                                    <span style={{ fontWeight: 800, fontSize: 11 }}>
-                                      {String(d).padStart(2, "0")} {monthName(Number(m)).slice(0, 3)}
-                                    </span>
-                                    <span style={treeCountBadgeSm}>{dCount}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </aside>
+  /* ===== Detail card for the selected report ===== */
+  const renderDetail = (r) => {
+    const isEditing = editId === r.id;
+    const p = isEditing ? draft.payload || {} : r._raw.payload || {};
+    const header = p.header || {};
+    const footer = p.footer || {};
+    const table = Array.isArray(p.table) ? p.table : [];
+    const st = findingStats(table);
+    const pct = calcClosedPct(table);
+    const evidence = getBranchEvidenceStatus(p);
+    const uploadedBy = getBranchEvidenceUploadedBy(p);
+    const branchEvidenceCount = getBranchEvidenceUpdates(p).reduce(
+      (sum, item) => sum + (Array.isArray(item?.images) ? item.images.map(getImageUrl).filter(Boolean).length : 0),
+      0
+    );
+    const pub = p?.public || {};
+    const linkState = pub.token ? getEvidenceLinkState(pub) : null;
+    const linkChip = !linkState
+      ? { tone: "mute", text: tt("No branch link yet", "لا يوجد رابط للفرع بعد") }
+      : linkState.revoked
+      ? { tone: "bad", text: tt("Link cancelled", "الرابط ملغى") }
+      : linkState.expired
+      ? { tone: "bad", text: tt("Link expired", "الرابط منتهي") }
+      : linkState.daysLeft != null && linkState.daysLeft <= 7
+      ? { tone: "warn", text: tt(`Link expires in ${linkState.daysLeft} day(s)`, `ينتهي الرابط خلال ${linkState.daysLeft} يوم`) }
+      : { tone: "ok", text: linkState.daysLeft != null ? tt(`Link valid — ${linkState.daysLeft} day(s) left`, `الرابط صالح — باقي ${linkState.daysLeft} يوم`) : tt("Link active", "الرابط فعّال") };
 
-      <main>
-        {/* ====== Modern Header ====== */}
-        <div style={modernHeader.card} dir={isAr ? "rtl" : "ltr"}>
-          <div style={modernHeader.row} className="ia-title-row">
-            <div style={modernHeader.brandWrap}>
-              <div style={modernHeader.brandIco}>📋</div>
-              <div>
-                <h1 style={modernHeader.title}>
-                  {tt("Internal Audit Reports — CAPA", "تقارير التدقيق الداخلي — CAPA")}
-                </h1>
-                <div style={modernHeader.subtitle}>
-                  {tt("Track findings, corrective actions & closure rates", "متابعة الملاحظات والإجراءات التصحيحية ونسب الإغلاق")}
-                </div>
-              </div>
-            </div>
+    const awaiting = countAwaitingQa(table);
+    const filterIdx = table
+      .map((row, i) => ({ row, i }))
+      .filter(({ row }) => isEditing || findingFilter === "all" || findingBucket(row) === findingFilter);
 
-            <div style={modernHeader.toolbar}>
-              <button type="button" onClick={togglePageLang} style={modernHeader.toolBtn} title="Toggle language">
-                🌐 {isAr ? "EN" : "AR"}
-              </button>
-              <button type="button" onClick={loadReports} disabled={loading} style={modernHeader.toolBtn} title="Refresh">
-                ↻ {tt("Refresh", "تحديث")}
-              </button>
-              <button type="button" onClick={() => window.print()} style={modernHeader.toolBtn} title="Print">
-                🖨️ {tt("Print", "طباعة")}
-              </button>
-              <button type="button" onClick={() => navigate("/ai-assistant")} style={modernHeader.aiBtn} title="AI Assistant">
-                🤖 {tt("AI", "AI")}
-              </button>
-            </div>
+    const metaField = (label, view, edit) => (
+      <div>
+        <div className="ia-label">{label}</div>
+        <div className="ia-val">{isEditing && edit ? edit : (view || "—")}</div>
+      </div>
+    );
+    const inlineInput = (value, onChange, placeholder) => (
+      <input className="ia-input" value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    );
+
+    return (
+      <div ref={(el) => { if (el) cardRefs.current[r.id] = el; }}>
+        {/* ── Report header ── */}
+        <div className="ia-card">
+          <div className="ia-doc">
+            <span>{tt("Doc. No.", "رقم الوثيقة")} <b>FS-QM/REC/CA/1</b></span>
+            <span>{tt("Rev.", "الإصدار")} <b>00</b></span>
+            <span>{tt("Issued by", "أصدرها")} <b>{r.issuedBy}</b></span>
+            <span>{tt("Approved by", "اعتمدها")} <b><SignatureName name={r.approvedBy} underline={false} inline /></b></span>
           </div>
 
-          {/* KPI strip */}
-          <div style={modernHeader.kpiRow} className="ia-no-print">
-            <KpiTile icon="📁" label={tt("Total Reports", "إجمالي")} value={kpis.total} color="#0f172a" bg="linear-gradient(135deg,#fff,#f1f5f9)" />
-            <KpiTile icon="📅" label={tt("This Month", "هذا الشهر")} value={kpis.thisMonthCount} color="#1e40af" bg="linear-gradient(135deg,#dbeafe,#eff6ff)" />
-            <KpiTile icon="⏱️" label={tt("Last 30d", "آخر 30 يوم")} value={kpis.last30dCount} color="#5b21b6" bg="linear-gradient(135deg,#e9d5ff,#faf5ff)" />
-            <KpiTile icon="🏢" label={tt("Branches", "الفروع")} value={kpis.branchCount} color="#0e7490" bg="linear-gradient(135deg,#cffafe,#ecfeff)" />
-            <KpiTile
-              icon="✅"
-              label={tt("Closure Rate", "نسبة الإغلاق")}
-              value={`${kpis.avgClosure}%`}
-              color={kpis.avgClosure >= 80 ? "#166534" : kpis.avgClosure >= 50 ? "#92400e" : "#991b1b"}
-              bg={kpis.avgClosure >= 80 ? "linear-gradient(135deg,#dcfce7,#f0fdf4)" :
-                  kpis.avgClosure >= 50 ? "linear-gradient(135deg,#fef3c7,#fffbeb)" :
-                  "linear-gradient(135deg,#fee2e2,#fef2f2)"}
-            />
-            {kpis.openFindings > 0 && (
-              <KpiTile icon="🚨" label={tt("Open Findings", "ملاحظات مفتوحة")} value={kpis.openFindings} color="#991b1b" bg="linear-gradient(135deg,#fee2e2,#fef2f2)" />
-            )}
-            <KpiTile icon="🕐" label={tt("Last Audit", "آخر تدقيق")} value={kpis.lastAuditDate} color="#475569" bg="linear-gradient(135deg,#f8fafc,#fff)" smaller />
-          </div>
-        </div>
-
-        {/* ====== Tools bar (filter / search / sort) ====== */}
-        <div style={toolsBar.row} className="ia-no-print ia-tools" dir={isAr ? "rtl" : "ltr"}>
-          <div style={toolsBar.searchWrap}>
-            <span style={toolsBar.searchIcon}>🔍</span>
-            <input
-              placeholder={tt("Search by branch / title / report no / auditor…", "ابحث بالفرع / العنوان / رقم التقرير / المُدقق…")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              style={toolsBar.searchInput}
-            />
-            {q && <button type="button" onClick={() => setQ("")} style={toolsBar.clearBtn}>✕</button>}
-          </div>
-
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            style={toolsBar.select}
-          >
-            <option value="">{tt("All Branches", "كل الفروع")} ({branches.length})</option>
-            {branches.map((b) => (
-              <option key={b} value={b}>{getBranchLabel(b, pageLang)}</option>
-            ))}
-          </select>
-
-          {(branchFilter || q || yearFilter != null || monthFilter != null || dayFilter != null) && (
-            <button
-              type="button"
-              onClick={() => { setBranchFilter(""); setQ(""); setYearFilter(null); setMonthFilter(null); setDayFilter(null); }}
-              style={toolsBar.clearAll}
-            >
-              ✕ {tt("Clear all filters", "مسح الفلاتر")}
-            </button>
-          )}
-
-          <span style={{ flex: 1 }} />
-
-          <span style={toolsBar.resultCount}>
-            {tt("Showing", "يعرض")} <strong>{rows.length}</strong> / {normalized.length}
-          </span>
-        </div>
-
-        {loading && <p>Loading...</p>}
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        {!loading && !error && groups.length === 0 && <p>No reports found.</p>}
-
-        <div
-          className="ia-workspace"
-          style={auditWorkspace}
-        >
-          <section style={reportRail} className="ia-no-print ia-report-rail" dir={isAr ? "rtl" : "ltr"}>
-            <div style={railHeader}>
-              <div>
-                <div style={railTitle}>{tt("Report Queue", "قائمة التقارير")}</div>
-                <div style={railSub}>{tt("Select one report to review, export, or update", "اختر تقريراً للمراجعة أو التصدير أو التحديث")}</div>
-              </div>
-              <span style={railCount}>{rows.length}</span>
-            </div>
-            <div style={railList}>
-              {rows.map((r) => {
-                const active = selectedId === r.id;
-                const evidenceStatus = getBranchEvidenceStatus(r._raw?.payload || {});
-                return (
-                  <button
-                    type="button"
-                    key={r.id}
-                    onClick={() => selectReport(r.id)}
-                    style={reportListItem(active)}
-                  >
-                    <span style={reportListTop}>
-                      <span style={reportBranch}>{r.branch ? getBranchLabel(r.branch, pageLang) : "-"}</span>
-                      <span style={reportDate}>{r.date || "-"}</span>
-                    </span>
-                    <span style={reportMetaLine}>
-                      <b>{r.reportNo || "-"}</b>
-                      <span>{r.auditBy || "-"}</span>
-                    </span>
-                    <span style={reportProgressTrack}>
-                      <span style={reportProgressFill(calcClosedPct(r.table || []))} />
-                    </span>
-                    <span style={reportFooterLine}>
-                      <span>{tt("Closed", "مغلق")} {calcClosedPct(r.table || [])}%</span>
-                      <span style={{ ...miniStatus, background: evidenceStatus.bg, color: evidenceStatus.color }}>
-                        {evidenceStatus.label}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section style={detailStage}>
-          {groups.map(([key, list]) => {
-            const [yy, mm] = key.split("-");
-            const isClosed = collapsed.has(key);
-            const visibleList = list.filter((r) => r.id === selectedId);
-            if (!visibleList.length) return null;
-            return (
-              <div
-                key={key}
-                style={monthDetailShell}
-              >
-                <div
-                  onClick={() => toggleMonth(key)}
-                  style={{
-                    cursor: "pointer",
-                    padding: "10px 14px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    background: `linear-gradient(90deg, ${C.headerGradFrom}, ${C.headerGradTo})`,
-                    borderBottom: `1px solid ${C.border}`,
-                  }}
-                >
-                  <div style={{ fontWeight: 700 }}>
-                    {monthName(Number(mm))} {yy}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    {list.length} report(s)
-                  </div>
-                </div>
-
-                {!isClosed && (
-                  <div
-                    style={{
-                      padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: "1fr",
-                      gap: 14,
+          <div className="ia-hero">
+            <div style={{ minWidth: 0, flex: "1 1 360px" }}>
+              {isEditing ? (
+                <div style={{ display: "grid", gap: 8, maxWidth: 460 }}>
+                  {/* Branch is the only place the site is recorded now, so it
+                      has to be editable — that's how a legacy report whose
+                      branch only existed as free-text Location gets corrected. */}
+                  <select
+                    className="ia-select"
+                    value={(() => {
+                      /* Read the DRAFT, not the normalized row — the row only
+                         refreshes after a save. */
+                      const cur = canonicalBranchName(p.branch || p.header?.branch || p.header?.location || "");
+                      return BRANCH_CODES.includes(cur) ? cur : "";
+                    })()}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      draft.payload = p;
+                      p.branch = code;
+                      p.header = p.header || {};
+                      p.header.branch = code;
+                      /* Drop the retired field so the corrected branch can't
+                         be shadowed later. */
+                      delete p.header.location;
+                      setDraft({ ...draft });
                     }}
                   >
-                    {visibleList.map((r, idx) => {
-                      const isEditing = editId === r.id;
-                      const open = openCards.has(r.id);
-                      const p = isEditing
-                        ? draft.payload || {}
-                        : r._raw.payload || {};
-                      const header = p.header || {};
-                      const footer = p.footer || {};
-                      const table = Array.isArray(p.table) ? p.table : [];
-                      const branchEvidenceCount = getBranchEvidenceUpdates(p).reduce(
-                        (sum, item) => sum + (Array.isArray(item?.images) ? item.images.map(getImageUrl).filter(Boolean).length : 0),
-                        0
-                      );
-                      const branchEvidenceUploadedBy = getBranchEvidenceUploadedBy(p);
-                      const branchEvidenceStatus = getBranchEvidenceStatus(p);
+                    <option value="">
+                      {tt("-- Select Branch --", "-- اختر الفرع --")}
+                      {r.branchRaw ? ` (${r.branchRaw})` : ""}
+                    </option>
+                    {BRANCH_CODES.map((code) => (
+                      <option key={code} value={code}>{getBranchLabel(code, pageLang)}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="ia-input"
+                    value={p.title || ""}
+                    onChange={(e) => { draft.payload = p; p.title = e.target.value; setDraft({ ...draft }); }}
+                    placeholder={tt("Report title", "عنوان التقرير")}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="ia-hero-title">{r.branch ? getBranchLabel(r.branch, pageLang) : "—"}</div>
+                  {/* Legacy reports only: the old free-text Location, shown
+                      when it isn't just a restatement of the branch above. */}
+                  {r.location && (
+                    <div className="ia-sm ia-mute" style={{ fontStyle: "italic" }} title={tt("Legacy location text kept from an older report", "نص الموقع القديم محفوظ من تقرير سابق")}>
+                      {r.location}
+                    </div>
+                  )}
+                  {r.title && r.title !== "-" && <div className="ia-hero-sub">{r.title}</div>}
+                </>
+              )}
 
-                      return (
-                        <div
-                          key={idx}
-                          ref={(el) => {
-                            if (el) cardRefs.current[r.id] = el;
-                          }}
-                          style={{ ...cardStyle, background: C.cardBg }}
-                        >
-                          <div
-                            style={{
-                              background: C.bandSilver,
-                              border: `1px solid ${C.border}`,
-                              borderRadius: 10,
-                              padding: "8px 10px",
-                              marginBottom: 8,
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 10,
-                              fontSize: 12,
-                            }}
-                          >
-                            <b>Document Number:</b>&nbsp;FS-QM/REC/CA/1
-                            <span style={{ opacity: 0.6 }}>|</span>
-                            <b>Revision No:</b>&nbsp;00
-                            <span style={{ opacity: 0.6 }}>|</span>
-                            <b>Issued By:</b>&nbsp;{r.issuedBy}
-                            <span style={{ opacity: 0.6 }}>|</span>
-                            <b>Approved By:</b>&nbsp;<SignatureName name={r.approvedBy} underline={false} inline />
-                          </div>
-
-                          <div
-                            onClick={() => toggleCard(r.id)}
-                            style={{
-                              cursor: "pointer",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: 6,
-                            }}
-                          >
-                            <div>
-                              {isEditing ? (
-                                <>
-                                  {/* Branch is the only place the site is
-                                      recorded now, so it has to be editable —
-                                      that's how a legacy report whose branch
-                                      only existed as free-text Location gets
-                                      corrected. */}
-                                  <select
-                                    style={{ ...inputInline, fontWeight: 700, marginBottom: 6 }}
-                                    value={(() => {
-                                      /* Read the DRAFT, not the normalized row —
-                                         the row only refreshes after a save. */
-                                      const cur = canonicalBranchName(
-                                        p.branch || p.header?.branch || p.header?.location || ""
-                                      );
-                                      return BRANCH_CODES.includes(cur) ? cur : "";
-                                    })()}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      const code = e.target.value;
-                                      draft.payload = p;
-                                      p.branch = code;
-                                      p.header = p.header || {};
-                                      p.header.branch = code;
-                                      /* Drop the retired field so the corrected
-                                         branch can't be shadowed later. */
-                                      delete p.header.location;
-                                      setDraft({ ...draft });
-                                    }}
-                                  >
-                                    <option value="">
-                                      {tt("-- Select Branch --", "-- اختر الفرع --")}
-                                      {r.branchRaw ? ` (${r.branchRaw})` : ""}
-                                    </option>
-                                    {BRANCH_CODES.map((code) => (
-                                      <option key={code} value={code}>
-                                        {getBranchLabel(code, pageLang)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    style={inputInline}
-                                    value={p.title || ""}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      draft.payload = p;
-                                      p.title = e.target.value;
-                                      setDraft({ ...draft });
-                                    }}
-                                    placeholder="Report Title"
-                                  />
-                                </>
-                              ) : (
-                                <>
-                                  <div style={{ fontWeight: 700 }}>
-                                    {r.branch ? getBranchLabel(r.branch, pageLang) : "-"}
-                                  </div>
-                                  {/* Legacy reports only: the old free-text
-                                      Location, shown when it isn't just a
-                                      restatement of the branch above. */}
-                                  {r.location && (
-                                    <div
-                                      title={tt(
-                                        "Legacy location text kept from an older report",
-                                        "نص الموقع القديم محفوظ من تقرير سابق"
-                                      )}
-                                      style={{
-                                        opacity: 0.55,
-                                        fontSize: 11,
-                                        fontStyle: "italic",
-                                      }}
-                                    >
-                                      {r.location}
-                                    </div>
-                                  )}
-                                  <div
-                                    style={{
-                                      opacity: 0.8,
-                                      fontSize: 12,
-                                    }}
-                                  >
-                                    {r.title}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                            <div
-                              style={{
-                                textAlign: "right",
-                                fontSize: 12,
-                              }}
-                            >
-                              {!isEditing ? (
-                                <>
-                                  <div style={{ opacity: 0.8 }}>
-                                    {r.date}
-                                  </div>
-                                  <div style={{ opacity: 0.8 }}>
-                                    Report No: {r.reportNo}
-                                  </div>
-                                  <div
-                                    style={{
-                                      marginTop: 6,
-                                      display: "inline-block",
-                                      padding: "2px 8px",
-                                      borderRadius: 999,
-                                      background: `linear-gradient(90deg, ${C.badgeFrom}, ${C.badgeTo})`,
-                                      color: "#083344",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    Closed Items:{" "}
-                                    {calcClosedPct(table)}%
-                                  </div>
-                                  <div
-                                    style={{
-                                      marginTop: 6,
-                                      display: "inline-block",
-                                      padding: "3px 9px",
-                                      borderRadius: 999,
-                                      background: branchEvidenceStatus.bg,
-                                      color: branchEvidenceStatus.color,
-                                      fontWeight: 900,
-                                    }}
-                                  >
-                                    {branchEvidenceStatus.label}
-                                  </div>
-                                  {branchEvidenceCount > 0 && (
-                                    <div style={{ marginTop: 6, fontWeight: 800, color: "#166534" }}>
-                                      Branch evidence: {branchEvidenceCount} image(s)
-                                    </div>
-                                  )}
-                                  {branchEvidenceUploadedBy && (
-                                    <div style={{ marginTop: 4, fontWeight: 800, color: "#0f766e" }}>
-                                      Uploaded by: {branchEvidenceUploadedBy}
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <>
-                                  <div>
-                                    <input
-                                      style={inputInline}
-                                      value={header.date || ""}
-                                      onClick={(e) =>
-                                        e.stopPropagation()
-                                      }
-                                      onChange={(e) =>
-                                        editHeader("date", e.target.value)
-                                      }
-                                      placeholder="YYYY-MM-DD"
-                                    />
-                                  </div>
-                                  <div>
-                                    Report No:{" "}
-                                    <input
-                                      style={inputInline}
-                                      value={header.reportNo || ""}
-                                      onClick={(e) =>
-                                        e.stopPropagation()
-                                      }
-                                      onChange={(e) =>
-                                        editHeader(
-                                          "reportNo",
-                                          e.target.value
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                  <div
-                                    style={{
-                                      marginTop: 6,
-                                      display: "inline-block",
-                                      padding: "2px 8px",
-                                      borderRadius: 999,
-                                      background: `linear-gradient(90deg, ${C.badgeFrom}, ${C.badgeTo})`,
-                                      color: "#083344",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    Closed Items:{" "}
-                                    {calcClosedPct(table)}%
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr 1fr",
-                              gap: 8,
-                              marginBottom: 10,
-                            }}
-                          >
-                            <div>
-                              <b>Auditor:</b>{" "}
-                              {isEditing ? (
-                                <input
-                                  style={inputInline}
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={header.auditConductedBy || ""}
-                                  onChange={(e) =>
-                                    editHeader(
-                                      "auditConductedBy",
-                                      e.target.value
-                                    )
-                                  }
-                                />
-                              ) : (
-                                r.auditBy
-                              )}
-                            </div>
-                            <div>
-                              <b>Branch Supervisor:</b>{" "}
-                              {isEditing ? (
-                                <input
-                                  style={inputInline}
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={header.branchSupervisor || ""}
-                                  onChange={(e) =>
-                                    editHeader("branchSupervisor", e.target.value)
-                                  }
-                                />
-                              ) : (
-                                header.branchSupervisor || "-"
-                              )}
-                            </div>
-                            <div>
-                              <b>Next Audit:</b>{" "}
-                              {isEditing ? (
-                                <input
-                                  style={inputInline}
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={
-                                    safe(p, "footer.nextAudit", "") || ""
-                                  }
-                                  onChange={(e) => {
-                                    const f = (p.footer ||= {});
-                                    f.nextAudit = e.target.value;
-                                    setDraft({ ...draft });
-                                  }}
-                                />
-                              ) : (
-                                r.nextAudit || "-"
-                              )}
-                            </div>
-                            <div>
-                              <b>Closed Evidence Uploaded By:</b>{" "}
-                              {isEditing ? (
-                                <input
-                                  style={inputInline}
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={getBranchEvidenceUploadedBy(p)}
-                                  onChange={(e) => {
-                                    p.fields = p.fields && typeof p.fields === "object" ? p.fields : {};
-                                    p.fields.closedEvidenceUploadedBy = e.target.value;
-                                    draft.payload = p;
-                                    setDraft({ ...draft });
-                                  }}
-                                  placeholder="Supervisor name"
-                                />
-                              ) : (
-                                branchEvidenceUploadedBy || "-"
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Branch-link health: whether it exists, is still
-                              valid, and whether the branch ever opened it. */}
-                          {(() => {
-                            const pub = p?.public || {};
-                            if (!pub.token) return null;
-                            const st = getEvidenceLinkState(pub);
-                            const tone = st.revoked
-                              ? { bg: "#fee2e2", color: "#991b1b", text: "Link cancelled" }
-                              : st.expired
-                              ? { bg: "#fee2e2", color: "#991b1b", text: "Link expired" }
-                              : st.daysLeft != null && st.daysLeft <= 7
-                              ? { bg: "#fef3c7", color: "#92400e", text: `Link expires in ${st.daysLeft} day(s)` }
-                              : { bg: "#dcfce7", color: "#166534", text: st.daysLeft != null ? `Link valid — ${st.daysLeft} day(s) left` : "Link active" };
-                            return (
-                              <div
-                                className="pdf-no-print"
-                                style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 12 }}
-                              >
-                                <span style={{ ...miniStatus, background: tone.bg, color: tone.color }}>🔗 {tone.text}</span>
-                                <span style={{ ...miniStatus, background: pub.openedAt ? "#dbeafe" : "#f1f5f9", color: pub.openedAt ? "#1d4ed8" : "#475569" }}>
-                                  {pub.openedAt
-                                    ? `Opened by branch: ${new Date(pub.openedAt).toLocaleString("en-GB")}`
-                                    : "Not opened yet"}
-                                </span>
-                              </div>
-                            );
-                          })()}
-
-                          <div
-                            className="pdf-no-print"
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              justifyContent: "flex-end",
-                              marginBottom: 8,
-                            }}
-                          >
-                            {!isEditing ? (
-                              <>
-                                {countAwaitingQa(table) > 0 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      acceptAllPending(r);
-                                    }}
-                                    disabled={verifyBusy}
-                                    style={{ ...smallBtn, background: "#166534", color: "#fff", borderColor: "#166534" }}
-                                    title="Accept every finding currently awaiting verification"
-                                  >
-                                    ✔ Verify all ({countAwaitingQa(table)})
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    exportReportXLSX(r);
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Export XLSX
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    exportReportPDF(r);
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Export PDF
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    exportReportJSON(r._raw);
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Export JSON
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEmail(r);
-                                  }}
-                                  style={{ ...smallBtn, background: "#0f766e", color: "#fff", borderColor: "#0f766e" }}
-                                  title="Compose an e-mail with the PDF and the branch evidence link"
-                                >
-                                  ✉️ Send Email
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyEvidenceLink(r);
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Copy Branch Link
-                                </button>
-                                {(() => {
-                                  /* Renew / cancel only make sense once a link exists. */
-                                  if (!p?.public?.token) return null;
-                                  const linkState = getEvidenceLinkState(p.public);
-                                  return (
-                                    <>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          copyEvidenceLink(r, { renew: true });
-                                        }}
-                                        style={smallBtn}
-                                        title="Extend the link's validity and copy it"
-                                      >
-                                        ↻ Renew Link
-                                      </button>
-                                      {!linkState.revoked && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            revokeEvidenceLink(r);
-                                          }}
-                                          style={smallBtn}
-                                          title="Cancel the link so the URL stops working"
-                                        >
-                                          ⛔ Cancel Link
-                                        </button>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEdit(r);
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(r);
-                                  }}
-                                  style={dangerBtn}
-                                 data-delete-action="true">
-                                  Delete
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSave();
-                                  }}
-                                  style={saveBtn}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCancel();
-                                  }}
-                                  style={smallBtn}
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            )}
-                          </div>
-
-                          {open && (
-                            <>
-                              <div style={tableScroll}>
-                                <div style={tableWrap}>
-                                  <div
-                                    style={{
-                                      ...tableHeaderRow,
-                                      background: C.bandBlue,
-                                    }}
-                                  >
-                                    <div style={th}>
-                                      Non-Conformance
-                                    </div>
-                                    <div style={th}>Root Cause</div>
-                                    <div style={th}>
-                                      Corrective / Preventive action
-                                    </div>
-                                    <div style={th}>Evidence</div>
-                                    <div style={th}>
-                                      Closed Evidence
-                                    </div>
-                                    <div style={th}>Risk Category / Notes</div>
-                                    <div style={th}>Status</div>
-                                    {isEditing && <div style={th} />}
-                                  </div>
-
-                                  {table.map((row, ridx) => {
-                                    const bg =
-                                      ridx % 2 === 0 ? C.zebra : "#fff";
-                                    return (
-                                      <div
-                                        key={ridx}
-                                        data-pdf-row="true"
-                                        style={{ ...tr, background: bg }}
-                                      >
-                                        <div style={td}>
-                                          {isEditing ? (
-                                            <textarea
-                                              style={cellTextArea}
-                                              value={
-                                                row.nonConformance || ""
-                                              }
-                                              onChange={(e) =>
-                                                editRow(ridx, {
-                                                  nonConformance:
-                                                    e.target.value,
-                                                })
-                                              }
-                                            />
-                                          ) : (
-                                            row.nonConformance || "-"
-                                          )}
-                                        </div>
-                                        <div style={td}>
-                                          {isEditing ? (
-                                            <textarea
-                                              style={cellTextArea}
-                                              value={row.rootCause || ""}
-                                              onChange={(e) =>
-                                                editRow(ridx, {
-                                                  rootCause: e.target.value,
-                                                })
-                                              }
-                                            />
-                                          ) : (
-                                            row.rootCause || "-"
-                                          )}
-                                        </div>
-                                        <div style={td}>
-                                          {isEditing ? (
-                                            <textarea
-                                              style={cellTextArea}
-                                              value={row.corrective || ""}
-                                              onChange={(e) =>
-                                                editRow(ridx, {
-                                                  corrective: e.target.value,
-                                                })
-                                              }
-                                            />
-                                          ) : (
-                                            row.corrective || "-"
-                                          )}
-                                        </div>
-
-                                        <div style={td}>
-                                          {isEditing ? (
-                                            <ImageField
-                                              list={row.evidenceImgs}
-                                              onAdd={(files) =>
-                                                addImages(
-                                                  ridx,
-                                                  "evidenceImgs",
-                                                  files
-                                                )
-                                              }
-                                              onRemove={(i) =>
-                                                removeImage(
-                                                  ridx,
-                                                  "evidenceImgs",
-                                                  i
-                                                )
-                                              }
-                                              onView={openViewer}
-                                            />
-                                          ) : (
-                                            <Thumbs
-                                              list={row.evidenceImgs}
-                                              onView={openViewer}
-                                            />
-                                          )}
-                                        </div>
-
-                                        <div style={td}>
-                                          {isEditing ? (
-                                            <>
-                                              <ImageField
-                                                list={row.closedEvidenceImgs}
-                                                onAdd={(files) =>
-                                                  addImages(
-                                                    ridx,
-                                                    "closedEvidenceImgs",
-                                                    files
-                                                  )
-                                                }
-                                                onRemove={(i) =>
-                                                  removeImage(
-                                                    ridx,
-                                                    "closedEvidenceImgs",
-                                                    i
-                                                  )
-                                                }
-                                                onView={openViewer}
-                                              />
-                                              <textarea
-                                                style={{ ...riskNotesArea, marginTop: 8, minHeight: 56 }}
-                                                value={row.closedEvidenceNote || ""}
-                                                onChange={(e) =>
-                                                  editRow(ridx, {
-                                                    closedEvidenceNote: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Branch notes..."
-                                              />
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Thumbs
-                                                list={Array.from(new Set([
-                                                  ...getRowClosedEvidenceImages(row),
-                                                  ...getBranchEvidenceForRow(p, ridx),
-                                                ]))}
-                                                onView={openViewer}
-                                              />
-                                              {(row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx)) && (
-                                                <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12, fontWeight: 700, color: "#854d0e", whiteSpace: "pre-wrap" }}>
-                                                  <b>Branch Notes:</b> {row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx)}
-                                                </div>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-
-                                        <div style={tdFixed(180)}>
-                                          {isEditing ? (
-                                            <>
-                                              <select
-                                                style={selectCell}
-                                                value={row.risk || ""}
-                                                onChange={(e) =>
-                                                  editRow(ridx, {
-                                                    risk: e.target.value,
-                                                  })
-                                                }
-                                              >
-                                                <option value="">--</option>
-                                                <option>Low</option>
-                                                <option>Medium</option>
-                                                <option>High</option>
-                                              </select>
-                                              <textarea
-                                                style={riskNotesArea}
-                                                value={row.riskNotes || ""}
-                                                onChange={(e) =>
-                                                  editRow(ridx, {
-                                                    riskNotes: e.target.value,
-                                                  })
-                                                }
-                                                placeholder="Risk notes..."
-                                              />
-                                            </>
-                                          ) : (
-                                            <>
-                                              <div style={{ fontWeight: 700 }}>
-                                                {row.risk || "-"}
-                                              </div>
-                                              {row.riskNotes && (
-                                                <div style={riskNotesText}>
-                                                  {row.riskNotes}
-                                                </div>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-
-                                        <div style={tdFixed(120)}>
-                                          {isEditing ? (
-                                            <select
-                                              style={selectCell}
-                                              value={row.status || ""}
-                                              onChange={(e) =>
-                                                editRow(ridx, {
-                                                  status: e.target.value,
-                                                })
-                                              }
-                                            >
-                                              <option value="">--</option>
-                                              <option>Open</option>
-                                              <option>In Progress</option>
-                                              <option>Pending QA Verification</option>
-                                              <option>Closed</option>
-                                            </select>
-                                          ) : (
-                                            <>
-                                              <div style={{ fontWeight: 700 }}>{row.status || "-"}</div>
-                                              <VerdictCell
-                                                row={row}
-                                                busy={verifyBusy}
-                                                onAccept={() => acceptFinding(r, ridx)}
-                                                onReject={() => rejectFinding(r, ridx)}
-                                              />
-                                            </>
-                                          )}
-                                        </div>
-
-                                        {isEditing && (
-                                          <div
-                                            style={tdFixed(60, {
-                                              display: "flex",
-                                              justifyContent: "center",
-                                              alignItems: "center",
-                                            })}
-                                          >
-                                            <button
-                                              onClick={() => removeRow(ridx)}
-                                              style={iconBtn}>
-                                              ✕
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {isEditing && (
-                                <div style={{ padding: 10 }}>
-                                  <button
-                                    onClick={addRow}
-                                    style={addRowBtn}
-                                  >
-                                    + Add Row
-                                  </button>
-                                </div>
-                              )}
-
-                              {((!isEditing &&
-                                (r.commentNextAudit ||
-                                  r.nextAudit ||
-                                  r.reviewedBy)) ||
-                                isEditing) && (
-                                <div style={{ marginTop: 10, fontSize: 13 }}>
-                                  <div
-                                    style={{
-                                      fontWeight: 600,
-                                      marginBottom: 4,
-                                      background: C.bandGreen,
-                                      border: `1px solid ${C.border}`,
-                                      borderRadius: 8,
-                                      padding: 6,
-                                    }}
-                                  >
-                                    Comment for next Audit
-                                  </div>
-                                  {isEditing ? (
-                                    <textarea
-                                      style={{
-                                        ...cellTextArea,
-                                        minHeight: 80,
-                                      }}
-                                      value={
-                                        footer.commentForNextAudit || ""
-                                      }
-                                      onChange={(e) => {
-                                        const f = getFooter();
-                                        f.commentForNextAudit =
-                                          e.target.value;
-                                        setDraft({ ...draft });
-                                      }}
-                                    />
-                                  ) : (
-                                    <div style={noteBox}>
-                                      {r.commentNextAudit}
-                                    </div>
-                                  )}
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "1fr 1fr",
-                                      gap: 10,
-                                      marginTop: 8,
-                                    }}
-                                  >
-                                    <div>
-                                      <b>Next Audit:</b>{" "}
-                                      {isEditing ? (
-                                        <input
-                                          style={inputInline}
-                                          value={footer.nextAudit || ""}
-                                          onChange={(e) => {
-                                            const f = getFooter();
-                                            f.nextAudit = e.target.value;
-                                            setDraft({ ...draft });
-                                          }}
-                                        />
-                                      ) : (
-                                        r.nextAudit || "-"
-                                      )}
-                                    </div>
-                                    <div>
-                                      <b>Reviewed &amp; Verified By:</b>{" "}
-                                      {isEditing ? (
-                                        <input
-                                          style={inputInline}
-                                          value={
-                                            footer.reviewedAndVerifiedBy ||
-                                            ""
-                                          }
-                                          onChange={(e) => {
-                                            const f = getFooter();
-                                            f.reviewedAndVerifiedBy =
-                                              e.target.value;
-                                            setDraft({ ...draft });
-                                          }}
-                                        />
-                                      ) : (
-                                        <SignatureName name={r.reviewedBy} underline={false} inline />
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                          {SHOW_DEBUG && (
-                            <details style={{ marginTop: 10 }}>
-                              <summary style={{ cursor: "pointer" }}>
-                                Show raw JSON
-                              </summary>
-                              <pre style={preStyle}>
-                                {JSON.stringify(r._raw, null, 2)}
-                              </pre>
-                            </details>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              <div className="ia-meta">
+                {metaField(tt("Audit date", "تاريخ التدقيق"), r.date,
+                  inlineInput(header.date, (v) => editHeader("date", v), "YYYY-MM-DD"))}
+                {metaField(tt("Report no.", "رقم التقرير"), r.reportNo,
+                  inlineInput(header.reportNo, (v) => editHeader("reportNo", v)))}
+                {metaField(tt("Auditor", "المدقق"), r.auditBy,
+                  inlineInput(header.auditConductedBy, (v) => editHeader("auditConductedBy", v)))}
+                {metaField(tt("Branch supervisor", "مشرف الفرع"), header.branchSupervisor,
+                  inlineInput(header.branchSupervisor, (v) => editHeader("branchSupervisor", v)))}
+                {metaField(tt("Next audit", "التدقيق القادم"), r.nextAudit,
+                  inlineInput(footer.nextAudit, (v) => editFooter("nextAudit", v)))}
+                {metaField(tt("Evidence uploaded by", "رفع الأدلة"), uploadedBy,
+                  inlineInput(uploadedBy, (v) => {
+                    p.fields = p.fields && typeof p.fields === "object" ? p.fields : {};
+                    p.fields.closedEvidenceUploadedBy = v;
+                    draft.payload = p;
+                    setDraft({ ...draft });
+                  }, tt("Supervisor name", "اسم المشرف")))}
               </div>
-            );
-          })}
-          </section>
+            </div>
+
+            <div className="ia-progress">
+              <div className="ia-ring" style={{ background: `conic-gradient(${pctColor(pct)} ${pct * 3.6}deg, #e8eef6 0)` }}>
+                <div className="ia-ring-in">
+                  <div className="ia-ring-val">{pct}%</div>
+                  <div className="ia-xs ia-mute">{tt("closed", "مغلق")}</div>
+                </div>
+              </div>
+              <div className="ia-counts">
+                <span><i className="dot t-ok" />{st.closed} {tt("closed", "مغلقة")}</span>
+                <span><i className="dot t-info" />{st.awaiting} {tt("awaiting QA", "بانتظار الجودة")}</span>
+                <span><i className="dot t-bad" />{st.open} {tt("open", "مفتوحة")}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="ia-chips ia-no-print pdf-no-print">
+            <span className={`ia-pill t-${evidence.tone}`}>{isAr ? evidence.ar : evidence.label}</span>
+            <span className={`ia-pill t-${linkChip.tone}`}>🔗 {linkChip.text}</span>
+            {pub.token && (
+              <span className={`ia-pill t-${pub.openedAt ? "info" : "mute"}`}>
+                {pub.openedAt
+                  ? tt(`Opened by branch ${new Date(pub.openedAt).toLocaleString("en-GB")}`, `فتحه الفرع ${new Date(pub.openedAt).toLocaleString("en-GB")}`)
+                  : tt("Branch hasn't opened it yet", "الفرع لم يفتحه بعد")}
+              </span>
+            )}
+            {branchEvidenceCount > 0 && (
+              <span className="ia-pill t-ok">{tt(`${branchEvidenceCount} photo(s) from the branch`, `${branchEvidenceCount} صورة من الفرع`)}</span>
+            )}
+          </div>
+
+          {/* ── Actions ── */}
+          <div className="ia-actions ia-no-print pdf-no-print">
+            {!isEditing ? (
+              <>
+                {awaiting > 0 && (
+                  <button type="button" className="ia-btn ok" disabled={verifyBusy} onClick={() => acceptAllPending(r)}
+                    title={tt("Accept every finding currently awaiting verification", "قبول كل الملاحظات بانتظار التحقق")}>
+                    ✔ {tt(`Verify all (${awaiting})`, `تحقق من الكل (${awaiting})`)}
+                  </button>
+                )}
+                <button type="button" className="ia-btn primary" onClick={() => openEmail(r)}
+                  title={tt("Compose an e-mail with the PDF and the branch evidence link", "إيميل مع الـ PDF ورابط أدلة الفرع")}>
+                  ✉️ {tt("Send email", "إرسال إيميل")}
+                </button>
+                <button type="button" className="ia-btn" onClick={() => copyEvidenceLink(r)}>
+                  🔗 {tt("Copy branch link", "نسخ رابط الفرع")}
+                </button>
+                <button type="button" className="ia-btn" onClick={() => handleEdit(r)}>
+                  ✎ {tt("Edit", "تعديل")}
+                </button>
+                <Menu label={`⤓ ${tt("Export", "تصدير")}`} items={[
+                  { label: tt("PDF report", "تقرير PDF"), onClick: () => exportReportPDF(r) },
+                  { label: tt("Excel sheet", "ملف Excel"), onClick: () => exportReportXLSX(r) },
+                  { label: tt("JSON (raw data)", "JSON (بيانات خام)"), onClick: () => exportReportJSON(r._raw) },
+                ]} />
+                {pub.token && (
+                  <Menu label={`⋯ ${tt("Link", "الرابط")}`} items={[
+                    { label: tt("↻ Renew & copy link", "↻ تجديد ونسخ الرابط"), onClick: () => copyEvidenceLink(r, { renew: true }) },
+                    ...(!linkState?.revoked ? [{ label: tt("⛔ Cancel link", "⛔ إلغاء الرابط"), danger: true, onClick: () => revokeEvidenceLink(r) }] : []),
+                  ]} />
+                )}
+                <span className="ia-spacer" />
+                <button type="button" className="ia-btn danger" onClick={() => handleDelete(r)} data-delete-action="true">
+                  🗑 {tt("Delete", "حذف")}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="ia-btn ok" onClick={handleSave}>✔ {tt("Save changes", "حفظ التعديلات")}</button>
+                <button type="button" className="ia-btn" onClick={handleCancel}>{tt("Cancel", "إلغاء")}</button>
+                <span className="ia-spacer" />
+                <span className="ia-sm ia-mute">{tt("Editing — changes are saved only when you press Save.", "وضع التعديل — لا يُحفظ شيء قبل الضغط على حفظ.")}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        {viewer && (
-          <Lightbox
-            items={viewer.items}
-            index={viewer.index}
-            onIndex={(i) => setViewer((prev) => prev && {
-              ...prev,
-              index: ((i % prev.items.length) + prev.items.length) % prev.items.length,
-            })}
-            onClose={() => setViewer(null)}
-          />
+        {/* ── Findings ── */}
+        <div className="ia-card">
+          <div className="ia-sec-head">
+            <div className="ia-h2">
+              {tt("Findings", "الملاحظات")} <span className="ia-count">{table.length}</span>
+            </div>
+            {!isEditing && table.length > 0 && (
+              <div className="ia-seg ia-no-print pdf-no-print">
+                {[
+                  ["all", tt("All", "الكل"), table.length],
+                  ["open", tt("Open", "مفتوحة"), st.open],
+                  ["awaiting", tt("Awaiting QA", "بانتظار الجودة"), st.awaiting],
+                  ["closed", tt("Closed", "مغلقة"), st.closed],
+                ].map(([k, label, n]) => (
+                  <button key={k} type="button" className={findingFilter === k ? "on" : ""} onClick={() => setFindingFilter(k)}>
+                    {label} <span className="ia-xs">{n}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {table.length === 0 && !isEditing ? (
+            <div className="ia-state">{tt("This report has no findings.", "لا توجد ملاحظات في هذا التقرير.")}</div>
+          ) : (
+            <div className="ia-tbl-scroll">
+              <div className={`ia-tbl${isEditing ? " editing" : ""}`}>
+                <div className="ia-tr ia-th">
+                  <div>#</div>
+                  <div>{tt("Non-conformance", "عدم المطابقة")}</div>
+                  <div>{tt("Root cause", "السبب الجذري")}</div>
+                  <div>{tt("Corrective / preventive action", "الإجراء التصحيحي / الوقائي")}</div>
+                  <div>{tt("Evidence", "الدليل")}</div>
+                  <div>{tt("Closure evidence", "دليل الإغلاق")}</div>
+                  <div>{tt("Risk", "الخطورة")}</div>
+                  <div>{tt("Status", "الحالة")}</div>
+                  {isEditing && <div />}
+                </div>
+
+                {filterIdx.map(({ row, i: ridx }) => {
+                  const bucket = findingBucket(row);
+                  const closedImgs = Array.from(new Set([
+                    ...getRowClosedEvidenceImages(row),
+                    ...getBranchEvidenceForRow(p, ridx),
+                  ]));
+                  const branchNote = row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx);
+                  return (
+                    <div key={ridx} data-pdf-row="true" className={`ia-tr b-${bucket}`}>
+                      <div className="ia-num">{ridx + 1}</div>
+                      <div>
+                        {isEditing
+                          ? <textarea className="ia-ta" value={row.nonConformance || ""} onChange={(e) => editRow(ridx, { nonConformance: e.target.value })} />
+                          : (row.nonConformance || <span className="ia-empty">—</span>)}
+                      </div>
+                      <div>
+                        {isEditing
+                          ? <textarea className="ia-ta" value={row.rootCause || ""} onChange={(e) => editRow(ridx, { rootCause: e.target.value })} />
+                          : (row.rootCause || <span className="ia-empty">—</span>)}
+                      </div>
+                      <div>
+                        {isEditing
+                          ? <textarea className="ia-ta" value={row.corrective || ""} onChange={(e) => editRow(ridx, { corrective: e.target.value })} />
+                          : (row.corrective || <span className="ia-empty">—</span>)}
+                      </div>
+                      <div>
+                        {isEditing ? (
+                          <ImageField
+                            list={row.evidenceImgs}
+                            onAdd={(files) => addImages(ridx, "evidenceImgs", files)}
+                            onRemove={(i) => removeImage(ridx, "evidenceImgs", i)}
+                            onView={openViewer}
+                            tt={tt}
+                          />
+                        ) : (
+                          <Thumbs list={row.evidenceImgs} onView={openViewer} />
+                        )}
+                      </div>
+                      <div>
+                        {isEditing ? (
+                          <>
+                            <ImageField
+                              list={row.closedEvidenceImgs}
+                              onAdd={(files) => addImages(ridx, "closedEvidenceImgs", files)}
+                              onRemove={(i) => removeImage(ridx, "closedEvidenceImgs", i)}
+                              onView={openViewer}
+                              tt={tt}
+                            />
+                            <textarea
+                              className="ia-ta"
+                              style={{ marginTop: 8, minHeight: 56 }}
+                              value={row.closedEvidenceNote || ""}
+                              onChange={(e) => editRow(ridx, { closedEvidenceNote: e.target.value })}
+                              placeholder={tt("Branch notes…", "ملاحظات الفرع…")}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <Thumbs list={closedImgs} onView={openViewer} />
+                            {branchNote && (
+                              <div className="ia-note"><b>{tt("Branch note:", "ملاحظة الفرع:")}</b> {branchNote}</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <div>
+                        {isEditing ? (
+                          <>
+                            <select className="ia-select" value={row.risk || ""} onChange={(e) => editRow(ridx, { risk: e.target.value })}>
+                              <option value="">--</option>
+                              <option value="Low">{riskText("Low")}</option>
+                              <option value="Medium">{riskText("Medium")}</option>
+                              <option value="High">{riskText("High")}</option>
+                            </select>
+                            <textarea
+                              className="ia-ta"
+                              style={{ marginTop: 8, minHeight: 64 }}
+                              value={row.riskNotes || ""}
+                              onChange={(e) => editRow(ridx, { riskNotes: e.target.value })}
+                              placeholder={tt("Risk notes…", "ملاحظات الخطورة…")}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            {row.risk
+                              ? <span className={`ia-pill t-${riskTone(row.risk)}`}>{riskText(row.risk)}</span>
+                              : <span className="ia-empty">—</span>}
+                            {row.riskNotes && <div className="ia-sm ia-mute" style={{ marginTop: 6 }}>{row.riskNotes}</div>}
+                          </>
+                        )}
+                      </div>
+                      <div>
+                        {isEditing ? (
+                          <select className="ia-select" value={row.status || ""} onChange={(e) => editRow(ridx, { status: e.target.value })}>
+                            <option value="">--</option>
+                            {["Open", "In Progress", "Pending QA Verification", "Closed"].map((s) => (
+                              <option key={s} value={s}>{statusText(s)}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <>
+                            <span className={`ia-pill t-${bucketTone(bucket)}`}>{statusText(row.status)}</span>
+                            <VerdictCell
+                              row={row}
+                              busy={verifyBusy}
+                              isAr={isAr}
+                              tt={tt}
+                              onAccept={() => acceptFinding(r, ridx)}
+                              onReject={() => rejectFinding(r, ridx)}
+                            />
+                          </>
+                        )}
+                      </div>
+                      {isEditing && (
+                        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+                          <button type="button" className="ia-btn sm" onClick={() => removeRow(ridx)} title={tt("Remove finding", "حذف الملاحظة")}>✕</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {!isEditing && filterIdx.length === 0 && (
+                  <div className="ia-state">{tt("No findings match this filter.", "لا توجد ملاحظات بهذا الفلتر.")}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isEditing && (
+            <button type="button" className="ia-btn" style={{ marginTop: 12 }} onClick={addRow}>
+              + {tt("Add finding", "إضافة ملاحظة")}
+            </button>
+          )}
+        </div>
+
+        {/* ── Closing notes ── */}
+        {(isEditing || r.commentNextAudit || r.reviewedBy) && (
+          <div className="ia-card">
+            <div className="ia-h2" style={{ marginBottom: 10 }}>{tt("Comment for next audit", "ملاحظة للتدقيق القادم")}</div>
+            {isEditing ? (
+              <textarea
+                className="ia-ta"
+                value={footer.commentForNextAudit || ""}
+                onChange={(e) => editFooter("commentForNextAudit", e.target.value)}
+              />
+            ) : (
+              <div className="ia-quote">{r.commentNextAudit || <span className="ia-empty">—</span>}</div>
+            )}
+            <div className="ia-meta" style={{ marginTop: 14 }}>
+              {metaField(
+                tt("Reviewed & verified by", "راجعه وتحقق منه"),
+                r.reviewedBy ? <SignatureName name={r.reviewedBy} underline={false} inline /> : "",
+                inlineInput(footer.reviewedAndVerifiedBy, (v) => editFooter("reviewedAndVerifiedBy", v))
+              )}
+            </div>
+          </div>
         )}
 
-        <EmailSendModal
-          open={emailOpen}
-          onClose={() => setEmailOpen(false)}
-          payload={emailPayload}
-          config={internalAuditEmailConfig}
+        {SHOW_DEBUG && (
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: "pointer" }}>Show raw JSON</summary>
+            <pre style={preStyle}>{JSON.stringify(r._raw, null, 2)}</pre>
+          </details>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="ia ia-page" dir={isAr ? "rtl" : "ltr"}>
+      <style>{IA_CSS}</style>
+
+      {/* ====== Page header ====== */}
+      <div className="ia-top">
+        <div>
+          <h1 className="ia-h1">{tt("Internal audit reports", "تقارير التدقيق الداخلي")}</h1>
+          <div className="ia-sub">{tt("Findings, corrective actions and branch evidence — FS-QM/REC/CA/1", "الملاحظات والإجراءات التصحيحية وأدلة الفروع — FS-QM/REC/CA/1")}</div>
+        </div>
+        <div className="ia-toolbar ia-no-print">
+          <button type="button" className="ia-btn" onClick={togglePageLang}>🌐 {isAr ? "English" : "عربي"}</button>
+          <button type="button" className="ia-btn" onClick={loadReports} disabled={loading}>↻ {tt("Refresh", "تحديث")}</button>
+          <button type="button" className="ia-btn" onClick={() => window.print()}>🖨 {tt("Print", "طباعة")}</button>
+        </div>
+      </div>
+
+      {/* ====== KPIs ====== */}
+      <div className="ia-stats ia-no-print">
+        <Stat label={tt("Reports", "التقارير")} value={kpis.total} hint={tt(`${kpis.thisMonthCount} this month`, `${kpis.thisMonthCount} هذا الشهر`)} />
+        <Stat label={tt("Branches audited", "الفروع المدققة")} value={kpis.branchCount} hint={tt(`Last audit ${kpis.lastAuditDate}`, `آخر تدقيق ${kpis.lastAuditDate}`)} />
+        <Stat label={tt("Average closure", "متوسط الإغلاق")} value={`${kpis.avgClosure}%`} tone={kpis.avgClosure >= 80 ? "ok" : kpis.avgClosure >= 50 ? "warn" : "bad"} bar={kpis.avgClosure} />
+        <Stat label={tt("Open findings", "ملاحظات مفتوحة")} value={kpis.openFindings} tone={kpis.openFindings ? "bad" : "ok"} hint={tt(`of ${kpis.totalFindings} in total`, `من أصل ${kpis.totalFindings}`)} />
+        <Stat label={tt("Awaiting QA", "بانتظار تحقق الجودة")} value={kpis.awaitingQa} tone={kpis.awaitingQa ? "info" : "mute"} hint={tt("branch evidence to review", "أدلة فروع للمراجعة")} />
+      </div>
+
+      <div className="ia-body">
+        {/* ====== Report list ====== */}
+        <aside className="ia-panel ia-no-print">
+          <div className="ia-list-tools">
+            <div className="ia-search">
+              <span aria-hidden="true">🔍</span>
+              <input
+                placeholder={tt("Search branch, report no., auditor…", "ابحث بالفرع، رقم التقرير، المدقق…")}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+              {q && <button type="button" onClick={() => setQ("")} aria-label="Clear">✕</button>}
+            </div>
+            <select className="ia-select" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+              <option value="">{tt("All branches", "كل الفروع")} ({branches.length})</option>
+              {branches.map((b) => (
+                <option key={b} value={b}>{getBranchLabel(b, pageLang)}</option>
+              ))}
+            </select>
+            <div className="ia-row2">
+              <select
+                className="ia-select"
+                value={yearFilter ?? ""}
+                onChange={(e) => { setYearFilter(e.target.value ? Number(e.target.value) : null); setMonthFilter(null); }}
+              >
+                <option value="">{tt("All years", "كل السنوات")}</option>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <select
+                className="ia-select"
+                value={monthFilter ?? ""}
+                onChange={(e) => setMonthFilter(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">{tt("All months", "كل الأشهر")}</option>
+                {monthsFor(yearFilter).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+              </select>
+            </div>
+            <div className="ia-seg">
+              {[
+                ["all", tt("All", "الكل")],
+                ["action", tt("Needs action", "تحتاج متابعة")],
+                ["closed", tt("Fully closed", "مغلقة بالكامل")],
+              ].map(([k, label]) => (
+                <button key={k} type="button" className={listFilter === k ? "on" : ""} onClick={() => setListFilter(k)}>{label}</button>
+              ))}
+            </div>
+            <div className="ia-list-count">
+              <span>{tt(`${rows.length} of ${normalized.length} reports`, `${rows.length} من ${normalized.length} تقرير`)}</span>
+              {anyFilter && <button type="button" onClick={clearFilters}>{tt("Clear filters", "مسح الفلاتر")}</button>}
+            </div>
+          </div>
+
+          <div className="ia-list">
+            {loading && <div className="ia-state">{tt("Loading reports…", "جاري تحميل التقارير…")}</div>}
+            {!loading && error && <div className="ia-state ia-error">{error}</div>}
+            {!loading && !error && rows.length === 0 && (
+              <div className="ia-state">{hasLoaded && anyFilter ? tt("No reports match these filters.", "لا توجد تقارير بهذه الفلاتر.") : tt("No reports yet.", "لا توجد تقارير بعد.")}</div>
+            )}
+            {groups.map(([key, list]) => {
+              const [yy, mm] = key.split("-");
+              return (
+                <div key={key}>
+                  <div className="ia-month">{monthName(Number(mm))} {yy}</div>
+                  {list.map((r) => {
+                    const pct = calcClosedPct(r.table || []);
+                    const ev = getBranchEvidenceStatus(r._raw?.payload || {});
+                    return (
+                      <button
+                        type="button"
+                        key={r.id}
+                        className={`ia-item${selectedId === r.id ? " on" : ""}`}
+                        onClick={() => setSelectedId(r.id)}
+                      >
+                        <span className="ia-item-top">
+                          <span className="ia-item-name">{r.branch ? getBranchLabel(r.branch, pageLang) : "—"}</span>
+                          <span className="ia-xs ia-mute">{r.date}</span>
+                        </span>
+                        <span className="ia-item-meta">{r.reportNo !== "-" ? r.reportNo : ""}{r.reportNo !== "-" && r.auditBy !== "-" ? " · " : ""}{r.auditBy !== "-" ? r.auditBy : ""}</span>
+                        <span className="ia-bar"><span style={{ width: `${pct}%`, background: pctColor(pct) }} /></span>
+                        <span className="ia-item-foot">
+                          <span className="ia-xs ia-mute">{tt(`${pct}% closed`, `${pct}% مغلق`)}</span>
+                          <span className={`ia-pill sm t-${ev.tone}`}>{isAr ? ev.ar : ev.label}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* ====== Selected report ====== */}
+        <section style={{ minWidth: 0 }}>
+          {selected
+            ? renderDetail(selected)
+            : !loading && (
+              <div className="ia-card ia-state">{tt("Select a report from the list.", "اختر تقريراً من القائمة.")}</div>
+            )}
+        </section>
+      </div>
+
+      {viewer && (
+        <Lightbox
+          items={viewer.items}
+          index={viewer.index}
+          onIndex={(i) => setViewer((prev) => prev && {
+            ...prev,
+            index: ((i % prev.items.length) + prev.items.length) % prev.items.length,
+          })}
+          onClose={() => setViewer(null)}
         />
-      </main>
+      )}
+
+      <EmailSendModal
+        open={emailOpen}
+        onClose={() => setEmailOpen(false)}
+        payload={emailPayload}
+        config={internalAuditEmailConfig}
+      />
     </div>
   );
 }
 
+/* ===== Finding status buckets ===== */
+function findingBucket(row) {
+  if (isClosedStatus(row?.status)) return "closed";
+  if (isAwaitingQa(row)) return "awaiting";
+  return "open";
+}
+function findingStats(table = []) {
+  const s = { open: 0, awaiting: 0, closed: 0 };
+  (Array.isArray(table) ? table : []).forEach((row) => { s[findingBucket(row)]++; });
+  return s;
+}
+const bucketTone = (b) => (b === "closed" ? "ok" : b === "awaiting" ? "info" : "bad");
+const riskTone = (r) => {
+  const k = String(r || "").toLowerCase();
+  return k === "high" ? "bad" : k === "medium" ? "warn" : k === "low" ? "ok" : "mute";
+};
+const pctColor = (pct) => (pct >= 80 ? "#22a06b" : pct >= 50 ? "#e0a020" : "#e5534b");
+
 /* ===== Small components ===== */
+
+function Stat({ label, value, hint, tone = "", bar }) {
+  return (
+    <div className={`ia-stat${tone ? ` s-${tone}` : ""}`}>
+      <div className="ia-stat-label">{label}</div>
+      <div className="ia-stat-val">{value}</div>
+      {bar != null ? (
+        <div className="ia-bar" style={{ marginTop: 8 }}><span style={{ width: `${bar}%`, background: pctColor(bar) }} /></div>
+      ) : hint ? (
+        <div className="ia-xs ia-mute">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/* Small dropdown for the secondary actions, closes on outside click / Esc. */
+function Menu({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div className="ia-menu" ref={ref}>
+      <button type="button" className="ia-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        {label} ▾
+      </button>
+      {open && (
+        <div className="ia-menu-pop" role="menu">
+          {items.map((it, i) => (
+            <button
+              key={i}
+              type="button"
+              role="menuitem"
+              className={it.danger ? "danger" : ""}
+              onClick={() => { setOpen(false); it.onClick(); }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* Verdict chip + Accept/Reject controls, shown under the status of a finding.
    Only renders when there is something to act on or a recorded verdict. */
-function VerdictCell({ row, busy, onAccept, onReject }) {
+function VerdictCell({ row, busy, onAccept, onReject, isAr, tt }) {
   const v = getRowVerification(row);
   if (!v.state) return null;
   /* A plain closed row with no recorded verdict says nothing the Status
@@ -2476,33 +1873,26 @@ function VerdictCell({ row, busy, onAccept, onReject }) {
   const awaiting = isAwaitingQa(row);
 
   return (
-    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ ...miniStatus, background: tone.bg, color: tone.color }}>{tone.label}</span>
+    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+      {/* The status pill above already says "awaiting"; repeat only a real verdict. */}
+      {!awaiting && (
+        <span className={`ia-pill sm t-${v.state === "rejected" ? "bad" : "ok"}`}>{isAr ? tone.labelAr : tone.label}</span>
+      )}
       {(v.by || stamp) && (
-        <span style={{ fontSize: 10, color: "#64748b" }}>
-          {[v.by, stamp].filter(Boolean).join(" · ")}
-        </span>
+        <span className="ia-xs ia-mute">{[v.by, stamp].filter(Boolean).join(" · ")}</span>
       )}
       {v.state === "rejected" && v.reason && (
-        <span style={{ fontSize: 11, color: "#991b1b", lineHeight: 1.4 }}>“{v.reason}”</span>
+        <span className="ia-xs" style={{ color: "#b91c1c" }}>“{v.reason}”</span>
       )}
       {awaiting && (
         <div className="pdf-no-print" style={{ display: "flex", gap: 4 }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onAccept(); }}
-            disabled={busy}
-            style={verdictBtn("#166534")}
-            title="Evidence is acceptable — close this finding"
-          >
-            ✔ Accept
+          <button type="button" className="ia-btn sm ok" disabled={busy} onClick={onAccept}
+            title={tt("Evidence is acceptable — close this finding", "الدليل مقبول — أغلق الملاحظة")}>
+            ✔ {tt("Accept", "قبول")}
           </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onReject(); }}
-            disabled={busy}
-            style={verdictBtn("#991b1b")}
-            title="Send back to the branch with a reason"
-          >
-            ✖ Reject
+          <button type="button" className="ia-btn sm danger" disabled={busy} onClick={onReject}
+            title={tt("Send back to the branch with a reason", "أعدها للفرع مع السبب")}>
+            ✖ {tt("Reject", "رفض")}
           </button>
         </div>
       )}
@@ -2512,81 +1902,34 @@ function VerdictCell({ row, busy, onAccept, onReject }) {
 
 function Thumbs({ list, onView }) {
   const arr = (Array.isArray(list) ? list : []).map(getImageUrl).filter(Boolean);
-  if (!arr.length) return <span style={{ opacity: 0.6 }}>-</span>;
+  if (!arr.length) return <span className="ia-empty">—</span>;
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <div className="ia-thumbs">
       {/* Every photo is shown — the old 6-photo cap hid anything a branch sent
           beyond the sixth behind an unclickable "+N". */}
       {arr.map((src, i) => (
-        <img
-          key={i}
-          src={src}
-          alt="evidence"
-          onClick={() => onView && onView(arr, i)}
-          title="Click to preview"
-          style={{
-            width: 56,
-            height: 56,
-            objectFit: "cover",
-            border: "1px solid #d1d5db",
-            borderRadius: 6,
-            cursor: "zoom-in",
-          }}
-        />
+        <img key={i} src={src} alt="evidence" onClick={() => onView && onView(arr, i)} title="Click to preview" />
       ))}
     </div>
   );
 }
 
-function ImageField({ list, onAdd, onRemove, onView }) {
+function ImageField({ list, onAdd, onRemove, onView, tt }) {
   const normalizedList = (Array.isArray(list) ? list : []).map(getImageUrl).filter(Boolean);
   const count = normalizedList.length;
   const canAdd = count < 5;
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div className="ia-thumbs">
         {normalizedList.map((src, i) => (
-          <div
-            key={i}
-            style={{
-              position: "relative",
-              width: 56,
-              height: 56,
-              border: "1px solid #d1d5db",
-              borderRadius: 6,
-              overflow: "hidden",
-            }}
-          >
-            <img
-              src={src}
-              alt=""
-              onClick={() => onView && onView(normalizedList, i)}
-              title="Click to preview"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                cursor: "zoom-in",
-              }}
-            />
-            <button
-              onClick={() => onRemove(i)}
-              title="Remove"
-              style={thumbX}
-            >
-              ×
-            </button>
+          <div key={i} className="ia-thumb-edit">
+            <img src={src} alt="" onClick={() => onView && onView(normalizedList, i)} title="Click to preview" />
+            <button type="button" onClick={() => onRemove(i)} title="Remove">×</button>
           </div>
         ))}
       </div>
-      <label
-        style={{
-          ...uploadBtn,
-          opacity: canAdd ? 1 : 0.6,
-          pointerEvents: canAdd ? "auto" : "none",
-        }}
-      >
-        Upload ({count}/5)
+      <label className="ia-btn sm" style={{ marginTop: 6, opacity: canAdd ? 1 : 0.55, pointerEvents: canAdd ? "auto" : "none" }}>
+        ⬆ {tt("Upload", "رفع")} ({count}/5)
         <input
           type="file"
           accept="image/*"
@@ -2705,368 +2048,6 @@ const lb = {
   miniOn: { borderColor: "#5eead4", opacity: 1 },
 };
 
-/* ===== Styles ===== */
-const BORDER = C.border;
-const BORDER_STRONG = C.borderStrong;
-const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 180px 120px";
-
-const asideStyle = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 12,
-  height: "fit-content",
-};
-const chip = (active) => ({
-  border: `1px solid ${active ? BORDER_STRONG : BORDER}`,
-  background: active ? "#eef2ff" : "#fff",
-  color: active ? "#1e40af" : "#111827",
-  borderRadius: 999,
-  padding: "4px 10px",
-  cursor: "pointer",
-  fontSize: 12,
-});
-
-const inputStyle = {
-  padding: "10px",
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  background: "#fff",
-  minWidth: 220,
-};
-const inputInline = {
-  padding: "6px 8px",
-  border: `1px solid ${BORDER}`,
-  borderRadius: 6,
-  background: "#fff",
-  minWidth: 140,
-};
-
-const smallBtn = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  border: `1px solid ${BORDER}`,
-  background: "#fff",
-  cursor: "pointer",
-  fontSize: 13,
-};
-const saveBtn = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  border: "1px solid #16a34a",
-  background: "#dcfce7",
-  color: "#166534",
-  cursor: "pointer",
-  fontSize: 13,
-};
-const dangerBtn = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  border: "1px solid #ef4444",
-  background: "#fee2e2",
-  color: "#b91c1c",
-  cursor: "pointer",
-  fontSize: 13,
-};
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 8,
-  padding: 14,
-  boxShadow: "0 14px 34px rgba(15,23,42,0.08)",
-};
-
-const auditWorkspace = {
-  display: "grid",
-  gridTemplateColumns: "360px minmax(0, 1fr)",
-  gap: 14,
-  alignItems: "start",
-};
-
-const reportRail = {
-  position: "sticky",
-  top: 12,
-  maxHeight: "calc(100vh - 24px)",
-  overflow: "hidden",
-  background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  boxShadow: "0 10px 26px rgba(2,6,23,.07)",
-};
-
-const railHeader = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "14px 14px 12px",
-  background: `linear-gradient(90deg, ${C.headerGradFrom}, ${C.headerGradTo})`,
-  borderBottom: "1px solid #dbe4f0",
-};
-
-const railTitle = {
-  fontSize: 14,
-  fontWeight: 1000,
-  color: "#0f172a",
-};
-
-const railSub = {
-  marginTop: 3,
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#64748b",
-  lineHeight: 1.35,
-};
-
-const railCount = {
-  minWidth: 34,
-  height: 28,
-  borderRadius: 6,
-  display: "grid",
-  placeItems: "center",
-  background: "#0f172a",
-  color: "#fff",
-  fontWeight: 1000,
-  fontSize: 12,
-};
-
-const railList = {
-  display: "grid",
-  gap: 8,
-  padding: 10,
-  overflow: "auto",
-  maxHeight: "calc(100vh - 110px)",
-};
-
-const reportListItem = (active) => ({
-  width: "100%",
-  textAlign: "start",
-  border: `1px solid ${active ? C.borderStrong : "#e2e8f0"}`,
-  borderLeft: `4px solid ${active ? C.badgeTo : "transparent"}`,
-  background: active ? "#f8fafc" : "#fff",
-  borderRadius: 8,
-  padding: "10px 11px",
-  cursor: "pointer",
-  color: "#0f172a",
-  fontFamily: "inherit",
-  boxShadow: active ? "0 10px 22px rgba(96,165,250,.16)" : "0 1px 2px rgba(15,23,42,.03)",
-});
-
-const reportListTop = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 8,
-};
-
-const reportBranch = {
-  fontSize: 13,
-  fontWeight: 1000,
-  lineHeight: 1.25,
-};
-
-const reportDate = {
-  flexShrink: 0,
-  fontSize: 11,
-  fontWeight: 900,
-  color: "#64748b",
-  background: C.bandSilver,
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  padding: "2px 6px",
-};
-
-const reportMetaLine = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  marginTop: 7,
-  color: "#475569",
-  fontSize: 11,
-  fontWeight: 800,
-};
-
-const reportProgressTrack = {
-  display: "block",
-  height: 6,
-  marginTop: 9,
-  borderRadius: 99,
-  overflow: "hidden",
-  background: "#e2e8f0",
-};
-
-const reportProgressFill = (pct) => ({
-  display: "block",
-  width: `${Math.max(0, Math.min(100, Number(pct) || 0))}%`,
-  height: "100%",
-  background: `linear-gradient(90deg, ${C.badgeFrom}, ${C.badgeTo})`,
-});
-
-const reportFooterLine = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  marginTop: 8,
-  fontSize: 11,
-  fontWeight: 900,
-  color: "#334155",
-};
-
-const verdictBtn = (color) => ({
-  flex: 1,
-  padding: "4px 6px",
-  fontSize: 11,
-  fontWeight: 900,
-  color: "#fff",
-  background: color,
-  border: `1px solid ${color}`,
-  borderRadius: 5,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-});
-
-const miniStatus = {
-  maxWidth: 150,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  borderRadius: 999,
-  padding: "2px 7px",
-  fontSize: 10,
-  fontWeight: 1000,
-};
-
-const detailStage = {
-  minWidth: 0,
-};
-
-const monthDetailShell = {
-  border: "1px solid #dbe4f0",
-  borderRadius: 8,
-  background: "#fff",
-  overflow: "hidden",
-  boxShadow: "0 10px 26px rgba(2,6,23,.06)",
-};
-
-const tableScroll = { overflowX: "auto", marginTop: 8 };
-const tableWrap = {
-  minWidth: 1100,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 10,
-  overflow: "hidden",
-};
-const tableGrid = {
-  display: "grid",
-  gridTemplateColumns: COLS,
-  alignItems: "stretch",
-};
-const tableHeaderRow = {
-  ...tableGrid,
-  borderBottom: `1px solid ${BORDER_STRONG}`,
-  fontWeight: 700,
-  fontSize: 13,
-};
-const tr = { ...tableGrid, borderBottom: `1px solid ${BORDER}` };
-
-const th = {
-  padding: 10,
-  borderRight: `1px solid ${BORDER}`,
-  whiteSpace: "nowrap",
-  boxSizing: "border-box",
-};
-const td = {
-  padding: 8,
-  borderRight: `1px solid ${BORDER}`,
-  boxSizing: "border-box",
-  whiteSpace: "pre-wrap",
-};
-const tdFixed = (w, extra = {}) => ({
-  padding: 8,
-  borderRight: `1px solid ${BORDER}`,
-  width: w,
-  boxSizing: "border-box",
-  ...extra,
-});
-
-const cellTextArea = {
-  width: "100%",
-  minHeight: 80,
-  resize: "vertical",
-  padding: 8,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 6,
-  background: "#fff",
-  boxSizing: "border-box",
-};
-const riskNotesArea = { ...cellTextArea, minHeight: 64, marginTop: 8 };
-const riskNotesText = {
-  marginTop: 6,
-  paddingTop: 6,
-  borderTop: `1px dashed ${BORDER}`,
-  fontSize: 12,
-  color: "#475569",
-  whiteSpace: "pre-wrap",
-};
-const selectCell = {
-  width: "100%",
-  padding: "8px 10px",
-  border: `1px solid ${BORDER}`,
-  borderRadius: 6,
-  background: "#fff",
-  boxSizing: "border-box",
-};
-
-const iconBtn = {
-  width: 28,
-  height: 28,
-  border: `1px solid ${BORDER}`,
-  background: "#fff",
-  borderRadius: 6,
-  cursor: "pointer",
-};
-const addRowBtn = {
-  border: `1px dashed ${BORDER}`,
-  background: "#fff",
-  padding: "8px 12px",
-  borderRadius: 8,
-  cursor: "pointer",
-};
-
-const noteBox = {
-  background: C.bandSilver,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 8,
-  padding: 8,
-};
-
-const uploadBtn = {
-  display: "inline-block",
-  marginTop: 6,
-  fontSize: 12,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 8,
-  padding: "6px 10px",
-  cursor: "pointer",
-  background: "#fff",
-};
-const thumbX = {
-  position: "absolute",
-  top: 2,
-  right: 2,
-  width: 18,
-  height: 18,
-  borderRadius: "50%",
-  border: "none",
-  background: "rgba(239,68,68,.9)",
-  color: "#fff",
-  cursor: "pointer",
-  lineHeight: "18px",
-  fontSize: 12,
-};
-
 const preStyle = {
   background: "#0f172a",
   color: "#e2e8f0",
@@ -3077,192 +2058,156 @@ const preStyle = {
   fontSize: 12,
 };
 
-/* ===== KPI Tile + modern header / tools styles ===== */
-function KpiTile({ icon, label, value, color, bg, smaller }) {
-  return (
-    <div style={{
-      background: bg,
-      color,
-      borderRadius: 14,
-      padding: "10px 12px",
-      border: "1px solid rgba(226,232,240,.95)",
-      boxShadow: "0 6px 14px rgba(2,6,23,.06)",
-      minWidth: 130,
-      display: "flex",
-      flexDirection: "column",
-      gap: 2,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <span style={{ fontSize: 10, fontWeight: 1000, letterSpacing: ".05em", textTransform: "uppercase", opacity: 0.75 }}>{label}</span>
-      </div>
-      <div style={{ fontSize: smaller ? 14 : 22, fontWeight: 1000, lineHeight: 1.1 }}>{value}</div>
-    </div>
-  );
+/* ===== Page stylesheet =====
+   globals.css forces `#root * { font-size: 14px !important }`, so sizes live
+   here under a doubled class (`#root .ia.ia`) that out-ranks it, and scale
+   with the Aa text-size menu through --app-fs. Light "Soft Sky" palette. */
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const IA_CSS = `
+#root .ia.ia {
+  --bg:#f3f7fc; --line:#e3eaf3; --line2:#d3ddea; --ink:#1e293b; --ink2:#475569; --mute:#64748b;
+  --accent:#2f6fde; --accentSoft:#eaf2ff;
+  background:var(--bg); min-height:100vh; padding:20px; color:var(--ink);
 }
+#root .ia.ia, #root .ia.ia * { font-size:${fs(14)}; box-sizing:border-box; }
+#root .ia.ia .ia-h1 { font-size:${fs(24)}; font-weight:700; margin:0; color:var(--ink); line-height:1.25; }
+#root .ia.ia .ia-sub { color:var(--mute); margin-top:4px; }
+#root .ia.ia .ia-h2 { font-size:${fs(17)}; font-weight:700; display:flex; align-items:center; gap:8px; }
+#root .ia.ia .ia-xs, #root .ia.ia .ia-xs * { font-size:${fs(11.5)}; }
+#root .ia.ia .ia-sm { font-size:${fs(12.5)}; }
+#root .ia.ia .ia-mute { color:var(--mute); }
+#root .ia.ia .ia-empty { color:#a3b1c2; }
 
-const modernHeader = {
-  card: {
-    background: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)",
-    border: "1px solid rgba(255,255,255,.18)",
-    borderRadius: 6,
-    padding: "22px 28px",
-    marginBottom: 14,
-    boxShadow: "0 22px 50px rgba(15,23,42,.18)",
-  },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 14,
-  },
-  brandWrap: { display: "flex", alignItems: "center", gap: 12 },
-  brandIco: {
-    width: 44, height: 44, borderRadius: 6,
-    background: "rgba(255,255,255,.16)", color: "#fff",
-    display: "grid", placeItems: "center", fontSize: 22,
-    border: "1px solid rgba(255,255,255,.24)",
-    boxShadow: "0 10px 22px rgba(2,6,23,.18)",
-  },
-  title: { margin: 0, fontSize: 18, fontWeight: 1000, color: "#fff", lineHeight: 1.2 },
-  subtitle: { fontSize: 12, color: "#e0f2fe", fontWeight: 800, marginTop: 4 },
-  toolbar: { display: "flex", gap: 8, flexWrap: "wrap" },
-  toolBtn: {
-    padding: "8px 14px", borderRadius: 5,
-    background: "rgba(255,255,255,.14)",
-    color: "#fff", border: "1px solid rgba(255,255,255,.25)",
-    fontWeight: 900, fontSize: 12, cursor: "pointer",
-    fontFamily: "inherit",
-    boxShadow: "0 4px 10px rgba(2,6,23,.08)",
-  },
-  aiBtn: {
-    padding: "8px 14px", borderRadius: 5,
-    background: "rgba(15,23,42,.28)", color: "#fff",
-    border: "1px solid rgba(255,255,255,.18)", fontWeight: 1000, fontSize: 12, cursor: "pointer",
-    fontFamily: "inherit",
-    boxShadow: "0 8px 18px rgba(2,6,23,.18)",
-  },
-  kpiRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-    gap: 10,
-  },
-};
+#root .ia.ia .ia-top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+#root .ia.ia .ia-toolbar { display:flex; gap:8px; flex-wrap:wrap; }
 
-const toolsBar = {
-  row: {
-    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-    padding: "10px 14px", marginBottom: 14,
-    background: "#fff", border: "1px solid #e2e8f0",
-    borderRadius: 14, boxShadow: "0 8px 18px rgba(2,6,23,.06)",
-  },
-  searchWrap: {
-    display: "flex", alignItems: "center", gap: 8,
-    background: "#f8fafc", border: "1px solid #cbd5e1",
-    borderRadius: 999, padding: "5px 12px",
-    minWidth: 320, flex: "1 1 320px",
-  },
-  searchIcon: { fontSize: 14, opacity: 0.6 },
-  searchInput: {
-    flex: 1, border: "none", outline: "none",
-    background: "transparent", fontSize: 13, fontWeight: 800, color: "#0f172a",
-    fontFamily: "inherit",
-  },
-  clearBtn: {
-    background: "transparent", border: "none",
-    color: "#64748b", cursor: "pointer", fontSize: 14, fontWeight: 1000,
-    padding: 0, lineHeight: 1,
-  },
-  select: {
-    padding: "8px 12px", borderRadius: 999,
-    background: "#f8fafc", border: "1px solid #cbd5e1",
-    fontWeight: 900, fontSize: 12, color: "#0f172a",
-    cursor: "pointer", fontFamily: "inherit",
-  },
-  clearAll: {
-    padding: "7px 14px", borderRadius: 999,
-    background: "linear-gradient(135deg, #fee2e2, #fef2f2)",
-    color: "#991b1b", border: "1px solid #fecaca",
-    fontWeight: 1000, fontSize: 12, cursor: "pointer",
-    fontFamily: "inherit",
-  },
-  resultCount: {
-    fontSize: 12, color: "#475569", fontWeight: 800,
-  },
-};
+#root .ia.ia .ia-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:18px; }
+#root .ia.ia .ia-stat { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+#root .ia.ia .ia-stat-label { color:var(--mute); font-size:${fs(12.5)}; font-weight:600; }
+#root .ia.ia .ia-stat-val { font-size:${fs(26)}; font-weight:700; line-height:1.2; margin:4px 0 2px; color:var(--ink); }
+#root .ia.ia .s-ok .ia-stat-val { color:#15803d; }
+#root .ia.ia .s-warn .ia-stat-val { color:#b45309; }
+#root .ia.ia .s-bad .ia-stat-val { color:#c2410c; }
+#root .ia.ia .s-info .ia-stat-val { color:#1d4ed8; }
 
-/* ===== Modern Date-Tree sidebar styles ===== */
-const treeAside = {
-  position: "sticky",
-  top: 12,
-  alignSelf: "flex-start",
-  maxHeight: "calc(100vh - 24px)",
-  overflow: "auto",
-  background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 14,
-  padding: 12,
-  boxShadow: "0 8px 20px rgba(2,6,23,.06)",
-};
-const treeHeader = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "8px 6px 10px",
-  borderBottom: "2px dashed #e2e8f0",
-  marginBottom: 8,
-};
-const treeCountBadge = {
-  marginInlineStart: "auto",
-  background: "#0b1220", color: "#fff",
-  padding: "2px 10px", borderRadius: 999,
-  fontWeight: 1000, fontSize: 11,
-};
-const treeCountBadgeSm = {
-  marginInlineStart: "auto",
-  background: "#94a3b8", color: "#fff",
-  padding: "1px 7px", borderRadius: 999,
-  fontWeight: 1000, fontSize: 10,
-};
-const treeAllBtn = (active) => ({
-  width: "100%",
-  display: "flex", alignItems: "center", gap: 8,
-  padding: "10px 12px",
-  background: active ? "linear-gradient(135deg, #dbeafe, #eff6ff)" : "#f8fafc",
-  border: `1px solid ${active ? "#3b82f6" : "#e2e8f0"}`,
-  borderRadius: 12, cursor: "pointer",
-  fontWeight: 1000, fontSize: 12, color: "#0f172a",
-  fontFamily: "inherit", textAlign: "start",
-});
-const treeYearBtn = (active) => ({
-  width: "100%",
-  display: "flex", alignItems: "center", gap: 8,
-  padding: "9px 10px",
-  background: active ? "linear-gradient(135deg, #fef3c7, #fffbeb)" : "transparent",
-  border: `1px solid ${active ? "#fcd34d" : "#e2e8f0"}`,
-  borderRadius: 10, cursor: "pointer",
-  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
-});
-const treeMonthBtn = (active) => ({
-  width: "100%",
-  display: "flex", alignItems: "center", gap: 8,
-  padding: "6px 10px",
-  background: active ? "#dbeafe" : "transparent",
-  border: `1px solid ${active ? "#bfdbfe" : "#f1f5f9"}`,
-  borderRadius: 8, cursor: "pointer",
-  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
-});
-const treeDayBtn = (active) => ({
-  width: "100%",
-  display: "flex", alignItems: "center", gap: 8,
-  padding: "5px 10px",
-  background: active ? "#fee2e2" : "transparent",
-  border: `1px dashed ${active ? "#fca5a5" : "#cbd5e1"}`,
-  borderRadius: 6, cursor: "pointer",
-  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
-});
-const treeChev = {
-  fontSize: 9, color: "#64748b", width: 10,
-};
+#root .ia.ia .ia-body { display:grid; grid-template-columns:340px minmax(0, 1fr); gap:18px; align-items:start; }
+#root .ia.ia .ia-panel { background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+#root .ia.ia .ia-list-tools { padding:12px; display:grid; gap:8px; border-bottom:1px solid var(--line); background:#fbfdff; }
+#root .ia.ia .ia-row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+#root .ia.ia .ia-input, #root .ia.ia .ia-select {
+  width:100%; height:38px; border:1px solid var(--line2); border-radius:9px; padding:0 10px;
+  background:#fff; color:var(--ink); font-family:inherit; outline:none;
+}
+#root .ia.ia .ia-input:focus, #root .ia.ia .ia-select:focus, #root .ia.ia .ia-ta:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(47,111,222,.12); }
+#root .ia.ia .ia-search { display:flex; align-items:center; gap:8px; height:38px; border:1px solid var(--line2); border-radius:9px; padding:0 10px; background:#fff; }
+#root .ia.ia .ia-search input { flex:1; min-width:0; border:0; outline:none; background:transparent; color:var(--ink); font-family:inherit; }
+#root .ia.ia .ia-search button { border:0; background:transparent; color:var(--mute); cursor:pointer; }
+#root .ia.ia .ia-list-count { display:flex; justify-content:space-between; align-items:center; color:var(--mute); font-size:${fs(12.5)}; padding:2px 2px 0; }
+#root .ia.ia .ia-list-count button { border:0; background:transparent; color:var(--accent); cursor:pointer; font-weight:600; font-size:${fs(12.5)}; font-family:inherit; }
+
+#root .ia.ia .ia-seg { display:flex; background:#eef3f9; border-radius:9px; padding:3px; gap:2px; flex-wrap:wrap; }
+#root .ia.ia .ia-seg button { flex:1; border:0; background:transparent; border-radius:7px; padding:6px 10px; font-weight:600; color:var(--ink2); cursor:pointer; white-space:nowrap; font-family:inherit; }
+#root .ia.ia .ia-seg button.on { background:#fff; color:var(--accent); box-shadow:0 1px 3px rgba(15,23,42,.1); }
+
+#root .ia.ia .ia-list { max-height:calc(100vh - 230px); min-height:240px; overflow:auto; padding:4px 8px 10px; }
+#root .ia.ia .ia-month { padding:12px 6px 6px; color:var(--mute); font-weight:700; font-size:${fs(11.5)}; letter-spacing:.04em; text-transform:uppercase; }
+#root .ia.ia .ia-item { width:100%; text-align:start; display:block; border:1px solid transparent; background:transparent; border-radius:10px; padding:10px 11px; cursor:pointer; color:inherit; font-family:inherit; margin-bottom:2px; }
+#root .ia.ia .ia-item:hover { background:#f5f8fc; }
+#root .ia.ia .ia-item.on { background:var(--accentSoft); border-color:#c6d8fa; }
+#root .ia.ia .ia-item > span { display:flex; }
+#root .ia.ia .ia-item-top { justify-content:space-between; gap:8px; align-items:baseline; }
+#root .ia.ia .ia-item-name { font-weight:700; }
+#root .ia.ia .ia-item-meta { color:var(--mute); margin-top:2px; font-size:${fs(12.5)}; }
+#root .ia.ia .ia-item-foot { justify-content:space-between; align-items:center; gap:8px; margin-top:7px; }
+#root .ia.ia .ia-bar { height:6px; background:#e8eef6; border-radius:99px; overflow:hidden; margin-top:8px; }
+#root .ia.ia .ia-bar > span { display:block; height:100%; border-radius:99px; }
+
+#root .ia.ia .ia-pill { display:inline-flex; align-items:center; gap:4px; border-radius:99px; padding:3px 10px; font-weight:600; white-space:nowrap; font-size:${fs(12.5)}; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+#root .ia.ia .ia-pill.sm { padding:2px 8px; font-size:${fs(11.5)}; }
+#root .ia.ia .t-ok   { background:#e6f6ec; color:#15803d; }
+#root .ia.ia .t-warn { background:#fff3dc; color:#a15c07; }
+#root .ia.ia .t-bad  { background:#fdeceb; color:#b42318; }
+#root .ia.ia .t-info { background:#e8f0ff; color:#1d4ed8; }
+#root .ia.ia .t-mute { background:#eef2f6; color:#55657a; }
+#root .ia.ia .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-inline-end:6px; }
+#root .ia.ia .dot.t-ok { background:#22a06b; } #root .ia.ia .dot.t-info { background:#3b82f6; } #root .ia.ia .dot.t-bad { background:#e5534b; }
+
+#root .ia.ia .ia-btn { height:36px; padding:0 14px; border-radius:9px; border:1px solid var(--line2); background:#fff; color:var(--ink); font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-family:inherit; white-space:nowrap; text-decoration:none; }
+#root .ia.ia .ia-btn:hover { background:#f5f8fc; }
+#root .ia.ia .ia-btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+#root .ia.ia .ia-btn.primary:hover { background:#2860c4; }
+#root .ia.ia .ia-btn.ok { background:#1f9d5c; border-color:#1f9d5c; color:#fff; }
+#root .ia.ia .ia-btn.ok:hover { background:#188a50; }
+#root .ia.ia .ia-btn.danger { color:#b42318; border-color:#f2c9c5; background:#fff; }
+#root .ia.ia .ia-btn.danger:hover { background:#fdf1f0; }
+#root .ia.ia .ia-btn:disabled { opacity:.55; cursor:default; }
+#root .ia.ia .ia-btn.sm { height:30px; padding:0 10px; font-size:${fs(12.5)}; }
+
+#root .ia.ia .ia-menu { position:relative; }
+#root .ia.ia .ia-menu-pop { position:absolute; top:calc(100% + 6px); inset-inline-start:0; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 14px 30px rgba(15,23,42,.13); padding:6px; min-width:210px; z-index:50; display:grid; gap:2px; }
+#root .ia.ia .ia-menu-pop button { text-align:start; border:0; background:transparent; padding:9px 10px; border-radius:7px; cursor:pointer; color:var(--ink); font-family:inherit; }
+#root .ia.ia .ia-menu-pop button:hover { background:#f3f7fc; }
+#root .ia.ia .ia-menu-pop button.danger { color:#b42318; }
+
+#root .ia.ia .ia-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px; }
+#root .ia.ia .ia-doc { display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--mute); font-size:${fs(12.5)}; padding-bottom:12px; margin-bottom:16px; border-bottom:1px dashed var(--line2); }
+#root .ia.ia .ia-doc * { font-size:${fs(12.5)}; }
+#root .ia.ia .ia-doc b { color:var(--ink2); font-weight:600; }
+#root .ia.ia .ia-hero { display:flex; gap:24px; justify-content:space-between; flex-wrap:wrap; }
+#root .ia.ia .ia-hero-title { font-size:${fs(24)}; font-weight:700; line-height:1.25; }
+#root .ia.ia .ia-hero-sub { color:var(--ink2); margin-top:4px; }
+#root .ia.ia .ia-meta { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:14px 22px; margin-top:18px; }
+#root .ia.ia .ia-label { color:var(--mute); font-size:${fs(12.5)}; margin-bottom:3px; }
+#root .ia.ia .ia-val { font-weight:600; word-break:break-word; }
+#root .ia.ia .ia-progress { display:flex; flex-direction:column; align-items:center; gap:10px; min-width:150px; }
+#root .ia.ia .ia-ring { width:112px; height:112px; border-radius:50%; display:grid; place-items:center; }
+#root .ia.ia .ia-ring-in { width:88px; height:88px; border-radius:50%; background:#fff; display:grid; place-content:center; text-align:center; }
+#root .ia.ia .ia-ring-val { font-size:${fs(24)}; font-weight:700; line-height:1.1; }
+#root .ia.ia .ia-counts { display:grid; gap:3px; color:var(--ink2); font-size:${fs(12.5)}; }
+#root .ia.ia .ia-counts * { font-size:${fs(12.5)}; }
+#root .ia.ia .ia-chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; }
+#root .ia.ia .ia-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+#root .ia.ia .ia-spacer { flex:1; }
+
+#root .ia.ia .ia-sec-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+#root .ia.ia .ia-count { background:#eef2f6; color:var(--ink2); border-radius:99px; padding:1px 9px; font-size:${fs(12.5)}; font-weight:600; }
+#root .ia.ia .ia-tbl-scroll { overflow-x:auto; }
+#root .ia.ia .ia-tbl { min-width:1080px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+#root .ia.ia .ia-tr { display:grid; grid-template-columns:46px 1.25fr 1fr 1.25fr 1fr 1.1fr 150px 170px; border-top:1px solid var(--line); }
+#root .ia.ia .ia-tbl.editing .ia-tr { grid-template-columns:46px 1.25fr 1fr 1.25fr 1fr 1.1fr 170px 190px 52px; }
+#root .ia.ia .ia-tr > div { padding:12px; white-space:pre-wrap; word-break:break-word; line-height:1.5; min-width:0; }
+#root .ia.ia .ia-tr > div + div { border-inline-start:1px solid #eef2f7; }
+#root .ia.ia .ia-th { background:#f6f9fd; border-top:0; }
+#root .ia.ia .ia-th > div { font-weight:600; color:var(--ink2); font-size:${fs(12.5)}; padding:10px 12px; white-space:normal; }
+#root .ia.ia .ia-num { font-weight:700; color:var(--mute); text-align:center; }
+#root .ia.ia .ia-tr.b-open .ia-num { box-shadow:inset 3px 0 0 #e5534b; }
+#root .ia.ia .ia-tr.b-awaiting .ia-num { box-shadow:inset 3px 0 0 #3b82f6; }
+#root .ia.ia .ia-tr.b-closed .ia-num { box-shadow:inset 3px 0 0 #22a06b; }
+#root .ia.ia .ia-tr:hover { background:#fbfcfe; }
+#root .ia.ia .ia-thumbs { display:flex; gap:6px; flex-wrap:wrap; }
+#root .ia.ia .ia-thumbs img { width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in; }
+#root .ia.ia .ia-thumb-edit { position:relative; }
+#root .ia.ia .ia-thumb-edit button { position:absolute; top:-6px; inset-inline-end:-6px; width:20px; height:20px; border-radius:50%; border:2px solid #fff; background:#e5534b; color:#fff; cursor:pointer; line-height:14px; padding:0; }
+#root .ia.ia .ia-note { margin-top:8px; padding:8px 10px; border-radius:8px; background:#fff8e6; border:1px solid #f4e1b0; color:#7a4b06; font-size:${fs(12.5)}; }
+#root .ia.ia .ia-note * { font-size:${fs(12.5)}; }
+#root .ia.ia .ia-ta { width:100%; min-height:84px; resize:vertical; border:1px solid var(--line2); border-radius:8px; padding:8px 10px; font-family:inherit; color:var(--ink); background:#fff; outline:none; }
+#root .ia.ia .ia-quote { background:#f7fafd; border:1px solid var(--line); border-radius:10px; padding:12px 14px; white-space:pre-wrap; line-height:1.6; }
+#root .ia.ia .ia-state { padding:36px 16px; text-align:center; color:var(--mute); }
+#root .ia.ia .ia-error { color:#b42318; }
+
+@media (max-width: 1100px) {
+  #root .ia.ia .ia-body { grid-template-columns:1fr; }
+  #root .ia.ia .ia-list { max-height:360px; }
+}
+@media (max-width: 640px) {
+  #root .ia.ia { padding:12px; }
+  #root .ia.ia .ia-card { padding:14px; }
+  #root .ia.ia .ia-progress { flex-direction:row; }
+}
+@media print {
+  #root .ia.ia { background:#fff; padding:0; }
+  #root .ia.ia .ia-no-print { display:none !important; }
+  #root .ia.ia .ia-body { grid-template-columns:1fr; }
+  #root .ia.ia .ia-card { border-color:#cbd5e1; break-inside:auto; }
+}
+`;
