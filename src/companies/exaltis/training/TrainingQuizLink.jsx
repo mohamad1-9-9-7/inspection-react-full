@@ -422,6 +422,7 @@ export default function TrainingQuizLink() {
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <div
               ref={qrWrapRef}
+              className="theme-keep" /* night mode must not invert the QR: many Android scanners reject light-on-dark codes */
               style={{
                 padding: 10,
                 borderRadius: 14,
@@ -434,7 +435,7 @@ export default function TrainingQuizLink() {
               }}
             >
               <div style={{ fontWeight: 1100, color: "#0f172a" }}>📌 {tL("Scan QR", "مسح الـ QR")}</div>
-              <QRCodeCanvas value={shareUrl || ""} size={140} includeMargin />
+              <QRCodeCanvas value={shareUrl || ""} size={200} level="M" marginSize={4} />
               <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
                 {tL("Training Quiz Link", "رابط الاختبار التدريبي")}
               </div>

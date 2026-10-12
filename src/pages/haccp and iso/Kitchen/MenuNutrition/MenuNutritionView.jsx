@@ -537,7 +537,7 @@ export default function MenuNutritionView() {
             {tab === "qr" && (
               <div style={grid.auto(300)}>
                 <div style={S.qrCard}>
-                  <QRCodeCanvas value={publicUrl} size={224} level="M" marginSize={4} />
+                  <QRCodeCanvas className="theme-keep" value={publicUrl} size={224} level="M" marginSize={4} />
                   <div style={S.qrTitleEn} dir="ltr">
                     Nutrition information
                   </div>

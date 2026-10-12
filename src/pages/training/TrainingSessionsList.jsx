@@ -546,7 +546,7 @@ function CertificateCard({ participant, session, moduleName, branch, date, condu
               boxShadow:'0 4px 16px rgba(0,0,0,.4)',
             }}>
               {/* Canvas (not SVG) so it survives html2canvas; oversized then scaled down for crisp print */}
-              <QRCodeCanvas value={verifyUrl} size={336} level="M" style={{ width:112, height:112, display:'block' }} />
+              <QRCodeCanvas className="theme-keep" value={verifyUrl} size={336} level="M" style={{ width:112, height:112, display:'block' }} />
             </div>
             <div style={{ color:'rgba(255,255,255,.3)', fontSize:9, letterSpacing:1.8, textTransform:'uppercase', marginTop:2 }}>
               Scan to Verify
