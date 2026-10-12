@@ -40,6 +40,20 @@ async function uploadImageToCloudinary(file) {
   return data.optimized_url || data.url;
 }
 
+/** The images on a paste event. `items` first: Firefox and some copy sources
+    (a snip, "Copy image" in a browser) leave `files` empty and only fill
+    `items`; `files` is the fallback for the browsers that do the opposite. */
+function imagesFromClipboard(e) {
+  const cd = e?.clipboardData;
+  if (!cd) return [];
+  const fromItems = Array.from(cd.items || [])
+    .filter((i) => i.kind === "file" && String(i.type || "").startsWith("image/"))
+    .map((i) => i.getAsFile())
+    .filter(Boolean);
+  if (fromItems.length) return fromItems;
+  return Array.from(cd.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+}
+
 /* ===== Branches =====
  * Shared with the reports view and the annual plan — one list, no drift. */
 const BRANCH_LIST = INSPECTION_BRANCHES;
@@ -104,8 +118,10 @@ export default function Inspection() {
       : [makeEmptyRow(), makeEmptyRow(), makeEmptyRow()]
   );
 
-  /* ✅ حالة رفع الصور (loading per cell) */
-  const [uploadingCell, setUploadingCell] = useState(null); // "idx-field"
+  /* ✅ حالة رفع الصور (loading per cell) — several cells can upload at once
+     now that a picture can be pasted onto any row */
+  const [uploadingCells, setUploadingCells] = useState({}); // { "idx-field": count }
+  const uploadingCell = Object.keys(uploadingCells).length > 0;
 
   /* Footer */
   const [commentNextAudit, setCommentNextAudit] = useState(draft?.commentNextAudit || "");
@@ -195,13 +211,13 @@ export default function Inspection() {
   const addImage = async (idx, field, files) => {
     if (!files || files.length === 0) return;
 
-    const current = rows[idx][field] || [];
+    const current = rowsRef.current?.[idx]?.[field] || [];
     const capacity = Math.max(0, 5 - current.length);
     const slice = Array.from(files).slice(0, capacity);
-    if (!slice.length) return;
+    if (!slice.length) return { added: 0, failed: 0, skipped: files.length };
 
     const cellKey = `${idx}-${field}`;
-    setUploadingCell(cellKey);
+    setUploadingCells(m => ({ ...m, [cellKey]: (m[cellKey] || 0) + 1 }));
 
     const uploadedUrls = [];
     let failedCount = 0;
@@ -217,15 +233,77 @@ export default function Inspection() {
         }
       }
       if (uploadedUrls.length > 0) {
-        updateRow(idx, { [field]: [...current, ...uploadedUrls] });
+        // append to the row as it is NOW — another paste may have landed meanwhile
+        setRows(prev => prev.map((r, i) =>
+          i === idx ? { ...r, [field]: [...(r[field] || []), ...uploadedUrls].slice(0, 5) } : r
+        ));
       }
       if (failedCount > 0) {
         alert(`فشل رفع ${failedCount} صورة. تم رفع ${uploadedUrls.length} بنجاح.`);
       }
     } finally {
-      setUploadingCell(null);
+      setUploadingCells(m => {
+        const left = (m[cellKey] || 1) - 1;
+        const next = { ...m };
+        if (left > 0) next[cellKey] = left; else delete next[cellKey];
+        return next;
+      });
     }
+    return { added: uploadedUrls.length, failed: failedCount, skipped: files.length - slice.length };
   };
+
+  /* ===== Paste a picture straight onto a row (same as the Returns page) =====
+     Copy a picture anywhere (WhatsApp, a screenshot, "Copy image"), point the
+     mouse at the row and press Ctrl+V — no click, no file browser. Over the
+     "Closed Evidence" cell it goes there; anywhere else on the row it goes to
+     "Evidence". A paste that carries text stays an ordinary text paste. */
+  const rowsRef = React.useRef(rows);
+  rowsRef.current = rows;
+  const hoverRef = React.useRef({ row: -1, field: "" });
+  const [pasteMsg, setPasteMsg] = useState("");
+  const addImageRef = React.useRef(addImage);
+  addImageRef.current = addImage;
+  const ttRef = React.useRef(tt);
+  ttRef.current = tt;
+
+  React.useEffect(() => {
+    const flash = (msg, ms = 3000) => {
+      setPasteMsg(msg);
+      clearTimeout(flash.t);
+      flash.t = setTimeout(() => setPasteMsg(""), ms);
+    };
+    const onPaste = async (e) => {
+      if (e.defaultPrevented) return;
+      // Excel/Word also put a picture of the copied text on the clipboard
+      if ((e.clipboardData?.getData("text/plain") || "").trim()) return;
+      const files = imagesFromClipboard(e);
+      if (!files.length) return;
+      const t = ttRef.current;
+      const { row, field } = hoverRef.current;
+      if (row < 0 || row >= (rowsRef.current?.length || 0)) {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        e.preventDefault();
+        flash(`⚠️ ${t("Point the mouse at the row the picture belongs to, then press Ctrl+V again.", "ضع الماوس على السطر الذي تخصه الصورة ثم اضغط Ctrl+V مرة أخرى.")}`, 3500);
+        return;
+      }
+      e.preventDefault();
+      const target = field || "evidenceImgs";
+      const where = target === "closedEvidenceImgs" ? t("Closed Evidence", "دليل الإغلاق") : t("Evidence", "الدليل");
+      const have = (rowsRef.current[row]?.[target] || []).length;
+      if (have >= 5) {
+        flash(`⚠️ ${t(`Row ${row + 1} — ${where} already holds 5 photos. Remove one first.`, `السطر ${row + 1} — ${where} فيه 5 صور. احذف واحدة أولاً.`)}`);
+        return;
+      }
+      flash(`📤 ${t(`Uploading to row ${row + 1} — ${where}…`, `جاري الرفع إلى السطر ${row + 1} — ${where}…`)}`, 60000);
+      const res = await addImageRef.current(row, target, files);
+      const notes = [];
+      if (res?.added) notes.push(t(`${res.added} photo(s) added to row ${row + 1} — ${where}`, `أضيفت ${res.added} صورة إلى السطر ${row + 1} — ${where}`));
+      if (res?.skipped) notes.push(t(`${res.skipped} skipped (max 5)`, `${res.skipped} تم تجاوزها (الحد 5)`));
+      flash(`${res?.failed || res?.skipped || !res?.added ? "⚠️" : "✅"} ${notes.join(" — ") || t("Nothing was added.", "لم يُضف شيء.")}`);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
 
   const removeImage = (idx, field, imgIdx) => {
     const list = rows[idx][field] || [];
@@ -388,6 +466,17 @@ export default function Inspection() {
     <div style={pageWrap} dir={isAr ? "rtl" : "ltr"} className="ins-page-wrap">
       <style>{`
         .ins-print-logo-header { display: none; }
+
+        /* the row under the mouse lights up — that is where Ctrl+V drops a
+           copied picture; the image cell under the mouse is the exact target */
+        @media screen {
+          .ins-table-row { transition: background .15s ease; }
+          .ins-table-row:hover { background: #eef4ff; }
+          .ins-table-row:hover [data-img-field="evidenceImgs"],
+          .ins-table-row .ins-img-cell:hover { box-shadow: inset 0 0 0 2px #60a5fa; }
+          .ins-table-row:has([data-img-field="closedEvidenceImgs"]:hover) [data-img-field="evidenceImgs"] { box-shadow: none; }
+          .ins-table-row .ins-img-cell:hover { background: #dbeafe; }
+        }
 
         @page {
           margin: 32mm 10mm 15mm 10mm;
@@ -632,6 +721,16 @@ export default function Inspection() {
         </div>
       </div>
 
+      {pasteMsg && (
+        <div className="ins-no-print" role="status" style={{
+          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:9999,
+          background:"#0f172a", color:"#fff", padding:"10px 18px", borderRadius:12,
+          fontWeight:800, fontSize:14, boxShadow:"0 10px 30px rgba(2,6,23,.35)", maxWidth:"90vw",
+        }}>
+          {pasteMsg}
+        </div>
+      )}
+
       {/* Quick actions toolbar */}
       <div style={quickActionsBar} className="ins-no-print">
         <button onClick={addRow} style={qaPrimary}>+ {tt("Add Row", "إضافة سطر")}</button>
@@ -664,7 +763,16 @@ export default function Inspection() {
                               r.status === "In Progress" ? "#eab308" :
                               r.status === "Open" ? "#dc2626" : "transparent";
             return (
-            <div key={idx} style={{...tr, borderLeft: `4px solid ${rowAccent}`}} className="ins-table-row">
+            <div
+              key={idx}
+              style={{...tr, borderLeft: `4px solid ${rowAccent}`}}
+              className="ins-table-row"
+              onMouseOver={(e) => {
+                const cell = e.target.closest?.("[data-img-field]");
+                hoverRef.current = { row: idx, field: cell ? cell.getAttribute("data-img-field") : "" };
+              }}
+              onMouseLeave={() => { hoverRef.current = { row: -1, field: "" }; }}
+            >
               <div style={td}>
                 <textarea value={r.nonConformance} onChange={e=>updateRow(idx,{nonConformance:e.target.value})} style={cellTextArea} placeholder={tt("Describe the finding...", "صف الملاحظة...")}/>
               </div>
@@ -675,23 +783,25 @@ export default function Inspection() {
                 <textarea value={r.corrective} onChange={e=>updateRow(idx,{corrective:e.target.value})} style={cellTextArea} placeholder={tt("What corrective action will be taken?", "ما الإجراء التصحيحي؟")}/>
               </div>
 
-              <div style={td}>
+              <div style={td} data-img-field="evidenceImgs" className="ins-img-cell">
                 <ImageField
                   list={r.evidenceImgs}
-                  uploading={uploadingCell === `${idx}-evidenceImgs`}
+                  uploading={!!uploadingCells[`${idx}-evidenceImgs`]}
                   onAdd={(files)=>addImage(idx,"evidenceImgs",files)}
                   onRemove={(i)=>removeImage(idx,"evidenceImgs",i)}
                   label={tt("Upload","رفع")}
+                  hint={tt("Click to browse — or point at this row and paste a copied picture (Ctrl+V)", "اضغط للاختيار — أو ضع الماوس على هذا السطر والصق صورة منسوخة (Ctrl+V)")}
                 />
               </div>
 
-              <div style={td}>
+              <div style={td} data-img-field="closedEvidenceImgs" className="ins-img-cell">
                 <ImageField
                   list={r.closedEvidenceImgs}
-                  uploading={uploadingCell === `${idx}-closedEvidenceImgs`}
+                  uploading={!!uploadingCells[`${idx}-closedEvidenceImgs`]}
                   onAdd={(files)=>addImage(idx,"closedEvidenceImgs",files)}
                   onRemove={(i)=>removeImage(idx,"closedEvidenceImgs",i)}
                   label={tt("Upload","رفع")}
+                  hint={tt("Click to browse — or point at this cell and paste a copied picture (Ctrl+V)", "اضغط للاختيار — أو ضع الماوس على هذه الخانة والصق صورة منسوخة (Ctrl+V)")}
                 />
               </div>
 
@@ -870,7 +980,7 @@ export default function Inspection() {
 }
 
 /* ===== ImageField ===== */
-function ImageField({ list, uploading, onAdd, onRemove, label = "Upload" }) {
+function ImageField({ list, uploading, onAdd, onRemove, label = "Upload", hint }) {
   const count = (list || []).length;
   const canAdd = count < 5 && !uploading;
 
@@ -893,7 +1003,7 @@ function ImageField({ list, uploading, onAdd, onRemove, label = "Upload" }) {
       </div>
 
       <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}} className="ins-upload-btn">
-        <label style={{...uploadBtn, opacity: canAdd ? 1 : 0.5, pointerEvents: canAdd ? "auto" : "none"}}>
+        <label title={hint} style={{...uploadBtn, opacity: canAdd ? 1 : 0.5, pointerEvents: canAdd ? "auto" : "none"}}>
           {uploading ? "⏳" : `📎 ${label} ${count}/5`}
           <input
             type="file"
