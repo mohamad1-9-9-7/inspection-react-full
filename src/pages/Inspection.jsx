@@ -773,14 +773,14 @@ export default function Inspection() {
               }}
               onMouseLeave={() => { hoverRef.current = { row: -1, field: "" }; }}
             >
-              <div style={td}>
-                <textarea value={r.nonConformance} onChange={e=>updateRow(idx,{nonConformance:e.target.value})} style={cellTextArea} placeholder={tt("Describe the finding...", "صف الملاحظة...")}/>
+              <div style={tdText}>
+                <AutoTextArea value={r.nonConformance} onChange={e=>updateRow(idx,{nonConformance:e.target.value})} style={cellTextFill} placeholder={tt("Describe the finding...", "صف الملاحظة...")}/>
               </div>
-              <div style={td}>
-                <textarea value={r.rootCause} onChange={e=>updateRow(idx,{rootCause:e.target.value})} style={cellTextArea} placeholder={tt("Why did this happen?", "لماذا حدث هذا؟")}/>
+              <div style={tdText}>
+                <AutoTextArea value={r.rootCause} onChange={e=>updateRow(idx,{rootCause:e.target.value})} style={cellTextFill} placeholder={tt("Why did this happen?", "لماذا حدث هذا؟")}/>
               </div>
-              <div style={td}>
-                <textarea value={r.corrective} onChange={e=>updateRow(idx,{corrective:e.target.value})} style={cellTextArea} placeholder={tt("What corrective action will be taken?", "ما الإجراء التصحيحي؟")}/>
+              <div style={tdText}>
+                <AutoTextArea value={r.corrective} onChange={e=>updateRow(idx,{corrective:e.target.value})} style={cellTextFill} placeholder={tt("What corrective action will be taken?", "ما الإجراء التصحيحي؟")}/>
               </div>
 
               <div style={td} data-img-field="evidenceImgs" className="ins-img-cell">
@@ -805,7 +805,7 @@ export default function Inspection() {
                 />
               </div>
 
-              <div style={tdFixed(140)}>
+              <div style={tdFixed(140, {display:"flex", flexDirection:"column"})}>
                 <select
                   value={r.risk}
                   onChange={e=>updateRow(idx,{risk:e.target.value})}
@@ -820,10 +820,11 @@ export default function Inspection() {
                   <option value="">--</option>
                   {RISK_OPTIONS.map(x=> <option key={x.v} value={x.v}>{isAr ? x.ar : x.en}</option>)}
                 </select>
-                <textarea
+                <AutoTextArea
+                  min={58}
                   value={r.riskNotes || ""}
                   onChange={e=>updateRow(idx,{riskNotes:e.target.value})}
-                  style={riskNotesArea}
+                  style={{...riskNotesArea, flex:1}}
                   placeholder={tt("Risk notes...", "ملاحظات الخطر...")}
                 />
               </div>
@@ -866,11 +867,12 @@ export default function Inspection() {
         <label style={{display:"block", marginBottom:8, fontWeight:1000, color:"#0f172a"}}>
           📝 {tt("Comment for Next Audit","ملاحظات للتدقيق القادم")}
         </label>
-        <textarea
+        <AutoTextArea
+          min={120}
           value={commentNextAudit}
           onChange={(e)=>setCommentNextAudit(e.target.value)}
           placeholder={tt("Write your recommendation and observations...","اكتب توصياتك وملاحظاتك...")}
-          style={{...cellTextArea, minHeight:120}}
+          style={cellTextArea}
         />
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12}}>
           <label style={metaCell}>
@@ -976,6 +978,57 @@ export default function Inspection() {
         </div>
       )}
     </div>
+  );
+}
+
+/* ===== AutoTextArea =====
+   Grows with what is typed in it (never a scrollbar inside a finding), and —
+   being flex:1 inside a column cell — stretches to the row's tallest cell, so
+   every box on a row ends on the same line. The content height is measured with
+   the stretch switched off for a moment; otherwise a stretched box would report
+   its stretched height and the row could only ever grow. */
+function AutoTextArea({ min = 84, style, value, ...rest }) {
+  const ref = React.useRef(null);
+
+  const fit = React.useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const sx = window.scrollX, sy = window.scrollY;
+    const prevFlex = el.style.flex;
+    el.style.flex = "none";
+    el.style.minHeight = "0px";
+    el.style.height = "auto";
+    const borders = el.offsetHeight - el.clientHeight;
+    const h = el.scrollHeight + borders;
+    el.style.height = "";
+    el.style.flex = prevFlex;
+    el.style.minHeight = `${Math.max(min, h)}px`;
+    if (window.scrollX !== sx || window.scrollY !== sy) window.scrollTo(sx, sy);
+  }, [min]);
+
+  React.useLayoutEffect(fit, [fit, value]);
+
+  // a width change re-wraps the text: language switch, window resize, text size
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    let lastW = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === lastW) return;
+      lastW = el.clientWidth;
+      fit();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fit]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      style={{ ...style, minHeight: min, resize: "none", overflow: "hidden" }}
+      {...rest}
+    />
   );
 }
 
@@ -1139,6 +1192,9 @@ const th = { padding:"12px 10px", borderRight:`1px solid rgba(255,255,255,.10)`,
 const td = { padding:8, borderRight:`1px solid ${BORDER}`, boxSizing:"border-box" };
 const tdFixed = (w, extra={}) => ({ padding:8, borderRight:`1px solid ${BORDER}`, width:w, boxSizing:"border-box", ...extra });
 const cellTextArea = { width:"100%", minHeight:84, resize:"vertical", padding:10, border:`1px solid ${BORDER}`, borderRadius:10, background:"#fff", boxSizing:"border-box", fontFamily:"inherit", fontSize:13 };
+/* a text cell is a column so its box can stretch to the row's tallest cell */
+const tdText = { ...td, display:"flex", flexDirection:"column" };
+const cellTextFill = { ...cellTextArea, flex:1 };
 const riskNotesArea = { ...cellTextArea, minHeight:58, marginTop:8, fontSize:12 };
 const selectCell   = { width:"100%", padding:"9px 10px", border:`1px solid ${BORDER}`, borderRadius:10, background:"#fff", boxSizing:"border-box", fontFamily:"inherit", fontSize:13, cursor:"pointer" };
 const iconBtn    = { width:28, height:28, border:`1px solid ${BORDER}`, background:"#fff", borderRadius:6, cursor:"pointer" };
