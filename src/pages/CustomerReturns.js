@@ -138,6 +138,20 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
   );
 }
 
+/** The images on a paste event. `items` first: Firefox and some copy sources
+    (a snip, "Copy image" in a browser) leave `files` empty and only fill
+    `items`; `files` is the fallback for the browsers that do the opposite. */
+function imagesFromClipboard(e) {
+  const cd = e?.clipboardData;
+  if (!cd) return [];
+  const fromItems = Array.from(cd.items || [])
+    .filter((i) => i.kind === "file" && String(i.type || "").startsWith("image/"))
+    .map((i) => i.getAsFile())
+    .filter(Boolean);
+  if (fromItems.length) return fromItems;
+  return Array.from(cd.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+}
+
 /* ===== Images Manager Modal ===== */
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   const [previewSrc, setPreviewSrc] = useState("");
@@ -150,20 +164,42 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
     return () => window.removeEventListener("keydown", onEsc);
   }, [open, onClose]);
 
+  const [busy, setBusy] = useState(0);
+  const uploadFiles = async (files) => {
+    if (!files.length) return;
+    setBusy((n) => n + files.length);
+    const urls = [];
+    for (const f of files) {
+      try { urls.push(await uploadViaServer(f)); }
+      catch (err) { console.error("upload failed:", err); }
+      setBusy((n) => Math.max(0, n - 1));
+    }
+    if (urls.length) onAddImages(urls);
+  };
+  const uploadRef = useRef(uploadFiles);
+  uploadRef.current = uploadFiles;
+
+  // a picture on the clipboard pastes straight into this window
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPaste = (e) => {
+      const files = imagesFromClipboard(e);
+      if (!files.length) return;
+      e.preventDefault();
+      uploadRef.current(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [open]);
+
   if (!open) return null;
 
   const pick = () => inputRef.current?.click();
 
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    const urls = [];
-    for (const f of files) {
-      try { urls.push(await uploadViaServer(f)); }
-      catch (err) { console.error("upload failed:", err); }
-    }
-    if (urls.length) onAddImages(urls);
     e.target.value = "";
+    await uploadFiles(files);
   };
 
   return (
@@ -189,7 +225,11 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
             type="file" accept="image/*" multiple
             onChange={handleFiles} style={{ display: "none" }}
           />
-          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per item (server compresses automatically).</div>
+          <div style={{ fontSize: 13, color: "#334155" }}>
+            {busy
+              ? `⏳ Uploading ${busy} image${busy === 1 ? "" : "s"}…`
+              : "Or paste a copied picture here (Ctrl+V). Unlimited images per item."}
+          </div>
         </div>
 
         <div style={thumbsWrap}>
@@ -397,6 +437,69 @@ export default function CustomerReturns() {
     setSaveMsg("Images added.");
     setTimeout(() => setSaveMsg(""), 2000);
   };
+
+  /* ===== Paste a picture straight onto a row (same as the Returns page) =====
+     Copy a picture anywhere (WhatsApp, a screenshot, "Copy image"), point the
+     mouse at the row - the highlighted one - and press Ctrl+V: it uploads to
+     that row with no window and no file browser. A paste that carries text
+     stays an ordinary text paste; the images window keeps its own paste. */
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const hoverRowRef = useRef(-1);
+  const [uploadingRows, setUploadingRows] = useState({}); // { rowIdx: count }
+
+  const pasteImagesToRow = async (idx, files) => {
+    setUploadingRows((m) => ({ ...m, [idx]: (m[idx] || 0) + files.length }));
+    setSaveMsg(`Uploading ${files.length} image${files.length === 1 ? "" : "s"} to row ${idx + 1}…`);
+    const urls = [];
+    let failed = 0;
+    for (const f of files) {
+      try { urls.push(await uploadViaServer(f)); }
+      catch (err) { failed++; console.error("paste upload failed:", err); }
+      setUploadingRows((m) => {
+        const left = (m[idx] || 1) - 1;
+        const next = { ...m };
+        if (left > 0) next[idx] = left; else delete next[idx];
+        return next;
+      });
+    }
+    if (urls.length) {
+      setRows((prev) => prev.map((r, i) =>
+        i === idx ? { ...r, images: [...(r.images || []), ...urls] } : r
+      ));
+    }
+    const notes = [];
+    if (urls.length) notes.push(`${urls.length} image${urls.length === 1 ? "" : "s"} added to row ${idx + 1}`);
+    if (failed) notes.push(`${failed} failed to upload`);
+    setSaveMsg(`${failed ? "⚠️" : "✅"} ${notes.join(" — ")}.`);
+    setTimeout(() => setSaveMsg(""), 3000);
+  };
+  const pasteImagesRef = useRef(pasteImagesToRow);
+  pasteImagesRef.current = pasteImagesToRow;
+
+  useEffect(() => {
+    if (imageModalOpen) return undefined;
+    const onPaste = (e) => {
+      if (e.defaultPrevented) return;
+      // Excel puts a picture of the copied cells on the clipboard beside the text
+      if ((e.clipboardData?.getData("text/plain") || "").trim()) return;
+      const files = imagesFromClipboard(e);
+      if (!files.length) return;
+      const idx = hoverRowRef.current;
+      if (idx < 0 || idx >= (rowsRef.current?.length || 0)) {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        e.preventDefault();
+        setSaveMsg("⚠️ Point the mouse at the row the picture belongs to, then press Ctrl+V again.");
+        setTimeout(() => setSaveMsg(""), 3500);
+        return;
+      }
+      e.preventDefault();
+      pasteImagesRef.current(idx, files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [imageModalOpen]);
+
   const removeImageFromRow = async (imgIndex) => {
     if (imageRowIndex < 0) return;
     try {
@@ -655,6 +758,14 @@ export default function CustomerReturns() {
         )}
       </div>
 
+      {/* the row under the mouse lights up - that is where Ctrl+V drops a picture */}
+      <style>{`
+        tr.cr-row:hover, tr.cr-row:focus-within {
+          background: #f1e4ff !important;
+          box-shadow: inset 4px 0 0 0 #a855f7;
+        }
+      `}</style>
+
       {/* Table */}
       <div style={{
         background: "rgba(255,255,255,.85)",
@@ -693,7 +804,13 @@ export default function CustomerReturns() {
           </thead>
           <tbody>
             {rows.map((row, idx) => (
-              <tr key={idx} style={{ background: idx % 2 ? "#faf5ff" : "#fff", transition: "background .15s" }}>
+              <tr
+                key={idx}
+                className="cr-row"
+                style={{ background: idx % 2 ? "#faf5ff" : "#fff", transition: "background .15s, box-shadow .15s" }}
+                onMouseEnter={() => { hoverRowRef.current = idx; }}
+                onMouseLeave={() => { if (hoverRowRef.current === idx) hoverRowRef.current = -1; }}
+              >
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
                   <ItemCodeInput
@@ -795,9 +912,11 @@ export default function CustomerReturns() {
                   <button
                     onClick={() => openImagesFor(idx)}
                     style={btnImg}
-                    title="Manage images"
+                    title="Manage images — or point at this row and paste a copied picture (Ctrl+V)"
                   >
-                    Images ({Array.isArray(row.images) ? row.images.length : 0})
+                    {uploadingRows[idx]
+                      ? `⏳ Uploading ${uploadingRows[idx]}…`
+                      : `Images (${Array.isArray(row.images) ? row.images.length : 0})`}
                   </button>
                 </td>
 
