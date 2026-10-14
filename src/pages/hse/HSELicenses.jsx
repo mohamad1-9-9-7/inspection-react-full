@@ -8,6 +8,7 @@ import {
   apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "licenses_certs";
 
@@ -110,6 +111,41 @@ function txt(v, lang) {
   return v[lang] ?? v.ar ?? v.en ?? "";
 }
 
+/* ── Rules: a licence is only tracked if it can be found again (name,
+   authority, number) and its dates make sense — issued in the past, expiring
+   after issue, and no longer than its renewal cycle allows. ── */
+const CYCLE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12, biennial: 24, "3years": 36 };
+const LICENSE_RULES = [
+  { key: "category", label: T.category, required: true, oneOf: ["local", "international"] },
+  { key: "priority", label: T.priority, required: true, oneOf: ["critical", "high", "medium"] },
+  { key: "name", label: T.name, required: true, minLength: 3, maxLength: 150 },
+  { key: "issuer", label: T.issuer, required: true, maxLength: 120 },
+  { key: "number", label: T.number, required: true, maxLength: 60 },
+  { key: "issueDate", label: T.issueDate, type: "date", required: true, notFuture: true },
+  { key: "renewalCycle", label: T.cycle, required: true, oneOf: ["monthly", "quarterly", "yearly", "biennial", "3years", "ongoing"] },
+  { key: "expiryDate", label: T.expDate, type: "date", after: "issueDate",
+    requiredIf: (d) => d.renewalCycle !== "ongoing",
+    custom: (v, d) => {
+      const months = CYCLE_MONTHS[d.renewalCycle];
+      if (!v || !d.issueDate || !months) return null;
+      const limit = new Date(d.issueDate);
+      limit.setMonth(limit.getMonth() + months);
+      limit.setDate(limit.getDate() + 31);       // a month of grace for renewal paperwork
+      return new Date(v) > limit
+        ? { ar: "تاريخ الانتهاء أبعد مما تسمح به دورة التجديد", en: "The expiry is further away than the renewal cycle allows" } : null;
+    } },
+  { key: "notes", label: T.notes, maxLength: 2000 },
+];
+const LICENSE_STEPS = [
+  { ar: "اختر التصنيف (محلي/دولي) والأولوية.", en: "Choose the category (local/international) and the priority." },
+  { ar: "اكتب اسم الترخيص، الجهة المانحة ورقمه كما هو مطبوع على الشهادة.", en: "Enter the licence name, the issuing authority and its number exactly as printed." },
+  { ar: "تاريخ الإصدار لا يكون في المستقبل، وتاريخ الانتهاء بعده وضمن دورة التجديد المختارة.", en: "The issue date cannot be in the future; the expiry must follow it and fit the chosen renewal cycle." },
+  { ar: "الترخيص «المستمر» فقط يُقبل بدون تاريخ انتهاء.", en: "Only an “Ongoing” licence may be saved without an expiry date." },
+];
+const LICENSE_GUIDANCE = [
+  { kind: "warn", ar: "ابدأ التجديد قبل 60 يوماً من الانتهاء — يظهر الترخيص بالبرتقالي في القائمة.", en: "Start renewal 60 days before expiry — the licence turns amber in the list." },
+];
+
 export default function HSELicenses() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -119,6 +155,7 @@ export default function HSELicenses() {
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(LICENSE_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -147,16 +184,16 @@ export default function HSELicenses() {
       issuer: txt(it.issuer, lang),
       notes: txt(it.notes, lang),
     });
-    setEditingId(it.id); setTab("new");
+    setEditingId(it.id); validation.reset(); setTab("new");
   }
   async function save() {
-    if (!String(draft.name).trim()) { alert(pick(T.needName)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) await apiUpdate(TYPE, editingId, draft);
       else await apiSave(TYPE, draft);
       await reload();
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -208,7 +245,7 @@ export default function HSELicenses() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }}>{pick(T.list)}</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); setTab("new"); }}>{pick(T.newCert)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newCert)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
@@ -236,53 +273,55 @@ export default function HSELicenses() {
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{pick(T.category)}</label>
-                <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={inputStyle}>
-                  <option value="local">{pick(T.catLocal)}</option>
-                  <option value="international">{pick(T.catIntl)}</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.priority)}</label>
-                <select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })} style={inputStyle}>
-                  <option value="critical">{pick(T.pCrit)}</option>
-                  <option value="high">{pick(T.pHigh)}</option>
-                  <option value="medium">{pick(T.pMed)}</option>
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.name)}</label><input type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.issuer)}</label><input type="text" value={draft.issuer} onChange={(e) => setDraft({ ...draft, issuer: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.number)}</label><input type="text" value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.issueDate)}</label><input type="date" value={draft.issueDate} onChange={(e) => setDraft({ ...draft, issueDate: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.expDate)}</label><input type="date" value={draft.expiryDate} onChange={(e) => setDraft({ ...draft, expiryDate: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.cycle)}</label>
-                <select value={draft.renewalCycle} onChange={(e) => setDraft({ ...draft, renewalCycle: e.target.value })} style={inputStyle}>
-                  <option value="monthly">{pick(T.cMonthly)}</option>
-                  <option value="quarterly">{pick(T.cQuarterly)}</option>
-                  <option value="yearly">{pick(T.cYearly)}</option>
-                  <option value="biennial">{pick(T.cBiennial)}</option>
-                  <option value="3years">{pick(T.c3Years)}</option>
-                  <option value="ongoing">{pick(T.cOngoing)}</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.notes)}</label>
-              <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "التراخيص والشهادات", en: "Licenses & Certifications" }}
+              subtitle={T.subtitle}
+              docNo="LIC"
+              accent={HSE_COLORS.primary}
+              steps={LICENSE_STEPS}
+              guidance={LICENSE_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات الترخيص" : "Licence details"}>
+                <HSEField {...f("category")} type="select" label={pick(T.category)} options={[
+                  { v: "local", label: pick(T.catLocal) },
+                  { v: "international", label: pick(T.catIntl) },
+                ]} />
+                <HSEField {...f("priority")} type="select" label={pick(T.priority)} options={[
+                  { v: "critical", label: pick(T.pCrit) },
+                  { v: "high", label: pick(T.pHigh) },
+                  { v: "medium", label: pick(T.pMed) },
+                ]} />
+                <HSEField {...f("name")} label={pick(T.name)} />
+                <HSEField {...f("issuer")} label={pick(T.issuer)} />
+                <HSEField {...f("number")} label={pick(T.number)} />
+              </HSEPanel>
+              <HSEPanel title={lang === "ar" ? "الصلاحية" : "Validity"}>
+                <HSEField {...f("issueDate")} type="date" label={pick(T.issueDate)} />
+                <HSEField {...f("renewalCycle")} type="select" label={pick(T.cycle)} options={[
+                  { v: "monthly", label: pick(T.cMonthly) },
+                  { v: "quarterly", label: pick(T.cQuarterly) },
+                  { v: "yearly", label: pick(T.cYearly) },
+                  { v: "biennial", label: pick(T.cBiennial) },
+                  { v: "3years", label: pick(T.c3Years) },
+                  { v: "ongoing", label: pick(T.cOngoing) },
+                ]} />
+                <HSEField {...f("expiryDate")} type="date" label={pick(T.expDate)} />
+                <HSEField {...f("notes")} type="textarea" full label={pick(T.notes)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <>

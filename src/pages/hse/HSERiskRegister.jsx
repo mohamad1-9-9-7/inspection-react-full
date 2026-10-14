@@ -10,6 +10,7 @@ import {
   SITE_LOCATIONS, HAZARD_CATEGORIES, CONTROL_TYPES, localize,
   useHSELang, HSELangToggle,
 } from "./hseShared";
+import { useHSEValidation } from "./hseFormKit";
 import { SEED_RISKS, LOADING_RISKS, SEED_CATALOG } from "./hseRiskSeeds";
 import { SOP_OPTIONS, findSop } from "./hseSopData";
 import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
@@ -246,6 +247,43 @@ function wrapLang(original, value, lang) {
   return { [lang]: value };
 }
 
+/* ── Rules: the 5×5 matrix only has 1–5 on each axis; residual risk is
+   either not assessed (both 0) or fully assessed (both 1–5), and controls can
+   only lower a risk — the residual score never exceeds the initial one. ── */
+const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+const RISK_RULES = [
+  { key: "area", label: T.area, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "category", label: T.category, required: true, oneOf: HAZARD_CATEGORIES.map((x) => x.v) },
+  { key: "owner", label: T.owner, required: true, maxLength: 80 },
+  { key: "likelihood", label: T.likelihood, type: "int", required: true, min: 1, max: 5 },
+  { key: "severity", label: T.severity, type: "int", required: true, min: 1, max: 5 },
+  { key: "reviewDate", label: T.reviewDate, type: "date", required: true },
+  { key: "hazard", label: T.hazard, required: true, minLength: 5, maxLength: 300 },
+  { key: "consequence", label: T.consequence, required: true, minLength: 5, maxLength: 2000 },
+  { key: "controls", label: T.controls, required: true, minLength: 5, maxLength: 3000 },
+  { key: "controlType", label: T.controlType, required: true, oneOf: CONTROL_TYPES.map((x) => x.v) },
+  { key: "linkedForm", label: T.linkedForm, maxLength: 60 },
+  { key: "residualLikelihood", label: T.resLikelihood, type: "int", min: 0, max: 5 },
+  { key: "residualSeverity", label: T.resSeverity, type: "int", min: 0, max: 5,
+    custom: (v, d) => {
+      const l = Number(d.residualLikelihood) || 0, s = Number(v) || 0;
+      if ((l === 0) !== (s === 0))
+        return { ar: "قيّم الاحتمالية والشدة المتبقيتين معاً، أو اتركهما صفراً", en: "Rate residual likelihood and severity together, or leave both at 0" };
+      if (l && s && l * s > (Number(d.likelihood) || 0) * (Number(d.severity) || 0))
+        return { ar: "الخطر المتبقي لا يكون أعلى من الخطر الأصلي", en: "Residual risk cannot be higher than the initial risk" };
+      return null;
+    } },
+  { key: "reviewedBy", label: T.reviewedBy, maxLength: 80 },
+  { key: "reviewedDate", label: T.reviewedDate, type: "date", notFuture: true,
+    requiredIf: (d) => !!String(d.reviewedBy || "").trim() },
+];
+const RISK_STEPS = [
+  { ar: "حدّد المنطقة، فئة الخطر، ومالك الخطر المسؤول عن ضبطه.", en: "Set the area, hazard category and the risk owner responsible for control." },
+  { ar: "اكتب الخطر والنتيجة المحتملة وإجراءات التحكم الحالية.", en: "Describe the hazard, the possible consequence and the current controls." },
+  { ar: "قيّم الاحتمالية والشدة من 1 إلى 5 — لا تُقبل قيمة خارج المصفوفة.", en: "Rate likelihood and severity from 1 to 5 — values outside the matrix are refused." },
+  { ar: "بعد التحكم: قيّم الاحتمالية والشدة المتبقيتين معاً (1–5)، ولا تكون النتيجة أعلى من الأصلية.", en: "After controls: rate residual likelihood and severity together (1–5); the result cannot exceed the initial score." },
+];
+
 export default function HSERiskRegister() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -256,6 +294,7 @@ export default function HSERiskRegister() {
   const [draft, setDraft] = useState(blank());
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(RISK_RULES, draft, lang);
   const [uploading, setUploading] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [doc, setDoc] = useState(blankDoc());
@@ -318,7 +357,7 @@ export default function HSERiskRegister() {
     return () => { alive = false; };
   }, []);
 
-  function startNew() { setDraft(blank()); setEditingId("__new__"); setShowForm(true); }
+  function startNew() { setDraft(blank()); setEditingId("__new__"); validation.reset(); setShowForm(true); }
 
   function startEdit(r) {
     setDraft({
@@ -331,11 +370,12 @@ export default function HSERiskRegister() {
       controls: txt(r.controls, lang),
     });
     setEditingId(r.id);
+    validation.reset();
     setShowForm(true);
   }
 
   async function save() {
-    if (!String(draft.hazard).trim()) { alert(pick(T.enterHazard)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       const { origHazard, origConsequence, origControls, ...rest } = draft;
@@ -352,7 +392,7 @@ export default function HSERiskRegister() {
         await apiUpdate("risk_register", editingId, payload);
       }
       await reload();
-      setShowForm(false); setEditingId(null);
+      setShowForm(false); setEditingId(null); validation.reset();
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -692,6 +732,21 @@ export default function HSERiskRegister() {
             <div style={UI.sectionTitle}>
               {editingId === "__new__" ? pick(T.newTitle) : pick(T.editTitle)}
             </div>
+            <ol style={{ margin: "0 0 12px", paddingInlineStart: 22, display: "grid", gap: 4, fontSize: 13.5, fontWeight: 600, color: "#334155", lineHeight: 1.6 }}>
+              {RISK_STEPS.map((s, i) => <li key={i}>{pick(s)}</li>)}
+            </ol>
+            <div ref={validation.summaryRef}>
+              {validation.list.length > 0 && (
+                <div role="alert" style={{ margin: "0 0 12px", padding: "12px 16px", borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", borderInlineStart: "4px solid #dc2626" }}>
+                  <div style={{ fontWeight: 900, color: "#991b1b", marginBottom: 6 }}>
+                    ⛔ {pick({ ar: "لا يمكن الحفظ — صحّح الحقول التالية:", en: "Cannot save — fix the following fields:" })}
+                  </div>
+                  <ul style={{ margin: 0, paddingInlineStart: 18, color: "#7f1d1d", fontSize: 13.5, fontWeight: 600 }}>
+                    {validation.list.map((e, i) => <li key={e.key + i}><b>{e.label}</b> — {e.message}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
               <div>
                 <label style={labelStyle}>{pick(T.area)}</label>
@@ -711,11 +766,19 @@ export default function HSERiskRegister() {
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.likelihood)}</label>
-                <input type="number" min="1" max="5" value={draft.likelihood} onChange={(e) => setDraft({ ...draft, likelihood: Number(e.target.value) || 1 })} style={inputStyle} />
+                <input type="number" min="1" max="5" step="1" inputMode="numeric" value={draft.likelihood}
+                  onKeyDown={(e) => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); }}
+                  onChange={(e) => setDraft({ ...draft, likelihood: clampInt(e.target.value, 1, 5) })}
+                  style={{ ...inputStyle, ...(validation.errors.likelihood ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} />
+                {validation.errors.likelihood && <div className="hk-err" style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c", marginTop: 4 }}>{validation.errors.likelihood}</div>}
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.severity)}</label>
-                <input type="number" min="1" max="5" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: Number(e.target.value) || 1 })} style={inputStyle} />
+                <input type="number" min="1" max="5" step="1" inputMode="numeric" value={draft.severity}
+                  onKeyDown={(e) => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); }}
+                  onChange={(e) => setDraft({ ...draft, severity: clampInt(e.target.value, 1, 5) })}
+                  style={{ ...inputStyle, ...(validation.errors.severity ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} />
+                {validation.errors.severity && <div className="hk-err" style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c", marginTop: 4 }}>{validation.errors.severity}</div>}
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.reviewDate)}</label>
@@ -755,11 +818,19 @@ export default function HSERiskRegister() {
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.resLikelihood)}</label>
-                <input type="number" min="0" max="5" value={draft.residualLikelihood || 0} onChange={(e) => setDraft({ ...draft, residualLikelihood: Number(e.target.value) || 0 })} style={inputStyle} />
+                <input type="number" min="0" max="5" step="1" inputMode="numeric" value={draft.residualLikelihood || 0}
+                  onKeyDown={(e) => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); }}
+                  onChange={(e) => setDraft({ ...draft, residualLikelihood: clampInt(e.target.value, 0, 5) })}
+                  style={{ ...inputStyle, ...(validation.errors.residualLikelihood ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} />
+                {validation.errors.residualLikelihood && <div className="hk-err" style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c", marginTop: 4 }}>{validation.errors.residualLikelihood}</div>}
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.resSeverity)}</label>
-                <input type="number" min="0" max="5" value={draft.residualSeverity || 0} onChange={(e) => setDraft({ ...draft, residualSeverity: Number(e.target.value) || 0 })} style={inputStyle} />
+                <input type="number" min="0" max="5" step="1" inputMode="numeric" value={draft.residualSeverity || 0}
+                  onKeyDown={(e) => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); }}
+                  onChange={(e) => setDraft({ ...draft, residualSeverity: clampInt(e.target.value, 0, 5) })}
+                  style={{ ...inputStyle, ...(validation.errors.residualSeverity ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} />
+                {validation.errors.residualSeverity && <div className="hk-err" style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c", marginTop: 4 }}>{validation.errors.residualSeverity}</div>}
               </div>
               <div>
                 <label style={labelStyle}>{pick(T.reviewedBy)}</label>

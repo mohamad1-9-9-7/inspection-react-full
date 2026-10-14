@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "monthly_safety_reports";
 
@@ -142,6 +143,91 @@ const blank = () => {
   };
 };
 
+/* ── Rules: every KPI cell is a count — a whole number, never negative —
+   except man-hours (any number) and KPI rate (0–100 %); the cumulative
+   column can never be below this period; recordable incidents include the
+   fatalities and lost-time ones; the period itself fits its type. ── */
+const METRIC_GROUPS = { project: PROJECT_METRICS, health: HEALTH_METRICS, training: TRAINING_METRICS, audit: AUDIT_METRICS };
+
+/** Message for one KPI cell, or null. Shared by the rules and the table. */
+function metricCellError(metricKey, field, cur) {
+  const raw = cur?.[field];
+  if (raw === "" || raw == null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return { ar: "رقم موجب فقط", en: "Positive numbers only" };
+  if (metricKey === "kpiRate") { if (n > 100) return { ar: "النسبة من 0 إلى 100", en: "Rate is 0 to 100" }; return null; }
+  if (metricKey !== "manHours" && !Number.isInteger(n)) return { ar: "رقم صحيح فقط", en: "Whole numbers only" };
+  if (n > (metricKey === "manHours" ? 10000000 : 100000)) return { ar: "قيمة غير منطقية", en: "Value is not plausible" };
+  if (field === "cum" && metricKey !== "kpiRate" && cur.thisP !== "" && cur.thisP != null && n < Number(cur.thisP))
+    return { ar: "التراكمي أقل من هذه الفترة", en: "Cumulative is below this period" };
+  return null;
+}
+
+const metricRule = (group, label) => ({
+  key: group, label,
+  custom: (v, d) => {
+    for (const m of METRIC_GROUPS[group]) {
+      for (const field of ["thisP", "cum"]) {
+        const e = metricCellError(m.v, field, v?.[m.v]);
+        if (e) return { ar: `${m.ar}: ${e.ar}`, en: `${m.en}: ${e.en}` };
+      }
+    }
+    if (group === "health") {
+      const val = (k, f) => Number(v?.[k]?.[f]) || 0;
+      for (const f of ["thisP", "cum"]) {
+        if (v?.tri?.[f] !== "" && v?.tri?.[f] != null && val("tri", f) < val("fatalities", f) + val("lta", f))
+          return { ar: "إجمالي الحوادث المسجّلة (TRI) يشمل الوفيات وحوادث فقد الوقت — لا يكون أقل منها", en: "TRI includes fatalities and LTAs — it cannot be lower than their sum" };
+      }
+    }
+    if (group === "project" && Number(v?.employees?.thisP) > 0 && v?.manHours?.thisP !== "" && v?.manHours?.thisP != null) {
+      const days = d.dateFrom && d.dateTo ? Math.max(1, (new Date(d.dateTo) - new Date(d.dateFrom)) / 86400000 + 1) : 31;
+      if (Number(v.manHours.thisP) > Number(v.employees.thisP) * 24 * days)
+        return { ar: "ساعات العمل أكثر من عدد الموظفين × 24 ساعة × أيام الفترة", en: "Man-hours exceed employees × 24 h × days in the period" };
+    }
+    return null;
+  },
+});
+
+const MSR_RULES = [
+  { key: "periodType", label: T.period, required: true, oneOf: ["weekly", "monthly"] },
+  { key: "month", label: T.month, required: true, maxLength: 40 },
+  { key: "dateFrom", label: T.dateFrom, type: "date", required: true, notFuture: true },
+  { key: "dateTo", label: T.dateTo, type: "date", required: true, afterOrEqual: "dateFrom",
+    custom: (v, d) => {
+      if (!v || !d.dateFrom) return null;
+      const days = (new Date(v) - new Date(d.dateFrom)) / 86400000 + 1;
+      const max = d.periodType === "weekly" ? 7 : 31;
+      return days > max
+        ? { ar: `الفترة ${d.periodType === "weekly" ? "الأسبوعية" : "الشهرية"} لا تتجاوز ${max} يوماً`, en: `A ${d.periodType} period cannot exceed ${max} days` } : null;
+    } },
+  { key: "projectTitle", label: T.projectTitle, required: true, maxLength: 120 },
+  { key: "contractor", label: T.contractor, maxLength: 120 },
+  { key: "contractNo", label: T.contractNo, maxLength: 40 },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  metricRule("project", T.s2Title),
+  metricRule("health", T.s3Title),
+  metricRule("training", T.s4Title),
+  metricRule("audit", T.s5Title),
+  { key: "spiResults", label: T.spiResults, maxLength: 3000 },
+  { key: "toolboxTopics", label: T.toolboxTopics, maxLength: 3000 },
+  { key: "notes", label: T.notes, maxLength: 3000 },
+  { key: "preparedBy", label: T.preparedBy, required: true, maxLength: 80 },
+  { key: "reviewedBy", label: T.reviewedBy, maxLength: 80,
+    custom: (v, d) => v && d.preparedBy && v.trim().toLowerCase() === d.preparedBy.trim().toLowerCase()
+      ? { ar: "المراجِع يجب أن يكون غير المُعِد", en: "The reviewer must differ from the preparer" } : null },
+  { key: "approvedBy", label: T.approvedBy, maxLength: 80 },
+];
+const MSR_STEPS = [
+  { ar: "اختر نوع الفترة (أسبوعي/شهري) واكتب اسمها، ثم تاريخ البداية والنهاية — أسبوعي ≤ 7 أيام، شهري ≤ 31 يوماً.", en: "Choose the period type (weekly/monthly) and name it, then the start and end date — weekly ≤ 7 days, monthly ≤ 31." },
+  { ar: "اكتب اسم المنشأة والموقع.", en: "Enter the facility name and location." },
+  { ar: "املأ كل مؤشر: «هذه الفترة» و«التراكمي» — أرقام صحيحة موجبة، والتراكمي لا يقل عن الفترة.", en: "Fill each indicator: “This period” and “Cumulative” — whole positive numbers, cumulative never below the period." },
+  { ar: "استخدم أرقام الحوادث المحسوبة تلقائياً من تقارير F-01 أعلاه للمقارنة.", en: "Use the incident figures calculated from the F-01 reports above to cross-check." },
+  { ar: "اكتب نتائج SPI ومواضيع Toolbox، ثم يوقّع المُعِد ويراجع شخص آخر.", en: "Write the SPI results and toolbox topics; the preparer signs and someone else reviews." },
+];
+const MSR_GUIDANCE = [
+  { kind: "tip", ar: "TRI = الوفيات + LTA + الحالات الطبية المسجّلة — لا يكون أقل من مجموع الوفيات و LTA.", en: "TRI = fatalities + LTAs + recordable medical cases — never lower than fatalities + LTAs." },
+];
+
 export default function HSEMonthlySafetyReport() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -186,6 +272,7 @@ export default function HSEMonthlySafetyReport() {
   }, [incidents, selectedMonth]);
 
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(MSR_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -205,11 +292,12 @@ export default function HSEMonthlySafetyReport() {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.month.trim() && !draft.dateFrom) { alert(pick(T.needMonth)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -219,7 +307,7 @@ export default function HSEMonthlySafetyReport() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -247,7 +335,7 @@ export default function HSEMonthlySafetyReport() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newReport)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
@@ -290,69 +378,66 @@ export default function HSEMonthlySafetyReport() {
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            {/* Section 1 */}
-            <SectionHeader title={pick(T.s1Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.reportNo)}</label><input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.period)}</label>
-                <select value={draft.periodType} onChange={(e) => setDraft({ ...draft, periodType: e.target.value })} style={inputStyle}>
-                  <option value="weekly">{pick(T.weekly)}</option>
-                  <option value="monthly">{pick(T.monthly)}</option>
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.month)}</label><input type="text" value={draft.month} placeholder={pick(T.monthPh)} onChange={(e) => setDraft({ ...draft, month: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.dateFrom)}</label><input type="date" value={draft.dateFrom} onChange={(e) => setDraft({ ...draft, dateFrom: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.dateTo)}</label><input type="date" value={draft.dateTo} onChange={(e) => setDraft({ ...draft, dateTo: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.projectTitle)}</label><input type="text" value={draft.projectTitle} onChange={(e) => setDraft({ ...draft, projectTitle: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.contractor)}</label><input type="text" value={draft.contractor} onChange={(e) => setDraft({ ...draft, contractor: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.contractNo)}</label><input type="text" value={draft.contractNo} onChange={(e) => setDraft({ ...draft, contractNo: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
-              </div>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const section = (group, title, metrics) => (
+            <div data-hk-field={group}>
+              <MetricSection title={title} metrics={metrics} group={group} lang={lang} pick={pick} t={T} draft={draft} setMetric={setMetric} />
+              {validation.errors[group] && <div className="hk-err" style={{ margin: "6px 0 10px" }}>{validation.errors[group]}</div>}
             </div>
+          );
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "التقرير الشهري / الأسبوعي للسلامة", en: "Monthly / Weekly Safety Report" }}
+              subtitle={T.subtitle}
+              docNo="F-21"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.reportNo), value: draft.reportNo }]}
+              steps={MSR_STEPS}
+              guidance={MSR_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={pick(T.s1Title)}>
+                <HSEField {...f("periodType")} type="select" label={pick(T.period)} options={[
+                  { v: "weekly", label: pick(T.weekly) },
+                  { v: "monthly", label: pick(T.monthly) },
+                ]} />
+                <HSEField {...f("month")} label={pick(T.month)} placeholder={pick(T.monthPh)} />
+                <HSEField {...f("dateFrom")} type="date" label={pick(T.dateFrom)} />
+                <HSEField {...f("dateTo")} type="date" label={pick(T.dateTo)} />
+                <HSEField {...f("projectTitle")} label={pick(T.projectTitle)} />
+                <HSEField {...f("contractor")} label={pick(T.contractor)} />
+                <HSEField {...f("contractNo")} label={pick(T.contractNo)} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+              </HSEPanel>
 
-            <MetricSection title={pick(T.s2Title)} metrics={PROJECT_METRICS} group="project" lang={lang} pick={pick} t={T} draft={draft} setMetric={setMetric} />
-            <MetricSection title={pick(T.s3Title)} metrics={HEALTH_METRICS} group="health" lang={lang} pick={pick} t={T} draft={draft} setMetric={setMetric} />
-            <MetricSection title={pick(T.s4Title)} metrics={TRAINING_METRICS} group="training" lang={lang} pick={pick} t={T} draft={draft} setMetric={setMetric} />
-            <MetricSection title={pick(T.s5Title)} metrics={AUDIT_METRICS} group="audit" lang={lang} pick={pick} t={T} draft={draft} setMetric={setMetric} />
+              {section("project", pick(T.s2Title), PROJECT_METRICS)}
+              {section("health", pick(T.s3Title), HEALTH_METRICS)}
+              {section("training", pick(T.s4Title), TRAINING_METRICS)}
+              {section("audit", pick(T.s5Title), AUDIT_METRICS)}
 
-            {/* Section 6 */}
-            <SectionHeader title={pick(T.s6Title)} />
-            <div>
-              <label style={labelStyle}>{pick(T.spiResults)}</label>
-              <textarea value={draft.spiResults} onChange={(e) => setDraft({ ...draft, spiResults: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.toolboxTopics)}</label>
-              <textarea value={draft.toolboxTopics} onChange={(e) => setDraft({ ...draft, toolboxTopics: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.notes)}</label>
-              <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
+              <HSEPanel title={pick(T.s6Title)}>
+                <HSEField {...f("spiResults")} type="textarea" full label={pick(T.spiResults)} />
+                <HSEField {...f("toolboxTopics")} type="textarea" full label={pick(T.toolboxTopics)} />
+                <HSEField {...f("notes")} type="textarea" full label={pick(T.notes)} />
+              </HSEPanel>
 
-            {/* Section 7 */}
-            <SectionHeader title={pick(T.s7Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.preparedBy)}</label><input type="text" value={draft.preparedBy} onChange={(e) => setDraft({ ...draft, preparedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.reviewedBy)}</label><input type="text" value={draft.reviewedBy} onChange={(e) => setDraft({ ...draft, reviewedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.approvedBy)}</label><input type="text" value={draft.approvedBy} onChange={(e) => setDraft({ ...draft, approvedBy: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={pick(T.s7Title)}>
+                <HSEField {...f("preparedBy")} label={pick(T.preparedBy)} />
+                <HSEField {...f("reviewedBy")} label={pick(T.reviewedBy)} />
+                <HSEField {...f("approvedBy")} label={pick(T.approvedBy)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>
@@ -457,12 +542,16 @@ function MetricSection({ title, metrics, group, lang, pick, t, draft, setMetric 
                 <tr key={m.v}>
                   <td style={{ ...tdStyle, fontWeight: 700 }}>{m[lang]}</td>
                   <td style={tdStyle}>
-                    <input type="number" value={cur.thisP} onChange={(e) => setMetric(group, m.v, "thisP", e.target.value)}
-                      style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} placeholder="0" />
+                    <input type="number" min="0" max={m.v === "kpiRate" ? 100 : undefined} step={m.v === "manHours" || m.v === "kpiRate" ? "any" : 1}
+                      value={cur.thisP} onChange={(e) => setMetric(group, m.v, "thisP", e.target.value)}
+                      onKeyDown={(e) => { if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault(); }}
+                      style={{ ...inputStyle, padding: "6px 10px", minHeight: 38, ...(metricCellError(m.v, "thisP", cur) ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} placeholder="0" />
                   </td>
                   <td style={tdStyle}>
-                    <input type="number" value={cur.cum} onChange={(e) => setMetric(group, m.v, "cum", e.target.value)}
-                      style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} placeholder="0" />
+                    <input type="number" min="0" max={m.v === "kpiRate" ? 100 : undefined} step={m.v === "manHours" || m.v === "kpiRate" ? "any" : 1}
+                      value={cur.cum} onChange={(e) => setMetric(group, m.v, "cum", e.target.value)}
+                      onKeyDown={(e) => { if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault(); }}
+                      style={{ ...inputStyle, padding: "6px 10px", minHeight: 38, ...(metricCellError(m.v, "cum", cur) ? { borderColor: "#dc2626", background: "#fef2f2" } : null) }} placeholder="0" />
                   </td>
                 </tr>
               );

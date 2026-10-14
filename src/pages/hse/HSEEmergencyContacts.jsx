@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "emergency_contacts";
 
@@ -149,6 +150,64 @@ const blank = () => ({
   })),
 });
 
+/* ── Rules: an emergency list is only useful if every number on it can be
+   dialled — so phone fields take digits only (3–15, short codes like 999
+   allowed), the sheet has a validity window of at most one year, and at
+   least one first aider with a current certificate is listed. ── */
+const EMC_PHONE = /^\+?\d{3,15}$/;
+const badPhone = (v) => v && !EMC_PHONE.test(String(v).replace(/[\s()-]/g, ""));
+const phoneMsg = { ar: "رقم هاتف غير صالح (أرقام فقط)", en: "Invalid phone number (digits only)" };
+const contactsRule = (key, label) => ({
+  key, label,
+  custom: (v) => {
+    const i = (v || []).findIndex((r) => badPhone(r.tel) || badPhone(r.alt));
+    return i >= 0 ? { ar: `السطر ${i + 1}: رقم هاتف غير صالح (أرقام فقط)`, en: `Line ${i + 1}: invalid phone number (digits only)` } : null;
+  },
+});
+
+const EMC_RULES = [
+  { key: "date", label: T.date, type: "date", required: true, notFuture: true },
+  { key: "validUntil", label: T.validUntil, type: "date", required: true, after: "date",
+    custom: (v, d) => v && d.date && (new Date(v) - new Date(d.date)) / 86400000 > 366
+      ? { ar: "القائمة تُراجع سنوياً على الأقل — الصلاحية لا تتجاوز سنة", en: "The list is reviewed at least yearly — validity cannot exceed one year" } : null },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "preparedBy", label: T.preparedBy, required: true, maxLength: 80 },
+  { key: "siteAddress", label: T.siteAddr, required: true, maxLength: 200 },
+  { key: "siteTel", label: T.siteTel, required: true, custom: (v) => (badPhone(v) ? phoneMsg : null) },
+  { key: "contractsMgr", label: T.contractsMgr, required: true, maxLength: 80 },
+  { key: "contractsTel", label: T.contractsTel, required: true, custom: (v) => (badPhone(v) ? phoneMsg : null) },
+  { key: "deputy", label: T.deputy, maxLength: 80 },
+  { key: "deputyTel", label: T.deputyTel, requiredIf: (d) => !!String(d.deputy || "").trim(), custom: (v) => (badPhone(v) ? phoneMsg : null) },
+  { key: "firstAiders", label: T.faTitle,
+    custom: (v, d) => {
+      const rows = (v || []).filter((r) => String(r.name || "").trim());
+      if (!rows.length) return { ar: "سجّل مسعفاً واحداً على الأقل", en: "List at least one first aider" };
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (!String(r.certNo || "").trim()) return { ar: `${r.name}: رقم شهادة الإسعاف إلزامي`, en: `${r.name}: first-aid certificate no. is required` };
+        if (!r.expiry) return { ar: `${r.name}: تاريخ انتهاء الشهادة إلزامي`, en: `${r.name}: certificate expiry is required` };
+        if (d.date && r.expiry < d.date) return { ar: `${r.name}: شهادة الإسعاف منتهية`, en: `${r.name}: first-aid certificate has expired` };
+        if (!r.tel || badPhone(r.tel)) return { ar: `${r.name}: رقم هاتف صالح إلزامي`, en: `${r.name}: a valid phone number is required` };
+      }
+      return null;
+    } },
+  contactsRule("localAuthorities", T.s2Title),
+  contactsRule("hospitals", T.s3Title),
+  contactsRule("statutory", T.s4Title),
+  contactsRule("enforcing", T.s5Title),
+  contactsRule("others", T.s6Title),
+];
+const EMC_STEPS = [
+  { ar: "سجّل تاريخ الإعداد وتاريخ صلاحية القائمة (سنة كحد أقصى) والموقع.", en: "Enter the preparation date, the list's validity (one year at most) and the location." },
+  { ar: "اكتب عنوان الموقع وهاتفه، ومدير العقود ونائبه مع أرقامهم — أرقام فقط.", en: "Enter the site address and phone, and the contracts manager and deputy with numbers — digits only." },
+  { ar: "سجّل المسعفين: الاسم، المنطقة، الوردية، رقم الشهادة، تاريخ انتهائها (يجب أن تكون سارية) والهاتف.", en: "List the first aiders: name, area, shift, certificate no., its expiry (must be current) and phone." },
+  { ar: "راجع أرقام الجهات الرسمية والمستشفيات، وأكمل أسماء وأرقام الإدارة الداخلية.", en: "Check the authority and hospital numbers, and fill in the internal management names and numbers." },
+];
+const EMC_GUIDANCE = [
+  { kind: "warn", ar: "اطبع القائمة وعلّقها عند كل هاتف ومدخل بعد كل تحديث.", en: "Print the list and post it at every phone and entrance after each update." },
+  { kind: "tip",  ar: "الشرطة 999 · الإسعاف 998 · الدفاع المدني 997.", en: "Police 999 · Ambulance 998 · Civil Defence 997." },
+];
+
 export default function HSEEmergencyContacts() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -158,6 +217,7 @@ export default function HSEEmergencyContacts() {
   const [viewing, setViewing] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(EMC_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -170,6 +230,7 @@ export default function HSEEmergencyContacts() {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
@@ -189,7 +250,7 @@ export default function HSEEmergencyContacts() {
   }
 
   async function save() {
-    if (!draft.preparedBy.trim()) { alert(pick(T.needPrep)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -199,7 +260,7 @@ export default function HSEEmergencyContacts() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -227,63 +288,79 @@ export default function HSEEmergencyContacts() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newReport)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.reportNo)}</label><input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.validUntil)}</label><input type="date" value={draft.validUntil} onChange={(e) => setDraft({ ...draft, validUntil: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const groupErr = (g) => validation.errors[g] && (
+            <div className="hk-err" style={{ marginTop: 6 }}>{validation.errors[g]}</div>
+          );
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "قائمة جهات الطوارئ", en: "Emergency Contacts" }}
+              docNo="F-31"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.reportNo), value: draft.reportNo }]}
+              steps={EMC_STEPS}
+              guidance={EMC_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات القائمة" : "List details"}>
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("validUntil")} type="date" label={pick(T.validUntil)} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("preparedBy")} label={pick(T.preparedBy)} />
+              </HSEPanel>
+
+              <HSEPanel title={pick(T.s1Title)}>
+                <HSEField {...f("siteAddress")} label={pick(T.siteAddr)} />
+                <HSEField {...f("siteTel")} type="phone" label={pick(T.siteTel)} />
+                <HSEField {...f("contractsMgr")} label={pick(T.contractsMgr)} />
+                <HSEField {...f("contractsTel")} type="phone" label={pick(T.contractsTel)} />
+                <HSEField {...f("deputy")} label={pick(T.deputy)} />
+                <HSEField {...f("deputyTel")} type="phone" label={pick(T.deputyTel)} />
+              </HSEPanel>
+
+              <div className="ph-fieldbar" data-hk-field="firstAiders"
+                style={validation.errors.firstAiders ? { borderColor: "#dc2626" } : undefined}>
+                <FirstAiderSection
+                  rows={draft.firstAiders} setRow={setRow} addRow={addRow} removeRow={removeRow}
+                  pick={pick} t={T}
+                />
+                {groupErr("firstAiders")}
               </div>
-              <div><label style={labelStyle}>{pick(T.preparedBy)}</label><input type="text" value={draft.preparedBy} onChange={(e) => setDraft({ ...draft, preparedBy: e.target.value })} style={inputStyle} /></div>
-            </div>
 
-            <SectionHeader title={pick(T.s1Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.siteAddr)}</label><input type="text" value={draft.siteAddress} onChange={(e) => setDraft({ ...draft, siteAddress: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.siteTel)}</label><input type="tel" value={draft.siteTel} onChange={(e) => setDraft({ ...draft, siteTel: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.contractsMgr)}</label><input type="text" value={draft.contractsMgr} onChange={(e) => setDraft({ ...draft, contractsMgr: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.contractsTel)}</label><input type="tel" value={draft.contractsTel} onChange={(e) => setDraft({ ...draft, contractsTel: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.deputy)}</label><input type="text" value={draft.deputy} onChange={(e) => setDraft({ ...draft, deputy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.deputyTel)}</label><input type="tel" value={draft.deputyTel} onChange={(e) => setDraft({ ...draft, deputyTel: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <FirstAiderSection
-              rows={draft.firstAiders} setRow={setRow} addRow={addRow} removeRow={removeRow}
-              pick={pick} t={T}
-            />
-
-            {[
-              ["localAuthorities", T.s2Title, "#fee2e2"],
-              ["hospitals", T.s3Title, "#dbeafe"],
-              ["statutory", T.s4Title, "#fef3c7"],
-              ["enforcing", T.s5Title, "#dcfce7"],
-              ["others", T.s6Title, "#fff7ed"],
-            ].map(([group, titleKey, bg]) => (
-              <ContactSection
-                key={group} group={group} title={pick(titleKey)} bg={bg}
-                rows={draft[group]} setRow={setRow} addRow={addRow} removeRow={removeRow}
-                pick={pick} t={T} lang={lang}
-              />
-            ))}
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              {[
+                ["localAuthorities", T.s2Title, "#fee2e2"],
+                ["hospitals", T.s3Title, "#dbeafe"],
+                ["statutory", T.s4Title, "#fef3c7"],
+                ["enforcing", T.s5Title, "#dcfce7"],
+                ["others", T.s6Title, "#fff7ed"],
+              ].map(([group, titleKey, bg]) => (
+                <div key={group} className="ph-fieldbar" data-hk-field={group}
+                  style={validation.errors[group] ? { borderColor: "#dc2626" } : undefined}>
+                  <ContactSection
+                    group={group} title={pick(titleKey)} bg={bg}
+                    rows={draft[group]} setRow={setRow} addRow={addRow} removeRow={removeRow}
+                    pick={pick} t={T} lang={lang}
+                  />
+                  {groupErr(group)}
+                </div>
+              ))}
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>
