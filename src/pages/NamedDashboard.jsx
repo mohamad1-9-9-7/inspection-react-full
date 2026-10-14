@@ -285,6 +285,57 @@ const ALL_ROLES = [
   },
 ];
 
+/* What each card opens — a real one-liner instead of a generic subtitle,
+   and the area tag shown in the card's corner. */
+const ROLE_INFO = {
+  kpi:              { tag: "Management", desc: "Performance indicators and trends" },
+  inspector:        { tag: "Operations", desc: "Branch inspections and audits" },
+  daily:            { tag: "Operations", desc: "Daily reports from every branch" },
+  ohc:              { tag: "Operations", desc: "Staff health certificates" },
+  returns:          { tag: "Operations", desc: "Branch and customer returns" },
+  finalProduct:     { tag: "Operations", desc: "Finished product checks" },
+  cars:             { tag: "Management", desc: "Delivery vehicles" },
+  maintenance:      { tag: "Management", desc: "Maintenance requests and repairs" },
+  qcsView:          { tag: "Operations", desc: "Incoming shipments and raw material" },
+  training:         { tag: "Quality",    desc: "Training certificates register" },
+  internalTraining: { tag: "Quality",    desc: "Courses, quizzes and attendance" },
+  iso:              { tag: "Quality",    desc: "FSMS manual, HACCP and documents" },
+  hse:              { tag: "Quality",    desc: "Health, safety and risk register" },
+  inventory:        { tag: "Operations", desc: "Butcher, manufacturing and workforce" },
+  productTrace:     { tag: "Quality",    desc: "From shipment to customer by item code" },
+  emailCenter:      { tag: "Management", desc: "Send and track report e-mails" },
+  dmChecked:        { tag: "External",   desc: "Dubai Municipality portal — opens in a new tab" },
+  settings:         { tag: "Management", desc: "Accounts, permissions and setup" },
+};
+
+/* globals.css forces every #root font-size with !important, so the inline
+   fontSize values never applied — real sizes live here (doubled class beats
+   `#root *`) and follow the Aa text-size slider via --app-fs. */
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const ND_CSS = `
+#root .ndx.ndx .ndx-eyebrow { font-size:${fs(12.5)}; }
+#root .ndx.ndx .ndx-title { font-size:${fs(30)}; }
+#root .ndx.ndx .ndx-sub { font-size:${fs(15)}; }
+#root .ndx.ndx .ndx-date { font-size:${fs(14)}; }
+#root .ndx.ndx .ndx-avatar { font-size:${fs(22)}; }
+#root .ndx.ndx .ndx-umeta { font-size:${fs(12.5)}; }
+#root .ndx.ndx .ndx-uname { font-size:${fs(17)}; }
+#root .ndx.ndx .ndx-clock { font-size:${fs(22)}; font-variant-numeric:tabular-nums; }
+#root .ndx.ndx .ndx-hbtn { font-size:${fs(14)}; }
+#root .ndx.ndx .ndx-search input { font-size:${fs(15)}; }
+#root .ndx.ndx .ndx-sicon { font-size:${fs(17)}; }
+#root .ndx.ndx .ndx-clear { font-size:${fs(15)}; }
+#root .ndx.ndx .ndx-chip { font-size:${fs(14)}; }
+#root .ndx.ndx .ndx-icon { font-size:${fs(28)}; }
+#root .ndx.ndx .ndx-tag { font-size:${fs(12)}; }
+#root .ndx.ndx .ndx-ctitle { font-size:${fs(19)}; }
+#root .ndx.ndx .ndx-csub { font-size:${fs(13.5)}; }
+#root .ndx.ndx .ndx-cfoot { font-size:${fs(14)}; }
+#root .ndx.ndx .ndx-foot { font-size:${fs(12)}; }
+#root .ndx.ndx .named-card .ndx-arrow { transition:transform .16s ease; }
+#root .ndx.ndx .named-card:hover .ndx-arrow { transform:translateX(4px); }
+`;
+
 /* greeting based on time */
 function greeting() {
   const h = new Date().getHours();
@@ -293,478 +344,23 @@ function greeting() {
   return "Good evening";
 }
 
-function LegacyNamedDashboard() {
-  const navigate    = useNavigate();
-  const [hovered, setHovered] = useState(null);
-  const [time, setTime]       = useState(new Date());
-
-  useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const currentUser = (() => {
-    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
-  })();
-
-  const displayName  = currentUser.displayName || currentUser.username || "User";
-  const permissions  = currentUser.permissions  || [];
-  const isFullAccess = permissions.includes("*") || permissions.length === 0;
-  const isAdmin      = !!currentUser.isAdmin;
-  const employees    = currentUser.employees    || [];
-
-  /* «مسؤول المخزون» (دور بالقوى العاملة) لازم يشوف كرت المخزون حتى لو
-     حسابه بلا أي قسم — الكرت هو بابه الوحيد، وصلاحياته جوّاته كاملة. */
-  const { officer: invOfficer } = useInventoryOfficer();
-  const visibleRoles = isFullAccess
-    ? ALL_ROLES
-    // anyOf = كرت مجمّع (مثل «المخزون») — يظهر إذا كان يملك أي وحدة بداخله
-    : ALL_ROLES.filter(r =>
-        permissions.includes(r.id) ||
-        (invOfficer && r.id === "inventory") ||
-        (Array.isArray(r.anyOf) && r.anyOf.some(x => permissions.includes(x)))
-      );
-
-  /* ── Operator session (who is working now) ──
-     • Admin: skipped entirely (no tracking needed)
-     • Non-admin: mandatory every new browser session, popup cannot be dismissed  */
-  const sessionKey = `operator_${currentUser.username}`;
-  const [operator, setOperator] = useState(() => {
-    if (isAdmin) return displayName; // admin uses own display name
-    return sessionStorage.getItem(sessionKey) || null;
-  });
-  const [showPicker, setShowPicker] = useState(() => {
-    if (isAdmin) return false;       // admin never sees picker
-    return !sessionStorage.getItem(sessionKey);
-  });
-
-  const handleOperatorConfirm = async (name) => {
-    sessionStorage.setItem(sessionKey, name);
-    setOperator(name);
-    setShowPicker(false);
-    // Log operator start to activity log
-    try {
-      await fetch(`${API_BASE}/api/auth/operator-start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUser.username, operator: name }),
-      }).catch(() => {}); // optional endpoint — ignore if not deployed
-    } catch { /* ignore */ }
-  };
-
-  const handleLogout = async () => {
-    if (!confirmLogoutWithOutbox()) return;
-    try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUser.username, operator }),
-      });
-    } catch { /* ignore */ }
-    clearAppSession();
-    navigate("/", { replace: true });
-  };
-
-  const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-
-  return (
-    <div style={s.page}>
-      {/* ── Operator picker popup ── */}
-      {showPicker && (
-        <OperatorPicker
-          employees={employees}
-          accountName={displayName}
-          onConfirm={handleOperatorConfirm}
-        />
-      )}
-
-      <style>{`
-        /* blob animation */
-        @keyframes ndFloat{
-          0%  {transform:translate(0,0)   scale(1);}
-          50% {transform:translate(40px,-24px) scale(1.08);}
-          100%{transform:translate(0,0)   scale(1);}
-        }
-        /* tile hover */
-        .nd-tile{transition:transform .22s ease,box-shadow .22s ease,filter .22s ease;}
-        .nd-tile:hover{
-          transform:translateY(-6px) scale(1.06) !important;
-          filter:brightness(1.08);
-        }
-        .nd-tile:active{transform:scale(.96) !important;}
-        /* button hover */
-        .nd-btn{transition:all .18s ease;}
-        .nd-btn:hover{opacity:.85;transform:translateY(-1px);}
-        .nd-btn:active{transform:scale(.96);}
-        /* shimmer on card */
-        @keyframes ndShimmer{
-          0%  {left:-100%;}
-          100%{left:200%;}
-        }
-      `}</style>
-
-      {/* ── blobs ── */}
-      <div style={{...s.blob,
-        left:-220, top:-200,
-        background:"radial-gradient(circle,rgba(34,211,238,.55),transparent 68%)",
-        animation:"ndFloat 18s ease-in-out infinite",
-      }}/>
-      <div style={{...s.blob,
-        right:-240, top:-150,
-        background:"radial-gradient(circle,rgba(124,58,237,.55),transparent 68%)",
-        animation:"ndFloat 21s ease-in-out infinite reverse",
-      }}/>
-      <div style={{...s.blob,
-        left:"30%", bottom:-240,
-        background:"radial-gradient(circle,rgba(16,185,129,.45),transparent 68%)",
-        animation:"ndFloat 24s ease-in-out infinite",
-      }}/>
-
-      {/* ════════════ TOP BAR ════════════ */}
-      <header style={s.header}>
-
-        {/* left: logo + name */}
-        <div style={s.brandRow}>
-          <img src={logo} alt="logo" style={s.brandLogo}/>
-          <div>
-            <div style={s.brandName}>Al Mawashi QMS</div>
-            <div style={s.brandSub}>Quality Management System</div>
-          </div>
-        </div>
-
-        {/* centre: clock */}
-        <div style={s.clockBox}>
-          <div style={s.clockTime}>{timeStr}</div>
-          <div style={s.clockDate}>{dateStr}</div>
-        </div>
-
-        {/* right: user + actions */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-          <div style={s.userChip}>
-            <div style={s.avatar}>{(operator || displayName)[0]?.toUpperCase()||"U"}</div>
-            <div>
-              <div style={s.userHello}>{greeting()} · Account: {displayName}</div>
-              <div style={s.userName}>
-                {operator || displayName}
-                {/* 🔄 Change operator — only for non-admin, requires re-selection */}
-                {operator && !isAdmin && (
-                  <button
-                    onClick={() => { sessionStorage.removeItem(sessionKey); setOperator(null); setShowPicker(true); }}
-                    title="Change operator"
-                    style={{
-                      marginLeft: 8, background: "none", border: "none",
-                      color: "rgba(255,255,255,.65)", cursor: "pointer",
-                      fontSize: 12, padding: 0, fontFamily: "inherit",
-                    }}
-                  >
-                    🔄
-                  </button>
-                )}
-                {/* Admin badge */}
-                {isAdmin && (
-                  <span style={{
-                    marginLeft: 8, fontSize: 10, fontWeight: 900,
-                    background: "rgba(245,158,11,.3)", color: "#fcd34d",
-                    border: "1px solid rgba(245,158,11,.4)",
-                    padding: "1px 6px", borderRadius: 999,
-                  }}>
-                    👑 Admin
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {(currentUser.isAdmin || permissions.includes("settings") || isFullAccess) && (
-            <button className="nd-btn" onClick={() => navigate("/settings")} style={s.btnSettings}>
-              ⚙️
-            </button>
-          )}
-          <button className="nd-btn" onClick={handleLogout} style={s.btnLogout}>
-            🚪 Sign Out
-          </button>
-        </div>
-      </header>
-
-      {/* ════════════ MAIN ════════════ */}
-      <main style={s.main}>
-
-        {/* ── Session expiry notice ── */}
-        {(() => {
-          const loginAt = currentUser.loginAt || 0;
-          const elapsed = Date.now() - loginAt;
-          const remaining = 8 * 60 * 60 * 1000 - elapsed;
-          const hoursLeft = Math.floor(remaining / 3600000);
-          const minsLeft  = Math.floor((remaining % 3600000) / 60000);
-          if (hoursLeft < 1 && minsLeft < 30 && minsLeft > 0) {
-            return (
-              <div style={{
-                background: "rgba(251,191,36,.15)", border: "1px solid rgba(251,191,36,.4)",
-                borderRadius: 10, padding: "8px 16px", marginBottom: 12,
-                color: "#fcd34d", fontWeight: 800, fontSize: 13, textAlign: "center",
-              }}>
-                ⏰ Session expires in {minsLeft} minute{minsLeft !== 1 ? "s" : ""} — please save your work
-              </div>
-            );
-          }
-          return null;
-        })()}
-
-        {/* ── hero text ── */}
-        <div style={s.hero}>
-          <h1 style={s.heroTitle}>Your Dashboard</h1>
-          <p style={s.heroSub}>
-            {isFullAccess
-              ? `⭐ Full Access — all ${ALL_ROLES.length} sections`
-              : `${visibleRoles.length} section${visibleRoles.length !== 1 ? "s" : ""} available`}
-          </p>
-        </div>
-
-        {/* ── tiles ── */}
-        {visibleRoles.length === 0 ? (
-          <div style={s.empty}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>No sections assigned</div>
-            <div style={{ fontSize: 14, opacity: .7, marginTop: 6 }}>Contact your administrator</div>
-          </div>
-        ) : (
-          <div style={s.grid}>
-            {visibleRoles.map(role => (
-              <button
-                key={role.id}
-                className="nd-tile"
-                onClick={() => (role.href ? openExternal(role.href) : navigate(role.route))}
-                onMouseEnter={() => setHovered(role.id)}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  ...s.tile,
-                  background: role.grad,
-                  boxShadow: hovered === role.id
-                    ? `0 20px 50px ${role.glow}, 0 0 0 2px rgba(255,255,255,.25)`
-                    : `0 8px 24px ${role.glow}`,
-                }}
-              >
-                {/* shimmer strip */}
-                <div style={s.tileShimmer}/>
-                <div style={s.tileIconWrap}>
-                  <span style={s.tileIcon}>{role.icon}</span>
-                </div>
-                <div style={s.tileLabel}>{role.label}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </main>
-
-      {/* footer */}
-      <footer style={s.footer}>Built by Eng. Mohammed Abdullah</footer>
-    </div>
-  );
-}
-
-/* ─── Styles ─── */
-const s = {
-  page: {
-    minHeight: "100vh",
-    background: "linear-gradient(140deg,#0f172a 0%,#1e1b4b 45%,#0f172a 100%)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    padding: "0 1.2rem 2.5rem",
-    fontFamily: "Cairo,'Segoe UI',system-ui,sans-serif",
-    position: "relative",
-    overflow: "hidden",
-  },
-
-  blob: {
-    position: "absolute",
-    width: 520, height: 520,
-    borderRadius: "50%",
-    filter: "blur(42px)",
-    opacity: .65,
-    pointerEvents: "none",
-    zIndex: 0,
-    mixBlendMode: "screen",
-  },
-
-  /* ── header ── */
-  header: {
-    width: "100%",
-    maxWidth: 1100,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "18px 0 16px",
-    zIndex: 2,
-    flexWrap: "wrap",
-    gap: 14,
-    borderBottom: "1px solid rgba(255,255,255,.08)",
-    marginBottom: 10,
-  },
-
-  brandRow: { display:"flex", alignItems:"center", gap:12 },
-  brandLogo: {
-    width: 46, height: 46, borderRadius: 12,
-    objectFit: "cover",
-    boxShadow: "0 6px 18px rgba(0,0,0,.4)",
-    border: "2px solid rgba(255,255,255,.2)",
-  },
-  brandName: { fontWeight: 1000, fontSize: 16, color: "#f1f5f9", lineHeight: 1.1 },
-  brandSub:  { fontWeight: 700,  fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 },
-
-  clockBox: {
-    textAlign: "center",
-    background: "rgba(255,255,255,.06)",
-    border: "1px solid rgba(255,255,255,.12)",
-    borderRadius: 14,
-    padding: "8px 20px",
-    backdropFilter: "blur(8px)",
-  },
-  clockTime: { fontWeight: 1000, fontSize: 22, color: "#f1f5f9", letterSpacing: ".04em", lineHeight: 1 },
-  clockDate: { fontSize: 12, color: "rgba(255,255,255,.5)", fontWeight: 700, marginTop: 3 },
-
-  userChip: {
-    display: "flex", alignItems: "center", gap: 10,
-    background: "rgba(255,255,255,.1)",
-    backdropFilter: "blur(12px)",
-    border: "1px solid rgba(255,255,255,.18)",
-    borderRadius: 999,
-    padding: "7px 16px 7px 7px",
-    boxShadow: "0 4px 14px rgba(0,0,0,.25)",
-  },
-  avatar: {
-    width: 34, height: 34, borderRadius: "50%",
-    background: "linear-gradient(135deg,#f97316,#ec4899)",
-    color: "#fff", fontWeight: 1000, fontSize: 15,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 3px 10px rgba(0,0,0,.3)",
-    flexShrink: 0,
-  },
-  userHello: { fontSize: 10, color: "rgba(255,255,255,.6)", fontWeight: 700 },
-  userName:  { fontSize: 14, color: "#fff", fontWeight: 900 },
-
-  btnSettings: {
-    padding: "9px 14px",
-    background: "rgba(255,255,255,.12)",
-    backdropFilter: "blur(8px)",
-    border: "1px solid rgba(255,255,255,.2)",
-    borderRadius: 12, color: "#fff",
-    fontSize: 18, cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(0,0,0,.2)",
-  },
-  btnLogout: {
-    padding: "9px 18px",
-    background: "rgba(220,38,38,.3)",
-    backdropFilter: "blur(8px)",
-    border: "1px solid rgba(252,165,165,.3)",
-    borderRadius: 12, color: "#fff",
-    fontWeight: 900, fontSize: 14,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    boxShadow: "0 4px 14px rgba(220,38,38,.25)",
-  },
-
-  /* ── main ── */
-  main: {
-    width: "100%",
-    maxWidth: 1100,
-    zIndex: 2,
-    flex: 1,
-  },
-
-  hero: { textAlign: "center", marginBottom: 32, paddingTop: 16 },
-  heroTitle: {
-    margin: 0,
-    fontWeight: 1000, fontSize: 32, color: "#f1f5f9",
-    letterSpacing: "-.01em",
-    textShadow: "0 4px 24px rgba(0,0,0,.4)",
-  },
-  heroSub: {
-    margin: "8px 0 0",
-    color: "rgba(255,255,255,.55)",
-    fontWeight: 700, fontSize: 15,
-  },
-
-  /* ── grid ── */
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))",
-    gap: "1.1rem",
-  },
-
-  /* ── individual tile ── */
-  tile: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: 22,
-    border: "1.5px solid rgba(255,255,255,.22)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.55rem",
-    padding: "22px 10px 20px",
-    cursor: "pointer",
-    fontFamily: "Cairo,'Segoe UI',sans-serif",
-    color: "#fff",
-    minHeight: 150,
-    textAlign: "center",
-  },
-
-  /* shimmer overlay */
-  tileShimmer: {
-    position: "absolute",
-    top: 0, left: "-100%",
-    width: "60%", height: "100%",
-    background: "linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent)",
-    transform: "skewX(-20deg)",
-    pointerEvents: "none",
-  },
-
-  tileIconWrap: {
-    width: 60, height: 60,
-    borderRadius: 18,
-    background: "rgba(255,255,255,.18)",
-    backdropFilter: "blur(6px)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 4px 14px rgba(0,0,0,.2)",
-    border: "1.5px solid rgba(255,255,255,.25)",
-    flexShrink: 0,
-  },
-  tileIcon:  { fontSize: "1.9rem", lineHeight: 1 },
-  tileLabel: {
-    fontWeight: 900, fontSize: "0.88rem",
-    color: "#fff",
-    textShadow: "0 1px 4px rgba(0,0,0,.35)",
-    lineHeight: 1.3,
-    maxWidth: 130,
-  },
-
-  empty: {
-    textAlign: "center",
-    color: "rgba(255,255,255,.7)",
-    padding: "60px 0",
-    fontFamily: "inherit",
-  },
-
-  footer: {
-    color: "rgba(255,255,255,.3)",
-    fontSize: 12, fontWeight: 700,
-    marginTop: 20, zIndex: 2,
-  },
-};
-
 const nd = {
   page: {
     minHeight: "100vh",
-    padding: "24px clamp(18px, 3vw, 48px) 38px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    padding: "16px clamp(12px, 1.5vw, 24px) 14px",
     background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
     color: "#0f172a",
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
+  /* full width, and the card grid takes whatever height is left */
   layout: {
-    width: "min(1760px, 100%)",
-    margin: "0 auto",
+    width: "100%",
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
   },
   hero: {
     position: "relative",
@@ -874,6 +470,22 @@ const nd = {
     fontWeight: 800,
     lineHeight: 1.3,
   },
+  clock: {
+    marginLeft: "auto",
+    paddingLeft: 14,
+    borderLeft: "1px solid rgba(255,255,255,0.24)",
+    color: "#fff",
+    fontWeight: 1000,
+    lineHeight: 1,
+  },
+  clear: {
+    border: "none",
+    background: "none",
+    color: "#94a3b8",
+    cursor: "pointer",
+    padding: "0 2px",
+    fontFamily: "inherit",
+  },
   userName: {
     marginTop: 4,
     color: "#fff",
@@ -897,7 +509,7 @@ const nd = {
     fontFamily: "inherit",
   }),
   toolbar: {
-    margin: "22px 0",
+    margin: "16px 0",
     display: "grid",
     gridTemplateColumns: "minmax(280px, 1fr) auto",
     gap: 14,
@@ -953,16 +565,16 @@ const nd = {
   },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 330px), 1fr))",
-    gap: 18,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
+    gap: 16,
   },
   card: (isHover, role) => ({
     position: "relative",
-    minHeight: 210,
+    minHeight: 150,
     display: "grid",
     gridTemplateRows: "auto 1fr auto",
-    gap: 18,
-    padding: "24px 24px 22px",
+    gap: 14,
+    padding: "20px 22px 18px",
     borderRadius: 8,
     border: isHover ? "1px solid rgba(15,118,110,0.48)" : "1px solid rgba(15,23,42,0.12)",
     background: "#fff",
@@ -1021,7 +633,7 @@ const nd = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 14,
-    paddingTop: 16,
+    paddingTop: 12,
     borderTop: "1px solid rgba(15,23,42,0.09)",
     color: "#0f766e",
     fontWeight: 950,
@@ -1037,7 +649,7 @@ const nd = {
     fontWeight: 850,
   },
   footer: {
-    marginTop: 26,
+    marginTop: 14,
     textAlign: "center",
     color: "#64748b",
     fontWeight: 800,
@@ -1121,10 +733,16 @@ export default function NamedDashboard() {
     (role) =>
       !q ||
       role.label.toLowerCase().includes(q) ||
+      (ROLE_INFO[role.id]?.desc || "").toLowerCase().includes(q) ||
       (role.keywords || []).some((k) => k.toLowerCase().includes(q))
   );
+  const openRole = (role) => (role.href ? openExternal(role.href) : navigate(role.route));
+  const onSearchKey = (e) => {
+    if (e.key === "Enter" && filteredRoles.length === 1) openRole(filteredRoles[0]);
+    if (e.key === "Escape") setQuery("");
+  };
   const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   const sessionNotice = (() => {
     const loginAt = currentUser.loginAt || 0;
@@ -1138,7 +756,8 @@ export default function NamedDashboard() {
   })();
 
   return (
-    <main style={nd.page}>
+    <main className="ndx ndx" style={nd.page}>
+      <style>{ND_CSS}</style>
       {showPicker && (
         <OperatorPicker
           employees={employees}
@@ -1230,14 +849,16 @@ export default function NamedDashboard() {
             <div style={nd.brand}>
               <img src={logo} alt="Al Mawashi" style={nd.logo} />
               <div style={{ minWidth: 0 }}>
-                <p style={nd.eyebrow}>Al Mawashi QMS</p>
-                <h1 style={nd.title}>{greeting()}, {operator || displayName}</h1>
-                <p style={nd.subtitle}>
-                  Central access to your assigned inspection, ISO, HACCP, operations, training, and administration modules.
+                <p className="ndx-eyebrow" style={nd.eyebrow}>Al Mawashi QMS</p>
+                <h1 className="ndx-title" style={nd.title}>{greeting()}, {operator || displayName}</h1>
+                <p className="ndx-sub" style={nd.subtitle}>
+                  {isFullAccess
+                    ? `Full access · ${visibleRoles.length} sections`
+                    : `${visibleRoles.length} section${visibleRoles.length !== 1 ? "s" : ""} available to you`}
                 </p>
-                <div style={nd.homeBadge}>
+                <div className="ndx-date" style={nd.homeBadge}>
                   <span className="named-home-pulse" style={nd.homePulse} />
-                  <span>Dashboard Home - module selector</span>
+                  <span>{dateStr}</span>
                 </div>
               </div>
             </div>
@@ -1245,44 +866,46 @@ export default function NamedDashboard() {
             <div className="named-hero-actions" style={nd.heroActions}>
               <div style={nd.userPanel}>
                 <div style={nd.userTop}>
-                  <div style={nd.avatar}>{(operator || displayName)[0]?.toUpperCase() || "U"}</div>
+                  <div className="ndx-avatar" style={nd.avatar}>{(operator || displayName)[0]?.toUpperCase() || "U"}</div>
                   <div>
-                    <div style={nd.userMeta}>Account: {displayName}</div>
-                    <div style={nd.userName}>{operator || displayName}</div>
+                    <div className="ndx-umeta" style={nd.userMeta}>
+                      {isAdmin ? "👑 Admin · " : ""}Account: {displayName}
+                    </div>
+                    <div className="ndx-uname" style={nd.userName}>{operator || displayName}</div>
                   </div>
+                  <div className="ndx-clock" style={nd.clock}>{timeStr}</div>
                 </div>
               </div>
 
               <div style={nd.actionRow}>
-                <button type="button" style={nd.heroButton()} title={dateStr}>
-                  {timeStr}
-                </button>
                 {operator && !isAdmin && (
                   <button
                     type="button"
+                    className="ndx-hbtn"
                     style={nd.heroButton()}
                     onClick={() => { sessionStorage.removeItem(sessionKey); setOperator(null); setShowPicker(true); }}
                   >
-                    Change Operator
+                    🔄 Change operator
                   </button>
                 )}
                 {(currentUser.isAdmin || permissions.includes("settings") || isFullAccess) && (
-                  <button type="button" style={nd.heroButton()} onClick={() => navigate("/settings")}>
-                    Settings
+                  <button type="button" className="ndx-hbtn" style={nd.heroButton()} onClick={() => navigate("/settings")}>
+                    ⚙️ Settings
                   </button>
                 )}
                 {isSuperAdmin && (
                   <button
                     type="button"
+                    className="ndx-hbtn"
                     style={nd.heroButton()}
                     title={activeCompany ? `Currently: ${activeCompany.name}` : ""}
                     onClick={() => { clearActiveCompany(); navigate("/select-company"); }}
                   >
-                    Switch Company
+                    🏢 {activeCompany ? activeCompany.name : "Switch company"}
                   </button>
                 )}
-                <button type="button" style={nd.heroButton("danger")} onClick={handleLogout}>
-                  Back to Login
+                <button type="button" className="ndx-hbtn" style={nd.heroButton("danger")} onClick={handleLogout}>
+                  🚪 Sign out
                 </button>
               </div>
             </div>
@@ -1292,23 +915,26 @@ export default function NamedDashboard() {
         <TodayFoodSafetyStrip />
 
         <section className="named-toolbar" style={nd.toolbar}>
-          <label style={nd.searchWrap}>
-            <span aria-hidden="true">Search</span>
+          <label className="ndx-search" style={nd.searchWrap}>
+            <span className="ndx-sicon" aria-hidden="true">🔍</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a dashboard section..."
+              onKeyDown={onSearchKey}
+              placeholder="Find a section…"
               style={nd.searchInput}
             />
+            {query && (
+              <button type="button" className="ndx-clear" style={nd.clear} aria-label="Clear search" onClick={() => setQuery("")}>
+                ✕
+              </button>
+            )}
           </label>
 
           <div className="named-summary" style={nd.summary}>
-            <div style={nd.chip}>{isFullAccess ? "Full Access" : "Limited Access"}</div>
-            <div style={nd.chip}>{visibleRoles.length} Sections</div>
-            {isAdmin && <div style={nd.chip}>Admin</div>}
-            {isSuperAdmin && (
-              <div style={nd.chip}>🏢 {activeCompany ? activeCompany.name : "All companies"}</div>
-            )}
+            <div className="ndx-chip" style={nd.chip}>
+              {q ? `${filteredRoles.length} of ${visibleRoles.length} sections` : `${visibleRoles.length} sections`}
+            </div>
           </div>
         </section>
 
@@ -1328,7 +954,7 @@ export default function NamedDashboard() {
                   key={role.id}
                   className="named-card"
                   type="button"
-                  onClick={() => (role.href ? openExternal(role.href) : navigate(role.route))}
+                  onClick={() => openRole(role)}
                   onMouseEnter={() => setHovered(role.id)}
                   onMouseLeave={() => setHovered(null)}
                   onFocus={() => setHovered(role.id)}
@@ -1337,19 +963,19 @@ export default function NamedDashboard() {
                 >
                   <div style={nd.cardTop}>
                     <div style={nd.iconWrap(role)}>
-                      <span style={nd.icon}>{role.icon}</span>
+                      <span className="ndx-icon" style={nd.icon}>{role.icon}</span>
                     </div>
-                    <span style={nd.roleTag}>Module</span>
+                    <span className="ndx-tag" style={nd.roleTag}>{ROLE_INFO[role.id]?.tag || "Section"}</span>
                   </div>
 
                   <div>
-                    <h2 style={nd.cardTitle}>{role.label}</h2>
-                    <div style={nd.cardSub}>Open your assigned {role.label} workspace.</div>
+                    <h2 className="ndx-ctitle" style={nd.cardTitle}>{role.label}</h2>
+                    <div className="ndx-csub" style={nd.cardSub}>{ROLE_INFO[role.id]?.desc || ""}</div>
                   </div>
 
-                  <div style={nd.cardBottom}>
-                    <span>Open module</span>
-                    <span aria-hidden="true">→</span>
+                  <div className="ndx-cfoot" style={nd.cardBottom}>
+                    <span>{role.href ? "Open portal" : "Open"}</span>
+                    <span className="ndx-arrow" aria-hidden="true">{role.href ? "↗" : "→"}</span>
                   </div>
                 </button>
               );
@@ -1357,7 +983,7 @@ export default function NamedDashboard() {
           </section>
         )}
 
-        <footer style={nd.footer}>Built by Eng. Mohammed Abdullah</footer>
+        <footer className="ndx-foot" style={nd.footer}>Built by Eng. Mohammed Abdullah</footer>
       </div>
     </main>
   );
