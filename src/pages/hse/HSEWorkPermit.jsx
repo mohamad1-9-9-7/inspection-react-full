@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS, /* edit-mode reuse apiUpdate */
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "work_permits";
 
@@ -156,6 +157,79 @@ const blank = () => ({
   status: "active", closedDate: "", closedBy: "", closedNotes: "",
 });
 
+/* ── Rules: a permit is a licence to do dangerous work, so it may not be
+   issued while any control is missing or a gas reading is outside the safe
+   entry window. Backdating applies to new permits only — an old permit can
+   still be edited and closed. ── */
+const IS_NEW = (d) => !d.id;
+const CS = (d) => d.type === "confined_space";
+const sameName = (a, b) => a && b && a.trim().toLowerCase() === b.trim().toLowerCase();
+const gasRule = (key, label, min, max, unit) => ({
+  key, label, type: "number", min, max, requiredIf: CS, when: CS,
+  hint: { ar: `المسموح للدخول: ${min} – ${max} ${unit}`, en: `Safe for entry: ${min} – ${max} ${unit}` },
+});
+
+const PERMIT_RULES = [
+  { key: "type", label: T.type, required: true, oneOf: PERMIT_TYPES.map((x) => x.v) },
+  { key: "date", label: T.date, type: "date", required: true },
+  { key: "date", label: T.date, type: "date", notPast: true, when: IS_NEW },
+  { key: "startTime", label: T.startTime, type: "time", required: true },
+  { key: "endTime", label: T.endTime, type: "time", required: true, after: "startTime" },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "area", label: T.area, maxLength: 120 },
+  { key: "workDescription", label: T.workDesc, required: true, minLength: 15, maxLength: 2000 },
+  { key: "workerName", label: T.name, required: true, minLength: 2, maxLength: 80 },
+  { key: "workerCompany", label: T.company, maxLength: 120 },
+  { key: "workerCount", label: T.count, type: "int", required: true, min: 1, max: 50 },
+  { key: "supervisor", label: T.supervisor, required: true, maxLength: 80 },
+  { key: "supervisorContact", label: T.supPhone, type: "phone", required: true },
+  { key: "safetyChecks", label: T.safetySec,
+    custom: (v, d) => {
+      const need = (SAFETY_CHECKS[d.type] || []).length;
+      const done = Object.values(v || {}).filter(Boolean).length;
+      return done < need
+        ? { ar: `كل ضوابط السلامة يجب أن تتحقّق قبل إصدار التصريح (${done} من ${need})`, en: `Every safety control must be in place before issuing (${done} of ${need})` }
+        : null;
+    } },
+  gasRule("csO2", T.csO2, 19.5, 23.5, "%"),
+  gasRule("csH2S", T.csH2S, 0, 10, "ppm"),
+  gasRule("csLEL", T.csLEL, 0, 10, "% LEL"),
+  gasRule("csCO", T.csCO, 0, 25, "ppm"),
+  gasRule("csNH3", T.csNH3, 0, 25, "ppm"),
+  { key: "csStandbyAttendant", label: T.csStandby, requiredIf: CS, when: CS, maxLength: 80,
+    custom: (v, d) => (d.csEntries || []).some((e) => sameName(e.name, v))
+      ? { ar: "المراقب الخارجي لا يدخل المكان المغلق", en: "The standby attendant must not enter the space" } : null },
+  { key: "csEntries", label: T.csEntries, when: CS,
+    custom: (v) => {
+      const rows = v || [];
+      if (rows.some((e) => !String(e.name || "").trim())) return { ar: "كل سطر دخول يحتاج اسم الشخص", en: "Every entry line needs the person's name" };
+      if (rows.some((e) => e.out && e.in && e.out <= e.in)) return { ar: "وقت الخروج يجب أن يكون بعد وقت الدخول", en: "Exit time must be after entry time" };
+      return null;
+    } },
+  { key: "ppeRequired", label: T.ppeReq, required: true, maxLength: 300 },
+  { key: "hazardsIdentified", label: T.hazards, required: true, minLength: 10, maxLength: 2000 },
+  { key: "emergencyPlan", label: T.emergency, required: true, minLength: 10, maxLength: 2000 },
+  { key: "issuedBy", label: T.issued, required: true, maxLength: 80 },
+  { key: "approvedBy", label: T.approved, required: true, maxLength: 80,
+    custom: (v, d) => sameName(v, d.issuedBy) || sameName(v, d.workerName)
+      ? { ar: "المعتمِد يجب أن يكون غير المُصدِر وغير المنفّذ", en: "The approver must differ from the issuer and the worker" } : null },
+];
+
+const PERMIT_STEPS = [
+  { ar: "اختر نوع العمل أولاً — قائمة ضوابط السلامة تتغيّر حسب النوع.", en: "Choose the work type first — the safety-control list changes with it." },
+  { ar: "حدّد التاريخ (لا يُصدَر تصريح بتاريخ سابق) ووقت البدء والانتهاء في نفس اليوم.", en: "Set the date (a permit cannot be backdated) and the start and end time on the same day." },
+  { ar: "اكتب وصف العمل، المنفّذ وشركته، عدد العمال (1–50)، والمشرف ورقم هاتفه.", en: "Describe the work, the worker and company, the crew size (1–50), and the supervisor with a phone number." },
+  { ar: "أشّر على كل ضوابط السلامة — لا يُحفظ التصريح وأي ضابط ناقص.", en: "Tick every safety control — the permit will not save with any control missing." },
+  { ar: "للأماكن المغلقة: قِس الغازات قبل الدخول؛ أي قراءة خارج الحد الآمن تمنع الإصدار، وسجّل الداخلين والمراقب الخارجي.", en: "Confined space: measure the gases before entry; any reading outside the safe limit blocks the permit. Log every entrant and the standby attendant." },
+  { ar: "يصدر التصريح شخص ويعتمده شخص آخر غير المنفّذ.", en: "One person issues the permit and a different person — not the worker — approves it." },
+];
+
+const PERMIT_GUIDANCE = [
+  { kind: "warn", ar: "الأكسجين الآمن للدخول بين 19.5% و 23.5%؛ والغازات القابلة للاشتعال أقل من 10% LEL.", en: "Safe oxygen for entry is 19.5–23.5 %; flammable gas must be below 10 % LEL." },
+  { kind: "warn", ar: "التصريح صالح لوردية واحدة فقط ويُغلق عند انتهاء العمل.", en: "A permit is valid for one shift only and is closed when the work ends." },
+  { kind: "tip",  ar: "أعمال اللحام: مراقب الحريق يبقى 30 دقيقة بعد انتهاء العمل.", en: "Hot work: the fire watch stays 30 minutes after the work ends." },
+];
+
 export default function HSEWorkPermit() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -164,6 +238,7 @@ export default function HSEWorkPermit() {
   const [draft, setDraft] = useState(blank());
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(PERMIT_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -177,11 +252,11 @@ export default function HSEWorkPermit() {
   function startEdit(it) {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
+    validation.reset();
     setTab("new");
   }
   async function save() {
-    if (!draft.workDescription.trim()) { alert(pick(T.needDesc)); return; }
-    if (!draft.workerName.trim()) { alert(pick(T.needWorker)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -191,7 +266,7 @@ export default function HSEWorkPermit() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -234,155 +309,123 @@ export default function HSEWorkPermit() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newPermit)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newPermit)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.permitNo)}</label><input type="text" value={draft.permitNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.type)}</label>
-                <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value, safetyChecks: {} })} style={inputStyle}>
-                  {PERMIT_TYPES.map((t) => <option key={t.v} value={t.v}>{t[lang]}</option>)}
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.startTime)}</label><input type="time" value={draft.startTime} onChange={(e) => setDraft({ ...draft, startTime: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.endTime)}</label><input type="time" value={draft.endTime} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.area)}</label><input type="text" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} style={inputStyle} /></div>
-            </div>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const setEntry = (idx, patch) => setDraft((d) => {
+            const arr = [...(d.csEntries || [])];
+            arr[idx] = { ...arr[idx], ...patch };
+            return { ...d, csEntries: arr };
+          });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "تصريح عمل", en: "Permit to Work" }}
+              subtitle={T.subtitle}
+              docNo="F-07"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.permitNo), value: draft.permitNo }]}
+              steps={PERMIT_STEPS}
+              guidance={PERMIT_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات التصريح" : "Permit details"}>
+                <HSEField {...f("type")} type="select" label={pick(T.type)}
+                  onChange={(v) => setDraft((d) => ({ ...d, type: v, safetyChecks: {} }))}
+                  options={PERMIT_TYPES.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("startTime")} type="time" label={pick(T.startTime)} />
+                <HSEField {...f("endTime")} type="time" label={pick(T.endTime)} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("area")} label={pick(T.area)} />
+                <HSEField {...f("workDescription")} type="textarea" full label={pick(T.workDesc)} />
+              </HSEPanel>
 
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.workDesc)}</label>
-              <textarea value={draft.workDescription} onChange={(e) => setDraft({ ...draft, workDescription: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
+              <HSEPanel title={pick(T.workerSec)}>
+                <HSEField {...f("workerName")} label={pick(T.name)} />
+                <HSEField {...f("workerCompany")} label={pick(T.company)} />
+                <HSEField {...f("workerCount")} type="int" label={pick(T.count)} hint="1 – 50" />
+                <HSEField {...f("supervisor")} label={pick(T.supervisor)} />
+                <HSEField {...f("supervisorContact")} type="phone" label={pick(T.supPhone)} placeholder="05XXXXXXXX" />
+              </HSEPanel>
 
-            <div style={{ marginTop: 14, padding: 12, background: "#fff7ed", borderRadius: 10 }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark }}>{pick(T.workerSec)}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                <div><label style={labelStyle}>{pick(T.name)}</label><input type="text" value={draft.workerName} onChange={(e) => setDraft({ ...draft, workerName: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.company)}</label><input type="text" value={draft.workerCompany} onChange={(e) => setDraft({ ...draft, workerCompany: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.count)}</label><input type="number" value={draft.workerCount} onChange={(e) => setDraft({ ...draft, workerCount: Number(e.target.value) || 1 })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.supervisor)}</label><input type="text" value={draft.supervisor} onChange={(e) => setDraft({ ...draft, supervisor: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.supPhone)}</label><input type="tel" value={draft.supervisorContact} onChange={(e) => setDraft({ ...draft, supervisorContact: e.target.value })} style={inputStyle} /></div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, padding: 12, background: "#fee2e2", borderRadius: 10, border: "1px solid #fca5a5" }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: "#7f1d1d" }}>{pick(T.safetySec)} ({checks.length})</div>
-              {checks.map((chk, i) => {
-                const k = `chk-${i}`;
-                return (
-                  <label key={k} style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "8px 10px", borderRadius: 8, marginBottom: 4,
-                    background: draft.safetyChecks[k] ? "#dcfce7" : "#fff",
-                    cursor: "pointer", border: `1px solid ${draft.safetyChecks[k] ? "#166534" : "rgba(120,53,15,0.18)"}`,
-                  }}>
-                    <input type="checkbox" checked={draft.safetyChecks[k] || false} onChange={(e) => setCheck(k, e.target.checked)} />
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>{pick(chk)}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            {/* Confined Space specifics — shown only when type = confined_space (replaces F-07a) */}
-            {draft.type === "confined_space" && (
-              <div style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg, #fed7aa, #ffedd5)", borderRadius: 12, border: "2px solid #ea580c" }}>
-                <div style={{ fontWeight: 950, marginBottom: 12, color: "#7c2d12", fontSize: 14 }}>{pick(T.csSec)}</div>
-
-                {/* Gas readings */}
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#9a3412", marginBottom: 8 }}>{pick(T.csGases)}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-                  <div><label style={labelStyle}>{pick(T.csO2)}</label><input type="number" step="0.1" placeholder="20.9 %" value={draft.csO2} onChange={(e) => setDraft({ ...draft, csO2: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.csH2S)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csH2S} onChange={(e) => setDraft({ ...draft, csH2S: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.csLEL)}</label><input type="number" step="0.1" placeholder="0 %" value={draft.csLEL} onChange={(e) => setDraft({ ...draft, csLEL: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.csCO)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csCO} onChange={(e) => setDraft({ ...draft, csCO: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.csNH3)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csNH3} onChange={(e) => setDraft({ ...draft, csNH3: e.target.value })} style={inputStyle} /></div>
+              <div className="ph-fieldbar" data-hk-field="safetyChecks"
+                style={validation.errors.safetyChecks ? { borderColor: "#dc2626" } : undefined}>
+                <div className="ph-fieldbar-title">{pick(T.safetySec)} ({checks.length}) <span className="ph-req">*</span></div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {checks.map((chk, i) => {
+                    const k = `chk-${i}`;
+                    return (
+                      <label key={k} className={`hk-check${draft.safetyChecks[k] ? " on" : ""}`}>
+                        <input type="checkbox" checked={draft.safetyChecks[k] || false} onChange={(e) => setCheck(k, e.target.checked)} />
+                        <span>{pick(chk)}</span>
+                      </label>
+                    );
+                  })}
                 </div>
+                {validation.errors.safetyChecks && <div className="hk-err" style={{ marginTop: 8 }}>{validation.errors.safetyChecks}</div>}
+              </div>
 
-                {/* Standby Attendant */}
-                <div style={{ marginTop: 12 }}>
-                  <label style={labelStyle}>{pick(T.csStandby)}</label>
-                  <input type="text" placeholder={pick(T.csStandbyPh)} value={draft.csStandbyAttendant} onChange={(e) => setDraft({ ...draft, csStandbyAttendant: e.target.value })} style={inputStyle} />
-                </div>
-
-                {/* Entry/Exit Log */}
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12, color: "#9a3412" }}>{pick(T.csEntries)}</div>
-                    <button
-                      type="button"
-                      style={{ ...buttonGhost, padding: "5px 12px", fontSize: 12 }}
-                      onClick={() => setDraft({ ...draft, csEntries: [...(draft.csEntries || []), { name: "", in: nowHHMM(), out: "" }] })}
-                    >
-                      {pick(T.csAddEntry)}
-                    </button>
-                  </div>
-                  {(draft.csEntries || []).map((entry, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px auto", gap: 8, marginBottom: 6, alignItems: "center" }}>
-                      <input type="text" placeholder={pick(T.csEntryName)} value={entry.name} onChange={(e) => {
-                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], name: e.target.value }; setDraft({ ...draft, csEntries: arr });
-                      }} style={inputStyle} />
-                      <input type="time" step={1} value={entry.in} onChange={(e) => {
-                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], in: e.target.value }; setDraft({ ...draft, csEntries: arr });
-                      }} style={inputStyle} />
-                      <input type="time" step={1} value={entry.out} onChange={(e) => {
-                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], out: e.target.value }; setDraft({ ...draft, csEntries: arr });
-                      }} style={inputStyle} />
-                      <button
-                        type="button"
-                        style={{ ...buttonGhost, padding: "5px 10px", fontSize: 11, color: "#b91c1c", borderColor: "#fecaca" }}
-                        onClick={() => setDraft({ ...draft, csEntries: draft.csEntries.filter((_, i) => i !== idx) })}
-                      >
-                        🗑
+              {draft.type === "confined_space" && (
+                <HSEPanel title={pick(T.csSec)} note={pick(T.csGases)}>
+                  <HSEField {...f("csO2")} type="number" label={pick(T.csO2)} placeholder="20.9" />
+                  <HSEField {...f("csH2S")} type="number" label={pick(T.csH2S)} placeholder="0" />
+                  <HSEField {...f("csLEL")} type="number" label={pick(T.csLEL)} placeholder="0" />
+                  <HSEField {...f("csCO")} type="number" label={pick(T.csCO)} placeholder="0" />
+                  <HSEField {...f("csNH3")} type="number" label={pick(T.csNH3)} placeholder="0" />
+                  <HSEField {...f("csStandbyAttendant")} label={pick(T.csStandby)} placeholder={pick(T.csStandbyPh)} />
+                  <div className="ph-field hk-full" data-hk-field="csEntries">
+                    <span className="ph-field-label">{pick(T.csEntries)}</span>
+                    {(draft.csEntries || []).map((entry, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 130px 130px auto", gap: 8, alignItems: "center" }}>
+                        <input className="ph-input" type="text" placeholder={pick(T.csEntryName)} value={entry.name} maxLength={80}
+                          onChange={(e) => setEntry(idx, { name: e.target.value })} />
+                        <input className="ph-input" type="time" step={1} value={entry.in}
+                          onChange={(e) => setEntry(idx, { in: e.target.value })} />
+                        <input className="ph-input" type="time" step={1} value={entry.out}
+                          onChange={(e) => setEntry(idx, { out: e.target.value })} />
+                        <button type="button" className="ph-btn-icon ph-btn-danger" title={lang === "ar" ? "إزالة" : "Remove"}
+                          onClick={() => setDraft((d) => ({ ...d, csEntries: d.csEntries.filter((_, i) => i !== idx) }))}>×</button>
+                      </div>
+                    ))}
+                    {(!draft.csEntries || draft.csEntries.length === 0) && (
+                      <div className="hk-hint">{lang === "ar" ? "لا يوجد سجلات دخول بعد" : "No entries logged yet"}</div>
+                    )}
+                    <div>
+                      <button type="button" className="ph-btn ph-btn-ghost"
+                        onClick={() => setDraft((d) => ({ ...d, csEntries: [...(d.csEntries || []), { name: "", in: nowHHMM(), out: "" }] }))}>
+                        {pick(T.csAddEntry)}
                       </button>
                     </div>
-                  ))}
-                  {(!draft.csEntries || draft.csEntries.length === 0) && (
-                    <div style={{ fontSize: 11, color: "#9a3412", fontStyle: "italic", padding: "8px 0" }}>
-                      {lang === "ar" ? "لا يوجد سجلات دخول بعد" : "No entries logged yet"}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                    {validation.errors.csEntries && <span className="hk-err">{validation.errors.csEntries}</span>}
+                  </div>
+                </HSEPanel>
+              )}
 
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.ppeReq)}</label>
-              <input type="text" value={draft.ppeRequired} onChange={(e) => setDraft({ ...draft, ppeRequired: e.target.value })} placeholder={pick(T.ppePh)} style={inputStyle} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.hazards)}</label>
-              <textarea value={draft.hazardsIdentified} onChange={(e) => setDraft({ ...draft, hazardsIdentified: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.emergency)}</label>
-              <textarea value={draft.emergencyPlan} onChange={(e) => setDraft({ ...draft, emergencyPlan: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
+              <HSEPanel title={lang === "ar" ? "المخاطر والطوارئ" : "Hazards & emergency"}>
+                <HSEField {...f("ppeRequired")} full label={pick(T.ppeReq)} placeholder={pick(T.ppePh)} />
+                <HSEField {...f("hazardsIdentified")} type="textarea" full label={pick(T.hazards)} />
+                <HSEField {...f("emergencyPlan")} type="textarea" full label={pick(T.emergency)} />
+              </HSEPanel>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginTop: 10 }}>
-              <div><label style={labelStyle}>{pick(T.issued)}</label><input type="text" value={draft.issuedBy} onChange={(e) => setDraft({ ...draft, issuedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.approved)}</label><input type="text" value={draft.approvedBy} onChange={(e) => setDraft({ ...draft, approvedBy: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={lang === "ar" ? "الإصدار والاعتماد" : "Issue & approval"}>
+                <HSEField {...f("issuedBy")} label={pick(T.issued)} />
+                <HSEField {...f("approvedBy")} label={pick(T.approved)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>

@@ -157,7 +157,7 @@ export default function HSEPPELog() {
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
             <button style={tab === "stats" ? buttonPrimary : buttonGhost} onClick={() => setTab("stats")}>{pick(T.stats)}</button>
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newIssue)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

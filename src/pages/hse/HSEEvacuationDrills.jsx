@@ -563,7 +563,7 @@ export default function HSEEvacuationDrills() {
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setTab("new"); setViewing(null); setDraft(EMPTY_DRAFT); }}>
               {pick(T.add)}
             </button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

@@ -580,7 +580,7 @@ export default function HSERiskRegister() {
             <button style={ISO_UI.btn("violet", repairing)} onClick={repairRegister} disabled={busy}>
               {repairing ? pick(T.repairing) : pick(T.repairBtn)}
             </button>
-            <button style={ISO_UI.btn("secondary")} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={ISO_UI.btn("secondary")} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

@@ -158,7 +158,7 @@ export default function HSEChecklist({
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(makeBlank()); setEditingId(null); validation.reset(); setTab("new"); }}>
               {lang === "ar" ? "+ فحص جديد" : "+ New Inspection"}
             </button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>
               {lang === "ar" ? "← HSE" : "← HSE"}
             </button>
           </div>

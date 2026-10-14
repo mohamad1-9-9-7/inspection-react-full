@@ -272,8 +272,8 @@ export function HSEReportForm({
           <div className="hk-errors" role="alert">
             <div className="hk-errors-head">⛔ {p(T.fixTitle)}</div>
             <ul>
-              {list.map((e) => (
-                <li key={e.key}>
+              {list.map((e, i) => (
+                <li key={e.key + i}>
                   <button type="button" onClick={() => focusField(e.key)}>
                     <b>{e.label}</b> — {e.message}
                   </button>
@@ -341,6 +341,7 @@ export function HSEField({
   options, placeholder, full, rows = 3, disabled, readOnly, lang = "en", children,
 }) {
   const required = !!(rule && (rule.required || rule.requiredIf));
+  const hintText = hint || pickText(rule?.hint, lang);
   const attrs = ruleAttrs(rule);
   const cls = `ph-input${error ? " hk-bad" : ""}`;
   const inputType =
@@ -400,7 +401,7 @@ export function HSEField({
       )}
       {control}
       {error ? <span className="hk-err">{error}</span>
-        : hint ? <span className="hk-hint">{hint}</span> : null}
+        : hintText ? <span className="hk-hint">{hintText}</span> : null}
     </div>
   );
 }

@@ -209,7 +209,7 @@ export default function HSELicenses() {
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }}>{pick(T.list)}</button>
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); setTab("new"); }}>{pick(T.newCert)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation, validateHSE } from "./hseFormKit";
 
 const TYPE = "ncr_reports";
 
@@ -144,6 +145,67 @@ const blank = () => ({
   preparedBy: "", preparedPos: "", approvedBy: "", approvedPos: "",
 });
 
+/* ── Rules: an NCR must say what was breached, to whom it is issued and by
+   when; it cannot be closed without root cause, CAPA and a verified-effective
+   check, and the approver is never the person who raised it. ── */
+const NCR_CLOSED = (d) => d.status === "closed";
+const NCR_WORKING = (d) => d.status === "progress" || d.status === "closed";
+const sameNcrName = (a, b) => a && b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+const NCR_RULES = [
+  { key: "date", label: T.date, type: "date", required: true, notFuture: true },
+  { key: "time", label: T.time, type: "time", required: true },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "area", label: T.area, maxLength: 120 },
+  { key: "types", label: T.s1Title,
+    custom: (v) => !Object.values(v || {}).some(Boolean)
+      ? { ar: "اختر نوعاً واحداً على الأقل لعدم المطابقة", en: "Choose at least one non-conformance type" } : null },
+  { key: "issuedTo", label: T.issuedTo, required: true, maxLength: 120 },
+  { key: "finishDate", label: T.finishDate, type: "date", required: true, afterOrEqual: "date",
+    custom: (v, d) => {
+      if (!v || !d.date) return null;
+      const days = (new Date(v) - new Date(d.date)) / 86400000;
+      const max = d.severity === "critical" ? 7 : d.severity === "major" ? 30 : 90;
+      return days > max
+        ? { ar: `المهلة القصوى لهذه الخطورة ${max} يوماً`, en: `The maximum deadline for this severity is ${max} days` } : null;
+    } },
+  { key: "severity", label: T.severity, required: true, oneOf: ["minor", "major", "critical"] },
+  { key: "category", label: T.category, required: true },
+  { key: "description", label: T.description, required: true, minLength: 20, maxLength: 4000 },
+  { key: "reqClause", label: T.reqClause, required: true, maxLength: 200 },
+  { key: "evidence", label: T.evidence, required: true, minLength: 5, maxLength: 2000 },
+  { key: "rootCause", label: T.rootCause, requiredIf: NCR_WORKING, maxLength: 2000 },
+  { key: "immediate", label: T.immediate, requiredIf: (d) => d.severity !== "minor" || NCR_WORKING(d), maxLength: 2000 },
+  { key: "corrective", label: T.corrective, requiredIf: NCR_WORKING, maxLength: 2000 },
+  { key: "preventive", label: T.preventive, requiredIf: NCR_CLOSED, maxLength: 2000 },
+  { key: "status", label: T.status, required: true, oneOf: ["open", "progress", "closed", "rejected"] },
+  { key: "effectiveness", label: T.effectiveness, required: true,
+    custom: (v, d) => NCR_CLOSED(d) && v !== "yes"
+      ? { ar: "لا يُغلق الـ NCR قبل التحقق من فعالية الإجراء", en: "An NCR cannot close until the action is verified effective" } : null },
+  { key: "comments", label: T.comments, maxLength: 2000,
+    requiredIf: (d) => d.status === "rejected", requiredMsg: { ar: "اكتب سبب رفض الـ NCR", en: "Write why the NCR was rejected" } },
+  { key: "preparedBy", label: T.preparedBy, required: true, maxLength: 80 },
+  { key: "preparedPos", label: T.preparedPos, maxLength: 80 },
+  { key: "approvedBy", label: T.approvedBy, requiredIf: (d) => d.status !== "open", maxLength: 80,
+    custom: (v, d) => sameNcrName(v, d.preparedBy)
+      ? { ar: "المعتمِد يجب أن يكون غير المُعِد", en: "The approver must differ from the preparer" } : null },
+  { key: "approvedPos", label: T.approvedPos, maxLength: 80 },
+];
+
+const NCR_STEPS = [
+  { ar: "سجّل تاريخ ووقت اكتشاف عدم المطابقة والموقع (لا يُقبل تاريخ مستقبلي).", en: "Record the date and time the non-conformance was found and where (no future dates)." },
+  { ar: "اختر نوعاً واحداً على الأقل، والجهة الموجَّه لها، والخطورة والمرجع.", en: "Choose at least one type, who it is issued to, the severity and the reference." },
+  { ar: "حدّد موعد الإغلاق: حرج ≤ 7 أيام، رئيسي ≤ 30 يوماً، ثانوي ≤ 90 يوماً.", en: "Set the close-out date: critical ≤ 7 days, major ≤ 30, minor ≤ 90." },
+  { ar: "اكتب الوصف (20 حرفاً على الأقل)، البند المخالَف من المعيار، والدليل الموضوعي.", en: "Write the description (20+ characters), the requirement breached and the objective evidence." },
+  { ar: "عند «قيد التنفيذ»: السبب الجذري والإجراء التصحيحي إلزاميان؛ وعند «مغلق»: الإجراء الوقائي والتحقق من الفعالية.", en: "“In progress” needs the root cause and corrective action; “Closed” also needs the preventive action and a verified-effective check." },
+  { ar: "يعدّ التقرير شخص ويعتمده شخص آخر.", en: "One person prepares the report and a different person approves it." },
+];
+
+const NCR_GUIDANCE = [
+  { kind: "warn", ar: "عدم المطابقة الحرج المتعلق بسلامة الغذاء يستدعي حجز المنتج فوراً حتى يُقيَّم.", en: "A critical food-safety non-conformance means holding the product immediately until it is assessed." },
+  { kind: "tip",  ar: "اكتب الدليل كما رأيته (صورة، رقم دفعة، قراءة) — لا رأياً.", en: "Write the evidence as observed (photo, batch no., reading) — not an opinion." },
+];
+
 export default function HSENCR() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -153,6 +215,7 @@ export default function HSENCR() {
   const [viewing, setViewing] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(NCR_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -169,11 +232,12 @@ export default function HSENCR() {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.description.trim()) { alert(pick(T.needDesc)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -183,7 +247,7 @@ export default function HSENCR() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -191,6 +255,14 @@ export default function HSENCR() {
     }
   }
   async function closeNCR(id) {
+    // Quick-close obeys the same rules as the form: no root cause, no CAPA or
+    // no verified effectiveness → open the record in the form instead.
+    const it = items.find((x) => x.id === id);
+    if (it && validateHSE(NCR_RULES, { ...blank(), ...it, status: "closed" }, lang).length) {
+      alert(pick({ ar: "لا يمكن إغلاق الـ NCR قبل استكمال السبب الجذري والإجراءات والتحقق من الفعالية — سيُفتح للتعديل.", en: "The NCR cannot close until root cause, actions and effectiveness are complete — opening it for editing." }));
+      startEdit({ ...it, status: "closed" });
+      return;
+    }
     const closer = prompt(pick(T.closer));
     if (!closer) return;
     try {
@@ -221,129 +293,103 @@ export default function HSENCR() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newReport)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.reportNo)}</label><input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.time)}</label><input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "تقرير عدم المطابقة (NCR)", en: "Non-Conformance Report (NCR)" }}
+              subtitle={T.subtitle}
+              docNo="F-26"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.reportNo), value: draft.reportNo }]}
+              steps={NCR_STEPS}
+              guidance={NCR_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات الاكتشاف" : "Where & when"}>
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("time")} type="time" label={pick(T.time)} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("area")} label={pick(T.area)} />
+              </HSEPanel>
+
+              <div className="ph-fieldbar" data-hk-field="types"
+                style={validation.errors.types ? { borderColor: "#dc2626" } : undefined}>
+                <div className="ph-fieldbar-title">{pick(T.s1Title)} <span className="ph-req">*</span></div>
+                <div className="ph-fieldbar-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+                  {NCR_TYPES.map((tt) => (
+                    <label key={tt.v} className={`hk-check${draft.types[tt.v] ? " on" : ""}`}>
+                      <input type="checkbox" checked={!!draft.types[tt.v]} onChange={() => toggleType(tt.v)} />
+                      <span>{pick(T[tt.key])}</span>
+                    </label>
+                  ))}
+                </div>
+                {validation.errors.types && <div className="hk-err" style={{ marginTop: 8 }}>{validation.errors.types}</div>}
               </div>
-              <div><label style={labelStyle}>{pick(T.area)}</label><input type="text" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} style={inputStyle} /></div>
-            </div>
 
-            <SectionHeader title={pick(T.s1Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-              {NCR_TYPES.map((tt) => (
-                <label key={tt.v} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "8px 10px", borderRadius: 8,
-                  background: draft.types[tt.v] ? "#fed7aa" : "#fff",
-                  cursor: "pointer", border: `1px solid ${draft.types[tt.v] ? "#9a3412" : "rgba(120,53,15,0.18)"}`,
-                  fontSize: 13, fontWeight: 700,
-                }}>
-                  <input type="checkbox" checked={!!draft.types[tt.v]} onChange={() => toggleType(tt.v)} />
-                  {pick(T[tt.key])}
-                </label>
-              ))}
-            </div>
+              <HSEPanel title={pick(T.s2Title)}>
+                <HSEField {...f("issuedTo")} label={pick(T.issuedTo)} />
+                <HSEField {...f("finishDate")} type="date" label={pick(T.finishDate)} />
+                <HSEField {...f("severity")} type="select" label={pick(T.severity)} options={[
+                  { v: "minor", label: pick(T.sevMinor) },
+                  { v: "major", label: pick(T.sevMajor) },
+                  { v: "critical", label: pick(T.sevCritical) },
+                ]} />
+                <HSEField {...f("category")} type="select" label={pick(T.category)}
+                  options={Object.entries(T.catRefs).map(([k, v]) => ({ v: k, label: v[lang] }))} />
+              </HSEPanel>
 
-            <SectionHeader title={pick(T.s2Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.issuedTo)}</label><input type="text" value={draft.issuedTo} onChange={(e) => setDraft({ ...draft, issuedTo: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.finishDate)}</label><input type="date" value={draft.finishDate} onChange={(e) => setDraft({ ...draft, finishDate: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.severity)}</label>
-                <select value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })} style={inputStyle}>
-                  <option value="minor">{pick(T.sevMinor)}</option>
-                  <option value="major">{pick(T.sevMajor)}</option>
-                  <option value="critical">{pick(T.sevCritical)}</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.category)}</label>
-                <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={inputStyle}>
-                  <option value="">—</option>
-                  {Object.entries(T.catRefs).map(([k, v]) => <option key={k} value={k}>{v[lang]}</option>)}
-                </select>
-              </div>
-            </div>
+              <HSEPanel title={pick(T.s3Title)}>
+                <HSEField {...f("description")} type="textarea" rows={4} full label={pick(T.description)} />
+                <HSEField {...f("reqClause")} full label={pick(T.reqClause)}
+                  placeholder={lang === "ar" ? "مثلاً: ISO 22000 §7.5.3.1" : "e.g. ISO 22000 §7.5.3.1"} />
+                <HSEField {...f("evidence")} type="textarea" full label={pick(T.evidence)} />
+              </HSEPanel>
 
-            <SectionHeader title={pick(T.s3Title)} />
-            <div>
-              <label style={labelStyle}>{pick(T.description)}</label>
-              <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} style={{ ...inputStyle, minHeight: 90 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.reqClause)}</label>
-              <input type="text" value={draft.reqClause} onChange={(e) => setDraft({ ...draft, reqClause: e.target.value })} style={inputStyle} placeholder={lang === "ar" ? "مثلاً: ISO 22000 §7.5.3.1" : "e.g. ISO 22000 §7.5.3.1"} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.evidence)}</label>
-              <textarea value={draft.evidence} onChange={(e) => setDraft({ ...draft, evidence: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
+              <HSEPanel title={pick(T.s4Title)}>
+                <HSEField {...f("rootCause")} type="textarea" full label={pick(T.rootCause)} />
+                <HSEField {...f("immediate")} type="textarea" full label={pick(T.immediate)} />
+                <HSEField {...f("corrective")} type="textarea" full label={pick(T.corrective)} />
+                <HSEField {...f("preventive")} type="textarea" full label={pick(T.preventive)} />
+              </HSEPanel>
 
-            <SectionHeader title={pick(T.s4Title)} />
-            <div>
-              <label style={labelStyle}>{pick(T.rootCause)}</label>
-              <textarea value={draft.rootCause} onChange={(e) => setDraft({ ...draft, rootCause: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10, marginTop: 10 }}>
-              <div><label style={labelStyle}>{pick(T.immediate)}</label><textarea value={draft.immediate} onChange={(e) => setDraft({ ...draft, immediate: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} /></div>
-              <div><label style={labelStyle}>{pick(T.corrective)}</label><textarea value={draft.corrective} onChange={(e) => setDraft({ ...draft, corrective: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} /></div>
-              <div><label style={labelStyle}>{pick(T.preventive)}</label><textarea value={draft.preventive} onChange={(e) => setDraft({ ...draft, preventive: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} /></div>
-            </div>
+              <HSEPanel title={pick(T.s5Title)}>
+                <HSEField {...f("status")} type="select" label={pick(T.status)} options={[
+                  { v: "open", label: pick(T.stOpen) },
+                  { v: "progress", label: pick(T.stProgress) },
+                  { v: "closed", label: pick(T.stClosed) },
+                  { v: "rejected", label: pick(T.stRejected) },
+                ]} />
+                <HSEField {...f("effectiveness")} type="select" label={pick(T.effectiveness)} options={[
+                  { v: "pending", label: pick(T.effPending) },
+                  { v: "yes", label: pick(T.effYes) },
+                  { v: "no", label: pick(T.effNo) },
+                ]} />
+                <HSEField {...f("comments")} type="textarea" full label={pick(T.comments)} />
+              </HSEPanel>
 
-            <SectionHeader title={pick(T.s5Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{pick(T.status)}</label>
-                <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} style={inputStyle}>
-                  <option value="open">{pick(T.stOpen)}</option>
-                  <option value="progress">{pick(T.stProgress)}</option>
-                  <option value="closed">{pick(T.stClosed)}</option>
-                  <option value="rejected">{pick(T.stRejected)}</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.effectiveness)}</label>
-                <select value={draft.effectiveness} onChange={(e) => setDraft({ ...draft, effectiveness: e.target.value })} style={inputStyle}>
-                  <option value="pending">{pick(T.effPending)}</option>
-                  <option value="yes">{pick(T.effYes)}</option>
-                  <option value="no">{pick(T.effNo)}</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.comments)}</label>
-              <textarea value={draft.comments} onChange={(e) => setDraft({ ...draft, comments: e.target.value })} style={{ ...inputStyle, minHeight: 50 }} />
-            </div>
-
-            <SectionHeader title={pick(T.s6Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.preparedBy)}</label><input type="text" value={draft.preparedBy} onChange={(e) => setDraft({ ...draft, preparedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.preparedPos)}</label><input type="text" value={draft.preparedPos} onChange={(e) => setDraft({ ...draft, preparedPos: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.approvedBy)}</label><input type="text" value={draft.approvedBy} onChange={(e) => setDraft({ ...draft, approvedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.approvedPos)}</label><input type="text" value={draft.approvedPos} onChange={(e) => setDraft({ ...draft, approvedPos: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={pick(T.s6Title)}>
+                <HSEField {...f("preparedBy")} label={pick(T.preparedBy)} />
+                <HSEField {...f("preparedPos")} label={pick(T.preparedPos)} />
+                <HSEField {...f("approvedBy")} label={pick(T.approvedBy)} />
+                <HSEField {...f("approvedPos")} label={pick(T.approvedPos)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>

@@ -8,6 +8,7 @@ import {
   apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation, validateHSE } from "./hseFormKit";
 
 const TYPE = "capa_tracker";
 
@@ -99,6 +100,61 @@ const blank = () => ({
   closedDate: "", closedBy: "", verifiedBy: "",
 });
 
+/* ── Rules: a CAPA needs an owner and a realistic deadline for its priority;
+   closing needs a root cause, a dated close-out, an independent verifier and
+   a written effectiveness check. ── */
+const CAPA_CLOSED = (d) => d.status === "closed";
+const CAPA_MAX_DAYS = { critical: 7, high: 30, medium: 60, low: 90 };
+const sameCapaName = (a, b) => a && b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+const CAPA_RULES = [
+  { key: "openedDate", label: T.openedDate, type: "date", required: true, notFuture: true },
+  { key: "type", label: T.type, required: true, oneOf: ["corrective", "preventive"] },
+  { key: "source", label: T.source, required: true, oneOf: SOURCES.map((x) => x.v) },
+  { key: "sourceRefNo", label: T.refNo, maxLength: 40,
+    requiredIf: (d) => ["internal_audit", "external_audit", "govt_inspection", "incident_invest", "complaint"].includes(d.source),
+    requiredMsg: { ar: "هذا المصدر له رقم مرجعي — اكتبه للربط", en: "This source has a reference number — enter it to link them" } },
+  { key: "category", label: T.category, maxLength: 80 },
+  { key: "priority", label: T.priority, required: true, oneOf: ["critical", "high", "medium", "low"] },
+  { key: "status", label: T.status, required: true, oneOf: ["open", "in_progress", "verifying", "closed"] },
+  { key: "responsibility", label: T.responsibility, required: true, minLength: 2, maxLength: 80 },
+  { key: "targetDate", label: T.targetDate, type: "date", required: true, afterOrEqual: "openedDate",
+    custom: (v, d) => {
+      if (!v || !d.openedDate) return null;
+      const max = CAPA_MAX_DAYS[d.priority] || 90;
+      const days = (new Date(v) - new Date(d.openedDate)) / 86400000;
+      return days > max
+        ? { ar: `المهلة القصوى لهذه الأولوية ${max} يوماً`, en: `The maximum deadline for this priority is ${max} days` } : null;
+    } },
+  { key: "description", label: T.desc, required: true, minLength: 15, maxLength: 3000 },
+  { key: "rootCause", label: T.rootCause, maxLength: 2000,
+    requiredIf: (d) => d.type === "corrective" && d.status !== "open",
+    requiredMsg: { ar: "الإجراء التصحيحي يحتاج سبباً جذرياً قبل التنفيذ", en: "A corrective action needs a root cause before work starts" } },
+  { key: "action", label: T.action, required: true, minLength: 10, maxLength: 3000 },
+  { key: "progressNotes", label: T.progress, maxLength: 3000,
+    requiredIf: (d) => d.status === "verifying" || CAPA_CLOSED(d) },
+  { key: "closedDate", label: T.closedDate, type: "date", requiredIf: CAPA_CLOSED, when: CAPA_CLOSED,
+    notFuture: true, afterOrEqual: "openedDate" },
+  { key: "closedBy", label: T.closedBy, requiredIf: CAPA_CLOSED, when: CAPA_CLOSED, maxLength: 80 },
+  { key: "verifiedBy", label: T.verifiedBy, requiredIf: CAPA_CLOSED, when: CAPA_CLOSED, maxLength: 80,
+    custom: (v, d) => sameCapaName(v, d.responsibility)
+      ? { ar: "المتحقِّق يجب أن يكون غير المسؤول عن التنفيذ", en: "The verifier must not be the action owner" } : null },
+  { key: "effectivenessCheck", label: T.effectiveness, requiredIf: CAPA_CLOSED, when: CAPA_CLOSED, minLength: 10, maxLength: 2000 },
+];
+
+const CAPA_STEPS = [
+  { ar: "سجّل تاريخ الفتح، النوع (تصحيحي/وقائي)، والمصدر مع رقمه المرجعي (تدقيق، حادث، شكوى…).", en: "Record the opening date, the type (corrective/preventive) and the source with its reference no. (audit, incident, complaint…)." },
+  { ar: "حدّد الأولوية والمسؤول والموعد المستهدف: حرجة ≤ 7 أيام، عالية ≤ 30، متوسطة ≤ 60، منخفضة ≤ 90.", en: "Set the priority, the owner and the target date: critical ≤ 7 days, high ≤ 30, medium ≤ 60, low ≤ 90." },
+  { ar: "صِف المشكلة والإجراء المطلوب بوضوح؛ الإجراء التصحيحي يحتاج سبباً جذرياً قبل بدء التنفيذ.", en: "Describe the issue and the required action clearly; a corrective action needs a root cause before work starts." },
+  { ar: "حدّث ملاحظات التقدّم أثناء العمل، وهي إلزامية عند «قيد التحقق».", en: "Update the progress notes as work goes on — they are required at “Verifying”." },
+  { ar: "للإغلاق: تاريخ الإغلاق، من أغلق، متحقِّق مستقل عن المسؤول، ونتيجة التحقق من الفعالية.", en: "To close: the close date, who closed it, a verifier independent of the owner, and the effectiveness result." },
+];
+
+const CAPA_GUIDANCE = [
+  { kind: "warn", ar: "المستهدف إغلاق 90% من الإجراءات في موعدها — المتأخر يظهر بالأحمر في القائمة.", en: "The target is 90 % closed on time — overdue items show in red in the list." },
+  { kind: "tip",  ar: "التحقق من الفعالية يعني إثبات أن المشكلة لم تتكرر (فحص لاحق، سجلات، تدقيق).", en: "An effectiveness check proves the problem did not recur (follow-up check, records, audit)." },
+];
+
 export default function HSECAPATracker() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -108,6 +164,7 @@ export default function HSECAPATracker() {
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState("active");
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(CAPA_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -115,15 +172,15 @@ export default function HSECAPATracker() {
   }
   useEffect(() => { reload(); }, []);
 
-  function startEdit(it) { setDraft({ ...it }); setEditingId(it.id); setTab("new"); }
+  function startEdit(it) { setDraft({ ...blank(), ...it }); setEditingId(it.id); validation.reset(); setTab("new"); }
   async function save() {
-    if (!draft.action.trim()) { alert(pick(T.needAction)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) await apiUpdate(TYPE, editingId, draft);
       else await apiSave(TYPE, draft, draft.responsibility || "HSE");
       await reload();
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -131,8 +188,20 @@ export default function HSECAPATracker() {
     }
   }
   async function quickClose(id) {
+    // Quick-close may not skip the close-out rules (root cause, independent
+    // verifier, effectiveness check) — open the record in the form instead.
+    const it = items.find((x) => x.id === id);
+    if (it && validateHSE(CAPA_RULES, { ...blank(), ...it, status: "closed", closedDate: todayISO(), closedBy: it.closedBy || "—", verifiedBy: it.verifiedBy || "—" }, lang).length) {
+      alert(pick({ ar: "لا يمكن الإغلاق قبل استكمال السبب الجذري والتحقق من الفعالية — سيُفتح للتعديل.", en: "Cannot close until the root cause and effectiveness check are complete — opening it for editing." }));
+      startEdit({ ...it, status: "closed", closedDate: it.closedDate || todayISO() });
+      return;
+    }
     const verifier = prompt(pick(T.closer));
     if (!verifier) return;
+    if (it && sameCapaName(verifier, it.responsibility)) {
+      alert(pick({ ar: "المتحقِّق يجب أن يكون غير المسؤول عن التنفيذ", en: "The verifier must not be the action owner" }));
+      return;
+    }
     try {
       await apiUpdate(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: verifier, verifiedBy: verifier }, verifier);
       await reload();
@@ -186,8 +255,8 @@ export default function HSECAPATracker() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }}>{pick(T.list)}</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); setTab("new"); }}>{pick(T.add)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.add)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
@@ -214,92 +283,70 @@ export default function HSECAPATracker() {
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.capaNo)}</label><input type="text" value={draft.capaNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.openedDate)}</label><input type="date" value={draft.openedDate} onChange={(e) => setDraft({ ...draft, openedDate: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.type)}</label>
-                <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} style={inputStyle}>
-                  <option value="corrective">{pick(T.tCorr)}</option>
-                  <option value="preventive">{pick(T.tPrev)}</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.source)}</label>
-                <select value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} style={inputStyle}>
-                  {SOURCES.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.refNo)}</label>
-                <input type="text" value={draft.sourceRefNo} onChange={(e) => setDraft({ ...draft, sourceRefNo: e.target.value })} placeholder="INC-123 / Audit-2025-Q1…" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.category)}</label>
-                <input type="text" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} placeholder={pick(T.catPh)} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.priority)}</label>
-                <select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })} style={inputStyle}>
-                  <option value="critical">{pick(T.pCrit)}</option>
-                  <option value="high">{pick(T.pHigh)}</option>
-                  <option value="medium">{pick(T.pMed)}</option>
-                  <option value="low">{pick(T.pLow)}</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.status)}</label>
-                <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} style={inputStyle}>
-                  <option value="open">{pick(T.stOpen)}</option>
-                  <option value="in_progress">{pick(T.stProg)}</option>
-                  <option value="verifying">{pick(T.stVerif)}</option>
-                  <option value="closed">{pick(T.stClosed)}</option>
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.responsibility)}</label><input type="text" value={draft.responsibility} onChange={(e) => setDraft({ ...draft, responsibility: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.targetDate)}</label><input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} style={inputStyle} /></div>
-            </div>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "الإجراءات التصحيحية والوقائية (CAPA)", en: "Corrective & Preventive Actions (CAPA)" }}
+              docNo="F-20"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.capaNo), value: draft.capaNo }]}
+              steps={CAPA_STEPS}
+              guidance={CAPA_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات الإجراء" : "Action details"}>
+                <HSEField {...f("openedDate")} type="date" label={pick(T.openedDate)} />
+                <HSEField {...f("type")} type="select" label={pick(T.type)} options={[
+                  { v: "corrective", label: pick(T.tCorr) },
+                  { v: "preventive", label: pick(T.tPrev) },
+                ]} />
+                <HSEField {...f("source")} type="select" label={pick(T.source)}
+                  options={SOURCES.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("sourceRefNo")} label={pick(T.refNo)} placeholder="INC-123 / Audit-2025-Q1…" />
+                <HSEField {...f("category")} label={pick(T.category)} placeholder={pick(T.catPh)} />
+                <HSEField {...f("priority")} type="select" label={pick(T.priority)} options={[
+                  { v: "critical", label: pick(T.pCrit) },
+                  { v: "high", label: pick(T.pHigh) },
+                  { v: "medium", label: pick(T.pMed) },
+                  { v: "low", label: pick(T.pLow) },
+                ]} />
+                <HSEField {...f("status")} type="select" label={pick(T.status)} options={[
+                  { v: "open", label: pick(T.stOpen) },
+                  { v: "in_progress", label: pick(T.stProg) },
+                  { v: "verifying", label: pick(T.stVerif) },
+                  { v: "closed", label: pick(T.stClosed) },
+                ]} />
+                <HSEField {...f("responsibility")} label={pick(T.responsibility)} />
+                <HSEField {...f("targetDate")} type="date" label={pick(T.targetDate)}
+                  hint={lang === "ar" ? `الحد الأقصى ${CAPA_MAX_DAYS[draft.priority] || 90} يوماً من تاريخ الفتح` : `At most ${CAPA_MAX_DAYS[draft.priority] || 90} days from opening`} />
+              </HSEPanel>
 
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.desc)}</label>
-              <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.rootCause)}</label>
-              <textarea value={draft.rootCause} onChange={(e) => setDraft({ ...draft, rootCause: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.action)}</label>
-              <textarea value={draft.action} onChange={(e) => setDraft({ ...draft, action: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.progress)}</label>
-              <textarea value={draft.progressNotes} onChange={(e) => setDraft({ ...draft, progressNotes: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            {draft.status === "closed" && (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
-                  <div><label style={labelStyle}>{pick(T.closedDate)}</label><input type="date" value={draft.closedDate} onChange={(e) => setDraft({ ...draft, closedDate: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.closedBy)}</label><input type="text" value={draft.closedBy} onChange={(e) => setDraft({ ...draft, closedBy: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.verifiedBy)}</label><input type="text" value={draft.verifiedBy} onChange={(e) => setDraft({ ...draft, verifiedBy: e.target.value })} style={inputStyle} /></div>
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <label style={labelStyle}>{pick(T.effectiveness)}</label>
-                  <textarea value={draft.effectivenessCheck} onChange={(e) => setDraft({ ...draft, effectivenessCheck: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-                </div>
-              </>
-            )}
+              <HSEPanel title={lang === "ar" ? "المشكلة والإجراء" : "Issue & action"}>
+                <HSEField {...f("description")} type="textarea" full label={pick(T.desc)} />
+                <HSEField {...f("rootCause")} type="textarea" full label={pick(T.rootCause)} />
+                <HSEField {...f("action")} type="textarea" full label={pick(T.action)} />
+                <HSEField {...f("progressNotes")} type="textarea" full label={pick(T.progress)} />
+              </HSEPanel>
 
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              {draft.status === "closed" && (
+                <HSEPanel title={lang === "ar" ? "الإغلاق والتحقق" : "Close-out & verification"}>
+                  <HSEField {...f("closedDate")} type="date" label={pick(T.closedDate)} />
+                  <HSEField {...f("closedBy")} label={pick(T.closedBy)} />
+                  <HSEField {...f("verifiedBy")} label={pick(T.verifiedBy)} />
+                  <HSEField {...f("effectivenessCheck")} type="textarea" full label={pick(T.effectiveness)} />
+                </HSEPanel>
+              )}
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <>

@@ -159,7 +159,6 @@ export const SECTION_ITEMS = {
       { id: "ppe-log",               icon: "🧤", label: "PPE Issue Log" },
       { id: "waste-log",             icon: "🗑️", label: "Waste Disposal" },
       { id: "capa-tracker",          icon: "📌", label: "CAPA Tracker" },
-      { id: "training-matrix",       icon: "🎓", label: "Internal Training (opens /training)" },
       { id: "licenses",              icon: "🪪", label: "Licenses & Certifications" },
     ],
   },

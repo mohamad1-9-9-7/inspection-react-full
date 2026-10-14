@@ -359,7 +359,7 @@ export default function HSEIncidentReport() {
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setEditingId(null); setDraft(blank()); validation.reset(); setTab("new"); }}>{editingId ? (pick({ ar: "✏️ تعديل تقرير", en: "✏️ Editing Report" })) : pick(T.newReport)}</button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

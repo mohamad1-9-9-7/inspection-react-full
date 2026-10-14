@@ -213,7 +213,7 @@ export default function HSEGenericLog({
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(COMMON_T.list)} ({items.length})</button>
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(COMMON_T.add)}</button>
-            <button style={buttonGhost} onClick={() => navigate(backTo)}>{pick(COMMON_T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate(backTo)}>{pick(COMMON_T.back)}</button>
           </div>
         </div>
 

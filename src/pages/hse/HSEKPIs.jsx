@@ -282,7 +282,7 @@ export default function HSEKPIs() {
             <button style={buttonGhost} onClick={loadAll} disabled={loading}>
               {loading ? pick(T.loading) : pick(T.refresh)}
             </button>
-            <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 

@@ -13,6 +13,14 @@ export function useHSELang() {
   });
   useEffect(() => {
     try { localStorage.setItem(LANG_KEY, lang); } catch {}
+    // Every HSE page open at once (the hub sidebar + the page inside it)
+    // follows one toggle.
+    window.dispatchEvent(new CustomEvent("hse-lang", { detail: lang }));
+  }, [lang]);
+  useEffect(() => {
+    const on = (e) => { if (e.detail && e.detail !== lang) setLang(e.detail); };
+    window.addEventListener("hse-lang", on);
+    return () => window.removeEventListener("hse-lang", on);
   }, [lang]);
   const dir = lang === "ar" ? "rtl" : "ltr";
   const toggle = useCallback(() => setLang((l) => (l === "ar" ? "en" : "ar")), []);
@@ -29,6 +37,7 @@ export function HSELangToggle({ lang, toggle, style }) {
   return (
     <button
       type="button"
+      className="hse-lang-toggle"
       onClick={toggle}
       style={{
         padding: "7px 14px",
@@ -387,7 +396,9 @@ export const pageStyle = {
   color: "#0f172a",
 };
 
-export const containerStyle = { maxWidth: 1180, margin: "0 auto" };
+/* Full screen width on every display — the page grows with the window
+   instead of stopping at a fixed column. */
+export const containerStyle = { width: "100%", maxWidth: "none", margin: 0, boxSizing: "border-box" };
 
 export const headerBar = {
   display: "flex", alignItems: "center", justifyContent: "space-between",

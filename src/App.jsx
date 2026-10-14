@@ -514,7 +514,7 @@ const CCPView     = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPVi
 const CCPSettings = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPSettings"));
 
 // 🦺 HSE — Health, Safety & Environment
-const HSEMenu                  = lazy(() => import("./pages/hse/HSEMenu"));
+const HSEHub                   = lazy(() => import("./pages/hse/HSEHub"));
 const HSECompanyProfile        = lazy(() => import("./pages/hse/HSECompanyProfile"));
 const HSEPolicies              = lazy(() => import("./pages/hse/HSEPolicies"));
 const HSERiskRegister          = lazy(() => import("./pages/hse/HSERiskRegister"));
@@ -2504,7 +2504,7 @@ export default function App() {
         />
 
         {/* 🦺 HSE — Health, Safety & Environment */}
-        <Route path="/hse" element={<SectionRoute section="hse"><HSEMenu /></SectionRoute>} />
+        <Route path="/hse" element={<SectionRoute section="hse"><HSEHub /></SectionRoute>} />
         <Route path="/hse/company-profile" element={<SectionRoute section="hse" item="company-profile"><HSECompanyProfile /></SectionRoute>} />
         <Route path="/hse/policies" element={<SectionRoute section="hse" item="policies"><HSEPolicies /></SectionRoute>} />
         <Route path="/hse/risk-register" element={<SectionRoute section="hse" item="risk-register"><HSERiskRegister /></SectionRoute>} />

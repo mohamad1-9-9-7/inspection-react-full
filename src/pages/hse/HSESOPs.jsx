@@ -424,7 +424,7 @@ export default function HSESOPs() {
               {exporting === "register" ? pick(T.exporting) : pick(T.exportRegister)}
             </button>
 
-            <button style={glassBtn()} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+            <button data-hse-back="1" style={glassBtn()} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
 
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 999,

@@ -361,7 +361,7 @@ export const BRANCHES = [
   },
 
   /* ─────────────── HSE ───────────────
-     Groups follow the group headings on HSEMenu.jsx. */
+     Groups follow the original HSE menu headings. */
   {
     id: "HSE", card: "hse", label: "HSE", emoji: "🦺", accent: "#ea580c",
     types: [
