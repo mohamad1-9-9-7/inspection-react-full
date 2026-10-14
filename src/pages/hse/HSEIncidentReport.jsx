@@ -10,6 +10,7 @@ import {
   tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "incident_reports";
 
@@ -192,6 +193,87 @@ const blank = () => ({
   status: "open",
 });
 
+/* ── Rules: what a saved F-01 must satisfy ──
+   Severity drives the rest: anything beyond a near-miss needs the injured
+   person and immediate actions; LTI / major / fatal must show the authority
+   notifications; a report can only be closed once its CAPA is verified. */
+const INJURY = (d) => d.severity && d.severity !== "near_miss";
+const SERIOUS = (d) => ["lti", "major", "fatal"].includes(d.severity);
+const HAS_CAPA = (d) => !!String(d.correctiveActions || "").trim();
+const CLOSED = (d) => d.status === "closed";
+const pendingNotify = { ar: "حادث خطير — يجب تحديد حالة الإبلاغ", en: "Serious incident — the notification status must be set" };
+
+const INCIDENT_RULES = [
+  { key: "reportDate", label: T.date, type: "date", required: true, notFuture: true },
+  { key: "reportTime", label: T.time, type: "time", required: true },
+  { key: "reporter", label: T.reporter, requiredIf: (d) => !d.anonymous, minLength: 2, maxLength: 80 },
+  { key: "reporterRole", label: T.reporterRole, maxLength: 80 },
+  { key: "type", label: T.type, required: true, oneOf: INCIDENT_TYPES.map((x) => x.v) },
+  { key: "severity", label: T.severity, required: true, oneOf: SEVERITY.map((x) => x.v),
+    custom: (v, d) => v === "near_miss" && ["lost_time_injury", "first_aid"].includes(d.type)
+      ? { ar: "نوع الحادث إصابة — لا يمكن أن تكون الشدة «شبه حادث»", en: "The type is an injury — severity cannot be “Near-miss”" } : null },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "area", label: T.area, maxLength: 120 },
+  { key: "injuredName", label: T.name, requiredIf: INJURY, maxLength: 80 },
+  { key: "injuredAge", label: T.age, type: "int", min: 15, max: 75, requiredIf: INJURY },
+  { key: "injuredNationality", label: T.nationality, maxLength: 40 },
+  { key: "injuredJob", label: T.job, maxLength: 80 },
+  { key: "injuredExp", label: T.exp, type: "number", min: 0, max: 50,
+    custom: (v, d) => d.injuredAge && Number(v) > Number(d.injuredAge) - 14
+      ? { ar: "سنوات الخبرة لا تتناسب مع العمر", en: "Years of experience do not fit the age" } : null },
+  { key: "description", label: T.desc, required: true, minLength: 20, maxLength: 4000 },
+  { key: "injuriesType", label: T.injuryType, requiredIf: (d) => INJURY(d) && d.severity !== "first_aid", maxLength: 120 },
+  { key: "bodyPart", label: T.bodyPart, requiredIf: INJURY, maxLength: 80 },
+  { key: "treatment", label: T.treatment, maxLength: 200 },
+  { key: "estimatedCost", label: T.cost, type: "number", min: 0, max: 10000000 },
+  { key: "damageDescription", label: T.damage, maxLength: 2000,
+    requiredIf: (d) => d.type === "property_damage" || d.type === "fire" },
+  { key: "witnesses", label: T.witnesses, maxLength: 1000 },
+  { key: "immediateActions", label: T.immediate, requiredIf: (d) => d.severity !== "near_miss" || d.type === "fire" || d.type === "leak", maxLength: 2000 },
+  { key: "rootCause", label: T.rootCause, requiredIf: (d) => ["action", "closed"].includes(d.status), maxLength: 2000 },
+  { key: "correctiveActions", label: T.capa, requiredIf: (d) => ["action", "closed"].includes(d.status), maxLength: 2000 },
+  { key: "responsibility", label: T.responsibility, requiredIf: HAS_CAPA, maxLength: 80 },
+  { key: "deadline", label: T.deadline, type: "date", requiredIf: HAS_CAPA, afterOrEqual: "reportDate" },
+  { key: "status", label: T.status, required: true, oneOf: ["open", "investigating", "action", "closed"] },
+  { key: "reportedToHSE", label: T.toHse, maxLength: 80 },
+  { key: "reportedToHSEDate", label: T.toHseDate, type: "date", notFuture: true, afterOrEqual: "reportDate",
+    requiredIf: (d) => !!String(d.reportedToHSE || "").trim() },
+  { key: "reportedToMOHRE", label: T.toMohre, requiredIf: SERIOUS, requiredMsg: pendingNotify,
+    custom: (v, d) => CLOSED(d) && SERIOUS(d) && v === "pending"
+      ? { ar: "لا يُغلق التقرير قبل إبلاغ وزارة الموارد البشرية", en: "Cannot close before MOHRE has been notified" } : null },
+  { key: "reportedToPolice", label: T.toPolice, requiredIf: (d) => d.severity === "fatal", requiredMsg: pendingNotify,
+    custom: (v, d) => d.severity === "fatal" && v === "not_required"
+      ? { ar: "حادث الوفاة يُبلَّغ للشرطة دائماً", en: "A fatality must always be reported to the police" } : null },
+  { key: "reportedToCivilDefence", label: T.toCD, requiredIf: (d) => (d.type === "fire" || d.type === "leak") && SERIOUS(d), requiredMsg: pendingNotify },
+  { key: "reportedToMunicipality", label: T.toMun, requiredIf: (d) => d.type === "food_contamination" || d.type === "environmental", requiredMsg: pendingNotify },
+  { key: "familyNotified", label: T.toFamily, requiredIf: (d) => d.severity === "fatal" || d.severity === "major", requiredMsg: pendingNotify },
+  { key: "insuranceNotified", label: T.toInsurance, requiredIf: SERIOUS, requiredMsg: pendingNotify },
+  { key: "lessonsLearned", label: T.lessonsLearned, requiredIf: CLOSED, maxLength: 2000 },
+  { key: "effectivenessVerified", label: T.effectivenessCheck, requiredIf: CLOSED,
+    custom: (v, d) => CLOSED(d) && v !== "yes"
+      ? { ar: "لا يُغلق التقرير قبل التحقق من فعالية الإجراء التصحيحي", en: "Cannot close until the corrective action is verified effective" } : null },
+  { key: "effectivenessDate", label: T.effectivenessDate, type: "date", notFuture: true, afterOrEqual: "reportDate",
+    requiredIf: (d) => d.effectivenessVerified === "yes" },
+  { key: "closedBy", label: T.closedBy, requiredIf: CLOSED, maxLength: 80,
+    custom: (v, d) => v && !d.anonymous && d.reporter && v.trim().toLowerCase() === d.reporter.trim().toLowerCase()
+      ? { ar: "من يُغلق التقرير يجب أن يكون غير المُبلِّغ", en: "The person closing must not be the reporter" } : null },
+];
+
+const INCIDENT_STEPS = [
+  { ar: "سجّل تاريخ ووقت وقوع الحادث (لا يُقبل تاريخ مستقبلي)، واسم المُبلِّغ — أو فعّل «بلاغ مجهول» لشبه الحادث.", en: "Record the date and time it happened (no future dates) and the reporter — or tick “Anonymous” for a near-miss." },
+  { ar: "صنّف الحادث: النوع، الشدة، الموقع والمنطقة. الشدة تحدّد الحقول الإلزامية المتبقية.", en: "Classify it: type, severity, location and area. Severity decides which remaining fields are mandatory." },
+  { ar: "أي شدة فوق «شبه حادث» تتطلب بيانات المصاب (العمر 15–75)، الجزء المصاب، والإجراءات الفورية.", en: "Anything above “Near-miss” needs the injured person (age 15–75), the body part and the immediate actions." },
+  { ar: "اكتب وصفاً واضحاً لا يقل عن 20 حرفاً: ماذا حدث، أين، وكيف.", en: "Write a clear description of at least 20 characters: what happened, where and how." },
+  { ar: "عند الانتقال لحالة «إجراء تصحيحي» أو «مغلق»: السبب الجذري والإجراء والمسؤول وموعد التنفيذ إلزامية.", en: "Moving to “Corrective action” or “Closed” requires the root cause, the action, an owner and a deadline." },
+  { ar: "LTI / شديد / وفاة: حدّد حالة الإبلاغ لكل جهة. لا يُغلق التقرير قبل التحقق من فعالية الإجراء.", en: "LTI / major / fatal: set the notification status for each authority. The report cannot close until the action is verified effective." },
+];
+
+const INCIDENT_GUIDANCE = [
+  { kind: "warn", ar: "في حالة الوفاة: لا تحرّك أي شيء في موقع الحادث قبل وصول الشرطة، ووثّقه بالصور.", en: "For a fatality: do not move anything at the scene before the police arrive, and photograph it." },
+  { kind: "warn", ar: "الإصابات الشديدة تُبلَّغ لوزارة الموارد البشرية خلال 48 ساعة.", en: "Major injuries are reported to MOHRE within 48 hours." },
+  { kind: "tip",  ar: "بلاغات شبه الحادث مؤشّر وقائي — المستهدف 10 بلاغات شهرياً على الأقل.", en: "Near-miss reports are a leading indicator — the target is at least 10 a month." },
+];
+
 export default function HSEIncidentReport() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -202,6 +284,7 @@ export default function HSEIncidentReport() {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(INCIDENT_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -213,12 +296,12 @@ export default function HSEIncidentReport() {
   function startEdit(it) {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.description.trim()) { alert(pick(T.needDesc)); return; }
-    if (!draft.anonymous && !draft.reporter.trim()) { alert(pick(T.needReporter)); return; }
+    if (!validation.attempt()) return;
     const toSave = draft.anonymous ? { ...draft, reporter: "🕵️ Anonymous", reporterRole: "" } : draft;
     setSaving(true);
     try {
@@ -229,7 +312,7 @@ export default function HSEIncidentReport() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -275,7 +358,7 @@ export default function HSEIncidentReport() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setEditingId(null); setDraft(blank()); setTab("new"); }}>{editingId ? (pick({ ar: "✏️ تعديل تقرير", en: "✏️ Editing Report" })) : pick(T.newReport)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setEditingId(null); setDraft(blank()); validation.reset(); setTab("new"); }}>{editingId ? (pick({ ar: "✏️ تعديل تقرير", en: "✏️ Editing Report" })) : pick(T.newReport)}</button>
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
@@ -312,199 +395,131 @@ export default function HSEIncidentReport() {
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.reportNo)}</label><input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.reportDate} onChange={(e) => set("reportDate", e.target.value)} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.time)}</label><input type="time" value={draft.reportTime} onChange={(e) => set("reportTime", e.target.value)} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.reporter)}</label>
-                <input
-                  type="text"
+        {tab === "new" && (() => {
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const NOTIFY = [
+            { v: "not_required", label: pick(T.optNot) },
+            { v: "pending", label: pick(T.optPending) },
+            { v: "reported", label: pick(T.optReported) },
+          ];
+          const YESNO = [
+            { v: "yes", label: pick(T.optYes) },
+            { v: "no", label: pick(T.optNo) },
+            { v: "not_required", label: pick(T.optNot) },
+          ];
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "تقرير حادث / شبه حادث", en: "Incident / Near-Miss Report" }}
+              subtitle={T.pageSubtitle}
+              docNo="F-01"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.reportNo), value: draft.reportNo }]}
+              steps={INCIDENT_STEPS}
+              guidance={INCIDENT_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); validation.reset(); }}
+              extraActions={
+                <button type="button" className="ph-btn ph-btn-ghost" disabled={saving}
+                  onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); }}>
+                  {pick(T.clearBtn)}
+                </button>
+              }
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات البلاغ" : "Report details"}>
+                <HSEField {...f("reportDate")} type="date" label={pick(T.date)} />
+                <HSEField {...f("reportTime")} type="time" label={pick(T.time)} />
+                <HSEField {...f("reporter")} label={pick(T.reporter)}
                   value={draft.anonymous ? "" : draft.reporter}
-                  onChange={(e) => set("reporter", e.target.value)}
                   placeholder={draft.anonymous ? "🕵️ Anonymous" : pick(T.reporterPh)}
-                  disabled={draft.anonymous}
-                  style={{ ...inputStyle, background: draft.anonymous ? "#f1f5f9" : "#fffbf5", color: draft.anonymous ? "#64748b" : "inherit" }}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>{pick(T.reporterRole)}</label>
-                <input
-                  type="text"
-                  value={draft.anonymous ? "" : draft.reporterRole}
-                  onChange={(e) => set("reporterRole", e.target.value)}
-                  disabled={draft.anonymous}
-                  style={{ ...inputStyle, background: draft.anonymous ? "#f1f5f9" : "#fffbf5", color: draft.anonymous ? "#64748b" : "inherit" }}
-                />
-              </div>
-            </div>
+                  disabled={draft.anonymous} />
+                <HSEField {...f("reporterRole")} label={pick(T.reporterRole)}
+                  value={draft.anonymous ? "" : draft.reporterRole} disabled={draft.anonymous} />
+                <HSEField {...f("anonymous")} type="checkbox" full
+                  label={`${pick(T.anonymous)} — ${pick(T.anonymousHint)}`} />
+              </HSEPanel>
 
-            {/* Anonymous toggle (encourages near-miss reporting) */}
-            <label style={{
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 14px", marginTop: 10, borderRadius: 12,
-              background: draft.anonymous ? "linear-gradient(135deg, #ddd6fe, #ede9fe)" : "#fffbf5",
-              border: `1.5px solid ${draft.anonymous ? "#a78bfa" : "#fed7aa"}`,
-              cursor: "pointer",
-            }}>
-              <input type="checkbox" checked={draft.anonymous} onChange={(e) => set("anonymous", e.target.checked)} style={{ width: 18, height: 18, accentColor: "#7c3aed" }} />
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 13, color: draft.anonymous ? "#5b21b6" : "#1f0f00" }}>{pick(T.anonymous)}</div>
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{pick(T.anonymousHint)}</div>
-              </div>
-            </label>
+              <HSEPanel title={pick(T.classify)}>
+                <HSEField {...f("type")} type="select" label={pick(T.type)}
+                  options={INCIDENT_TYPES.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("severity")} type="select" label={pick(T.severity)}
+                  options={SEVERITY.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("area")} label={pick(T.area)} placeholder={pick(T.areaPh)} />
+              </HSEPanel>
 
-            <div style={{ marginTop: 14, padding: 12, background: "#fff7ed", borderRadius: 10, border: "1px dashed rgba(120,53,15,0.18)" }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark }}>{pick(T.classify)}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                <div>
-                  <label style={labelStyle}>{pick(T.type)}</label>
-                  <select value={draft.type} onChange={(e) => set("type", e.target.value)} style={inputStyle}>
-                    {INCIDENT_TYPES.map((t) => <option key={t.v} value={t.v}>{t[lang]}</option>)}
-                  </select>
+              <SeverityAlertBanner severity={draft.severity} lang={lang} />
+
+              {!isQuickMode ? (
+                <HSEPanel title={pick(T.injuredPerson)}>
+                  <HSEField {...f("injuredName")} label={pick(T.name)} />
+                  <HSEField {...f("injuredAge")} type="int" label={pick(T.age)} hint={lang === "ar" ? "15 – 75" : "15 – 75"} />
+                  <HSEField {...f("injuredNationality")} label={pick(T.nationality)} />
+                  <HSEField {...f("injuredJob")} label={pick(T.job)} />
+                  <HSEField {...f("injuredExp")} type="number" label={pick(T.exp)} hint={lang === "ar" ? "0 – 50 سنة" : "0 – 50 years"} />
+                </HSEPanel>
+              ) : (
+                <div className="ph-hint">
+                  {pick(T.quickMode)} — {lang === "ar" ? "حقول الإصابة الطبية مخفيّة (شبه حادث = بدون إصابة)" : "Medical injury fields hidden (Near-miss = no injury)"}
                 </div>
-                <div>
-                  <label style={labelStyle}>{pick(T.severity)}</label>
-                  <select value={draft.severity} onChange={(e) => set("severity", e.target.value)} style={inputStyle}>
-                    {SEVERITY.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>{pick(T.location)}</label>
-                  <select value={draft.location} onChange={(e) => set("location", e.target.value)} style={inputStyle}>
-                    {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>{pick(T.area)}</label>
-                  <input type="text" value={draft.area} onChange={(e) => set("area", e.target.value)} placeholder={pick(T.areaPh)} style={inputStyle} />
-                </div>
-              </div>
-            </div>
+              )}
 
-            <SeverityAlertBanner severity={draft.severity} lang={lang} />
+              <HSEPanel title={lang === "ar" ? "وصف الحادث" : "What happened"}>
+                <HSEField {...f("description")} type="textarea" rows={5} full label={pick(T.desc)} />
+                {!isQuickMode && (
+                  <>
+                    <HSEField {...f("injuriesType")} label={pick(T.injuryType)} />
+                    <HSEField {...f("bodyPart")} label={pick(T.bodyPart)} />
+                    <HSEField {...f("treatment")} label={pick(T.treatment)} />
+                    <HSEField {...f("estimatedCost")} type="number" label={pick(T.cost)} />
+                  </>
+                )}
+                <HSEField {...f("damageDescription")} type="textarea" full label={pick(T.damage)} />
+                <HSEField {...f("witnesses")} type="textarea" full label={pick(T.witnesses)} />
+                <HSEField {...f("immediateActions")} type="textarea" full label={pick(T.immediate)} />
+              </HSEPanel>
 
+              <HSEPanel title={pick(T.investSec)}>
+                <HSEField {...f("rootCause")} type="textarea" full label={pick(T.rootCause)} />
+                <HSEField {...f("correctiveActions")} type="textarea" full label={pick(T.capa)} />
+                <HSEField {...f("responsibility")} label={pick(T.responsibility)} />
+                <HSEField {...f("deadline")} type="date" label={pick(T.deadline)} />
+                <HSEField {...f("status")} type="select" label={pick(T.status)} options={[
+                  { v: "open", label: pick(T.stOpen) },
+                  { v: "investigating", label: pick(T.stInv) },
+                  { v: "action", label: pick(T.stAct) },
+                  { v: "closed", label: pick(T.stClosed) },
+                ]} />
+              </HSEPanel>
 
-            {!isQuickMode && (
-              <div style={{ marginTop: 14, padding: 12, background: "#fff7ed", borderRadius: 10, border: "1px dashed rgba(120,53,15,0.18)" }}>
-                <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark }}>{pick(T.injuredPerson)}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                  <div><label style={labelStyle}>{pick(T.name)}</label><input type="text" value={draft.injuredName} onChange={(e) => set("injuredName", e.target.value)} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.age)}</label><input type="number" value={draft.injuredAge} onChange={(e) => set("injuredAge", e.target.value)} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.nationality)}</label><input type="text" value={draft.injuredNationality} onChange={(e) => set("injuredNationality", e.target.value)} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.job)}</label><input type="text" value={draft.injuredJob} onChange={(e) => set("injuredJob", e.target.value)} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>{pick(T.exp)}</label><input type="number" value={draft.injuredExp} onChange={(e) => set("injuredExp", e.target.value)} style={inputStyle} /></div>
-                </div>
-              </div>
-            )}
+              <HSEPanel title={pick(T.reportingSec)}>
+                <HSEField {...f("reportedToHSE")} label={pick(T.toHse)} placeholder={pick(T.reporterPh)} />
+                <HSEField {...f("reportedToHSEDate")} type="date" label={pick(T.toHseDate)} />
+                <HSEField {...f("reportedToMOHRE")} type="select" label={pick(T.toMohre)} options={NOTIFY} />
+                <HSEField {...f("reportedToMunicipality")} type="select" label={pick(T.toMun)} options={NOTIFY} />
+                <HSEField {...f("reportedToCivilDefence")} type="select" label={pick(T.toCD)} options={NOTIFY} />
+                <HSEField {...f("reportedToPolice")} type="select" label={pick(T.toPolice)} options={NOTIFY} />
+                <HSEField {...f("familyNotified")} type="select" label={pick(T.toFamily)} options={YESNO} />
+                <HSEField {...f("insuranceNotified")} type="select" label={pick(T.toInsurance)} options={YESNO} />
+              </HSEPanel>
 
-            {isQuickMode && (
-              <div style={{
-                marginTop: 14, padding: "10px 14px", borderRadius: 10,
-                background: "linear-gradient(135deg, #dbeafe, #f0f9ff)",
-                border: "1px solid #93c5fd", fontSize: 12.5, color: "#1e40af", fontWeight: 700,
-              }}>
-                {pick(T.quickMode)} — {lang === "ar" ? "حقول الإصابة الطبية مخفيّة (شبه حادث = بدون إصابة)" : "Medical injury fields hidden (Near-miss = no injury)"}
-              </div>
-            )}
-
-            <div style={{ marginTop: 14 }}>
-              <label style={labelStyle}>{pick(T.desc)}</label>
-              <textarea value={draft.description} onChange={(e) => set("description", e.target.value)} style={{ ...inputStyle, minHeight: 110 }} />
-            </div>
-
-            {!isQuickMode && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 10 }}>
-                <div><label style={labelStyle}>{pick(T.injuryType)}</label><input type="text" value={draft.injuriesType} onChange={(e) => set("injuriesType", e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.bodyPart)}</label><input type="text" value={draft.bodyPart} onChange={(e) => set("bodyPart", e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.treatment)}</label><input type="text" value={draft.treatment} onChange={(e) => set("treatment", e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.cost)}</label><input type="number" value={draft.estimatedCost} onChange={(e) => set("estimatedCost", e.target.value)} style={inputStyle} /></div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.damage)}</label>
-              <textarea value={draft.damageDescription} onChange={(e) => set("damageDescription", e.target.value)} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.witnesses)}</label>
-              <textarea value={draft.witnesses} onChange={(e) => set("witnesses", e.target.value)} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.immediate)}</label>
-              <textarea value={draft.immediateActions} onChange={(e) => set("immediateActions", e.target.value)} style={{ ...inputStyle, minHeight: 70 }} />
-            </div>
-
-            <div style={{ marginTop: 14, padding: 12, background: "#fee2e2", borderRadius: 10, border: "1px solid #fca5a5" }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: "#7f1d1d" }}>{pick(T.investSec)}</div>
-              <div>
-                <label style={labelStyle}>{pick(T.rootCause)}</label>
-                <textarea value={draft.rootCause} onChange={(e) => set("rootCause", e.target.value)} style={{ ...inputStyle, minHeight: 80 }} />
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <label style={labelStyle}>{pick(T.capa)}</label>
-                <textarea value={draft.correctiveActions} onChange={(e) => set("correctiveActions", e.target.value)} style={{ ...inputStyle, minHeight: 80 }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginTop: 8 }}>
-                <div><label style={labelStyle}>{pick(T.responsibility)}</label><input type="text" value={draft.responsibility} onChange={(e) => set("responsibility", e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.deadline)}</label><input type="date" value={draft.deadline} onChange={(e) => set("deadline", e.target.value)} style={inputStyle} /></div>
-                <div>
-                  <label style={labelStyle}>{pick(T.status)}</label>
-                  <select value={draft.status} onChange={(e) => set("status", e.target.value)} style={inputStyle}>
-                    <option value="open">{pick(T.stOpen)}</option>
-                    <option value="investigating">{pick(T.stInv)}</option>
-                    <option value="action">{pick(T.stAct)}</option>
-                    <option value="closed">{pick(T.stClosed)}</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, padding: 12, background: "#dbeafe", borderRadius: 10, border: "1px solid #93c5fd" }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: "#1e40af" }}>{pick(T.reportingSec)}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                <div><label style={labelStyle}>{pick(T.toHse)}</label><input type="text" value={draft.reportedToHSE} onChange={(e) => set("reportedToHSE", e.target.value)} placeholder={pick(T.reporterPh)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.toHseDate)}</label><input type="date" value={draft.reportedToHSEDate} onChange={(e) => set("reportedToHSEDate", e.target.value)} style={inputStyle} /></div>
-                <NotifySelect label={pick(T.toMohre)}    value={draft.reportedToMOHRE}          onChange={(v) => set("reportedToMOHRE", v)}          T={T} pick={pick} />
-                <NotifySelect label={pick(T.toMun)}      value={draft.reportedToMunicipality}   onChange={(v) => set("reportedToMunicipality", v)}   T={T} pick={pick} />
-                <NotifySelect label={pick(T.toCD)}       value={draft.reportedToCivilDefence}   onChange={(v) => set("reportedToCivilDefence", v)}   T={T} pick={pick} />
-                <NotifySelect label={pick(T.toPolice)}   value={draft.reportedToPolice}         onChange={(v) => set("reportedToPolice", v)}         T={T} pick={pick} />
-                <NotifySelect label={pick(T.toFamily)}   value={draft.familyNotified}           onChange={(v) => set("familyNotified", v)}           T={T} pick={pick} yesNo />
-                <NotifySelect label={pick(T.toInsurance)} value={draft.insuranceNotified}       onChange={(v) => set("insuranceNotified", v)}        T={T} pick={pick} yesNo />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, padding: 12, background: "#dcfce7", borderRadius: 10, border: "1px solid #86efac" }}>
-              <div style={{ fontWeight: 950, marginBottom: 10, color: "#166534" }}>{pick(T.closureSec)}</div>
-              <div>
-                <label style={labelStyle}>{pick(T.lessonsLearned)}</label>
-                <textarea value={draft.lessonsLearned} onChange={(e) => set("lessonsLearned", e.target.value)} style={{ ...inputStyle, minHeight: 70 }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginTop: 8 }}>
-                <div>
-                  <label style={labelStyle}>{pick(T.effectivenessCheck)}</label>
-                  <select value={draft.effectivenessVerified} onChange={(e) => set("effectivenessVerified", e.target.value)} style={inputStyle}>
-                    <option value="">{pick(T.optChoose)}</option>
-                    <option value="yes">{pick(T.optYes)}</option>
-                    <option value="no">{pick(T.optNo)}</option>
-                  </select>
-                </div>
-                <div><label style={labelStyle}>{pick(T.effectivenessDate)}</label><input type="date" value={draft.effectivenessDate} onChange={(e) => set("effectivenessDate", e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>{pick(T.closedBy)}</label><input type="text" value={draft.closedBy} onChange={(e) => set("closedBy", e.target.value)} style={inputStyle} /></div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); }} disabled={saving}>{pick(T.clearBtn)}</button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={pick(T.closureSec)}>
+                <HSEField {...f("lessonsLearned")} type="textarea" full label={pick(T.lessonsLearned)} />
+                <HSEField {...f("effectivenessVerified")} type="select" label={pick(T.effectivenessCheck)} options={[
+                  { v: "yes", label: pick(T.optYes) },
+                  { v: "no", label: pick(T.optNo) },
+                ]} />
+                <HSEField {...f("effectivenessDate")} type="date" label={pick(T.effectivenessDate)} />
+                <HSEField {...f("closedBy")} label={pick(T.closedBy)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <>

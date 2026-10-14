@@ -1,7 +1,7 @@
 // src/pages/hse/HSEChecklistShared.jsx
 // مكون مشترك لنماذج Checklist (F-32, F-33, F-34) — Yes/No/N/A + ملاحظات
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 /**
  * Generic checklist form
@@ -24,6 +25,7 @@ import {
 export default function HSEChecklist({
   storageKey, formCode, titleAr, titleEn, subtitleAr, subtitleEn,
   icon = "📋", sourceCode, sections, extraFields = [],
+  steps = [], guidance = [],
 }) {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -33,6 +35,39 @@ export default function HSEChecklist({
   const [viewing, setViewing] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  const totalQuestions = sections.reduce((acc, s) => acc + s.items.length, 0);
+  const rules = useMemo(() => {
+    const hasNo = (d) => Object.values(d.results || {}).includes("no");
+    return [
+      { key: "date", label: { ar: "التاريخ", en: "Date" }, type: "date", required: true, notFuture: true },
+      { key: "inspector", label: { ar: "المفتش", en: "Inspector" }, required: true, minLength: 2, maxLength: 80 },
+      { key: "location", label: { ar: "الموقع", en: "Location" }, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+      { key: "area", label: { ar: "المنطقة المحددة", en: "Specific Area" }, maxLength: 120 },
+      ...extraFields.map((f) => ({
+        key: f.v, label: { ar: f.ar, en: f.en },
+        type: f.type === "number" ? "number" : f.type === "date" ? "date" : "text",
+        min: f.min, max: f.max, required: f.required, maxLength: f.type ? undefined : 120,
+      })),
+      { key: "results", label: { ar: "بنود الفحص", en: "Checklist items" },
+        custom: (v) => {
+          const answered = Object.values(v || {}).filter(Boolean).length;
+          return answered < totalQuestions
+            ? { ar: `أجب على كل البنود (${answered} من ${totalQuestions})`, en: `Answer every item (${answered} of ${totalQuestions})` }
+            : null;
+        } },
+      { key: "observations", label: { ar: "ملاحظات إضافية", en: "Additional Observations" }, maxLength: 2000 },
+      { key: "correctiveActions", label: { ar: "إجراءات تصحيحية مطلوبة", en: "Corrective Actions Required" }, maxLength: 2000,
+        requiredIf: hasNo, requiredMsg: { ar: "يوجد بند مخالف — اكتب الإجراء التصحيحي", en: "An item failed — write the corrective action" } },
+      { key: "followUpDate", label: { ar: "تاريخ المتابعة", en: "Follow-up Date" }, type: "date", after: "date",
+        requiredIf: hasNo, requiredMsg: { ar: "يوجد بند مخالف — حدّد تاريخ المتابعة", en: "An item failed — set a follow-up date" } },
+      { key: "preparedBy", label: { ar: "أعدّ الفحص", en: "Prepared By" }, required: true, maxLength: 80 },
+      { key: "reviewedBy", label: { ar: "راجع الفحص", en: "Reviewed By" }, maxLength: 80,
+        custom: (v, d) => v && d.preparedBy && v.trim().toLowerCase() === d.preparedBy.trim().toLowerCase()
+          ? { ar: "المراجِع يجب أن يكون شخصاً غير المُعِد", en: "The reviewer must be a different person from the preparer" } : null },
+    ];
+  }, [extraFields, totalQuestions]);
+  const validation = useHSEValidation(rules, draft, lang);
 
   function makeBlank() {
     return {
@@ -64,14 +99,12 @@ export default function HSEChecklist({
     setDraft({ ...makeBlank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.inspector.trim()) {
-      alert(lang === "ar" ? "أدخل اسم المفتش" : "Enter inspector name");
-      return;
-    }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -81,7 +114,7 @@ export default function HSEChecklist({
       }
       await reload();
       alert(lang === "ar" ? "✅ تم الحفظ" : "✅ Saved");
-      setDraft(makeBlank()); setEditingId(null); setTab("list");
+      setDraft(makeBlank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
     } finally {
@@ -122,7 +155,7 @@ export default function HSEChecklist({
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>
               {lang === "ar" ? "📋 السجل" : "📋 Records"} ({items.length})
             </button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(makeBlank()); setEditingId(null); validation.reset(); setTab("new"); }}>
               {lang === "ar" ? "+ فحص جديد" : "+ New Inspection"}
             </button>
             <button style={buttonGhost} onClick={() => navigate("/hse")}>
@@ -131,120 +164,118 @@ export default function HSEChecklist({
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "رقم الفحص" : "Inspection No."}</label>
-                <input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} />
-              </div>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "التاريخ" : "Date"}</label>
-                <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "المفتش" : "Inspector"}</label>
-                <input type="text" value={draft.inspector} onChange={(e) => setDraft({ ...draft, inspector: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "الموقع" : "Location"}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "المنطقة المحددة" : "Specific Area"}</label>
-                <input type="text" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} style={inputStyle} />
-              </div>
-              {extraFields.map((f) => (
-                <div key={f.v}>
-                  <label style={labelStyle}>{pick({ ar: f.ar, en: f.en })}</label>
-                  <input type={f.type || "text"} value={draft[f.v] || ""} onChange={(e) => setDraft({ ...draft, [f.v]: e.target.value })} style={inputStyle} />
-                </div>
-              ))}
-            </div>
+        {tab === "new" && (() => {
+          const set = (k) => (v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: set(k), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const ANSWERS = [
+            { v: "yes", label: lang === "ar" ? "✅ نعم" : "✅ Yes", cls: "ph-select-ok" },
+            { v: "no",  label: lang === "ar" ? "❌ لا" : "❌ No",  cls: "ph-select-bad" },
+            { v: "na",  label: lang === "ar" ? "⊘ لا ينطبق" : "⊘ N/A", cls: "hk-na" },
+          ];
+          let n = 0;
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: titleAr, en: titleEn }}
+              subtitle={{ ar: subtitleAr, en: subtitleEn }}
+              docNo={formCode}
+              accent={HSE_COLORS.primary}
+              headerFields={[
+                { label: lang === "ar" ? "رقم الفحص" : "Inspection No.", value: draft.reportNo },
+                ...(sourceCode ? [{ label: lang === "ar" ? "المرجع" : "Source", value: sourceCode }] : []),
+              ]}
+              steps={steps.length ? steps : [
+                { ar: "اكتب التاريخ والمفتش والموقع والمنطقة المحددة.", en: "Enter the date, the inspector, the location and the specific area." },
+                { ar: "أجب على كل بند: «نعم» إذا كان مطابقاً، «لا» إذا كان مخالفاً، و«لا ينطبق» فقط إذا لم يكن البند موجوداً في الموقع.", en: "Answer every item: “Yes” if compliant, “No” if not, and “N/A” only when the item does not exist at the site." },
+                { ar: "أي بند «لا» يلزمك بكتابة الإجراء التصحيحي وتحديد تاريخ متابعة بعد تاريخ الفحص.", en: "Any “No” requires a corrective action and a follow-up date after the inspection date." },
+                { ar: "يوقّع المُعِد، ويراجع الفحص شخص آخر.", en: "The preparer signs, and a different person reviews." },
+              ]}
+              guidance={guidance}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(makeBlank()); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات الفحص" : "Inspection details"}>
+                <HSEField {...f("date")} type="date" label={lang === "ar" ? "التاريخ" : "Date"} />
+                <HSEField {...f("inspector")} label={lang === "ar" ? "المفتش" : "Inspector"} />
+                <HSEField {...f("location")} type="select" label={lang === "ar" ? "الموقع" : "Location"}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("area")} label={lang === "ar" ? "المنطقة المحددة" : "Specific Area"} />
+                {extraFields.map((x) => (
+                  <HSEField key={x.v} {...f(x.v)} type={x.type || "text"} label={pick({ ar: x.ar, en: x.en })} />
+                ))}
+              </HSEPanel>
 
-            <div style={{
-              marginTop: 14, padding: 12, borderRadius: 10,
-              background: "#fff7ed", border: "1px dashed rgba(120,53,15,0.18)",
-              display: "flex", gap: 14, fontSize: 13, fontWeight: 800, flexWrap: "wrap",
-            }}>
-              <span style={{ color: "#166534" }}>{lang === "ar" ? "✅ مطابق:" : "✅ Yes:"} {stats.yes}</span>
-              <span style={{ color: "#b91c1c" }}>{lang === "ar" ? "❌ مخالف:" : "❌ No:"} {stats.no}</span>
-              <span style={{ color: "#64748b" }}>{lang === "ar" ? "⊘ غير مطبق:" : "⊘ N/A:"} {stats.na}</span>
-              <span>{lang === "ar" ? "تم الإجابة:" : "Answered:"} {stats.total}/{totalItems}</span>
-              {stats.total > 0 && <span style={{ marginInlineStart: "auto", fontSize: 16 }}>{passRate}%</span>}
-            </div>
-
-            {sections.map((sec) => (
-              <div key={sec.id} style={{ marginTop: 14, padding: 12, background: "#fff7ed", borderRadius: 10, border: "1px solid rgba(120,53,15,0.18)" }}>
-                <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark }}>
-                  {pick({ ar: sec.titleAr, en: sec.titleEn })}
-                </div>
-                {sec.items.map((it, idx) => {
-                  const key = `${sec.id}-${idx}`;
-                  const val = draft.results[key];
-                  return (
-                    <div key={key} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(120,53,15,0.08)", flexWrap: "wrap",
-                    }}>
-                      <div style={{ flex: 1, minWidth: 200, fontSize: 13 }}>
-                        {pick(it)}
-                        {it.note && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{pick(it.note)}</div>}
-                      </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {[
-                          { v: "yes", label: "✅", color: "#dcfce7", border: "#166534" },
-                          { v: "no",  label: "❌", color: "#fee2e2", border: "#b91c1c" },
-                          { v: "na",  label: "⊘",  color: "#f1f5f9", border: "#64748b" },
-                        ].map((opt) => (
-                          <button key={opt.v} type="button" onClick={() => setResult(key, opt.v)} style={{
-                            padding: "5px 12px", borderRadius: 8,
-                            background: val === opt.v ? opt.color : "#fff",
-                            border: `2px solid ${val === opt.v ? opt.border : "rgba(120,53,15,0.18)"}`,
-                            cursor: "pointer", fontWeight: 800, fontSize: 13,
-                          }}>{opt.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="ph-stats">
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "مطابق" : "Yes"}</div><div className="ph-stat-value" style={{ color: "#166534" }}>{stats.yes}</div></div>
+                <div className={`ph-stat${stats.no ? " ph-stat-bad" : ""}`}><div className="ph-stat-label">{lang === "ar" ? "مخالف" : "No"}</div><div className="ph-stat-value">{stats.no}</div></div>
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "لا ينطبق" : "N/A"}</div><div className="ph-stat-value" style={{ color: "#64748b" }}>{stats.na}</div></div>
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "تمت الإجابة" : "Answered"}</div><div className="ph-stat-value">{stats.total}/{totalItems}</div></div>
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "نسبة المطابقة" : "Pass rate"}</div><div className="ph-stat-value">{stats.total ? `${passRate}%` : "—"}</div></div>
               </div>
-            ))}
 
-            <div style={{ marginTop: 14 }}>
-              <label style={labelStyle}>{lang === "ar" ? "ملاحظات إضافية" : "Additional Observations"}</label>
-              <textarea value={draft.observations} onChange={(e) => setDraft({ ...draft, observations: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{lang === "ar" ? "إجراءات تصحيحية مطلوبة" : "Corrective Actions Required"}</label>
-              <textarea value={draft.correctiveActions} onChange={(e) => setDraft({ ...draft, correctiveActions: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{lang === "ar" ? "تاريخ المتابعة" : "Follow-up Date"}</label>
-              <input type="date" value={draft.followUpDate} onChange={(e) => setDraft({ ...draft, followUpDate: e.target.value })} style={{ ...inputStyle, maxWidth: 250 }} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "أعدّ الفحص" : "Prepared By"}</label>
-                <input type="text" value={draft.preparedBy} onChange={(e) => setDraft({ ...draft, preparedBy: e.target.value })} style={inputStyle} />
+              <div className="ph-table-wrap" data-hk-field="results"
+                style={{ marginBottom: 14, borderColor: validation.errors.results ? "#dc2626" : undefined }}>
+                <table className="ph-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 44 }}>#</th>
+                      <th style={{ textAlign: "start" }}>{lang === "ar" ? "البند" : "Item"}</th>
+                      <th style={{ width: 340 }}>{lang === "ar" ? "النتيجة" : "Result"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sections.map((sec) => (
+                      <React.Fragment key={sec.id}>
+                        <tr className="ph-section-row"><td colSpan={3}>{pick({ ar: sec.titleAr, en: sec.titleEn })}</td></tr>
+                        {sec.items.map((it, idx) => {
+                          const key = `${sec.id}-${idx}`;
+                          const val = draft.results[key];
+                          n += 1;
+                          return (
+                            <tr key={key} style={!val && validation.errors.results ? { background: "#fef2f2" } : undefined}>
+                              <td className="ph-num">{n}</td>
+                              <td style={{ fontWeight: 600 }}>
+                                {pick(it)}
+                                {it.note && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{pick(it.note)}</div>}
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  {ANSWERS.map((opt) => (
+                                    <button key={opt.v} type="button" onClick={() => setResult(key, opt.v)}
+                                      className={`ph-select ${val === opt.v ? opt.cls : "ph-select-empty"}`}
+                                      style={{ flex: 1, minHeight: 40, padding: "6px 8px" }}>
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <label style={labelStyle}>{lang === "ar" ? "راجع الفحص" : "Reviewed By"}</label>
-                <input type="text" value={draft.reviewedBy} onChange={(e) => setDraft({ ...draft, reviewedBy: e.target.value })} style={inputStyle} />
-              </div>
-            </div>
+              {validation.errors.results && <div className="hk-err" style={{ margin: "-6px 0 14px" }}>{validation.errors.results}</div>}
 
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (lang === "ar" ? "⏳ جارٍ الحفظ…" : "⏳ Saving…") : (lang === "ar" ? "💾 حفظ" : "💾 Save")}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(makeBlank()); }} disabled={saving}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={lang === "ar" ? "الملاحظات والإجراءات" : "Findings & actions"}>
+                <HSEField {...f("observations")} type="textarea" full label={lang === "ar" ? "ملاحظات إضافية" : "Additional Observations"} />
+                <HSEField {...f("correctiveActions")} type="textarea" full label={lang === "ar" ? "إجراءات تصحيحية مطلوبة" : "Corrective Actions Required"} />
+                <HSEField {...f("followUpDate")} type="date" label={lang === "ar" ? "تاريخ المتابعة" : "Follow-up Date"} />
+              </HSEPanel>
+
+              <HSEPanel title={lang === "ar" ? "التوقيعات" : "Signatures"}>
+                <HSEField {...f("preparedBy")} label={lang === "ar" ? "أعدّ الفحص" : "Prepared By"} />
+                <HSEField {...f("reviewedBy")} label={lang === "ar" ? "راجع الفحص" : "Reviewed By"} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>

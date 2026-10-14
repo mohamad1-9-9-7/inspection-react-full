@@ -376,94 +376,92 @@ export function riskLevelLabel(score, lang) {
    MODERN STYLES — HSE module (rounded, soft shadows, focus rings)
    ============================================================ */
 
+/* Structural styles follow the shared input-form design of the other cards
+   (BranchFormShell: slate borders, white panels, dark table heads, teal
+   primary). Orange stays as the HSE accent only. */
 export const pageStyle = {
   minHeight: "100vh",
   padding: "24px 18px 80px",
-  background:
-    "radial-gradient(circle at 10% 0%, rgba(251,146,60,0.16) 0, rgba(255,255,255,0) 40%)," +
-    "radial-gradient(circle at 90% 100%, rgba(245,158,11,0.12) 0, rgba(255,255,255,0) 50%)," +
-    "linear-gradient(180deg, #fff7ed 0%, #fffaf3 100%)",
+  background: "linear-gradient(180deg, #f0f9ff 0%, #f8fafc 260px)",
   fontFamily: 'Cairo, system-ui, -apple-system, "Segoe UI", sans-serif',
-  color: HSE_COLORS.textDark,
+  color: "#0f172a",
 };
 
 export const containerStyle = { maxWidth: 1180, margin: "0 auto" };
 
 export const headerBar = {
   display: "flex", alignItems: "center", justifyContent: "space-between",
-  gap: 14, padding: "16px 22px", borderRadius: 20,
-  background: "rgba(255,255,255,0.96)",
-  border: "1px solid rgba(120, 53, 15, 0.10)",
-  boxShadow: "0 14px 36px rgba(234,88,12,0.10)",
-  marginBottom: 18, flexWrap: "wrap",
-  backdropFilter: "blur(6px)",
+  gap: 14, padding: "14px 20px", borderRadius: 14,
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderInlineStart: "5px solid " + HSE_COLORS.primary,
+  boxShadow: "0 1px 3px rgba(15,23,42,.05)",
+  marginBottom: 16, flexWrap: "wrap",
 };
 
 export const buttonPrimary = {
-  padding: "10px 20px", borderRadius: 999,
-  background: "linear-gradient(135deg, #f97316, #ea580c)",
-  color: "#fff", border: "1px solid rgba(0,0,0,0)", cursor: "pointer",
-  fontWeight: 800, fontSize: 13.5, letterSpacing: "0.01em",
-  boxShadow: "0 8px 20px rgba(234,88,12,0.28)",
+  padding: "9px 16px", borderRadius: 8,
+  background: "linear-gradient(135deg, #0f766e, #14b8a6)",
+  color: "#fff", border: "1px solid transparent", cursor: "pointer",
+  fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+  boxShadow: "0 4px 12px rgba(15,118,110,.25)",
   transition: "transform .15s ease, box-shadow .15s ease, opacity .15s ease",
 };
 
 export const buttonGhost = {
-  padding: "9px 16px", borderRadius: 999,
+  padding: "8px 14px", borderRadius: 8,
   background: "#fff",
-  color: HSE_COLORS.primaryDark,
-  border: "1px solid rgba(120, 53, 15, 0.16)",
-  cursor: "pointer", fontWeight: 700, fontSize: 13,
-  boxShadow: "0 2px 6px rgba(234,88,12,0.06)",
+  color: "#334155",
+  border: "1px solid #e2e8f0",
+  cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit",
   transition: "background .15s, border-color .15s",
 };
 
 export const inputStyle = {
-  width: "100%", padding: "11px 14px",
-  borderRadius: 12, border: "1.5px solid #fed7aa",
-  background: "#fffbf5", fontSize: 14, fontFamily: "inherit",
-  color: HSE_COLORS.textDark,
+  width: "100%", boxSizing: "border-box", padding: "11px 13px", minHeight: 44,
+  borderRadius: 7, border: "1px solid #e2e8f0",
+  background: "#fff", fontSize: 14, fontFamily: "inherit",
+  color: "#0f172a",
   outline: "none",
-  transition: "border-color .15s, box-shadow .15s, background .15s",
+  transition: "border-color .15s, box-shadow .15s",
 };
 
 export const labelStyle = {
-  display: "block", marginBottom: 6,
-  fontSize: 12, fontWeight: 800, color: HSE_COLORS.primaryDark,
-  letterSpacing: "0.02em",
+  display: "block", marginBottom: 5,
+  fontSize: 11, fontWeight: 800, color: "#0f766e",
+  letterSpacing: "0.05em", textTransform: "uppercase",
 };
 
 export const cardStyle = {
   background: "#fff",
-  border: "1px solid rgba(120, 53, 15, 0.10)",
-  borderRadius: 18, padding: 22,
-  boxShadow: "0 10px 30px rgba(234,88,12,0.08)",
+  border: "1px solid #e2e8f0",
+  borderRadius: 12, padding: 18,
+  boxShadow: "0 1px 3px rgba(15,23,42,.04)",
 };
 
-/* ===== Modern table (alternating rows, hover highlight, no harsh borders) ===== */
+/* ===== Table — same as the .ph-table on the other cards ===== */
 export const tableStyle = {
   width: "100%", borderCollapse: "separate", borderSpacing: 0,
   background: "#fff",
-  borderRadius: 16, overflow: "hidden",
-  boxShadow: "0 8px 24px rgba(234,88,12,0.08)",
-  border: "1px solid rgba(120, 53, 15, 0.08)",
+  borderRadius: 12, overflow: "hidden",
+  boxShadow: "0 1px 3px rgba(15,23,42,.04)",
+  border: "1px solid #e2e8f0",
 };
 
 export const thStyle = {
-  padding: "14px 16px", textAlign: "start",
-  background: "linear-gradient(135deg, #fff7ed, #ffedd5)",
-  color: HSE_COLORS.primaryDark,
-  fontWeight: 900, fontSize: 12,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  borderBottom: "1px solid #fed7aa",
+  padding: "13px 14px", textAlign: "start",
+  background: "#0f172a",
+  color: "#fff",
+  fontWeight: 700, fontSize: 12,
+  letterSpacing: "0.03em",
+  borderBottom: "1px solid #0f172a",
   whiteSpace: "nowrap",
 };
 
 export const tdStyle = {
-  padding: "13px 16px",
-  borderBottom: "1px solid #fef3c7",
+  padding: "12px 14px",
+  borderBottom: "1px solid #f1f5f9",
   fontSize: 13.5,
-  color: HSE_COLORS.textDark,
+  color: "#0f172a",
   verticalAlign: "middle",
 };

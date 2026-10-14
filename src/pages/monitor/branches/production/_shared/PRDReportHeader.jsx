@@ -33,8 +33,12 @@ export default function PRDReportHeader({
   subtitleAr,
   accent = "#0f766e",
   fields = [],
+  lang,                 // optional override — sections with their own language toggle (HSE) pass it
 }) {
-  const { t, isAr, dir } = useLang();
+  const ctx = useLang();
+  const { t } = ctx;
+  const isAr = lang ? lang === "ar" : ctx.isAr;
+  const dir = isAr ? "rtl" : "ltr";
 
   const mainTitle    = isAr && titleAr ? titleAr : title;
   const secondTitle  = isAr ? title : titleAr;
@@ -81,6 +85,10 @@ export default function PRDReportHeader({
                     value={f.value ?? ""}
                     onChange={(e) => f.onChange(e.target.value)}
                     placeholder={f.placeholder || ""}
+                    min={f.min}
+                    max={f.max}
+                    maxLength={f.maxLength}
+                    readOnly={f.readOnly}
                     className="prd-rh-input"
                     aria-invalid={f.invalid ? "true" : undefined}
                     style={f.invalid ? { borderColor: "#dc2626", background: "#fef2f2" } : undefined}

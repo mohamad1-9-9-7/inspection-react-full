@@ -5,11 +5,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
-  cardStyle, inputStyle, labelStyle, HSE_COLORS,
+  HSE_COLORS,
   apiList, apiSave, apiUpdate, apiDelete, apiUploadFile, apiDeleteFile,
   tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const COMMON_T = {
   list:    { ar: "📋 السجل", en: "📋 Records" },
@@ -26,25 +27,6 @@ const COMMON_T = {
   actions:       { ar: "إجراءات", en: "Actions" },
   enterField:    { ar: "أدخل:", en: "Enter:" },
 };
-
-/* Modern focus-aware input wrapper */
-function FocusInput({ as: As = "input", style, ...props }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <As
-      {...props}
-      onFocus={(e) => { setFocused(true); props.onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
-      style={{
-        ...inputStyle,
-        ...style,
-        borderColor: focused ? "#ea580c" : "#fed7aa",
-        background: focused ? "#fff" : "#fffbf5",
-        boxShadow: focused ? "0 0 0 3px rgba(234, 88, 12, 0.15)" : "none",
-      }}
-    />
-  );
-}
 
 /** Resolve label: accepts either string or { ar, en } */
 function L(value, lang) {
@@ -74,6 +56,7 @@ function OV(opt) {
 export default function HSEGenericLog({
   storageKey, title, subtitle, formCode, icon = "📝",
   fields = [], listColumns = [], backTo = "/hse",
+  steps = [], guidance = [], extraRules = [],
 }) {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -89,6 +72,30 @@ export default function HSEGenericLog({
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  /* Every field's limits become one rule list: required, number range, date
+     window, text length, and select values that must come from the list. */
+  const rules = useMemo(() => [
+    ...fields.map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type === "file" ? "files"
+        : f.type === "number" ? (f.int ? "int" : "number")
+        : f.type === "date" || f.type === "time" ? f.type
+        : "text",
+      required: !!f.required,
+      requiredIf: f.requiredIf,
+      min: f.min, max: f.max,
+      notFuture: f.notFuture, notPast: f.notPast, maxPastDays: f.maxPastDays,
+      after: f.after, afterOrEqual: f.afterOrEqual, before: f.before,
+      minLength: f.minLength,
+      maxLength: f.maxLength ?? (f.type === "textarea" ? 2000 : (!f.type || f.type === "text") ? 200 : undefined),
+      oneOf: f.type === "select" ? (f.options || []).map(OV) : undefined,
+      custom: f.validate,
+    })),
+    ...extraRules,
+  ], [fields, extraRules]);
+  const validation = useHSEValidation(rules, draft, lang);
+
   async function reload() {
     const arr = await apiList(storageKey);
     setItems(arr);
@@ -98,16 +105,12 @@ export default function HSEGenericLog({
   function startEdit(it) {
     setDraft({ ...blank, ...it });
     setEditingId(it.id);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    for (const f of fields) {
-      if (f.required && !String(draft[f.key] ?? "").trim()) {
-        alert(`${pick(COMMON_T.enterField)} ${L(f.label, lang)}`);
-        return;
-      }
-    }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       const reporter = draft.preparedBy || draft.inspectedBy || draft.recordedBy || "HSE";
@@ -120,6 +123,7 @@ export default function HSEGenericLog({
       alert(pick(COMMON_T.saved));
       setDraft(blank);
       setEditingId(null);
+      validation.reset();
       setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
@@ -140,102 +144,37 @@ export default function HSEGenericLog({
 
   function renderField(f) {
     const val = draft[f.key];
-    const setVal = (v) => setDraft({ ...draft, [f.key]: v });
-    const baseStyle = f.fullWidth ? { gridColumn: "1 / -1" } : {};
-    const labelText = L(f.label, lang);
-    const placeholder = L(f.placeholder, lang);
-    const labelEl = (
-      <label style={labelStyle}>
-        {labelText}
-        {f.required && <span style={{ color: "#dc2626", marginInlineStart: 4 }}>*</span>}
-        {f.type === "time" && <span style={{ fontSize: 10, color: "#9a3412", fontWeight: 700, marginInlineStart: 6 }}>(HH:MM:SS)</span>}
-      </label>
-    );
-    switch (f.type) {
-      case "textarea":
-        return (
-          <div key={f.key} style={baseStyle}>
-            {labelEl}
-            <FocusInput
-              as="textarea"
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-              placeholder={placeholder}
-              style={{ minHeight: 80, resize: "vertical" }}
-            />
-          </div>
-        );
-      case "select":
-        return (
-          <div key={f.key} style={baseStyle}>
-            {labelEl}
-            <FocusInput
-              as="select"
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-            >
-              {(f.options || []).map((o) => (
-                <option key={OV(o)} value={OV(o)}>{OL(o, lang)}</option>
-              ))}
-            </FocusInput>
-          </div>
-        );
-      case "checkbox":
-        return (
-          <label
-            key={f.key}
-            style={{
-              ...baseStyle,
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              padding: "12px 14px",
-              background: val ? "linear-gradient(135deg, #dcfce7, #f0fdf4)" : "#fffbf5",
-              border: `1.5px solid ${val ? "#86efac" : "#fed7aa"}`,
-              borderRadius: 12,
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-              color: val ? "#14532d" : "#1f0f00",
-              transition: "all .15s",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={val || false}
-              onChange={(e) => setVal(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#16a34a", cursor: "pointer" }}
-            />
-            {labelText}
-          </label>
-        );
-      case "file":
-        return (
-          <div key={f.key} style={baseStyle}>
-            {labelEl}
-            <FileUploadField
-              value={val}
-              onChange={setVal}
-              accept={f.accept || "image/*,application/pdf"}
-              multiple={f.multiple !== false}
-              lang={lang}
-            />
-          </div>
-        );
-      default:
-        return (
-          <div key={f.key} style={baseStyle}>
-            {labelEl}
-            <FocusInput
-              type={f.type || "text"}
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-              placeholder={placeholder}
-              step={f.type === "time" ? 1 : (f.type === "number" ? (f.step || "any") : undefined)}
-            />
-          </div>
-        );
+    const setVal = (v) => setDraft((d) => ({ ...d, [f.key]: v }));
+    const common = {
+      k: f.key,
+      label: L(f.label, lang),
+      value: val,
+      onChange: setVal,
+      rule: validation.ruleFor(f.key),
+      error: validation.errors[f.key],
+      hint: L(f.hint, lang),
+      placeholder: L(f.placeholder, lang),
+      full: f.fullWidth || f.type === "textarea" || f.type === "file",
+      lang,
+    };
+    if (f.type === "file") {
+      return (
+        <HSEField key={f.key} {...common}>
+          <FileUploadField
+            value={val}
+            onChange={setVal}
+            accept={f.accept || "image/*,application/pdf"}
+            multiple={f.multiple !== false}
+            lang={lang}
+          />
+        </HSEField>
+      );
     }
+    const type = f.type === "number" ? (f.int ? "int" : "number") : (f.type || "text");
+    const options = f.type === "select"
+      ? (f.options || []).map((o) => ({ v: OV(o), label: OL(o, lang) }))
+      : undefined;
+    return <HSEField key={f.key} {...common} type={type} options={options} />;
   }
 
   function renderCell(col, it) {
@@ -273,23 +212,31 @@ export default function HSEGenericLog({
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(COMMON_T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(COMMON_T.add)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(COMMON_T.add)}</button>
             <button style={buttonGhost} onClick={() => navigate(backTo)}>{pick(COMMON_T.back)}</button>
           </div>
         </div>
 
         {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+          <HSEReportForm
+            lang={lang}
+            dir={dir}
+            title={title}
+            subtitle={subtitle}
+            docNo={formCode}
+            accent={HSE_COLORS.primary}
+            steps={steps}
+            guidance={guidance}
+            validation={validation}
+            editing={!!editingId}
+            saving={saving}
+            onSave={save}
+            onCancel={() => { setDraft(blank); setEditingId(null); validation.reset(); setTab("list"); }}
+          >
+            <HSEPanel title={pick({ ar: "بيانات التقرير", en: "Report details" })}>
               {fields.map(renderField)}
-            </div>
-            <div style={{ marginTop: 18, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(COMMON_T.save)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setDraft(blank); setEditingId(null); setTab("list"); }} disabled={saving}>{pick(COMMON_T.cancel)}</button>
-            </div>
-          </div>
+            </HSEPanel>
+          </HSEReportForm>
         )}
 
         {tab === "list" && (
