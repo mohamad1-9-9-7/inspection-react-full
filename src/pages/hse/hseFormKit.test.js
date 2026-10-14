@@ -33,6 +33,8 @@ describe("validateHSE", () => {
     expect(keys(validateHSE(rules, { from: iso(-8) }, "en"))).toEqual(["from"]);
     expect(keys(validateHSE(rules, { from: iso(-1), to: iso(-1) }, "en"))).toEqual(["to"]);
     expect(validateHSE(rules, { from: iso(-2), to: iso(-1) }, "en")).toHaveLength(0);
+    // editing a saved record: the past-window no longer applies
+    expect(validateHSE(rules, { id: 7, from: iso(-40) }, "en")).toHaveLength(0);
   });
 
   test("requiredIf, when and custom rules", () => {

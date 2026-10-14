@@ -98,8 +98,12 @@ function checkRule(rule, draft, lang, includeRequired, ruleByKey) {
       if (!DATE_RE.test(s) || Number.isNaN(new Date(s).getTime())) return fmt(M.date, lang);
       const today = todayStr();
       if (rule.notFuture && s > today) return fmt(M.notFuture, lang);
-      if (rule.notPast && s < today) return fmt(M.notPast, lang);
-      if (rule.maxPastDays != null && daysBetween(s, today) > rule.maxPastDays)
+      // "Not in the past" and "at most N days back" stop late NEW reports.
+      // A saved record (it has an id) keeps its real date, so correcting an
+      // old inspection is never blocked by the calendar moving on.
+      const isNew = !draft.id;
+      if (isNew && rule.notPast && s < today) return fmt(M.notPast, lang);
+      if (isNew && rule.maxPastDays != null && daysBetween(s, today) > rule.maxPastDays)
         return fmt(M.maxPastDays, lang, { n: rule.maxPastDays });
       break;
     }
