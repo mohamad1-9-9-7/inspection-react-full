@@ -1,1237 +1,872 @@
 // src/pages/KPIDashboard.js
-// KPI Dashboard — connected to every branch in the system.
-// One summary call gives counts per type; deep KPIs use dedicated fetches.
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import CountUp from "react-countup";
-
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
-
-/* ============================================================
-   Fetch helpers
-============================================================ */
-async function fetchByType(type, limit = 5000) {
-  // Server caps `limit` (was 500, now 5000). Passing a large value returns as many as allowed.
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=${encodeURIComponent(limit)}`,
-    { cache: "no-store" }
-  );
-  if (!res.ok) throw new Error(`${res.status} while fetching ${type}`);
-  const json = await res.json().catch(() => []);
-  return Array.isArray(json) ? json : json?.data ?? [];
-}
-
-async function fetchSummary() {
-  try {
-    const res = await fetch(`${API_BASE}/api/reports/summary`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`${res.status}`);
-    const json = await res.json();
-    return Array.isArray(json?.data) ? json.data : [];
-  } catch {
-    return [];
-  }
-}
+// لوحة مؤشرات الأداء — أربعة أسئلة واضحة بدل ثلاثين رقم:
+//   1. هل الفروع عم تسلّم سجلاتها اليومية؟   (الحرارة · النظافة الشخصية · النظافة)
+//   2. كم من الشحنات انقبلت؟
+//   3. كم قراءة حرارة طلعت برّا حدودها؟       (كل وحدة على حدودها هي، مش متوسط واحد)
+//   4. كم صنف رجع؟
+// كل رقم مقارن بالفترة اللي قبلها، وتحت: جدول الفروع، «بحاجة لانتباهك»، والتفاصيل.
+//
+// الكلفة: الصفحة القديمة كانت تسحب لحد 5000 تقرير كامل من أربع أنواع بكل فتحة.
+// هلّق: طلب أعداد واحد (/api/reports/kpi-days — أعداد بلا payload)، ملخّص واحد،
+// وتقارير الفترة المختارة بس للشحنات/البرادات/المرتجعات. تحميل السيارات ما بينجاب
+// إلا إذا فتحت تبويبه. والنتائج بتنحفظ دقيقتين بالذاكرة فالتنقّل بين الفترات ما بيعيد الطلب.
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import API_BASE from "../config/api";
+import { BRANCHES as CATALOG_BRANCHES } from "./settings/reportTypeCatalog";
+import { defsFromPayload, inRange as tempInRange } from "./monitor/branches/qcs/coolerDefs";
 
 /* ============================================================
-   Date helpers — handles both camelCase + snake_case (server row)
+   السجلات اليومية المطلوبة من كل فرع
+   ثلاث سجلات يومية لكل موقع — هي اللي بتنحسب منها نسبة الالتزام.
+   باقي النماذج (أسبوعية/شهرية/عند الحاجة) ما بتدخل بالنسبة لأنها مش يومية.
 ============================================================ */
-function pickDate(rec) {
-  const cands = [
-    rec?.payload?.reportDate,
-    rec?.reportDate,
-    rec?.date,
-    rec?.created_at,   // server snake_case
-    rec?.createdAt,    // legacy
-    rec?.updated_at,
-    rec?.updatedAt,
-  ].filter(Boolean);
-  const d = cands[0];
-  if (!d) return "";
-  const s = String(d);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const ts = Date.parse(s);
-  if (Number.isFinite(ts)) return new Date(ts).toISOString().slice(0, 10);
-  if (/^[a-f0-9]{24}$/i.test(s)) {
-    const ms = parseInt(s.slice(0, 8), 16) * 1000;
-    if (ms > 1_000_000_000_000) return new Date(ms).toISOString().slice(0, 10);
-  }
-  return "";
-}
+const KIND_LABEL = { temp: "الحرارة", hyg: "النظافة الشخصية", clean: "النظافة اليومية" };
 
+const DAILY_LOGS = [
+  { id: "QCS",        types: [["qcs-coolers", "temp"], ["qcs-ph", "hyg"], ["qcs-clean", "clean"]] },
+  { id: "POS6",       types: [["pos6_coolers_temperature", "temp"], ["pos6_personal_hygiene", "hyg"], ["pos6_cleaning_checklist", "clean"]] },
+  { id: "POS10",      types: [["pos10_temperature", "temp"], ["pos10_personal_hygiene", "hyg"], ["pos10_daily_cleanliness", "clean"]] },
+  { id: "POS11",      types: [["pos11_temperature", "temp"], ["pos11_personal_hygiene", "hyg"], ["pos11_daily_cleanliness", "clean"]] },
+  { id: "POS15",      types: [["pos15_temperature", "temp"], ["pos15_personal_hygiene", "hyg"], ["pos15_daily_cleanliness", "clean"]] },
+  { id: "POS19",      types: [["pos19_temperature_monitoring", "temp"], ["pos19_personal_hygiene", "hyg"], ["pos19_daily_cleaning", "clean"]] },
+  { id: "PRODUCTION", types: [["prod_personal_hygiene", "hyg"], ["prod_cleaning_checklist", "clean"]] },
+  { id: "FTR1",       types: [["ftr1_temperature", "temp"], ["ftr1_personal_hygiene", "hyg"], ["ftr1_daily_cleanliness", "clean"]] },
+  { id: "FTR2",       types: [["ftr2_temperature", "temp"], ["ftr2_personal_hygiene", "hyg"], ["ftr2_daily_cleanliness", "clean"]] },
+].map((b) => {
+  const cat = CATALOG_BRANCHES.find((c) => c.id === b.id) || {};
+  return { ...b, name: cat.label || b.id, accent: cat.accent || "#2563eb" };
+});
+
+const ALL_DAILY_TYPES = DAILY_LOGS.flatMap((b) => b.types.map(([t]) => t));
+
+/* فرع ما سلّم ولا سجل يومي من 30 يوم = متوقف، ما بيدخل بالنسبة العامة. */
+const INACTIVE_AFTER_DAYS = 30;
+
+/* الأهداف — الأخضر من هون وفوق، والأصفر لحد العتبة التانية. */
+const TARGET = {
+  compliance: { good: 95, warn: 80 },
+  shipments:  { good: 90, warn: 75 },
+};
+
+/* ============================================================
+   التواريخ — كلها نصوص YYYY-MM-DD بتوقيت دبي
+============================================================ */
 function todayDubai() {
   try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
   catch { return new Date().toISOString().slice(0, 10); }
 }
-function daysAgoISO(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
+function addDays(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
-
-/* ============================================================
-   Normalizers for detailed datasets
-============================================================ */
-const normalizeQcsCoolers = (raw) => raw.map((r) => {
-  const p = r?.payload || r || {};
-  return { ...p, coolers: Array.isArray(p.coolers) ? p.coolers : [], date: pickDate(r) };
-});
-
-const normalizeShipments = (raw) => raw.map((r) => {
-  const p = r?.payload || r || {};
-  return {
-    ...p,
-    status: p.status || r?.status || "",
-    shipmentType: p.shipmentType || r?.shipmentType || "غير محدد",
-    productName: p.productName || p.name || r?.name || "",
-    supplier: p.supplier || p.butchery || r?.supplier || "",
-    butchery: p.butchery || "",
-    remarks: p.remarks || "",
-    date: pickDate(r),
-  };
-});
-
-// Loading Log saves one report with rows[] (one per vehicle).
-// Flatten so each vehicle row becomes an entry → counts/avg/compliance are per-vehicle.
-const normalizeLoading = (raw) => raw.flatMap((r) => {
-  const p = r?.payload || r || {};
-  const d = p.reportDate || pickDate(r);
-  const rows = Array.isArray(p.rows) ? p.rows : [];
-  // Legacy format (single-row at top level)
-  if (!rows.length && (p.timeStart || p.timeEnd || p.tempCheck)) {
-    return [{ ...p, date: d, timeStart: p.timeStart || "", timeEnd: p.timeEnd || "", tempCheck: p.tempCheck ?? p.temp ?? "" }];
-  }
-  return rows.map((row) => ({
-    date: d,
-    vehicleNo:  row.vehicleNo  || "",
-    driverName: row.driverName || "",
-    timeStart:  row.timeStart  || "",
-    timeEnd:    row.timeEnd    || "",
-    tempCheck:  row.tempCheck  ?? "",
-    // yes/no fields live directly on the row
-    trafficControlSpotter:  row.trafficControlSpotter,
-    vehicleSecured:         row.vehicleSecured,
-    loadSecured:            row.loadSecured,
-    areaSafe:               row.areaSafe,
-    manualHandlingControls: row.manualHandlingControls,
-    floorSealingIntact:     row.floorSealingIntact,
-    floorCleaning:          row.floorCleaning,
-    pestActivites:          row.pestActivites,
-    plasticCurtain:         row.plasticCurtain,
-    badOdour:               row.badOdour,
-    ppeAvailable:           row.ppeAvailable,
-  }));
-});
-
-function normalizeReturns(raw) {
-  const stampOf = (x) => {
-    if (!x) return 0;
-    if (typeof x === "number") return x;
-    const n = Date.parse(x);
-    if (Number.isFinite(n)) return n;
-    if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) return parseInt(x.slice(0, 8), 16) * 1000;
-    return 0;
-  };
-  const entries = raw.map((rec) => {
-    const p = rec?.payload || rec || {};
-    return {
-      reportDate: p.reportDate || rec?.reportDate || pickDate(rec) || "",
-      items: Array.isArray(p.items) ? p.items : [],
-      _stamp: stampOf(rec?.updated_at) || stampOf(rec?.updatedAt) ||
-              stampOf(rec?.created_at) || stampOf(rec?.createdAt) ||
-              stampOf(rec?._id) || stampOf(p._clientSavedAt),
-    };
-  }).filter((e) => e.reportDate);
-  const latest = new Map();
-  for (const e of entries) {
-    const prev = latest.get(e.reportDate);
-    latest.set(e.reportDate, !prev || e._stamp >= (prev._stamp || 0) ? e : prev);
-  }
-  return Array.from(latest.values())
-    .map(({ reportDate, items }) => ({ reportDate, items }))
-    .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+function daysBetween(a, b) {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+function eachDay(from, to) {
+  const out = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+function fmtDay(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(`${iso}T00:00:00Z`).toLocaleDateString("ar-AE", { timeZone: "UTC", day: "numeric", month: "short" });
+  } catch { return iso; }
+}
+function fmtRange(from, to) {
+  return from === to ? fmtDay(from) : `${fmtDay(from)} — ${fmtDay(to)}`;
 }
 
-/* ============================================================
-   Branches & report-type mapping
-   — every report type known to the system is listed here.
-   — the summary endpoint auto-zeros any type that has no rows.
-============================================================ */
-const BRANCHES = [
-  {
-    key: "pos10", name: "POS 10", icon: "🏪", accent: "#0ea5e9",
-    types: [
-      { t: "pos10_daily_cleanliness",       label: "Daily Cleanliness" },
-      { t: "pos10_personal_hygiene",        label: "Personal Hygiene" },
-      { t: "pos10_temperature",             label: "Temperature Log" },
-      { t: "pos10_receiving_log_butchery",  label: "Receiving Log" },
-      { t: "pos10_traceability_log",        label: "Traceability Log" },
-      { t: "pos10_pest_control",            label: "Pest Control" },
-    ],
-  },
-  {
-    key: "pos11", name: "POS 11", icon: "🏪", accent: "#22c55e",
-    types: [
-      { t: "pos11_daily_cleanliness",       label: "Daily Cleanliness" },
-      { t: "pos11_personal_hygiene",        label: "Personal Hygiene" },
-      { t: "pos11_temperature",             label: "Temperature Log" },
-      { t: "pos11_receiving_log_butchery",  label: "Receiving Log" },
-      { t: "pos11_traceability_log",        label: "Traceability Log" },
-      { t: "pos11_pest_control",            label: "Pest Control" },
-    ],
-  },
-  {
-    key: "pos15", name: "POS 15", icon: "🏪", accent: "#a855f7",
-    types: [
-      { t: "pos15_daily_cleanliness",       label: "Daily Cleanliness" },
-      { t: "pos15_personal_hygiene",        label: "Personal Hygiene" },
-      { t: "pos15_temperature",             label: "Temperature Log" },
-      { t: "pos15_receiving_log_butchery",  label: "Receiving Log" },
-      { t: "pos15_traceability_log",        label: "Traceability Log" },
-      { t: "pos15_equipment_inspection",    label: "Equipment Inspection" },
-      { t: "pos15_pest_control",            label: "Pest Control" },
-    ],
-  },
-  {
-    key: "pos19", name: "POS 19", icon: "🏪", accent: "#f59e0b",
-    types: [
-      { t: "pos19_cleaning_programme_schedule",  label: "Cleaning Programme" },
-      { t: "pos19_daily_cleaning",               label: "Daily Cleaning" },
-      { t: "pos19_equipment_inspection",         label: "Equipment Inspection" },
-      { t: "pos19_food_temperature_verification",label: "Food Temp Verification" },
-      { t: "pos19_glass_items_condition",        label: "Glass Items" },
-      { t: "pos19_hot_holding_temperature",      label: "Hot Holding Temp" },
-      { t: "pos19_oil_quality_monitoring",       label: "Oil Quality" },
-      { t: "pos19_personal_hygiene",             label: "Personal Hygiene" },
-      { t: "pos19_receiving_log_butchery",       label: "Receiving Log" },
-      { t: "pos19_sanitizer_concentration",      label: "Sanitizer Concentration" },
-      { t: "pos19_temperature_monitoring",       label: "Temperature Monitoring" },
-      { t: "pos19_traceability_log",             label: "Traceability Log" },
-      { t: "pos19_wooden_items_condition",       label: "Wooden Items" },
-    ],
-  },
-  {
-    key: "ftr1", name: "FTR 1", icon: "🚚", accent: "#ef4444",
-    types: [
-      { t: "ftr1_temperature",             label: "Temperature Log" },
-      { t: "ftr1_daily_cleanliness",       label: "Daily Cleanliness" },
-      { t: "ftr1_oil_calibration",         label: "Oil Calibration" },
-      { t: "ftr1_personal_hygiene",        label: "Personal Hygiene" },
-      { t: "ftr1_receiving_log_butchery",  label: "Receiving Log" },
-      { t: "ftr1_cooking_temperature_log", label: "Cooking Temp" },
-      { t: "ftr1_preloading_inspection",   label: "Preloading Inspection" },
-    ],
-  },
-  {
-    key: "ftr2", name: "FTR 2", icon: "🚚", accent: "#ec4899",
-    types: [
-      { t: "ftr2_temperature",             label: "Temperature Log" },
-      { t: "ftr2_daily_cleanliness",       label: "Daily Cleanliness" },
-      { t: "ftr2_oil_calibration",         label: "Oil Calibration" },
-      { t: "ftr2_personal_hygiene",        label: "Personal Hygiene" },
-      { t: "ftr2_receiving_log_butchery",  label: "Receiving Log" },
-      { t: "ftr2_cooking_temperature_log", label: "Cooking Temp" },
-      { t: "ftr2_preloading_inspection",   label: "Preloading Inspection" },
-    ],
-  },
-  {
-    key: "prod", name: "Production", icon: "🏭", accent: "#14b8a6",
-    types: [
-      { t: "prod_cleaning_checklist",  label: "Cleaning Checklist" },
-      { t: "prod_personal_hygiene",    label: "Personal Hygiene" },
-      { t: "prod_defrosting_record",   label: "Defrosting Record" },
-      { t: "prd_traceability_log",     label: "Traceability Log" },
-    ],
-  },
-  {
-    key: "qcs", name: "QCS", icon: "📊", accent: "#6366f1",
-    types: [
-      { t: "qcs-coolers",            label: "Coolers" },
-      { t: "qcs-ph",                 label: "Personal Hygiene" },
-      { t: "qcs-clean",              label: "Daily Cleanliness" },
-      { t: "qcs_raw_material",       label: "Raw Material Shipments" },
-      { t: "qcs_rm_ingredients",     label: "RM — Ingredients" },
-      { t: "qcs_rm_packaging",       label: "RM — Packaging" },
-      { t: "qcs_non_conformance",    label: "Non-Conformance" },
-      { t: "qcs_corrective_action",  label: "Corrective Action" },
-      { t: "qcs_internal_audit",     label: "Internal Audit" },
-    ],
-  },
-  {
-    key: "logistics", name: "Cars & Loading", icon: "🚛", accent: "#64748b",
-    types: [
-      { t: "cars_loading_inspection_v1",  label: "Loading Inspection" },
-      { t: "cars_loading_inspection",     label: "Loading Inspection (legacy)" },
-      { t: "truck_daily_cleaning",        label: "Truck Daily Cleaning" },
-      { t: "car_approvals",               label: "Car Approvals" },
-    ],
-  },
-  {
-    key: "returns", name: "Returns", icon: "♻️", accent: "#84cc16",
-    types: [
-      { t: "returns",              label: "Returns" },
-      { t: "returns_customers",    label: "Customer Returns" },
-      { t: "enoc_returns",         label: "ENOC Returns" },
-      { t: "destruction_record",   label: "Condemnation & Disposal" },
-    ],
-  },
-  {
-    key: "store", name: "Store / Inventory", icon: "📦", accent: "#0891b2",
-    types: [
-      { t: "inventory_daily_grouped",   label: "Daily Inventory" },
-      { t: "finished_products_report",  label: "Finished Products" },
-      { t: "meat_daily",                label: "Meat Daily" },
-    ],
-  },
-  {
-    key: "other", name: "Compliance & Admin", icon: "📋", accent: "#94a3b8",
-    types: [
-      { t: "internal_multi_audit",           label: "Multi Audit (Inspection)" },
-      { t: "training_certificate",           label: "Training Certificates" },
-      { t: "training_session",               label: "Training Sessions" },
-      { t: "maintenance",                    label: "Maintenance Requests" },
-      { t: "ohc_certificate",                label: "OHC Certificates" },
-      { t: "product_details",                label: "Product Details" },
-      { t: "licenses_contracts",             label: "Licenses & Contracts" },
-      { t: "municipality_inspection",        label: "Municipality Inspection" },
-      { t: "supplier_self_assessment_form",  label: "Supplier Self-Assessment" },
-    ],
-  },
+/** الفترات الجاهزة. «آخر 7 أيام» و«آخر 30 يوم» بتنتهي مبارح: يوم ما خلص بعد بيظلم النسبة. */
+function presetRange(key, today) {
+  const yest = addDays(today, -1);
+  switch (key) {
+    case "today": return { from: today, to: today };
+    case "7d":    return { from: addDays(today, -7), to: yest };
+    case "30d":   return { from: addDays(today, -30), to: yest };
+    case "month": {
+      const first = `${today.slice(0, 8)}01`;
+      return { from: first, to: first === today ? today : yest };
+    }
+    case "lastMonth": {
+      const firstThis = `${today.slice(0, 8)}01`;
+      const lastPrev = addDays(firstThis, -1);
+      return { from: `${lastPrev.slice(0, 8)}01`, to: lastPrev };
+    }
+    default: return { from: addDays(today, -7), to: yest };
+  }
+}
+const PRESETS = [
+  ["today", "اليوم"],
+  ["7d", "آخر 7 أيام"],
+  ["month", "هذا الشهر"],
+  ["lastMonth", "الشهر الماضي"],
+  ["30d", "آخر 30 يوم"],
 ];
 
+/** تاريخ العمل للسجل — نفس ترتيب السيرفر، وأول 10 أحرف دايماً
+    (الشحنات بتحفظ payload.date كطابع زمني كامل). */
+function dayOf(rec) {
+  const p = rec?.payload || {};
+  const raw = p.cutDate || p.date || p.reportDate || p.header?.reportDate || p.header?.date ||
+    rec?.reportDate || rec?.created_at || "";
+  return String(raw).slice(0, 10);
+}
+
 /* ============================================================
-   Colour helpers
+   الجلب — مع ذاكرة قصيرة
 ============================================================ */
-function numColor(val, type = "") {
-  const v = Number(val);
-  if (type === "temp")       return v < 2 ? "#059669" : v < 7 ? "#d97706" : "#dc2626";
-  if (type === "percentage") return v >= 80 ? "#059669" : v >= 50 ? "#d97706" : "#dc2626";
-  if (type === "good") return "#2563eb";
-  if (type === "warn") return "#d97706";
-  if (type === "bad")  return "#dc2626";
-  return "#6b7280";
+const CACHE_MS = 120_000;
+const memo = new Map();
+
+async function getRows(url) {
+  const hit = memo.get(url);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const err = new Error(String(res.status));
+    err.status = res.status;
+    throw err;
+  }
+  const json = await res.json().catch(() => []);
+  const data = Array.isArray(json) ? json : json?.data ?? [];
+  memo.set(url, { at: Date.now(), data });
+  return data;
 }
-function numBg(val, type = "") {
-  const v = Number(val);
-  if (type === "temp")       return v < 2 ? "#ecfdf5" : v < 7 ? "#fffbeb" : "#fef2f2";
-  if (type === "percentage") return v >= 80 ? "#ecfdf5" : v >= 50 ? "#fffbeb" : "#fef2f2";
-  if (type === "good") return "#eff6ff";
-  if (type === "warn") return "#fffbeb";
-  if (type === "bad")  return "#fef2f2";
-  return "#f9fafb";
+
+const rangeUrl = (type, from, to) =>
+  `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&from=${from}&to=${to}&limit=5000`;
+
+/** حدود الوحدة بالعربي (defs طالعة من defsFromPayload، يعني مرتّبة). */
+const rangeLabel = (def) => (def?.type === "ambient" && def.min <= 0 ? `حتى ${def.max}°` : `${def.min}° إلى ${def.max}°`);
+
+/** أعداد السجلات اليومية لكل يوم: [{type, day, n}].
+    السيرفر الجديد بيرد بطلب واحد؛ إذا لسا ما انرفع، منرجع لتواريخ كل نوع
+    (dates=1 — تواريخ بلا payload، خفيفة) بأربع طلبات بنفس الوقت كحد أقصى. */
+async function fetchDailyCounts(from, to) {
+  try {
+    return await getRows(
+      `${API_BASE}/api/reports/kpi-days?types=${encodeURIComponent(ALL_DAILY_TYPES.join(","))}&from=${from}&to=${to}`
+    );
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+  const out = [];
+  const queue = [...ALL_DAILY_TYPES];
+  const worker = async () => {
+    while (queue.length) {
+      const type = queue.shift();
+      const rows = await getRows(
+        `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&dates=1&lite=1&limit=5000`
+      ).catch(() => []);
+      const byDay = new Map();
+      rows.forEach((r) => {
+        const d = String(r.reportDate || "").slice(0, 10);
+        if (d >= from && d <= to) byDay.set(d, (byDay.get(d) || 0) + 1);
+      });
+      byDay.forEach((n, day) => out.push({ type, day, n }));
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return out;
 }
+
+/* ============================================================
+   الحسابات
+============================================================ */
+function complianceOf(branch, doneSet, days) {
+  const expected = days.length * branch.types.length;
+  let done = 0;
+  days.forEach((d) => branch.types.forEach(([t]) => { if (doneSet.has(`${t}|${d}`)) done += 1; }));
+  return { expected, done, pct: expected ? Math.round((done / expected) * 100) : null };
+}
+
+const SHIP_OK = new Set(["acceptable", "مرضي"]);
+const SHIP_AVG = new Set(["average", "وسط"]);
+const SHIP_BAD = new Set(["below average", "تحت الوسط", "غير مرضي"]);
+const shipStatus = (s) => {
+  const v = String(s || "").trim().toLowerCase();
+  if (SHIP_OK.has(v)) return "ok";
+  if (SHIP_AVG.has(v)) return "avg";
+  if (SHIP_BAD.has(v)) return "bad";
+  return "";
+};
+function normShip(rec) {
+  const p = rec?.payload || {};
+  return {
+    id: rec?.id,
+    day: dayOf(rec),
+    status: shipStatus(p.status || rec?.status),
+    statusRaw: p.status || "",
+    name: p.productName || p.name || p.generalInfo?.productName || "—",
+    supplier: p.supplier || p.butchery || p.generalInfo?.supplierName || "—",
+    kind: p.shipmentType || "غير محدد",
+    remarks: p.remarks || "",
+  };
+}
+
+/** كل قراءة حرارة بالبرادات مقابل حدود وحدتها بيوم التسجيل. */
+function coolerReadings(rec) {
+  const p = rec?.payload || {};
+  const { coolerDefs, loadingDef } = defsFromPayload(p);
+  const out = [];
+  const take = (def, temps) => Object.entries(temps || {}).forEach(([time, v]) => {
+    if (v === "" || v == null) return;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    out.push({ unit: def.label, def, time, value: n, ok: tempInRange(def, n) });
+  });
+  (Array.isArray(p.coolers) ? p.coolers : []).forEach((c, i) => take(coolerDefs[i], c?.temps));
+  if (p.loadingArea) take(loadingDef, p.loadingArea.temps);
+  return out;
+}
+
+function returnItems(rec) {
+  const p = rec?.payload || {};
+  const day = dayOf(rec);
+  return (Array.isArray(p.items) ? p.items : []).map((it) => ({
+    day,
+    branch: (it.butchery === "فرع آخر..." ? it.customButchery : it.butchery) || "—",
+    action: (it.action === "إجراء آخر..." ? it.customAction : it.action) || "—",
+    product: it.productName || "—",
+    qty: Number(it.quantity) || 0,
+    unit: (it.qtyType === "أخرى" ? it.customQtyType : it.qtyType) || "",
+  }));
+}
+
+function topCounts(list, key, n = 5) {
+  const m = new Map();
+  list.forEach((x) => m.set(x[key], (m.get(x[key]) || 0) + 1));
+  return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+/* تحميل السيارات: سجل واحد فيه صف لكل سيارة. */
+const VI_POSITIVE = ["trafficControlSpotter", "vehicleSecured", "loadSecured", "areaSafe", "manualHandlingControls", "floorSealingIntact", "floorCleaning", "plasticCurtain", "ppeAvailable"];
+const VI_NEGATIVE = ["pestActivites", "badOdour"];
 const toMinutes = (t) => {
   if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null;
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
 };
-
-/* ============================================================
-   UI primitives
-============================================================ */
-function BarChart({ data }) {
-  const entries = Object.entries(data || {});
-  if (!entries.length) {
-    return <div style={{ color: "#9ca3af", textAlign: "center", padding: "16px 0", fontSize: 13 }}>لا توجد بيانات</div>;
-  }
-  const max = Math.max(...entries.map(([, v]) => Number(v)), 1);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "8px 0" }}>
-      {entries.map(([label, value]) => (
-        <div key={label}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textAlign: "right" }}>{label}</div>
-          <div style={{ background: "#e0e7ff", borderRadius: 8, height: 22, overflow: "hidden" }}>
-            <div style={{
-              width: `${(Number(value) / max) * 100}%`, height: "100%",
-              background: "linear-gradient(90deg,#6366f1,#a5b4fc)", borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "flex-end",
-              paddingRight: 10, minWidth: 28, transition: "width .45s",
-            }}>
-              <span style={{ color: "#fff", fontSize: 11, fontWeight: 800 }}>{value}</span>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+function loadingRows(rec) {
+  const p = rec?.payload || {};
+  const day = dayOf(rec);
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+  return rows.map((r) => ({ ...r, day }));
 }
 
-/* ── Line chart (SVG, no deps). `data` = [{date:"YYYY-MM-DD", value:number}] ── */
-function LineChart({ data, color = "#6366f1", unit = "", height = 180, thresholds }) {
-  const sorted = [...(data || [])].filter((d) => d && d.date && Number.isFinite(d.value)).sort((a, b) => a.date.localeCompare(b.date));
-  if (sorted.length < 2) {
-    return <div style={{ color: "#9ca3af", textAlign: "center", padding: 28, fontSize: 13 }}>لا توجد بيانات كافية لعرض الاتجاه</div>;
-  }
-  const W = 720, H = height, padL = 44, padR = 16, padT = 14, padB = 28;
-  const innerW = W - padL - padR, innerH = H - padT - padB;
-  const vals = sorted.map((d) => d.value);
-  const vMin = Math.min(...vals), vMax = Math.max(...vals);
-  const span = Math.max(1e-6, vMax - vMin);
-  const vPad = span * 0.15 || 1;
-  const yMin = vMin - vPad, yMax = vMax + vPad;
-  const xFor = (i) => padL + (sorted.length === 1 ? innerW / 2 : (i / (sorted.length - 1)) * innerW);
-  const yFor = (v) => padT + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
-  const path = sorted.map((d, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(1)} ${yFor(d.value).toFixed(1)}`).join(" ");
-  const areaPath = `${path} L${xFor(sorted.length - 1).toFixed(1)} ${(padT + innerH).toFixed(1)} L${xFor(0).toFixed(1)} ${(padT + innerH).toFixed(1)} Z`;
-  const gridLines = 4;
-  const ticks = Array.from({ length: gridLines + 1 }, (_, i) => yMin + (i / gridLines) * (yMax - yMin));
-  const firstDate = sorted[0].date, lastDate = sorted[sorted.length - 1].date;
-  const midIdx = Math.floor(sorted.length / 2);
+/* ============================================================
+   الألوان والحالة
+============================================================ */
+const TONE = {
+  good: { fg: "#047857", bg: "#ecfdf5", bd: "#a7f3d0" },
+  warn: { fg: "#b45309", bg: "#fffbeb", bd: "#fde68a" },
+  bad:  { fg: "#b91c1c", bg: "#fef2f2", bd: "#fecaca" },
+  none: { fg: "#475569", bg: "#f8fafc", bd: "#e2e8f0" },
+};
+const toneByTarget = (pct, t) => (pct == null ? "none" : pct >= t.good ? "good" : pct >= t.warn ? "warn" : "bad");
 
+/* ============================================================
+   رسم خط بسيط (SVG، بلا مكتبات)
+============================================================ */
+function LineChart({ data, color = "#2563eb", unit = "", band }) {
+  const pts = (data || []).filter((d) => Number.isFinite(d.value));
+  if (pts.length < 2) return <div className="kp-empty">ما في بيانات كافية لرسم الاتجاه بهالفترة.</div>;
+  const W = 640, H = 190, L = 40, R = 12, T = 12, B = 26;
+  const iw = W - L - R, ih = H - T - B;
+  const vals = pts.map((d) => d.value);
+  let lo = Math.min(...vals, band ?? Infinity), hi = Math.max(...vals, band ?? -Infinity);
+  if (unit === "%") { lo = Math.max(0, Math.min(lo, 50)); hi = 100; }
+  if (hi - lo < 1) { hi += 1; lo -= 1; }
+  const x = (i) => L + (i / (pts.length - 1)) * iw;
+  const y = (v) => T + ih - ((v - lo) / (hi - lo)) * ih;
+  const line = pts.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(d.value).toFixed(1)}`).join(" ");
+  const area = `${line} L${x(pts.length - 1).toFixed(1)} ${T + ih} L${L} ${T + ih} Z`;
+  const ticks = [lo, (lo + hi) / 2, hi];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", overflow: "visible" }}>
-      <defs>
-        <linearGradient id={`ln-grad-${color.replace("#", "")}`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* grid + y axis labels */}
+    <svg viewBox={`0 0 ${W} ${H}`} className="kp-svg" role="img">
       {ticks.map((t, i) => (
         <g key={i}>
-          <line x1={padL} y1={yFor(t)} x2={W - padR} y2={yFor(t)} stroke="#e2e8f0" strokeDasharray="3 3" />
-          <text x={padL - 6} y={yFor(t) + 3} fontSize="10" fill="#94a3b8" textAnchor="end" fontFamily="monospace">
-            {Number.isInteger(t) ? t.toFixed(0) : t.toFixed(1)}{unit}
-          </text>
+          <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#e2e8f0" strokeDasharray="3 4" />
+          <text x={L - 6} y={y(t) + 4} textAnchor="end" fill="#94a3b8">{Math.round(t)}{unit}</text>
         </g>
       ))}
-      {/* optional threshold bands */}
-      {thresholds?.map((th, i) => (
-        <line key={`th-${i}`} x1={padL} x2={W - padR} y1={yFor(th.value)} y2={yFor(th.value)} stroke={th.color || "#ef4444"} strokeDasharray="6 4" strokeWidth="1.5" opacity=".8" />
+      {band != null && <line x1={L} x2={W - R} y1={y(band)} y2={y(band)} stroke="#16a34a" strokeDasharray="6 4" strokeWidth="1.5" />}
+      <path d={area} fill={color} opacity=".08" />
+      <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((d, i) => (
+        <circle key={d.date} cx={x(i)} cy={y(d.value)} r="3.5" fill="#fff" stroke={color} strokeWidth="2">
+          <title>{`${fmtDay(d.date)}: ${d.value}${unit}`}</title>
+        </circle>
       ))}
-      {/* area */}
-      <path d={areaPath} fill={`url(#ln-grad-${color.replace("#", "")})`} />
-      {/* line */}
-      <path d={path} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      {/* points */}
-      {sorted.map((d, i) => (
-        <g key={d.date}>
-          <circle cx={xFor(i)} cy={yFor(d.value)} r="3.5" fill="#fff" stroke={color} strokeWidth="2" />
-          <title>{`${d.date}\n${d.value}${unit}`}</title>
-        </g>
-      ))}
-      {/* x labels (first / mid / last) */}
-      <text x={xFor(0)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="start" fontFamily="monospace">{firstDate}</text>
-      {sorted.length > 2 && (
-        <text x={xFor(midIdx)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="middle" fontFamily="monospace">{sorted[midIdx].date}</text>
-      )}
-      <text x={xFor(sorted.length - 1)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="end" fontFamily="monospace">{lastDate}</text>
+      <text x={W - R} y={H - 6} textAnchor="end" fill="#64748b">{fmtDay(pts[0].date)}</text>
+      <text x={L} y={H - 6} textAnchor="start" fill="#64748b">{fmtDay(pts[pts.length - 1].date)}</text>
     </svg>
   );
 }
 
-/* ── Horizontal ranking bar ── */
-function RankingBar({ rows, accent = "#6366f1", unit = "" }) {
-  if (!rows?.length) return <div style={{ color: "#9ca3af", textAlign: "center", padding: 20, fontSize: 13 }}>لا توجد بيانات</div>;
-  const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {rows.map((r, i) => {
-        const pct = Math.max(0, (Number(r.value) || 0) / max * 100);
-        const color = r.color || accent;
-        return (
-          <div key={r.label + i} style={{ display: "grid", gridTemplateColumns: "120px 1fr 64px", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</div>
-            <div style={{ background: "#f1f5f9", borderRadius: 999, height: 14, overflow: "hidden" }}>
-              <div style={{
-                width: `${pct}%`, height: "100%", borderRadius: 999,
-                background: `linear-gradient(90deg, ${color}, ${color}aa)`,
-                transition: "width .5s ease",
-              }} />
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 900, color, fontFamily: "monospace", textAlign: "left" }}>{r.value}{unit}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Modal({ show, onClose, title, children }) {
-  if (!show) return null;
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: "rgba(15,23,42,.45)",
-        backdropFilter: "blur(4px)", display: "grid", placeItems: "center", zIndex: 1200,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 20,
-          padding: "24px 26px", width: "calc(100vw - 32px)", maxWidth: 940,
-          maxHeight: "85vh", overflowY: "auto", position: "relative",
-          boxShadow: "0 24px 60px rgba(15,23,42,.18)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          style={{
-            position: "absolute", top: 14, left: 14, width: 28, height: 28,
-            borderRadius: "50%", border: "none", background: "#fee2e2", color: "#dc2626",
-            fontWeight: 900, fontSize: 16, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >✕</button>
-        <div style={{ fontWeight: 900, color: "#4f46e5", fontSize: 15, marginBottom: 16, paddingRight: 8 }}>{title}</div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function KPICard({ icon, label, value, colorType, suffix = "", onClick }) {
-  const numVal = parseFloat(value) || 0;
-  const color = numColor(numVal, colorType);
-  const bg = numBg(numVal, colorType);
-  const Wrapper = onClick ? "button" : "div";
-  return (
-    <Wrapper
-      onClick={onClick}
-      style={{
-        background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 16,
-        padding: "20px 16px", textAlign: "center",
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-        cursor: onClick ? "pointer" : "default",
-        transition: "transform .14s, box-shadow .18s, border-color .18s",
-        outline: "none", fontFamily: "inherit",
-        position: "relative", overflow: "hidden",
-        boxShadow: "0 2px 8px rgba(15,23,42,.06)",
-      }}
-      className="kpi-card"
-    >
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: color, opacity: .7 }} />
-      <div style={{ width: 48, height: 48, borderRadius: 12, background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{icon}</div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#94a3b8" }}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 900, color, lineHeight: 1, display: "flex", alignItems: "baseline", gap: 2 }}>
-        <CountUp end={numVal} duration={1.1} decimals={Number.isInteger(numVal) ? 0 : 1} separator="," />
-        {suffix && <span style={{ fontSize: 17, fontWeight: 800 }}>{suffix}</span>}
-      </div>
-      {onClick && <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", marginTop: 2 }}>انقر للتفاصيل 🔍</div>}
-    </Wrapper>
-  );
-}
-
-function BranchCard({ branch, count, lastDate, activeForms, totalForms, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 16,
-        padding: "18px 16px", textAlign: "right", cursor: "pointer",
-        display: "flex", flexDirection: "column", gap: 10,
-        transition: "transform .14s, box-shadow .18s, border-color .18s",
-        outline: "none", fontFamily: "inherit",
-        position: "relative", overflow: "hidden",
-        boxShadow: "0 2px 8px rgba(15,23,42,.06)",
-      }}
-      className="kpi-card"
-    >
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: branch.accent, opacity: .9 }} />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 22 }}>{branch.icon}</div>
-        <div style={{ fontSize: 14, fontWeight: 900, color: "#1e293b" }}>{branch.name}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-start", gap: 6 }}>
-        <div style={{ fontSize: 28, fontWeight: 900, color: branch.accent, lineHeight: 1 }}>
-          <CountUp end={Number(count) || 0} duration={1.1} separator="," />
-        </div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>تقرير</div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", fontWeight: 600 }}>
-        <span>نماذج نشطة: <b style={{ color: "#1e293b" }}>{activeForms}/{totalForms}</b></span>
-        <span>آخر: <b style={{ color: "#1e293b" }}>{lastDate || "—"}</b></span>
-      </div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textAlign: "left" }}>← عرض التفصيل</div>
-    </button>
-  );
-}
-
 /* ============================================================
-   Tables
+   أجزاء الواجهة
 ============================================================ */
-const TH = { padding: "11px 10px", textAlign: "center", fontSize: 11, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", borderBottom: "2px solid #e2e8f0", color: "#64748b", whiteSpace: "nowrap", background: "#f8fafc" };
-const TD = { padding: "10px 8px", textAlign: "center", fontSize: 12, color: "#374151", borderBottom: "1px solid #f1f5f9" };
-
-function ShipmentsTable({ rows, statusColor }) {
-  if (!rows.length) return <div style={{ textAlign: "center", color: "#9ca3af", padding: 28, fontSize: 13 }}>لا يوجد بيانات في الفترة المحددة.</div>;
+function Delta({ cur, prev, unit, higherIsBetter = true }) {
+  if (cur == null || prev == null) return <span className="kp-delta mute">ما في فترة سابقة للمقارنة</span>;
+  const diff = Math.round((cur - prev) * 10) / 10;
+  if (diff === 0) return <span className="kp-delta mute">= نفس الفترة السابقة</span>;
+  const better = higherIsBetter ? diff > 0 : diff < 0;
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 780, fontSize: 12 }}>
-        <thead>
-          <tr>{["#", "التاريخ", "اسم الشحنة", "النوع", "الفرع/المورد", "الحالة", "ملاحظات"].map((h) => <th key={h} style={TH}>{h}</th>)}</tr>
-        </thead>
-        <tbody>{rows.map((row, i) => (
-          <tr key={i} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
-            <td style={TD}>{i + 1}</td>
-            <td style={TD}>{row.date || "—"}</td>
-            <td style={TD}>{row.productName || row.name || "—"}</td>
-            <td style={TD}>{row.shipmentType || "—"}</td>
-            <td style={TD}>{row.butchery || row.supplier || "—"}</td>
-            <td style={{ ...TD, color: statusColor, fontWeight: 800 }}>{row.status}</td>
-            <td style={TD}>{row.remarks || "—"}</td>
-          </tr>
-        ))}</tbody>
-      </table>
-    </div>
+    <span className={`kp-delta ${better ? "up" : "down"}`}>
+      {diff > 0 ? "▲" : "▼"} {Math.abs(diff)}{unit} عن الفترة السابقة
+    </span>
   );
 }
 
-function BranchDetailTable({ branch, summaryMap }) {
-  const rows = branch.types.map(({ t, label }) => {
-    const s = summaryMap[t] || { count: 0, latest_date: "" };
-    return { type: t, label, count: Number(s.count) || 0, latest: s.latest_date || "—" };
-  });
-  const total = rows.reduce((a, r) => a + r.count, 0);
+function KpiCard({ icon, title, value, unit, tone, sub, target, delta }) {
+  const t = TONE[tone] || TONE.none;
   return (
-    <div style={{ overflowX: "auto" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 10 }}>
-        إجمالي التقارير: <b style={{ color: branch.accent }}>{total}</b>
+    <div className="kp-kpi" style={{ borderColor: t.bd }}>
+      <div className="kp-kpi-top">
+        <span className="kp-kpi-ic" style={{ background: t.bg }}>{icon}</span>
+        <span className="kp-kpi-title">{title}</span>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560, fontSize: 12 }}>
-        <thead>
-          <tr>{["#", "النموذج", "عدد التقارير", "آخر تاريخ", "النوع الداخلي"].map((h) => <th key={h} style={TH}>{h}</th>)}</tr>
-        </thead>
-        <tbody>{rows.map((r, i) => (
-          <tr key={r.type} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
-            <td style={TD}>{i + 1}</td>
-            <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: "#1e293b" }}>{r.label}</td>
-            <td style={{ ...TD, fontWeight: 900, color: r.count > 0 ? branch.accent : "#cbd5e1" }}>{r.count}</td>
-            <td style={TD}>{r.latest}</td>
-            <td style={{ ...TD, fontFamily: "monospace", fontSize: 11, color: "#94a3b8" }}>{r.type}</td>
-          </tr>
-        ))}</tbody>
-      </table>
+      <div className="kp-kpi-val" style={{ color: t.fg }}>
+        {value == null ? "—" : value}<small>{value == null ? "" : unit}</small>
+      </div>
+      <div className="kp-kpi-sub">{sub}</div>
+      {delta}
+      {target && <div className="kp-kpi-target">{target}</div>}
     </div>
   );
 }
 
-/* ============================================================
-   Styles
-============================================================ */
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;}
-body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f1f5f9;color:#1e293b;-webkit-font-smoothing:antialiased;}
-
-.kpi-root{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:24px 20px 60px;direction:rtl;}
-.kpi-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:#fff;border:1.5px solid #e2e8f0;border-radius:20px;padding:20px 28px;margin-bottom:18px;box-shadow:0 4px 24px rgba(15,23,42,.07);}
-.kpi-h-title{font-size:20px;font-weight:900;color:#1e293b;display:flex;align-items:center;gap:10px;letter-spacing:-.3px;}
-.kpi-h-sub{font-size:11.5px;color:#94a3b8;font-weight:500;margin-top:5px;}
-
-.kpi-alert{background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;font-weight:700;color:#dc2626;display:flex;flex-direction:column;gap:5px;}
-.kpi-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px 18px;margin-bottom:18px;box-shadow:0 2px 8px rgba(15,23,42,.04);}
-.kpi-filter-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em;white-space:nowrap;}
-.kpi-date-input{padding:8px 12px;border-radius:9px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#1e293b;font-size:12px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border-color .15s;}
-.kpi-date-input:focus{border-color:#6366f1;}
-.kpi-filter-sep{color:#cbd5e1;font-size:11px;}
-
-.kpi-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:none;font-size:12px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:opacity .15s,transform .1s;}
-.kpi-btn:active{transform:scale(.96);}
-.kpi-btn:hover{opacity:.88;}
-.kpi-btn-reset{background:#fef3c7;color:#92400e;border:1.5px solid #fde68a;}
-.kpi-btn-export{background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;}
-
-.kpi-section{font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.2em;display:flex;align-items:center;gap:12px;margin:22px 0 12px;}
-.kpi-section::before{content:'';flex:1;height:1px;background:#e2e8f0;}
-
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
-.kpi-grid-branches{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
-
-.kpi-card:hover{transform:translateY(-3px)!important;border-color:#c7d2fe!important;box-shadow:0 12px 28px rgba(99,102,241,.12)!important;}
-
-.kpi-wide{background:#fff;border:1.5px solid #e2e8f0;border-radius:16px;padding:20px 18px;box-shadow:0 2px 8px rgba(15,23,42,.04);}
-.kpi-footer{margin-top:32px;text-align:center;font-size:11.5px;font-weight:600;color:#cbd5e1;}
-.kpi-modal-err{font-size:11px;font-weight:700;color:#dc2626;margin-top:8px;text-align:center;}
-
-@media(max-width:640px){.kpi-header{flex-direction:column;align-items:flex-start;}.kpi-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}}
-`;
+function Bar({ pct, tone }) {
+  const t = TONE[tone] || TONE.none;
+  return (
+    <div className="kp-bar"><div style={{ width: `${Math.max(0, Math.min(100, pct || 0))}%`, background: t.fg }} /></div>
+  );
+}
 
 /* ============================================================
-   Component
+   الصفحة
 ============================================================ */
 export default function KPIDashboard() {
-  const [summary,        setSummary]        = useState([]);   // [{type, count, latest_date, last_created_at}]
-  const [qcsCoolers,     setQcsCoolers]     = useState([]);
-  const [shipments,      setShipments]      = useState([]);
-  const [loadingReports, setLoadingReports] = useState([]);
-  const [returnsReports, setReturnsReports] = useState([]);
-  const [fetching, setFetching] = useState(true);
-  const [fetchErr, setFetchErr] = useState("");
+  const navigate = useNavigate();
+  const today = todayDubai();
 
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo,   setDateTo]   = useState("");
-  const [dateStr,  setDateStr]  = useState("");
+  const [preset, setPreset] = useState("7d");
+  const [custom, setCustom] = useState(() => presetRange("7d", todayDubai()));
+  // حقل تاريخ مفضّى بالفترة المخصصة = فترة غير صالحة، مش انهيار الصفحة.
+  const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
+  const customOk = isDay(custom.from) && isDay(custom.to);
+  const range = preset === "custom" && customOk ? custom : presetRange(preset === "custom" ? "7d" : preset, today);
+  const { from, to } = range;
+  const span = daysBetween(from, to) + 1;
+  const prevTo = addDays(from, -1);
+  const prevFrom = addDays(prevTo, -(Math.max(1, span) - 1));
 
-  const [wasatOpen,           setWasatOpen]           = useState(false);
-  const [tahtWasatOpen,       setTahtWasatOpen]       = useState(false);
-  const [returnsDetailsOpen,  setReturnsDetailsOpen]  = useState(false);
-  const [branchModal,         setBranchModal]         = useState(null); // branch object or null
-  const [importError,         setImportError]         = useState("");
-  const fileInputRef = useRef(null);
+  const [counts, setCounts] = useState([]);
+  const [summary, setSummary] = useState([]);
+  const [ships, setShips] = useState([]);
+  const [coolers, setCoolers] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
+  const [tab, setTab] = useState("ships");
+  const [loads, setLoads] = useState(null); // null = لسا ما انطلب
+
+  const validRange = (preset !== "custom" || customOk) && from <= to && span <= 180;
+
+  /* ── الطلبات الأساسية: 5 طلبات محدودة بالفترة ── */
   useEffect(() => {
-    const fmt = () => setDateStr(new Date().toLocaleDateString("ar-AE", { timeZone: "Asia/Dubai", weekday: "long", month: "long", day: "numeric" }));
-    fmt(); const t = setInterval(fmt, 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  /* --------- Load everything in parallel --------- */
-  useEffect(() => {
+    if (!validRange) return undefined;
     let alive = true;
     (async () => {
-      try {
-        setFetching(true); setFetchErr("");
-        const [sum, rawCoolers, rawShip, rawLoad, rawRet] = await Promise.all([
-          fetchSummary(),
-          fetchByType("qcs-coolers").catch(() => []),
-          fetchByType("qcs_raw_material").catch(() => []),   // ← fixed (was qcs_raw_material_reports → always empty)
-          fetchByType("cars_loading_inspection").catch(() => []),   // ← fixed (was _v1 → always empty)
-          fetchByType("returns").catch(() => []),
-        ]);
-        if (!alive) return;
-        setSummary(sum);
-        setQcsCoolers(normalizeQcsCoolers(rawCoolers));
-        setShipments(normalizeShipments(rawShip));
-        setLoadingReports(normalizeLoading(rawLoad));
-        setReturnsReports(normalizeReturns(rawRet));
-      } catch (e) {
-        console.error(e);
-        if (alive) setFetchErr("تعذر الجلب من السيرفر — تحقق من الاتصال.");
-      } finally {
-        if (alive) setFetching(false);
-      }
+      setLoading(true); setError("");
+      const end = to > today ? to : today; // نقاط «اليوم» بجدول الفروع دايماً
+      const shipTo = addDays(to, 1);       // الشحنات بتحفظ طابع زمني كامل
+      const results = await Promise.allSettled([
+        fetchDailyCounts(prevFrom, end),
+        getRows(`${API_BASE}/api/reports/summary`),
+        getRows(rangeUrl("qcs_raw_material", prevFrom, shipTo)),
+        getRows(rangeUrl("qcs-coolers", prevFrom, to)),
+        getRows(rangeUrl("returns", prevFrom, to)),
+      ]);
+      if (!alive) return;
+      const val = (i) => (results[i].status === "fulfilled" ? results[i].value : []);
+      setCounts(val(0));
+      setSummary(val(1));
+      setShips(val(2).map(normShip).filter((s) => s.day >= prevFrom && s.day <= to));
+      setCoolers(val(3));
+      setReturns(val(4));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed) setError(failed === results.length
+        ? "تعذّر الاتصال بالسيرفر — تحقق من الإنترنت وجرّب «تحديث»."
+        : "بعض البيانات ما وصلت — الأرقام الناقصة ظاهرة كـ «—».");
+      setLoading(false);
     })();
     return () => { alive = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, reloadKey]);
 
-  /* --------- Derived: summary indexed by type --------- */
-  const summaryMap = useMemo(() => {
+  /* تحميل السيارات — بس لما ينفتح تبويبه */
+  useEffect(() => { setLoads(null); }, [from, to, reloadKey]);
+  useEffect(() => {
+    if (tab !== "loading" || loads !== null || !validRange) return undefined;
+    let alive = true;
+    getRows(rangeUrl("cars_loading_inspection", from, to))
+      .then((rows) => { if (alive) setLoads(rows.flatMap(loadingRows)); })
+      .catch(() => { if (alive) setLoads([]); });
+    return () => { alive = false; };
+  }, [tab, loads, from, to, validRange]);
+
+  /* ── الالتزام بالسجلات اليومية ── */
+  const doneSet = useMemo(() => new Set(counts.filter((r) => r.n > 0).map((r) => `${r.type}|${String(r.day).slice(0, 10)}`)), [counts]);
+  const lastByType = useMemo(() => {
     const m = {};
-    for (const row of summary || []) m[row.type] = row;
+    summary.forEach((r) => { m[r.type] = r.latest_date ? String(r.latest_date).slice(0, 10) : ""; });
     return m;
   }, [summary]);
 
-  /* --------- Date filter --------- */
-  const inRange = (d) => (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+  // اليوم ما بيدخل بالنسبة إلا إذا الفترة هي اليوم نفسه — يوم ما خلص بيظلم النسبة.
+  const scoreDays = (a, b) => eachDay(a, b).filter((d) => d < today || (a === today && b === today));
+  const curDays = useMemo(() => scoreDays(from, to), [from, to, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  const prevDays = useMemo(() => scoreDays(prevFrom, prevTo), [prevFrom, prevTo, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fCoolers = useMemo(() => qcsCoolers.filter((r) => inRange(r.date || "")), [qcsCoolers, dateFrom, dateTo]);
-  const fShip    = useMemo(() => shipments.filter((r) => inRange(r.date || "")),   [shipments, dateFrom, dateTo]);
-  const fLoad    = useMemo(() => loadingReports.filter((r) => inRange(r.date || "")), [loadingReports, dateFrom, dateTo]);
-  const fReturns = useMemo(() => returnsReports.filter((r) => inRange(r.reportDate || "")), [returnsReports, dateFrom, dateTo]);
+  const branchRows = useMemo(() => DAILY_LOGS.map((b) => {
+    const last = b.types.map(([t]) => lastByType[t] || "").sort().pop() || "";
+    // الملخّص ما وصل؟ منعامل الكل كنشط بدل ما نخفي كل الفروع.
+    const inactive = summary.length > 0 && (!last || daysBetween(last, today) > INACTIVE_AFTER_DAYS);
+    const cur = complianceOf(b, doneSet, curDays);
+    const prev = complianceOf(b, doneSet, prevDays);
+    const todayState = b.types.map(([t, kind]) => ({ kind, done: doneSet.has(`${t}|${today}`) }));
+    return { ...b, last, inactive, cur, prev, todayState };
+  }), [doneSet, lastByType, summary.length, curDays, prevDays, today]);
 
-  /* --------- Overall KPIs (from summary) --------- */
-  const totalReports   = summary.reduce((a, r) => a + (Number(r.count) || 0), 0);
-  const totalTypes     = summary.filter((r) => Number(r.count) > 0).length;
-  const today          = todayDubai();
-  const last7Cutoff    = daysAgoISO(6);
-  const reportsToday   = summary.filter((r) => r.latest_date === today).reduce((a, r) => a + 1, 0);
-  const activeBranches = useMemo(() => (
-    BRANCHES.filter((b) => b.types.some(({ t }) => (summaryMap[t]?.count || 0) > 0)).length
-  ), [summaryMap]);
-  const last7Types = summary.filter((r) => r.latest_date && r.latest_date >= last7Cutoff).length;
+  const active = branchRows.filter((b) => !b.inactive);
+  const sumC = (key) => active.reduce((a, b) => ({ done: a.done + b[key].done, expected: a.expected + b[key].expected }), { done: 0, expected: 0 });
+  const compCur = sumC("cur");
+  const compPrev = sumC("prev");
+  const compPct = compCur.expected ? Math.round((compCur.done / compCur.expected) * 100) : null;
+  const compPrevPct = compPrev.expected ? Math.round((compPrev.done / compPrev.expected) * 100) : null;
 
-  /* --------- Per-branch --------- */
-  const branchStats = useMemo(() => (
-    BRANCHES.map((b) => {
-      let count = 0, lastDate = "", activeForms = 0;
-      for (const { t } of b.types) {
-        const row = summaryMap[t];
-        if (!row) continue;
-        const c = Number(row.count) || 0;
-        count += c;
-        if (c > 0) activeForms += 1;
-        if (row.latest_date && (!lastDate || row.latest_date > lastDate)) lastDate = row.latest_date;
-      }
-      return { branch: b, count, lastDate, activeForms, totalForms: b.types.length };
-    })
-  ), [summaryMap]);
+  const compTrend = useMemo(() => curDays.map((d) => {
+    let done = 0, exp = 0;
+    active.forEach((b) => b.types.forEach(([t]) => { exp += 1; if (doneSet.has(`${t}|${d}`)) done += 1; }));
+    return { date: d, value: exp ? Math.round((done / exp) * 100) : NaN };
+  }), [curDays, active, doneSet]);
 
-  /* --------- QCS Coolers KPIs --------- */
-  const qcsCoolerDays = fCoolers.length;
-  const coolerAvg = useMemo(() => {
-    const temps = [];
-    fCoolers.forEach((rep) => (rep.coolers || []).forEach((c) => Object.values(c?.temps || {}).forEach((v) => {
-      const n = Number(v); if (!isNaN(n) && v !== "") temps.push(n);
-    })));
-    return temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : "0.0";
-  }, [fCoolers]);
-
-  /* --------- Shipments KPIs ---------
-     Form saves status in English ("Acceptable" | "Average" | "Below Average").
-     Keep Arabic variants too in case legacy rows exist.
-     Top-level count comes from the summary endpoint (true COUNT(*) — not capped). */
-  const shipTotalAll = Number(summaryMap["qcs_raw_material"]?.count) || 0;
-  const shipCount    = dateFrom || dateTo ? fShip.length : shipTotalAll;
-  const isAcceptable = (s) => ["Acceptable", "acceptable", "مرضي"].includes((s || "").trim());
-  const isAverage    = (s) => ["Average", "average", "وسط"].includes((s || "").trim());
-  const isBelow      = (s) => ["Below Average", "below average", "تحت الوسط", "غير مرضي"].includes((s || "").trim());
-  const shipMardi    = fShip.filter((r) => isAcceptable(r.status)).length;
-  const shipWasatArr = fShip.filter((r) => isAverage(r.status));
-  const shipTahtArr  = fShip.filter((r) => isBelow(r.status));
-  const shipTypes    = useMemo(() => fShip.reduce((acc, r) => {
-    const t = r.shipmentType || "غير محدد"; acc[t] = (acc[t] || 0) + 1; return acc;
-  }, {}), [fShip]);
-  const shipCompliance = shipCount ? Math.round((shipMardi / shipCount) * 100) : 0;
-
-  /* --------- Cars loading KPIs (one record per vehicle row) --------- */
-  const loadCount   = fLoad.length;
-  const loadDurs    = fLoad.map((r) => {
-    const s = toMinutes(r.timeStart), e = toMinutes(r.timeEnd);
-    return s != null && e != null && e >= s ? e - s : null;
-  }).filter((v) => v != null);
-  const loadAvgMin  = loadDurs.length ? Math.round(loadDurs.reduce((a, b) => a + b, 0) / loadDurs.length) : 0;
-  const loadTemps   = fLoad
-    .map((r) => r.tempCheck)
-    .filter((v) => v !== "" && v != null)
-    .map((v) => Number(v))
-    .filter((v) => !isNaN(v));
-  const loadAvgTemp = loadTemps.length ? (loadTemps.reduce((a, b) => a + b, 0) / loadTemps.length).toFixed(1) : "0.0";
-  // Positive-yes fields (compliant when "yes") and Negative fields (compliant when "no")
-  const VI_POSITIVE = ["trafficControlSpotter","vehicleSecured","loadSecured","areaSafe","manualHandlingControls","floorSealingIntact","floorCleaning","plasticCurtain","ppeAvailable"];
-  const VI_NEGATIVE = ["pestActivites","badOdour"];
-  const { viYes, viTotal } = useMemo(() => {
-    let viYes = 0, viTotal = 0;
-    fLoad.forEach((r) => {
-      VI_POSITIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { viTotal++; if (r[k] === "yes") viYes++; } });
-      VI_NEGATIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { viTotal++; if (r[k] === "no")  viYes++; } });
+  /* ── الشحنات ── */
+  const inCur = (d) => d >= from && d <= to;
+  const inPrev = (d) => d >= prevFrom && d <= prevTo;
+  const shipCur = ships.filter((s) => inCur(s.day));
+  const shipPrev = ships.filter((s) => inPrev(s.day));
+  const shipStats = (list) => {
+    const rated = list.filter((s) => s.status);
+    const ok = rated.filter((s) => s.status === "ok").length;
+    return { total: list.length, rated: rated.length, ok, pct: rated.length ? Math.round((ok / rated.length) * 100) : null };
+  };
+  const sCur = shipStats(shipCur);
+  const sPrev = shipStats(shipPrev);
+  const shipIssues = shipCur.filter((s) => s.status === "avg" || s.status === "bad")
+    .sort((a, b) => (a.status === b.status ? b.day.localeCompare(a.day) : a.status === "bad" ? -1 : 1));
+  const shipTrend = useMemo(() => {
+    const m = new Map();
+    shipCur.forEach((s) => {
+      if (!s.status) return;
+      const c = m.get(s.day) || { ok: 0, n: 0 };
+      c.n += 1; if (s.status === "ok") c.ok += 1;
+      m.set(s.day, c);
     });
-    return { viYes, viTotal };
-  }, [fLoad]);
-  const viCompliance = viTotal ? Math.round((viYes / viTotal) * 100) : 0;
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, c]) => ({ date, value: Math.round((c.ok / c.n) * 100) }));
+  }, [shipCur]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* --------- Returns KPIs (total count from summary, details from capped fetch) --------- */
-  const retTotalAll = Number(summaryMap["returns"]?.count) || 0;
-  const retCount = dateFrom || dateTo ? fReturns.length : retTotalAll;
-  const retItems = fReturns.reduce((a, r) => a + (r.items?.length || 0), 0);
-  const retQty   = fReturns.reduce((a, r) => a + (r.items?.reduce((s, it) => s + Number(it.quantity || 0), 0) || 0), 0);
-  const byBranch = useMemo(() => {
-    const acc = {};
-    fReturns.forEach((rep) => (rep.items || []).forEach((it) => {
-      const b = it.butchery === "فرع آخر..." ? it.customButchery : it.butchery;
-      if (b) acc[b] = (acc[b] || 0) + 1;
-    }));
-    return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  }, [fReturns]);
-  const byAction = useMemo(() => {
-    const acc = {};
-    fReturns.forEach((rep) => (rep.items || []).forEach((it) => {
-      const a = it.action === "إجراء آخر..." ? it.customAction : it.action;
-      if (a) acc[a] = (acc[a] || 0) + 1;
-    }));
-    return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  }, [fReturns]);
-
-  /* ============================================================
-     📈 Trend series (date → value)
-  ============================================================ */
-  // Avg cooler temperature per day
-  const trendCoolerTemp = useMemo(() => {
-    const byDay = new Map();
-    fCoolers.forEach((rep) => {
-      const d = rep.date; if (!d) return;
-      (rep.coolers || []).forEach((c) => Object.values(c?.temps || {}).forEach((v) => {
-        const n = Number(v); if (isNaN(n) || v === "") return;
-        const cur = byDay.get(d) || { sum: 0, count: 0 };
-        cur.sum += n; cur.count += 1; byDay.set(d, cur);
-      }));
+  /* ── البرادات ── */
+  const readCur = useMemo(() => coolers.filter((r) => inCur(dayOf(r))).flatMap((r) => coolerReadings(r).map((x) => ({ ...x, day: dayOf(r) }))), [coolers, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  const readPrev = useMemo(() => coolers.filter((r) => inPrev(dayOf(r))).flatMap(coolerReadings), [coolers, prevFrom, prevTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const outCur = readCur.filter((r) => !r.ok).length;
+  const outPrev = readPrev.filter((r) => !r.ok).length;
+  const unitRows = useMemo(() => {
+    const m = new Map();
+    readCur.forEach((r) => {
+      const u = m.get(r.unit) || { unit: r.unit, def: r.def, n: 0, out: 0, min: Infinity, max: -Infinity, lastOut: null };
+      u.n += 1; u.min = Math.min(u.min, r.value); u.max = Math.max(u.max, r.value);
+      if (!r.ok) { u.out += 1; if (!u.lastOut || r.day > u.lastOut.day) u.lastOut = r; }
+      m.set(r.unit, u);
     });
-    return Array.from(byDay.entries()).map(([date, s]) => ({ date, value: Number((s.sum / s.count).toFixed(2)) }));
-  }, [fCoolers]);
+    return [...m.values()].sort((a, b) => b.out - a.out);
+  }, [readCur]);
+  const tempTone = !readCur.length ? "none" : outCur === 0 ? "good" : outCur / readCur.length <= 0.02 ? "warn" : "bad";
 
-  // Shipment compliance % per day (Acceptable / total * 100)
-  const trendShipCompliance = useMemo(() => {
-    const byDay = new Map();
-    fShip.forEach((r) => {
-      const d = r.date; if (!d) return;
-      const cur = byDay.get(d) || { ok: 0, total: 0 };
-      cur.total += 1; if (isAcceptable(r.status)) cur.ok += 1;
-      byDay.set(d, cur);
-    });
-    return Array.from(byDay.entries()).map(([date, s]) => ({ date, value: Math.round((s.ok / s.total) * 100) }));
-  }, [fShip]);
+  /* ── المرتجعات ── */
+  const retCur = useMemo(() => returns.filter((r) => inCur(dayOf(r))).flatMap(returnItems), [returns, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  const retPrev = useMemo(() => returns.filter((r) => inPrev(dayOf(r))).flatMap(returnItems), [returns, prevFrom, prevTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const retTone = !retPrev.length ? "none" : retCur.length > retPrev.length * 1.2 ? "warn" : "good";
 
-  // Loading-visual compliance % per day
-  const trendLoadingCompliance = useMemo(() => {
-    const byDay = new Map();
-    fLoad.forEach((r) => {
-      const d = r.date; if (!d) return;
-      const cur = byDay.get(d) || { yes: 0, total: 0 };
-      VI_POSITIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { cur.total += 1; if (r[k] === "yes") cur.yes += 1; } });
-      VI_NEGATIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { cur.total += 1; if (r[k] === "no")  cur.yes += 1; } });
-      byDay.set(d, cur);
-    });
-    return Array.from(byDay.entries()).filter(([, s]) => s.total > 0).map(([date, s]) => ({ date, value: Math.round((s.yes / s.total) * 100) }));
-  }, [fLoad]);
-
-  // Total daily activity (reports/day across coolers + shipments + loading + returns)
-  const trendDailyActivity = useMemo(() => {
-    const byDay = new Map();
-    const bump = (d) => { if (!d) return; byDay.set(d, (byDay.get(d) || 0) + 1); };
-    fCoolers.forEach((r) => bump(r.date));
-    fShip.forEach((r) => bump(r.date));
-    fLoad.forEach((r) => bump(r.date));
-    fReturns.forEach((r) => bump(r.reportDate));
-    return Array.from(byDay.entries()).map(([date, value]) => ({ date, value }));
-  }, [fCoolers, fShip, fLoad, fReturns]);
-
-  /* ============================================================
-     🏆 Branch ranking
-  ============================================================ */
-  const branchRanking = useMemo(() => (
-    [...branchStats].sort((a, b) => b.count - a.count).map((b) => ({
-      label: b.branch.name,
-      value: b.count,
-      color: b.branch.accent,
-    }))
-  ), [branchStats]);
-
-  // "Activity score" = active forms / total forms (0..100%)
-  const branchActivityScore = useMemo(() => (
-    [...branchStats]
-      .filter((b) => b.totalForms > 0)
-      .sort((a, b) => (b.activeForms / b.totalForms) - (a.activeForms / a.totalForms))
-      .map((b) => ({
-        label: b.branch.name,
-        value: Math.round((b.activeForms / b.totalForms) * 100),
-        color: b.branch.accent,
-      }))
-  ), [branchStats]);
-
-  /* ============================================================
-     ⏰ Absent reports — any type with latest_date older than threshold
-  ============================================================ */
-  const [absentThreshold, setAbsentThreshold] = useState(3);   // days
-  const absentReports = useMemo(() => {
-    const cutoff = daysAgoISO(absentThreshold);
+  /* ── بحاجة لانتباهك ── */
+  const attention = useMemo(() => {
     const out = [];
-    for (const b of BRANCHES) {
-      for (const { t, label } of b.types) {
-        const row = summaryMap[t];
-        const latest = row?.latest_date;
-        // We only flag types that HAVE data but are stale. Types that never had data are shown in "idle branches" elsewhere.
-        if (Number(row?.count) > 0 && latest && latest < cutoff) {
-          const daysAgo = Math.round((Date.parse(todayDubai()) - Date.parse(latest)) / 86_400_000);
-          out.push({ branch: b, type: t, label, latest, daysAgo });
-        }
+    active.forEach((b) => {
+      if (b.cur.pct != null && b.cur.pct < TARGET.compliance.warn) {
+        out.push({ tone: "bad", text: `${b.name}: التزام ${b.cur.pct}٪ بالسجلات اليومية — ناقص ${b.cur.expected - b.cur.done} سجل بالفترة.` });
       }
+    });
+    const hourDubai = Number(new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai", hour: "2-digit", hour12: false }));
+    if (hourDubai >= 12) {
+      active.forEach((b) => {
+        const missing = b.todayState.filter((s) => !s.done).map((s) => KIND_LABEL[s.kind]);
+        if (missing.length) out.push({ tone: "warn", text: `${b.name}: ما انسلّم اليوم — ${missing.join("، ")}.` });
+      });
     }
-    return out.sort((a, b) => b.daysAgo - a.daysAgo);
-  }, [summaryMap, absentThreshold]);
-
-  /* --------- Alerts --------- */
-  const alerts = useMemo(() => {
-    const out = [];
-    if (Number(coolerAvg) > 8) out.push("⚠️ متوسط حرارة البرادات مرتفع (أعلى من 8°C)");
-    if (shipTahtArr.length > shipMardi) out.push("⚠️ عدد الشحنات تحت الوسط أعلى من المرضية");
-    if (viTotal && viCompliance < 70) out.push("⚠️ توافق الفحص البصري للتحميل منخفض (< 70%)");
-    const idleBranches = branchStats.filter((b) => b.count === 0).map((b) => b.branch.name);
-    if (idleBranches.length) out.push(`ℹ️ فروع بدون أي تقارير: ${idleBranches.join("، ")}`);
-    if (absentReports.length) out.push(`🕒 ${absentReports.length} نموذج لم يُحدَّث خلال آخر ${absentThreshold} أيام — راجع قسم الغياب.`);
+    unitRows.filter((u) => u.out > 0).slice(0, 4).forEach((u) => {
+      out.push({
+        tone: "bad",
+        text: `${u.unit}: ${u.out} قراءة خارج الحد (${rangeLabel(u.def)})${u.lastOut ? ` — آخرها ${u.lastOut.value}° يوم ${fmtDay(u.lastOut.day)}` : ""}.`,
+      });
+    });
+    shipIssues.filter((s) => s.status === "bad").slice(0, 3).forEach((s) => {
+      out.push({ tone: "bad", text: `شحنة تحت الوسط: ${s.name} — ${s.supplier} (${fmtDay(s.day)}).` });
+    });
     return out;
-  }, [coolerAvg, shipTahtArr, shipMardi, viCompliance, viTotal, branchStats, absentReports, absentThreshold]);
+  }, [active, unitRows, shipIssues]);
 
-  /* --------- Export / Import --------- */
-  function handleExport() {
-    const obj = {
-      KPIs: {
-        totalReports, totalTypes, reportsToday, activeBranches, last7Types,
-        branchStats: branchStats.map((b) => ({ branch: b.branch.key, count: b.count, lastDate: b.lastDate, activeForms: b.activeForms, totalForms: b.totalForms })),
-        qcsCoolerDays, coolerAvg,
-        shipCount, shipMardi, shipWasat: shipWasatArr.length, shipTaht: shipTahtArr.length, shipTypes, shipCompliance,
-        loadCount, loadAvgMin, loadAvgTemp, viCompliance,
-        retCount, retItems, retQty, byBranch, byAction,
-      },
-      dateFrom, dateTo, exportedAt: new Date().toISOString(),
-    };
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" }));
-    a.download = `kpi_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-  function handleImport(e) {
-    setImportError("");
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!data?.KPIs) throw new Error("البنية غير صحيحة — مطلوب مفتاح KPIs");
-        alert(`✅ تم قراءة الملف — ${Object.keys(data.KPIs).length} مؤشر`);
-      } catch (err) {
-        setImportError(`❌ فشل الاستيراد: ${err.message}`);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  }
+  const inactive = branchRows.filter((b) => b.inactive);
 
   /* ============================================================
-     Render
+     العرض
   ============================================================ */
+  const compTone = toneByTarget(compPct, TARGET.compliance);
+  const shipTone = toneByTarget(sCur.pct, TARGET.shipments);
+
   return (
-    <>
+    <div className="kp kp" dir="rtl">
       <style>{CSS}</style>
-      <div className="kpi-root">
 
-        <header className="kpi-header">
-          <div>
-            <div className="kpi-h-title">📈 لوحة مؤشرات الأداء</div>
-            <div className="kpi-h-sub">{dateStr} · مربوطة بجميع الفروع والأنواع ({summary.length} نوع تقرير)</div>
+      <header className="kp-head">
+        <div>
+          <h1 className="kp-h1">📈 مؤشرات الأداء</h1>
+          <p className="kp-hsub">التزام الفروع وسلامة الغذاء · {fmtRange(from, to)}</p>
+        </div>
+        <div className="kp-head-actions">
+          <button type="button" className="kp-btn" onClick={() => { memo.clear(); setReloadKey((k) => k + 1); }} disabled={loading}>
+            {loading ? "⏳ جاري التحميل…" : "🔄 تحديث"}
+          </button>
+          <button type="button" className="kp-btn" onClick={() => navigate("/named-dashboard")}>🏠 الرئيسية</button>
+        </div>
+      </header>
+
+      <section className="kp-period">
+        <div className="kp-chips">
+          {PRESETS.map(([k, label]) => (
+            <button key={k} type="button" className={`kp-chip ${preset === k ? "on" : ""}`} onClick={() => setPreset(k)}>{label}</button>
+          ))}
+          <button type="button" className={`kp-chip ${preset === "custom" ? "on" : ""}`} onClick={() => { setCustom(range); setPreset("custom"); }}>📅 فترة مخصصة</button>
+        </div>
+        {preset === "custom" && (
+          <div className="kp-custom">
+            <label>من <input type="date" value={custom.from} max={today} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} /></label>
+            <label>إلى <input type="date" value={custom.to} max={today} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} /></label>
+            {!validRange && <span className="kp-err-inline">اختار فترة صحيحة (لحد 180 يوم).</span>}
           </div>
-          {fetching && <div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", display: "flex", alignItems: "center", gap: 7 }}>⏳ جاري الجلب…</div>}
-          {fetchErr && <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626" }}>⚠ {fetchErr}</div>}
-        </header>
-
-        {alerts.length > 0 && (
-          <div className="kpi-alert">{alerts.map((a, i) => <div key={i}>{a}</div>)}</div>
         )}
+        <div className="kp-compare">مقارنة مع الفترة السابقة: {fmtRange(prevFrom, prevTo)}</div>
+      </section>
 
-        <div className="kpi-filters">
-          <span className="kpi-filter-label">فلترة حسب التاريخ</span>
-          <span className="kpi-filter-sep">من</span>
-          <input type="date" className="kpi-date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <span className="kpi-filter-sep">إلى</span>
-          <input type="date" className="kpi-date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          {(dateFrom || dateTo) && (
-            <button className="kpi-btn kpi-btn-reset" onClick={() => { setDateFrom(""); setDateTo(""); }}>🧹 مسح</button>
-          )}
-          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>
-            (الفلترة تطبّق على الشحنات/التحميل/المرتجعات/البرادات فقط. ملخص الفروع يعرض المجموع الكلي.)
-          </div>
-          <div style={{ marginRight: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="kpi-btn kpi-btn-export" onClick={handleExport}>⬇️ تصدير JSON</button>
-            <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} style={{ display: "none" }} />
-          </div>
+      {error && <div className="kp-alert">{error}</div>}
+
+      {/* ── المؤشرات الأربعة ── */}
+      <section className="kp-kpis">
+        <KpiCard
+          icon="🗂️" title="التزام الفروع بالسجلات اليومية"
+          value={compPct} unit="٪" tone={compTone}
+          sub={compCur.expected ? `${compCur.done} من ${compCur.expected} سجل · ${active.length} فروع` : "ما في أيام مكتملة بهالفترة بعد"}
+          target={`الهدف ${TARGET.compliance.good}٪ فأكثر · الحرارة والنظافة الشخصية والنظافة اليومية`}
+          delta={<Delta cur={compPct} prev={compPrevPct} unit=" نقطة" />}
+        />
+        <KpiCard
+          icon="📦" title="الشحنات المقبولة"
+          value={sCur.pct} unit="٪" tone={shipTone}
+          sub={sCur.total ? `${sCur.ok} من ${sCur.rated} شحنة مقبولة · ${shipIssues.length} وسط أو أقل` : "ما في شحنات بهالفترة"}
+          target={`الهدف ${TARGET.shipments.good}٪ فأكثر`}
+          delta={<Delta cur={sCur.pct} prev={sPrev.pct} unit=" نقطة" />}
+        />
+        <KpiCard
+          icon="🌡️" title="قراءات حرارة خارج الحد (QCS)"
+          value={readCur.length ? outCur : null} unit="" tone={tempTone}
+          sub={readCur.length ? `من ${readCur.length} قراءة · كل وحدة على حدودها` : "ما في قراءات بهالفترة"}
+          target="الهدف صفر"
+          delta={<Delta cur={readCur.length ? outCur : null} prev={readPrev.length ? outPrev : null} unit="" higherIsBetter={false} />}
+        />
+        <KpiCard
+          icon="♻️" title="أصناف مرتجعة من الفروع"
+          value={returns.length || retCur.length ? retCur.length : null} unit="" tone={retTone}
+          sub={retCur.length ? `أكثر إجراء: ${topCounts(retCur, "action", 1)[0]?.[0] || "—"}` : "ما في مرتجعات بهالفترة"}
+          target="كل ما قلّ كان أحسن"
+          delta={<Delta cur={retCur.length} prev={returns.length ? retPrev.length : null} unit="" higherIsBetter={false} />}
+        />
+      </section>
+
+      {/* ── بحاجة لانتباهك ── */}
+      <section className="kp-card">
+        <h2 className="kp-h2">⚠️ بحاجة لانتباهك</h2>
+        {loading ? <div className="kp-empty">جاري التحميل…</div> : attention.length === 0 ? (
+          <div className="kp-ok">✅ ما في شي بيحتاج متابعة بهالفترة.</div>
+        ) : (
+          <ul className="kp-att">
+            {attention.map((a, i) => (
+              <li key={i} style={{ background: TONE[a.tone].bg, borderColor: TONE[a.tone].bd, color: TONE[a.tone].fg }}>{a.text}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ── جدول الفروع ── */}
+      <section className="kp-card">
+        <h2 className="kp-h2">🏪 الفروع</h2>
+        <p className="kp-note">نسبة السجلات اليومية اللي انسلّمت بالفترة، وحالة سجلات اليوم.</p>
+        <div className="kp-tablewrap">
+          <table className="kp-table">
+            <thead>
+              <tr><th>الفرع</th><th>الالتزام بالفترة</th><th>مقابل السابقة</th><th>سجلات اليوم</th><th>آخر سجل</th></tr>
+            </thead>
+            <tbody>
+              {active.map((b) => {
+                const tone = toneByTarget(b.cur.pct, TARGET.compliance);
+                return (
+                  <tr key={b.id}>
+                    <td><span className="kp-dot" style={{ background: b.accent }} />{b.name}</td>
+                    <td>
+                      <div className="kp-comp">
+                        <Bar pct={b.cur.pct} tone={tone} />
+                        <b style={{ color: TONE[tone].fg }}>{b.cur.pct == null ? "—" : `${b.cur.pct}٪`}</b>
+                        <span className="kp-mute">{b.cur.done}/{b.cur.expected}</span>
+                      </div>
+                    </td>
+                    <td><Delta cur={b.cur.pct} prev={b.prev.pct} unit="" /></td>
+                    <td>
+                      <div className="kp-today">
+                        {b.todayState.map((s) => (
+                          <span key={s.kind} className={`kp-pill ${s.done ? "ok" : "no"}`}>{s.done ? "✓" : "✗"} {KIND_LABEL[s.kind]}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>{fmtDay(b.last)}</td>
+                  </tr>
+                );
+              })}
+              {inactive.map((b) => (
+                <tr key={b.id} className="kp-off">
+                  <td><span className="kp-dot" style={{ background: "#cbd5e1" }} />{b.name}</td>
+                  <td colSpan={3}>متوقف — ما في سجلات يومية من أكتر من {INACTIVE_AFTER_DAYS} يوم (ما بيدخل بالنسبة)</td>
+                  <td>{fmtDay(b.last)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {importError && <div className="kpi-modal-err">{importError}</div>}
+      </section>
 
-        {/* ================ Overall Summary ================ */}
-        <div className="kpi-section">الملخّص العام</div>
-        <div className="kpi-grid">
-          <KPICard icon="📚" label="إجمالي التقارير"    value={totalReports}   colorType="good" />
-          <KPICard icon="🗓️" label="تقارير اليوم"      value={reportsToday}   colorType="good" />
-          <KPICard icon="🏢" label="الفروع النشطة"      value={activeBranches} colorType="good" suffix={`/${BRANCHES.length}`} />
-          <KPICard icon="📋" label="أنواع مستخدمة"       value={totalTypes}     colorType="good" />
-          <KPICard icon="⚡" label="نماذج فعّالة بآخر 7 أيام" value={last7Types} colorType="warn" />
+      {/* ── الاتجاهات ── */}
+      <section className="kp-two">
+        <div className="kp-card">
+          <h2 className="kp-h2">📅 الالتزام يوم بيوم</h2>
+          <p className="kp-note">الخط الأخضر المتقطع = الهدف {TARGET.compliance.good}٪</p>
+          <LineChart data={compTrend} color="#2563eb" unit="%" band={TARGET.compliance.good} />
         </div>
+        <div className="kp-card">
+          <h2 className="kp-h2">📦 الشحنات المقبولة يوم بيوم</h2>
+          <p className="kp-note">الخط الأخضر المتقطع = الهدف {TARGET.shipments.good}٪</p>
+          <LineChart data={shipTrend} color="#0d9488" unit="%" band={TARGET.shipments.good} />
+        </div>
+      </section>
 
-        {/* ================ Per-Branch ================ */}
-        <div className="kpi-section">نشاط الفروع</div>
-        <div className="kpi-grid-branches">
-          {branchStats.map(({ branch, count, lastDate, activeForms, totalForms }) => (
-            <BranchCard
-              key={branch.key}
-              branch={branch}
-              count={count}
-              lastDate={lastDate}
-              activeForms={activeForms}
-              totalForms={totalForms}
-              onClick={() => setBranchModal(branch)}
-            />
+      {/* ── التفاصيل ── */}
+      <section className="kp-card">
+        <div className="kp-tabs">
+          {[["ships", "📦 الشحنات"], ["coolers", "🌡️ البرادات"], ["returns", "♻️ المرتجعات"], ["loading", "🚚 تحميل السيارات"]].map(([k, label]) => (
+            <button key={k} type="button" className={`kp-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{label}</button>
           ))}
         </div>
 
-        {/* ================ 📈 Trends ================ */}
-        <div className="kpi-section">📈 الاتجاهات عبر الزمن</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12 }}>
-          <div className="kpi-wide">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>🌡️ متوسط حرارة البرادات (QCS)</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendCoolerTemp.length} يوم</div>
-            </div>
-            <LineChart data={trendCoolerTemp} color="#0891b2" unit="°C" thresholds={[{ value: 8, color: "#ef4444" }]} />
-          </div>
-          <div className="kpi-wide">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>✅ نسبة الشحنات المرضية</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendShipCompliance.length} يوم</div>
-            </div>
-            <LineChart data={trendShipCompliance} color="#22c55e" unit="%" thresholds={[{ value: 80, color: "#22c55e" }, { value: 50, color: "#f59e0b" }]} />
-          </div>
-          <div className="kpi-wide">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>👁️ توافق الفحص البصري (تحميل)</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendLoadingCompliance.length} يوم</div>
-            </div>
-            <LineChart data={trendLoadingCompliance} color="#a855f7" unit="%" thresholds={[{ value: 70, color: "#f59e0b" }]} />
-          </div>
-          <div className="kpi-wide">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>📚 نشاط التقارير اليومي</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendDailyActivity.length} يوم</div>
-            </div>
-            <LineChart data={trendDailyActivity} color="#6366f1" unit="" />
-          </div>
-        </div>
-
-        {/* ================ 🏆 Branch Comparison ================ */}
-        <div className="kpi-section">🏆 مقارنة الفروع</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
-          <div className="kpi-wide">
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b", marginBottom: 12 }}>📊 الأعلى تقارير (ترتيب تنازلي)</div>
-            <RankingBar rows={branchRanking} />
-          </div>
-          <div className="kpi-wide">
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b", marginBottom: 12 }}>⚡ نسبة النماذج النشطة (من إجمالي نماذج الفرع)</div>
-            <RankingBar rows={branchActivityScore} unit="%" />
-          </div>
-        </div>
-
-        {/* ================ ⏰ Absent Reports ================ */}
-        <div className="kpi-section">⏰ نماذج غائبة عن التحديث</div>
-        <div className="kpi-wide">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>حد التنبيه:</span>
-            {[1, 3, 7, 14, 30].map((n) => (
-              <button
-                key={n}
-                onClick={() => setAbsentThreshold(n)}
-                className="kpi-btn"
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  background: absentThreshold === n ? "linear-gradient(135deg,#ef4444,#f87171)" : "#f1f5f9",
-                  color: absentThreshold === n ? "#fff" : "#475569",
-                  border: absentThreshold === n ? "1px solid #ef4444" : "1px solid #e2e8f0",
-                }}
-              >
-                {n} {n === 1 ? "يوم" : "أيام"}
-              </button>
-            ))}
-            <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: "#64748b" }}>
-              {absentReports.length > 0 ? `${absentReports.length} نموذج يحتاج متابعة` : "لا يوجد غياب 🎉"}
-            </span>
-          </div>
-          {absentReports.length === 0 ? (
-            <div style={{ padding: 28, textAlign: "center", color: "#22c55e", fontSize: 13, fontWeight: 700 }}>
-              ✅ كل النماذج محدّثة خلال آخر {absentThreshold} أيام
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto" }}>
-              {absentReports.map((a) => {
-                const severity = a.daysAgo > absentThreshold * 3 ? "#dc2626" : a.daysAgo > absentThreshold * 2 ? "#f59e0b" : "#6366f1";
-                return (
-                  <div
-                    key={`${a.branch.key}-${a.type}`}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "22px 1fr 1fr 110px",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 14px",
-                      background: "#f8fafc",
-                      border: `1px solid ${severity}33`,
-                      borderRight: `3px solid ${severity}`,
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  >
-                    <span style={{ fontSize: 14 }}>{a.branch.icon}</span>
-                    <span style={{ fontWeight: 800, color: "#1e293b" }}>{a.branch.name}</span>
-                    <span style={{ color: "#64748b", fontWeight: 600 }}>{a.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: severity, textAlign: "left", fontFamily: "monospace" }}>
-                      {a.daysAgo} {a.daysAgo === 1 ? "يوم" : "يوم"} · {a.latest}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ================ QCS Daily (coolers) ================ */}
-        <div className="kpi-section">QCS اليومي — البرادات</div>
-        <div className="kpi-grid">
-          <KPICard icon="🗓️" label="أيام تسجيل البرادات"       value={qcsCoolerDays} colorType="good" />
-          <KPICard icon="❄️" label="متوسط حرارة البرادات (QCS)" value={coolerAvg}     colorType="temp" suffix="°C" />
-        </div>
-
-        {/* ================ Shipments ================ */}
-        <div className="kpi-section">شحنات QCS</div>
-        <div className="kpi-grid">
-          <KPICard icon="📦" label="إجمالي الشحنات"    value={shipCount}           colorType="good" />
-          <KPICard icon="✅" label="الشحنات المرضية"   value={shipMardi}           colorType="good" />
-          <KPICard icon="⚠️" label="الشحنات وسط"      value={shipWasatArr.length} colorType="warn" onClick={() => setWasatOpen(true)} />
-          <KPICard icon="❌" label="الشحنات تحت الوسط" value={shipTahtArr.length}  colorType="bad"  onClick={() => setTahtWasatOpen(true)} />
-          <KPICard icon="📈" label="نسبة الشحنات المرضية" value={shipCompliance}    colorType="percentage" suffix="%" />
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <div className="kpi-wide">
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>🏷️ الشحنات حسب النوع</div>
-            <BarChart data={shipTypes} />
-          </div>
-        </div>
-
-        {/* ================ Cars loading ================ */}
-        <div className="kpi-section">تحميل السيارات</div>
-        <div className="kpi-grid">
-          <KPICard icon="🚚" label="عدد تقارير التحميل"        value={loadCount}    colorType="good" />
-          <KPICard icon="⏱️" label="متوسط زمن التحميل (دقيقة)" value={loadAvgMin}   colorType="warn" suffix=" د" />
-          <KPICard icon="🌡️" label="متوسط حرارة التحميل"       value={loadAvgTemp}  colorType="temp" suffix="°C" />
-          <KPICard icon="👁️" label="توافق الفحص البصري"        value={viCompliance} colorType="percentage" suffix="%" />
-        </div>
-
-        {/* ================ Returns ================ */}
-        <div className="kpi-section">المرتجعات</div>
-        <div className="kpi-grid">
-          <KPICard icon="🛒" label="عدد تقارير المرتجعات" value={retCount} colorType="good" />
-          <KPICard icon="📋" label="إجمالي العناصر"        value={retItems} colorType="warn" />
-          <KPICard icon="🔢" label="إجمالي الكمية"         value={retQty}   colorType="warn" />
-          <div className="kpi-wide" style={{ cursor: "pointer" }} onClick={() => setReturnsDetailsOpen(true)}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>🔍 أعلى الفروع والإجراءات</div>
-            {byBranch.length > 0 && <div style={{ fontSize: 12, color: "#6366f1", marginBottom: 4 }}>فرع: <b>{byBranch[0][0]}</b> ({byBranch[0][1]})</div>}
-            {byAction.length > 0 && <div style={{ fontSize: 12, color: "#dc2626" }}>إجراء: <b>{byAction[0][0]}</b> ({byAction[0][1]})</div>}
-            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8, fontWeight: 700 }}>انقر لعرض كل التفاصيل ←</div>
-          </div>
-        </div>
-
-        <div className="kpi-footer">جميع البيانات من Postgres · {dateStr}</div>
-      </div>
-
-      {/* Modals */}
-      <Modal show={wasatOpen}     onClose={() => setWasatOpen(false)}     title="تفاصيل الشحنات — وسط">
-        <ShipmentsTable rows={shipWasatArr} statusColor="#d97706" />
-      </Modal>
-      <Modal show={tahtWasatOpen} onClose={() => setTahtWasatOpen(false)} title="تفاصيل الشحنات — تحت الوسط">
-        <ShipmentsTable rows={shipTahtArr} statusColor="#dc2626" />
-      </Modal>
-      <Modal show={!!branchModal} onClose={() => setBranchModal(null)}    title={branchModal ? `${branchModal.icon} تفاصيل فرع ${branchModal.name}` : ""}>
-        {branchModal && <BranchDetailTable branch={branchModal} summaryMap={summaryMap} />}
-      </Modal>
-      <Modal show={returnsDetailsOpen} onClose={() => setReturnsDetailsOpen(false)} title="تفاصيل تقارير المرتجعات">
-        {!fReturns.length ? (
-          <div style={{ textAlign: "center", color: "#9ca3af", padding: 28, fontSize: 13 }}>لا يوجد بيانات في الفترة المحددة.</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000, fontSize: 12 }}>
-              <thead>
-                <tr>{["#", "التاريخ", "المنتج", "المنشأ", "الفرع", "الكمية", "نوع الكمية", "الانتهاء", "ملاحظات", "الإجراء"].map((h) => <th key={h} style={TH}>{h}</th>)}</tr>
-              </thead>
-              <tbody>{fReturns.flatMap((rep, ri) => (rep.items || []).map((row, ii) => (
-                <tr key={`${ri}-${ii}`} style={{ background: (ri * 100 + ii) % 2 ? "#f8fafc" : "#fff" }}>
-                  <td style={TD}>{ri + 1}-{ii + 1}</td>
-                  <td style={TD}>{rep.reportDate || "—"}</td>
-                  <td style={TD}>{row.productName || "—"}</td>
-                  <td style={TD}>{row.origin || "—"}</td>
-                  <td style={TD}>{row.butchery === "فرع آخر..." ? row.customButchery : row.butchery}</td>
-                  <td style={TD}>{row.quantity || "—"}</td>
-                  <td style={TD}>{row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || "—"}</td>
-                  <td style={TD}>{row.expiry || "—"}</td>
-                  <td style={TD}>{row.remarks || "—"}</td>
-                  <td style={TD}>{row.action === "إجراء آخر..." ? row.customAction : row.action || "—"}</td>
-                </tr>
-              )))}</tbody>
-            </table>
-          </div>
+        {tab === "ships" && (
+          <>
+            <p className="kp-note">{sCur.total} شحنة بالفترة · حسب النوع: {topCounts(shipCur, "kind", 6).map(([k, n]) => `${k} (${n})`).join(" · ") || "—"}</p>
+            {shipIssues.length === 0 ? <div className="kp-ok">✅ كل الشحنات المقيّمة بهالفترة مقبولة.</div> : (
+              <div className="kp-tablewrap">
+                <table className="kp-table">
+                  <thead><tr><th>التاريخ</th><th>المنتج</th><th>المورد / الفرع</th><th>النوع</th><th>التقييم</th><th>ملاحظات</th></tr></thead>
+                  <tbody>
+                    {shipIssues.map((s, i) => (
+                      <tr key={s.id || i}>
+                        <td>{fmtDay(s.day)}</td><td>{s.name}</td><td>{s.supplier}</td><td>{s.kind}</td>
+                        <td><span className={`kp-pill ${s.status === "bad" ? "no" : "mid"}`}>{s.status === "bad" ? "تحت الوسط" : "وسط"}</span></td>
+                        <td>{s.remarks || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
-      </Modal>
-    </>
+
+        {tab === "coolers" && (
+          unitRows.length === 0 ? <div className="kp-empty">ما في قراءات برادات بهالفترة.</div> : (
+            <div className="kp-tablewrap">
+              <table className="kp-table">
+                <thead><tr><th>الوحدة</th><th>الحد المسموح</th><th>القراءات</th><th>خارج الحد</th><th>أدنى · أعلى قراءة</th></tr></thead>
+                <tbody>
+                  {unitRows.map((u) => (
+                    <tr key={u.unit}>
+                      <td>{u.unit}</td>
+                      <td>{rangeLabel(u.def)}</td>
+                      <td>{u.n}</td>
+                      <td><span className={`kp-pill ${u.out ? "no" : "ok"}`}>{u.out}</span></td>
+                      <td>{u.min}° · {u.max}°</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {tab === "returns" && (
+          retCur.length === 0 ? <div className="kp-empty">ما في مرتجعات بهالفترة.</div> : (
+            <div className="kp-three">
+              {[["branch", "أكثر الفروع"], ["action", "الإجراءات"], ["product", "أكثر الأصناف"]].map(([key, title]) => (
+                <div key={key} className="kp-mini">
+                  <h3 className="kp-h3">{title}</h3>
+                  {topCounts(retCur, key, 6).map(([label, n]) => {
+                    const max = topCounts(retCur, key, 1)[0][1];
+                    return (
+                      <div key={label} className="kp-rank">
+                        <span className="kp-rank-l" title={label}>{label}</span>
+                        <div className="kp-bar"><div style={{ width: `${(n / max) * 100}%`, background: "#2563eb" }} /></div>
+                        <b>{n}</b>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {tab === "loading" && (() => {
+          if (loads === null) return <div className="kp-empty">جاري التحميل…</div>;
+          if (!loads.length) return <div className="kp-empty">ما في تقارير تحميل بهالفترة.</div>;
+          const durs = loads.map((r) => {
+            const s = toMinutes(r.timeStart), e = toMinutes(r.timeEnd);
+            return s != null && e != null && e >= s ? e - s : null;
+          }).filter((v) => v != null);
+          const temps = loads.map((r) => Number(r.tempCheck)).filter((v, i) => loads[i].tempCheck !== "" && Number.isFinite(v));
+          let yes = 0, tot = 0;
+          loads.forEach((r) => {
+            VI_POSITIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { tot += 1; if (r[k] === "yes") yes += 1; } });
+            VI_NEGATIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { tot += 1; if (r[k] === "no") yes += 1; } });
+          });
+          const vi = tot ? Math.round((yes / tot) * 100) : null;
+          return (
+            <div className="kp-stats">
+              <div><span>سيارات انحمّلت</span><b>{loads.length}</b></div>
+              <div><span>متوسط زمن التحميل</span><b>{durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : "—"} دقيقة</b></div>
+              <div><span>متوسط حرارة المنتج عند التحميل</span><b>{temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : "—"}°</b></div>
+              <div><span>بنود الفحص البصري السليمة</span><b style={{ color: TONE[toneByTarget(vi, { good: 95, warn: 80 })].fg }}>{vi == null ? "—" : `${vi}٪`}</b></div>
+            </div>
+          );
+        })()}
+      </section>
+    </div>
   );
 }
+
+/* ============================================================
+   الأنماط — globals.css بيفرض حجم الخط على كل #root بـ !important،
+   فالأحجام هون بصنف مضاعف (.kp.kp) وبتلحق زر تكبير الخط (--app-fs).
+============================================================ */
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const CSS = `
+#root .kp.kp { min-height:100vh; box-sizing:border-box; padding:16px clamp(12px,2vw,28px) 40px; color:#0f172a;
+  background:linear-gradient(180deg,#f3f8ff 0%,#f6fafd 100%); display:flex; flex-direction:column; gap:14px; }
+#root .kp.kp * { box-sizing:border-box; }
+#root .kp.kp .kp-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  background:#fff; border:1px solid #dde7f1; border-radius:16px; padding:14px 18px; }
+#root .kp.kp .kp-h1 { margin:0; font-size:${fs(24)}; font-weight:900; }
+#root .kp.kp .kp-hsub { margin:4px 0 0; font-size:${fs(14)}; font-weight:700; color:#64748b; }
+#root .kp.kp .kp-head-actions { display:flex; gap:8px; flex-wrap:wrap; }
+#root .kp.kp .kp-btn { font-size:${fs(14)}; font-weight:800; font-family:inherit; cursor:pointer; padding:9px 14px; border-radius:10px;
+  border:1px solid #dbe7f3; background:#f8fbff; color:#1e293b; }
+#root .kp.kp .kp-btn:hover:not(:disabled) { background:#eaf3ff; border-color:#bfdbfe; }
+#root .kp.kp .kp-btn:disabled { opacity:.6; cursor:wait; }
+
+#root .kp.kp .kp-period { background:#fff; border:1px solid #dde7f1; border-radius:16px; padding:12px 16px; display:flex; flex-direction:column; gap:10px; }
+#root .kp.kp .kp-chips { display:flex; gap:8px; flex-wrap:wrap; }
+#root .kp.kp .kp-chip { font-size:${fs(14)}; font-weight:800; font-family:inherit; cursor:pointer; padding:8px 14px; border-radius:999px;
+  border:1px solid #dbe7f3; background:#fff; color:#334155; }
+#root .kp.kp .kp-chip.on { background:#2563eb; border-color:#2563eb; color:#fff; }
+#root .kp.kp .kp-custom { display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:${fs(14)}; font-weight:700; color:#475569; }
+#root .kp.kp .kp-custom input { margin-inline-start:6px; padding:7px 10px; border:1px solid #dbe7f3; border-radius:8px; font-size:${fs(14)}; font-family:inherit; }
+#root .kp.kp .kp-compare { font-size:${fs(13)}; font-weight:700; color:#64748b; }
+#root .kp.kp .kp-err-inline { color:#b91c1c; font-size:${fs(13)}; font-weight:800; }
+#root .kp.kp .kp-alert { background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:12px; padding:10px 14px; font-size:${fs(14)}; font-weight:800; }
+
+#root .kp.kp .kp-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+#root .kp.kp .kp-kpi { background:#fff; border:1.5px solid #e2e8f0; border-radius:16px; padding:16px 18px; display:flex; flex-direction:column; gap:6px; }
+#root .kp.kp .kp-kpi-top { display:flex; align-items:center; gap:10px; }
+#root .kp.kp .kp-kpi-ic { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; font-size:${fs(20)}; flex-shrink:0; }
+#root .kp.kp .kp-kpi-title { font-size:${fs(15)}; font-weight:900; color:#334155; line-height:1.3; }
+#root .kp.kp .kp-kpi-val { font-size:${fs(40)}; font-weight:900; line-height:1.05; margin-top:4px; font-variant-numeric:tabular-nums; }
+#root .kp.kp .kp-kpi-val small { font-size:${fs(22)}; font-weight:900; margin-inline-start:2px; }
+#root .kp.kp .kp-kpi-sub { font-size:${fs(13.5)}; font-weight:700; color:#475569; }
+#root .kp.kp .kp-kpi-target { font-size:${fs(12)}; font-weight:700; color:#94a3b8; border-top:1px dashed #e2e8f0; padding-top:6px; margin-top:2px; }
+#root .kp.kp .kp-delta { font-size:${fs(13)}; font-weight:800; }
+#root .kp.kp .kp-delta.up { color:#047857; }
+#root .kp.kp .kp-delta.down { color:#b91c1c; }
+#root .kp.kp .kp-delta.mute { color:#94a3b8; }
+
+#root .kp.kp .kp-card { background:#fff; border:1px solid #dde7f1; border-radius:16px; padding:16px 18px; min-width:0; }
+#root .kp.kp .kp-h2 { margin:0 0 4px; font-size:${fs(18)}; font-weight:900; }
+#root .kp.kp .kp-h3 { margin:0 0 8px; font-size:${fs(15)}; font-weight:900; color:#334155; }
+#root .kp.kp .kp-note { margin:0 0 10px; font-size:${fs(13)}; font-weight:700; color:#64748b; }
+#root .kp.kp .kp-empty { padding:24px; text-align:center; color:#94a3b8; font-size:${fs(14)}; font-weight:700; }
+#root .kp.kp .kp-ok { padding:14px; border-radius:12px; background:#ecfdf5; color:#047857; font-size:${fs(14)}; font-weight:800; }
+#root .kp.kp .kp-att { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
+#root .kp.kp .kp-att li { border:1px solid; border-radius:10px; padding:9px 12px; font-size:${fs(14)}; font-weight:800; }
+
+#root .kp.kp .kp-tablewrap { overflow-x:auto; }
+#root .kp.kp .kp-table { width:100%; border-collapse:collapse; min-width:640px; }
+#root .kp.kp .kp-table th { text-align:start; font-size:${fs(13)}; font-weight:900; color:#64748b; padding:10px; border-bottom:2px solid #e2e8f0; background:#f8fafc; white-space:nowrap; }
+#root .kp.kp .kp-table td { font-size:${fs(14)}; font-weight:700; padding:10px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+#root .kp.kp .kp-table tr.kp-off td { color:#94a3b8; }
+#root .kp.kp .kp-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-inline-end:8px; }
+#root .kp.kp .kp-comp { display:flex; align-items:center; gap:10px; min-width:220px; }
+#root .kp.kp .kp-comp b { font-size:${fs(15)}; min-width:44px; }
+#root .kp.kp .kp-mute { color:#94a3b8; font-size:${fs(12.5)}; }
+#root .kp.kp .kp-bar { flex:1; height:10px; background:#eef2f7; border-radius:999px; overflow:hidden; min-width:60px; }
+#root .kp.kp .kp-bar > div { height:100%; border-radius:999px; transition:width .4s ease; }
+#root .kp.kp .kp-today { display:flex; gap:6px; flex-wrap:wrap; }
+#root .kp.kp .kp-pill { display:inline-block; font-size:${fs(12.5)}; font-weight:800; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+#root .kp.kp .kp-pill.ok { background:#ecfdf5; color:#047857; }
+#root .kp.kp .kp-pill.no { background:#fef2f2; color:#b91c1c; }
+#root .kp.kp .kp-pill.mid { background:#fffbeb; color:#b45309; }
+
+#root .kp.kp .kp-two { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:14px; }
+#root .kp.kp .kp-svg { width:100%; height:auto; display:block; }
+#root .kp.kp .kp-svg text { font-size:11px !important; font-weight:700; font-family:inherit; }
+
+#root .kp.kp .kp-tabs { display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; margin-bottom:12px; padding-bottom:8px; }
+#root .kp.kp .kp-tab { font-size:${fs(14)}; font-weight:800; font-family:inherit; cursor:pointer; padding:8px 14px; border-radius:10px; border:none; background:transparent; color:#475569; }
+#root .kp.kp .kp-tab.on { background:#eaf3ff; color:#1d4ed8; }
+#root .kp.kp .kp-three { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+#root .kp.kp .kp-mini { border:1px solid #eef2f7; border-radius:12px; padding:12px; }
+#root .kp.kp .kp-rank { display:grid; grid-template-columns:minmax(0,1.3fr) 1fr auto; align-items:center; gap:8px; margin-bottom:7px; }
+#root .kp.kp .kp-rank-l { font-size:${fs(13)}; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#root .kp.kp .kp-rank b { font-size:${fs(13)}; }
+#root .kp.kp .kp-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+#root .kp.kp .kp-stats > div { background:#f8fafc; border:1px solid #eef2f7; border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:4px; }
+#root .kp.kp .kp-stats span { font-size:${fs(13)}; font-weight:700; color:#64748b; }
+#root .kp.kp .kp-stats b { font-size:${fs(22)}; font-weight:900; }
+`;
