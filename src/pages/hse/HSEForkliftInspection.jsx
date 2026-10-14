@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "forklift_inspections";
 
@@ -222,6 +223,76 @@ const blank = () => ({
   operatorSign: "", supervisorSign: "", maintSign: "",
 });
 
+/* ── Rules: the forklift may not be released for a shift unless every item
+   is answered, the operator's licence is valid on the day, and any failed
+   item leads to a written defect list, a restrict/lock-out decision and a
+   maintenance sign-off. ── */
+const FL_TOTAL = CHECKLIST.reduce((acc, s) => acc + s.items.length, 0);
+const FL_FAILED = (d) => Object.values(d.results || {}).includes("fail");
+const FL_DEFECT = (d) => !!d.defectsFound || FL_FAILED(d);
+
+const FORKLIFT_RULES = [
+  { key: "date", label: T.date, type: "date", required: true, notFuture: true, maxPastDays: 2 },
+  { key: "shiftStart", label: T.shiftStart, type: "time", required: true },
+  { key: "shift", label: T.shift, required: true, oneOf: ["morning", "evening", "night"] },
+  { key: "forkliftId", label: T.forkliftId, required: true, maxLength: 30,
+    pattern: /^[A-Za-z0-9\-/_ ]+$/, patternMsg: { ar: "أحرف إنجليزية وأرقام وشرطة فقط (مثل FL-001)", en: "Letters, digits and dashes only (e.g. FL-001)" } },
+  { key: "makeModel", label: T.makeModel, maxLength: 80 },
+  { key: "capacity", label: T.capacity, type: "number", required: true, min: 0.5, max: 50 },
+  { key: "fuelType", label: T.fuelType, required: true, oneOf: ["diesel", "lpg", "electric"] },
+  { key: "hourMeterStart", label: T.hourMeter, type: "number", required: true, min: 0, max: 100000 },
+  { key: "fuelLevel", label: T.fuelLevel, type: "int", required: true, min: 0, max: 100,
+    custom: (v) => Number(v) < 10 ? { ar: "الوقود/الشحن أقل من 10% — اشحن أو زوّد قبل التشغيل", en: "Fuel/charge below 10 % — refuel or recharge before operating" } : null },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "operatorName", label: T.operatorName, required: true, minLength: 2, maxLength: 80 },
+  { key: "operatorBadge", label: T.operatorBadge, maxLength: 30 },
+  { key: "licenseNo", label: T.licenseNo, required: true, maxLength: 40 },
+  { key: "licenseExp", label: T.licenseExp, type: "date", required: true, afterOrEqual: "date",
+    requiredMsg: { ar: "تاريخ انتهاء رخصة المشغّل إلزامي", en: "The operator licence expiry is required" } },
+  { key: "results", label: { ar: "بنود الفحص", en: "Checklist items" },
+    custom: (v) => {
+      const answered = Object.values(v || {}).filter(Boolean).length;
+      return answered < FL_TOTAL
+        ? { ar: `أجب على كل البنود قبل التشغيل (${answered} من ${FL_TOTAL})`, en: `Answer every item before operating (${answered} of ${FL_TOTAL})` } : null;
+    } },
+  { key: "hourMeterEnd", label: T.endHourMeter, type: "number", min: 0, max: 100000,
+    custom: (v, d) => {
+      if (v === "" || v == null || d.hourMeterStart === "" || d.hourMeterStart == null) return null;
+      const diff = Number(v) - Number(d.hourMeterStart);
+      if (diff < 0) return { ar: "عدّاد نهاية الوردية أقل من بدايتها", en: "End hour meter is below the start reading" };
+      if (diff > 24) return { ar: "أكثر من 24 ساعة في وردية واحدة — تحقق من القراءة", en: "More than 24 h in one shift — check the reading" };
+      return null;
+    } },
+  { key: "defectsFound", label: T.defectsFound,
+    custom: (v, d) => FL_FAILED(d) && !v
+      ? { ar: "يوجد بند «غير صالح» — أشّر على وجود عيوب", en: "An item is “Not OK” — tick that defects were found" } : null },
+  { key: "defectsList", label: T.defectsList, requiredIf: FL_DEFECT, maxLength: 2000 },
+  { key: "immediateAction", label: T.immediateAction, required: true, oneOf: ["ok", "restrict", "lockout"],
+    custom: (v, d) => FL_DEFECT(d) && v === "ok"
+      ? { ar: "توجد عيوب — لا يمكن «الاستمرار بالتشغيل»؛ اختر تقييد الاستخدام أو الإيقاف", en: "Defects found — “Continue” is not allowed; choose restrict or lock-out" } : null },
+  { key: "observations", label: { ar: "ملاحظات", en: "Notes" }, maxLength: 2000 },
+  { key: "operatorSign", label: T.operatorSign, required: true, maxLength: 80 },
+  { key: "supervisorSign", label: T.supervisorSign, required: true, maxLength: 80,
+    custom: (v, d) => v && d.operatorSign && v.trim().toLowerCase() === d.operatorSign.trim().toLowerCase()
+      ? { ar: "المشرف يجب أن يكون غير المشغّل", en: "The supervisor must differ from the operator" } : null },
+  { key: "maintSign", label: T.maintSign, requiredIf: (d) => d.immediateAction === "lockout", maxLength: 80,
+    requiredMsg: { ar: "الإيقاف يحتاج توقيع قسم الصيانة", en: "A lock-out needs the maintenance sign-off" } },
+];
+
+const FORKLIFT_STEPS = [
+  { ar: "نفّذ الفحص في بداية كل وردية وقبل تشغيل الرافعة — التاريخ اليوم أو أمس كحد أقصى.", en: "Do the check at the start of every shift, before operating — dated today or at most yesterday." },
+  { ar: "سجّل رقم الرافعة، السعة (0.5–50 طن)، قراءة العدّاد، ونسبة الوقود/الشحن (0–100%، لا تشغيل تحت 10%).", en: "Enter the forklift ID, capacity (0.5–50 t), hour meter, and fuel/charge level (0–100 %, no operation below 10 %)." },
+  { ar: "اكتب بيانات المشغّل ورخصته — الرخصة يجب أن تكون سارية في يوم الفحص.", en: "Enter the operator and licence — the licence must be valid on the inspection day." },
+  { ar: "أجب على كل بند: صالح / غير صالح / لا ينطبق.", en: "Answer every item: OK / Not OK / N/A." },
+  { ar: "أي بند غير صالح: أشّر على وجود عيوب، اكتبها، واختر تقييد الاستخدام أو الإيقاف (Lock-out) مع توقيع الصيانة.", en: "Any Not-OK item: tick defects found, list them, and choose restrict or lock-out (with the maintenance sign-off)." },
+  { ar: "في نهاية الوردية سجّل قراءة العدّاد (أكبر من البداية وبفارق لا يتجاوز 24 ساعة).", en: "At end of shift record the hour meter (above the start, no more than 24 h apart)." },
+];
+
+const FORKLIFT_GUIDANCE = [
+  { kind: "warn", ar: "لا يُشغَّل أي رافعة فيها عيب في المكابح أو التوجيه أو حزام الأمان — إيقاف فوري.", en: "Never operate a forklift with a brake, steering or seat-belt defect — lock it out at once." },
+  { kind: "tip",  ar: "رافعات الغاز (LPG): افحص الأسطوانة والوصلات بالماء والصابون لا باللهب.", en: "LPG forklifts: leak-test the cylinder and fittings with soapy water, never a flame." },
+];
+
 export default function HSEForkliftInspection() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -231,6 +302,7 @@ export default function HSEForkliftInspection() {
   const [viewing, setViewing] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(FORKLIFT_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -247,12 +319,12 @@ export default function HSEForkliftInspection() {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.forkliftId.trim()) { alert(pick(T.needForklift)); return; }
-    if (!draft.operatorName.trim()) { alert(pick(T.needOperator)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -262,7 +334,7 @@ export default function HSEForkliftInspection() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -305,157 +377,155 @@ export default function HSEForkliftInspection() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newReport)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ padding: 12, background: "#fef9c3", border: "2px solid #fde047", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#854d0e", marginBottom: 14 }}>
-              {pick(T.notice)}
-            </div>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const ANSWERS = [
+            { v: "ok", label: lang === "ar" ? "✅ صالح" : "✅ OK", cls: "ph-select-ok" },
+            { v: "fail", label: lang === "ar" ? "❌ غير صالح" : "❌ Not OK", cls: "ph-select-bad" },
+            { v: "na", label: lang === "ar" ? "⊘ لا ينطبق" : "⊘ N/A", cls: "hk-na" },
+          ];
+          let n = 0;
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "فحص الرافعة الشوكية", en: "Forklift Inspection" }}
+              subtitle={T.subtitle}
+              docNo="F-35"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.reportNo), value: draft.reportNo }]}
+              steps={FORKLIFT_STEPS}
+              guidance={FORKLIFT_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <div className="ph-hint ph-hint-warn">{pick(T.notice)}</div>
 
-            <SectionHeader title={pick(T.s1Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.reportNo)}</label><input type="text" value={draft.reportNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.shiftStart)}</label><input type="time" value={draft.shiftStart} onChange={(e) => setDraft({ ...draft, shiftStart: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.shift)}</label>
-                <select value={draft.shift} onChange={(e) => setDraft({ ...draft, shift: e.target.value })} style={inputStyle}>
-                  <option value="morning">{pick(T.shiftMorning)}</option>
-                  <option value="evening">{pick(T.shiftEvening)}</option>
-                  <option value="night">{pick(T.shiftNight)}</option>
-                </select>
+              <HSEPanel title={pick(T.s1Title)}>
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("shiftStart")} type="time" label={pick(T.shiftStart)} />
+                <HSEField {...f("shift")} type="select" label={pick(T.shift)} options={[
+                  { v: "morning", label: pick(T.shiftMorning) },
+                  { v: "evening", label: pick(T.shiftEvening) },
+                  { v: "night", label: pick(T.shiftNight) },
+                ]} />
+                <HSEField {...f("forkliftId")} label={pick(T.forkliftId)} placeholder={pick(T.forkliftIdPh)} />
+                <HSEField {...f("makeModel")} label={pick(T.makeModel)} />
+                <HSEField {...f("capacity")} type="number" label={pick(T.capacity)} hint="0.5 – 50" />
+                <HSEField {...f("fuelType")} type="select" label={pick(T.fuelType)} options={[
+                  { v: "diesel", label: pick(T.fuelDiesel) },
+                  { v: "lpg", label: pick(T.fuelLPG) },
+                  { v: "electric", label: pick(T.fuelElec) },
+                ]} />
+                <HSEField {...f("hourMeterStart")} type="number" label={pick(T.hourMeter)} />
+                <HSEField {...f("fuelLevel")} type="int" label={pick(T.fuelLevel)} placeholder="0-100" hint="0 – 100 %" />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+              </HSEPanel>
+
+              <HSEPanel title={lang === "ar" ? "المشغّل والرخصة" : "Operator & licence"}>
+                <HSEField {...f("operatorName")} label={pick(T.operatorName)} />
+                <HSEField {...f("operatorBadge")} label={pick(T.operatorBadge)} />
+                <HSEField {...f("licenseNo")} label={pick(T.licenseNo)} />
+                <HSEField {...f("licenseExp")} type="date" label={pick(T.licenseExp)} />
+              </HSEPanel>
+
+              <div className="ph-stats">
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "صالح" : "OK"}</div><div className="ph-stat-value" style={{ color: "#166534" }}>{stats.ok}</div></div>
+                <div className={`ph-stat${stats.fail ? " ph-stat-bad" : ""}`}><div className="ph-stat-label">{lang === "ar" ? "غير صالح" : "Not OK"}</div><div className="ph-stat-value">{stats.fail}</div></div>
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "لا ينطبق" : "N/A"}</div><div className="ph-stat-value" style={{ color: "#64748b" }}>{stats.na}</div></div>
+                <div className="ph-stat"><div className="ph-stat-label">{lang === "ar" ? "تمت الإجابة" : "Answered"}</div><div className="ph-stat-value">{stats.total}/{totalItems}</div></div>
               </div>
-              <div><label style={labelStyle}>{pick(T.forkliftId)}</label><input type="text" value={draft.forkliftId} placeholder={pick(T.forkliftIdPh)} onChange={(e) => setDraft({ ...draft, forkliftId: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.makeModel)}</label><input type="text" value={draft.makeModel} onChange={(e) => setDraft({ ...draft, makeModel: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.capacity)}</label><input type="number" step="0.1" value={draft.capacity} onChange={(e) => setDraft({ ...draft, capacity: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.fuelType)}</label>
-                <select value={draft.fuelType} onChange={(e) => setDraft({ ...draft, fuelType: e.target.value })} style={inputStyle}>
-                  <option value="diesel">{pick(T.fuelDiesel)}</option>
-                  <option value="lpg">{pick(T.fuelLPG)}</option>
-                  <option value="electric">{pick(T.fuelElec)}</option>
-                </select>
+
+              <div className="ph-table-wrap" data-hk-field="results"
+                style={{ marginBottom: 14, borderColor: validation.errors.results ? "#dc2626" : undefined }}>
+                <table className="ph-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 44 }}>#</th>
+                      <th style={{ textAlign: "start" }}>{lang === "ar" ? "البند" : "Item"}</th>
+                      <th style={{ width: 360 }}>{lang === "ar" ? "النتيجة" : "Result"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CHECKLIST.map((sec) => (
+                      <React.Fragment key={sec.id}>
+                        <tr className="ph-section-row"><td colSpan={3}>{pick(T[sec.titleKey])}</td></tr>
+                        {sec.items.map((it, idx) => {
+                          const key = `${sec.id}-${idx}`;
+                          const val = draft.results[key];
+                          n += 1;
+                          return (
+                            <tr key={key} style={!val && validation.errors.results ? { background: "#fef2f2" } : undefined}>
+                              <td className="ph-num">{n}</td>
+                              <td style={{ fontWeight: 600 }}>{pick(it)}</td>
+                              <td>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  {ANSWERS.map((opt) => (
+                                    <button key={opt.v} type="button" onClick={() => setResult(key, opt.v)}
+                                      className={`ph-select ${val === opt.v ? opt.cls : "ph-select-empty"}`}
+                                      style={{ flex: 1, minHeight: 40, padding: "6px 8px" }}>
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div><label style={labelStyle}>{pick(T.hourMeter)}</label><input type="number" step="0.1" value={draft.hourMeterStart} onChange={(e) => setDraft({ ...draft, hourMeterStart: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.fuelLevel)}</label><input type="number" min="0" max="100" value={draft.fuelLevel} onChange={(e) => setDraft({ ...draft, fuelLevel: e.target.value })} style={inputStyle} placeholder="0-100" /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.operatorName)}</label><input type="text" value={draft.operatorName} onChange={(e) => setDraft({ ...draft, operatorName: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.operatorBadge)}</label><input type="text" value={draft.operatorBadge} onChange={(e) => setDraft({ ...draft, operatorBadge: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.licenseNo)}</label><input type="text" value={draft.licenseNo} onChange={(e) => setDraft({ ...draft, licenseNo: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.licenseExp)}</label><input type="date" value={draft.licenseExp} onChange={(e) => setDraft({ ...draft, licenseExp: e.target.value })} style={inputStyle} /></div>
-            </div>
+              {validation.errors.results && <div className="hk-err" style={{ margin: "-6px 0 14px" }}>{validation.errors.results}</div>}
 
-            {/* Live stats */}
-            <div style={{
-              marginTop: 14, padding: 12, borderRadius: 10,
-              background: "#fff7ed", border: "1px dashed rgba(120,53,15,0.18)",
-              display: "flex", gap: 14, fontSize: 13, fontWeight: 800, flexWrap: "wrap",
-            }}>
-              <span style={{ color: "#166534" }}>{pick(T.liveStatsOk)} {stats.ok}</span>
-              <span style={{ color: "#b91c1c" }}>{pick(T.liveStatsFail)} {stats.fail}</span>
-              <span style={{ color: "#64748b" }}>{pick(T.liveStatsNa)} {stats.na}</span>
-              <span>{stats.total}/{totalItems}</span>
-            </div>
+              <HSEPanel title={pick(T.s10Title)}>
+                <HSEField {...f("hourMeterEnd")} type="number" label={pick(T.endHourMeter)} />
+                <HSEField k="hoursWorked" label={pick(T.hoursWorked)} value={hoursWorked} readOnly lang={lang} />
+              </HSEPanel>
 
-            {/* Sections 2-9 */}
-            {CHECKLIST.map((sec) => (
-              <div key={sec.id} style={{ marginTop: 14, padding: 12, background: "#fff7ed", borderRadius: 10, border: "1px solid rgba(120,53,15,0.18)" }}>
-                <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark }}>{pick(T[sec.titleKey])}</div>
-                {sec.items.map((it, idx) => {
-                  const key = `${sec.id}-${idx}`;
-                  const val = draft.results[key];
-                  return (
-                    <div key={key} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(120,53,15,0.08)", flexWrap: "wrap",
-                    }}>
-                      <div style={{ flex: 1, minWidth: 200, fontSize: 13 }}>{pick(it)}</div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {[
-                          { v: "ok", label: "✅", color: "#dcfce7", border: "#166534" },
-                          { v: "fail", label: "❌", color: "#fee2e2", border: "#b91c1c" },
-                          { v: "na", label: "⊘", color: "#f1f5f9", border: "#64748b" },
-                        ].map((opt) => (
-                          <button key={opt.v} type="button" onClick={() => setResult(key, opt.v)} style={{
-                            padding: "5px 12px", borderRadius: 8,
-                            background: val === opt.v ? opt.color : "#fff",
-                            border: `2px solid ${val === opt.v ? opt.border : "rgba(120,53,15,0.18)"}`,
-                            cursor: "pointer", fontWeight: 800, fontSize: 13,
-                          }}>{opt.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+              <HSEPanel title={pick(T.s11Title)}>
+                <HSEField {...f("defectsFound")} type="checkbox" full label={pick(T.defectsFound)} />
+                {(draft.defectsFound || stats.fail > 0) && (
+                  <HSEField {...f("defectsList")} type="textarea" full label={pick(T.defectsList)} />
+                )}
+                <div className="ph-field hk-full" data-hk-field="immediateAction">
+                  <span className="ph-field-label">{pick(T.immediateAction)} <span className="ph-req">*</span></span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                    {[
+                      { v: "ok", key: "actionContinue", cls: "ph-select-ok" },
+                      { v: "restrict", key: "actionRestrict", cls: "hk-warn" },
+                      { v: "lockout", key: "actionLockout", cls: "ph-select-bad" },
+                    ].map((act) => (
+                      <button key={act.v} type="button" onClick={() => set("immediateAction", act.v)}
+                        className={`ph-select ${draft.immediateAction === act.v ? act.cls : "ph-select-empty"}`}>
+                        {pick(T[act.key])}
+                      </button>
+                    ))}
+                  </div>
+                  {validation.errors.immediateAction && <span className="hk-err">{validation.errors.immediateAction}</span>}
+                </div>
+                <HSEField {...f("observations")} type="textarea" full label={lang === "ar" ? "ملاحظات" : "Notes"} />
+              </HSEPanel>
 
-            {/* End of shift */}
-            <SectionHeader title={pick(T.s10Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.endHourMeter)}</label><input type="number" step="0.1" value={draft.hourMeterEnd} onChange={(e) => setDraft({ ...draft, hourMeterEnd: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.hoursWorked)}</label><input type="text" value={hoursWorked} readOnly style={{ ...inputStyle, background: "#f1f5f9" }} /></div>
-            </div>
-
-            {/* Defects & decision */}
-            <SectionHeader title={pick(T.s11Title)} />
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, background: draft.defectsFound ? "#fee2e2" : "#dcfce7", border: `1px solid ${draft.defectsFound ? "#b91c1c" : "#166534"}`, cursor: "pointer", marginBottom: 10 }}>
-              <input type="checkbox" checked={draft.defectsFound} onChange={(e) => setDraft({ ...draft, defectsFound: e.target.checked })} />
-              <span style={{ fontSize: 13, fontWeight: 800 }}>{pick(T.defectsFound)}</span>
-            </label>
-            {draft.defectsFound && (
-              <div>
-                <label style={labelStyle}>{pick(T.defectsList)}</label>
-                <textarea value={draft.defectsList} onChange={(e) => setDraft({ ...draft, defectsList: e.target.value })} style={{ ...inputStyle, minHeight: 70 }} />
-              </div>
-            )}
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.immediateAction)}</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                {[
-                  { v: "ok",       key: "actionContinue", bg: "#dcfce7", color: "#166534" },
-                  { v: "restrict", key: "actionRestrict", bg: "#fef9c3", color: "#854d0e" },
-                  { v: "lockout",  key: "actionLockout",  bg: "#fee2e2", color: "#7f1d1d" },
-                ].map((act) => (
-                  <button key={act.v} type="button" onClick={() => setDraft({ ...draft, immediateAction: act.v })} style={{
-                    padding: 10, borderRadius: 8,
-                    background: draft.immediateAction === act.v ? act.bg : "#fff",
-                    border: `2px solid ${draft.immediateAction === act.v ? act.color : "rgba(120,53,15,0.18)"}`,
-                    color: act.color,
-                    cursor: "pointer", fontWeight: 800, fontSize: 13,
-                  }}>{pick(T[act.key])}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{lang === "ar" ? "ملاحظات" : "Notes"}</label>
-              <textarea value={draft.observations} onChange={(e) => setDraft({ ...draft, observations: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-
-            <SectionHeader title={pick(T.s12Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.operatorSign)}</label><input type="text" value={draft.operatorSign} onChange={(e) => setDraft({ ...draft, operatorSign: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.supervisorSign)}</label><input type="text" value={draft.supervisorSign} onChange={(e) => setDraft({ ...draft, supervisorSign: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.maintSign)}</label><input type="text" value={draft.maintSign} onChange={(e) => setDraft({ ...draft, maintSign: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={pick(T.s12Title)}>
+                <HSEField {...f("operatorSign")} label={pick(T.operatorSign)} />
+                <HSEField {...f("supervisorSign")} label={pick(T.supervisorSign)} />
+                <HSEField {...f("maintSign")} label={pick(T.maintSign)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>

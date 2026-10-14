@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete,
   useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const STORAGE_KEY = "evacuation_drills";
 
@@ -423,6 +424,9 @@ function DrillForm({ pick, draft, setDraft, readOnly = false }) {
 
       {/* Coordinator */}
       <div style={fieldGroup(1)}>
+        {draft.correctiveActions && (
+          <Field label={lang2(pick) === "ar" ? "الإجراءات التصحيحية" : "Corrective actions"} k="correctiveActions" {...fp} />
+        )}
         <Field label={pick(T.emergencyCoordinator)} k="emergencyCoordinator" {...fp} />
       </div>
     </div>
@@ -435,6 +439,65 @@ function lang2(pick) {
 }
 
 /* ============================================================ */
+/* ── Rules: a drill's clock must run forward — start ≤ alarm ≤ evacuation
+   start, each timed person exits after they set off, nobody is timed past
+   the drill's own end, and the total evacuation time fits inside the drill.
+   Every effectiveness line is rated; an unsatisfactory one needs an action. ── */
+const secs = (t) => {
+  if (!t) return null;
+  const [h, m, s] = String(t).split(":").map(Number);
+  return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
+};
+const EVAC_UNSAT = (d) => EFFECTIVENESS_ITEMS.some((it) => d[it.key] === "unsat");
+const notAfterEnd = (v, d) => d.timeCompleted && secs(v) > secs(d.timeCompleted)
+  ? { ar: "بعد وقت انتهاء التجربة", en: "Later than the drill's end time" } : null;
+const T_RULE = (key, label, extra = {}) => ({ key, label, type: "time", seconds: true, required: true, ...extra });
+
+const EVAC_RULES = [
+  { key: "date", label: T.dateOfDrill, type: "date", required: true, notFuture: true },
+  T_RULE("timeStarted", T.timeStarted),
+  T_RULE("timeCompleted", T.timeCompleted, { after: "timeStarted" }),
+  { key: "floorNo", label: T.floorNo, required: true, maxLength: 40 },
+  { key: "totalPeople", label: T.totalPeople, type: "int", required: true, min: 1, max: 2000 },
+  { key: "departments", label: T.deptParticipating, required: true, maxLength: 300 },
+  T_RULE("timeAlarmSounded", T.alarmSounded, { afterOrEqual: "timeStarted", custom: notAfterEnd }),
+  T_RULE("timeEvacStarted", T.evacStarted, { afterOrEqual: "timeAlarmSounded", custom: notAfterEnd }),
+  T_RULE("totalEvacTime", T.totalEvacTime, {
+    hint: { ar: "المدة بصيغة س:د:ث (مثلاً 00:03:30)", en: "A duration as h:m:s (e.g. 00:03:30)" },
+    custom: (v, d) => {
+      const dur = secs(v);
+      if (!dur) return { ar: "مدة الإخلاء يجب أن تكون أكبر من صفر", en: "Evacuation time must be greater than zero" };
+      const span = d.timeStarted && d.timeCompleted ? secs(d.timeCompleted) - secs(d.timeStarted) : null;
+      return span != null && span > 0 && dur > span
+        ? { ar: "مدة الإخلاء أطول من مدة التجربة كلها", en: "Evacuation time is longer than the whole drill" } : null;
+    } }),
+  { key: "firstPersonName", label: T.firstPerson, required: true, maxLength: 80 },
+  T_RULE("firstPersonStarted", T.startedToEvacuate, { afterOrEqual: "timeAlarmSounded", custom: notAfterEnd }),
+  T_RULE("firstPersonReached", T.reachedFinalExit, { after: "firstPersonStarted", custom: notAfterEnd }),
+  { key: "secondPersonName", label: T.secondPerson, required: true, maxLength: 80,
+    custom: (v, d) => v && d.firstPersonName && v.trim().toLowerCase() === d.firstPersonName.trim().toLowerCase()
+      ? { ar: "اختر شخصين مختلفين", en: "Pick two different people" } : null },
+  T_RULE("secondPersonStarted", T.startedToEvacuate, { afterOrEqual: "timeAlarmSounded", custom: notAfterEnd }),
+  T_RULE("secondPersonReached", T.reachedFinalExit, { after: "secondPersonStarted", custom: notAfterEnd }),
+  ...EFFECTIVENESS_ITEMS.map((it) => ({ key: it.key, label: T[it.labelKey], required: true, oneOf: ["sat", "unsat"],
+    requiredMsg: { ar: "قيّم هذا البند", en: "Rate this item" } })),
+  { key: "correctiveActions", label: { ar: "الإجراءات التصحيحية", en: "Corrective actions" }, maxLength: 2000,
+    requiredIf: EVAC_UNSAT, requiredMsg: { ar: "يوجد بند غير مُرضٍ — اكتب الإجراء التصحيحي", en: "An item is unsatisfactory — write the corrective action" } },
+  { key: "emergencyCoordinator", label: T.emergencyCoordinator, required: true, maxLength: 80 },
+];
+
+const EVAC_STEPS = [
+  { ar: "سجّل تاريخ التجربة ووقت بدايتها وانتهائها بالثواني (لا يُقبل تاريخ مستقبلي).", en: "Record the drill date and its start and end time to the second (no future dates)." },
+  { ar: "اكتب الدور/المنطقة، عدد الأشخاص (1–2000) والأقسام المشاركة.", en: "Enter the floor/area, the number of people (1–2000) and the departments taking part." },
+  { ar: "سجّل وقت إطلاق الإنذار ثم بدء الإخلاء — كلاهما بعد بداية التجربة وقبل نهايتها.", en: "Record when the alarm sounded and when evacuation started — both after the drill start and before its end." },
+  { ar: "اختر شخصين مختلفين وسجّل متى بدأ كلٌّ منهما الإخلاء ومتى وصل للمخرج النهائي.", en: "Pick two different people and record when each set off and reached the final exit." },
+  { ar: "قيّم البنود الأربعة؛ أي بند «غير مُرضٍ» يحتاج إجراءً تصحيحياً مكتوباً.", en: "Rate the four items; any “Unsatisfactory” needs a written corrective action." },
+];
+const EVAC_GUIDANCE = [
+  { kind: "warn", ar: "تجربة الإخلاء إلزامية كل ربع سنة على الأقل حسب الدفاع المدني.", en: "Civil Defence requires a drill at least every quarter." },
+  { kind: "tip",  ar: "الهدف المعتاد إخلاء المبنى بالكامل خلال 3 دقائق — قارن مع التجارب السابقة.", en: "The usual target is full evacuation within 3 minutes — compare with past drills." },
+];
+
 export default function HSEEvacuationDrills() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -444,6 +507,7 @@ export default function HSEEvacuationDrills() {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(EVAC_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(STORAGE_KEY);
@@ -455,14 +519,12 @@ export default function HSEEvacuationDrills() {
     setDraft({ ...EMPTY_DRAFT, ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
   async function save() {
-    if (!draft.date) {
-      alert(lang === "ar" ? "تاريخ التجربة مطلوب" : "Drill date is required");
-      return;
-    }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -473,6 +535,7 @@ export default function HSEEvacuationDrills() {
       await reload();
       setDraft(EMPTY_DRAFT);
       setEditingId(null);
+      validation.reset();
       setTab("list");
       alert(pick(T.saved));
     } catch (e) {
@@ -560,7 +623,7 @@ export default function HSEEvacuationDrills() {
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => { setTab("list"); setViewing(null); }}>
               {pick(T.list)} ({items.length})
             </button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setTab("new"); setViewing(null); setDraft(EMPTY_DRAFT); }}>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setTab("new"); setViewing(null); setDraft(EMPTY_DRAFT); setEditingId(null); validation.reset(); }}>
               {pick(T.add)}
             </button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
@@ -568,20 +631,98 @@ export default function HSEEvacuationDrills() {
         </div>
 
         {/* Document Control Header — always visible */}
-        <DocControlHeader pick={pick} />
+        {tab !== "new" && <DocControlHeader pick={pick} />}
 
         {/* New form */}
-        {tab === "new" && (
-          <>
-            <DrillForm pick={pick} draft={draft} setDraft={setDraft} />
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setDraft(EMPTY_DRAFT); setEditingId(null); setTab("list"); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </>
-        )}
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          const nameLabel = lang === "ar" ? "الاسم / الموقع" : "Name / Office location";
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "تقرير تجربة الإخلاء", en: "Fire / Mock Drill Report" }}
+              docNo={DOC_CONTROL.docNumber}
+              revision={DOC_CONTROL.revision}
+              accent={HSE_COLORS.primary}
+              headerFields={[
+                { label: pick(T.controllingOfficer), value: DOC_CONTROL.controllingOfficer },
+                { label: pick(T.approvedBy), value: DOC_CONTROL.approvedBy },
+              ]}
+              steps={EVAC_STEPS}
+              guidance={EVAC_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setDraft(EMPTY_DRAFT); setEditingId(null); validation.reset(); setTab("list"); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات التجربة" : "Drill details"}>
+                <HSEField {...f("date")} type="date" label={pick(T.dateOfDrill)} />
+                <HSEField {...f("timeStarted")} type="time" label={pick(T.timeStarted)} />
+                <HSEField {...f("timeCompleted")} type="time" label={pick(T.timeCompleted)} />
+                <HSEField {...f("floorNo")} label={pick(T.floorNo)} />
+                <HSEField {...f("totalPeople")} type="int" label={pick(T.totalPeople)} />
+                <HSEField {...f("departments")} full label={pick(T.deptParticipating)} />
+              </HSEPanel>
+
+              <HSEPanel title={lang === "ar" ? "توقيت الإخلاء" : "Evacuation timing"}>
+                <HSEField {...f("timeAlarmSounded")} type="time" label={pick(T.alarmSounded)} />
+                <HSEField {...f("timeEvacStarted")} type="time" label={pick(T.evacStarted)} />
+                <HSEField {...f("totalEvacTime")} type="time" label={pick(T.totalEvacTime)} />
+              </HSEPanel>
+
+              <HSEPanel title={pick(T.twoPeopleHeader)}>
+                <HSEField {...f("firstPersonName")} label={`① ${pick(T.firstPerson)} — ${nameLabel}`} />
+                <HSEField {...f("firstPersonStarted")} type="time" label={pick(T.startedToEvacuate)} />
+                <HSEField {...f("firstPersonReached")} type="time" label={pick(T.reachedFinalExit)} />
+                <HSEField {...f("secondPersonName")} label={`② ${pick(T.secondPerson)} — ${nameLabel}`} />
+                <HSEField {...f("secondPersonStarted")} type="time" label={pick(T.startedToEvacuate)} />
+                <HSEField {...f("secondPersonReached")} type="time" label={pick(T.reachedFinalExit)} />
+              </HSEPanel>
+
+              <div className="ph-table-wrap" style={{ marginBottom: 14 }}>
+                <table className="ph-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "start" }}>{pick(T.effectiveness)}</th>
+                      <th style={{ width: 170 }}>{pick(T.satisfactory)}</th>
+                      <th style={{ width: 170 }}>{pick(T.unsatisfactory)}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {EFFECTIVENESS_ITEMS.map((it) => {
+                      const v = draft[it.key];
+                      const err = validation.errors[it.key];
+                      return (
+                        <tr key={it.key} data-hk-field={it.key} style={err ? { background: "#fef2f2" } : undefined}>
+                          <td style={{ fontWeight: 700 }}>
+                            {pick(T[it.labelKey])}
+                            {err && <div className="hk-err">{err}</div>}
+                          </td>
+                          <td>
+                            <button type="button" onClick={() => set(it.key, "sat")}
+                              className={`ph-select ${v === "sat" ? "ph-select-ok" : "ph-select-empty"}`}>✓ {pick(T.satisfactory)}</button>
+                          </td>
+                          <td>
+                            <button type="button" onClick={() => set(it.key, "unsat")}
+                              className={`ph-select ${v === "unsat" ? "ph-select-bad" : "ph-select-empty"}`}>✗ {pick(T.unsatisfactory)}</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <HSEPanel title={lang === "ar" ? "الإجراءات والاعتماد" : "Actions & sign-off"}>
+                <HSEField {...f("correctiveActions")} type="textarea" full label={lang === "ar" ? "الإجراءات التصحيحية" : "Corrective actions"} />
+                <HSEField {...f("emergencyCoordinator")} label={pick(T.emergencyCoordinator)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {/* Viewing existing record */}
         {tab === "list" && viewing && (

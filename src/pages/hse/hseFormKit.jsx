@@ -194,6 +194,7 @@ export function ruleAttrs(rule) {
     if (rule.notFuture) a.max = today;
     if (rule.notPast) a.min = today;
   }
+  if (rule.type === "time" && rule.seconds) a.step = 1;   // HH:MM:SS (drill timings)
   if (rule.maxLength != null) a.maxLength = rule.maxLength;
   return a;
 }
@@ -446,6 +447,7 @@ const KIT_STYLES = `
     all: unset; cursor: pointer; font-size: 13.5px; font-weight: 600; color: #7f1d1d;
   }
   .hk-errors button:hover { text-decoration: underline; }
+  .ph-select.hk-warn { background: #fef9c3; color: #854d0e; border-color: #fde047; }
   .ph-select.hk-na { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
   .hk-req-note { font-size: 12.5px; font-weight: 700; color: #64748b; max-width: 560px; }
 `;

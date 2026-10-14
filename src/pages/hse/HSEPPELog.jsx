@@ -7,6 +7,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "ppe_issue_log";
 
@@ -76,6 +77,42 @@ const blank = () => ({
   itemsIssued: {}, reason: "new_issue", signature: "", issuedBy: "",
 });
 
+/* ── Rules: one issue = one person, real quantities (whole numbers 0–20
+   per item), at least one item, and a signature from the receiver. ── */
+const PPE_MAX_QTY = 20;
+const PPE_RULES = [
+  { key: "date", label: T.date, type: "date", required: true, notFuture: true, maxPastDays: 30 },
+  { key: "employeeName", label: T.empName, required: true, minLength: 2, maxLength: 80 },
+  { key: "employeeId", label: T.empId, maxLength: 20,
+    requiredIf: (d) => d.reason !== "visitor",
+    requiredMsg: { ar: "رقم الموظف إلزامي (إلا للزوار والمقاولين)", en: "Employee ID is required (except visitors/contractors)" } },
+  { key: "department", label: T.dept, required: true, maxLength: 60 },
+  { key: "reason", label: T.reason, required: true, oneOf: ["new_issue", "replacement", "periodic", "visitor"] },
+  { key: "issuedBy", label: T.issuedBy, required: true, maxLength: 80,
+    custom: (v, d) => v && d.employeeName && v.trim().toLowerCase() === d.employeeName.trim().toLowerCase()
+      ? { ar: "الموظف لا يصرف لنفسه", en: "An employee cannot issue PPE to themselves" } : null },
+  { key: "itemsIssued", label: T.itemsTitle,
+    custom: (v) => {
+      const vals = Object.values(v || {}).map(Number);
+      if (vals.some((n) => !Number.isInteger(n) || n < 0 || n > PPE_MAX_QTY))
+        return { ar: `الكمية لكل عنصر رقم صحيح من 0 إلى ${PPE_MAX_QTY}`, en: `Each quantity must be a whole number from 0 to ${PPE_MAX_QTY}` };
+      return vals.reduce((a, b) => a + b, 0) === 0
+        ? { ar: "اختر عنصراً واحداً على الأقل", en: "Select at least one item" } : null;
+    } },
+  { key: "signature", label: T.signature, required: true, maxLength: 80,
+    requiredMsg: { ar: "توقيع المستلم إلزامي", en: "The receiver's signature is required" } },
+];
+
+const PPE_STEPS = [
+  { ar: "اكتب التاريخ (حتى 30 يوماً للخلف)، الموظف ورقمه وقسمه، وسبب الصرف.", en: "Enter the date (up to 30 days back), the employee with ID and department, and the reason." },
+  { ar: "أدخل الكمية لكل عنصر مصروف — رقم صحيح من 0 إلى 20؛ اترك الباقي فارغاً.", en: "Enter the quantity for each item issued — a whole number from 0 to 20; leave the rest empty." },
+  { ar: "يوقّع المستلم بنفسه، ويكتب أمين المستودع اسمه في «صرف بواسطة».", en: "The receiver signs, and the storekeeper writes their name under “Issued by”." },
+];
+const PPE_GUIDANCE = [
+  { kind: "tip", ar: "عند الاستبدال: استلم القطعة التالفة قبل صرف الجديدة.", en: "On replacement: collect the damaged item before issuing the new one." },
+  { kind: "warn", ar: "المعطف المعزول والقفازات إلزامية لكل من يدخل غرف التجميد.", en: "Insulated coat and gloves are mandatory for anyone entering freezer rooms." },
+];
+
 export default function HSEPPELog() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -84,6 +121,7 @@ export default function HSEPPELog() {
   const [draft, setDraft] = useState(blank());
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(PPE_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -92,18 +130,18 @@ export default function HSEPPELog() {
   useEffect(() => { reload(); }, []);
 
   function setQty(itemKey, val) {
-    const v = Number(val) || 0;
+    // Whole units only, never negative or above the per-issue cap.
+    const v = Math.max(0, Math.min(PPE_MAX_QTY, Math.floor(Number(val) || 0)));
     setDraft((d) => ({ ...d, itemsIssued: { ...d.itemsIssued, [itemKey]: v } }));
   }
   function startEdit(it) {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
+    validation.reset();
     setTab("new");
   }
   async function save() {
-    if (!draft.employeeName.trim()) { alert(pick(T.needName)); return; }
-    const tot = Object.values(draft.itemsIssued).reduce((a, b) => a + (Number(b) || 0), 0);
-    if (tot === 0) { alert(pick(T.needItem)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -113,7 +151,7 @@ export default function HSEPPELog() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -156,58 +194,71 @@ export default function HSEPPELog() {
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
             <button style={tab === "stats" ? buttonPrimary : buttonGhost} onClick={() => setTab("stats")}>{pick(T.stats)}</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newIssue)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newIssue)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.empName)}</label><input type="text" value={draft.employeeName} onChange={(e) => setDraft({ ...draft, employeeName: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.empId)}</label><input type="text" value={draft.employeeId} onChange={(e) => setDraft({ ...draft, employeeId: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.dept)}</label><input type="text" value={draft.department} onChange={(e) => setDraft({ ...draft, department: e.target.value })} style={inputStyle} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.reason)}</label>
-                <select value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} style={inputStyle}>
-                  <option value="new_issue">{pick(T.rNew)}</option>
-                  <option value="replacement">{pick(T.rReplace)}</option>
-                  <option value="periodic">{pick(T.rPeriodic)}</option>
-                  <option value="visitor">{pick(T.rVisitor)}</option>
-                </select>
-              </div>
-              <div><label style={labelStyle}>{pick(T.issuedBy)}</label><input type="text" value={draft.issuedBy} onChange={(e) => setDraft({ ...draft, issuedBy: e.target.value })} style={inputStyle} /></div>
-            </div>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "سجل صرف معدات الوقاية", en: "PPE Issue Log" }}
+              subtitle={T.subtitle}
+              docNo="PPE"
+              accent={HSE_COLORS.primary}
+              steps={PPE_STEPS}
+              guidance={PPE_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={lang === "ar" ? "بيانات الصرف" : "Issue details"}>
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("employeeName")} label={pick(T.empName)} />
+                <HSEField {...f("employeeId")} label={pick(T.empId)} />
+                <HSEField {...f("department")} label={pick(T.dept)} />
+                <HSEField {...f("reason")} type="select" label={pick(T.reason)} options={[
+                  { v: "new_issue", label: pick(T.rNew) },
+                  { v: "replacement", label: pick(T.rReplace) },
+                  { v: "periodic", label: pick(T.rPeriodic) },
+                  { v: "visitor", label: pick(T.rVisitor) },
+                ]} />
+                <HSEField {...f("issuedBy")} label={pick(T.issuedBy)} />
+              </HSEPanel>
 
-            <div style={{ marginTop: 14, fontWeight: 950, color: HSE_COLORS.primaryDark }}>{pick(T.itemsTitle)}</div>
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8 }}>
-              {PPE_ITEMS.map((it) => (
-                <div key={it.v} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
-                  padding: 10, borderRadius: 8,
-                  background: (draft.itemsIssued[it.v] || 0) > 0 ? "#fef3c7" : "#fff7ed",
-                  border: "1px solid rgba(120,53,15,0.18)",
-                }}>
-                  <span style={{ fontSize: 13, flex: 1 }}>{it[lang]}</span>
-                  <input type="number" min="0" value={draft.itemsIssued[it.v] || ""} onChange={(e) => setQty(it.v, e.target.value)} style={{ ...inputStyle, width: 70, textAlign: "center", fontWeight: 800 }} placeholder="0" />
+              <div className="ph-fieldbar" data-hk-field="itemsIssued"
+                style={validation.errors.itemsIssued ? { borderColor: "#dc2626" } : undefined}>
+                <div className="ph-fieldbar-title">{pick(T.itemsTitle)} <span className="ph-req">*</span></div>
+                <div className="ph-fieldbar-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+                  {PPE_ITEMS.map((it) => {
+                    const q = draft.itemsIssued[it.v] || 0;
+                    return (
+                      <label key={it.v} className={`hk-check${q > 0 ? " on" : ""}`} style={{ justifyContent: "space-between" }}>
+                        <span>{it[lang]}</span>
+                        <input type="number" className="ph-input" min="0" max={PPE_MAX_QTY} step="1" inputMode="numeric"
+                          value={draft.itemsIssued[it.v] || ""} placeholder="0"
+                          onKeyDown={(e) => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); }}
+                          onChange={(e) => setQty(it.v, e.target.value)}
+                          style={{ width: 80, minHeight: 38, padding: "6px 8px", textAlign: "center", fontWeight: 800 }} />
+                      </label>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+                {validation.errors.itemsIssued && <div className="hk-err" style={{ marginTop: 8 }}>{validation.errors.itemsIssued}</div>}
+              </div>
 
-            <div style={{ marginTop: 14 }}>
-              <label style={labelStyle}>{pick(T.signature)}</label>
-              <input type="text" value={draft.signature} onChange={(e) => setDraft({ ...draft, signature: e.target.value })} style={inputStyle} />
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={lang === "ar" ? "الاستلام" : "Receipt"}>
+                <HSEField {...f("signature")} label={pick(T.signature)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>

@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
+import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
 const TYPE = "toolbox_meetings";
 
@@ -90,6 +91,62 @@ const blank = () => ({
   preparedBy: "", safetySupervisor: "",
 });
 
+/* ── Rules: a toolbox talk is short (5–60 min), names its topic and the key
+   safety message, and its attendance sheet only counts people who are named
+   and signed — no blank lines carrying a badge, no duplicates. ── */
+const tbMinutes = (s, e) => {
+  if (!s || !e) return null;
+  const [sH, sM] = s.split(":").map(Number);
+  const [eH, eM] = e.split(":").map(Number);
+  return (eH * 60 + eM) - (sH * 60 + sM);
+};
+const TOOLBOX_RULES = [
+  { key: "topic", label: T.topic, required: true, minLength: 5, maxLength: 150 },
+  { key: "date", label: T.date, type: "date", required: true, notFuture: true },
+  { key: "startTime", label: T.startTime, type: "time", required: true },
+  { key: "endTime", label: T.endTime, type: "time", required: true, after: "startTime",
+    custom: (v, d) => {
+      const m = tbMinutes(d.startTime, v);
+      if (m == null || m <= 0) return null;
+      if (m < 5) return { ar: "مدة الاجتماع أقل من 5 دقائق", en: "The meeting is shorter than 5 minutes" };
+      if (m > 60) return { ar: "مدة اجتماع Toolbox لا تتجاوز 60 دقيقة", en: "A toolbox meeting cannot exceed 60 minutes" };
+      return null;
+    } },
+  { key: "location", label: T.location, required: true, oneOf: SITE_LOCATIONS.map((x) => x.v) },
+  { key: "area", label: T.area, maxLength: 120 },
+  { key: "conductor", label: T.conductor, required: true, maxLength: 80 },
+  { key: "conductorRole", label: T.conductorRole, maxLength: 80 },
+  { key: "minutes", label: T.minutes, required: true, minLength: 20, maxLength: 4000 },
+  { key: "safetyReminder", label: T.safetyReminder, required: true, minLength: 5, maxLength: 1000 },
+  { key: "hazardsCovered", label: T.hazardsCovered, maxLength: 1000 },
+  { key: "ppeRequired", label: T.ppeRequired, maxLength: 1000 },
+  { key: "qa", label: T.qa, maxLength: 2000 },
+  { key: "attendees", label: T.s3Title,
+    custom: (v) => {
+      const rows = v || [];
+      if (rows.some((a) => !String(a.name || "").trim() && (String(a.badge || "").trim() || String(a.dept || "").trim() || a.signed)))
+        return { ar: "يوجد سطر حضور بدون اسم", en: "An attendance line has no name" };
+      const named = rows.filter((a) => String(a.name || "").trim());
+      if (!named.length) return { ar: "سجّل حاضراً واحداً على الأقل", en: "Record at least one attendee" };
+      if (named.some((a) => !a.signed)) return { ar: "كل حاضر مسجّل يجب أن يوقّع", en: "Every listed attendee must sign" };
+      const badges = named.map((a) => String(a.badge || "").trim().toLowerCase()).filter(Boolean);
+      if (new Set(badges).size !== badges.length) return { ar: "رقم شارة مكرّر في سجل الحضور", en: "A badge number appears twice" };
+      return null;
+    } },
+  { key: "preparedBy", label: T.preparedBy, required: true, maxLength: 80 },
+  { key: "safetySupervisor", label: T.safetySupervisor, required: true, maxLength: 80 },
+];
+const TOOLBOX_STEPS = [
+  { ar: "اكتب موضوع الاجتماع، التاريخ، ووقت البدء والانتهاء — المدة بين 5 و 60 دقيقة.", en: "Enter the topic, the date, and the start and end time — between 5 and 60 minutes." },
+  { ar: "سجّل من أدار الاجتماع والموقع.", en: "Record who conducted it and where." },
+  { ar: "اكتب محضر النقاش ورسالة السلامة الرئيسية، والمخاطر و PPE التي غُطّيت.", en: "Write the discussion notes and the key safety message, plus the hazards and PPE covered." },
+  { ar: "سجّل كل حاضر باسمه وشارته وقسمه، وأشّر على توقيعه — السطور الفارغة تُتجاهل.", en: "List every attendee with name, badge and department, and tick their signature — empty lines are ignored." },
+  { ar: "يوقّع مُعِد المحضر ومشرف السلامة.", en: "The preparer and the safety supervisor sign." },
+];
+const TOOLBOX_GUIDANCE = [
+  { kind: "tip", ar: "اربط الموضوع بحادث أو شبه حادث حديث — أكثر فائدة من موضوع عام.", en: "Tie the topic to a recent incident or near-miss — more useful than a generic subject." },
+];
+
 export default function HSEToolboxMeeting() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -99,6 +156,7 @@ export default function HSEToolboxMeeting() {
   const [viewing, setViewing] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const validation = useHSEValidation(TOOLBOX_RULES, draft, lang);
 
   async function reload() {
     const arr = await apiList(TYPE);
@@ -111,6 +169,7 @@ export default function HSEToolboxMeeting() {
     setDraft({ ...blank(), ...it });
     setEditingId(it.id);
     setViewing(null);
+    validation.reset();
     setTab("new");
   }
 
@@ -134,7 +193,7 @@ export default function HSEToolboxMeeting() {
   }
 
   async function save() {
-    if (!draft.topic.trim()) { alert(pick(T.needTopic)); return; }
+    if (!validation.attempt()) return;
     setSaving(true);
     try {
       if (editingId) {
@@ -144,7 +203,7 @@ export default function HSEToolboxMeeting() {
       }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setEditingId(null); setTab("list");
+      setDraft(blank()); setEditingId(null); validation.reset(); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -175,103 +234,98 @@ export default function HSEToolboxMeeting() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newMeeting)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); validation.reset(); setTab("new"); }}>{pick(T.newMeeting)}</button>
             <button data-hse-back="1" style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
 
-        {tab === "new" && (
-          <div style={cardStyle}>
-            <SectionHeader title={pick(T.s1Title)} />
-            <div>
-              <label style={labelStyle}>{pick(T.topic)}</label>
-              <input type="text" value={draft.topic} placeholder={pick(T.topicPh)} onChange={(e) => setDraft({ ...draft, topic: e.target.value })} style={inputStyle} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginTop: 10 }}>
-              <div><label style={labelStyle}>{pick(T.meetingNo)}</label><input type="text" value={draft.meetingNo} readOnly style={{ ...inputStyle, background: "#fef3c7", fontWeight: 800 }} /></div>
-              <div><label style={labelStyle}>{pick(T.date)}</label><input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.startTime)}</label><input type="time" value={draft.startTime} onChange={(e) => setDraft({ ...draft, startTime: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.endTime)}</label><input type="time" value={draft.endTime} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.duration)}</label><input type="text" value={duration ? `${duration} min` : ""} readOnly style={{ ...inputStyle, background: "#f1f5f9" }} /></div>
-              <div>
-                <label style={labelStyle}>{pick(T.location)}</label>
-                <select value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} style={inputStyle}>
-                  {SITE_LOCATIONS.map((s) => <option key={s.v} value={s.v}>{s[lang]}</option>)}
-                </select>
+        {tab === "new" && (() => {
+          const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+          const f = (k) => ({ k, value: draft[k], onChange: (v) => set(k, v), rule: validation.ruleFor(k), error: validation.errors[k], lang });
+          return (
+            <HSEReportForm
+              lang={lang}
+              dir={dir}
+              title={{ ar: "محضر اجتماع Toolbox", en: "Toolbox Meeting Minutes" }}
+              subtitle={T.subtitle}
+              docNo="F-29"
+              accent={HSE_COLORS.primary}
+              headerFields={[{ label: pick(T.meetingNo), value: draft.meetingNo }]}
+              steps={TOOLBOX_STEPS}
+              guidance={TOOLBOX_GUIDANCE}
+              validation={validation}
+              editing={!!editingId}
+              saving={saving}
+              onSave={save}
+              onCancel={() => { setTab("list"); setEditingId(null); setDraft(blank()); validation.reset(); }}
+            >
+              <HSEPanel title={pick(T.s1Title)}>
+                <HSEField {...f("topic")} full label={pick(T.topic)} placeholder={pick(T.topicPh)} />
+                <HSEField {...f("date")} type="date" label={pick(T.date)} />
+                <HSEField {...f("startTime")} type="time" label={pick(T.startTime)} />
+                <HSEField {...f("endTime")} type="time" label={pick(T.endTime)} />
+                <HSEField k="duration" label={pick(T.duration)} value={duration ? `${duration} min` : ""} readOnly lang={lang} />
+                <HSEField {...f("location")} type="select" label={pick(T.location)}
+                  options={SITE_LOCATIONS.map((x) => ({ v: x.v, label: x[lang] }))} />
+                <HSEField {...f("area")} label={pick(T.area)} />
+                <HSEField {...f("conductor")} label={pick(T.conductor)} />
+                <HSEField {...f("conductorRole")} label={pick(T.conductorRole)} />
+              </HSEPanel>
+
+              <HSEPanel title={pick(T.s2Title)}>
+                <HSEField {...f("minutes")} type="textarea" rows={4} full label={pick(T.minutes)} />
+                <HSEField {...f("safetyReminder")} type="textarea" full label={pick(T.safetyReminder)} />
+                <HSEField {...f("hazardsCovered")} type="textarea" label={pick(T.hazardsCovered)} />
+                <HSEField {...f("ppeRequired")} type="textarea" label={pick(T.ppeRequired)} />
+                <HSEField {...f("qa")} type="textarea" full label={pick(T.qa)} />
+              </HSEPanel>
+
+              <div className="ph-toolbar">
+                <div className="ph-fieldbar-title" style={{ margin: 0 }}>{pick(T.s3Title)} · {pick(T.totalAtt)}: {attCount}</div>
+                <button type="button" onClick={addAtt} className="ph-btn ph-btn-ghost">{pick(T.addAtt)}</button>
               </div>
-              <div><label style={labelStyle}>{pick(T.area)}</label><input type="text" value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.conductor)}</label><input type="text" value={draft.conductor} onChange={(e) => setDraft({ ...draft, conductor: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.conductorRole)}</label><input type="text" value={draft.conductorRole} onChange={(e) => setDraft({ ...draft, conductorRole: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <SectionHeader title={pick(T.s2Title)} />
-            <div>
-              <label style={labelStyle}>{pick(T.minutes)}</label>
-              <textarea value={draft.minutes} onChange={(e) => setDraft({ ...draft, minutes: e.target.value })} style={{ ...inputStyle, minHeight: 100 }} />
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.safetyReminder)}</label>
-              <textarea value={draft.safetyReminder} onChange={(e) => setDraft({ ...draft, safetyReminder: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10, marginTop: 10 }}>
-              <div><label style={labelStyle}>{pick(T.hazardsCovered)}</label><textarea value={draft.hazardsCovered} onChange={(e) => setDraft({ ...draft, hazardsCovered: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} /></div>
-              <div><label style={labelStyle}>{pick(T.ppeRequired)}</label><textarea value={draft.ppeRequired} onChange={(e) => setDraft({ ...draft, ppeRequired: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} /></div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>{pick(T.qa)}</label>
-              <textarea value={draft.qa} onChange={(e) => setDraft({ ...draft, qa: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
-            </div>
-
-            <SectionHeader title={pick(T.s3Title)} />
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ ...tableStyle, fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>#</th>
-                    <th style={thStyle}>{pick(T.attName)}</th>
-                    <th style={thStyle}>{pick(T.attBadge)}</th>
-                    <th style={thStyle}>{pick(T.attDept)}</th>
-                    <th style={thStyle}>{pick(T.attSign)}</th>
-                    <th style={thStyle}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(draft.attendees || []).map((a, i) => (
-                    <tr key={i}>
-                      <td style={{ ...tdStyle, fontWeight: 800, textAlign: "center" }}>{i + 1}</td>
-                      <td style={tdStyle}><input type="text" value={a.name} onChange={(e) => setAtt(i, "name", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
-                      <td style={tdStyle}><input type="text" value={a.badge} onChange={(e) => setAtt(i, "badge", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
-                      <td style={tdStyle}><input type="text" value={a.dept} onChange={(e) => setAtt(i, "dept", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
-                      <td style={{ ...tdStyle, textAlign: "center" }}><input type="checkbox" checked={!!a.signed} onChange={(e) => setAtt(i, "signed", e.target.checked)} /></td>
-                      <td style={tdStyle}>
-                        {(draft.attendees || []).length > 1 && (
-                          <button type="button" onClick={() => removeAtt(i)} style={{ ...buttonGhost, padding: "3px 8px", fontSize: 11, color: "#b91c1c" }}>{pick(T.removeAtt)}</button>
-                        )}
-                      </td>
+              <div className="ph-table-wrap" data-hk-field="attendees"
+                style={{ marginBottom: 8, borderColor: validation.errors.attendees ? "#dc2626" : undefined }}>
+                <table className="ph-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 44 }}>#</th>
+                      <th>{pick(T.attName)}</th>
+                      <th>{pick(T.attBadge)}</th>
+                      <th>{pick(T.attDept)}</th>
+                      <th style={{ width: 90 }}>{pick(T.attSign)}</th>
+                      <th style={{ width: 52 }} />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button type="button" onClick={addAtt} style={{ ...buttonGhost, marginTop: 8, fontSize: 12 }}>{pick(T.addAtt)}</button>
-            <div style={{ marginTop: 8, padding: 8, background: "#fff7ed", borderRadius: 8, fontSize: 13, fontWeight: 800 }}>
-              {pick(T.totalAtt)}: <b>{attCount}</b>
-            </div>
+                  </thead>
+                  <tbody>
+                    {(draft.attendees || []).map((a, i) => (
+                      <tr key={i}>
+                        <td className="ph-num">{i + 1}</td>
+                        <td><input className="ph-input" maxLength={80} value={a.name} onChange={(e) => setAtt(i, "name", e.target.value)} /></td>
+                        <td><input className="ph-input" maxLength={20} value={a.badge} onChange={(e) => setAtt(i, "badge", e.target.value)} /></td>
+                        <td><input className="ph-input" maxLength={60} value={a.dept} onChange={(e) => setAtt(i, "dept", e.target.value)} /></td>
+                        <td style={{ textAlign: "center" }}>
+                          <input type="checkbox" style={{ width: 20, height: 20, accentColor: "#0f766e" }}
+                            checked={!!a.signed} onChange={(e) => setAtt(i, "signed", e.target.checked)} />
+                        </td>
+                        <td>
+                          <button type="button" className="ph-btn-icon ph-btn-danger" title={pick(T.removeAtt)}
+                            disabled={(draft.attendees || []).length === 1} onClick={() => removeAtt(i)}>×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {validation.errors.attendees && <div className="hk-err" style={{ marginBottom: 14 }}>{validation.errors.attendees}</div>}
 
-            <SectionHeader title={pick(T.s4Title)} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div><label style={labelStyle}>{pick(T.preparedBy)}</label><input type="text" value={draft.preparedBy} onChange={(e) => setDraft({ ...draft, preparedBy: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>{pick(T.safetySupervisor)}</label><input type="text" value={draft.safetySupervisor} onChange={(e) => setDraft({ ...draft, safetySupervisor: e.target.value })} style={inputStyle} /></div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
-              </button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
-            </div>
-          </div>
-        )}
+              <HSEPanel title={pick(T.s4Title)}>
+                <HSEField {...f("preparedBy")} label={pick(T.preparedBy)} />
+                <HSEField {...f("safetySupervisor")} label={pick(T.safetySupervisor)} />
+              </HSEPanel>
+            </HSEReportForm>
+          );
+        })()}
 
         {tab === "list" && (
           <div style={{ overflowX: "auto" }}>
