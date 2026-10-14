@@ -7,6 +7,7 @@ import {
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
   apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { HSEReportForm, HSEPanel, HSEField, useHSEValidation, validateHSE } from "./hseFormKit";
 
@@ -210,6 +211,7 @@ export default function HSECAPATracker() {
     }
   }
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(pick(T.confirmDel))) return;
     try {
       await apiDelete(id);
@@ -395,7 +397,7 @@ export default function HSECAPATracker() {
                           {it.status !== "closed" && (
                             <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, marginInlineStart: 4, background: "#dcfce7", color: "#166534" }} onClick={() => quickClose(it.id)}>{pick(T.closeBtn)}</button>
                           )}
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                          {canDeleteHSE() && <button data-delete-action="true" style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(it.id)}>{pick(T.del)}</button>}
                         </td>
                       </tr>
                     );

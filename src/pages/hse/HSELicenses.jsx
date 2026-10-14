@@ -7,6 +7,7 @@ import {
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
   apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
@@ -201,6 +202,7 @@ export default function HSELicenses() {
     }
   }
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(pick(T.confirmDel))) return;
     try {
       await apiDelete(id);
@@ -379,7 +381,7 @@ export default function HSELicenses() {
                         </td>
                         <td style={tdStyle}>
                           <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => startEdit(it)}>{pick(T.edit)}</button>
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                          {canDeleteHSE() && <button data-delete-action="true" style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(it.id)}>{pick(T.del)}</button>}
                         </td>
                       </tr>
                     );

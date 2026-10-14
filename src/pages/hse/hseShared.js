@@ -3,6 +3,19 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../config/api";
+import { canDelete } from "../../utils/perms";
+
+/* ========== Delete permission ==========
+   Deleting an HSE record is permanent, so it needs the account's "delete"
+   right on the HSE section (Accounts → HSE → delete). The button is also
+   tagged data-delete-action, so the global "allow delete" security switch
+   (globals.css) hides it too. Both checks — the button and the function —
+   because a hidden button alone is not a guard. */
+export const canDeleteHSE = () => canDelete("hse");
+export const HSE_DELETE_DENIED = {
+  ar: "⛔ ليس لديك صلاحية حذف سجلات HSE. اطلب من المسؤول تفعيل صلاحية «حذف» لقسم HSE.",
+  en: "⛔ You don't have permission to delete HSE records. Ask an admin to grant “delete” on the HSE section.",
+};
 
 /* ========== i18n (Bilingual EN / AR) ========== */
 const LANG_KEY = "hse_lang";

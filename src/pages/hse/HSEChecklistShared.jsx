@@ -8,6 +8,7 @@ import {
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
   apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
@@ -122,6 +123,7 @@ export default function HSEChecklist({
     }
   }
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(lang === "ar" ? "حذف؟" : "Delete?")) return;
     try {
       await apiDelete(id);
@@ -316,9 +318,11 @@ export default function HSEChecklist({
                           <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>
                             {lang === "ar" ? "✏️ تعديل" : "✏️ Edit"}
                           </button>
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>
-                            {lang === "ar" ? "حذف" : "Delete"}
-                          </button>
+                          {canDeleteHSE() && (
+                            <button data-delete-action="true" style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>
+                              {lang === "ar" ? "حذف" : "Delete"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

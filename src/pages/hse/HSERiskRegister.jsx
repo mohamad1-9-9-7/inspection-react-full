@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiDelete, apiUpdate, apiUploadFile, calcRiskScore, riskLevelLabel,
   SITE_LOCATIONS, HAZARD_CATEGORIES, CONTROL_TYPES, localize,
   useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { useHSEValidation } from "./hseFormKit";
 import { SEED_RISKS, LOADING_RISKS, SEED_CATALOG } from "./hseRiskSeeds";
@@ -406,6 +407,7 @@ export default function HSERiskRegister() {
   }
 
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(pick(T.confirmDel))) return;
     try {
       await apiDelete(id);
@@ -552,6 +554,8 @@ export default function HSERiskRegister() {
       if (g.seed && g.items.some((r) => typeof r.hazard !== "object")) langFix += 1;
     }
     if (!dup && !langFix) { alert(pick(T.repairNothing)); return; }
+    // merging duplicates deletes the extra copies — same right as a delete
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     const msg = pick(T.repairConfirm).replace("{dup}", String(dup)).replace("{lang}", String(langFix));
     if (!window.confirm(msg)) return;
 
@@ -622,9 +626,9 @@ export default function HSERiskRegister() {
             <button style={ISO_UI.btn("success", exporting)} onClick={exportPdf} disabled={busy}>
               {exporting ? pick(T.exporting) : pick(T.exportPdf)}
             </button>
-            <button style={ISO_UI.btn("violet", repairing)} onClick={repairRegister} disabled={busy}>
+            {canDeleteHSE() && <button data-delete-action="true" style={ISO_UI.btn("violet", repairing)} onClick={repairRegister} disabled={busy}>
               {repairing ? pick(T.repairing) : pick(T.repairBtn)}
-            </button>
+            </button>}
             <button data-hse-back="1" style={ISO_UI.btn("secondary")} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
@@ -955,7 +959,7 @@ export default function HSERiskRegister() {
                     <td style={{ ...UI.td, fontWeight: 800 }}>{r.owner}</td>
                     <td style={{ ...UI.td, textAlign: "center", whiteSpace: "nowrap" }}>
                       <button style={{ ...ISO_UI.btn("secondary"), padding: "5px 11px" }} onClick={() => startEdit(r)}>{pick(T.edit)}</button>
-                      <button style={{ ...ISO_UI.btn("danger"), padding: "5px 11px", marginInlineStart: 5 }} onClick={() => remove(r.id)}>{pick(T.del)}</button>
+                      {canDeleteHSE() && <button data-delete-action="true" style={{ ...ISO_UI.btn("danger"), padding: "5px 11px", marginInlineStart: 5 }} onClick={() => remove(r.id)}>{pick(T.del)}</button>}
                     </td>
                   </tr>
                 );

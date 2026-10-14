@@ -8,6 +8,7 @@ import {
   inputStyle, HSE_COLORS,
   apiList, apiSave, apiUpdate, apiDelete,
   useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
@@ -546,6 +547,7 @@ export default function HSEEvacuationDrills() {
   }
 
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(pick(T.confirmDelete))) return;
     try {
       await apiDelete(id);
@@ -794,12 +796,15 @@ export default function HSEEvacuationDrills() {
                       >
                         {pick(T.edit)}
                       </button>
-                      <button
-                        style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12, color: "#b91c1c", borderColor: "#fecaca", background: "#fff5f5" }}
-                        onClick={() => remove(it.id)}
-                      >
-                        {pick(T.delete)}
-                      </button>
+                      {canDeleteHSE() && (
+                        <button
+                          data-delete-action="true"
+                          style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12, color: "#b91c1c", borderColor: "#fecaca", background: "#fff5f5" }}
+                          onClick={() => remove(it.id)}
+                        >
+                          {pick(T.delete)}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

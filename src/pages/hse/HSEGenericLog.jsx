@@ -9,6 +9,7 @@ import {
   apiList, apiSave, apiUpdate, apiDelete, apiUploadFile, apiDeleteFile,
   tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
+  canDeleteHSE, HSE_DELETE_DENIED,
 } from "./hseShared";
 import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKit";
 
@@ -133,6 +134,7 @@ export default function HSEGenericLog({
   }
 
   async function remove(id) {
+    if (!canDeleteHSE()) { alert(pick(HSE_DELETE_DENIED)); return; }
     if (!window.confirm(pick(COMMON_T.confirmDelete))) return;
     try {
       await apiDelete(id);
@@ -270,7 +272,7 @@ export default function HSEGenericLog({
                       idx={idx}
                       listColumns={listColumns}
                       renderCell={renderCell}
-                      onDelete={() => remove(it.id)}
+                      onDelete={canDeleteHSE() ? () => remove(it.id) : null}
                       onEdit={() => startEdit(it)}
                       deleteLabel={pick(COMMON_T.delete)}
                       editLabel={pick(COMMON_T.edit)}
@@ -322,7 +324,7 @@ function ModernRow({ it, idx, listColumns, renderCell, onDelete, onEdit, deleteL
               {editLabel}
             </button>
           )}
-          <button
+          {onDelete && <button
             style={{
               padding: "7px 14px",
               borderRadius: 999,
@@ -337,7 +339,7 @@ function ModernRow({ it, idx, listColumns, renderCell, onDelete, onEdit, deleteL
             onClick={onDelete}
            data-delete-action="true">
             🗑 {deleteLabel}
-          </button>
+          </button>}
         </div>
       </td>
     </tr>
