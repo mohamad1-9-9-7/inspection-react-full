@@ -4,24 +4,24 @@ import HSEGenericLog from "./HSEGenericLog";
 import { todayISO } from "./hseShared";
 
 const EQUIPMENT = [
-  { v: "forklift",   ar: "🚜 رافعة شوكية (Forklift)", en: "🚜 Forklift" },
-  { v: "slicer",     ar: "🔪 آلة تقطيع (Slicer)",     en: "🔪 Slicer" },
-  { v: "mixer",      ar: "🥩 خلاطة لحوم (Mixer)",     en: "🥩 Meat Mixer" },
-  { v: "compressor", ar: "❄️ ضاغط تبريد (Compressor)", en: "❄️ Refrigeration Compressor" },
-  { v: "refunit",    ar: "🌡️ نظام تبريد كامل (Refrigeration Unit)", en: "🌡️ Refrigeration Unit" },
+  { v: "forklift",   ar: "🚜 رافعة شوكية", en: "🚜 Forklift" },
+  { v: "slicer",     ar: "🔪 آلة تقطيع",     en: "🔪 Slicer" },
+  { v: "mixer",      ar: "🥩 خلاطة لحوم",     en: "🥩 Meat Mixer" },
+  { v: "compressor", ar: "❄️ ضاغط تبريد", en: "❄️ Refrigeration Compressor" },
+  { v: "refunit",    ar: "🌡️ نظام تبريد كامل", en: "🌡️ Refrigeration Unit" },
   { v: "gasdetector",ar: "💨 كاشف غاز أمونيا/CO",     en: "💨 Ammonia/CO Gas Detector" },
   { v: "coldroom",   ar: "🧊 غرفة تبريد",              en: "🧊 Cold Room" },
-  { v: "fire",       ar: "🔥 نظام إطفاء (Sprinkler / Alarm)", en: "🔥 Fire Suppression (Sprinkler / Alarm)" },
+  { v: "fire",       ar: "🔥 نظام إطفاء (رشاشات / إنذار)", en: "🔥 Fire Suppression (Sprinkler / Alarm)" },
   { v: "door",       ar: "🚪 باب تبريد / Strip Curtains", en: "🚪 Cold-room Door / Strip Curtains" },
-  { v: "datalogger", ar: "📊 جهاز تسجيل حرارة (Data Logger)", en: "📊 Data Logger" },
+  { v: "datalogger", ar: "📊 جهاز تسجيل حرارة", en: "📊 Data Logger" },
   { v: "generator",  ar: "🏭 مولد كهرباء احتياطي",     en: "🏭 Backup Generator" },
   { v: "other",      ar: "أخرى",                       en: "Other" },
 ];
 
 const MAINT_TYPES = [
-  { v: "preventive",  ar: "🛡️ وقائية (Preventive)",   en: "🛡️ Preventive" },
-  { v: "corrective",  ar: "🔧 تصحيحية (Corrective)",   en: "🔧 Corrective" },
-  { v: "calibration", ar: "📐 معايرة (Calibration)",   en: "📐 Calibration" },
+  { v: "preventive",  ar: "🛡️ وقائية",   en: "🛡️ Preventive" },
+  { v: "corrective",  ar: "🔧 تصحيحية",   en: "🔧 Corrective" },
+  { v: "calibration", ar: "📐 معايرة",   en: "📐 Calibration" },
   { v: "inspection",  ar: "🔍 فحص دوري",               en: "🔍 Periodic Inspection" },
   { v: "emergency",   ar: "🚨 طارئة",                  en: "🚨 Emergency" },
 ];
@@ -57,7 +57,7 @@ export default function HSEEquipmentMaintenance() {
         { key: "equipmentType",   label: { ar: "نوع المعدة", en: "Equipment type" }, type: "select", options: EQUIPMENT, required: true },
         { key: "equipmentId",     label: { ar: "رقم المعدة / الموقع", en: "Equipment ID / Location" }, type: "text", required: true, maxLength: 60 },
         { key: "maintenanceType", label: { ar: "نوع الصيانة", en: "Maintenance type" }, type: "select", options: MAINT_TYPES, required: true },
-        { key: "performedBy",     label: { ar: "نُفّذت بواسطة (Technician/Company)", en: "Performed by (Technician/Company)" }, type: "text", required: true, minLength: 2, maxLength: 120 },
+        { key: "performedBy",     label: { ar: "نُفّذت بواسطة (فني / شركة)", en: "Performed by (Technician/Company)" }, type: "text", required: true, minLength: 2, maxLength: 120 },
         { key: "certifiedTechnician",label:{ ar: "✅ فني معتمد (تبريد - يلزم لغازات الأمونيا/الفريون)", en: "✅ Certified technician (refrigeration - required for ammonia/freon)" }, type: "checkbox" },
         { key: "workDescription", label: { ar: "وصف العمل المُنفّذ", en: "Work description" }, type: "textarea", fullWidth: true, required: true, minLength: 10 },
         { key: "partsReplaced",   label: { ar: "قطع غيار مستبدلة", en: "Parts replaced" }, type: "textarea" },

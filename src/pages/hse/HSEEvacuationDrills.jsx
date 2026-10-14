@@ -14,7 +14,7 @@ import { HSEReportForm, HSEPanel, HSEField, useHSEValidation } from "./hseFormKi
 const STORAGE_KEY = "evacuation_drills";
 
 const T = {
-  pageTitle:    { ar: "F-16 · تجربة الإخلاء (Mock Drill)", en: "F-16 · Mock Drill / Fire Drill Report" },
+  pageTitle:    { ar: "F-16 · تجربة الإخلاء", en: "F-16 · Mock Drill / Fire Drill Report" },
   list:         { ar: "📋 السجل",   en: "📋 Records" },
   add:          { ar: "+ تعبئة نموذج جديد", en: "+ New Drill Report" },
   back:         { ar: "← HSE",       en: "← HSE" },

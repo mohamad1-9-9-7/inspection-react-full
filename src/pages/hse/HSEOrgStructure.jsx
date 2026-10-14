@@ -44,7 +44,7 @@ const T = {
 const ROLES = [
   {
     id: "manager",
-    title: { ar: "مدير HSE (HSE Manager)", en: "HSE Manager" },
+    title: { ar: "مدير HSE", en: "HSE Manager" },
     icon: "👔",
     type: { ar: "دوام كامل", en: "Full-time" },
     count: "1",
@@ -59,7 +59,7 @@ const ROLES = [
     ],
     responsibilities: [
       { ar: "وضع الاستراتيجية العامة للقسم والإشراف على تنفيذها", en: "Set department strategy and oversee execution" },
-      { ar: "إعداد ومراجعة جميع السياسات والإجراءات (SOPs)", en: "Develop and review all policies and SOPs" },
+      { ar: "إعداد ومراجعة جميع السياسات والإجراءات", en: "Develop and review all policies and SOPs" },
       { ar: "رئاسة لجنتي السلامة وسلامة الغذاء", en: "Chair Safety and Food Safety committees" },
       { ar: "التمثيل أمام الجهات الحكومية والتعامل مع المفتشين", en: "Represent the company to government bodies and inspectors" },
       { ar: "إعداد الموازنة السنوية للقسم ومتابعة الإنفاق", en: "Prepare annual department budget and track spending" },
@@ -70,7 +70,7 @@ const ROLES = [
   },
   {
     id: "site_officer",
-    title: { ar: "ضابط HSE للموقع (HSE Site Officer)", en: "HSE Site Officer" },
+    title: { ar: "ضابط HSE للموقع", en: "HSE Site Officer" },
     icon: "🦺",
     type: { ar: "دوام كامل — موقع لكل ضابط", en: "Full-time — one officer per site" },
     count: "2 – 3",
@@ -84,7 +84,7 @@ const ROLES = [
       { ar: "التفتيش اليومي على الموقع وتعبئة قوائم الفحص", en: "Daily site inspection and checklist completion" },
       { ar: "الإشراف على التزام العمال بمعدات الوقاية الشخصية", en: "Supervise worker compliance with PPE" },
       { ar: "التحقيق في شبه الحوادث والحوادث البسيطة", en: "Investigate near-misses and minor incidents" },
-      { ar: "تدريب العمال الجدد قبل بدء العمل (Induction Training)", en: "Train new workers before starting (Induction)" },
+      { ar: "تدريب العمال الجدد قبل بدء العمل", en: "Train new workers before starting (Induction)" },
       { ar: "متابعة سجلات درجات الحرارة في غرف التبريد والتجميد", en: "Monitor chiller/freezer temperature logs" },
       { ar: "التنسيق مع مقاولي الصيانة ومكافحة الحشرات", en: "Coordinate with maintenance and pest-control contractors" },
       { ar: "رفع تقرير أسبوعي لمدير HSE", en: "Submit weekly report to HSE Manager" },
@@ -92,7 +92,7 @@ const ROLES = [
   },
   {
     id: "food_safety",
-    title: { ar: "مسؤول سلامة الغذاء (Food Safety Officer)", en: "Food Safety Officer" },
+    title: { ar: "مسؤول سلامة الغذاء", en: "Food Safety Officer" },
     icon: "🥩",
     type: { ar: "دوام كامل (يمكن الترقية من الداخل)", en: "Full-time (can be promoted from within)" },
     count: "1",
@@ -104,17 +104,17 @@ const ROLES = [
     ],
     responsibilities: [
       { ar: "متابعة خطة HACCP وتحديثها", en: "Maintain and update the HACCP plan" },
-      { ar: "إجراء اختبارات المسحات الميكروبية الدورية (Swabs)", en: "Conduct periodic microbiological swab tests" },
+      { ar: "إجراء اختبارات المسحات الميكروبية الدورية", en: "Conduct periodic microbiological swab tests" },
       { ar: "مراجعة سجلات درجات الحرارة وتحليل الانحرافات", en: "Review temperature logs and analyze deviations" },
       { ar: "التحقق من صلاحية المواد المستوردة والشهادات الصحية", en: "Verify imported goods validity and health certificates" },
       { ar: "الإشراف على برنامج النظافة والتعقيم", en: "Oversee cleaning and sanitation program" },
       { ar: "متابعة شهادات الحلال وشهادات المنشأ", en: "Track Halal and origin certificates" },
-      { ar: "إدارة برنامج استرجاع المنتجات (Product Recall) عند الحاجة", en: "Manage product recall program when needed" },
+      { ar: "إدارة برنامج استرجاع المنتجات عند الحاجة", en: "Manage product recall program when needed" },
     ],
   },
   {
     id: "coordinator",
-    title: { ar: "منسق HSE الإداري (HSE Coordinator)", en: "HSE Administrative Coordinator" },
+    title: { ar: "منسق HSE الإداري", en: "HSE Administrative Coordinator" },
     icon: "📋",
     type: { ar: "دوام كامل", en: "Full-time" },
     count: "1",
@@ -126,7 +126,7 @@ const ROLES = [
     responsibilities: [
       { ar: "أرشفة جميع سجلات ووثائق القسم", en: "Archive all department records and documents" },
       { ar: "جدولة الدورات التدريبية ومتابعة نسب الحضور", en: "Schedule training courses and track attendance" },
-      { ar: "إعداد لوحات البيانات الشهرية (Dashboards)", en: "Prepare monthly dashboards" },
+      { ar: "إعداد لوحات البيانات الشهرية", en: "Prepare monthly dashboards" },
       { ar: "تجهيز ملفات التدقيق الخارجي", en: "Prepare files for external audits" },
       { ar: "متابعة تجديد التراخيص والشهادات وإخطار المدير قبل شهرين من انتهائها", en: "Track license/certificate renewals and notify the manager 2 months before expiry" },
     ],
@@ -134,7 +134,7 @@ const ROLES = [
 ];
 
 const COMMITTEES = [
-  { name: { ar: "لجنة السلامة والصحة المهنية (Safety Committee)", en: "Safety & Occupational Health Committee" },
+  { name: { ar: "لجنة السلامة والصحة المهنية", en: "Safety & Occupational Health Committee" },
     chair: { ar: "مدير HSE", en: "HSE Manager" },
     members: { ar: "ممثلون عن كل إدارة + ممثلون عن العمال", en: "Representatives from each department + worker representatives" },
     frequency: { ar: "اجتماع شهري", en: "Monthly meeting" } },

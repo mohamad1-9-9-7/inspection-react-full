@@ -39,7 +39,7 @@ const SECTIONS = [
       { ar: "أحواض غسل يدين بمياه ساخنة وباردة", en: "Hand-wash basins with hot and cold water" },
       { ar: "صابون متوفر دائماً", en: "Soap always available" },
       { ar: "مجففات يدين أو مناديل ورقية", en: "Hand dryers or paper towels" },
-      { ar: "محطات تعقيم (Hand sanitizer) في نقاط الدخول", en: "Hand sanitizer stations at entry points" },
+      { ar: "محطات تعقيم في نقاط الدخول", en: "Hand sanitizer stations at entry points" },
       { ar: "لافتات غسيل اليدين معروضة (خاصة لعاملي الأغذية)", en: "Hand-washing posters displayed (esp. for food handlers)" },
     ],
   },

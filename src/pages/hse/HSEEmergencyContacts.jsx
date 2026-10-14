@@ -97,13 +97,13 @@ const DEFAULT_LOCAL = [
 
 const DEFAULT_HOSPITALS = [
   { position: { ar: "مستشفى راشد (دبي)", en: "Rashid Hospital (Dubai)" }, tel: "+971 4 219 2000" },
-  { position: { ar: "مستشفى دبي (Dubai Hospital)", en: "Dubai Hospital" }, tel: "+971 4 219 5000" },
+  { position: { ar: "مستشفى دبي", en: "Dubai Hospital" }, tel: "+971 4 219 5000" },
   { position: { ar: "مستشفى ميديكلينيك", en: "Mediclinic Hospital" }, tel: "" },
   { position: { ar: "مستوصف الشركة", en: "Company Clinic" }, tel: "" },
 ];
 
 const DEFAULT_STATUTORY = [
-  { position: { ar: "بلدية دبي (Dubai Municipality)", en: "Dubai Municipality" }, tel: "800 900" },
+  { position: { ar: "بلدية دبي", en: "Dubai Municipality" }, tel: "800 900" },
   { position: { ar: "MOHRE (وزارة الموارد البشرية)", en: "MOHRE (Ministry of HR)" }, tel: "600 590 000" },
   { position: { ar: "MoCCAE (التغير المناخي)", en: "MoCCAE (Climate Change)" }, tel: "" },
   { position: { ar: "ESMA / MoIAT", en: "ESMA / MoIAT" }, tel: "" },
@@ -111,7 +111,7 @@ const DEFAULT_STATUTORY = [
 
 const DEFAULT_ENFORCING = [
   { position: { ar: "🛡️ HSE Manager (داخلي)", en: "🛡️ HSE Manager (Internal)" }, tel: "" },
-  { position: { ar: "🦺 ضابط الأمن (Security)", en: "🦺 Security Officer" }, tel: "" },
+  { position: { ar: "🦺 ضابط الأمن", en: "🦺 Security Officer" }, tel: "" },
 ];
 
 // شكل صف المسعف — مختلف عن صف جهة الاتصال (شهادة + صلاحية + وردية)

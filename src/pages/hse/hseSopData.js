@@ -3,7 +3,7 @@
 
 export const SOP_GROUPS = [
   {
-    id: "fs", title: { ar: "Food Safety & Cold Chain — سلامة الغذاء وسلسلة التبريد", en: "Food Safety & Cold Chain" }, short: { ar: "سلامة الغذاء", en: "Food Safety" },
+    id: "fs", title: { ar: "سلامة الغذاء وسلسلة التبريد", en: "Food Safety & Cold Chain" }, short: { ar: "سلامة الغذاء", en: "Food Safety" },
     color: "#0369a1", bg: "#dbeafe",
     items: [
       {
@@ -47,7 +47,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-03",
         title: { ar: "التعامل مع انحرافات درجة الحرارة", en: "Temperature deviation response" },
-        desc: { ar: "Temperature Deviation Response", en: "Triggers, escalation, product hold/release" },
+        desc: { ar: "الاستجابة لانحراف درجة الحرارة", en: "Triggers, escalation, product hold/release" },
         objective: { ar: "الاستجابة الفورية لأي انحراف في حرارة سلسلة التبريد لمنع فساد المنتج وتقييم سلامته قبل الإفراج عنه.",
                      en: "Immediately respond to any cold-chain temperature deviation — to prevent product spoilage and assess safety before release." },
         scope: { ar: "كل انحراف يتجاوز الحد المسموح (>4°م في التبريد، >-15°م في التجميد) لأكثر من 30 دقيقة.",
@@ -85,7 +85,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-05",
         title: { ar: "برنامج المسحات الميكروبية", en: "Microbiological swabbing program" },
-        desc: { ar: "Microbiological Swabbing", en: "Surfaces + hand swabs + lab tests" },
+        desc: { ar: "المسحات الميكروبية", en: "Surfaces + hand swabs + lab tests" },
         objective: { ar: "التحقق العلمي من فعالية برنامج التنظيف والتعقيم وكشف أي تلوث ميكروبي مبكراً.",
                      en: "Scientifically verify the effectiveness of the cleaning/sanitation program and detect any microbial contamination early." },
         scope: { ar: "أسطح التلامس مع الغذاء، أيدي العاملين، أدوات التقطيع، الأرضيات، مياه الشطف.",
@@ -104,7 +104,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-06",
         title: { ar: "إجراء استرجاع المنتج من السوق", en: "Product recall procedure" },
-        desc: { ar: "Product Recall", en: "Backward + forward trace" },
+        desc: { ar: "سحب المنتج من السوق", en: "Backward + forward trace" },
         objective: { ar: "الاستجابة السريعة لسحب أي منتج غير آمن من السوق لحماية المستهلك وسمعة الشركة وتلبية متطلبات الجهات الرقابية.",
                      en: "Rapidly recall any unsafe product from market — to protect the consumer, company reputation, and meet regulatory requirements." },
         scope: { ar: "أي منتج غادر بوابة الشركة وتبيّن لاحقاً عدم سلامته (نتيجة فحص، شكوى، انحراف، خبر خارجي).",
@@ -123,7 +123,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-07",
         title: { ar: "التتبع العكسي والأمامي للمنتجات", en: "Product traceability" },
-        desc: { ar: "Traceability", en: "Backward and forward tracing" },
+        desc: { ar: "تتبّع المنتج", en: "Backward and forward tracing" },
         objective: { ar: "إمكانية تتبع أي قطعة لحم بأقل من ساعة من المورّد الأصلي إلى العميل النهائي والعكس.",
                      en: "Ability to trace any meat piece in less than 1 hour from the original supplier to the final customer and vice-versa." },
         scope: { ar: "كل المنتجات من لحظة الاستلام حتى التسليم النهائي، شامل المنتجات المُجهّزة في خط التصنيع.",
@@ -142,7 +142,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-08",
         title: { ar: "فصل اللحوم الحلال وغير الحلال", en: "Halal/Non-Halal segregation" },
-        desc: { ar: "Halal segregation", en: "Color-coded zones, separate equipment" },
+        desc: { ar: "فصل الحلال عن غير الحلال", en: "Color-coded zones, separate equipment" },
         objective: { ar: "ضمان عدم اختلاط اللحوم الحلال بأي مصدر غير حلال في أي مرحلة من مراحل التشغيل، تلبية للمتطلبات الإلزامية لـ ESMA و UAE.S 2055-1.",
                      en: "Ensure no mixing of Halal meat with non-Halal sources at any operational stage — fulfilling mandatory ESMA and UAE.S 2055-1 requirements." },
         scope: { ar: "كل المراحل: الاستلام، التخزين، التصنيع، التغليف، التوزيع.",
@@ -161,7 +161,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-FS-09",
         title: { ar: "إدارة المنتجات منتهية أو قريبة الانتهاء", en: "Expiry management" },
-        desc: { ar: "Expiry Management", en: "FIFO/FEFO + early-warning system" },
+        desc: { ar: "إدارة تواريخ الصلاحية", en: "FIFO/FEFO + early-warning system" },
         objective: { ar: "منع تواجد منتجات منتهية الصلاحية في المخزون أو السوق، وتقليل الخسائر من خلال إدارة المخزون بنظام FIFO/FEFO.",
                      en: "Prevent expired products from being in stock or market, and minimize losses through FIFO/FEFO inventory management." },
         scope: { ar: "كل المنتجات في غرف التبريد والتجميد ومخازن المنتج النهائي.",
@@ -228,13 +228,13 @@ export const SOP_GROUPS = [
     ],
   },
   {
-    id: "ohs", title: { ar: "Occupational Health & Safety — السلامة المهنية", en: "Occupational Health & Safety" }, short: { ar: "السلامة المهنية", en: "OHS" },
+    id: "ohs", title: { ar: "السلامة والصحة المهنية", en: "Occupational Health & Safety" }, short: { ar: "السلامة المهنية", en: "OHS" },
     color: "#9a3412", bg: "#fed7aa",
     items: [
       {
         code: "SOP-OHS-01",
         title: { ar: "التدريب التعريفي للموظفين الجدد", en: "New employee induction" },
-        desc: { ar: "Induction Training", en: "Day-1 onboarding training" },
+        desc: { ar: "التدريب التعريفي", en: "Day-1 onboarding training" },
         objective: { ar: "ضمان أن كل موظف جديد يعرف مخاطر موقعه وضوابطها وواجباته في السلامة قبل أن يبدأ العمل الفعلي.", en: "Ensure every new employee knows the hazards of their area, the controls in place and their own safety duties before starting actual work." },
         scope: { ar: "جميع الموظفين الجدد، والمنقولين بين الأقسام، وعمال المقاولين، والزوار المتكررين — في كل المواقع.", en: "All new hires, internal transfers, contractor workers and regular visitors — at every site." },
         steps: { ar: "1) استلام قائمة الملتحقين من الموارد البشرية أسبوعياً. 2) جلسة تعريف في اليوم الأول قبل دخول مناطق الإنتاج. 3) شرح سياسة HSE، ومخاطر الموقع، وخطة الطوارئ ونقاط التجمع، وطريقة الإبلاغ عن الحوادث. 4) تسليم معدات الوقاية الشخصية مقابل توقيع. 5) جولة ميدانية مع المشرف المباشر. 6) اختبار قصير، وإعادة الجلسة لمن لا يجتازه. 7) توقيع الموظف والمدرّب في سجل التدريب. 8) مرافقة موظف خبير خلال الأسبوع الأول.", en: "1) Weekly joiners list from HR. 2) Day-one induction before entering any production area. 3) Cover the HSE policy, site hazards, emergency plan and assembly points, and how to report an incident. 4) Issue PPE against signature. 5) Site walk-through with the direct supervisor. 6) Short test; repeat the session for anyone who fails. 7) Employee and trainer sign the training record. 8) Buddy supervision for the first week." },
@@ -264,7 +264,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-03",
         title: { ar: "العمل الآمن في الغرف المجمدة", en: "Safe work in frozen rooms" },
-        desc: { ar: "Cold Storage Safety", en: "Cold storage safety" },
+        desc: { ar: "السلامة في غرف التبريد والتجميد", en: "Cold storage safety" },
         objective: { ar: "حماية العاملين من التعرض للبرودة الشديدة ومن الانحصار داخل غرف التجميد (-18°م).", en: "Protect workers from severe cold exposure and from being trapped inside freezer rooms (-18°C)." },
         scope: { ar: "كل غرف التجميد والتبريد العميق وأنفاق التجميد في جميع المواقع.", en: "All freezer rooms, deep-freeze stores and blast-freezing tunnels at every site." },
         steps: { ar: "1) حد أقصى 45 دقيقة للدخول المتواصل يليها 15 دقيقة تدفئة. 2) ملابس معزولة وقفازات وأغطية رأس معتمدة إلزامية. 3) منع الدخول الفردي: زميل مراقب أو تحقق كل 15 دقيقة. 4) التأكد من عمل مقبض الفتح من الداخل وجرس الإنذار قبل كل مناوبة. 5) جهاز اتصال لاسلكي مع من بالداخل. 6) تفقّد الغرفة بصرياً قبل الإغلاق نهاية اليوم. 7) إيقاف العمل والإبلاغ فوراً عند ظهور أي عرض من أعراض البرودة.", en: "1) Maximum 45 minutes of continuous entry followed by 15 minutes of re-warming. 2) Certified insulated clothing, gloves and head cover are mandatory. 3) No lone entry: a watching colleague or a 15-minute check-in. 4) Verify the inside-release handle and alarm bell before every shift. 5) A two-way radio with whoever is inside. 6) Visual sweep of the room before closing at end of day. 7) Stop work and report immediately at any sign of cold stress." },
@@ -279,7 +279,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-04",
         title: { ar: "تشغيل الرافعات الشوكية", en: "Forklift operation" },
-        desc: { ar: "Forklift Operation", en: "License, daily check, max speed" },
+        desc: { ar: "تشغيل الرافعة الشوكية", en: "License, daily check, max speed" },
         objective: { ar: "منع حوادث الرافعات الشوكية عبر ضبط الترخيص والفحص اليومي والسرعة وفصل حركة المشاة.", en: "Prevent forklift accidents through licensing, daily inspection, speed control and pedestrian segregation." },
         scope: { ar: "كل الرافعات الشوكية ومكابس البالات في المستودعات ومناطق التحميل والتفريغ.", en: "All forklifts and pallet trucks in warehouses and in loading and unloading areas." },
         steps: { ar: "1) لا يشغّل الرافعة إلا حامل رخصة سارية معتمدة ومدرج في قائمة السائقين المعتمدين. 2) فحص يومي قبل التشغيل على النموذج F-35 وتوقيعه. 3) وضع أي رافعة راسبة في الفحص خارج الخدمة ببطاقة حمراء. 4) سرعة قصوى 10 كم/س وإنذار رجوع عامل. 5) ممرات مشاة مدهونة، ومرايا محدبة عند الزوايا العمياء، ومراقب عند الرجوع للخلف. 6) منع رفع الأشخاص ومنع تجاوز حدود الحمولة المبينة على اللوحة. 7) خفض الشوكتين وسحب المفتاح عند ترك الرافعة. 8) شحن البطاريات في منطقة مخصصة جيدة التهوية.", en: "1) Only a holder of a valid certified licence listed as an approved operator may drive. 2) Daily pre-use inspection on form F-35, signed. 3) Any forklift that fails inspection is tagged out of service with a red tag. 4) 10 km/h speed limit and a working reversing alarm. 5) Painted pedestrian walkways, convex mirrors at blind corners, and a spotter when reversing. 6) No lifting of people and no exceeding the load-plate limits. 7) Forks lowered and key removed whenever the truck is left. 8) Batteries charged only in a dedicated, well-ventilated area." },
@@ -294,7 +294,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-05",
         title: { ar: "التعامل الآمن مع السكاكين وآلات التقطيع", en: "Safe knife & slicer handling" },
-        desc: { ar: "Knife & Cutting Machine Safety", en: "Cut-resistant gloves, blade guards" },
+        desc: { ar: "سلامة السكاكين وآلات التقطيع", en: "Cut-resistant gloves, blade guards" },
         objective: { ar: "منع القطوع والبتر أثناء التعامل مع السكاكين والمناشير وآلات التقطيع.", en: "Prevent cuts and amputations when handling knives, saws and slicing machines." },
         scope: { ar: "خط الإنتاج، غرف التقطيع، منافذ البيع، ومناطق غسل الأدوات.", en: "The processing line, cutting rooms, retail outlets and tool-washing areas." },
         steps: { ar: "1) قفازات مقاومة للقطع وصدرية معدنية لمن يستخدم منشاراً. 2) الحفاظ على السكاكين حادة ونظيفة وسنّها دورياً — السكين الكليل يسبب انزلاقاً. 3) القطع بعيداً عن الجسم وعلى سطح ثابت. 4) منع تمرير السكين من يد إلى يد؛ توضع على السطح ليأخذها الآخر. 5) حمل السكين موجّهاً للأسفل وداخل غمد عند التنقل. 6) عدم تشغيل أي آلة بدون غطاء الشفرة وزر الإيقاف الطارئ. 7) فصل الطاقة وتطبيق القفل والوسم قبل التنظيف أو فك الشفرة. 8) الإبلاغ الفوري عن أي جرح والإسعاف قبل العودة للعمل.", en: "1) Cut-resistant gloves and a mesh apron for anyone using a saw. 2) Keep knives sharp and clean and sharpen them regularly — a blunt knife slips. 3) Cut away from the body on a stable surface. 4) Never hand a knife over directly; place it down for the other person to pick up. 5) Carry knives pointing down and sheathed. 6) No machine runs without its blade guard and emergency stop. 7) Isolate power and apply lockout/tagout before cleaning or removing a blade. 8) Report any cut immediately; first aid before returning to work." },
@@ -309,7 +309,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-06",
         title: { ar: "الرفع اليدوي الآمن للأحمال والتعامل مع العربات", en: "Safe manual lifting & trolley handling" },
-        desc: { ar: "Manual Lifting & Trolleys", en: "Max 25 kg, technique, trolleys" },
+        desc: { ar: "الرفع اليدوي والعربات", en: "Max 25 kg, technique, trolleys" },
         objective: { ar: "منع إصابات الظهر والجهاز العضلي الهيكلي الناتجة عن الرفع اليدوي وتحريك العربات، عبر تحديد الحدود الوزنية والأسلوب الصحيح واشتراطات فحص واستخدام العربات.",
                      en: "Prevent back and musculoskeletal injuries caused by manual lifting and trolley movement — by defining weight limits, correct technique, and trolley inspection and usage requirements." },
         scope: { ar: "كل العاملين في الاستلام والإنتاج والمخازن وغرف التبريد والتجميد والمطبخ والتحميل، وكل عربة يدوية أو رافعة بليت مستخدمة في الموقع.",
@@ -328,7 +328,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-07",
         title: { ar: "نظام تصاريح العمل", en: "Work permit system" },
-        desc: { ar: "Work Permit System", en: "Hot work, confined space, heights, electrical" },
+        desc: { ar: "نظام تصاريح العمل", en: "Hot work, confined space, heights, electrical" },
         objective: { ar: "ضمان عدم بدء أي عمل عالي الخطورة قبل تقييم مخاطره واعتماد ضوابطه كتابياً.", en: "Ensure no high-risk work starts before its hazards are assessed and its controls approved in writing." },
         scope: { ar: "الأعمال الساخنة، العمل على ارتفاع، الأماكن المحصورة، الأعمال الكهربائية، الرفع الثقيل، وأعمال المقاولين.", en: "Hot work, work at height, confined spaces, electrical work, heavy lifting and contractor works." },
         steps: { ar: "1) تقديم طلب التصريح قبل 24 ساعة على النموذج F-07. 2) تقييم مخاطر المهمة وتحديد الضوابط والمعدات المطلوبة. 3) اعتماد التصريح من مسؤول HSE ومن مالك المنطقة. 4) اجتماع تعريفي مع فريق العمل قبل البدء وتوقيع الحضور. 5) عزل مصادر الطاقة، وتجهيز طفايات ومراقب حريق للأعمال الساخنة. 6) مراقبة مستمرة أثناء التنفيذ. 7) إغلاق التصريح بعد تفتيش الموقع وتوقيع الطرفين. 8) التصريح صالح لمناوبة واحدة فقط ويُجدَّد كتابياً.", en: "1) Permit requested 24 hours in advance on form F-07. 2) Task risk assessment defining controls and required equipment. 3) Permit approved by the HSE officer and the area owner. 4) Pre-start briefing with the work team, attendance signed. 5) Energy sources isolated; extinguishers and a fire watch provided for hot work. 6) Continuous monitoring during execution. 7) Permit closed after a site inspection signed by both parties. 8) A permit is valid for one shift only and must be renewed in writing." },
@@ -343,7 +343,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-08",
         title: { ar: "قفل ووسم المعدات أثناء الصيانة", en: "Lockout / Tagout (LOTO)" },
-        desc: { ar: "LOTO", en: "Energy isolation during maintenance" },
+        desc: { ar: "عزل مصادر الطاقة وقفلها", en: "Energy isolation during maintenance" },
         objective: { ar: "منع التشغيل غير المتوقع للمعدات أثناء الصيانة أو التنظيف عبر عزل مصادر الطاقة وقفلها ووسمها.", en: "Prevent unexpected start-up of equipment during maintenance or cleaning by isolating, locking and tagging all energy sources." },
         scope: { ar: "كل المعدات الكهربائية والهيدروليكية والهوائية، وأنظمة التبريد، وخطوط الأمونيا.", en: "All electrical, hydraulic and pneumatic equipment, refrigeration systems and ammonia lines." },
         steps: { ar: "1) إخطار المشغلين وإيقاف المعدة بالطريقة الطبيعية. 2) تحديد كل مصادر الطاقة بما فيها الطاقة المخزّنة. 3) عزل المصدر وتفريغ الطاقة المتبقية. 4) تركيب قفل شخصي وبطاقة تحمل اسم الفني والتاريخ والسبب. 5) التحقق من انعدام الطاقة بمحاولة تشغيل وبالقياس. 6) تنفيذ العمل. 7) إزالة القفل بيد صاحبه فقط بعد إخلاء المنطقة من الأدوات والأشخاص. 8) اختبار تشغيل وإعادة المعدة للخدمة.", en: "1) Notify operators and shut the equipment down normally. 2) Identify every energy source, including stored energy. 3) Isolate the source and release residual energy. 4) Apply a personal lock and a tag showing the technician's name, date and reason. 5) Verify zero energy by attempting a start and by measurement. 6) Carry out the work. 7) Locks are removed only by their owner, after tools and people are clear. 8) Function test and return the equipment to service." },
@@ -358,7 +358,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-09",
         title: { ar: "الإبلاغ عن الحوادث وشبه الحوادث والتحقيق", en: "Incident & near-miss reporting + investigation" },
-        desc: { ar: "Incident & Near-miss", en: "Incident & near-miss" },
+        desc: { ar: "الحوادث وشبه الحوادث", en: "Incident & near-miss" },
         objective: { ar: "ضمان الإبلاغ عن كل حادث وشبه حادث، وتحديد سببه الجذري، ومنع تكراره.", en: "Ensure every incident and near-miss is reported, its root cause identified, and its recurrence prevented." },
         scope: { ar: "كل الإصابات والحرائق والتسربات وحوادث المركبات وشبه الحوادث والأضرار المادية في كل المواقع.", en: "All injuries, fires, leaks, vehicle accidents, near-misses and property damage at every site." },
         steps: { ar: "1) إسعاف المصاب وتأمين الموقع أولاً. 2) إبلاغ المشرف فوراً وقسم HSE خلال ساعة. 3) تعبئة النموذج F-01 خلال 24 ساعة. 4) تصوير الموقع وجمع الإفادات قبل تغيير أي شيء. 5) تحليل السبب الجذري بطريقة 5 Whys. 6) فتح إجراء تصحيحي في سجل CAPA بمسؤول وموعد. 7) إبلاغ الجهات الحكومية عند الحوادث الجسيمة ضمن المهلة النظامية. 8) تعميم الدرس المستفاد في اجتماع Toolbox. 9) التحقق من فعالية الإجراء ثم إغلاق الحادث.", en: "1) Treat the injured and make the scene safe first. 2) Notify the supervisor immediately and HSE within one hour. 3) Complete form F-01 within 24 hours. 4) Photograph the scene and take statements before anything is changed. 5) Root-cause analysis using 5 Whys. 6) Raise a corrective action in the CAPA register with an owner and a due date. 7) Notify the authorities for serious incidents within the statutory deadline. 8) Share the lesson learned at a toolbox talk. 9) Verify effectiveness, then close the incident." },
@@ -373,7 +373,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-OHS-10",
         title: { ar: "الفحص الطبي الدوري للعاملين", en: "Periodic medical check" },
-        desc: { ar: "Periodic Medical Check", en: "Annual + role-specific" },
+        desc: { ar: "الفحص الطبي الدوري", en: "Annual + role-specific" },
         objective: { ar: "التحقق من لياقة العاملين صحياً لمهامهم، ومنع انتقال الأمراض إلى المنتج الغذائي.", en: "Confirm workers are medically fit for their tasks and prevent disease transmission to food products." },
         scope: { ar: "كل العاملين، مع فحوص إضافية لمناولي الأغذية وسائقي الرافعات والعاملين في الغرف الباردة.", en: "All employees, with additional checks for food handlers, forklift operators and cold-room workers." },
         steps: { ar: "1) فحص ما قبل التوظيف وبطاقة صحية سارية لكل مناول أغذية. 2) فحص دوري سنوي وتجديد البطاقة قبل انتهائها بثلاثين يوماً. 3) فحوص خاصة: السمع والنظر لسائقي الرافعات، والجهاز التنفسي والدورة الدموية للعاملين في البرودة. 4) منع أي عامل تظهر عليه أعراض إسهال أو قيء أو التهاب حلق أو جرح مكشوف من دخول مناطق الغذاء. 5) تصريح عودة للعمل من الطبيب. 6) حفظ النتائج بسرية لدى الموارد البشرية.", en: "1) Pre-employment examination and a valid health card for every food handler. 2) Annual periodic examination, with cards renewed 30 days before expiry. 3) Role-specific checks: hearing and vision for forklift operators, respiratory and cardiovascular for cold-room workers. 4) Any worker with diarrhoea, vomiting, sore throat or an open wound is kept out of food areas. 5) A doctor's return-to-work clearance is required. 6) Results kept confidentially by HR." },
@@ -439,12 +439,12 @@ export const SOP_GROUPS = [
     ],
   },
   {
-    id: "em", title: { ar: "Emergency — الطوارئ", en: "Emergency" }, short: { ar: "الطوارئ", en: "Emergency" }, color: "#7f1d1d", bg: "#fee2e2",
+    id: "em", title: { ar: "الطوارئ", en: "Emergency" }, short: { ar: "الطوارئ", en: "Emergency" }, color: "#7f1d1d", bg: "#fee2e2",
     items: [
       {
         code: "SOP-EM-01",
         title: { ar: "خطة الاستجابة للحرائق والإخلاء", en: "Fire & evacuation response plan" },
-        desc: { ar: "Fire & Evacuation", en: "Fire & evacuation" },
+        desc: { ar: "الحريق والإخلاء", en: "Fire & evacuation" },
         objective: { ar: "حماية الأرواح عبر استجابة منظمة وسريعة للحريق وإخلاء آمن إلى نقاط التجمع.", en: "Protect life through an organised, rapid fire response and a safe evacuation to the assembly points." },
         scope: { ar: "كل المباني والمستودعات ومناطق التبريد والمكاتب.", en: "All buildings, warehouses, refrigerated areas and offices." },
         steps: { ar: "1) من يكتشف الحريق يكسر نقطة الإنذار ويحذّر من حوله. 2) الاتصال بالدفاع المدني 997 وإبلاغ مدير الموقع. 3) محاولة الإطفاء بالطفاية المناسبة فقط إذا كان الحريق صغيراً وكان مخرج الهروب خلف المستخدم. 4) قطع الكهرباء عن المنطقة المتأثرة. 5) الإخلاء عبر أقرب مخرج دون استخدام المصاعد ودون العودة لأخذ الأغراض. 6) التجمع في نقطة التجمع وحصر الأسماء من مسؤول الإخلاء. 7) إبلاغ فرق الإطفاء بأي شخص مفقود وبأماكن المواد الخطرة. 8) عدم العودة إلا بإذن الدفاع المدني. 9) تقرير حادث وتحقيق في السبب.", en: "1) Whoever discovers the fire breaks the call point and warns those nearby. 2) Call Civil Defence on 997 and inform the site manager. 3) Attempt to extinguish only if the fire is small and the escape route is behind you. 4) Cut power to the affected area. 5) Evacuate by the nearest exit; no lifts, no returning for belongings. 6) Assemble at the assembly point; the evacuation marshal takes the roll call. 7) Tell the fire crews about anyone missing and where hazardous materials are. 8) Do not re-enter without Civil Defence clearance. 9) Raise an incident report and investigate the cause." },
@@ -459,7 +459,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EM-02",
         title: { ar: "الاستجابة لتسرب الأمونيا أو غازات التبريد", en: "Ammonia / refrigerant leak response" },
-        desc: { ar: "Ammonia / Refrigerant Leak", en: "Detection, evacuation, isolation" },
+        desc: { ar: "تسرب الأمونيا وغازات التبريد", en: "Detection, evacuation, isolation" },
         objective: { ar: "الاستجابة الفورية لتسرب الأمونيا أو غازات التبريد لحماية الأرواح والمنتج.", en: "Respond immediately to an ammonia or refrigerant leak to protect life and product." },
         scope: { ar: "غرف الآلات، أنظمة التبريد المركزية، الغرف الباردة، وخطوط الأمونيا.", en: "Plant rooms, central refrigeration systems, cold rooms and ammonia lines." },
         steps: { ar: "1) عند إنذار الكاشف: إخلاء المنطقة فوراً والتحرك عكس اتجاه الريح. 2) عدم دخول أحد دون قناع تنفس كامل ومن فريق مدرّب. 3) عزل مصدر الغاز من صمام الإغلاق الطارئ الموجود خارج الغرفة. 4) تشغيل التهوية الطارئة. 5) الاتصال بالدفاع المدني وبفريق التبريد المعتمد. 6) نقل أي متضرر إلى هواء نقي وغسل العين والجلد بماء غزير 15 دقيقة. 7) حجر المنتج الغذائي المعرّض للغاز حتى تقييمه. 8) عدم العودة قبل قياس تركيز الغاز والتأكد من أمانه. 9) تحقيق في السبب الجذري وفتح إجراء تصحيحي.", en: "1) On detector alarm: evacuate the area immediately, moving upwind. 2) No one enters without full breathing apparatus and as part of a trained team. 3) Isolate the source at the emergency shut-off valve located outside the room. 4) Start emergency ventilation. 5) Call Civil Defence and the approved refrigeration contractor. 6) Move anyone affected to fresh air and flush eyes and skin with plenty of water for 15 minutes. 7) Quarantine any food product exposed to the gas until assessed. 8) Do not re-enter before gas concentration is measured and confirmed safe. 9) Investigate the root cause and raise a corrective action." },
@@ -474,7 +474,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EM-03",
         title: { ar: "الاستجابة لانقطاع الكهرباء المطوّل", en: "Extended power outage response" },
-        desc: { ar: "Cold Storage Power Outage", en: "Cold storage power outage" },
+        desc: { ar: "انقطاع الكهرباء عن غرف التبريد", en: "Cold storage power outage" },
         objective: { ar: "الحفاظ على سلسلة التبريد وسلامة المنتج أثناء انقطاع الكهرباء المطوّل.", en: "Maintain the cold chain and product safety during an extended power outage." },
         scope: { ar: "كل غرف التبريد والتجميد وأنظمة التبريد وشاحنات النقل المبردة.", en: "All chiller and freezer rooms, refrigeration systems and refrigerated transport." },
         steps: { ar: "1) تشغيل مولد الطوارئ خلال دقائق وتأكيد تغذية غرف التبريد أولاً. 2) إبقاء أبواب الغرف مغلقة ومنع الدخول غير الضروري. 3) تسجيل حرارة كل غرفة يدوياً كل 30 دقيقة. 4) إبلاغ مسؤول سلامة الغذاء عند تجاوز الحدود المسموحة. 5) تجهيز شاحنات مبردة أو مستودع بديل إذا تجاوز الانقطاع أربع ساعات. 6) نقل المنتجات الأعلى خطورة أولاً. 7) بعد عودة التيار: تقييم كل منتج تجاوز حدوده واتخاذ قرار إفراج أو إعادة معالجة أو إتلاف. 8) فحص المولد وإعادة تزويده بالوقود.", en: "1) Start the emergency generator within minutes, feeding the cold rooms first. 2) Keep room doors closed and stop all non-essential entry. 3) Record each room's temperature manually every 30 minutes. 4) Inform the Food Safety Officer as soon as limits are exceeded. 5) Arrange refrigerated trucks or an alternative store if the outage passes four hours. 6) Move the highest-risk products first. 7) When power returns, assess every product that breached its limits and decide release, re-process or destroy. 8) Inspect and refuel the generator." },
@@ -489,7 +489,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EM-04",
         title: { ar: "الاستجابة للإصابات الجسيمة والإسعافات الأولية", en: "Major injury & first aid response" },
-        desc: { ar: "First Aid & Major Injuries", en: "First aid + ambulance call" },
+        desc: { ar: "الإسعافات الأولية والإصابات الجسيمة", en: "First aid + ambulance call" },
         objective: { ar: "تحديد ما يجب فعله بالضبط عند وقوع حادث أو إصابة — حفظ الحياة، ومنع تفاقم الحالة، وضمان تصعيد سريع وصحيح للرعاية الطبية، وتوثيق الحادث للتحقيق.",
                      en: "Define exactly what to do when an accident or injury occurs — preserve life, prevent the condition worsening, ensure fast and correct escalation to medical care, and document the incident for investigation." },
         scope: { ar: "كل الحوادث والإصابات في الإنتاج والمستودعات والمطبخ وغرف التبريد والتحميل والمكاتب — لكل الموظفين والمقاولين والزوار.",
@@ -508,12 +508,12 @@ export const SOP_GROUPS = [
     ],
   },
   {
-    id: "en", title: { ar: "Environment — البيئة", en: "Environment" }, short: { ar: "البيئة", en: "Environment" }, color: "#166534", bg: "#dcfce7",
+    id: "en", title: { ar: "البيئة", en: "Environment" }, short: { ar: "البيئة", en: "Environment" }, color: "#166534", bg: "#dcfce7",
     items: [
       {
         code: "SOP-EN-01",
         title: { ar: "إدارة النفايات العضوية والصلبة", en: "Organic & solid waste management" },
-        desc: { ar: "Organic & Solid Waste", en: "Organic & solid waste" },
+        desc: { ar: "النفايات العضوية والصلبة", en: "Organic & solid waste" },
         objective: { ar: "التخلص من النفايات العضوية والصلبة بطريقة لا تلوّث المنتج ولا تخالف اشتراطات البلدية.", en: "Dispose of organic and solid waste in a way that neither contaminates product nor breaches municipal requirements." },
         scope: { ar: "مخلفات اللحوم والدهون والعظام، والكرتون والبلاستيك، ومخلفات المكاتب في كل المواقع.", en: "Meat, fat and bone waste, cardboard and plastic, and office waste at every site." },
         steps: { ar: "1) فصل النفايات عند المصدر في حاويات ملوّنة وموسومة. 2) إبقاء حاويات النفايات العضوية مغطاة ومبردة قدر الإمكان. 3) إخلاء منطقة النفايات يومياً وتنظيفها وتعقيمها. 4) عدم مرور النفايات عبر مناطق المنتج النظيف. 5) التسليم لشركة نقل معتمدة من البلدية وأخذ مانيفست لكل حمولة. 6) وزن الكميات وتسجيلها شهرياً لمتابعة المؤشرات. 7) التحقق من سريان ترخيص شركة النقل سنوياً.", en: "1) Segregate waste at source into colour-coded, labelled bins. 2) Keep organic waste bins covered and chilled where possible. 3) Empty, clean and sanitise the waste area daily. 4) Waste must never travel through clean product areas. 5) Hand over to a municipality-approved carrier and take a manifest for each load. 6) Weigh and record quantities monthly for KPI tracking. 7) Verify the carrier's licence annually." },
@@ -528,7 +528,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EN-02",
         title: { ar: "إدارة المياه العادمة ومصائد الدهون", en: "Wastewater & grease trap management" },
-        desc: { ar: "Wastewater & Grease Traps", en: "Wastewater & grease traps" },
+        desc: { ar: "المياه العادمة ومصائد الدهون", en: "Wastewater & grease traps" },
         objective: { ar: "منع تصريف مياه ملوثة أو دهون إلى شبكة الصرف وتفادي الغرامات البيئية.", en: "Prevent contaminated water or grease from entering the sewer network and avoid environmental fines." },
         scope: { ar: "مصائد الدهون، البالوعات الأرضية، غرف الغسيل، ومناطق التنظيف.", en: "Grease traps, floor drains, wash rooms and cleaning areas." },
         steps: { ar: "1) تنظيف مصائد الدهون أسبوعياً على الأقل وتسجيل التاريخ والمنفّذ. 2) شفط المصائد بواسطة شركة معتمدة شهرياً أو عند الامتلاء. 3) منع سكب الزيوت والدهون في البالوعات منعاً باتاً. 4) فحص شبكات التصريف بصرياً أسبوعياً بحثاً عن انسداد أو رائحة أو ارتجاع. 5) أخذ عينة تحليل دورية حسب اشتراط البلدية. 6) الاحتفاظ بسندات الشفط وتقارير التحليل.", en: "1) Clean grease traps at least weekly, recording the date and who did it. 2) Have traps pumped out by an approved contractor monthly or when full. 3) Pouring oils or fats into drains is strictly prohibited. 4) Inspect drainage weekly for blockage, odour or back-flow. 5) Take periodic samples for analysis as required by the municipality. 6) Retain pump-out receipts and analysis reports." },
@@ -543,7 +543,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EN-03",
         title: { ar: "إدارة غازات التبريد والتخلص منها", en: "Refrigerant gas management & disposal" },
-        desc: { ar: "Refrigerant Gas Management", en: "Refrigerant gas management" },
+        desc: { ar: "إدارة غازات التبريد", en: "Refrigerant gas management" },
         objective: { ar: "ضبط تداول غازات التبريد ومنع تسربها إلى الغلاف الجوي والتخلص منها نظامياً.", en: "Control refrigerant gas handling, prevent atmospheric release and dispose of it lawfully." },
         scope: { ar: "كل أنظمة التبريد الثابتة والمتنقلة وأسطوانات الغاز المخزّنة.", en: "All fixed and mobile refrigeration systems and stored gas cylinders." },
         steps: { ar: "1) سجل جرد لكل أسطوانة يبيّن النوع والكمية الداخلة والمستهلكة. 2) لا يتعامل مع الغازات إلا فني تبريد معتمد. 3) كشف التسرب دورياً بجهاز معتمد وتسجيل النتيجة. 4) إصلاح أي تسرب خلال 14 يوماً وإعادة الفحص بعد الإصلاح. 5) استرجاع الغاز في أسطوانات مخصصة عند الصيانة وعدم تفريغه في الهواء. 6) تسليم الغاز المستهلك لشركة معتمدة مع شهادة تخلص. 7) تخزين الأسطوانات واقفة ومربوطة في مكان مهوى بعيداً عن مصادر الحرارة.", en: "1) An inventory log per cylinder showing type, quantity received and quantity used. 2) Only a certified refrigeration technician handles the gases. 3) Periodic leak detection with an approved instrument, with results recorded. 4) Repair any leak within 14 days and re-test after repair. 5) Recover gas into dedicated cylinders during maintenance; never vent to atmosphere. 6) Hand spent gas to an approved contractor and obtain a disposal certificate. 7) Store cylinders upright and secured in a ventilated area away from heat sources." },
@@ -558,7 +558,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-EN-04",
         title: { ar: "مراقبة استهلاك الطاقة والمياه", en: "Energy & water consumption monitoring" },
-        desc: { ar: "Energy & Water Monitoring", en: "Energy & water monitoring" },
+        desc: { ar: "مراقبة الطاقة والمياه", en: "Energy & water monitoring" },
         objective: { ar: "متابعة استهلاك الطاقة والمياه وخفض الهدر والانبعاثات المرتبطة به.", en: "Monitor energy and water consumption and reduce waste and the emissions linked to it." },
         scope: { ar: "كل العدادات الكهربائية وعدادات المياه في المواقع والمستودعات.", en: "All electricity and water meters across sites and warehouses." },
         steps: { ar: "1) قراءة العدادات شهرياً وتسجيلها في نفس اليوم من كل شهر. 2) مقارنة الاستهلاك بالشهر المماثل من العام السابق وبكمية الإنتاج. 3) التحقق من أي ارتفاع غير مبرر يتجاوز 10٪ وفتح بلاغ صيانة. 4) فحص تسريبات المياه وأبواب الغرف الباردة وعوازلها. 5) صيانة وقائية للضواغط والمكثفات حسب الجدول. 6) عرض المؤشرات في مراجعة الإدارة وتحديد أهداف خفض سنوية.", en: "1) Read meters monthly, on the same day each month. 2) Compare consumption with the same month last year and with production volume. 3) Investigate any unexplained rise above 10% and raise a maintenance request. 4) Check for water leaks and inspect cold-room doors and seals. 5) Preventive maintenance of compressors and condensers per schedule. 6) Present the indicators at management review and set annual reduction targets." },
@@ -573,12 +573,12 @@ export const SOP_GROUPS = [
     ],
   },
   {
-    id: "ad", title: { ar: "Administrative — الإدارية المساندة", en: "Administrative" }, short: { ar: "الإدارية", en: "Administrative" }, color: "#7c3aed", bg: "#e9d5ff",
+    id: "ad", title: { ar: "الإدارية المساندة", en: "Administrative" }, short: { ar: "الإدارية", en: "Administrative" }, color: "#7c3aed", bg: "#e9d5ff",
     items: [
       {
         code: "SOP-AD-01",
         title: { ar: "مراجعة وثائق HSE السنوية", en: "Annual HSE document review" },
-        desc: { ar: "Annual Documentation Review", en: "Annual documentation review" },
+        desc: { ar: "المراجعة السنوية للوثائق", en: "Annual documentation review" },
         objective: { ar: "ضمان أن كل سياسات وإجراءات ونماذج HSE سارية ومحدّثة ومعتمدة ومتاحة لمن يحتاجها.", en: "Ensure every HSE policy, procedure and form is current, updated, approved and available to whoever needs it." },
         scope: { ar: "السياسات، الإجراءات التشغيلية القياسية، تقييمات المخاطر، النماذج، ولوحات التعليمات.", en: "Policies, standard operating procedures, risk assessments, forms and instruction boards." },
         steps: { ar: "1) حصر كل الوثائق في سجل رئيسي يبيّن الرقم والنسخة وتاريخ الإصدار وتاريخ المراجعة القادمة. 2) مراجعة سنوية لكل وثيقة، أو فور حدوث تغيير أو حادث أو ملاحظة تفتيش. 3) تعديل الوثيقة ورفع رقم المراجعة. 4) الاعتماد بتوقيع مدير HSE قبل التداول. 5) سحب النسخ القديمة من التداول وحفظ نسخة مؤرشفة واحدة موسومة «ملغاة». 6) توزيع النسخة الجديدة وتدريب المعنيين عليها. 7) تسجيل التغيير في سجل التغييرات.", en: "1) List every document in a master register showing number, revision, issue date and next review date. 2) Review each document annually, or immediately after a change, incident or inspection finding. 3) Amend the document and raise its revision number. 4) Approve by the HSE Manager's signature before circulation. 5) Withdraw superseded copies and keep one archived copy marked \"obsolete\". 6) Distribute the new revision and train those affected. 7) Record the change in the change log." },
@@ -593,7 +593,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-AD-02",
         title: { ar: "التدقيق الداخلي", en: "Internal audit" },
-        desc: { ar: "Internal Audit", en: "Internal audit" },
+        desc: { ar: "التدقيق الداخلي", en: "Internal audit" },
         objective: { ar: "التحقق المستقل من تطبيق نظام HSE فعلياً وكشف الفجوات قبل التدقيق الخارجي.", en: "Independently verify that the HSE system is actually applied and find gaps before an external audit does." },
         scope: { ar: "كل الأقسام والمواقع والعمليات والمقاولين العاملين داخل المنشأة.", en: "All departments, sites, processes and contractors working inside the facility." },
         steps: { ar: "1) خطة تدقيق سنوية تغطي كل قسم مرة على الأقل. 2) اختيار مدققين مدرّبين ومستقلين عن النشاط المدقَّق. 3) إعداد قائمة فحص مستمدة من الإجراءات والتشريعات. 4) تنفيذ التدقيق عبر المقابلات والملاحظة الميدانية ومراجعة السجلات. 5) تصنيف الملاحظات: عدم مطابقة كبرى أو صغرى أو فرصة تحسين. 6) إصدار التقرير خلال أسبوع مع ردود الإدارة. 7) فتح إجراء تصحيحي لكل عدم مطابقة بمسؤول وموعد. 8) متابعة الإغلاق والتحقق من الفعالية. 9) عرض النتائج في مراجعة الإدارة.", en: "1) An annual audit plan covering every department at least once. 2) Auditors are trained and independent of the activity being audited. 3) Build the checklist from the procedures and the legal requirements. 4) Conduct the audit through interviews, field observation and record review. 5) Classify findings as major non-conformity, minor non-conformity or improvement opportunity. 6) Issue the report within a week, with management responses. 7) Raise a corrective action for each non-conformity with an owner and a due date. 8) Track closure and verify effectiveness. 9) Present the results at management review." },
@@ -608,7 +608,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-AD-03",
         title: { ar: "استقبال مفتشي الجهات الحكومية", en: "Government inspector reception" },
-        desc: { ar: "Govt Inspection Reception", en: "Govt inspection reception" },
+        desc: { ar: "استقبال التفتيش الحكومي", en: "Govt inspection reception" },
         objective: { ar: "استقبال مفتشي البلدية والدفاع المدني والجهات الرقابية بشكل منظم وتقديم السجلات المطلوبة بدقة.", en: "Receive municipality, Civil Defence and regulatory inspectors in an organised way and present the required records accurately." },
         scope: { ar: "كل زيارات التفتيش الحكومي، المعلنة والمفاجئة، في جميع المواقع.", en: "All government inspections, announced and unannounced, at every site." },
         steps: { ar: "1) التحقق من هوية المفتش وتسجيله في سجل الزوار. 2) إبلاغ مدير الموقع ومسؤول HSE فوراً. 3) عدم ترك المفتش وحده؛ يرافقه موظف مخوّل طوال الزيارة. 4) تزويده بمعدات الوقاية المطلوبة قبل دخول مناطق الإنتاج. 5) تقديم السجلات المطلوبة فقط، بصورة صحيحة، ودون تخمين في الإجابات. 6) تدوين كل ملاحظة شفهية أو مكتوبة أثناء الزيارة. 7) استلام نسخة من التقرير وتوقيعها. 8) فتح إجراء تصحيحي لكل ملاحظة خلال 24 ساعة وإبلاغ الإدارة. 9) الرد على الجهة ضمن المهلة المحددة مرفقاً بالدليل.", en: "1) Verify the inspector's identity and record it in the visitor log. 2) Notify the site manager and the HSE officer immediately. 3) Never leave the inspector alone; an authorised employee accompanies them throughout. 4) Provide the required PPE before entering production areas. 5) Present only the records requested, accurately, and never guess at an answer. 6) Write down every verbal or written observation made during the visit. 7) Take and sign a copy of the report. 8) Raise a corrective action for each finding within 24 hours and inform management. 9) Reply to the authority within the stated deadline, with evidence attached." },
@@ -623,7 +623,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-AD-04",
         title: { ar: "إدارة المقاولين والموردين", en: "Contractor & supplier management" },
-        desc: { ar: "Contractors & Suppliers", en: "Contractors & suppliers" },
+        desc: { ar: "المقاولون والموردون", en: "Contractors & suppliers" },
         objective: { ar: "ضمان التزام المقاولين والموردين بمتطلبات السلامة وسلامة الغذاء قبل العمل وأثناءه.", en: "Ensure contractors and suppliers meet safety and food-safety requirements before and during the work." },
         scope: { ar: "مقاولو الصيانة والنظافة ومكافحة الحشرات والنقل، وموردو المواد والخدمات.", en: "Maintenance, cleaning, pest-control and transport contractors, and suppliers of materials and services." },
         steps: { ar: "1) تقييم أولي قبل التعاقد يشمل التراخيص والتأمين وسجل السلامة والشهادات. 2) إدراج متطلبات HSE ضمن نص العقد. 3) تدريب تعريفي لكل عامل مقاول قبل دخول الموقع. 4) تصريح عمل لأي مهمة عالية الخطورة. 5) إشراف ومتابعة يومية من مالك المنطقة. 6) تقييم أداء دوري وتسجيل أي مخالفة. 7) إيقاف المقاول المتكرر المخالفة وإعادة تأهيله أو استبعاده. 8) مراجعة قائمة المعتمدين سنوياً.", en: "1) Pre-contract assessment covering licences, insurance, safety record and certificates. 2) HSE requirements written into the contract. 3) Induction training for every contractor worker before site entry. 4) A work permit for any high-risk task. 5) Daily supervision and follow-up by the area owner. 6) Periodic performance evaluation with every breach recorded. 7) Repeat offenders are suspended and either re-qualified or removed. 8) The approved list is reviewed annually." },
@@ -638,7 +638,7 @@ export const SOP_GROUPS = [
       {
         code: "SOP-AD-05",
         title: { ar: "إدارة التغيير", en: "Management of Change" },
-        desc: { ar: "Management of Change", en: "Management of change" },
+        desc: { ar: "إدارة التغيير", en: "Management of change" },
         objective: { ar: "تقييم أثر أي تغيير في المعدات أو العمليات أو المواد أو الأفراد على السلامة قبل تنفيذه.", en: "Assess the safety impact of any change to equipment, process, materials or people before it is implemented." },
         scope: { ar: "المعدات الجديدة، تعديل خطوط الإنتاج، تغيير المواد أو الموردين، تعديل المباني، وتغيير المسؤوليات.", en: "New equipment, production-line modifications, changes of material or supplier, building alterations and changes of responsibility." },
         steps: { ar: "1) تقديم طلب تغيير يوضح الوصف والسبب والمدى. 2) تقييم مخاطر التغيير من فريق يضم HSE وسلامة الغذاء والصيانة. 3) تحديد الضوابط الجديدة وتحديث تقييم المخاطر والإجراءات المتأثرة. 4) اعتماد التغيير من الإدارة قبل التنفيذ. 5) تدريب المعنيين على الوضع الجديد. 6) تنفيذ التغيير مع مراقبة مكثفة في المرحلة الأولى. 7) مراجعة بعد فترة محددة للتأكد من عدم ظهور مخاطر جديدة. 8) إغلاق طلب التغيير وأرشفته.", en: "1) Submit a change request stating the description, reason and extent. 2) Assess the change's risks with a team including HSE, food safety and maintenance. 3) Define the new controls and update the affected risk assessments and procedures. 4) Obtain management approval before implementation. 5) Train everyone affected on the new arrangement. 6) Implement with intensified monitoring in the early stage. 7) Review after a defined period to confirm no new hazards emerged. 8) Close and archive the change request." },

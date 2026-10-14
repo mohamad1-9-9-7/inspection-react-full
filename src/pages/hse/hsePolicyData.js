@@ -217,7 +217,7 @@ export const POLICIES = [
   },
   {
     id: 16, code: "POL-MOC-01",
-    title: { ar: "سياسة إدارة التغيير (Management of Change)", en: "Management of Change Policy" },
+    title: { ar: "سياسة إدارة التغيير", en: "Management of Change Policy" },
     purpose: { ar: "ضمان أن أي تغيير في المعدات، العمليات، المواد الخام، أو هيكل الموظفين يخضع لتقييم مخاطر مسبق قبل التنفيذ لمنع إدخال مخاطر جديدة دون قصد.",
                 en: "Ensure any change in equipment, processes, raw materials, or staff structure undergoes prior risk assessment before implementation — to prevent unintentionally introducing new risks." },
     scope: { ar: "تغيير معدات، خطوط إنتاج، موردين، مواد كيميائية، تخطيط المستودع، تغييرات تنظيمية، تغيير سياسات.",
@@ -231,7 +231,7 @@ export const POLICIES = [
   },
   {
     id: 17, code: "POL-WP-01",
-    title: { ar: "سياسة تصاريح العمل (Work Permits)", en: "Work Permit System Policy" },
+    title: { ar: "سياسة تصاريح العمل", en: "Work Permit System Policy" },
     purpose: { ar: "ضمان أن الأعمال الخطرة (الأعمال الساخنة، الأماكن المغلقة، الارتفاعات، الكهرباء، الكيماويات) لا تبدأ إلا بعد تقييم رسمي للمخاطر، اتخاذ احتياطات محددة، واعتماد من مدير HSE.",
                 en: "Ensure hazardous work (hot work, confined spaces, heights, electrical, chemicals) does not start until after formal risk assessment, defined precautions, and HSE Manager approval." },
     scope: { ar: "أعمال اللحام/القطع/الطحن، الدخول لخزانات أو مساحات ضيقة، العمل بارتفاع >1.8م، الصيانة الكهربائية، تداول كيماويات خطرة، الحفريات، الرفع الثقيل بكرين.",

@@ -75,11 +75,11 @@ const STRATEGIC_GOALS = [
 
 const SCOPE_LOCATIONS = [
   { ar: "جميع المستودعات المبردة (2-3 مواقع) — غرف التجميد والتبريد", en: "All cold storage warehouses (2–3 sites) — freezer & chiller rooms" },
-  { ar: "خط إعادة التصنيع ومنطقة تجهيز اللحوم (Meat Processing Area)", en: "Re-processing line and meat preparation area" },
-  { ar: "منطقة الاستلام (Receiving Bay) ومنطقة الشحن (Dispatch Bay)", en: "Receiving Bay and Dispatch Bay" },
+  { ar: "خط إعادة التصنيع ومنطقة تجهيز اللحوم", en: "Re-processing line and meat preparation area" },
+  { ar: "منطقة الاستلام ومنطقة الشحن", en: "Receiving Bay and Dispatch Bay" },
   { ar: "المكاتب الإدارية وصالات العرض", en: "Administrative offices and showrooms" },
   { ar: "أسطول المركبات المبردة الخاصة بالتوزيع", en: "Refrigerated distribution fleet" },
-  { ar: "عمليات النقل من الموانئ والمطارات (Jebel Ali / Dubai Cargo Village) إلى المستودعات", en: "Transport from ports/airports (Jebel Ali / Dubai Cargo Village) to warehouses" },
+  { ar: "عمليات النقل من الموانئ والمطارات (جبل علي / قرية دبي للشحن) إلى المستودعات", en: "Transport from ports/airports (Jebel Ali / Dubai Cargo Village) to warehouses" },
 ];
 
 const SCOPE_PEOPLE = [

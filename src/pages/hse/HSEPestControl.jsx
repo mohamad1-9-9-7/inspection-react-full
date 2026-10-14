@@ -5,7 +5,7 @@ import { todayISO } from "./hseShared";
 
 const VISIT_TYPES = [
   { v: "monthly",   ar: "🗓️ شهري دوري",     en: "🗓️ Monthly routine" },
-  { v: "emergency", ar: "🚨 طارئ (Infestation)", en: "🚨 Emergency (Infestation)" },
+  { v: "emergency", ar: "🚨 طارئ (انتشار آفات)", en: "🚨 Emergency (Infestation)" },
   { v: "followup",  ar: "🔁 متابعة",         en: "🔁 Follow-up" },
 ];
 
@@ -38,7 +38,7 @@ export default function HSEPestControl() {
         { key: "treatment",     label: { ar: "الإجراء المُتَّخذ", en: "Action taken" }, type: "textarea", fullWidth: true, placeholder: { ar: "نوع المبيد / فخاخ / تنظيف…", en: "Pesticide / traps / cleaning…" }, requiredIf: (d) => !!String(d.pestsFound || "").trim() || d.visitType === "emergency", requiredMsg: { ar: "تم رصد آفات / زيارة طارئة — اكتب الإجراء المتَّخذ", en: "Pests found / emergency visit — describe the action taken" } },
         { key: "attachments",   label: { ar: "📎 تقرير الشركة / صور (PDF أو صورة)", en: "📎 Company report / photos (PDF or image)" }, type: "file", fullWidth: true },
         { key: "nextVisitDate", label: { ar: "موعد الزيارة القادمة", en: "Next visit date" }, type: "date", after: "date", requiredIf: (d) => d.visitType === "monthly", validate: (v, d) => { if (!v || !d.date || d.visitType !== "monthly") return null; const days = (new Date(v) - new Date(d.date)) / 86400000; return days > 35 ? { ar: "الزيارة الشهرية القادمة يجب ألا تتجاوز 35 يوماً", en: "The next monthly visit must be within 35 days" } : null; } },
-        { key: "receivedBy",    label: { ar: "استلم التقرير (HSE Officer)", en: "Report received by (HSE Officer)" }, type: "text", required: true, maxLength: 80 },
+        { key: "receivedBy",    label: { ar: "استلم التقرير", en: "Report received by (HSE Officer)" }, type: "text", required: true, maxLength: 80 },
       ]}
       listColumns={[
         { key: "date",          label: { ar: "التاريخ", en: "Date" } },

@@ -91,12 +91,12 @@ const T = {
 const EQUIPMENT_TYPES = [
   { v: "fe_dcp",    ar: "طفاية بودرة جافة (DCP)",       en: "Dry Chemical Powder Extinguisher" },
   { v: "fe_co2",    ar: "طفاية CO₂",                    en: "CO₂ Extinguisher" },
-  { v: "fe_foam",   ar: "طفاية رغوة (Foam)",            en: "Foam Extinguisher" },
+  { v: "fe_foam",   ar: "طفاية رغوة",            en: "Foam Extinguisher" },
   { v: "fe_water",  ar: "طفاية مياه",                    en: "Water Extinguisher" },
-  { v: "fe_kclass", ar: "طفاية مطبخ (Class K)",          en: "Kitchen Extinguisher (K-Class)" },
-  { v: "hose",      ar: "خرطوم إطفاء (Fire Hose Reel)",  en: "Fire Hose Reel" },
-  { v: "hydrant",   ar: "حنفية إطفاء (Hydrant)",          en: "Fire Hydrant" },
-  { v: "sprink",    ar: "نظام رشاشات (Sprinkler)",        en: "Sprinkler System" },
+  { v: "fe_kclass", ar: "طفاية مطبخ (فئة K)",          en: "Kitchen Extinguisher (K-Class)" },
+  { v: "hose",      ar: "خرطوم إطفاء",  en: "Fire Hose Reel" },
+  { v: "hydrant",   ar: "حنفية إطفاء",          en: "Fire Hydrant" },
+  { v: "sprink",    ar: "نظام رشاشات",        en: "Sprinkler System" },
   { v: "smoke",     ar: "كاشف دخان",                      en: "Smoke Detector" },
   { v: "heat",      ar: "كاشف حرارة",                     en: "Heat Detector" },
   { v: "alarm",     ar: "نقطة إنذار يدوية (MCP)",         en: "Manual Call Point (MCP)" },
@@ -131,7 +131,7 @@ function fireRowError(r, rows, d) {
   if (rows.filter((x) => String(x.id || "").trim().toLowerCase() === id.toLowerCase()).length > 1)
     return { ar: "رقم المعدّة مكرّر في نفس الفحص", en: "Equipment ID is repeated in this inspection" };
   if (!String(r.location || "").trim()) return { ar: "مكان التركيب إلزامي", en: "Mounting location is required" };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   if (r.lastService && r.lastService > today) return { ar: "آخر صيانة لا تكون في المستقبل", en: "Last service cannot be in the future" };
   if (r.lastService && r.nextDue && r.nextDue <= r.lastService)
     return { ar: "الصيانة القادمة يجب أن تكون بعد آخر صيانة", en: "Next service must be after the last service" };

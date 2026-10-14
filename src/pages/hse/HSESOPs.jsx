@@ -11,6 +11,11 @@ import { findPolicy } from "./hsePolicyData";
 import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 
+/* PDF exports are English-only: html2canvas cannot shape Arabic, so an Arabic
+   page would print broken letters. The PDF stage always renders with this
+   picker, whatever language the screen is in. */
+const PDF_PICK = (x) => (x && typeof x === "object" ? (x.en ?? x.ar ?? "") : x);
+
 const T = {
   brandLine1:   { ar: "ترانس إميرتس لتجارة المواشي ذ.م.م", en: "TRANS EMIRATES LIVESTOCK TRADING L.L.C." },
   brandLine2:   { ar: "الأسماك والمواشي — نظام إدارة الصحة والسلامة والبيئة", en: "AL MAWASHI — HSE Management System" },
@@ -553,7 +558,10 @@ export default function HSESOPs() {
         )}
 
         {/* ── وثائق الـ PDF خارج #root ── */}
-        {createPortal(
+        {(() => {
+          // English-only PDF stage (see PDF_PICK)
+          const pick = PDF_PICK; const lang = "en"; const dir = "ltr";
+          return createPortal(
           <div ref={registerRef} style={pdfStageStyle(1400)} dir={dir}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
               <img src={mawashiLogo} alt="" style={{ height: 52 }} />
@@ -598,9 +606,13 @@ export default function HSESOPs() {
             </table>
           </div>,
           document.body
-        )}
+        );
+        })()}
 
-        {selected && createPortal(
+        {selected && (() => {
+          // English-only PDF stage (see PDF_PICK)
+          const pick = PDF_PICK; const lang = "en"; const dir = "ltr";
+          return createPortal(
           <div ref={sopRef} style={pdfStageStyle(900)} dir={dir}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
               <img src={mawashiLogo} alt="" style={{ height: 52 }} />
@@ -632,7 +644,8 @@ export default function HSESOPs() {
             ))}
           </div>,
           document.body
-        )}
+        );
+        })()}
       </div>
     </main>
   );

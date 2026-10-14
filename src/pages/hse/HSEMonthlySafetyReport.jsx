@@ -37,13 +37,13 @@ const T = {
   location:     { ar: "الموقع", en: "Location" },
 
   // Section 2 — KPI metrics
-  s2Title:      { ar: "2️⃣ مؤشرات المشروع (Project KPIs)", en: "2️⃣ Project KPIs" },
+  s2Title:      { ar: "2️⃣ مؤشرات المشروع", en: "2️⃣ Project KPIs" },
   thisMonth:    { ar: "هذا الشهر", en: "This Period" },
   cumulative:   { ar: "تراكمي", en: "Cumulative" },
   metric:       { ar: "المؤشر", en: "Indicator" },
 
   // Section 3
-  s3Title:      { ar: "3️⃣ الصحة والسلامة (Health & Safety)", en: "3️⃣ Health & Safety" },
+  s3Title:      { ar: "3️⃣ الصحة والسلامة", en: "3️⃣ Health & Safety" },
 
   // Section 4
   s4Title:      { ar: "4️⃣ التدريب والتوعية", en: "4️⃣ Training & Awareness" },
@@ -97,7 +97,7 @@ const PROJECT_METRICS = [
 const HEALTH_METRICS = [
   { v: "fatalities", ar: "الوفيات (FAT)",                          en: "Fatalities (FAT)" },
   { v: "lta",        ar: "حوادث فقد وقت (LTA)",                    en: "Lost Time Accidents (LTA)" },
-  { v: "nearMiss",   ar: "شبه حوادث (Near Misses)",                en: "Near Misses (NM)" },
+  { v: "nearMiss",   ar: "شبه حوادث",                en: "Near Misses (NM)" },
   { v: "majorAcc",       ar: "حوادث كبرى",                              en: "Major Accidents" },
   { v: "occIllness", ar: "حالات أمراض مهنية",                      en: "Occupational Illness Cases" },
   { v: "tri",        ar: "إجمالي الحوادث المُسجَّلة (TRI)",         en: "Total Recordable Incidents (TRI)" },
@@ -111,7 +111,7 @@ const HEALTH_METRICS = [
 
 const TRAINING_METRICS = [
   { v: "toolbox",     ar: "اجتماعات Toolbox للسلامة",              en: "Toolbox Talks (Health & Safety topics)" },
-  { v: "induction",   ar: "تأهيل سلامة (Induction)",                en: "Safety Induction" },
+  { v: "induction",   ar: "تأهيل سلامة",                en: "Safety Induction" },
   { v: "tsa",         ar: "إحاطات تحليل سلامة المهام (TSA)",         en: "Task Safety Analysis (TSA) Briefings" },
   { v: "repMeetings", ar: "اجتماعات ممثلي السلامة",                  en: "Safety Representatives Meetings" },
   { v: "internalTr",  ar: "تدريب داخلي على إجراءات IMS",            en: "Internal Training on IMS Procedures" },

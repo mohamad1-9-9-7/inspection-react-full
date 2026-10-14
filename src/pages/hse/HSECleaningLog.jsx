@@ -18,8 +18,8 @@ const AREAS = [
   { v: "freezer-1",   ar: "غرفة التجميد #1", en: "Freezer Room #1" },
   { v: "freezer-2",   ar: "غرفة التجميد #2", en: "Freezer Room #2" },
   { v: "freezer-3",   ar: "غرفة التجميد #3", en: "Freezer Room #3" },
-  { v: "receiving",   ar: "منطقة الاستلام (Receiving Bay)", en: "Receiving Bay" },
-  { v: "dispatch",    ar: "منطقة الشحن (Dispatch Bay)",     en: "Dispatch Bay" },
+  { v: "receiving",   ar: "منطقة الاستلام", en: "Receiving Bay" },
+  { v: "dispatch",    ar: "منطقة الشحن",     en: "Dispatch Bay" },
   { v: "handwash",    ar: "أحواض غسل اليدين", en: "Hand-washing sinks" },
   { v: "toilets",     ar: "دورات المياه",     en: "Toilets" },
   { v: "lockers",     ar: "غرف تغيير الملابس", en: "Locker rooms" },
@@ -27,7 +27,7 @@ const AREAS = [
   { v: "boards",      ar: "ألواح التقطيع",     en: "Cutting boards" },
   { v: "mixers",      ar: "خلاطات اللحوم",     en: "Meat mixers" },
   { v: "floors",      ar: "أرضيات المستودع",   en: "Warehouse floors" },
-  { v: "drains",      ar: "مصارف المياه (Drains)", en: "Drains" },
+  { v: "drains",      ar: "مصارف المياه", en: "Drains" },
 ];
 
 const SANITIZERS = [
@@ -78,7 +78,7 @@ export default function HSECleaningLog() {
         { key: "contactTime",   label: { ar: "وقت التلامس (دقائق)", en: "Contact time (min)" }, type: "number", int: true, min: 1, max: 60, requiredIf: (d) => !!d.sanitizerUsed && d.sanitizerUsed !== "hotwater", hint: { ar: "من 1 إلى 60 دقيقة", en: "1 to 60 minutes" } },
         { key: "rinseDone",     label: { ar: "✅ تم الشطف بالماء النظيف", en: "✅ Rinsed with clean water" }, type: "checkbox" },
         { key: "visualCheck",   label: { ar: "✅ فحص بصري بعد التنظيف ناجح", en: "✅ Post-cleaning visual check passed" }, type: "checkbox" },
-        { key: "verifiedBy",    label: { ar: "تحقّق بواسطة (Food Safety Officer)", en: "Verified by (Food Safety Officer)" }, type: "text", maxLength: 80, validate: (v, d) => v && d.cleanedBy && v.trim().toLowerCase() === d.cleanedBy.trim().toLowerCase() ? { ar: "المتحقِّق يجب أن يكون شخصاً غير المنفِّذ", en: "The verifier must be a different person from the performer" } : null },
+        { key: "verifiedBy",    label: { ar: "تحقّق بواسطة (مسؤول سلامة الغذاء)", en: "Verified by (Food Safety Officer)" }, type: "text", maxLength: 80, validate: (v, d) => v && d.cleanedBy && v.trim().toLowerCase() === d.cleanedBy.trim().toLowerCase() ? { ar: "المتحقِّق يجب أن يكون شخصاً غير المنفِّذ", en: "The verifier must be a different person from the performer" } : null },
         { key: "notes",         label: { ar: "ملاحظات / مشاكل لُوحظت", en: "Notes / issues observed" }, type: "textarea", fullWidth: true, requiredIf: (d) => !d.visualCheck || !d.rinseDone, requiredMsg: { ar: "الفحص البصري أو الشطف غير مؤكَّد — اكتب المشكلة والإجراء المتَّخذ", en: "Visual check or rinse not confirmed — describe the issue and the action taken" } },
       ]}
       listColumns={[

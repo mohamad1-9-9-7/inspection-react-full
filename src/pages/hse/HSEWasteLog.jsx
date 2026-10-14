@@ -12,7 +12,7 @@ const WASTE_TYPES = [
   { v: "packaging",        ar: "📦 مواد تغليف (كرتون/بلاستيك)", en: "📦 Packaging (cardboard/plastic)" },
   { v: "general",          ar: "🗑️ نفايات عامة", en: "🗑️ General waste" },
   { v: "chemical",         ar: "🧪 كيماويات (تنظيف/تعقيم)", en: "🧪 Chemicals (cleaning/sanitation)" },
-  { v: "refrigerant",      ar: "❄️ غازات تبريد (Ammonia/Freon)", en: "❄️ Refrigerant gases (Ammonia/Freon)" },
+  { v: "refrigerant",      ar: "❄️ غازات تبريد (أمونيا / فريون)", en: "❄️ Refrigerant gases (Ammonia/Freon)" },
   { v: "medical",          ar: "🩹 نفايات طبية (PPE ملوث)", en: "🩹 Medical waste (contaminated PPE)" },
   { v: "wastewater",       ar: "💧 مياه صرف", en: "💧 Wastewater" },
 ];
@@ -20,7 +20,7 @@ const WASTE_TYPES = [
 const METHODS = [
   { v: "licensedCompany", ar: "🚛 شركة معتمدة (DM)", en: "🚛 DM-approved company" },
   { v: "incineration",    ar: "🔥 حرق", en: "🔥 Incineration" },
-  { v: "rendering",       ar: "♻️ إعادة تدوير (Rendering)", en: "♻️ Rendering" },
+  { v: "rendering",       ar: "♻️ إعادة تدوير", en: "♻️ Rendering" },
   { v: "landfill",        ar: "🏭 طمر صحي", en: "🏭 Sanitary landfill" },
   { v: "composting",      ar: "🌱 تحويل لسماد", en: "🌱 Composting" },
   { v: "specialDisposal", ar: "⚠️ تخلص خاص (خطر)", en: "⚠️ Special disposal (hazardous)" },
@@ -63,7 +63,7 @@ export default function HSEWasteLog() {
         { key: "disposalMethod",  label: { ar: "طريقة التخلص", en: "Disposal method" }, type: "select", options: METHODS, required: true, validate: (v, d) => ["chemical","refrigerant","medical"].includes(d.wasteType) && v && !["specialDisposal","incineration","licensedCompany"].includes(v) ? { ar: "النفايات الخطرة تُسلَّم لتخلص خاص أو حرق أو شركة معتمدة فقط", en: "Hazardous waste may only go to special disposal, incineration or a licensed company" } : null },
         { key: "disposalCompany", label: { ar: "شركة التخلص", en: "Disposal company" }, type: "text", required: true, minLength: 2, maxLength: 120 },
         { key: "dmLicenseNo",     label: { ar: "رقم ترخيص الشركة (DM)", en: "Company license No. (DM)" }, type: "text", requiredIf: (d) => d.disposalMethod === "licensedCompany" || ["chemical","refrigerant","medical"].includes(d.wasteType), maxLength: 40 },
-        { key: "manifestNo",      label: { ar: "رقم وثيقة النقل (Manifest)", en: "Manifest No." }, type: "text", requiredIf: (d) => ["chemical","refrigerant","medical"].includes(d.wasteType), maxLength: 40, requiredMsg: { ar: "النفايات الخطرة تحتاج رقم وثيقة نقل", en: "Hazardous waste needs a manifest number" } },
+        { key: "manifestNo",      label: { ar: "رقم وثيقة النقل", en: "Manifest No." }, type: "text", requiredIf: (d) => ["chemical","refrigerant","medical"].includes(d.wasteType), maxLength: 40, requiredMsg: { ar: "النفايات الخطرة تحتاج رقم وثيقة نقل", en: "Hazardous waste needs a manifest number" } },
         { key: "vehiclePlate",    label: { ar: "رقم شاحنة النقل", en: "Truck plate No." }, type: "text", maxLength: 20 },
         { key: "driverName",      label: { ar: "اسم السائق", en: "Driver name" }, type: "text", maxLength: 80 },
         { key: "cost",            label: { ar: "التكلفة (درهم)", en: "Cost (AED)" }, type: "number", min: 0, max: 1000000 },

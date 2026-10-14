@@ -79,7 +79,7 @@ export const SITE_LOCATIONS = [
   { v: "QCS — Al Qusais Cold Storage",                  ar: "QCS — مستودع تبريد القصيص",            en: "QCS — Al Qusais Cold Storage" },
   { v: "Production / Processing Line",                  ar: "خط الإنتاج / التصنيع",                  en: "Production / Processing Line" },
   { v: "Receiving Bay — Air Cargo Reception",           ar: "منطقة الاستلام — شحن جوي",              en: "Receiving Bay — Air Cargo Reception" },
-  { v: "Dispatch Bay",                                  ar: "منطقة الشحن (Dispatch Bay)",            en: "Dispatch Bay" },
+  { v: "Dispatch Bay",                                  ar: "منطقة الشحن",            en: "Dispatch Bay" },
   { v: "Loading & Unloading Bay",                       ar: "منطقة التحميل والتفريغ",                 en: "Loading & Unloading Bay" },
   { v: "Frozen Room (-18°C)",                           ar: "غرفة التجميد (-18°م)",                   en: "Frozen Room (-18°C)" },
   { v: "Chiller Room (0 to +4°C)",                      ar: "غرفة التبريد (0 إلى +4°م)",             en: "Chiller Room (0 to +4°C)" },
@@ -104,7 +104,7 @@ export const MEAT_PRODUCT_TYPES = [
 ];
 
 export const HAZARD_CATEGORIES = [
-  { v: "biological",      ar: "بيولوجي — ميكروبي (Salmonella/E.coli/Listeria)", en: "Biological — Microbiological (Salmonella/E.coli/Listeria)" },
+  { v: "biological",      ar: "بيولوجي — ميكروبي (سالمونيلا، إي كولاي، ليستيريا)", en: "Biological — Microbiological (Salmonella/E.coli/Listeria)" },
   { v: "chemical",        ar: "كيميائي — مواد تنظيف / غازات تبريد",                en: "Chemical — Cleaning chemicals / Refrigerant gas" },
   { v: "physical",        ar: "ميكانيكي — قطوع / انزلاق / سقوط / رافعات",         en: "Physical — Cuts / Slips / Falling objects / Forklift" },
   { v: "coldchain",       ar: "سلسلة التبريد — انحراف حرارة",                       en: "Cold-chain — Temperature deviation" },
@@ -118,9 +118,9 @@ export const HAZARD_CATEGORIES = [
 
 /** تصنيف نوع التحكم — هرم الضبط (Hierarchy of Controls) وفق ISO 45001 */
 export const CONTROL_TYPES = [
-  { v: "elimination",   ar: "إزالة الخطر (Elimination)",                 en: "Elimination" },
-  { v: "substitution",  ar: "استبدال (Substitution)",                     en: "Substitution" },
-  { v: "engineering",   ar: "ضبط هندسي (Engineering)",                    en: "Engineering control" },
+  { v: "elimination",   ar: "إزالة الخطر",                 en: "Elimination" },
+  { v: "substitution",  ar: "استبدال",                     en: "Substitution" },
+  { v: "engineering",   ar: "ضبط هندسي",                    en: "Engineering control" },
   { v: "administrative",ar: "ضبط إداري — إجراء/تدريب/إشراف",             en: "Administrative — procedure/training/supervision" },
   { v: "ppe",           ar: "معدات وقاية شخصية (PPE)",                    en: "Personal Protective Equipment" },
   { v: "combined",      ar: "مزيج من أكثر من مستوى",                      en: "Combination of levels" },
@@ -144,7 +144,12 @@ export function localize(arr, value, lang) {
   return value;
 }
 
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+/* Local calendar date (YYYY-MM-DD). toISOString() is UTC, which in the UAE
+   (UTC+4) still says "yesterday" until 4 a.m. — night-shift reports took the
+   previous day's date. */
+export const localISODate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export const todayISO = () => localISODate();
 export const nowHHMM = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;

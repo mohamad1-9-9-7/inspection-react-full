@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
-  inputStyle, labelStyle, todayISO,
+  inputStyle, labelStyle, todayISO, localISODate,
   apiList, apiSave, apiDelete, apiUpdate, apiUploadFile, calcRiskScore, riskLevelLabel,
   SITE_LOCATIONS, HAZARD_CATEGORIES, CONTROL_TYPES, localize,
   useHSELang, HSELangToggle,
@@ -17,6 +17,11 @@ import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
 import { ISO_UI, UI } from "./hseIsoUi";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 
+
+/* PDF exports are English-only: html2canvas cannot shape Arabic, so an Arabic
+   page would print broken letters. The PDF stage always renders with this
+   picker, whatever language the screen is in. */
+const PDF_PICK = (x) => (x && typeof x === "object" ? (x.en ?? x.ar ?? "") : x);
 
 const T = {
   pageTitle:    { ar: "⚠️ سجل المخاطر التشغيلية — Risk Register", en: "⚠️ Operational Risk Register" },
@@ -36,10 +41,10 @@ const T = {
     level:  { ar: "المستوى", en: "Level" },
     action: { ar: "الإجراء المطلوب", en: "Required Action" },
   },
-  methLow:  { ar: "منخفض (Low)",     en: "Low" },
-  methMed:  { ar: "متوسط (Medium)",   en: "Medium" },
-  methHigh: { ar: "عالٍ (High)",       en: "High" },
-  methCrit: { ar: "حرج (Critical)",    en: "Critical" },
+  methLow:  { ar: "منخفض",     en: "Low" },
+  methMed:  { ar: "متوسط",   en: "Medium" },
+  methHigh: { ar: "عالٍ",       en: "High" },
+  methCrit: { ar: "حرج",    en: "Critical" },
   methActLow:  { ar: "قبول مع مراقبة دورية", en: "Accept with periodic monitoring" },
   methActMed:  { ar: "إجراءات تحكم مطلوبة ضمن 30 يوماً", en: "Control actions required within 30 days" },
   methActHigh: { ar: "إجراء فوري خلال 7 أيام + مراجعة من مدير HSE", en: "Immediate action within 7 days + HSE Manager review" },
@@ -190,7 +195,7 @@ const blank = () => ({
 function plusMonthsISO(months) {
   const d = new Date();
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  return localISODate(d);
 }
 
 /** يكمل الحقول الافتراضية قبل حفظ خطر من القائمة الجاهزة */
@@ -964,7 +969,10 @@ export default function HSERiskRegister() {
 
         {/* وثيقة الـ PDF — تُرسم خارج #root عبر بوابة حتى لا تفرض عليها
             globals.css قاعدة `#root * { font-size: 14px !important }` */}
-        {createPortal(
+        {(() => {
+          // English-only PDF stage (see PDF_PICK)
+          const pick = PDF_PICK; const lang = "en"; const dir = "ltr";
+          return createPortal(
           <div ref={pdfRef} style={pdfStageStyle(1500)} dir={dir}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #0c4a6e", paddingBottom: 10 }}>
               <img src={mawashiLogo} alt="" style={{ height: 52 }} />
@@ -1070,7 +1078,8 @@ export default function HSERiskRegister() {
             </table>
           </div>,
           document.body
-        )}
+        );
+        })()}
       </div>
     </main>
   );

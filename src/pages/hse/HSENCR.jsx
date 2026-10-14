@@ -67,9 +67,9 @@ const T = {
   // Section 4
   s4Title:      { ar: "🛠️ الإجراء التصحيحي المقترح", en: "🛠️ Proposed Corrective Action" },
   rootCause:    { ar: "تحليل السبب الجذري", en: "Root Cause Analysis" },
-  immediate:    { ar: "إجراء فوري (Containment)", en: "Immediate Containment Action" },
-  corrective:   { ar: "إجراء تصحيحي (Corrective)", en: "Corrective Action" },
-  preventive:   { ar: "إجراء وقائي (Preventive)", en: "Preventive Action" },
+  immediate:    { ar: "إجراء فوري", en: "Immediate Containment Action" },
+  corrective:   { ar: "إجراء تصحيحي", en: "Corrective Action" },
+  preventive:   { ar: "إجراء وقائي", en: "Preventive Action" },
 
   // Section 5 — Status
   s5Title:      { ar: "📊 الحالة والمتابعة", en: "📊 Status & Follow-up" },
