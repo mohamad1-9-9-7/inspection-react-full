@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost,
   cardStyle, HSE_COLORS,
-  apiList,
+  apiList, apiSave, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -34,6 +34,9 @@ const T = {
   loading: { ar: "⏳ جارٍ تحميل البيانات…", en: "⏳ Loading data…" },
   workHours: { ar: "إجمالي ساعات العمل (للسنة):", en: "Total work hours (annual):" },
   workHoursHelp: { ar: "(يستخدم في حساب LTIFR و TRIR)", en: "(used to calculate LTIFR & TRIR)" },
+  hours_saving: { ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" },
+  hours_saved:  { ar: "✅ محفوظ للجميع", en: "✅ Saved for everyone" },
+  hours_error:  { ar: "⚠️ تعذّر الحفظ — حاول مرة أخرى", en: "⚠️ Could not save — try again" },
   ltifr: { ar: "معدل إصابات فقدان الوقت", en: "Lost-Time Injury Frequency Rate" },
   trir:  { ar: "معدل الحوادث المسجّلة", en: "Total Recordable Incident Rate" },
   tempCompliance: { ar: "🌡️ الالتزام بالحرارة", en: "🌡️ Temperature Compliance" },
@@ -91,12 +94,20 @@ const HSE_KPI_TYPES = {
   capa: "capa_tracker",
 };
 
+// ساعات العمل السنوية: سجل إعدادات واحد للشركة على السيرفر (hse_kpi_settings)،
+// والـ localStorage مجرّد كاش حتى تظهر القيمة فوراً قبل ما يرجع السيرفر.
+const KPI_SETTINGS_TYPE = "kpi_settings";
+const HOURS_CACHE_KEY = "hse_kpi_workHours";
+
 export default function HSEKPIs() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
   const [workHours, setWorkHours] = useState(() => {
-    try { return Number(localStorage.getItem("hse_kpi_workHours")) || 350000; } catch { return 350000; }
+    try { return Number(localStorage.getItem(HOURS_CACHE_KEY)) || 350000; } catch { return 350000; }
   });
+  const [settingsId, setSettingsId] = useState(null);
+  const [savedHours, setSavedHours] = useState(null);
+  const [hoursStatus, setHoursStatus] = useState(""); // "" | "saving" | "saved" | "error"
 
   const [loading, setLoading] = useState(true);
   const [incidents, setIncidents] = useState([]);
@@ -108,9 +119,35 @@ export default function HSEKPIs() {
   const [evacuation, setEvacuation] = useState([]);
   const [capa, setCapa] = useState([]);
 
-  function saveHours(v) {
-    setWorkHours(v);
-    try { localStorage.setItem("hse_kpi_workHours", String(v)); } catch {}
+  async function loadSettings() {
+    const list = await apiList(KPI_SETTINGS_TYPE);
+    const rec = list[0];
+    if (!rec) return;
+    setSettingsId(rec.id || null);
+    const h = Number(rec.workHours);
+    if (h > 0) {
+      setWorkHours(h);
+      setSavedHours(h);
+      try { localStorage.setItem(HOURS_CACHE_KEY, String(h)); } catch {}
+    }
+  }
+
+  async function persistHours() {
+    const v = Number(workHours) || 0;
+    if (v <= 0 || v === savedHours) return;
+    setHoursStatus("saving");
+    try {
+      const saved = settingsId
+        ? await apiUpdate(KPI_SETTINGS_TYPE, settingsId, { workHours: v })
+        : await apiSave(KPI_SETTINGS_TYPE, { workHours: v });
+      if (saved?.id) setSettingsId(saved.id);
+      setSavedHours(v);
+      try { localStorage.setItem(HOURS_CACHE_KEY, String(v)); } catch {}
+      setHoursStatus("saved");
+    } catch (e) {
+      console.warn("KPI work-hours save error:", e?.message || e);
+      setHoursStatus("error");
+    }
   }
 
   async function loadAll() {
@@ -142,7 +179,7 @@ export default function HSEKPIs() {
       setLoading(false);
     }
   }
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); loadSettings(); }, []);
 
   const kpis = useMemo(() => {
     // LTIs are incident_reports with severity = lti / major / fatal (or type=lost_time_injury)
@@ -255,9 +292,17 @@ export default function HSEKPIs() {
 
         <div style={{ ...cardStyle, marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 800, fontSize: 13 }}>{pick(T.workHours)}</span>
-          <input type="number" value={workHours} onChange={(e) => saveHours(Number(e.target.value) || 0)} dir="ltr"
+          <input type="number" value={workHours} onChange={(e) => { setWorkHours(Number(e.target.value) || 0); setHoursStatus(""); }}
+            onBlur={persistHours}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            dir="ltr"
             style={{ width: 160, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(120,53,15,0.18)", fontWeight: 800, textAlign: "center" }} />
           <span style={{ fontSize: 12, color: "#64748b" }}>{pick(T.workHoursHelp)}</span>
+          {hoursStatus && (
+            <span style={{ fontSize: 12, fontWeight: 800, color: hoursStatus === "error" ? "#b91c1c" : hoursStatus === "saved" ? "#15803d" : "#64748b" }}>
+              {pick(T["hours_" + hoursStatus])}
+            </span>
+          )}
         </div>
 
         {loading && (

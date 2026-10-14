@@ -388,6 +388,7 @@ export const BRANCHES = [
       ["hse_training_records",           "Training Records",                      "Training & Compliance"],
       ["hse_licenses_certs",             "Licenses & Certificates",               "Training & Compliance"],
       ["hse_monthly_safety_reports",     "F-21 Monthly Safety Reports",           "Periodic Reports"],
+      ["hse_kpi_settings",               "KPI Settings (annual work hours)",      "Periodic Reports"],
     ],
   },
 

@@ -2504,32 +2504,32 @@ export default function App() {
         />
 
         {/* 🦺 HSE — Health, Safety & Environment */}
-        <Route path="/hse" element={<ProtectedRoute><HSEMenu /></ProtectedRoute>} />
-        <Route path="/hse/company-profile" element={<ProtectedRoute><HSECompanyProfile /></ProtectedRoute>} />
-        <Route path="/hse/policies" element={<ProtectedRoute><HSEPolicies /></ProtectedRoute>} />
-        <Route path="/hse/risk-register" element={<ProtectedRoute><HSERiskRegister /></ProtectedRoute>} />
-        <Route path="/hse/sops" element={<ProtectedRoute><HSESOPs /></ProtectedRoute>} />
-        <Route path="/hse/incident-report" element={<ProtectedRoute><HSEIncidentReport /></ProtectedRoute>} />
-        <Route path="/hse/work-permit" element={<ProtectedRoute><HSEWorkPermit /></ProtectedRoute>} />
-        <Route path="/hse/monthly-safety-report" element={<ProtectedRoute><HSEMonthlySafetyReport /></ProtectedRoute>} />
-        <Route path="/hse/ncr" element={<ProtectedRoute><HSENCR /></ProtectedRoute>} />
-        <Route path="/hse/fire-equipment" element={<ProtectedRoute><HSEFireEquipment /></ProtectedRoute>} />
-        <Route path="/hse/toolbox-meeting" element={<ProtectedRoute><HSEToolboxMeeting /></ProtectedRoute>} />
-        <Route path="/hse/emergency-contacts" element={<ProtectedRoute><HSEEmergencyContacts /></ProtectedRoute>} />
-        <Route path="/hse/welfare" element={<ProtectedRoute><HSEWelfare /></ProtectedRoute>} />
-        <Route path="/hse/forklift-inspection" element={<ProtectedRoute><HSEForkliftInspection /></ProtectedRoute>} />
-        <Route path="/hse/cleaning-log" element={<ProtectedRoute><HSECleaningLog /></ProtectedRoute>} />
-        <Route path="/hse/swabs-log" element={<ProtectedRoute><HSESwabsLog /></ProtectedRoute>} />
-        <Route path="/hse/pest-control" element={<ProtectedRoute><HSEPestControl /></ProtectedRoute>} />
-        <Route path="/hse/equipment-maintenance" element={<ProtectedRoute><HSEEquipmentMaintenance /></ProtectedRoute>} />
-        <Route path="/hse/evacuation-drills" element={<ProtectedRoute><HSEEvacuationDrills /></ProtectedRoute>} />
-        <Route path="/hse/ppe-log" element={<ProtectedRoute><HSEPPELog /></ProtectedRoute>} />
-        <Route path="/hse/waste-log" element={<ProtectedRoute><HSEWasteLog /></ProtectedRoute>} />
-        <Route path="/hse/capa-tracker" element={<ProtectedRoute><HSECAPATracker /></ProtectedRoute>} />
+        <Route path="/hse" element={<SectionRoute section="hse"><HSEMenu /></SectionRoute>} />
+        <Route path="/hse/company-profile" element={<SectionRoute section="hse" item="company-profile"><HSECompanyProfile /></SectionRoute>} />
+        <Route path="/hse/policies" element={<SectionRoute section="hse" item="policies"><HSEPolicies /></SectionRoute>} />
+        <Route path="/hse/risk-register" element={<SectionRoute section="hse" item="risk-register"><HSERiskRegister /></SectionRoute>} />
+        <Route path="/hse/sops" element={<SectionRoute section="hse" item="sops"><HSESOPs /></SectionRoute>} />
+        <Route path="/hse/incident-report" element={<SectionRoute section="hse" item="incident-report"><HSEIncidentReport /></SectionRoute>} />
+        <Route path="/hse/work-permit" element={<SectionRoute section="hse" item="work-permit"><HSEWorkPermit /></SectionRoute>} />
+        <Route path="/hse/monthly-safety-report" element={<SectionRoute section="hse" item="monthly-safety"><HSEMonthlySafetyReport /></SectionRoute>} />
+        <Route path="/hse/ncr" element={<SectionRoute section="hse" item="ncr"><HSENCR /></SectionRoute>} />
+        <Route path="/hse/fire-equipment" element={<SectionRoute section="hse" item="fire-equipment"><HSEFireEquipment /></SectionRoute>} />
+        <Route path="/hse/toolbox-meeting" element={<SectionRoute section="hse" item="toolbox-meeting"><HSEToolboxMeeting /></SectionRoute>} />
+        <Route path="/hse/emergency-contacts" element={<SectionRoute section="hse" item="emergency-contacts"><HSEEmergencyContacts /></SectionRoute>} />
+        <Route path="/hse/welfare" element={<SectionRoute section="hse" item="welfare"><HSEWelfare /></SectionRoute>} />
+        <Route path="/hse/forklift-inspection" element={<SectionRoute section="hse" item="forklift-inspection"><HSEForkliftInspection /></SectionRoute>} />
+        <Route path="/hse/cleaning-log" element={<SectionRoute section="hse" item="cleaning-log"><HSECleaningLog /></SectionRoute>} />
+        <Route path="/hse/swabs-log" element={<SectionRoute section="hse" item="swabs-log"><HSESwabsLog /></SectionRoute>} />
+        <Route path="/hse/pest-control" element={<SectionRoute section="hse" item="pest-control"><HSEPestControl /></SectionRoute>} />
+        <Route path="/hse/equipment-maintenance" element={<SectionRoute section="hse" item="equipment-maintenance"><HSEEquipmentMaintenance /></SectionRoute>} />
+        <Route path="/hse/evacuation-drills" element={<SectionRoute section="hse" item="evacuation-drills"><HSEEvacuationDrills /></SectionRoute>} />
+        <Route path="/hse/ppe-log" element={<SectionRoute section="hse" item="ppe-log"><HSEPPELog /></SectionRoute>} />
+        <Route path="/hse/waste-log" element={<SectionRoute section="hse" item="waste-log"><HSEWasteLog /></SectionRoute>} />
+        <Route path="/hse/capa-tracker" element={<SectionRoute section="hse" item="capa-tracker"><HSECAPATracker /></SectionRoute>} />
         {/* التدريب صار موحّداً في /training — يبقى المسار القديم محوّلاً حتى لا تنكسر الروابط */}
         <Route path="/hse/training-matrix" element={<Navigate to="/training" replace />} />
-        <Route path="/hse/licenses" element={<ProtectedRoute><HSELicenses /></ProtectedRoute>} />
-        <Route path="/hse/kpis" element={<ProtectedRoute><HSEKPIs /></ProtectedRoute>} />
+        <Route path="/hse/licenses" element={<SectionRoute section="hse" item="licenses"><HSELicenses /></SectionRoute>} />
+        <Route path="/hse/kpis" element={<SectionRoute section="hse" item="kpis"><HSEKPIs /></SectionRoute>} />
 
         {/* ⚙️ Settings */}
         <Route

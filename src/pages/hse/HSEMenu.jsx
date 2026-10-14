@@ -5,7 +5,6 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import { useHSELang, HSELangToggle } from "./hseShared";
-import HSELocalMigration from "./HSELocalMigration";
 import { isItemAllowed } from "../../utils/sectionItems";
 import FloatingSettingsButton from "../../components/FloatingSettingsButton";
 
@@ -500,7 +499,6 @@ export default function HSEMenu() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", position: "relative", flexWrap: "wrap" }}>
-            <HSELocalMigration />
             <HSELangToggle lang={lang} toggle={toggle} />
             <div className="hsx hsx-badge" style={badgeStyle}>{pick(T.badgeText)}</div>
           </div>
