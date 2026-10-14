@@ -15,6 +15,7 @@ import QcsSidebarHub, {
 } from "../monitor/branches/_shared/QcsSidebarHub";
 import { useHSELang, HSELangToggle } from "./hseShared";
 import { isItemAllowed } from "../../utils/sectionItems";
+import { SOP_TOTAL } from "./hseSopData";
 
 const HSECompanyProfile       = lazy(() => import("./HSECompanyProfile"));
 const HSEPolicies             = lazy(() => import("./HSEPolicies"));
@@ -70,7 +71,7 @@ const TAB_DEFS = [
   { id: "policies",              group: "framework", Icon: IconBook,      accent: "#3b82f6", Comp: HSEPolicies,
     ar: "السياسات",             en: "Policies",               subAr: "17 سياسة أساسية",           subEn: "17 core policies" },
   { id: "sops",                  group: "framework", Icon: IconClipboard, accent: "#6366f1", Comp: HSESOPs,
-    ar: "الإجراءات القياسية",    en: "SOPs",                   subAr: "33 إجراء تشغيل",            subEn: "33 operating procedures" },
+    ar: "الإجراءات القياسية",    en: "SOPs",                   subAr: `${SOP_TOTAL} إجراء تشغيل`, subEn: `${SOP_TOTAL} operating procedures` },
   { id: "risk-register",         group: "framework", Icon: IconShield,    accent: "#0f766e", Comp: HSERiskRegister,
     ar: "سجل المخاطر",          en: "Risk Register",          subAr: "F-02 · تقييم واعتماد",       subEn: "F-02 · assess & approve" },
 

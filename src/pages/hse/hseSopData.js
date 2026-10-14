@@ -177,6 +177,54 @@ export const SOP_GROUPS = [
         verification: { ar: "جرد أسبوعي للتواريخ القريبة، وتقرير شهري بالكميات المتلفة وأسبابها يُعرض في مراجعة الإدارة.", en: "A weekly short-date stock check and a monthly report of destroyed quantities and their causes presented at management review." },
         refs: { ar: "ISO 22000:2018 (البندان 7 و8)، مبادئ HACCP السبعة، دليل بلدية دبي لسلامة الغذاء، والمواصفة الإماراتية UAE.S 2055-1 للحلال.", en: "ISO 22000:2018 (clauses 7 and 8), the seven HACCP principles, the Dubai Municipality Food Code, and UAE.S 2055-1 for Halal." },
       },
+      {
+        code: "SOP-FS-10",
+        title: { ar: "برنامج مكافحة الحشرات والقوارض", en: "Pest & rodent control programme" },
+        desc: { ar: "عقد معتمد، زيارات شهرية، خريطة المصائد، الاستجابة للرصد", en: "Approved contract, monthly visits, bait-station map, sighting response" },
+        objective: { ar: "منع دخول الحشرات والقوارض وتكاثرها في مناطق تخزين وتصنيع اللحوم، واكتشاف أي نشاط مبكراً قبل أن يلوّث المنتج.",
+                     en: "Keep insects and rodents out of meat storage and processing areas and detect any activity early, before it can contaminate product." },
+        scope: { ar: "كل مباني الشركة ومحيطها الخارجي: غرف التبريد والتجميد، خط التصنيع، مناطق الاستلام والشحن، المكاتب، غرف النفايات.",
+                 en: "All company buildings and their surroundings: chiller and freezer rooms, processing line, receiving and dispatch bays, offices, waste rooms." },
+        steps: { ar: "1) التعاقد مع شركة مكافحة معتمدة من بلدية دبي وحفظ نسخة من ترخيصها وشهادات فنييها. 2) اعتماد خريطة مرقّمة لمواقع المصائد والطُّعوم ومصائد الحشرات الطائرة. 3) زيارة دورية شهرية على الأقل يفحص فيها الفني كل نقطة ويسجّل النشاط. 4) استلام تقرير الزيارة وأوراق بيانات سلامة المبيدات المستخدمة وتسجيله في النموذج F-12. 5) عند رصد أي حشرة أو قارض: إبلاغ مسؤول HSE فوراً، عزل المنتج المكشوف، وطلب زيارة طارئة خلال 24 ساعة. 6) سدّ الفتحات والشقوق، وإبقاء الأبواب الخارجية مغلقة، ومنع تخزين البضائع على الأرض مباشرة. 7) مراجعة اتجاه النشاط شهرياً واتخاذ إجراء تصحيحي عند التكرار.",
+                 en: "1) Contract a Dubai Municipality-approved pest control company and keep copies of its licence and technicians' certificates. 2) Approve a numbered map of bait stations, traps and fly-killer units. 3) At least one routine visit a month, in which the technician checks every point and records activity. 4) Receive the visit report and the safety data sheets of the pesticides used, and log it on form F-12. 5) On any insect or rodent sighting: notify the HSE Officer at once, isolate exposed product and request an emergency visit within 24 hours. 6) Seal gaps and cracks, keep external doors closed and never store goods directly on the floor. 7) Review the activity trend monthly and raise a corrective action when it repeats." },
+        records: { ar: "F-12 (سجل مكافحة الحشرات)، عقد الشركة وترخيصها، خريطة المصائد، تقارير الزيارات، أوراق بيانات سلامة المبيدات.",
+                   en: "F-12 (Pest Control Log), contract and licence, bait-station map, visit reports, pesticide safety data sheets." },
+        freq: { ar: "زيارة شهرية على الأقل + زيارة طارئة عند الرصد", en: "At least monthly + emergency visit on any sighting" },
+        responsibilities: { ar: "مسؤول HSE: يدير العقد ويراجع التقارير ويتابع الإجراءات. • الفني المعتمد: يفحص النقاط ويطبّق المعالجة ويوثّقها. • مشرفو المناطق: يبلّغون فوراً عن أي رصد ويحافظون على إغلاق الفتحات. • مسؤول سلامة الغذاء: يقرّر مصير أي منتج تعرّض للتلوث.",
+                            en: "HSE Officer: manages the contract, reviews reports and follows up actions. • Approved technician: inspects points, applies and records treatment. • Area supervisors: report any sighting immediately and keep openings sealed. • Food Safety Officer: decides the fate of any product that may be contaminated." },
+        definitions: { ar: "نقطة المراقبة: مصيدة أو صندوق طُعم مرقّم على الخريطة. • النشاط: أي أثر للآفة (رؤية، فضلات، قضم، طُعم مأكول). • الزيارة الطارئة: زيارة خارج الجدول بسبب رصد نشاط.",
+                       en: "Monitoring point: a numbered trap or bait box on the map. • Activity: any sign of a pest (sighting, droppings, gnawing, eaten bait). • Emergency visit: an unscheduled visit triggered by activity." },
+        deviation: { ar: "رصد نشاط داخل منطقة إنتاج أو تخزين = عدم مطابقة يُفتح لها NCR، ويُحجز المنتج المكشوف حتى يقيّمه مسؤول سلامة الغذاء. لا يُستخدم أي مبيد فوق أسطح ملامسة الغذاء أو بوجود منتج مكشوف.",
+                     en: "Activity inside a production or storage area is a non-conformance with an NCR, and exposed product is held until the Food Safety Officer assesses it. No pesticide is used over food-contact surfaces or near exposed product." },
+        verification: { ar: "يراجع مسؤول HSE تقرير كل زيارة خلال 48 ساعة، ويُدقَّق البرنامج كاملاً ضمن التدقيق الداخلي السنوي.",
+                        en: "The HSE Officer reviews every visit report within 48 hours; the whole programme is checked in the annual internal audit." },
+        refs: { ar: "ISO 22000:2018 (البند 8.2 — البرامج الأولية)، ISO/TS 22002-1 (البند 12)، اشتراطات بلدية دبي للمنشآت الغذائية.",
+                en: "ISO 22000:2018 (clause 8.2 — prerequisite programmes), ISO/TS 22002-1 (clause 12), Dubai Municipality food establishment requirements." },
+      },
+      {
+        code: "SOP-FS-11",
+        title: { ar: "النظافة الشخصية وغسل اليدين", en: "Personal hygiene & hand washing" },
+        desc: { ar: "البطاقة الصحية، غسل اليدين، الملابس، الأمراض المعدية", en: "Health card, hand washing, workwear, infectious illness" },
+        objective: { ar: "منع انتقال التلوث من العاملين إلى اللحوم وأسطح ملامستها، عبر قواعد نظافة شخصية ثابتة يطبّقها كل من يدخل مناطق الإنتاج.",
+                     en: "Stop contamination passing from people to meat and food-contact surfaces, through fixed hygiene rules that everyone entering production areas follows." },
+        scope: { ar: "كل الموظفين والمقاولين والزوار الذين يدخلون مناطق الاستلام والتخزين والتصنيع والتعبئة.",
+                 en: "All employees, contractors and visitors entering receiving, storage, processing and packing areas." },
+        steps: { ar: "1) لا يباشر أي موظف العمل مع الغذاء قبل حصوله على بطاقة صحية سارية من بلدية دبي. 2) عند الدخول: ارتداء الزي الأبيض النظيف، شبكة الشعر واللحية، والحذاء المخصص، وخلع المجوهرات والساعات. 3) غسل اليدين بالماء والصابون 20 ثانية على الأقل ثم التجفيف بمناديل ورقية والتعقيم — عند الدخول، وبعد استخدام دورة المياه، وبعد لمس النفايات أو الوجه، وعند تغيير المهمة، وكل ساعة على الأقل. 4) تغطية أي جرح بلاصق أزرق مقاوم للماء وقفاز فوقه. 5) ممنوع الأكل والشرب والتدخين والمضغ داخل مناطق الإنتاج. 6) يبلّغ الموظف مشرفه قبل بدء الوردية عن أي إسهال أو قيء أو حمى أو التهاب جلدي، ويُبعد عن العمل مع الغذاء. 7) يفحص المشرف النظافة الشخصية يومياً ويسجّلها.",
+                 en: "1) No employee handles food without a valid Dubai Municipality health card. 2) On entry: clean white workwear, hair and beard net, dedicated footwear; remove jewellery and watches. 3) Wash hands with soap and water for at least 20 seconds, dry with paper towels and sanitise — on entry, after the toilet, after touching waste or the face, when changing task, and at least hourly. 4) Cover any cut with a blue waterproof plaster and a glove over it. 5) No eating, drinking, smoking or chewing in production areas. 6) Employees report any diarrhoea, vomiting, fever or skin infection to their supervisor before the shift and are kept away from food. 7) The supervisor checks personal hygiene daily and records it." },
+        records: { ar: "سجل النظافة الشخصية اليومي، سجل البطاقات الصحية وتواريخ انتهائها، سجل الإبلاغ عن المرض والعودة للعمل.",
+                   en: "Daily personal hygiene checklist, health card register with expiry dates, sickness reporting and return-to-work records." },
+        freq: { ar: "يومياً عند بدء كل وردية + طوال العمل", en: "Daily at the start of every shift + throughout work" },
+        responsibilities: { ar: "كل موظف: يطبّق القواعد ويبلّغ عن مرضه. • المشرف: يفحص يومياً ويمنع غير الملتزم من الدخول. • مسؤول سلامة الغذاء: يتابع البطاقات الصحية ويقرّر العودة للعمل بعد المرض. • الموارد البشرية: تجدّد البطاقات الصحية قبل انتهائها.",
+                            en: "Every employee: follows the rules and reports illness. • Supervisor: checks daily and stops non-compliant staff from entering. • Food Safety Officer: tracks health cards and clears return to work after illness. • HR: renews health cards before they expire." },
+        definitions: { ar: "البطاقة الصحية: شهادة لياقة العمل مع الغذاء الصادرة عن بلدية دبي. • منطقة الإنتاج: أي منطقة يكون فيها اللحم مكشوفاً. • الأعراض المُبعِدة: الإسهال، القيء، الحمى، اليرقان، التهابات الجلد المفتوحة.",
+                       en: "Health card: Dubai Municipality certificate of fitness to handle food. • Production area: any area where meat is exposed. • Exclusion symptoms: diarrhoea, vomiting, fever, jaundice, open skin infections." },
+        deviation: { ar: "دخول منطقة الإنتاج دون الالتزام أو العمل ببطاقة صحية منتهية = إخراج فوري من المنطقة وتسجيل مخالفة. العامل المريض لا يعود قبل 48 ساعة من زوال الأعراض وموافقة مسؤول سلامة الغذاء.",
+                     en: "Entering production without complying, or working on an expired health card, means immediate removal and a recorded violation. A sick worker returns only 48 hours after symptoms clear and with the Food Safety Officer's approval." },
+        verification: { ar: "مسحات أيدٍ عشوائية ضمن برنامج المسحات الميكروبية (SOP-FS-05)، ومراجعة شهرية لسجل البطاقات الصحية.",
+                        en: "Random hand swabs within the microbiological swabbing programme (SOP-FS-05) and a monthly review of the health card register." },
+        refs: { ar: "ISO 22000:2018 (البند 8.2)، ISO/TS 22002-1 (البند 13 — نظافة الأفراد)، اشتراطات بلدية دبي للصحة المهنية للعاملين في الغذاء.",
+                en: "ISO 22000:2018 (clause 8.2), ISO/TS 22002-1 (clause 13 — personnel hygiene), Dubai Municipality occupational health requirements for food handlers." },
+      },
     ],
   },
   {
@@ -363,6 +411,30 @@ export const SOP_GROUPS = [
         deviation: { ar: "أي عملية تبدأ بلا أوتاد أو بلا ضبط للمفتاح أو بلا مراقب عند الرجوع تُوقَف فوراً ويُسجَّل ذلك كعدم مطابقة. وإذا كانت الإضاءة أقل من الحد أو الأرضية مبللة أو متجمدة، يعلَّق العمل حتى المعالجة ولا يُستأنف بقرار شفهي. وأي حمولة غير مثبّتة تُمنع المركبة من المغادرة حتى استكمال قائمة الفحص وتوقيعها.", en: "Any operation started without chocks, without key control, or without a banksman when reversing is stopped immediately and recorded as a non-conformity. If lighting is below the limit or the floor is wet or iced, work is suspended until it is corrected and is not resumed on a verbal decision. A vehicle with an unsecured load is not released until the checklist is completed and signed." },
         verification: { ar: "فحص أسبوعي موثّق لمنطقة التحميل يشمل الدهانات الأرضية والمرايا والإضاءة وأحزمة التثبيت. ومراجعة شهرية لقوائم فحص التثبيت للتأكد من توقيعها. وتُراجَع هذه العملية ضمن التدقيق الداخلي السنوي وبعد أي حادث أو شبه حادث.", en: "A documented weekly inspection of the loading area covering floor markings, mirrors, lighting and securement straps. A monthly review of securement checklists to confirm they were signed. The process is covered in the annual internal audit and after any incident or near-miss." },
         refs: { ar: "ISO 45001:2018 (البنود 6.1 و8.1)، المرسوم بقانون اتحادي رقم 33 لسنة 2021 ولائحته التنفيذية، واشتراطات السلامة المرورية داخل المنشآت. ويرتبط هذا الإجراء بـ SOP-OHS-04 لتشغيل الرافعات و SOP-OHS-06 للرفع اليدوي و SOP-OHS-09 للإبلاغ عن الحوادث.", en: "ISO 45001:2018 (clauses 6.1 and 8.1), UAE Federal Decree-Law 33 of 2021 and its executive regulations, and on-site traffic-safety requirements. This procedure links to SOP-OHS-04 for forklift operation, SOP-OHS-06 for manual lifting and SOP-OHS-09 for incident reporting." },
+      },
+      {
+        code: "SOP-OHS-12",
+        title: { ar: "تخزين وتداول المواد الكيميائية وأوراق بيانات السلامة", en: "Chemical storage, handling & safety data sheets" },
+        desc: { ar: "قائمة المواد، SDS بلغتين، تخزين منفصل، معدات الوقاية، الانسكاب", en: "Chemical inventory, bilingual SDS, segregated storage, PPE, spills" },
+        objective: { ar: "حماية العاملين والمنتج من مواد التنظيف والتعقيم والكيماويات الأخرى، بتخزينها وتداولها بطريقة تمنع التسمم والحروق وتلوث الغذاء.",
+                     en: "Protect people and product from cleaning, sanitising and other chemicals by storing and handling them so that poisoning, burns and food contamination cannot happen." },
+        scope: { ar: "كل المواد الكيميائية في الموقع: المنظفات، المعقمات، الزيوت، الوقود، مواد الصيانة — عدا غازات التبريد (SOP-EN-03).",
+                 en: "Every chemical on site: detergents, sanitisers, lubricants, fuel, maintenance products — refrigerant gases excepted (SOP-EN-03)." },
+        steps: { ar: "1) لا تدخل أي مادة الموقع قبل اعتمادها من مسؤول HSE واستلام ورقة بيانات السلامة (SDS) بالعربية والإنجليزية. 2) تسجيلها في قائمة المواد الكيميائية مع الكمية والموقع. 3) تخزينها في مخزن مغلق مهوّى بعيد عن الغذاء ومواد التغليف، مع فصل الأحماض عن القلويات والكلور. 4) إبقاؤها في عبواتها الأصلية الموسومة؛ أي عبوة نقل تُوسم باسم المادة وتاريخ التعبئة. 5) ارتداء معدات الوقاية المحددة في SDS (قفازات، نظارات، قناع) عند التحضير والاستعمال. 6) تحضير التراكيز بالقياس لا بالتقدير، ومنع خلط المواد ببعضها. 7) وجود عدة احتواء الانسكاب ومحطة غسل العين قرب المخزن، والتعامل مع أي انسكاب فوراً وفق SDS. 8) التخلص من العبوات الفارغة والبواقي عبر شركة نفايات معتمدة (SOP-EN-01).",
+                 en: "1) No chemical comes on site until the HSE Officer approves it and its safety data sheet (SDS) is received in Arabic and English. 2) Enter it on the chemical inventory with quantity and location. 3) Store it in a locked, ventilated store away from food and packaging, keeping acids apart from alkalis and chlorine. 4) Keep it in its original labelled container; any transfer container is labelled with the product name and fill date. 5) Wear the PPE listed in the SDS (gloves, goggles, mask) when preparing and using it. 6) Make up concentrations by measuring, never by eye, and never mix products. 7) Keep a spill kit and eye-wash station near the store and deal with any spill at once following the SDS. 8) Dispose of empty containers and residues through an approved waste contractor (SOP-EN-01)." },
+        records: { ar: "قائمة المواد الكيميائية، ملف أوراق بيانات السلامة، سجل تحضير التراكيز، سجل التدريب على تداول الكيماويات، سجل حوادث الانسكاب.",
+                   en: "Chemical inventory, SDS file, concentration preparation log, chemical handling training records, spill incident log." },
+        freq: { ar: "عند كل استلام واستخدام + مراجعة القائمة كل 3 أشهر", en: "On every receipt and use + inventory review every 3 months" },
+        responsibilities: { ar: "مسؤول HSE: يعتمد المواد ويحفظ ملف SDS ويراجع القائمة. • أمين المخزن: يستلم ويخزّن ويسجّل الكميات. • عمال النظافة: يحضّرون ويستخدمون المواد وفق SDS وبمعدات الوقاية. • المشرفون: يمنعون أي مادة غير موسومة أو غير معتمدة.",
+                            en: "HSE Officer: approves chemicals, keeps the SDS file and reviews the inventory. • Storekeeper: receives, stores and records quantities. • Cleaning staff: prepare and use products per the SDS with PPE. • Supervisors: stop any unlabelled or unapproved product." },
+        definitions: { ar: "ورقة بيانات السلامة (SDS): وثيقة المورّد التي تبيّن مخاطر المادة وطريقة تخزينها والإسعاف والتعامل مع الانسكاب. • المواد غير المتوافقة: مواد يسبب اختلاطها تفاعلاً خطراً (مثل الكلور مع الأحماض).",
+                       en: "Safety data sheet (SDS): the supplier's document stating a product's hazards, storage, first aid and spill response. • Incompatible substances: products that react dangerously when mixed (e.g. chlorine with acids)." },
+        deviation: { ar: "مادة بلا SDS أو بلا وسم أو مخزّنة قرب الغذاء = تُسحب فوراً حتى تُصحَّح. أي تعرّض أو انسكاب يُبلَّغ كحادث وفق SOP-OHS-09.",
+                     en: "A product with no SDS, no label, or stored near food is removed at once until corrected. Any exposure or spill is reported as an incident under SOP-OHS-09." },
+        verification: { ar: "جولة شهرية على مخزن الكيماويات، ومطابقة القائمة مع الموجود فعلياً كل 3 أشهر، ومراجعة ضمن التدقيق الداخلي السنوي.",
+                        en: "A monthly walk-through of the chemical store, a physical check of the inventory every 3 months, and review in the annual internal audit." },
+        refs: { ar: "ISO 45001:2018 (البند 8.1)، ISO/TS 22002-1 (البند 11 — التنظيف والتعقيم)، المرسوم بقانون اتحادي رقم 33 لسنة 2021 ولائحته التنفيذية، نظام GHS لتصنيف ووسم المواد الكيميائية.",
+                en: "ISO 45001:2018 (clause 8.1), ISO/TS 22002-1 (clause 11 — cleaning and sanitizing), Federal Decree-Law No. 33 of 2021 and its Executive Regulations, GHS classification and labelling." },
       },
     ],
   },
@@ -578,6 +650,30 @@ export const SOP_GROUPS = [
         verification: { ar: "مراجعة ما بعد التنفيذ خلال ثلاثة أشهر لكل تغيير، وتدقيق سنوي على التغييرات المنفَّذة للتأكد من توثيقها كاملة.", en: "A post-implementation review within three months of each change, and an annual audit of implemented changes confirming they are fully documented." },
         refs: { ar: "ISO 9001:2015 و ISO 22000:2018 و ISO 45001:2018 — بنود المعلومات الموثقة والتدقيق الداخلي ومراجعة الإدارة والتحسين.", en: "ISO 9001:2015, ISO 22000:2018 and ISO 45001:2018 — documented information, internal audit, management review and improvement clauses." },
       },
+      {
+        code: "SOP-AD-06",
+        title: { ar: "دخول الزوار ومرافقتهم", en: "Visitor entry & escort" },
+        desc: { ar: "التسجيل، الاستبيان الصحي، الإحاطة، معدات الوقاية، المرافقة", en: "Sign-in, health questionnaire, briefing, PPE, escort" },
+        objective: { ar: "السماح للزوار بالدخول دون أن يعرّضوا أنفسهم أو المنتج للخطر، ومعرفة من يوجد في الموقع في كل لحظة عند حدوث طارئ.",
+                     en: "Let visitors in without putting themselves or the product at risk, and know who is on site at any moment in an emergency." },
+        scope: { ar: "كل الزوار: العملاء، المدققون، المفتشون الحكوميون، السائقون، ومندوبو الموردين — أما المقاولون الذين ينفّذون أعمالاً فيتبعون SOP-AD-04.",
+                 en: "All visitors: customers, auditors, government inspectors, drivers and supplier representatives — contractors doing work follow SOP-AD-04." },
+        steps: { ar: "1) يسجّل الزائر اسمه وجهته والشخص المضيف ووقت الدخول عند الاستقبال ويستلم بطاقة زائر. 2) يعبّئ الاستبيان الصحي؛ من لديه أعراض مرض معدٍ لا يدخل مناطق الغذاء. 3) يتلقّى إحاطة سلامة قصيرة: مخارج الطوارئ، نقطة التجمع، الممنوعات (التصوير، الأكل، لمس المنتج). 4) يرتدي معدات الوقاية حسب المنطقة: معطف أبيض وشبكة شعر وغطاء حذاء، ومعطف معزول لغرف التجميد. 5) يغسل يديه قبل دخول مناطق الإنتاج (SOP-FS-11). 6) يبقى مرافَقاً من المضيف طوال الزيارة. 7) عند المغادرة يسجّل وقت الخروج ويعيد البطاقة.",
+                 en: "1) The visitor signs in at reception with name, company, host and entry time, and receives a visitor badge. 2) Fills in the health questionnaire; anyone with signs of infectious illness stays out of food areas. 3) Gets a short safety briefing: emergency exits, assembly point, prohibited actions (photos, eating, touching product). 4) Wears PPE for the area: white coat, hair net and shoe covers, plus an insulated coat for freezer rooms. 5) Washes hands before entering production (SOP-FS-11). 6) Stays escorted by the host for the whole visit. 7) Signs out and returns the badge on leaving." },
+        records: { ar: "سجل الزوار (دخول وخروج)، الاستبيانات الصحية، سجل بطاقات الزوار.",
+                   en: "Visitor log (in and out), health questionnaires, visitor badge register." },
+        freq: { ar: "عند كل زيارة", en: "On every visit" },
+        responsibilities: { ar: "موظف الاستقبال: يسجّل ويصرف البطاقات ومعدات الوقاية. • المضيف: يرافق الزائر ويضمن التزامه. • مسؤول HSE: يعدّ نص الإحاطة ويراجع السجل. • الأمن: يتأكد أن عدد من دخل يساوي عدد من خرج نهاية اليوم.",
+                            en: "Receptionist: signs visitors in and issues badges and PPE. • Host: escorts the visitor and makes sure they comply. • HSE Officer: owns the briefing text and reviews the log. • Security: checks at day end that everyone who signed in has signed out." },
+        definitions: { ar: "الزائر: أي شخص من خارج الشركة لا ينفّذ عملاً تعاقدياً. • المرافقة: بقاء موظف من الشركة مع الزائر في كل المناطق غير المكتبية.",
+                       en: "Visitor: anyone from outside the company not carrying out contracted work. • Escort: a company employee staying with the visitor in every non-office area." },
+        deviation: { ar: "زائر بلا تسجيل أو بلا مرافق داخل منطقة إنتاج = يُرافَق للخارج فوراً وتُسجَّل الحالة. السجل هو مرجع حصر الأشخاص عند الإخلاء.",
+                     en: "A visitor who is not signed in or not escorted in a production area is escorted out at once and the case recorded. The log is the head-count reference in an evacuation." },
+        verification: { ar: "مطابقة يومية للسجل (دخول = خروج) ومراجعة شهرية من مسؤول HSE.",
+                        en: "A daily check that sign-ins match sign-outs and a monthly review by the HSE Officer." },
+        refs: { ar: "ISO 22000:2018 (البند 8.2)، ISO/TS 22002-1 (البند 13 — نظافة الأفراد، ويشمل الزوار)، ISO 45001:2018 (البندان 8.1 و8.2).",
+                en: "ISO 22000:2018 (clause 8.2), ISO/TS 22002-1 (clause 13 — personnel hygiene, visitors included), ISO 45001:2018 (clauses 8.1 and 8.2)." },
+      },
     ],
   },
 ];
@@ -591,3 +687,42 @@ export const SOP_OPTIONS = SOP_GROUPS.flatMap((g) =>
 export function findSop(code) {
   return SOP_OPTIONS.find((s) => s.code === code) || null;
 }
+
+/* ═══ Policy ↔ SOP links ═══
+   ISO 45001 / ISO 22000 expect every policy commitment to be carried out by
+   at least one procedure. This table is the one place that pairs them: the
+   Policies page lists each policy's procedures, and each SOP shows the
+   policies it implements. POL-HSE-01 is the umbrella policy — every SOP
+   serves it, so it is not repeated on each one. */
+export const POLICY_SOP_LINKS = {
+  "POL-HSE-01":  ["SOP-AD-01", "SOP-AD-02", "SOP-AD-03", "SOP-EN-04"],
+  "POL-FS-01":   ["SOP-FS-01", "SOP-FS-04", "SOP-FS-05", "SOP-FS-06", "SOP-FS-07", "SOP-FS-08", "SOP-FS-09"],
+  "POL-CC-01":   ["SOP-FS-02", "SOP-FS-03", "SOP-EM-03"],
+  "POL-PPE-01":  ["SOP-OHS-02"],
+  "POL-CW-01":   ["SOP-OHS-03", "SOP-OHS-10"],
+  "POL-IR-01":   ["SOP-OHS-09"],
+  "POL-EM-01":   ["SOP-EM-01", "SOP-EM-02", "SOP-EM-03", "SOP-EM-04"],
+  "POL-TR-01":   ["SOP-OHS-01"],
+  "POL-CHEM-01": ["SOP-OHS-12", "SOP-EN-03"],
+  "POL-WST-01":  ["SOP-EN-01", "SOP-EN-02"],
+  "POL-HYG-01":  ["SOP-FS-11", "SOP-OHS-10"],
+  "POL-FLT-01":  ["SOP-OHS-04", "SOP-OHS-11"],
+  "POL-LIFT-01": ["SOP-OHS-06", "SOP-OHS-05"],
+  "POL-PEST-01": ["SOP-FS-10"],
+  "POL-VIS-01":  ["SOP-AD-06", "SOP-AD-04"],
+  "POL-MOC-01":  ["SOP-AD-05"],
+  "POL-WP-01":   ["SOP-OHS-07", "SOP-OHS-08"],
+};
+
+/** SOP codes that carry out a policy. */
+export function sopsForPolicy(policyCode) {
+  return POLICY_SOP_LINKS[policyCode] || [];
+}
+
+/** Policy codes a SOP carries out (reverse of POLICY_SOP_LINKS). */
+export function policiesForSop(sopCode) {
+  return Object.keys(POLICY_SOP_LINKS).filter((p) => POLICY_SOP_LINKS[p].includes(sopCode));
+}
+
+/** Total number of SOPs — shown in page titles instead of a hard-coded count. */
+export const SOP_TOTAL = SOP_GROUPS.reduce((n, g) => n + g.items.length, 0);

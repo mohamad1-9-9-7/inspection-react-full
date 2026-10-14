@@ -4,9 +4,10 @@
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { todayISO, useHSELang } from "./hseShared";
-import { SOP_GROUPS } from "./hseSopData";
+import { SOP_GROUPS, SOP_TOTAL, policiesForSop } from "./hseSopData";
+import { findPolicy } from "./hsePolicyData";
 import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 
@@ -15,8 +16,10 @@ const T = {
   brandLine2:   { ar: "الأسماك والمواشي — نظام إدارة الصحة والسلامة والبيئة", en: "AL MAWASHI — HSE Management System" },
   badgeLabel:   { ar: "📘 وثائق مضبوطة", en: "📘 Controlled documents" },
   pageTitle:    { ar: "الإجراءات التشغيلية القياسية — SOPs", en: "Standard Operating Procedures — SOPs" },
-  pageSubtitle: { ar: "33 إجراءً موزّعة على 5 مجموعات · مرقّمة بنظام موحّد SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD",
-                  en: "33 procedures across 5 groups · numbered SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD" },
+  pageSubtitle: { ar: `${SOP_TOTAL} إجراءً موزّعة على ${SOP_GROUPS.length} مجموعات · مرقّمة بنظام موحّد SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD`,
+                  en: `${SOP_TOTAL} procedures across ${SOP_GROUPS.length} groups · numbered SOP-FS / SOP-OHS / SOP-EM / SOP-EN / SOP-AD` },
+  implementsPolicy: { ar: "📜 يطبّق السياسة", en: "📜 Carries out policy" },
+  openPolicy:   { ar: "افتح السياسة", en: "Open policy" },
   tagline: {
     ar: "كل إجراء يتضمّن الهدف والنطاق والتعريفات والمسؤوليات والخطوات والسجلات والتكرار، إضافةً إلى التعامل مع الانحرافات وطريقة التحقق والمرجعية القانونية والمعيارية.",
     en: "Every procedure carries objective, scope, definitions, responsibilities, steps, records and frequency, plus deviation handling, the verification method and its legal and standard references.",
@@ -189,7 +192,7 @@ function SopCard({ item, group, pick, dir, hover, setHover, onOpen }) {
 }
 
 /* ═══════════ نافذة الوثيقة — 75% من الشاشة ═══════════ */
-function SopModal({ item, group, pick, dir, onClose, onExport, exporting }) {
+function SopModal({ item, group, pick, dir, onClose, onExport, exporting, onOpenPolicy }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -276,6 +279,21 @@ function SopModal({ item, group, pick, dir, onClose, onExport, exporting }) {
 
         {/* الجسم */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {/* The policy this procedure carries out — the other half of the
+              policy ↔ SOP link (POLICY_SOP_LINKS in hseSopData.js). */}
+          {policiesForSop(item.code).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 18,
+              padding: "10px 14px", borderRadius: 12, background: "#eef2ff", border: "1px solid #c7d2fe" }}>
+              <span style={{ fontSize: 13, fontWeight: 950, color: "#3730a3", marginInlineEnd: 4 }}>{pick(T.implementsPolicy)}</span>
+              {policiesForSop(item.code).map(findPolicy).filter(Boolean).map((p) => (
+                <button key={p.code} type="button" onClick={() => onOpenPolicy && onOpenPolicy(p.code)} title={pick(T.openPolicy)}
+                  style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #a5b4fc", background: "#fff",
+                    color: "#312e81", cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700 }}>
+                  <b style={{ fontWeight: 900 }}>{p.code}</b> {pick(p.title)} ↗
+                </button>
+              ))}
+            </div>
+          )}
           {main.map((s, i) => <Section key={s.label} n={i + 1} label={s.label} value={s.value} />)}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 20 }}>
@@ -326,6 +344,8 @@ export default function HSESOPs() {
   const [activeGroup, setActiveGroup] = useState("All");
   const [hover, setHover] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const wantedSop = searchParams.get("sop");
   const [exporting, setExporting] = useState("");
   const registerRef = useRef(null);
   const sopRef = useRef(null);
@@ -334,6 +354,13 @@ export default function HSESOPs() {
     () => SOP_GROUPS.flatMap((g) => g.items.map((it) => ({ item: it, group: g }))),
     []
   );
+
+  // ?sop=CODE (from a policy's "linked procedures" chip) opens that SOP.
+  useEffect(() => {
+    if (!wantedSop) return;
+    const hit = allItems.find(({ item }) => item.code === wantedSop);
+    if (hit) setSelected(hit);
+  }, [wantedSop, allItems]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -377,7 +404,12 @@ export default function HSESOPs() {
           group={selected.group}
           pick={pick}
           dir={dir}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            // drop ?sop= so the same link can open it again later
+            if (wantedSop) setSearchParams((prev) => { const n = new URLSearchParams(prev); n.delete("sop"); return n; }, { replace: true });
+          }}
+          onOpenPolicy={(code) => { setSelected(null); navigate(`/hse?tab=policies&policy=${encodeURIComponent(code)}`); }}
           onExport={() => exportPdf("sop")}
           exporting={exporting === "sop"}
         />
