@@ -745,6 +745,7 @@ export default function NamedDashboard() {
   const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   const sessionNotice = (() => {
+    if (currentUser.remember) return ""; // "Keep me signed in" — no 8-hour cut-off
     const loginAt = currentUser.loginAt || 0;
     const elapsed = Date.now() - loginAt;
     const remaining = 8 * 60 * 60 * 1000 - elapsed;

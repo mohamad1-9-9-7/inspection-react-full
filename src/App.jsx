@@ -549,6 +549,9 @@ function TokenRedirect({ to }) {
 }
 
 const DEFAULT_SESSION_MAX_MS = 8 * 60 * 60 * 1000;
+/* "Keep me signed in" on the login page: the session lasts as long as the
+   server's token (utils/token.cjs DEFAULT_TTL_SECONDS = 7 days). */
+const REMEMBER_SESSION_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
 /* In-app subscription lock — see utils/subscriptionLock.js. Refreshed on
    boot for the signed-in account's own company; Login.jsx seeds it. */
@@ -573,7 +576,8 @@ function useSecuritySettingsFetch() {
   }, [location.pathname]);
 }
 
-function getSessionMaxMs() {
+function getSessionMaxMs(user) {
+  if (user?.remember) return REMEMBER_SESSION_MAX_MS;
   try {
     const hours = Number(getSecuritySettings().sessionTimeoutHours);
     if (!Number.isFinite(hours) || hours <= 0) return DEFAULT_SESSION_MAX_MS;
@@ -603,7 +607,7 @@ function ProtectedRoute({ children, allowExpired = false }) {
     if (raw) {
       const user = JSON.parse(raw);
       const age  = Date.now() - (user?.loginAt || 0);
-      if (user && age < getSessionMaxMs()) {
+      if (user && age < getSessionMaxMs(user)) {
         isAuthed     = true;
         isSuperAdmin = user.isSuperAdmin || false;
         industry     = user.companyIndustry || "meat";

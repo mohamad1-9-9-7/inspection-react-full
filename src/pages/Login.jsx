@@ -76,7 +76,7 @@ const T = {
     username: "Username", usernamePh: "Enter your username",
     password: "Password", passwordPh: "Enter your password",
     show: "Show password", hide: "Hide password",
-    remember: "Remember my username", forgot: "Forgot password?",
+    remember: "Keep me signed in", forgot: "Forgot password?",
     forgotTitle: "Password reset",
     forgotText: "For your security, passwords are reset by your company administrator from Settings → Accounts. Ask them for a new one — it takes a minute.",
     capsOn: "Caps Lock is on",
@@ -115,7 +115,7 @@ const T = {
     username: "اسم المستخدم", usernamePh: "أدخل اسم المستخدم",
     password: "كلمة المرور", passwordPh: "أدخل كلمة المرور",
     show: "إظهار كلمة المرور", hide: "إخفاء كلمة المرور",
-    remember: "تذكّر اسم المستخدم", forgot: "نسيت كلمة المرور؟",
+    remember: "ابقَ مسجّلاً على هذا الجهاز", forgot: "نسيت كلمة المرور؟",
     forgotTitle: "إعادة تعيين كلمة المرور",
     forgotText: "حفاظاً على أمانك، يعيد مدير النظام في شركتك تعيين كلمة المرور من الإعدادات ← الحسابات. اطلب منه كلمة جديدة — تستغرق دقيقة.",
     capsOn: "زر الأحرف الكبيرة (Caps Lock) مفعّل",
@@ -183,6 +183,25 @@ function RotatingWord({ words }) {
   );
 }
 
+/* Where an account lands after signing in. */
+function homeFor(isSuperAdmin, industry) {
+  if (isSuperAdmin) return "/select-company";
+  if (industry && industry !== "meat") return "/company-app";
+  return "/named-dashboard";
+}
+
+/* A "Keep me signed in" session that is still alive: opening the site goes
+   straight to the workspace instead of asking for the password again. */
+const REMEMBER_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+function rememberedHome() {
+  try {
+    const u = JSON.parse(localStorage.getItem("currentUser") || "null");
+    if (!u || !u.remember || !localStorage.getItem("authToken")) return "";
+    if (Date.now() - (u.loginAt || 0) >= REMEMBER_MAX_MS) return "";
+    return homeFor(u.isSuperAdmin, u.companyIndustry);
+  } catch { return ""; }
+}
+
 function greetIndex() {
   const h = new Date().getHours();
   return h < 12 ? 0 : h < 18 ? 1 : 2;
@@ -235,6 +254,12 @@ function Login() {
   const passRef = useRef(null);
 
   const t = T[lang];
+
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    const home = rememberedHome();
+    if (home) navigate(home, { replace: true });
+  }, [location.pathname, navigate]);
 
   if (location.pathname !== "/") return null;
 
@@ -319,6 +344,9 @@ function Login() {
             companyTrial: !!data.user.company?.isTrial,
             companyEndDate: data.user.company?.endDate ? String(data.user.company.endDate).slice(0, 10) : null,
             type: "named",
+            // "Keep me signed in": App.jsx keeps this session for 7 days (the
+            // token's own life) instead of the security setting's hours.
+            remember: !!remember,
             loginAt: Date.now(),
           })
         );
@@ -332,12 +360,7 @@ function Login() {
         // مالك المنصّة (سوبر أدمن) ما إلوش شركة ثابتة بالتوكن — بيختارها كل
         // مرة من شاشة الكروت. الحساب العادي بيروح لنظام شركته: نشاط 'meat'
         // = الداشبورد الحالي، أي نشاط تاني = المحرّك العام.
-        let target = "/named-dashboard";
-        if (data.user.isSuperAdmin) {
-          target = "/select-company";
-        } else if (data.user.company?.industry && data.user.company.industry !== "meat") {
-          target = "/company-app";
-        }
+        let target = homeFor(data.user.isSuperAdmin, data.user.company?.industry);
         // Came from a QR sticker (ProtectedRoute kept the path): go straight back to it.
         try {
           const back = sessionStorage.getItem("afterLoginPath") || "";
