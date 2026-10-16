@@ -173,17 +173,20 @@ export async function fetchDay(date, signal) {
  * device and sent automatically later. Throws on SLOT_FILLED (err.code) and
  * other server errors.
  */
-export async function saveQuickReading(body) {
+export const saveQuickReading = (body) => saveReadingWith(postCoolerReading, COOLER_READING_KIND, body);
+
+/** One reading through `post`; kept on the device under outbox `kind` when offline. */
+export async function saveReadingWith(post, kind, body) {
   const full = { ...body, readingId: body.readingId || newOutboxId() };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 25_000);
   try {
-    await postCoolerReading(full, ctrl.signal);
+    await post(full, ctrl.signal);
     return { queued: false };
   } catch (err) {
     if (!isTransient(err)) throw err;
     // The offline outbox replays it through the handler in utils/reportOutbox.js.
-    await enqueue(COOLER_READING_KIND, full.readingId, full, `Cooler reading ${full.unit} ${full.slot}`);
+    await enqueue(kind, full.readingId, full, `Temperature reading ${full.unit} ${full.slot}`);
     return { queued: true };
   } finally {
     clearTimeout(t);

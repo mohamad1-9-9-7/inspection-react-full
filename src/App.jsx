@@ -70,6 +70,7 @@ const DailyMonitorDashboard = lazy(() =>
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
 /* 📱 QCS cooler quick entry — the page behind the QR sticker on each unit */
 const QcsCoolerQuick = lazy(() => import("./pages/monitor/branches/qcs/QcsCoolerQuick"));
+const BranchTempQuick = lazy(() => import("./pages/monitor/branches/qcs/BranchTempQuick"));
 
 // 🆕 Internal Audit – Reports Viewer
 const InternalAuditReportsView = lazy(() =>
@@ -620,7 +621,7 @@ function ProtectedRoute({ children, allowExpired = false }) {
   }
   if (!isAuthed) {
     // A QR sticker scanned while signed out: come back to it after the sign-in.
-    if (pathname.startsWith("/monitor/qcs/coolers/quick")) {
+    if (pathname.startsWith("/monitor/qcs/coolers/quick") || pathname.startsWith("/monitor/branch-temp/")) {
       try { sessionStorage.setItem("afterLoginPath", pathname); } catch {}
     }
     return <Navigate to="/" replace />;
@@ -646,6 +647,20 @@ function ProtectedRoute({ children, allowExpired = false }) {
    guard. `section` is the same permission the hub tile is drawn from, and
    `branch` additionally pins a route to one branch, matching the per-branch
    filter the hubs already apply. Admins and full-access accounts pass both. */
+/* Branch temperature QR pages: the branch comes from the URL, so the guard
+   picks the matching branch grant (same rule as each branch's own sheet). */
+const BRANCH_TEMP_IDS = { pos10: "POS 10", pos11: "POS 11", pos15: "POS 15", pos19: "POS 19" };
+function BranchTempRoute() {
+  const { branch } = useParams();
+  const id = BRANCH_TEMP_IDS[String(branch || "").toLowerCase()];
+  if (!id) return <Navigate to="/named-dashboard" replace />;
+  return (
+    <SectionRoute section="daily" branch={id}>
+      <BranchSuspense><BranchTempQuick /></BranchSuspense>
+    </SectionRoute>
+  );
+}
+
 function SectionRoute({ section, branch, item, children }) {
   const allowed =
     hasSection(section) &&
@@ -1195,6 +1210,11 @@ export default function App() {
               </SectionRoute>
             }
           />
+
+          {/* 📱 حرارة الفروع من الجوال (POS 10/11/15/19) — الفرع من الرابط */}
+          {["branch-temp/:branch", "branch-temp/:branch/:unit"].map((path) => (
+            <Route key={path} path={path} element={<BranchTempRoute />} />
+          ))}
 
           {/* 📱 حرارة البرادات من الجوال (QR على كل وحدة) */}
           {["qcs/coolers/quick", "qcs/coolers/quick/:unit"].map((path) => (

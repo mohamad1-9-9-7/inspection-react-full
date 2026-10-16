@@ -1,6 +1,9 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/TemperatureMonitoringLogInput.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { queuedMessage } from "../../../../../utils/reportOutbox";
+import { getReportRowByDate, payloadOf } from "../../_shared/reportApi";
+import { loadDay, quickIdsOf, saveBranchDay } from "../../_shared/branchTempDay";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
@@ -84,7 +87,36 @@ export default function TemperatureMonitoringLogInput() {
   const [revDate, setRevDate]       = useState(() => loadDraft().revDate || "");
   const [revNo, setRevNo]           = useState(() => loadDraft().revNo || "");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+
+  /* 📱 Phone readings (QR on each unit) land on the day's record, so a date
+     that already has one is OPENED here and saved as an update instead of
+     being refused (_shared/branchTempDay). */
+  const [editingDay, setEditingDay] = useState(false);
+  const seenRef = useRef(new Set());
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: editingDay });
+
+  useEffect(() => {
+    let stop = false;
+    setEditingDay(false);
+    seenRef.current = new Set();
+    if (!reportDate) return undefined;
+    getReportRowByDate(TYPE, reportDate)
+      .then((row) => {
+        if (stop || !row) return;
+        const p = payloadOf(row) || {};
+        seenRef.current = quickIdsOf(p);
+        setRows((prev) => {
+          const { rows: next } = loadDay("pos19", prev.filter((r) => String(r.equipment || "").trim()), p);
+          return next.length ? next.map((r) => ({ ...emptyRow(), ...r })) : prev;
+        });
+        setSection((prev) => prev || p.section || "");
+        setCheckedBy((prev) => prev || p.checkedBy || "");
+        setVerifiedBy((prev) => prev || p.verifiedBy || "");
+        setEditingDay(true);
+      })
+      .catch(() => {});
+    return () => { stop = true; };
+  }, [reportDate]);
 
   /* ✅ Auto-save draft */
   useEffect(() => {
@@ -165,15 +197,16 @@ export default function TemperatureMonitoringLogInput() {
     try {
       // Without a connection the report waits on this device and is sent
       // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Temperature Monitoring ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
+      // The day's record is updated when it exists (phone readings merged in).
+      const r = await saveBranchDay({
+        shape: "pos19", type: TYPE, reporter: "pos19", reportDate, payload,
+        seenIds: seenRef.current, label: `POS 19 Temperature Monitoring ${reportDate}`,
+      });
+      seenRef.current = r.seenIds;
+      if (Array.isArray(r.rows)) setRows(r.rows.map((x) => ({ ...emptyRow(), ...x })));
+      setEditingDay(true);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
+      alert(r.queued ? queuedMessage("ar") : r.updated ? "✅ تم الحفظ — تم تحديث تقرير هذا اليوم." : "✅ تم الحفظ بنجاح!");
       dateStatus.refresh();
     } catch (e) {
       console.error(e);
@@ -262,6 +295,7 @@ export default function TemperatureMonitoringLogInput() {
 
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
+        <Link to="/monitor/branch-temp/pos19" style={{ ...btnStyle("#1d4ed8"), textDecoration: "none" }}>📱 Phone entry & QR</Link>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
         <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
           {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Temperature Log"}

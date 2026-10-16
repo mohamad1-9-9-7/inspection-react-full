@@ -365,7 +365,7 @@ function Login() {
         try {
           const back = sessionStorage.getItem("afterLoginPath") || "";
           sessionStorage.removeItem("afterLoginPath");
-          if (target === "/named-dashboard" && back.startsWith("/monitor/qcs/coolers/quick")) target = back;
+          if (target === "/named-dashboard" && (back.startsWith("/monitor/qcs/coolers/quick") || back.startsWith("/monitor/branch-temp/"))) target = back;
         } catch {}
         // A short success beat (the scan ring ticks) before the workspace opens.
         setDone(true);

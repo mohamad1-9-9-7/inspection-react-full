@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/pos 10/POS10TemperatureInput.jsx
-import React, { useMemo, useState, useEffect } from "react";
-import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import React, { useMemo, useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { queuedMessage } from "../../../../utils/reportOutbox";
+import { loadDay, quickIdsOf, saveBranchDay } from "../_shared/branchTempDay";
 import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 
 const API_BASE =
@@ -108,6 +110,11 @@ export default function POS10TemperatureInput() {
 
   const kpi = useMemo(() => calculateKPI(coolers), [coolers]);
 
+  /* 📱 Phone readings (QR on each unit) land on the day's record, so a date
+     that already has one is OPENED and saved as an update (_shared/branchTempDay). */
+  const seenRef = useRef(new Set());
+  const [editingDay, setEditingDay] = useState(false);
+
   /* ✅ Auto-save draft */
   useEffect(() => {
     try {
@@ -173,7 +180,23 @@ export default function POS10TemperatureInput() {
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
         const exists = arr.length > 0;
-        if (!abort) setDateTaken(exists);
+        if (!abort) {
+          setDateTaken(false);
+          setEditingDay(exists);
+          if (exists) {
+            const p = arr[0]?.payload || {};
+            seenRef.current = quickIdsOf(p);
+            setCoolers((prev) => {
+              const { rows } = loadDay("grid", prev, p);
+              return rows.length ? rows : prev;
+            });
+            setProductVerifications((prev) => (prev.length ? prev : Array.isArray(p.productVerifications) ? p.productVerifications : []));
+            setCheckedBy((prev) => prev || p.checkedBy || "");
+            setVerifiedBy((prev) => prev || p.verifiedBy || "");
+          } else {
+            seenRef.current = new Set();
+          }
+        }
       } catch (e) {
         if (!abort) {
           setDateError("⚠️ Failed to check for an existing report for this day. Try again later.");
@@ -197,28 +220,9 @@ export default function POS10TemperatureInput() {
     if (matchCount < MIN_MATCHES)
       return alert(`⚠️ At least ${MIN_MATCHES} product matches (product + temperature) are required before saving. You currently have ${matchCount}.`);
     if (dateBusy) return alert("⏳ Please wait — checking the date…");
-    if (dateTaken) {
-      return alert("⛔ Only one report per day is allowed for this branch.\nChoose another date or edit the existing report.");
-    }
 
     try {
       setOpMsg("⏳ Saving...");
-      // Re-check right before writing, in case someone else filed this day while
-      // the form was open — targeted, so it costs one indexed row rather than
-      // the whole archive the way this read used to.
-      const resCheck = await fetch(
-        `${API_BASE}/api/reports?type=pos10_temperature&reportDate=${encodeURIComponent(d)}`,
-        { cache: "no-store" }
-      );
-      if (!resCheck.ok) throw new Error(`Check failed HTTP ${resCheck.status}`);
-      const json = await resCheck.json();
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-      const existsNow = arr.length > 0;
-      if (existsNow) {
-        setDateTaken(true);
-        setOpMsg("");
-        return alert("⛔ A report already exists for this day.\nChoose another date or edit the existing report.");
-      }
 
       const payload = {
         branch: "POS 10",
@@ -235,20 +239,17 @@ export default function POS10TemperatureInput() {
 
       // Without a connection the report waits on this device and is sent
       // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({
-          body: { reporter: "pos10", type: "pos10_temperature", payload },
-          label: `POS 10 Temperature ${payload.reportDate || payload.date || ""}`,
-        }));
-      } catch (err) {
-        if (err?.status === 409) throw new Error("⛔ A report already exists for this day (409 Conflict).");
-        throw err;
-      }
+      // The day's record is updated when it exists (phone readings merged in).
+      const r = await saveBranchDay({
+        shape: "grid", type: "pos10_temperature", reporter: "pos10", reportDate: d, payload,
+        seenIds: seenRef.current, label: `POS 10 Temperature ${d}`,
+      });
+      seenRef.current = r.seenIds;
+      if (Array.isArray(r.rows)) setCoolers(r.rows);
+      setEditingDay(true);
 
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
-      setDateTaken(true);
+      setOpMsg(r.queued ? queuedMessage("en") : r.updated ? "✅ Saved — the day's report was updated." : "✅ Saved successfully!");
     } catch (e) {
       console.error(e);
       setOpMsg(`❌ Failed to save. ${e?.message || ""}`);
@@ -291,13 +292,14 @@ export default function POS10TemperatureInput() {
 
       {/* Date */}
       <div style={{ margin: "8px 0 10px", display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <Link to="/monitor/branch-temp/pos10" style={{ marginInlineEnd: "auto", background: "#2563eb", color: "#fff", borderRadius: 8, padding: "6px 12px", fontWeight: 800, textDecoration: "none" }}>📱 Phone entry & QR</Link>
         <label style={{ fontWeight: 600 }}>📅 Date:</label>
         <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #9aa4ae", background: "#fff" }} />
         {reportDate && (
           <>
             {dateBusy && <span style={{ color: "#6b7280", fontWeight: 600 }}>Checking…</span>}
-            {!dateBusy && dateTaken && <span style={{ color: "#b91c1c", fontWeight: 700 }}>⛔ A report already exists for this day</span>}
-            {!dateBusy && !dateTaken && !dateError && <span style={{ color: "#065f46", fontWeight: 700 }}>✅ Date available</span>}
+            {!dateBusy && editingDay && !dateError && <span style={{ color: "#1d4ed8", fontWeight: 700 }}>📝 This day's report is open — saving updates it</span>}
+            {!dateBusy && !editingDay && !dateError && <span style={{ color: "#065f46", fontWeight: 700 }}>✅ New report for this day</span>}
             {dateError && <span style={{ color: "#b45309", fontWeight: 700 }}>{dateError}</span>}
           </>
         )}

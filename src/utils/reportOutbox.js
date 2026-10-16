@@ -167,6 +167,33 @@ registerOutboxHandler(COOLER_READING_KIND, (body) =>
     throw e;
   }));
 
+/* Branch temperature sheets (POS 10/11/15/19) — same, through
+   POST /api/reports/branch-temp/reading. */
+export const BRANCH_READING_KIND = "branch-temp-reading";
+export async function postBranchReading(body, signal) {
+  const res = await fetch(`${API_BASE}/api/reports/branch-temp/reading`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    body: JSON.stringify(body),
+    signal,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(json?.error || `Save failed (${res.status})`);
+    e.status = res.status;
+    e.code = json?.error;
+    e.value = json?.value;
+    throw e;
+  }
+  return json;
+}
+registerOutboxHandler(BRANCH_READING_KIND, (body) =>
+  withTimeout(REPLAY_TIMEOUT_MS, (signal) => postBranchReading(body, signal)).catch((e) => {
+    if (e?.status === 409) return null;
+    throw e;
+  }));
+
 /** Saves a report now, or keeps it on this device when there is no connection. */
 export async function saveReport({ body, id = null, byDate = null, label = "" }) {
   let spec = { body, id, byDate };
