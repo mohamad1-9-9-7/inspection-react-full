@@ -11,7 +11,8 @@
 // by the server (see coolerQuick.js). Out of range = a corrective action is
 // required before saving, and a recheck is asked for RECHECK_AFTER_MIN later.
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -87,6 +88,7 @@ const T = {
     unknownUnit: "Unknown unit.",
     stickerHint: "Scan to record the temperature",
     printNow: "Print",
+    printHint: "Each unit prints on its own A4 page with a large code. Laminate it or put it in a plastic sleeve before sticking it on the unit.",
     closePrint: "Close",
     recheckWord: "recheck",
   },
@@ -131,6 +133,7 @@ const T = {
     unknownUnit: "وحدة غير معروفة.",
     stickerHint: "امسح لتسجيل درجة الحرارة",
     printNow: "طباعة",
+    printHint: "كل وحدة تُطبع على صفحة A4 لوحدها برمز كبير. يُفضّل تغليفها بالبلاستيك قبل لصقها على البراد.",
     closePrint: "إغلاق",
     recheckWord: "إعادة فحص",
   },
@@ -177,6 +180,28 @@ const CSS = `
 #root .cq.cq .alert.ok { border: 1px solid #86efac; }
 #root .cq.cq .alert.warn { border: 1px solid #fcd34d; }
 #root .cq.cq .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+#root .cq.cq .slots { display: flex; gap: 7px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+#root .cq.cq .slots::-webkit-scrollbar { display: none; }
+#root .cq.cq .slots .chip { flex: 0 0 auto; scroll-snap-align: center; min-height: 44px; }
+#root .cq.cq .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#root .cq.cq .acts .chip { border-radius: 12px; min-height: 52px; text-align: start; line-height: 1.3; }
+/* Fixed, not sticky: #root has overflow-x:hidden, which kills sticky. The
+   70px on the left keeps clear of the app's round buttons (theme, Aa). */
+#root .cq.cq.has-dock { padding-bottom: 120px; }
+#root .cq.cq .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom)) 70px;
+  background: rgba(255,255,255,.96); border-top: 1px solid #e2e8f0; backdrop-filter: blur(6px); box-shadow: 0 -4px 14px rgba(15,23,42,.08); }
+#root .cq.cq .dock .btn { max-width: 560px; margin: 0 auto; }
+#root .cq.cq .temp input, #root .cq.cq .temp .sign { min-height: 76px; }
+#root .cq.cq .chk { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 800; }
+#root .cq.cq .chk input { width: 22px; height: 22px; }
+@media (max-width: 420px) {
+  #root .cq.cq { padding: 10px 10px 30px; }
+  #root .cq.cq .t1 { font-size: ${fs(19)}; }
+  #root .cq.cq .card { padding: 12px; border-radius: 14px; }
+  #root .cq.cq .grid { gap: 2px; }
+  #root .cq.cq .cell { font-size: ${fs(9.5)}; padding: 4px 0; }
+}
 #root .cq.cq .chip { border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 8px 12px; font-weight: 700; cursor: pointer; font-size: ${fs(13)}; color: #0f172a; }
 #root .cq.cq .chip.on { background: #0f172a; color: #fff; border-color: #0f172a; }
 #root .cq.cq .chip.done { background: #ecfdf5; border-color: #86efac; }
@@ -190,14 +215,53 @@ const CSS = `
 #root .cq.cq .qrs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 #root .cq.cq .qr { border: 2px dashed #94a3b8; border-radius: 14px; padding: 14px; text-align: center; background: #fff; break-inside: avoid; }
 #root .cq.cq .qr .name { font-size: ${fs(18)}; font-weight: 800; margin: 8px 0 2px; }
+`;
+
+/* ══════════════════════════════════════ QR stickers — one unit per A4 page
+   Rendered into <body>, outside #root: the forced #root font sizes don't
+   reach it, and print can hide the whole app with one rule. Large code with
+   high error correction, so a scratched or wet sticker still scans; the link
+   is printed under it as a fallback to type by hand. */
+const PRINT_CSS = `
+@media screen { .cq-print { display: none !important; } }
 @media print {
-  body * { visibility: hidden !important; }
-  #root .cq.cq .print-area, #root .cq.cq .print-area * { visibility: visible !important; }
-  #root .cq.cq .print-area { position: absolute; inset: 0; padding: 8mm; }
-  #root .cq.cq .no-print { display: none !important; }
-  #root .cq.cq .qrs { grid-template-columns: repeat(3, 1fr); }
+  @page { size: A4 portrait; margin: 12mm; }
+  body > *:not(.cq-print) { display: none !important; }
+  .cq-print { display: block !important; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .cq-print .pg { height: 268mm; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                  text-align: center; break-after: page; page-break-after: always; border: 3px dashed #64748b; border-radius: 10mm; }
+  .cq-print .pg:last-child { break-after: auto; page-break-after: auto; }
+  .cq-print .ttl { font-size: 15pt; font-weight: 700; letter-spacing: .5pt; margin-bottom: 6mm; }
+  .cq-print .qrbox svg { width: 150mm !important; height: 150mm !important; }
+  .cq-print .nm { font-size: 40pt; font-weight: 800; margin-top: 6mm; }
+  .cq-print .rg { font-size: 22pt; font-weight: 700; margin-top: 3mm; }
+  .cq-print .hint { font-size: 16pt; margin-top: 6mm; }
+  .cq-print .url { font-size: 10pt; margin-top: 4mm; color: #334155; word-break: break-all; }
 }
 `;
+
+function QrPrintPages({ defs }) {
+  return createPortal(
+    <div className="cq-print">
+      <style>{PRINT_CSS}</style>
+      {UNIT_KEYS.map((unit) => {
+        const def = unitDef(unit, defs.coolerDefs, defs.loadingDef);
+        const url = quickUrl(unit);
+        return (
+          <div className="pg" key={unit}>
+            <div className="ttl">TEMPERATURE CHECK · QCS</div>
+            <div className="qrbox"><QRCodeSVG value={url} size={600} level="H" includeMargin /></div>
+            <div className="nm">{emojiOf(def)} {def.label}</div>
+            <div className="rg">Allowed: {rangeLabel(def)}</div>
+            <div className="hint">Scan with your phone camera to record the temperature</div>
+            <div className="url">{url}</div>
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  );
+}
 
 /* ══════════════════════════════════════ Shared data hook */
 function useCoolersToday() {
@@ -259,25 +323,24 @@ function Hub({ t, lang, toggleLang }) {
   if (printing) {
     return (
       <div>
-        <div className="bar no-print">
+        <div className="bar">
           <button className="btn" onClick={() => setPrinting(false)}>{t.closePrint}</button>
           <button className="btn pri" onClick={() => window.print()}>{t.printNow}</button>
         </div>
-        <div className="print-area">
-          <div className="qrs">
-            {UNIT_KEYS.map((unit) => {
-              const def = unitDef(unit, defs.coolerDefs, defs.loadingDef);
-              return (
-                <div className="qr" key={unit}>
-                  <QRCodeSVG value={quickUrl(unit)} size={170} level="M" includeMargin />
-                  <div className="name">{emojiOf(def)} {def.label}</div>
-                  <div className="sm">{t.range}: {rangeLabel(def)}</div>
-                  <div className="sm" style={{ marginTop: 4 }}>{t.stickerHint}</div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="sm" style={{ marginBottom: 10 }}>{t.printHint}</div>
+        <div className="qrs">
+          {UNIT_KEYS.map((unit) => {
+            const def = unitDef(unit, defs.coolerDefs, defs.loadingDef);
+            return (
+              <div className="qr" key={unit}>
+                <QRCodeSVG value={quickUrl(unit)} size={170} level="H" includeMargin />
+                <div className="name">{emojiOf(def)} {def.label}</div>
+                <div className="sm">{t.range}: {rangeLabel(def)}</div>
+              </div>
+            );
+          })}
         </div>
+        <QrPrintPages defs={defs} />
       </div>
     );
   }
@@ -372,6 +435,13 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null); // { kind: ok|bad|warn, text }
   const [done, setDone] = useState(false);
+  const slotsRef = useRef(null);
+
+  // Keep the chosen time slot visible in the swipeable row.
+  useEffect(() => {
+    const el = slotsRef.current?.querySelector('[data-on="1"]');
+    if (el) el.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [slot, st]);
 
   useEffect(() => { setNeg(def?.type === "frozen"); }, [def?.type]);
 
@@ -436,6 +506,8 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
       if (out) parts.push(t.recheckAsk(timeLabel(recheckDue)));
       setMsg({ kind: out ? "warn" : "ok", text: parts.join(" ") });
       setDone(true);
+      try { navigator.vibrate?.(out ? [120, 80, 120] : 60); } catch {}
+      window.scrollTo({ top: 0, behavior: "smooth" });
       if (!queued) reload();
     } catch (e) {
       if (e?.code === "SLOT_FILLED") {
@@ -488,13 +560,14 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
           ) : (
             <>
               <span className="lbl">{t.slot}</span>
-              <div className="chips">
+              <div className="slots" ref={slotsRef}>
                 {COOLER_TIMES.map((s) => {
                   const has = String(st?.readings?.[s] ?? "").trim() !== "";
                   return (
                     <button
                       key={s}
                       type="button"
+                      data-on={s === slot ? "1" : undefined}
                       className={`chip ${s === slot ? "on" : has ? "done" : ""}`}
                       onClick={() => { setSlot(s); setReplace(false); }}
                     >
@@ -505,8 +578,8 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
               </div>
               {existing && (
                 <div className="alert warn" style={{ marginTop: 10 }}>
-                  {t.already(existing)}{" "}
-                  <label style={{ marginInlineStart: 8 }}>
+                  <div>{t.already(existing)}</div>
+                  <label className="chk">
                     <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> {t.replace}
                   </label>
                 </div>
@@ -519,7 +592,11 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
             <button type="button" className="sign" onClick={() => setNeg((v) => !v)}>{neg ? "−" : "+"}</button>
             <input
               inputMode="decimal"
+              enterKeyHint="done"
+              autoComplete="off"
+              aria-label={t.reading}
               autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); save(); } }}
               value={raw}
               placeholder="0.0"
               onChange={(e) => setRaw(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
@@ -535,7 +612,7 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
           {out && (
             <>
               <span className="lbl">{t.action}</span>
-              <div className="chips">
+              <div className="acts">
                 {CORRECTIVE_ACTIONS.map((a) => (
                   <button key={a.key} type="button" className={`chip ${action === a.key ? "on" : ""}`} onClick={() => setAction(a.key)}>
                     {lang === "ar" ? a.ar : a.en}
@@ -553,13 +630,18 @@ function UnitEntry({ unit, t, lang, toggleLang }) {
             <input type="file" accept="image/*" capture="environment" hidden onChange={onPhoto} />
           </label>
 
-          <div style={{ height: 14 }} />
+        </div>
+      )}
+      {!done && (
+        <div className="dock">
           <button
             className="btn pri full"
             onClick={save}
             disabled={saving || photoBusy || (!!existing && !replace && !isRecheck)}
+            style={valid && out ? { background: "#dc2626", borderColor: "#dc2626" } : undefined}
           >
             {saving ? t.saving : isRecheck ? t.saveRecheck : t.save}
+            {valid ? ` · ${value}°C` : ""}
           </button>
         </div>
       )}
@@ -590,7 +672,7 @@ export default function QcsCoolerQuick() {
   const { unit } = useParams();
   const [lang, toggleLang, t] = useLang();
   return (
-    <div className="cq cq" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <div className={`cq cq${unit ? " has-dock" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
       <style>{CSS}</style>
       {unit ? (
         <UnitEntry key={unit} unit={unit} t={t} lang={lang} toggleLang={toggleLang} />
