@@ -42,6 +42,7 @@ import {
 import { getCurrentUser } from "../../../../utils/perms";
 import { uploadImage } from "../../../../utils/imageUpload";
 import { notifyOutOfRange } from "../../../../utils/notifications";
+import MonthlyTempReport from "./MonthlyTempReport";
 
 /* ══════════════════════════════════════ Language (one per screen) */
 const LANG_KEY = "qcs_quick_lang";
@@ -58,6 +59,7 @@ const T = {
     noneYet: "No reading yet",
     last: "Last",
     printQr: "🖨 Print QR stickers",
+    monthly: "📊 Monthly report",
     openSheet: "Open full sheet",
     refresh: "↻ Refresh",
     back: "← All units",
@@ -105,6 +107,7 @@ const T = {
     noneYet: "لا قراءة بعد",
     last: "آخر قراءة",
     printQr: "🖨 طباعة ملصقات QR",
+    monthly: "📊 التقرير الشهري",
     openSheet: "فتح السجل الكامل",
     refresh: "↻ تحديث",
     back: "→ كل الوحدات",
@@ -342,9 +345,12 @@ const slotLabel = (A, key) => A.slots.find((sl) => sl.key === key)?.label || key
 function Hub({ A, t, lang, toggleLang }) {
   const { date, units, status, loading, error, reload } = useDayData(A);
   const [printing, setPrinting] = useState(false);
+  const [monthly, setMonthly] = useState(false);
 
   const late = status.filter((s) => s.late.length);
   const overdue = status.filter((s) => s.recheck?.overdue);
+
+  if (monthly) return <MonthlyTempReport A={A} units={units} t={t} onClose={() => setMonthly(false)} />;
 
   if (printing) {
     return (
@@ -381,6 +387,7 @@ function Hub({ A, t, lang, toggleLang }) {
       <div className="bar">
         <button className="btn" onClick={reload} disabled={loading}>{t.refresh}</button>
         <button className="btn" onClick={() => setPrinting(true)}>{t.printQr}</button>
+        <button className="btn" onClick={() => setMonthly(true)}>{t.monthly}</button>
         <Link className="btn" to={A.sheetPath}>{t.openSheet}</Link>
       </div>
 

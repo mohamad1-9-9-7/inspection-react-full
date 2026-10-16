@@ -114,6 +114,7 @@ function makeAdapter(code) {
   const defOf = (row) => (cfg.shape === "grid" ? gridDef(row.name) : pos19Def(row.name, row.unitType));
   return {
     label: cfg.branch,
+    type: cfg.type,
     printTitle: cfg.branch,
     hubPath: `${BRANCH_TEMP_PATH}/${code}`,
     sheetPath: cfg.sheet,
@@ -146,6 +147,12 @@ function makeAdapter(code) {
       if (cfg.shape === "grid") return r.temps || {};
       return { am: r.am_temp, pm: r.pm_temp, ev: r.ev_temp };
     },
+    remarksOf(payload, key) {
+      const r = rowOf(cfg, payload, key);
+      return (cfg.shape === "grid" ? r?.remarks : r?.correctiveAction) || "";
+    },
+    namesOf: (payload) => rowsOf(cfg, payload).map((r) => r.name),
+    defOf: (key, payload) => defOf(rowsOf(cfg, payload).find((r) => sameName(r.name, key)) || { name: key }),
     sameUnit: sameName,
     inRange: (d, v) => {
       const n = Number(v);

@@ -38,6 +38,7 @@ import { canReport } from "../../../../utils/reportPerms";
 
 const QCS_ADAPTER = {
   label: "QCS",
+  type: "qcs-coolers",
   printTitle: "QCS",
   hubPath: QUICK_HUB_PATH,
   sheetPath: "/monitor/qcs?tab=coolers",
@@ -54,6 +55,7 @@ const QCS_ADAPTER = {
     };
   },
   readingsOf: (payload, key) => unitBlock(payload, key)?.temps || {},
+  remarksOf: (payload, key) => unitBlock(payload, key)?.remarks || "",
   sameUnit: (a, b) => a === b,
   inRange,
   emoji: emojiOf,
