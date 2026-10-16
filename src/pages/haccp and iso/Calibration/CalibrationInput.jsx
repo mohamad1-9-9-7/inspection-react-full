@@ -142,14 +142,15 @@ export default function CalibrationInput() {
     return [...units, { key: link.key, label: link.label || link.key, emoji: "🔗" }];
   }, [units, form.linkedUnit]);
 
+  /* Link only: the record's own data (name, type, dates, files…) is never
+     touched. The name is filled from the unit only when it is still empty. */
   function linkUnit(key) {
     const u = unitOptions.find((x) => x.key === key);
     setForm((f) => (u && branchLog
       ? {
           ...f,
           linkedUnit: { log: branchLog.log, key: u.key, label: u.label },
-          equipmentName: u.label,
-          equipmentType: "Chiller / Freezer Display",
+          equipmentName: String(f.equipmentName || "").trim() ? f.equipmentName : u.label,
         }
       : { ...f, linkedUnit: null }));
   }
@@ -300,8 +301,8 @@ export default function CalibrationInput() {
               </select>
               <div style={S.hint}>
                 {isAr
-                  ? "تاريخ انتهاء المعايرة يظهر بجانب هذه الوحدة في تقرير الحرارة وصفحة الإدخال بالـ QR. الاسم يُنسخ من السجل."
-                  : "The calibration expiry date shows next to this unit on the temperature report and the QR phone page. The name is copied from the log."}
+                  ? "ربط فقط — بيانات السجل كما هي لا تتغير. تاريخ انتهاء المعايرة يظهر بجانب هذه الوحدة في تقرير الحرارة وصفحة الإدخال بالـ QR."
+                  : "Link only — the record's data stays as it is. The calibration expiry date shows next to this unit on the temperature report and the QR phone page."}
               </div>
             </div>
           )}
@@ -323,14 +324,7 @@ export default function CalibrationInput() {
             </div>
           </div>
           <label style={S.label}>{t("calibName")}</label>
-          <input
-            style={form.linkedUnit ? { ...S.input, background: "#f1f5f9" } : S.input}
-            value={form.equipmentName}
-            onChange={(e) => setField("equipmentName", e.target.value)}
-            placeholder={t("calibNamePlaceholder")}
-            readOnly={!!form.linkedUnit}
-            title={form.linkedUnit ? (isAr ? "الاسم مأخوذ من سجل الحرارة" : "Name comes from the temperature log") : undefined}
-          />
+          <input style={S.input} value={form.equipmentName} onChange={(e) => setField("equipmentName", e.target.value)} placeholder={t("calibNamePlaceholder")} />
           <div style={S.row}>
             <div>
               <label style={S.label}>{t("calibLocation")}</label>
