@@ -27,6 +27,39 @@ import { canEdit, getCurrentUser } from "../../../../utils/perms";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 import { Link } from "react-router-dom";
 import { LATE_GRACE_MIN, QUICK_HUB_PATH, dayStatus, fetchDay, localDate, mergeServerDay, quickIdsOf } from "./coolerQuick";
+import {
+  QCS_BRANCH, QCS_COOLERS_LOG, calibrationForUnit, expiryStatus, fetchCalibrations, fmtDay,
+} from "../../../haccp and iso/Calibration/calibrationLink";
+
+/* Calibration expiry of one unit, linked from the HACCP calibration log. */
+const CALIB_TONE = {
+  ok:      { bg: "#ecfdf5", fg: "#047857", bd: "#a7f3d0", icon: "🎯" },
+  soon:    { bg: "#fff7ed", fg: "#b45309", bd: "#fed7aa", icon: "⏳" },
+  expired: { bg: "#fef2f2", fg: "#b91c1c", bd: "#fecaca", icon: "⛔" },
+  none:    { bg: "#f8fafc", fg: "#64748b", bd: "#e2e8f0", icon: "🎯" },
+};
+function CalibrationBadge({ records, unitKey, label, hideWhenNone }) {
+  if (!records) return null; // still loading
+  const st = expiryStatus(calibrationForUnit(records, { branch: QCS_BRANCH, log: QCS_COOLERS_LOG, unitKey, label }));
+  if (hideWhenNone && st.state === "none") return null;
+  const tone = CALIB_TONE[st.state];
+  const text =
+    st.state === "none" ? "Calibration: not recorded"
+    : st.failed ? "Calibration failed — out of service"
+    : st.state === "expired" ? `Calibration expired ${fmtDay(st.date)}`
+    : `Calibration valid until ${fmtDay(st.date)}`;
+  return (
+    <span
+      title={st.state === "soon" ? `${st.days} day(s) left` : undefined}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 999,
+        fontWeight: 700, whiteSpace: "nowrap", background: tone.bg, color: tone.fg, border: `1px solid ${tone.bd}`,
+      }}
+    >
+      {tone.icon} {text}
+    </span>
+  );
+}
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "qcs_coolers_draft_v1";
@@ -335,6 +368,14 @@ export default function CoolersTab(props) {
   const [setupOpen, setSetupOpen] = useState(null); // "cooler-3" | "loading-area" | null
   const [savingSetup, setSavingSetup] = useState(false);
   const canEditSetup = canEdit("daily");
+
+  /* Calibration records (HACCP ▸ Calibration Log) → expiry date beside each unit */
+  const [calibrations, setCalibrations] = useState(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchCalibrations(ctrl.signal).then((list) => { if (!ctrl.signal.aborted) setCalibrations(list); });
+    return () => ctrl.abort();
+  }, []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -1182,6 +1223,7 @@ export default function CoolersTab(props) {
                 <span style={{ ...rangeBadge, background: `${accent}14`, color: accent, border: `1px solid ${accent}55` }}>
                   {rangeLabel(def)}
                 </span>
+                <CalibrationBadge records={calibrations} unitKey={`cooler-${i}`} label={def.label} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={statusChip(status)}>{status.text}</span>
@@ -1241,6 +1283,7 @@ export default function CoolersTab(props) {
                 <span style={{ ...rangeBadge, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>
                   {rangeLabel(loadingDef)}
                 </span>
+                <CalibrationBadge records={calibrations} unitKey="loading-area" label={loadingDef.label} hideWhenNone />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={statusChip(status)}>{status.text}</span>

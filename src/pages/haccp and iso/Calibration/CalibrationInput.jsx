@@ -6,6 +6,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import {
+  defaultLoadingDef, emojiOf, fetchCoolerConfig, loadDefsCache, makeDefaultCoolerDefs, storageOptions,
+} from "../../monitor/branches/qcs/coolerDefs";
+import { QCS_BRANCH, QCS_COOLERS_LOG } from "./calibrationLink";
 
 const TYPE = "calibration_record";
 
@@ -63,6 +67,7 @@ const empty = {
   calibrationCertNo: "",
   result: "PASS",
   notes: "",
+  linkedUnit: null, // { log, key, label } — the temperature-log unit this device is
   fileUrls: [],
   fileNames: [],
 };
@@ -84,6 +89,7 @@ const S = {
   textarea: { width: "100%", padding: "9px 11px", border: "1.5px solid #cbd5e1", borderRadius: 8, fontSize: 13, lineHeight: 1.55, fontFamily: "inherit", minHeight: 60, resize: "vertical" },
   row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   row3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 },
+  linkBox: { marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe" },
   hint: { fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 4 },
   chip: {
     display: "inline-flex", alignItems: "center", gap: 4,
@@ -112,6 +118,31 @@ export default function CalibrationInput() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const isAr = lang === "ar";
+
+  /* Storage units of the Al Qusais temperature log, to link a cooler/freezer to its calibration */
+  const [units, setUnits] = useState([]);
+  const isQcs = form.branch === QCS_BRANCH;
+  useEffect(() => {
+    if (!isQcs) return undefined;
+    const ctrl = new AbortController();
+    const show = (d) => setUnits(storageOptions(d.coolerDefs, d.loadingDef));
+    show(loadDefsCache() || { coolerDefs: makeDefaultCoolerDefs(), loadingDef: defaultLoadingDef() });
+    fetchCoolerConfig(ctrl.signal).then((cfg) => { if (cfg) show(cfg); });
+    return () => ctrl.abort();
+  }, [isQcs]);
+
+  function linkUnit(key) {
+    const u = units.find((x) => x.key === key);
+    setForm((f) => (u
+      ? {
+          ...f,
+          linkedUnit: { log: QCS_COOLERS_LOG, key: u.key, label: u.label },
+          equipmentName: u.label,
+          equipmentType: "Chiller / Freezer Display",
+        }
+      : { ...f, linkedUnit: null }));
+  }
 
   useEffect(() => {
     if (!editId) return;
@@ -127,6 +158,7 @@ export default function CalibrationInput() {
   function setField(k, v) {
     setForm((f) => {
       const next = { ...f, [k]: v };
+      if (k === "branch" && v !== QCS_BRANCH) next.linkedUnit = null;
       // Auto-calculate next due date
       if (k === "lastCalibrationDate" || k === "intervalMonths") {
         next.nextDueDate = addMonths(
@@ -243,6 +275,25 @@ export default function CalibrationInput() {
             {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
 
+          {isQcs && (
+            <div style={S.linkBox}>
+              <label style={{ ...S.label, marginTop: 0 }}>
+                🔗 {isAr ? "ربط بوحدة في سجل حرارة المبردات" : "Link to a unit in the coolers temperature log"}
+              </label>
+              <select style={S.input} value={form.linkedUnit?.key || ""} onChange={(e) => linkUnit(e.target.value)}>
+                <option value="">{isAr ? "— غير مرتبط (جهاز آخر) —" : "— Not linked (other equipment) —"}</option>
+                {units.map((u) => (
+                  <option key={u.key} value={u.key}>{emojiOf(u.def)} {u.label}</option>
+                ))}
+              </select>
+              <div style={S.hint}>
+                {isAr
+                  ? "تاريخ انتهاء المعايرة يظهر بجانب هذه الوحدة عند إدخال تقرير حرارة المبردات. الاسم يُنسخ من السجل."
+                  : "The calibration expiry date shows next to this unit while the coolers temperature report is entered. The name is copied from the log."}
+              </div>
+            </div>
+          )}
+
           <div style={S.row3}>
             <div>
               <label style={S.label}>{t("calibId")}</label>
@@ -260,7 +311,14 @@ export default function CalibrationInput() {
             </div>
           </div>
           <label style={S.label}>{t("calibName")}</label>
-          <input style={S.input} value={form.equipmentName} onChange={(e) => setField("equipmentName", e.target.value)} placeholder={t("calibNamePlaceholder")} />
+          <input
+            style={form.linkedUnit ? { ...S.input, background: "#f1f5f9" } : S.input}
+            value={form.equipmentName}
+            onChange={(e) => setField("equipmentName", e.target.value)}
+            placeholder={t("calibNamePlaceholder")}
+            readOnly={!!form.linkedUnit}
+            title={form.linkedUnit ? (isAr ? "الاسم مأخوذ من سجل الحرارة" : "Name comes from the temperature log") : undefined}
+          />
           <div style={S.row}>
             <div>
               <label style={S.label}>{t("calibLocation")}</label>

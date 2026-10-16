@@ -441,7 +441,7 @@ export default function CalibrationView() {
           <div className="cv-cell c-eq">
             <div className="cv-name fs-md">{p.equipmentName || "—"}</div>
             <div className="cv-meta fs-xs">
-              {[p.equipmentId, p.equipmentType, p.serialNumber && `S/N ${p.serialNumber}`].filter(Boolean).join(" · ") || "—"}
+              {[p.linkedUnit?.label && `🔗 ${L("سجل الحرارة", "Temp log")}: ${p.linkedUnit.label}`, p.equipmentId, p.equipmentType, p.serialNumber && `S/N ${p.serialNumber}`].filter(Boolean).join(" · ") || "—"}
             </div>
           </div>
           <div className="cv-cell" data-label={L("الفرع", "Branch")}>
