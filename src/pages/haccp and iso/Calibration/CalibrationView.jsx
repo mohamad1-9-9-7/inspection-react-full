@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import ImageLightbox, { Thumb, isImageUrl } from "../_shared/ImageLightbox";
 
 const TYPE = "calibration_record";
 const PREFS_KEY = "calib_view_prefs";
@@ -59,10 +60,6 @@ function arDays(n) {
   return `${n} يوماً`;
 }
 
-const isImageFile = (url, name) => {
-  const s = String(url || name || "").toLowerCase();
-  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(s) || s.includes("/image/");
-};
 const isPdfFile = (url, name) => /\.pdf(\?|$)/i.test(String(name || url || ""));
 
 /* A failed calibration takes the device out of service whatever the due date says. */
@@ -205,9 +202,14 @@ const CV_CSS = `
 .cv .t-ok{ background:var(--grn-soft); color:var(--grn-ink); border-color:#bfe8cf; }
 .cv .t-nodate{ background:var(--gry-soft); color:var(--ink2); border-color:var(--line); }
 .cv .cv-thumbs{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
-.cv .cv-thumb{ width:34px; height:34px; border-radius:7px; object-fit:cover; border:1px solid var(--line); cursor:zoom-in; display:block; background:#f8fafc; }
-.cv .cv-more{ min-width:34px; height:34px; padding:0 6px; border-radius:7px; background:var(--pri-soft); color:var(--pri-ink);
-  border:1px solid #cfe0fb; font-weight:800; cursor:pointer; font-family:inherit; }
+.cv .cv-view{ display:inline-flex; align-items:center; gap:8px; padding:4px; padding-inline-end:10px; border-radius:10px;
+  border:1px solid #cfe0fb; background:var(--pri-soft); color:var(--pri-ink); font-weight:800; cursor:zoom-in;
+  font-family:inherit; transition:background .15s, box-shadow .15s; }
+.cv .cv-view:hover{ background:#dceafd; box-shadow:0 2px 8px rgba(59,130,246,.18); }
+.cv .cv-view-img{ position:relative; width:38px; height:38px; flex:0 0 38px; border-radius:8px; overflow:hidden; background:#e8eef6; }
+.cv .cv-view-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+.cv .cv-view-n{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(15,23,42,.45); color:#fff; font-weight:800; }
 .cv .cv-doc{ display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:7px; background:#fff7e8;
   border:1px solid #f6dfb1; color:#8a5a00; text-decoration:none; font-weight:800; }
 .cv .cv-tools{ display:flex; gap:6px; justify-content:flex-end; }
@@ -219,7 +221,10 @@ const CV_CSS = `
 .cv .cv-field .v{ color:var(--ink); font-weight:700; margin-top:2px; overflow-wrap:anywhere; white-space:pre-wrap; }
 .cv .cv-field.wide{ grid-column:1 / -1; }
 .cv .cv-gallery{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-.cv .cv-gallery img{ width:96px; height:96px; object-fit:cover; border-radius:10px; border:1px solid var(--line); cursor:zoom-in; }
+.cv .cv-gimg{ width:104px; height:104px; padding:0; border-radius:12px; overflow:hidden; border:1px solid var(--line);
+  background:#e8eef6; cursor:zoom-in; transition:transform .15s, box-shadow .15s; }
+.cv .cv-gimg:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(15,23,42,.12); }
+.cv .cv-gimg img{ width:100%; height:100%; object-fit:cover; display:block; }
 
 /* phones / narrow windows: every row becomes a card */
 @media (max-width: 820px){
@@ -280,7 +285,7 @@ export default function CalibrationView() {
     const urls = Array.isArray(p.fileUrls) ? p.fileUrls : [];
     const names = Array.isArray(p.fileNames) ? p.fileNames : [];
     const files = urls.filter(Boolean).map((url, i) => ({ url, name: names[i] || "" }));
-    const images = files.filter((f) => isImageFile(f.url, f.name) && !isPdfFile(f.url, f.name));
+    const images = files.filter((f) => isImageUrl(f.url, f.name));
     return {
       id: rec.id,
       p,
@@ -365,9 +370,11 @@ export default function CalibrationView() {
     }
   }
 
-  function openLightbox(images, index) {
+  const closePreview = useCallback(() => setPreview(null), []);
+
+  function openLightbox(images, index, title) {
     if (!images?.length) return;
-    setPreview({ images, index: Math.max(0, Math.min(index, images.length - 1)) });
+    setPreview({ images, title, index: Math.max(0, Math.min(index, images.length - 1)) });
   }
 
   const statusText = (r) => {
@@ -423,7 +430,6 @@ export default function CalibrationView() {
     const { p } = r;
     const open = openId === r.id;
     const share = usedShare(p.lastCalibrationDate, p.nextDueDate);
-    const thumbs = r.images.slice(0, 3);
     return (
       <React.Fragment key={r.id}>
         <div
@@ -463,20 +469,18 @@ export default function CalibrationView() {
               <span className="cv-meta">—</span>
             ) : (
               <div className="cv-thumbs">
-                {thumbs.map((f, i) => (
-                  <img
-                    key={f.url + i}
-                    src={f.url}
-                    alt={f.name || `image-${i + 1}`}
-                    title={f.name}
-                    className="cv-thumb"
-                    loading="lazy"
-                    onClick={() => openLightbox(r.images, i)}
-                  />
-                ))}
-                {r.images.length > 3 && (
-                  <button type="button" className="cv-more fs-xs" onClick={() => openLightbox(r.images, 3)}>
-                    +{r.images.length - 3}
+                {r.images.length > 0 && (
+                  <button
+                    type="button"
+                    className="cv-view"
+                    onClick={() => openLightbox(r.images, 0, p.equipmentName)}
+                    title={L("عرض الصور", "View photos")}
+                  >
+                    <span className="cv-view-img">
+                      <Thumb url={r.images[0].url} alt={r.images[0].name} />
+                      {r.images.length > 1 && <span className="cv-view-n fs-xs">+{r.images.length - 1}</span>}
+                    </span>
+                    <span className="fs-xs">🖼 {L("عرض", "View")} {r.images.length}</span>
                   </button>
                 )}
                 {r.docs.map((f, i) => (
@@ -505,7 +509,7 @@ export default function CalibrationView() {
             </div>
           </div>
         </div>
-        {open && <DetailPanel r={r} L={L} onImage={(i) => openLightbox(r.images, i)} />}
+        {open && <DetailPanel r={r} L={L} onImage={(i) => openLightbox(r.images, i, p.equipmentName)} />}
       </React.Fragment>
     );
   }
@@ -658,12 +662,12 @@ export default function CalibrationView() {
       </div>
 
       {preview && (
-        <ImagePreviewModal
+        <ImageLightbox
           images={preview.images}
           index={preview.index}
-          onClose={() => setPreview(null)}
-          onIndex={(newIdx) => setPreview((p) => (p ? { ...p, index: newIdx } : null))}
+          title={preview.title}
           isAr={isAr}
+          onClose={closePreview}
         />
       )}
     </main>
@@ -712,7 +716,9 @@ function DetailPanel({ r, L, onImage }) {
       {(r.images.length > 0 || r.docs.length > 0) && (
         <div className="cv-gallery">
           {r.images.map((f, i) => (
-            <img key={f.url + i} src={f.url} alt={f.name || `image-${i + 1}`} title={f.name} loading="lazy" onClick={() => onImage(i)} />
+            <button key={f.url + i} type="button" className="cv-gimg" title={f.name} onClick={() => onImage(i)}>
+              <Thumb url={f.url} alt={f.name || `image-${i + 1}`} />
+            </button>
           ))}
           {r.docs.map((f, i) => (
             <a key={f.url + i} href={f.url} target="_blank" rel="noreferrer" className="cv-doc fs-sm" title={f.name}>
@@ -721,110 +727,6 @@ function DetailPanel({ r, L, onImage }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Full-screen image preview modal
-   - Click image (or "1:1" button) toggles between fit-screen and actual-size
-   - ESC closes; ←/→ navigates between images
-   ───────────────────────────────────────────────────────────── */
-const M = {
-  backdrop: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.94)", zIndex: 9999 },
-  header: {
-    position: "fixed", top: 0, left: 0, right: 0,
-    background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.55) 80%, transparent)",
-    color: "#fff", padding: "14px 18px",
-    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
-    zIndex: 10001,
-  },
-  nav: {
-    position: "fixed", top: "50%", transform: "translateY(-50%)",
-    width: 48, height: 48, borderRadius: "50%",
-    background: "rgba(15,23,42,0.6)", color: "#fff", border: "1.5px solid rgba(255,255,255,0.3)",
-    fontWeight: 900, cursor: "pointer", zIndex: 10002,
-    display: "flex", alignItems: "center", justifyContent: "center",
-  },
-  body: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" },
-  imgFit: { maxWidth: "100vw", maxHeight: "100vh", width: "auto", height: "auto", objectFit: "contain", cursor: "zoom-in", display: "block" },
-  imgActual: { width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", cursor: "zoom-out", display: "block" },
-  btn: { background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, whiteSpace: "nowrap", textDecoration: "none" },
-  close: { background: "rgba(220,38,38,0.85)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontWeight: 900 },
-};
-
-function ImagePreviewModal({ images, index, onClose, onIndex, isAr }) {
-  const [actualSize, setActualSize] = useState(false);
-  const total = images.length;
-  const current = images[index];
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") onIndex((index + 1) % total);
-      else if (e.key === "ArrowLeft") onIndex((index - 1 + total) % total);
-    };
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [index, total, onClose, onIndex]);
-
-  /* Reset zoom when navigating */
-  useEffect(() => { setActualSize(false); }, [index]);
-
-  if (!current) return null;
-
-  return (
-    <div style={M.backdrop} onClick={onClose} role="dialog" aria-modal="true">
-      <div style={M.header} onClick={(e) => e.stopPropagation()}>
-        <div style={{ minWidth: 0, flex: 1, color: "#fff" }}>
-          <div style={{ fontWeight: 900 }}>
-            {isAr ? "صورة" : "Image"} {index + 1} / {total}
-          </div>
-          <div style={{ opacity: 0.85, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {current.name || ""}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={() => setActualSize((v) => !v)} style={M.btn}>
-            {actualSize ? (isAr ? "🔽 ملاءمة" : "🔽 Fit") : "🔍 1:1"}
-          </button>
-          <a href={current.url} download={current.name || `image-${index + 1}.jpg`} style={M.btn}>
-            ⬇ {isAr ? "تنزيل" : "Download"}
-          </a>
-          <button type="button" onClick={onClose} style={M.close} aria-label={isAr ? "إغلاق" : "Close"}>×</button>
-        </div>
-      </div>
-
-      {total > 1 && (
-        <>
-          <button
-            type="button"
-            style={{ ...M.nav, left: 12 }}
-            onClick={(e) => { e.stopPropagation(); onIndex((index - 1 + total) % total); }}
-            aria-label="Previous"
-          >‹</button>
-          <button
-            type="button"
-            style={{ ...M.nav, right: 12 }}
-            onClick={(e) => { e.stopPropagation(); onIndex((index + 1) % total); }}
-            aria-label="Next"
-          >›</button>
-        </>
-      )}
-
-      <div style={{ ...M.body, overflow: actualSize ? "auto" : "hidden" }} onClick={(e) => e.stopPropagation()}>
-        <img
-          src={current.url}
-          alt={current.name || ""}
-          style={actualSize ? M.imgActual : M.imgFit}
-          onClick={() => setActualSize((v) => !v)}
-        />
-      </div>
     </div>
   );
 }
