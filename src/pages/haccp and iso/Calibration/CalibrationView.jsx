@@ -1,13 +1,19 @@
 // src/pages/haccp and iso/Calibration/CalibrationView.jsx
-// Calibration Log — Cleaner table layout with thumbnails + full-screen image preview.
+// Calibration Log (HACCP 8.7) — register of externally calibrated equipment.
+// Soft Sky light design, urgency-first sort, filters from the data, optional
+// grouping by branch, expandable detail row and a full-screen image viewer.
+//
+// Font sizes live in CV_CSS (doubled class `cv`) because globals.css forces
+// `#root * { font-size }` with !important and kills every inline fontSize.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
 
 const TYPE = "calibration_record";
+const PREFS_KEY = "calib_view_prefs";
 
 const BRANCHES = [
   "Al Qusais Warehouse",
@@ -18,372 +24,704 @@ const BRANCHES = [
   "Al Ain Butchery",
 ];
 
-const isImageUrl = (url, name) => {
-  const s = String(url || name || "").toLowerCase();
-  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(s) || s.includes("image");
-};
-const isPdfUrl = (url, name) => /\.pdf(\?|$)/i.test(String(url || name || ""));
+const DAY = 86400000;
+const DUE_SOON_DAYS = 30;
 
-const S = {
-  shell: { minHeight: "100vh", padding: "20px 16px", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', background: "linear-gradient(180deg, #ecfeff 0%, #f0fdfa 60%, #f8fafc 100%)" },
-  layout: { width: "100%", margin: "0 auto", padding: "0 4px" },
-  topbar: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 14, flexWrap: "wrap", gap: 10,
-    padding: "12px 16px",
-    background: "rgba(255,255,255,0.92)", borderRadius: 14,
-    border: "1px solid #cffafe", boxShadow: "0 8px 24px rgba(8,145,178,0.10)",
-  },
-  title: { fontSize: 22, fontWeight: 950, color: "#155e75", lineHeight: 1.2 },
-  subtitle: { fontSize: 12, color: "#0e7490", marginTop: 4, fontWeight: 700 },
-  card: { background: "#fff", borderRadius: 14, padding: 14, marginBottom: 10, border: "1px solid #cffafe", boxShadow: "0 6px 16px rgba(8,145,178,0.06)" },
-  label: { display: "block", fontSize: 12, fontWeight: 900, color: "#155e75", marginBottom: 4 },
-  filterInput: { padding: "8px 11px", border: "1.5px solid #cffafe", borderRadius: 10, fontSize: 13, fontWeight: 600, fontFamily: "inherit", background: "#fff", minWidth: 110 },
-
-  btn: (kind) => {
-    const map = {
-      primary:   { bg: "linear-gradient(180deg, #06b6d4, #0891b2)", color: "#fff", border: "#0e7490" },
-      secondary: { bg: "#fff", color: "#155e75", border: "#cffafe" },
-      success:   { bg: "linear-gradient(180deg, #22c55e, #16a34a)", color: "#fff", border: "#15803d" },
-      danger:    { bg: "linear-gradient(180deg, #ef4444, #dc2626)", color: "#fff", border: "#b91c1c" },
-      ghost:     { bg: "#ecfeff", color: "#155e75", border: "#a5f3fc" },
-    };
-    const c = map[kind] || map.secondary;
-    return { background: c.bg, color: c.color, border: `1.5px solid ${c.border}`, padding: "8px 14px", borderRadius: 999, cursor: "pointer", fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" };
-  },
-  empty: { textAlign: "center", padding: 40, color: "#64748b", fontWeight: 700 },
-
-  /* KPIs */
-  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 },
-  kpiCard: (color, active) => ({
-    background: "#fff", borderRadius: 14, padding: "14px 16px",
-    border: active ? `2px solid ${color}` : `1px solid ${color}33`,
-    borderInlineStart: `4px solid ${color}`,
-    boxShadow: "0 6px 16px rgba(8,145,178,0.06)",
-    cursor: "pointer", textAlign: "center",
-  }),
-  kpiVal: (color) => ({ fontSize: 26, fontWeight: 950, color }),
-  kpiLabel: { fontSize: 10.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 },
-
-  /* Compact, cleaner table */
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13, background: "#fff", borderRadius: 12, overflow: "hidden" },
-  th: { padding: "10px 12px", background: "#155e75", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" },
-  td: { padding: "10px 12px", borderTop: "1px solid #ecfeff", verticalAlign: "top" },
-
-  pill: (color) => ({ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 900, color: "#fff", background: color, whiteSpace: "nowrap" }),
-
-  /* Image thumbnails — small inline previews that open full-screen modal on click */
-  thumbStrip: { display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 240 },
-  thumb: { width: 44, height: 44, borderRadius: 6, objectFit: "cover", cursor: "zoom-in", border: "1.5px solid #cffafe", background: "#f8fafc", display: "block" },
-  pdfChip: {
-    display: "inline-flex", alignItems: "center", gap: 4,
-    padding: "4px 8px", borderRadius: 6, background: "#fef3c7",
-    border: "1px solid #fde68a", color: "#854d0e",
-    textDecoration: "none", fontSize: 11, fontWeight: 800,
-  },
-  thumbMore: {
-    width: 44, height: 44, borderRadius: 6, background: "#155e75", color: "#fff",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 12, fontWeight: 900, cursor: "pointer", border: "1.5px solid #0e7490",
-  },
-
-  /* Full-screen image modal */
-  modalBackdrop: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", zIndex: 9999, fontFamily: "system-ui,-apple-system,'Segoe UI',sans-serif" },
-  modalHeader: {
-    position: "fixed", top: 0, left: 0, right: 0,
-    background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.55) 80%, transparent)",
-    color: "#fff", padding: "14px 18px",
-    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
-    zIndex: 10001,
-  },
-  modalNav: {
-    position: "fixed", top: "50%", transform: "translateY(-50%)",
-    width: 48, height: 48, borderRadius: "50%",
-    background: "rgba(15,23,42,0.6)", color: "#fff", border: "1.5px solid rgba(255,255,255,0.3)",
-    fontSize: 24, fontWeight: 900, cursor: "pointer", zIndex: 10002,
-    display: "flex", alignItems: "center", justifyContent: "center",
-  },
-  modalBody: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 },
-  modalImgFit: { maxWidth: "100vw", maxHeight: "100vh", width: "auto", height: "auto", objectFit: "contain", cursor: "zoom-in", display: "block" },
-  modalImgActual: { width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", cursor: "zoom-out", display: "block" },
-  modalBtn: { background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap" },
-  modalClose: { background: "rgba(220,38,38,0.85)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 900 },
-};
-
-function statusOfRec(record, t) {
-  const today = Date.now();
-  const next = record?.payload?.nextDueDate;
-  if (!next) return { label: "—", color: "#64748b" };
-  const tm = new Date(next).getTime();
-  const days = Math.ceil((tm - today) / 86400000);
-  if (days < 0)  return { label: t("overdueDays", { n: Math.abs(days) }), color: "#dc2626" };
-  if (days < 30) return { label: t("dueInDays", { n: days }), color: "#d97706" };
-  return { label: `${t("okStatus")} (${days}${t("days").charAt(0)})`, color: "#16a34a" };
+/* ── dates: "YYYY-MM-DD" is read as a LOCAL day so the day count is exact ── */
+function parseDay(s) {
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
+function today0() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
+function daysUntil(s) {
+  const d = parseDay(s);
+  return d ? Math.round((d - today0()) / DAY) : null;
+}
+function fmtDate(s) {
+  const d = parseDay(s);
+  if (!d) return "—";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+/* share of the calibration interval already used (0..1), for the progress bar */
+function usedShare(last, next) {
+  const a = parseDay(last), b = parseDay(next);
+  if (!a || !b || b <= a) return null;
+  return Math.max(0, Math.min(1, (today0() - a) / (b - a)));
+}
+function arDays(n) {
+  if (n === 1) return "يوم واحد";
+  if (n === 2) return "يومان";
+  if (n >= 3 && n <= 10) return `${n} أيام`;
+  return `${n} يوماً`;
+}
+
+const isImageFile = (url, name) => {
+  const s = String(url || name || "").toLowerCase();
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(s) || s.includes("/image/");
+};
+const isPdfFile = (url, name) => /\.pdf(\?|$)/i.test(String(name || url || ""));
+
+/* A failed calibration takes the device out of service whatever the due date says. */
+function classify(p) {
+  if (p.result === "FAIL") return "out";
+  const d = daysUntil(p.nextDueDate);
+  if (d == null) return "nodate";
+  if (d < 0) return "overdue";
+  if (d <= DUE_SOON_DAYS) return "due";
+  return "ok";
+}
+const STATUS_RANK = { out: 0, overdue: 1, due: 2, ok: 3, nodate: 4 };
+const RESULT_RANK = { FAIL: 0, ADJUSTED: 1, PASS: 2 };
+
+const str = (v) => String(v ?? "").trim();
+const byText = (a, b) => str(a).localeCompare(str(b), undefined, { numeric: true, sensitivity: "base" });
+const diff = (a, b) => { const d = a - b; return Number.isNaN(d) ? 0 : d; };
+
+function compareRows(a, b, key) {
+  switch (key) {
+    case "urgency": return STATUS_RANK[a.status] - STATUS_RANK[b.status] || diff(a.days ?? Infinity, b.days ?? Infinity);
+    case "next":    return diff(a.days, b.days);
+    case "last":    return diff(parseDay(a.p.lastCalibrationDate), parseDay(b.p.lastCalibrationDate));
+    case "name":    return byText(a.p.equipmentName, b.p.equipmentName);
+    case "id":      return byText(a.p.equipmentId, b.p.equipmentId);
+    case "branch":  return byText(a.p.branch, b.p.branch) || diff(a.days ?? Infinity, b.days ?? Infinity);
+    case "result":  return (RESULT_RANK[a.p.result] ?? 3) - (RESULT_RANK[b.p.result] ?? 3);
+    default:        return 0;
+  }
+}
+/* rows missing the sort field always go to the bottom, in either direction */
+function isBlankFor(row, key) {
+  if (key === "next") return row.days == null;
+  if (key === "last") return !parseDay(row.p.lastCalibrationDate);
+  if (key === "id") return !str(row.p.equipmentId);
+  return false;
+}
+
+function readPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {}; } catch { return {}; }
+}
+function writePrefs(v) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(v)); } catch { /* storage blocked — prefs last for this visit */ }
+}
+
+const CV_CSS = `
+#root .cv.cv{
+  --bg:#f3f7fc; --card:#ffffff; --line:#e3ebf5; --line2:#eef3f9;
+  --ink:#1e293b; --ink2:#475569; --mute:#8193a8;
+  --pri:#3b82f6; --pri-ink:#1d4ed8; --pri-soft:#eaf2fe;
+  --red:#dc2626; --red-soft:#fdecec; --red-ink:#b91c1c;
+  --amb:#d97706; --amb-soft:#fff4e0; --amb-ink:#9a5b05;
+  --grn:#16a34a; --grn-soft:#e7f7ee; --grn-ink:#15803d;
+  --out:#9f1239; --out-soft:#fde7ef;
+  --gry-soft:#f1f5f9;
+  min-height:100vh; padding:20px 16px 48px; background:var(--bg); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+}
+#root .cv.cv, #root .cv.cv *{ font-size:calc(14px * var(--app-fs,1)) !important; box-sizing:border-box; }
+#root .cv.cv .fs-xl, #root .cv.cv .fs-xl *{ font-size:calc(23px * var(--app-fs,1)) !important; }
+#root .cv.cv .fs-kpi{ font-size:calc(28px * var(--app-fs,1)) !important; }
+#root .cv.cv .fs-md, #root .cv.cv .fs-md *{ font-size:calc(15px * var(--app-fs,1)) !important; }
+#root .cv.cv .fs-sm, #root .cv.cv .fs-sm *{ font-size:calc(12.5px * var(--app-fs,1)) !important; }
+#root .cv.cv .fs-xs, #root .cv.cv .fs-xs *{ font-size:calc(11.5px * var(--app-fs,1)) !important; }
+
+.cv .cv-wrap{ max-width:1500px; margin:0 auto; }
+.cv .cv-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin-bottom:14px;
+  box-shadow:0 4px 18px rgba(59,130,246,.06); }
+.cv .cv-title{ font-weight:800; color:var(--ink); line-height:1.25; }
+.cv .cv-sub{ color:var(--mute); font-weight:600; margin:4px 0 8px; }
+.cv .cv-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.cv .cv-btn{ border:1px solid var(--line); background:#fff; color:var(--ink2); border-radius:10px; padding:8px 14px;
+  font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; transition:background .15s,border-color .15s; }
+.cv .cv-btn:hover{ background:var(--pri-soft); border-color:#c9dcfb; }
+.cv .cv-btn:disabled{ opacity:.55; cursor:default; }
+.cv .cv-btn.pri{ background:var(--pri); border-color:var(--pri); color:#fff; }
+.cv .cv-btn.pri:hover{ background:var(--pri-ink); }
+.cv .cv-btn.ico{ padding:6px 9px; border-radius:8px; }
+.cv .cv-btn.del:hover{ background:var(--red-soft); border-color:#f6c4c4; }
+
+.cv .cv-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px; }
+.cv .cv-kpi{ text-align:start; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+  cursor:pointer; font-family:inherit; display:flex; flex-direction:column; gap:2px; position:relative; overflow:hidden;
+  transition:box-shadow .15s,border-color .15s,transform .15s; }
+.cv .cv-kpi::before{ content:""; position:absolute; inset-inline-start:0; top:0; bottom:0; width:4px; background:var(--k); }
+.cv .cv-kpi:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(15,23,42,.06); }
+.cv .cv-kpi.on{ border-color:var(--k); box-shadow:0 0 0 3px var(--ks); background:var(--ks); }
+.cv .cv-kpi b{ color:var(--k); font-weight:800; line-height:1.1; }
+.cv .cv-kpi span{ color:var(--ink2); font-weight:700; }
+
+.cv .cv-bar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; background:var(--card); border:1px solid var(--line);
+  border-radius:14px; padding:10px 12px; margin-bottom:12px; }
+.cv .cv-in{ border:1px solid var(--line); background:#fbfdff; border-radius:10px; padding:8px 11px; color:var(--ink);
+  font-family:inherit; font-weight:600; min-width:0; }
+.cv .cv-in:focus{ outline:none; border-color:var(--pri); box-shadow:0 0 0 3px var(--pri-soft); }
+.cv .cv-search{ flex:1 1 240px; }
+.cv .cv-check{ display:inline-flex; align-items:center; gap:6px; font-weight:700; color:var(--ink2); cursor:pointer;
+  padding:7px 10px; border:1px solid var(--line); border-radius:10px; background:#fbfdff; user-select:none; }
+.cv .cv-count{ margin-inline-start:auto; color:var(--mute); font-weight:700; white-space:nowrap; }
+.cv .cv-count strong{ color:var(--pri-ink); }
+.cv .cv-clear{ background:none; border:none; color:var(--red-ink); font-weight:700; cursor:pointer; font-family:inherit; padding:6px 4px; }
+
+.cv .cv-note{ background:var(--red-soft); color:var(--red-ink); border:1px solid #f6c4c4; border-radius:12px;
+  padding:10px 14px; margin-bottom:12px; font-weight:700; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.cv .cv-empty{ background:var(--card); border:1px dashed #cbd8e8; border-radius:14px; padding:44px 16px; text-align:center;
+  color:var(--mute); font-weight:700; display:flex; flex-direction:column; gap:12px; align-items:center; }
+
+.cv .cv-table{ background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.cv .cv-scroll{ overflow-x:auto; }
+.cv .cv-grid{ display:grid; align-items:center; column-gap:12px;
+  grid-template-columns:minmax(210px,2.2fr) minmax(150px,1.3fr) 104px minmax(170px,1.4fr) 96px 150px minmax(96px,1fr) 82px; }
+.cv .cv-thead{ min-width:1040px; padding:10px 16px; background:#f6f9fd; border-bottom:1px solid var(--line); }
+.cv .cv-th{ color:var(--ink2); font-weight:800; background:none; border:none; padding:0; text-align:start; cursor:pointer;
+  font-family:inherit; display:inline-flex; gap:4px; align-items:center; white-space:nowrap; }
+.cv .cv-th.static{ cursor:default; }
+.cv .cv-th .arr{ color:var(--pri); }
+.cv .cv-group{ min-width:1040px; display:flex; gap:10px; align-items:center; padding:9px 16px; background:#f9fbfe;
+  border-bottom:1px solid var(--line); color:var(--ink); font-weight:800; }
+.cv .cv-group .tag{ font-weight:700; border-radius:999px; padding:2px 9px; }
+.cv .cv-row{ min-width:1040px; padding:11px 16px; border-bottom:1px solid var(--line2); cursor:pointer;
+  border-inline-start:3px solid transparent; transition:background .12s; }
+.cv .cv-row:hover{ background:#f7faff; }
+.cv .cv-row.open{ background:#f3f8ff; }
+.cv .cv-row.s-out{ border-inline-start-color:var(--out); }
+.cv .cv-row.s-overdue{ border-inline-start-color:var(--red); }
+.cv .cv-row.s-due{ border-inline-start-color:var(--amb); }
+.cv .cv-cell{ min-width:0; }
+.cv .cv-name{ font-weight:800; color:var(--ink); overflow-wrap:anywhere; }
+.cv .cv-meta{ color:var(--mute); font-weight:600; margin-top:2px; overflow-wrap:anywhere; }
+.cv .cv-date{ font-weight:700; color:var(--ink2); white-space:nowrap; }
+.cv .cv-track{ height:6px; background:#edf2f8; border-radius:99px; margin-top:6px; overflow:hidden; max-width:170px; }
+.cv .cv-track i{ display:block; height:100%; border-radius:99px; }
+.cv .cv-pill{ display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:3px 10px; font-weight:800;
+  white-space:nowrap; border:1px solid transparent; }
+.cv .cv-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+.cv .t-out{ background:var(--out-soft); color:var(--out); border-color:#f7c3d5; }
+.cv .t-overdue{ background:var(--red-soft); color:var(--red-ink); border-color:#f6c9c9; }
+.cv .t-due{ background:var(--amb-soft); color:var(--amb-ink); border-color:#f7dcae; }
+.cv .t-ok{ background:var(--grn-soft); color:var(--grn-ink); border-color:#bfe8cf; }
+.cv .t-nodate{ background:var(--gry-soft); color:var(--ink2); border-color:var(--line); }
+.cv .cv-thumbs{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.cv .cv-thumb{ width:34px; height:34px; border-radius:7px; object-fit:cover; border:1px solid var(--line); cursor:zoom-in; display:block; background:#f8fafc; }
+.cv .cv-more{ min-width:34px; height:34px; padding:0 6px; border-radius:7px; background:var(--pri-soft); color:var(--pri-ink);
+  border:1px solid #cfe0fb; font-weight:800; cursor:pointer; font-family:inherit; }
+.cv .cv-doc{ display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:7px; background:#fff7e8;
+  border:1px solid #f6dfb1; color:#8a5a00; text-decoration:none; font-weight:800; }
+.cv .cv-tools{ display:flex; gap:6px; justify-content:flex-end; }
+
+.cv .cv-detail{ min-width:1040px; background:#f8fbff; border-bottom:1px solid var(--line); padding:14px 16px 18px; }
+.cv .cv-dgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+.cv .cv-field{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 11px; }
+.cv .cv-field .k{ color:var(--mute); font-weight:700; }
+.cv .cv-field .v{ color:var(--ink); font-weight:700; margin-top:2px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.cv .cv-field.wide{ grid-column:1 / -1; }
+.cv .cv-gallery{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.cv .cv-gallery img{ width:96px; height:96px; object-fit:cover; border-radius:10px; border:1px solid var(--line); cursor:zoom-in; }
+
+/* phones / narrow windows: every row becomes a card */
+@media (max-width: 820px){
+  .cv .cv-thead{ display:none; }
+  .cv .cv-thead, .cv .cv-row, .cv .cv-group, .cv .cv-detail{ min-width:0; }
+  .cv .cv-row.cv-grid{ grid-template-columns:1fr 1fr; row-gap:10px; padding:14px; }
+  .cv .cv-row .c-eq, .cv .cv-row .c-next{ grid-column:1 / -1; }
+  .cv .cv-row .c-tools{ grid-column:1 / -1; }
+  .cv .cv-row .cv-cell[data-label]::before{ content:attr(data-label); display:block; color:var(--mute); font-weight:700;
+    font-size:calc(11px * var(--app-fs,1)) !important; margin-bottom:3px; }
+  .cv .cv-tools{ justify-content:flex-start; }
+  .cv .cv-head{ padding:14px; }
+  .cv .cv-count{ margin-inline-start:0; width:100%; }
+}
+`;
 
 export default function CalibrationView() {
   const navigate = useNavigate();
   const { t, lang, toggle, dir } = useHaccpLang();
   const isAr = lang === "ar";
+  const L = useCallback((ar, en) => (isAr ? ar : en), [isAr]);
+
+  const [prefs] = useState(readPrefs);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [branchFilter, setBranchFilter] = useState("all");
+  const [loadError, setLoadError] = useState("");
+  const [statusF, setStatusF] = useState("all");
+  const [branchF, setBranchF] = useState("all");
+  const [typeF, setTypeF] = useState("all");
+  const [resultF, setResultF] = useState("all");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState(prefs.sort?.key ? prefs.sort : { key: "urgency", dir: 1 });
+  const [grouped, setGrouped] = useState(!!prefs.grouped);
+  const [openId, setOpenId] = useState(null);
   /* Lightbox state: { images: [{url,name}, ...], index: 0 } */
   const [preview, setPreview] = useState(null);
 
-  async function load() {
+  useEffect(() => { writePrefs({ sort, grouped }); }, [sort, grouped]);
+
+  const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
-      arr.sort((a, b) => new Date(a?.payload?.nextDueDate || "9999-12-31") - new Date(b?.payload?.nextDueDate || "9999-12-31"));
-      setItems(arr);
-    } catch { setItems([]); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { load(); }, []);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setItems(Array.isArray(json) ? json : json?.data || json?.items || []);
+    } catch (e) {
+      setLoadError(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const branchFiltered = useMemo(() => {
-    if (branchFilter === "all") return items;
-    return items.filter((r) => (r?.payload?.branch || "") === branchFilter);
-  }, [items, branchFilter]);
+  const rows = useMemo(() => items.map((rec) => {
+    const p = rec?.payload || {};
+    const urls = Array.isArray(p.fileUrls) ? p.fileUrls : [];
+    const names = Array.isArray(p.fileNames) ? p.fileNames : [];
+    const files = urls.filter(Boolean).map((url, i) => ({ url, name: names[i] || "" }));
+    const images = files.filter((f) => isImageFile(f.url, f.name) && !isPdfFile(f.url, f.name));
+    return {
+      id: rec.id,
+      p,
+      status: classify(p),
+      days: daysUntil(p.nextDueDate),
+      images,
+      docs: files.filter((f) => !images.includes(f)),
+    };
+  }), [items]);
 
-  const kpis = useMemo(() => {
-    const today = Date.now();
-    let overdue = 0, due30 = 0, ok = 0;
-    branchFiltered.forEach((r) => {
-      const next = r?.payload?.nextDueDate;
-      if (!next) return;
-      const days = Math.ceil((new Date(next).getTime() - today) / 86400000);
-      if (days < 0) overdue++;
-      else if (days < 30) due30++;
-      else ok++;
-    });
-    return { total: branchFiltered.length, overdue, due30, ok };
-  }, [branchFiltered]);
+  const branchOptions = useMemo(() => {
+    const set = new Set(BRANCHES);
+    rows.forEach((r) => str(r.p.branch) && set.add(str(r.p.branch)));
+    return [...set].sort(byText);
+  }, [rows]);
+  const typeOptions = useMemo(
+    () => [...new Set(rows.map((r) => str(r.p.equipmentType)).filter(Boolean))].sort(byText),
+    [rows]
+  );
 
-  const filtered = useMemo(() => {
-    const today = Date.now();
+  /* every filter except the status tiles — the tiles count inside this set */
+  const scoped = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return branchFiltered.filter((r) => {
-      const p = r?.payload || {};
-      if (filter !== "all") {
-        const next = p.nextDueDate;
-        if (!next) return false;
-        const days = Math.ceil((new Date(next).getTime() - today) / 86400000);
-        if (filter === "overdue" && days >= 0) return false;
-        if (filter === "due30" && (days < 0 || days >= 30)) return false;
-        if (filter === "ok" && days < 30) return false;
-      }
+    return rows.filter(({ p }) => {
+      if (branchF !== "all" && str(p.branch) !== branchF) return false;
+      if (typeF !== "all" && str(p.equipmentType) !== typeF) return false;
+      if (resultF !== "all" && str(p.result) !== resultF) return false;
       if (q) {
         const hay = [
-          p.equipmentId, p.equipmentName, p.equipmentType, p.serialNumber,
-          p.branch, p.location, p.calibratedBy, p.calibrationCertNo,
-        ].map((v) => String(v || "").toLowerCase()).join(" ");
+          p.equipmentId, p.equipmentName, p.equipmentType, p.serialNumber, p.manufacturer,
+          p.branch, p.location, p.calibratedBy, p.calibrationCertNo, p.notes,
+        ].map((v) => str(v).toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [branchFiltered, filter, search]);
+  }, [rows, branchF, typeF, resultF, search]);
+
+  const kpis = useMemo(() => {
+    const k = { all: scoped.length, out: 0, overdue: 0, due: 0, ok: 0, nodate: 0 };
+    scoped.forEach((r) => { k[r.status]++; });
+    return k;
+  }, [scoped]);
+
+  const visible = useMemo(() => {
+    const list = statusF === "all" ? scoped : scoped.filter((r) => r.status === statusF);
+    return [...list].sort((a, b) => {
+      const ab = isBlankFor(a, sort.key), bb = isBlankFor(b, sort.key);
+      if (ab !== bb) return ab ? 1 : -1;
+      return compareRows(a, b, sort.key) * sort.dir || byText(a.p.equipmentName, b.p.equipmentName);
+    });
+  }, [scoped, statusF, sort]);
+
+  const groups = useMemo(() => {
+    if (!grouped) return [{ key: "", rows: visible }];
+    const map = new Map();
+    visible.forEach((r) => {
+      const k = str(r.p.branch) || "—";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
+    });
+    return [...map.entries()].sort((a, b) => byText(a[0], b[0])).map(([key, list]) => ({ key, rows: list }));
+  }, [visible, grouped]);
+
+  const filtersOn = statusF !== "all" || branchF !== "all" || typeF !== "all" || resultF !== "all" || search.trim() !== "";
+  function clearFilters() {
+    setStatusF("all"); setBranchF("all"); setTypeF("all"); setResultF("all"); setSearch("");
+  }
+
+  function sortBy(key) {
+    setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === "last" ? -1 : 1 }));
+  }
 
   async function del(id) {
     if (!window.confirm(t("confirmDelete"))) return;
     try {
-      await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
-      load();
-    } catch (e) { alert(t("deleteError") + ": " + e.message); }
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setItems((list) => list.filter((r) => r.id !== id));
+    } catch (e) {
+      alert(t("deleteError") + ": " + (e?.message || e));
+    }
   }
 
-  /* Open lightbox starting at a specific image index for the row */
   function openLightbox(images, index) {
     if (!images?.length) return;
     setPreview({ images, index: Math.max(0, Math.min(index, images.length - 1)) });
   }
 
-  return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("calibListTitle")}</div>
-            <div style={S.subtitle}>{isAr ? "معايرة خارجية معتمدة (سنوية)" : "External accredited calibration (annual)"}</div>
-            <HaccpLinkBadge clauses={["8.7"]} label={isAr ? "ضبط المراقبة والقياس" : "Control of Monitoring & Measuring"} />
+  const statusText = (r) => {
+    const d = r.days;
+    switch (r.status) {
+      case "out":     return L("خارج الخدمة", "Out of service");
+      case "overdue": return L(`متأخرة ${arDays(-d)}`, `Overdue ${-d}d`);
+      case "due":     return d === 0 ? L("مستحقة اليوم", "Due today") : L(`باقي ${arDays(d)}`, `Due in ${d}d`);
+      case "ok":      return L(`سارية · ${arDays(d)}`, `Valid · ${d}d`);
+      default:        return L("بلا تاريخ استحقاق", "No due date");
+    }
+  };
+  const resultText = (v) => ({
+    PASS: L("ناجح", "Pass"),
+    ADJUSTED: L("تم الضبط", "Adjusted"),
+    FAIL: L("فاشل", "Fail"),
+  }[v] || "—");
+  const resultTone = (v) => (v === "PASS" ? "t-ok" : v === "ADJUSTED" ? "t-due" : v === "FAIL" ? "t-overdue" : "t-nodate");
+  const barColor = { out: "var(--out)", overdue: "var(--red)", due: "var(--amb)", ok: "var(--grn)", nodate: "#cbd5e1" };
+
+  const KPI_TILES = [
+    { id: "all",     label: L("كل الأجهزة", "All equipment"),          k: "#3b82f6", ks: "#eaf2fe" },
+    { id: "overdue", label: L("متأخرة المعايرة", "Overdue"),            k: "#dc2626", ks: "#fdecec" },
+    { id: "due",     label: L(`مستحقة خلال ${DUE_SOON_DAYS} يوماً`, `Due within ${DUE_SOON_DAYS} days`), k: "#d97706", ks: "#fff4e0" },
+    { id: "ok",      label: L("سارية", "Valid"),                         k: "#16a34a", ks: "#e7f7ee" },
+    { id: "out",     label: L("خارج الخدمة (فاشل)", "Out of service (fail)"), k: "#9f1239", ks: "#fde7ef" },
+    { id: "nodate",  label: L("بلا تاريخ استحقاق", "No due date"),      k: "#64748b", ks: "#f1f5f9" },
+  ].filter((x) => x.id === "all" || x.id === "overdue" || x.id === "due" || x.id === "ok" || kpis[x.id] > 0);
+
+  const SORTS = [
+    ["urgency:1", L("الأكثر إلحاحاً أولاً", "Most urgent first")],
+    ["next:1",    L("الاستحقاق: الأقرب أولاً", "Next due: soonest")],
+    ["next:-1",   L("الاستحقاق: الأبعد أولاً", "Next due: latest")],
+    ["last:-1",   L("آخر معايرة: الأحدث", "Last calibrated: newest")],
+    ["last:1",    L("آخر معايرة: الأقدم", "Last calibrated: oldest")],
+    ["name:1",    L("اسم الجهاز (أ ← ي)", "Equipment name (A → Z)")],
+    ["name:-1",   L("اسم الجهاز (ي ← أ)", "Equipment name (Z → A)")],
+    ["id:1",      L("رقم الجهاز", "Equipment ID")],
+    ["branch:1",  L("الفرع", "Branch")],
+    ["result:1",  L("النتيجة (الفاشل أولاً)", "Result (fail first)")],
+  ];
+  const sortValue = `${sort.key}:${sort.dir}`;
+  const sortKnown = SORTS.some(([v]) => v === sortValue);
+
+  const Th = ({ k, children }) => (
+    <button type="button" className="cv-th fs-sm" onClick={() => sortBy(k)}>
+      {children}
+      {sort.key === k && <span className="arr">{sort.dir === 1 ? "▲" : "▼"}</span>}
+    </button>
+  );
+
+  function renderRow(r) {
+    const { p } = r;
+    const open = openId === r.id;
+    const share = usedShare(p.lastCalibrationDate, p.nextDueDate);
+    const thumbs = r.images.slice(0, 3);
+    return (
+      <React.Fragment key={r.id}>
+        <div
+          className={`cv-row cv-grid s-${r.status}${open ? " open" : ""}`}
+          onClick={() => setOpenId(open ? null : r.id)}
+          role="button"
+          aria-expanded={open}
+        >
+          <div className="cv-cell c-eq">
+            <div className="cv-name fs-md">{p.equipmentName || "—"}</div>
+            <div className="cv-meta fs-xs">
+              {[p.equipmentId, p.equipmentType, p.serialNumber && `S/N ${p.serialNumber}`].filter(Boolean).join(" · ") || "—"}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/calibration")}>{t("new")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
+          <div className="cv-cell" data-label={L("الفرع", "Branch")}>
+            <div style={{ fontWeight: 700 }}>{p.branch || "—"}</div>
+            {p.location && <div className="cv-meta fs-xs">{p.location}</div>}
+          </div>
+          <div className="cv-cell" data-label={L("آخر معايرة", "Last calibrated")}>
+            <span className="cv-date">{fmtDate(p.lastCalibrationDate)}</span>
+          </div>
+          <div className="cv-cell c-next" data-label={L("الاستحقاق التالي", "Next due")}>
+            <span className="cv-date" style={{ color: "var(--ink)" }}>{fmtDate(p.nextDueDate)}</span>
+            {p.intervalMonths ? <span className="cv-meta fs-xs"> · {p.intervalMonths} {L("شهر", "mo")}</span> : null}
+            {share != null && (
+              <div className="cv-track"><i style={{ width: `${Math.round(share * 100)}%`, background: barColor[r.status] }} /></div>
+            )}
+          </div>
+          <div className="cv-cell" data-label={L("النتيجة", "Result")}>
+            <span className={`cv-pill fs-xs ${resultTone(p.result)}`}>{resultText(p.result)}</span>
+          </div>
+          <div className="cv-cell" data-label={L("الحالة", "Status")}>
+            <span className={`cv-pill fs-xs t-${r.status}`}><span className="dot" />{statusText(r)}</span>
+          </div>
+          <div className="cv-cell" data-label={L("المرفقات", "Attachments")} onClick={(e) => e.stopPropagation()}>
+            {r.images.length === 0 && r.docs.length === 0 ? (
+              <span className="cv-meta">—</span>
+            ) : (
+              <div className="cv-thumbs">
+                {thumbs.map((f, i) => (
+                  <img
+                    key={f.url + i}
+                    src={f.url}
+                    alt={f.name || `image-${i + 1}`}
+                    title={f.name}
+                    className="cv-thumb"
+                    loading="lazy"
+                    onClick={() => openLightbox(r.images, i)}
+                  />
+                ))}
+                {r.images.length > 3 && (
+                  <button type="button" className="cv-more fs-xs" onClick={() => openLightbox(r.images, 3)}>
+                    +{r.images.length - 3}
+                  </button>
+                )}
+                {r.docs.map((f, i) => (
+                  <a key={f.url + i} href={f.url} target="_blank" rel="noreferrer" className="cv-doc fs-xs" title={f.name}>
+                    {isPdfFile(f.url, f.name) ? "📄 PDF" : `📎 ${str(f.name).slice(0, 10) || L("ملف", "File")}`}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="cv-cell c-tools" onClick={(e) => e.stopPropagation()}>
+            <div className="cv-tools">
+              <button
+                type="button"
+                className="cv-btn ico"
+                title={L("تعديل", "Edit")}
+                onClick={() => navigate(`/haccp-iso/calibration?edit=${encodeURIComponent(r.id)}`)}
+              >✏️</button>
+              <button
+                type="button"
+                className="cv-btn ico del"
+                title={L("حذف", "Delete")}
+                onClick={() => del(r.id)}
+                data-delete-action="true"
+              >🗑️</button>
+            </div>
           </div>
         </div>
+        {open && <DetailPanel r={r} L={L} onImage={(i) => openLightbox(r.images, i)} />}
+      </React.Fragment>
+    );
+  }
 
-        {/* Filter toolbar — combined */}
-        <div style={{ ...S.card, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+  return (
+    <main className="cv" style={{ direction: dir }}>
+      <style>{CV_CSS}</style>
+      <div className="cv-wrap">
+        <header className="cv-head">
+          <div>
+            <div className="cv-title fs-xl">{t("calibListTitle")}</div>
+            <div className="cv-sub fs-sm">
+              {L("سجل الأجهزة المعايرة خارجياً لدى جهة معتمدة — المعايرة السنوية ومواعيد الاستحقاق",
+                 "Equipment calibrated by an accredited external lab — annual calibration and due dates")}
+            </div>
+            <HaccpLinkBadge clauses={["8.7"]} label={L("ضبط المراقبة والقياس", "Control of Monitoring & Measuring")} />
+          </div>
+          <div className="cv-actions">
+            <HaccpLangToggle lang={lang} toggle={toggle} />
+            <button type="button" className="cv-btn" onClick={load} disabled={loading}>
+              {loading ? "⏳" : "↻"} {L("تحديث", "Refresh")}
+            </button>
+            <button type="button" className="cv-btn pri" onClick={() => navigate("/haccp-iso/calibration")}>
+              ＋ {L("جهاز جديد", "New record")}
+            </button>
+            <button type="button" className="cv-btn" onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
+          </div>
+        </header>
+
+        {loadError && (
+          <div className="cv-note">
+            ⚠ {L("تعذّر تحميل السجلات", "Could not load the records")} ({loadError})
+            <button type="button" className="cv-btn" onClick={load}>{L("إعادة المحاولة", "Retry")}</button>
+          </div>
+        )}
+
+        <div className="cv-kpis">
+          {KPI_TILES.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              className={`cv-kpi${statusF === x.id ? " on" : ""}`}
+              style={{ "--k": x.k, "--ks": x.ks }}
+              onClick={() => setStatusF(statusF === x.id || x.id === "all" ? "all" : x.id)}
+            >
+              <b className="fs-kpi">{kpis[x.id]}</b>
+              <span className="fs-sm">{x.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="cv-bar">
           <input
-            type="text"
-            placeholder={isAr ? "🔍 بحث في الجهاز/الموقع/الشهادة…" : "🔍 Search equipment/location/cert…"}
+            type="search"
+            className="cv-in cv-search"
+            placeholder={L("🔍 بحث: الجهاز، الرقم، التسلسلي، الشهادة، الجهة…", "🔍 Search: equipment, ID, serial, certificate, lab…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ ...S.filterInput, flex: 1, minWidth: 220 }}
           />
-          <select style={S.filterInput} value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
-            <option value="all">{t("calibBranchAll")}</option>
-            {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+          <select className="cv-in" value={branchF} onChange={(e) => setBranchF(e.target.value)} aria-label={L("الفرع", "Branch")}>
+            <option value="all">{L("كل الفروع", "All branches")}</option>
+            {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginInlineStart: "auto" }}>
-            {isAr ? "المعروض:" : "Showing:"} <strong style={{ color: "#155e75" }}>{filtered.length}</strong> / {branchFiltered.length}
+          <select className="cv-in" value={typeF} onChange={(e) => setTypeF(e.target.value)} aria-label={L("نوع الجهاز", "Equipment type")}>
+            <option value="all">{L("كل الأنواع", "All types")}</option>
+            {typeOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <select className="cv-in" value={resultF} onChange={(e) => setResultF(e.target.value)} aria-label={L("النتيجة", "Result")}>
+            <option value="all">{L("كل النتائج", "All results")}</option>
+            <option value="PASS">{resultText("PASS")}</option>
+            <option value="ADJUSTED">{resultText("ADJUSTED")}</option>
+            <option value="FAIL">{resultText("FAIL")}</option>
+          </select>
+          <select
+            className="cv-in"
+            value={sortValue}
+            onChange={(e) => { const [key, d] = e.target.value.split(":"); setSort({ key, dir: Number(d) }); }}
+            aria-label={L("الترتيب", "Sort")}
+          >
+            {!sortKnown && <option value={sortValue}>{L("ترتيب مخصص", "Custom order")}</option>}
+            {SORTS.map(([v, label]) => <option key={v} value={v}>↕ {label}</option>)}
+          </select>
+          <label className="cv-check">
+            <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
+            {L("تجميع حسب الفرع", "Group by branch")}
+          </label>
+          {filtersOn && (
+            <button type="button" className="cv-clear" onClick={clearFilters}>✕ {L("مسح الفلاتر", "Clear filters")}</button>
+          )}
+          <span className="cv-count fs-sm">
+            {L("المعروض", "Showing")} <strong>{visible.length}</strong> {L("من", "of")} {rows.length}
           </span>
         </div>
 
-        <div style={S.kpiGrid}>
-          <div style={S.kpiCard("#0369a1", filter === "all")} onClick={() => setFilter("all")}>
-            <div style={S.kpiVal("#0369a1")}>{kpis.total}</div>
-            <div style={S.kpiLabel}>{t("calibTotal")}</div>
-          </div>
-          <div style={S.kpiCard("#dc2626", filter === "overdue")} onClick={() => setFilter(filter === "overdue" ? "all" : "overdue")}>
-            <div style={S.kpiVal("#dc2626")}>{kpis.overdue}</div>
-            <div style={S.kpiLabel}>🔴 {t("calibOverdue")}</div>
-          </div>
-          <div style={S.kpiCard("#d97706", filter === "due30")} onClick={() => setFilter(filter === "due30" ? "all" : "due30")}>
-            <div style={S.kpiVal("#d97706")}>{kpis.due30}</div>
-            <div style={S.kpiLabel}>⚠ {t("calibDue30")}</div>
-          </div>
-          <div style={S.kpiCard("#16a34a", filter === "ok")} onClick={() => setFilter(filter === "ok" ? "all" : "ok")}>
-            <div style={S.kpiVal("#16a34a")}>{kpis.ok}</div>
-            <div style={S.kpiLabel}>✓ {t("calibOk")}</div>
-          </div>
-        </div>
+        {loading && rows.length === 0 && <div className="cv-empty">⏳ {t("loading")}</div>}
 
-        {loading && <div style={S.empty}>{t("loading")}</div>}
-        {!loading && filtered.length === 0 && <div style={S.empty}>{t("noRecords")}</div>}
+        {!loading && !loadError && rows.length === 0 && (
+          <div className="cv-empty">
+            <div className="fs-md">{L("لا توجد أجهزة مسجلة بعد", "No equipment recorded yet")}</div>
+            <button type="button" className="cv-btn pri" onClick={() => navigate("/haccp-iso/calibration")}>
+              ＋ {L("أضف أول جهاز", "Add the first record")}
+            </button>
+          </div>
+        )}
 
-        {filtered.length > 0 && (
-          <div style={{ ...S.card, padding: 0, overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
-              <table style={S.table}>
-                <thead>
-                  <tr>
-                    <th style={S.th}>{isAr ? "الجهاز" : "Equipment"}</th>
-                    <th style={S.th}>{isAr ? "الموقع" : "Location"}</th>
-                    <th style={{ ...S.th, whiteSpace: "nowrap" }}>{isAr ? "آخر / التالي" : "Last / Next"}</th>
-                    <th style={{ ...S.th, textAlign: "center" }}>{isAr ? "النتيجة" : "Result"}</th>
-                    <th style={S.th}>{isAr ? "الحالة" : "Status"}</th>
-                    <th style={S.th}>{isAr ? "المرفقات" : "Attachments"}</th>
-                    <th style={{ ...S.th, textAlign: "center" }}>{isAr ? "أدوات" : "Tools"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((rec, i) => {
-                    const p = rec?.payload || {};
-                    const st = statusOfRec(rec, t);
-                    const resultColor = p.result === "PASS" ? "#16a34a" : p.result === "ADJUSTED" ? "#d97706" : "#dc2626";
-                    const urls = Array.isArray(p.fileUrls) ? p.fileUrls : [];
-                    const names = Array.isArray(p.fileNames) ? p.fileNames : [];
-                    const allFiles = urls.map((u, idx) => ({ url: u, name: names[idx] || "" }));
-                    const images = allFiles.filter((f) => isImageUrl(f.url, f.name));
-                    const pdfs = allFiles.filter((f) => isPdfUrl(f.url, f.name));
-                    const others = allFiles.filter((f) => !isImageUrl(f.url, f.name) && !isPdfUrl(f.url, f.name));
-                    return (
-                      <tr key={rec.id} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
-                        <td style={{ ...S.td, maxWidth: 260 }}>
-                          <div style={{ fontWeight: 950, color: "#155e75", fontSize: 13 }}>
-                            {p.equipmentName || "—"}
-                          </div>
-                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontWeight: 700 }}>
-                            {[p.equipmentId, p.equipmentType].filter(Boolean).join(" · ")}
-                          </div>
-                          {p.serialNumber && (
-                            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>S/N: {p.serialNumber}</div>
-                          )}
-                        </td>
-                        <td style={{ ...S.td, fontSize: 12 }}>
-                          <div style={{ fontWeight: 800, color: "#1e293b" }}>{p.branch || "—"}</div>
-                          {p.location && <div style={{ fontSize: 11, color: "#64748b" }}>{p.location}</div>}
-                        </td>
-                        <td style={{ ...S.td, fontSize: 12, whiteSpace: "nowrap" }}>
-                          <div style={{ color: "#64748b" }}>{p.lastCalibrationDate || "—"}</div>
-                          <div style={{ fontWeight: 950, color: "#155e75", marginTop: 2 }}>↳ {p.nextDueDate || "—"}</div>
-                        </td>
-                        <td style={{ ...S.td, textAlign: "center" }}>
-                          <span style={S.pill(resultColor)}>{p.result || "—"}</span>
-                        </td>
-                        <td style={S.td}>
-                          <span style={S.pill(st.color)}>{st.label}</span>
-                        </td>
-                        <td style={S.td}>
-                          {allFiles.length === 0 && <span style={{ color: "#94a3b8", fontSize: 12 }}>—</span>}
-                          {images.length > 0 && (
-                            <div style={S.thumbStrip}>
-                              {images.slice(0, 4).map((f, idx) => (
-                                <img
-                                  key={f.url + idx}
-                                  src={f.url}
-                                  alt={f.name || `image-${idx + 1}`}
-                                  style={S.thumb}
-                                  onClick={() => openLightbox(images, idx)}
-                                  title={f.name}
-                                  loading="lazy"
-                                />
-                              ))}
-                              {images.length > 4 && (
-                                <div style={S.thumbMore} onClick={() => openLightbox(images, 4)} title={isAr ? "عرض الكل" : "View all"}>
-                                  +{images.length - 4}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {pdfs.length > 0 && (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: images.length > 0 ? 6 : 0 }}>
-                              {pdfs.map((f, idx) => (
-                                <a key={f.url + idx} href={f.url} target="_blank" rel="noreferrer" style={S.pdfChip} title={f.name}>
-                                  📄 PDF
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                          {others.length > 0 && (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                              {others.map((f, idx) => (
-                                <a key={f.url + idx} href={f.url} target="_blank" rel="noreferrer" style={{ ...S.pdfChip, background: "#eff6ff", borderColor: "#bfdbfe", color: "#2563eb" }} title={f.name}>
-                                  📎 {f.name?.slice(0, 12) || "File"}
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ ...S.td, textAlign: "center", whiteSpace: "nowrap" }}>
-                          <button style={{ ...S.btn("secondary"), padding: "4px 10px", fontSize: 11 }} onClick={() => navigate(`/haccp-iso/calibration?edit=${rec.id}`)}>
-                            ✏️
-                          </button>
-                          <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => del(rec.id)} data-delete-action="true">
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {rows.length > 0 && visible.length === 0 && (
+          <div className="cv-empty">
+            <div className="fs-md">{L("لا توجد نتائج مطابقة للفلاتر", "Nothing matches these filters")}</div>
+            <button type="button" className="cv-btn" onClick={clearFilters}>{L("مسح الفلاتر", "Clear filters")}</button>
+          </div>
+        )}
+
+        {visible.length > 0 && (
+          <div className="cv-table">
+            <div className="cv-scroll">
+              <div className="cv-thead cv-grid">
+                <Th k="name">{L("الجهاز", "Equipment")}</Th>
+                <Th k="branch">{L("الفرع / الموقع", "Branch / location")}</Th>
+                <Th k="last">{L("آخر معايرة", "Last calibrated")}</Th>
+                <Th k="next">{L("الاستحقاق التالي", "Next due")}</Th>
+                <Th k="result">{L("النتيجة", "Result")}</Th>
+                <Th k="urgency">{L("الحالة", "Status")}</Th>
+                <span className="cv-th static fs-sm">{L("المرفقات", "Attachments")}</span>
+                <span className="cv-th static fs-sm" />
+              </div>
+              {groups.map((g) => (
+                <React.Fragment key={g.key || "_all"}>
+                  {grouped && (
+                    <div className="cv-group fs-md">
+                      🏬 {g.key}
+                      <span className="tag fs-xs t-nodate">{g.rows.length}</span>
+                      {g.rows.filter((r) => r.status === "overdue" || r.status === "out").length > 0 && (
+                        <span className="tag fs-xs t-overdue">
+                          {g.rows.filter((r) => r.status === "overdue" || r.status === "out").length} {L("متأخر/خارج الخدمة", "overdue / out")}
+                        </span>
+                      )}
+                      {g.rows.filter((r) => r.status === "due").length > 0 && (
+                        <span className="tag fs-xs t-due">
+                          {g.rows.filter((r) => r.status === "due").length} {L("مستحق قريباً", "due soon")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {g.rows.map(renderRow)}
+                </React.Fragment>
+              ))}
             </div>
           </div>
         )}
       </div>
 
-      {/* Full-screen image preview modal with prev/next navigation */}
       {preview && (
         <ImagePreviewModal
           images={preview.images}
           index={preview.index}
           onClose={() => setPreview(null)}
-          onIndex={(newIdx) => setPreview((p) => p ? { ...p, index: newIdx } : null)}
-          S={S}
+          onIndex={(newIdx) => setPreview((p) => (p ? { ...p, index: newIdx } : null))}
           isAr={isAr}
         />
       )}
     </main>
+  );
+}
+
+/* Expanded row: everything the input form captured that the table hides. */
+function DetailPanel({ r, L, onImage }) {
+  const { p } = r;
+  const fields = [
+    [L("رقم الجهاز", "Equipment ID"), p.equipmentId],
+    [L("نوع الجهاز", "Equipment type"), p.equipmentType],
+    [L("الرقم التسلسلي", "Serial no."), p.serialNumber],
+    [L("الشركة المصنّعة", "Manufacturer"), p.manufacturer],
+    [L("الموقع", "Location"), p.location],
+    [L("نطاق القياس", "Range"), p.range],
+    [L("الدقة", "Accuracy"), p.accuracy],
+    [L("فترة المعايرة", "Interval"), p.intervalMonths ? `${p.intervalMonths} ${L("شهر", "months")}` : ""],
+    [L("آخر معايرة", "Last calibrated"), fmtDate(p.lastCalibrationDate)],
+    [L("الاستحقاق التالي", "Next due"), fmtDate(p.nextDueDate)],
+    [L("جهة المعايرة", "Calibrated by"), p.calibratedBy],
+    [L("رقم الشهادة", "Certificate no."), p.calibrationCertNo],
+  ];
+  return (
+    <div className="cv-detail">
+      <div className="cv-dgrid">
+        {fields.map(([k, v]) => (
+          <div key={k} className="cv-field">
+            <div className="k fs-xs">{k}</div>
+            <div className="v">{str(v) && v !== "—" ? v : "—"}</div>
+          </div>
+        ))}
+        {str(p.calibrationMethod) && (
+          <div className="cv-field wide">
+            <div className="k fs-xs">{L("طريقة المعايرة", "Calibration method")}</div>
+            <div className="v">{p.calibrationMethod}</div>
+          </div>
+        )}
+        {str(p.notes) && (
+          <div className="cv-field wide">
+            <div className="k fs-xs">{L("ملاحظات", "Notes")}</div>
+            <div className="v">{p.notes}</div>
+          </div>
+        )}
+      </div>
+      {(r.images.length > 0 || r.docs.length > 0) && (
+        <div className="cv-gallery">
+          {r.images.map((f, i) => (
+            <img key={f.url + i} src={f.url} alt={f.name || `image-${i + 1}`} title={f.name} loading="lazy" onClick={() => onImage(i)} />
+          ))}
+          {r.docs.map((f, i) => (
+            <a key={f.url + i} href={f.url} target="_blank" rel="noreferrer" className="cv-doc fs-sm" title={f.name}>
+              {isPdfFile(f.url, f.name) ? "📄" : "📎"} {f.name || L("فتح الملف", "Open file")}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -392,7 +730,30 @@ export default function CalibrationView() {
    - Click image (or "1:1" button) toggles between fit-screen and actual-size
    - ESC closes; ←/→ navigates between images
    ───────────────────────────────────────────────────────────── */
-function ImagePreviewModal({ images, index, onClose, onIndex, S, isAr }) {
+const M = {
+  backdrop: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.94)", zIndex: 9999 },
+  header: {
+    position: "fixed", top: 0, left: 0, right: 0,
+    background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.55) 80%, transparent)",
+    color: "#fff", padding: "14px 18px",
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+    zIndex: 10001,
+  },
+  nav: {
+    position: "fixed", top: "50%", transform: "translateY(-50%)",
+    width: 48, height: 48, borderRadius: "50%",
+    background: "rgba(15,23,42,0.6)", color: "#fff", border: "1.5px solid rgba(255,255,255,0.3)",
+    fontWeight: 900, cursor: "pointer", zIndex: 10002,
+    display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  body: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" },
+  imgFit: { maxWidth: "100vw", maxHeight: "100vh", width: "auto", height: "auto", objectFit: "contain", cursor: "zoom-in", display: "block" },
+  imgActual: { width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", cursor: "zoom-out", display: "block" },
+  btn: { background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, whiteSpace: "nowrap", textDecoration: "none" },
+  close: { background: "rgba(220,38,38,0.85)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontWeight: 900 },
+};
+
+function ImagePreviewModal({ images, index, onClose, onIndex, isAr }) {
   const [actualSize, setActualSize] = useState(false);
   const total = images.length;
   const current = images[index];
@@ -418,48 +779,49 @@ function ImagePreviewModal({ images, index, onClose, onIndex, S, isAr }) {
   if (!current) return null;
 
   return (
-    <div style={S.modalBackdrop} onClick={onClose} role="dialog" aria-modal="true">
-      <div style={S.modalHeader} onClick={(e) => e.stopPropagation()}>
+    <div style={M.backdrop} onClick={onClose} role="dialog" aria-modal="true">
+      <div style={M.header} onClick={(e) => e.stopPropagation()}>
         <div style={{ minWidth: 0, flex: 1, color: "#fff" }}>
-          <div style={{ fontWeight: 900, fontSize: 14 }}>
+          <div style={{ fontWeight: 900 }}>
             {isAr ? "صورة" : "Image"} {index + 1} / {total}
           </div>
-          <div style={{ opacity: 0.85, fontSize: 12, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ opacity: 0.85, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {current.name || ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={(e) => { e.stopPropagation(); setActualSize((v) => !v); }} style={S.modalBtn} title={actualSize ? (isAr ? "ملاءمة الشاشة" : "Fit screen") : (isAr ? "الحجم الفعلي" : "Actual size")}>
-            {actualSize ? "🔽 Fit" : "🔍 1:1"}
+          <button type="button" onClick={() => setActualSize((v) => !v)} style={M.btn}>
+            {actualSize ? (isAr ? "🔽 ملاءمة" : "🔽 Fit") : "🔍 1:1"}
           </button>
-          <a href={current.url} download={current.name || `image-${index + 1}.jpg`} style={{ ...S.modalBtn, textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+          <a href={current.url} download={current.name || `image-${index + 1}.jpg`} style={M.btn}>
             ⬇ {isAr ? "تنزيل" : "Download"}
           </a>
-          <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={S.modalClose}>×</button>
+          <button type="button" onClick={onClose} style={M.close} aria-label={isAr ? "إغلاق" : "Close"}>×</button>
         </div>
       </div>
 
-      {/* Prev/Next buttons (only when more than one image) */}
       {total > 1 && (
         <>
           <button
-            style={{ ...S.modalNav, insetInlineStart: 12 }}
+            type="button"
+            style={{ ...M.nav, left: 12 }}
             onClick={(e) => { e.stopPropagation(); onIndex((index - 1 + total) % total); }}
             aria-label="Previous"
           >‹</button>
           <button
-            style={{ ...S.modalNav, insetInlineEnd: 12 }}
+            type="button"
+            style={{ ...M.nav, right: 12 }}
             onClick={(e) => { e.stopPropagation(); onIndex((index + 1) % total); }}
             aria-label="Next"
           >›</button>
         </>
       )}
 
-      <div style={{ ...S.modalBody, overflow: actualSize ? "auto" : "hidden" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...M.body, overflow: actualSize ? "auto" : "hidden" }} onClick={(e) => e.stopPropagation()}>
         <img
           src={current.url}
           alt={current.name || ""}
-          style={actualSize ? S.modalImgActual : S.modalImgFit}
+          style={actualSize ? M.imgActual : M.imgFit}
           onClick={() => setActualSize((v) => !v)}
         />
       </div>
