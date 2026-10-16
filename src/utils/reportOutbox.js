@@ -137,6 +137,36 @@ registerOutboxHandler(KIND, (spec) => withTimeout(REPLAY_TIMEOUT_MS, (signal) =>
 registerOutboxHandler("qcs-coolers", (body) =>
   withTimeout(REPLAY_TIMEOUT_MS, (signal) => send({ body, byDate: { type: "qcs-coolers", date: body?.payload?.reportDate } }, signal)));
 
+/* QCS cooler quick entry (pages/monitor/branches/qcs/coolerQuick.js): one
+   reading merged into the day's sheet by the server. Registered here, not in
+   that lazy page, so a reading queued offline is sent even if the page is
+   never opened again. Same readingId twice = the server ignores the copy; a
+   slot someone else filled meanwhile (409) is dropped, not retried forever. */
+export const COOLER_READING_KIND = "qcs-cooler-reading";
+export async function postCoolerReading(body, signal) {
+  const res = await fetch(`${API_BASE}/api/reports/qcs-coolers/reading`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    body: JSON.stringify(body),
+    signal,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(json?.error || `Save failed (${res.status})`);
+    e.status = res.status;
+    e.code = json?.error;
+    e.value = json?.value;
+    throw e;
+  }
+  return json;
+}
+registerOutboxHandler(COOLER_READING_KIND, (body) =>
+  withTimeout(REPLAY_TIMEOUT_MS, (signal) => postCoolerReading(body, signal)).catch((e) => {
+    if (e?.status === 409) return null;
+    throw e;
+  }));
+
 /** Saves a report now, or keeps it on this device when there is no connection. */
 export async function saveReport({ body, id = null, byDate = null, label = "" }) {
   let spec = { body, id, byDate };

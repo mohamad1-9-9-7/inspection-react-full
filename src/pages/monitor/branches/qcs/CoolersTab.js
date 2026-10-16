@@ -25,6 +25,8 @@ import {
 } from "./coolerDefs";
 import { canEdit, getCurrentUser } from "../../../../utils/perms";
 import { notifyOutOfRange } from "../../../../utils/notifications";
+import { Link } from "react-router-dom";
+import { LATE_GRACE_MIN, QUICK_HUB_PATH, dayStatus, fetchDay, localDate, mergeServerDay } from "./coolerQuick";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "qcs_coolers_draft_v1";
@@ -366,6 +368,55 @@ export default function CoolersTab(props) {
   const dataCoolers = useExternalCoolers ? coolers : localCoolers;
   const updateCoolers = useExternalCoolers ? setCoolers : setLocalCoolers;
 
+  /* ---- 📱 Readings taken from phones (QR quick entry) ----
+     They land on the server record of the day. The sheet pulls them into its
+     empty cells when the date is opened, and again right before saving, so a
+     sheet save never wipes a phone reading. */
+  const [serverDay, setServerDay] = useState(null);
+  const [pulling, setPulling] = useState(false);
+  const [clock, setClock] = useState(() => new Date());
+
+  async function pullPhoneReadings(quiet = true) {
+    if (!date) return null;
+    setPulling(true);
+    try {
+      const day = await fetchDay(date);
+      setServerDay(day);
+      if (day) {
+        const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day);
+        if (m.changed) {
+          updateCoolers(m.coolers);
+          setLoadingArea(m.loadingArea);
+        }
+        if (!quiet) alert(m.changed ? `📱 ${m.changed} phone reading(s) pulled into the sheet.` : "📱 The sheet already has every phone reading.");
+      } else if (!quiet) {
+        alert("📱 No phone readings for this date yet.");
+      }
+      return day;
+    } catch (e) {
+      if (!quiet) alert(`❌ Could not load phone readings: ${e.message || e}`);
+      return null;
+    } finally {
+      setPulling(false);
+      setClock(new Date());
+    }
+  }
+
+  useEffect(() => {
+    pullPhoneReadings(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  const isToday = date === localDate();
+  const lateStatus = useMemo(() => {
+    const view = { coolers: dataCoolers, loadingArea, quickReadings: serverDay?.quickReadings };
+    const st = dayStatus(view, coolerDefs, loadingDef, clock, isToday);
+    return {
+      late: st.filter((x) => x.late.length),
+      overdue: st.filter((x) => x.recheck?.overdue),
+    };
+  }, [dataCoolers, loadingArea, serverDay, coolerDefs, loadingDef, clock, isToday]);
+
   const header = useExternalHeader ? tmpHeader : localHeader;
 
   const storageOpts = useMemo(
@@ -576,10 +627,33 @@ export default function CoolersTab(props) {
         alert("⚠️ Pick a report date first.");
         return;
       }
+      // Readings saved from phones since this sheet was opened: fill them in
+      // and keep their log, so this save never wipes them.
+      let sheetCoolers = dataCoolers;
+      let sheetLoading = loadingArea;
+      let quickReadings;
+      try {
+        const day = await fetchDay(date);
+        if (day) {
+          const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day);
+          sheetCoolers = m.coolers;
+          sheetLoading = m.loadingArea;
+          quickReadings = m.quickReadings;
+          if (m.changed) {
+            updateCoolers(m.coolers);
+            setLoadingArea(m.loadingArea);
+          }
+        }
+      } catch {
+        /* offline: keep at least the phone-reading log this sheet last saw */
+        quickReadings = serverDay?.quickReadings;
+      }
+
       const payload = {
         reportDate: date,
-        coolers: dataCoolers,
-        loadingArea,
+        coolers: sheetCoolers,
+        loadingArea: sheetLoading,
+        ...(quickReadings ? { quickReadings } : {}),
         productVerifications,
         headers: { tmpHeader: header },
         verifiedByManager,
@@ -929,6 +1003,34 @@ export default function CoolersTab(props) {
         dateValue={date}
         onDateChange={(e) => setDate(e.target.value)}
       />
+
+      {/* 📱 Phone entry + late readings */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+        <Link to={QUICK_HUB_PATH} style={{ background: "#2563eb", color: "#fff", borderRadius: 10, padding: "8px 14px", fontWeight: 800, textDecoration: "none" }}>
+          📱 Phone entry & QR stickers
+        </Link>
+        <button type="button" onClick={() => pullPhoneReadings(false)} disabled={pulling}
+          style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 14px", fontWeight: 700, cursor: "pointer" }}>
+          {pulling ? "…" : "↻ Pull phone readings"}
+        </button>
+        {Array.isArray(serverDay?.quickReadings) && serverDay.quickReadings.length > 0 && (
+          <span style={{ color: "#475569", fontWeight: 600 }}>{serverDay.quickReadings.length} reading(s) from phones today</span>
+        )}
+      </div>
+      {isToday && (lateStatus.late.length > 0 || lateStatus.overdue.length > 0) && (
+        <div style={{ maxWidth: 900, margin: "0 auto 14px", display: "grid", gap: 8 }}>
+          {lateStatus.overdue.length > 0 && (
+            <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 12, padding: "10px 14px", fontWeight: 700 }}>
+              ⏰ Recheck overdue (out-of-range reading not re-checked): {lateStatus.overdue.map((x) => x.def.label).join(" · ")}
+            </div>
+          )}
+          {lateStatus.late.length > 0 && (
+            <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#92400e", borderRadius: 12, padding: "10px 14px", fontWeight: 700 }}>
+              ⚠️ Late readings (more than {LATE_GRACE_MIN} min past the slot): {lateStatus.late.map((x) => `${x.def.label} — ${x.late.join(", ")}`).join(" · ")}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI */}
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", marginBottom: 16 }}>

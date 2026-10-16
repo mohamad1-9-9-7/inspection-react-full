@@ -338,6 +338,12 @@ function Login() {
         } else if (data.user.company?.industry && data.user.company.industry !== "meat") {
           target = "/company-app";
         }
+        // Came from a QR sticker (ProtectedRoute kept the path): go straight back to it.
+        try {
+          const back = sessionStorage.getItem("afterLoginPath") || "";
+          sessionStorage.removeItem("afterLoginPath");
+          if (target === "/named-dashboard" && back.startsWith("/monitor/qcs/coolers/quick")) target = back;
+        } catch {}
         // A short success beat (the scan ring ticks) before the workspace opens.
         setDone(true);
         setTimeout(() => navigate(target), 650);

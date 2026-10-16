@@ -68,6 +68,8 @@ const DailyMonitorDashboard = lazy(() =>
   import("./pages/monitor/DailyMonitorDashboard")
 );
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
+/* 📱 QCS cooler quick entry — the page behind the QR sticker on each unit */
+const QcsCoolerQuick = lazy(() => import("./pages/monitor/branches/qcs/QcsCoolerQuick"));
 
 // 🆕 Internal Audit – Reports Viewer
 const InternalAuditReportsView = lazy(() =>
@@ -612,7 +614,13 @@ function ProtectedRoute({ children, allowExpired = false }) {
   } catch {
     isAuthed = false;
   }
-  if (!isAuthed) return <Navigate to="/" replace />;
+  if (!isAuthed) {
+    // A QR sticker scanned while signed out: come back to it after the sign-in.
+    if (pathname.startsWith("/monitor/qcs/coolers/quick")) {
+      try { sessionStorage.setItem("afterLoginPath", pathname); } catch {}
+    }
+    return <Navigate to="/" replace />;
+  }
   if (isSubscriptionExpired() && !isSuperAdmin && !allowExpired) return <Navigate to="/subscription-expired" replace />;
   /* Company separation: an account of any company that is not on the meat
      system (sweets, restaurant, supermarket, warehouse, manufacturing…) lives
@@ -1183,6 +1191,19 @@ export default function App() {
               </SectionRoute>
             }
           />
+
+          {/* 📱 حرارة البرادات من الجوال (QR على كل وحدة) */}
+          {["qcs/coolers/quick", "qcs/coolers/quick/:unit"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <SectionRoute section="daily" branch="QCS">
+                  <BranchSuspense><QcsCoolerQuick /></BranchSuspense>
+                </SectionRoute>
+              }
+            />
+          ))}
 
           {/* موجودة سابقًا */}
           <Route
