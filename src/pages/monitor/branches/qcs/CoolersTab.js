@@ -26,7 +26,7 @@ import {
 import { canEdit, getCurrentUser } from "../../../../utils/perms";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 import { Link } from "react-router-dom";
-import { LATE_GRACE_MIN, QUICK_HUB_PATH, dayStatus, fetchDay, localDate, mergeServerDay } from "./coolerQuick";
+import { LATE_GRACE_MIN, QUICK_HUB_PATH, dayStatus, fetchDay, localDate, mergeServerDay, quickIdsOf } from "./coolerQuick";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "qcs_coolers_draft_v1";
@@ -373,6 +373,10 @@ export default function CoolersTab(props) {
      empty cells when the date is opened, and again right before saving, so a
      sheet save never wipes a phone reading. */
   const [serverDay, setServerDay] = useState(null);
+  /* Phone readings this sheet has already taken in (or loaded with the day).
+     Only readings NOT in here are merged, so a reading the user cleared on
+     the sheet does not come back on save. Kept in the draft across reloads. */
+  const seenQuickRef = useRef(new Set(Array.isArray(loadDraft().seenQuick) ? loadDraft().seenQuick : []));
   const [pulling, setPulling] = useState(false);
   const [clock, setClock] = useState(() => new Date());
 
@@ -383,7 +387,8 @@ export default function CoolersTab(props) {
       const day = await fetchDay(date);
       setServerDay(day);
       if (day) {
-        const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day);
+        const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day, seenQuickRef.current);
+        seenQuickRef.current = m.seenIds;
         if (m.changed) {
           updateCoolers(m.coolers);
           setLoadingArea(m.loadingArea);
@@ -424,6 +429,7 @@ export default function CoolersTab(props) {
       const day = await fetchDay(d);
       if (seq !== loadSeqRef.current) return; // a newer date was picked meanwhile
       setServerDay(day);
+      seenQuickRef.current = quickIdsOf(day); // the loaded day already holds them
       let nextCoolers, nextLoading, nextChecks;
       if (day) {
         const saved = Array.isArray(day.coolers) ? day.coolers : [];
@@ -461,7 +467,11 @@ export default function CoolersTab(props) {
   useEffect(() => {
     if (firstOpenRef.current) {
       firstOpenRef.current = false;
-      pullPhoneReadings(true);
+      // Unsaved work left on this device → keep it, add only new phone
+      // readings. Nothing left (e.g. right after a save) → open the saved
+      // record itself, so it shows exactly what was saved.
+      if (loadDraft().ts) pullPhoneReadings(true);
+      else if (date) openDate(date);
       return;
     }
     if (date) openDate(date);
@@ -509,6 +519,7 @@ export default function CoolersTab(props) {
           localCoolers: useExternalCoolers ? dataCoolers : localCoolers,
           loadingArea,
           productVerifications,
+          seenQuick: [...seenQuickRef.current],
           ts: Date.now(),
         })
       );
@@ -705,7 +716,8 @@ export default function CoolersTab(props) {
       try {
         const day = await fetchDay(date);
         if (day) {
-          const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day);
+          const m = mergeServerDay({ coolers: dataCoolers, loadingArea }, day, seenQuickRef.current);
+          seenQuickRef.current = m.seenIds;
           sheetCoolers = m.coolers;
           sheetLoading = m.loadingArea;
           quickReadings = m.quickReadings;

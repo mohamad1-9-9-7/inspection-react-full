@@ -192,36 +192,66 @@ export async function saveQuickReading(body) {
 
 /* ══════════════════════════════════════ Sheet merge
    The full sheet (CoolersTab) is edited from a local draft and saved whole.
-   Before it is saved, readings taken from phones since the draft was opened
-   are pulled in, so a sheet save never wipes them:
-     • an empty local cell takes the server's value;
-     • a quick-entry remark line missing locally is appended;
+   Before it is saved, readings taken from phones SINCE THE SHEET LAST SAW
+   THE SERVER are pulled in, so a sheet save never wipes them.
+
+   Only NEW phone readings (log entries whose id is not in `seenIds`) are
+   merged. Merging every server value instead brought back a reading the
+   user had just cleared on the sheet: the cell was empty locally, the old
+   value was still on the server, so it was "filled in" again on save.
+     • a new phone reading fills its cell only if the sheet's cell is empty;
+     • its remark line is appended once;
      • quickReadings travel with the record unchanged. */
-export function mergeServerDay({ coolers, loadingArea }, serverPayload) {
+function remarkLineOf(r) {
+  if (r.remarkLine) return r.remarkLine;
+  const by = r.byName || r.by ? ` (${r.byName || r.by})` : "";
+  const ca = r.correctiveAction ? ` → ${r.correctiveAction}` : "";
+  if (r.kind === "recheck") return `📱 ${timeLabel(r.at)} recheck ${r.value}°C ${r.outOfRange ? "✗" : "✓"}${ca}${by}`;
+  if (r.outOfRange) return `📱 ${r.slot} ${r.value}°C ✗${ca}${by}`;
+  return "";
+}
+
+export function mergeServerDay({ coolers, loadingArea }, serverPayload, seenIds = new Set()) {
   const sp = serverPayload || {};
+  const log = Array.isArray(sp.quickReadings) ? sp.quickReadings : [];
   let changed = 0;
-  const mergeBlock = (local, server) => {
-    const l = { temps: {}, remarks: "", ...(local || {}) };
+  const outCoolers = (coolers || []).map((c) => {
+    const l = { temps: {}, remarks: "", ...(c || {}) };
     l.temps = { ...(l.temps || {}) };
-    const st = server?.temps || {};
-    Object.keys(st).forEach((slot) => {
-      if (filled(st[slot]) && !filled(l.temps[slot])) { l.temps[slot] = st[slot]; changed += 1; }
-    });
-    const sr = String(server?.remarks || "");
-    const lr = String(l.remarks || "");
-    const extra = sr.split(" | ").filter((line) => line && line.startsWith("📱") && !lr.includes(line));
-    if (extra.length) {
-      l.remarks = [lr, ...extra].filter(Boolean).join(" | ");
-      changed += extra.length;
-    }
     return l;
-  };
-  const outCoolers = (coolers || []).map((c, i) => mergeBlock(c, (sp.coolers || [])[i]));
-  const outLoading = mergeBlock(loadingArea, sp.loadingArea);
+  });
+  const outLoading = { temps: {}, remarks: "", ...(loadingArea || {}) };
+  outLoading.temps = { ...(outLoading.temps || {}) };
+
+  log.forEach((r) => {
+    if (!r || !r.id || seenIds.has(r.id)) return;
+    let block = null;
+    if (r.unit === "loading-area") block = outLoading;
+    else {
+      const m = String(r.unit || "").match(/^cooler-(d+)$/);
+      if (m) block = outCoolers[Number(m[1])] || null;
+    }
+    if (!block) return;
+    if (r.kind !== "recheck" && r.slot && !filled(block.temps[r.slot])) {
+      block.temps[r.slot] = String(r.value);
+      changed += 1;
+    }
+    const line = remarkLineOf(r);
+    if (line && !String(block.remarks || "").includes(line)) {
+      block.remarks = [block.remarks, line].filter(Boolean).join(" | ");
+      changed += 1;
+    }
+  });
+
   return {
     coolers: outCoolers,
     loadingArea: outLoading,
-    quickReadings: Array.isArray(sp.quickReadings) ? sp.quickReadings : undefined,
+    quickReadings: log.length ? log : undefined,
+    seenIds: new Set([...seenIds, ...log.map((r) => r && r.id).filter(Boolean)]),
     changed,
   };
 }
+
+/** Ids of every phone reading in a day's record — what a freshly loaded sheet has "seen". */
+export const quickIdsOf = (payload) =>
+  new Set((Array.isArray(payload?.quickReadings) ? payload.quickReadings : []).map((r) => r && r.id).filter(Boolean));
