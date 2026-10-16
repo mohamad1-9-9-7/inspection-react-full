@@ -70,7 +70,7 @@ export default function MRMInput() {
     if (!editId) return;
     fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" })
       .then((r) => r.json()).then((j) => {
-        const p = j?.payload || j?.data?.payload || {};
+        const p = j?.report?.payload || j?.payload || j?.data?.payload || {};
         setForm({ ...empty, ...p, inputs: { ...empty.inputs, ...(p.inputs || {}) }, outputs: { ...empty.outputs, ...(p.outputs || {}) } });
       }).catch(() => {});
   }, [editId]);

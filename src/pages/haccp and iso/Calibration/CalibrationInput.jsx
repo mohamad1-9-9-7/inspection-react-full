@@ -155,15 +155,24 @@ export default function CalibrationInput() {
       : { ...f, linkedUnit: null }));
   }
 
+  /* Editing: the save stays locked until the record is really loaded — saving
+     the blank form would overwrite the stored record (PUT replaces the payload). */
+  const [editLoad, setEditLoad] = useState(editId ? "loading" : "ok"); // loading | ok | error
   useEffect(() => {
-    if (!editId) return;
+    if (!editId) { setEditLoad("ok"); return undefined; }
+    let alive = true;
+    setEditLoad("loading");
     fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((j) => {
-        const p = j?.payload || j?.data?.payload || {};
+        const p = j?.report?.payload || j?.payload || j?.data?.payload;
+        if (!p || typeof p !== "object") throw new Error("empty record");
+        if (!alive) return;
         setForm({ ...empty, ...p, fileUrls: p.fileUrls || [], fileNames: p.fileNames || [] });
+        setEditLoad("ok");
       })
-      .catch(() => {});
+      .catch(() => { if (alive) setEditLoad("error"); });
+    return () => { alive = false; };
   }, [editId]);
 
   function setField(k, v) {
@@ -241,6 +250,7 @@ export default function CalibrationInput() {
   }
 
   async function save() {
+    if (editLoad !== "ok") return;
     if (!form.equipmentName) { alert(t("requiredField")); return; }
     setSaving(true);
     try {
@@ -261,7 +271,7 @@ export default function CalibrationInput() {
     }
   }
 
-  const busy = saving || uploading;
+  const busy = saving || uploading || editLoad !== "ok";
 
   return (
     <main style={{ ...S.shell, direction: dir }}>
@@ -277,6 +287,14 @@ export default function CalibrationInput() {
             <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
           </div>
         </div>
+
+        {editLoad !== "ok" && (
+          <div style={{ ...S.card, background: editLoad === "error" ? "#fef2f2" : "#eff6ff", borderColor: editLoad === "error" ? "#fecaca" : "#bfdbfe", fontWeight: 800, color: editLoad === "error" ? "#b91c1c" : "#1d4ed8" }}>
+            {editLoad === "loading"
+              ? (isAr ? "⏳ جاري تحميل السجل…" : "⏳ Loading the record…")
+              : (isAr ? "⚠ تعذّر تحميل السجل — الحفظ مقفل حتى لا تُمسح بياناته. أعد فتح الصفحة." : "⚠ The record could not be loaded — saving is locked so its data is not wiped. Reopen the page.")}
+          </div>
+        )}
 
         <div style={S.card}>
           <div style={S.sectionTitle}>{t("calibIdent")}</div>

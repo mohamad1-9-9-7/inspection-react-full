@@ -70,7 +70,7 @@ export default function WaterTestingInput() {
   useEffect(() => {
     if (!editId) return;
     fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" })
-      .then((r) => r.json()).then((j) => setForm({ ...empty, ...(j?.payload || j?.data?.payload || {}) })).catch(() => {});
+      .then((r) => r.json()).then((j) => setForm({ ...empty, ...(j?.report?.payload || j?.payload || j?.data?.payload || {}) })).catch(() => {});
   }, [editId]);
 
   const setField = (k, v) => setForm((c) => ({ ...c, [k]: v }));
