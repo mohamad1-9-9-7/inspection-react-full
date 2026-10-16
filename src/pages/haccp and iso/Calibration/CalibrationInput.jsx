@@ -1,15 +1,12 @@
 // src/pages/haccp and iso/Calibration/CalibrationInput.jsx
 // Calibration Log — Input form (HACCP Clause 8.7)
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
-import {
-  defaultLoadingDef, emojiOf, fetchCoolerConfig, loadDefsCache, makeDefaultCoolerDefs, storageOptions,
-} from "../../monitor/branches/qcs/coolerDefs";
-import { QCS_BRANCH, QCS_COOLERS_LOG } from "./calibrationLink";
+import { branchLabel, loadLogUnits, logOfBranch } from "./calibrationLink";
 
 const TYPE = "calibration_record";
 
@@ -20,6 +17,7 @@ const BRANCHES = [
   "Al Barsha Butchery",
   "Abu Dhabi Butchery",
   "Al Ain Butchery",
+  "Motor City",
 ];
 
 function addMonths(dateStr, months) {
@@ -120,24 +118,36 @@ export default function CalibrationInput() {
   const [uploadProgress, setUploadProgress] = useState("");
   const isAr = lang === "ar";
 
-  /* Storage units of the Al Qusais temperature log, to link a cooler/freezer to its calibration */
+  /* Units of the branch's temperature log (QCS coolers, POS 10/11/15/19 sheets),
+     to link a cooler/freezer to its calibration. */
   const [units, setUnits] = useState([]);
-  const isQcs = form.branch === QCS_BRANCH;
+  const [unitsLoading, setUnitsLoading] = useState(false);
+  const branchLog = logOfBranch(form.branch);
   useEffect(() => {
-    if (!isQcs) return undefined;
-    const ctrl = new AbortController();
-    const show = (d) => setUnits(storageOptions(d.coolerDefs, d.loadingDef));
-    show(loadDefsCache() || { coolerDefs: makeDefaultCoolerDefs(), loadingDef: defaultLoadingDef() });
-    fetchCoolerConfig(ctrl.signal).then((cfg) => { if (cfg) show(cfg); });
-    return () => ctrl.abort();
-  }, [isQcs]);
+    setUnits([]);
+    if (!branchLog) return undefined;
+    let alive = true;
+    setUnitsLoading(true);
+    loadLogUnits(form.branch)
+      .then((list) => { if (alive) setUnits(list); })
+      .catch(() => {})
+      .finally(() => { if (alive) setUnitsLoading(false); });
+    return () => { alive = false; };
+  }, [form.branch, branchLog]);
+
+  /* a saved link whose unit was since renamed/removed stays selectable */
+  const unitOptions = useMemo(() => {
+    const link = form.linkedUnit;
+    if (!link?.key || units.some((u) => u.key === link.key)) return units;
+    return [...units, { key: link.key, label: link.label || link.key, emoji: "🔗" }];
+  }, [units, form.linkedUnit]);
 
   function linkUnit(key) {
-    const u = units.find((x) => x.key === key);
-    setForm((f) => (u
+    const u = unitOptions.find((x) => x.key === key);
+    setForm((f) => (u && branchLog
       ? {
           ...f,
-          linkedUnit: { log: QCS_COOLERS_LOG, key: u.key, label: u.label },
+          linkedUnit: { log: branchLog.log, key: u.key, label: u.label },
           equipmentName: u.label,
           equipmentType: "Chiller / Freezer Display",
         }
@@ -158,7 +168,7 @@ export default function CalibrationInput() {
   function setField(k, v) {
     setForm((f) => {
       const next = { ...f, [k]: v };
-      if (k === "branch" && v !== QCS_BRANCH) next.linkedUnit = null;
+      if (k === "branch" && v !== f.branch) next.linkedUnit = null;
       // Auto-calculate next due date
       if (k === "lastCalibrationDate" || k === "intervalMonths") {
         next.nextDueDate = addMonths(
@@ -272,24 +282,26 @@ export default function CalibrationInput() {
 
           <label style={S.label}>{t("calibBranch")} *</label>
           <select style={S.input} value={form.branch} onChange={(e) => setField("branch", e.target.value)}>
-            {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+            {BRANCHES.map((b) => <option key={b} value={b}>{branchLabel(b)}</option>)}
           </select>
 
-          {isQcs && (
+          {branchLog && (
             <div style={S.linkBox}>
               <label style={{ ...S.label, marginTop: 0 }}>
-                🔗 {isAr ? "ربط بوحدة في سجل حرارة المبردات" : "Link to a unit in the coolers temperature log"}
+                🔗 {isAr ? `ربط بوحدة في سجل الحرارة (${branchLog.pos})` : `Link to a unit in the temperature log (${branchLog.pos})`}
               </label>
               <select style={S.input} value={form.linkedUnit?.key || ""} onChange={(e) => linkUnit(e.target.value)}>
-                <option value="">{isAr ? "— غير مرتبط (جهاز آخر) —" : "— Not linked (other equipment) —"}</option>
-                {units.map((u) => (
-                  <option key={u.key} value={u.key}>{emojiOf(u.def)} {u.label}</option>
+                <option value="">
+                  {unitsLoading ? (isAr ? "جاري تحميل الوحدات…" : "Loading units…") : (isAr ? "— غير مرتبط (جهاز آخر) —" : "— Not linked (other equipment) —")}
+                </option>
+                {unitOptions.map((u) => (
+                  <option key={u.key} value={u.key}>{u.emoji} {u.label}</option>
                 ))}
               </select>
               <div style={S.hint}>
                 {isAr
-                  ? "تاريخ انتهاء المعايرة يظهر بجانب هذه الوحدة عند إدخال تقرير حرارة المبردات. الاسم يُنسخ من السجل."
-                  : "The calibration expiry date shows next to this unit while the coolers temperature report is entered. The name is copied from the log."}
+                  ? "تاريخ انتهاء المعايرة يظهر بجانب هذه الوحدة في تقرير الحرارة وصفحة الإدخال بالـ QR. الاسم يُنسخ من السجل."
+                  : "The calibration expiry date shows next to this unit on the temperature report and the QR phone page. The name is copied from the log."}
               </div>
             </div>
           )}

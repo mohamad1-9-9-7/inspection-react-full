@@ -24,6 +24,7 @@ import { getLatestReport, getReportRowByDate, payloadOf } from "../_shared/repor
 import { BRANCH_READING_KIND, postBranchReading } from "../../../../utils/reportOutbox";
 import { buildPublicUrl } from "../../../../config/publicOrigin";
 import { canReport } from "../../../../utils/reportPerms";
+import { CALIB_LOGS, branchOfLog } from "../../../haccp and iso/Calibration/calibrationLink";
 
 export const BRANCH_TEMP_PATH = "/monitor/branch-temp";
 
@@ -108,7 +109,7 @@ function uaeHM(d = new Date()) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-function makeAdapter(code) {
+export function makeBranchTempAdapter(code) {
   const cfg = BRANCH_TEMP[code];
   if (!cfg) return null;
   const defOf = (row) => (cfg.shape === "grid" ? gridDef(row.name) : pos19Def(row.name, row.unitType));
@@ -118,6 +119,7 @@ function makeAdapter(code) {
     printTitle: cfg.branch,
     hubPath: `${BRANCH_TEMP_PATH}/${code}`,
     sheetPath: cfg.sheet,
+    calib: branchOfLog(cfg.type) ? { branch: branchOfLog(cfg.type), log: CALIB_LOGS[branchOfLog(cfg.type)].log } : null,
     allowed: () => canReport(cfg.branch, cfg.reportId, "input"),
     slots: cfg.slots,
     slotForNow(now) {
@@ -179,7 +181,7 @@ function makeAdapter(code) {
 export default function BranchTempQuick() {
   const { branch, unit } = useParams();
   const code = String(branch || "").toLowerCase();
-  const A = useMemo(() => makeAdapter(code), [code]);
+  const A = useMemo(() => makeBranchTempAdapter(code), [code]);
   if (!A) return <div style={{ padding: 30, fontWeight: 700 }}>Unknown branch.</div>;
   // React Router already decodes the unit name from the URL.
   return <QuickTempPage A={A} unit={unit || undefined} />;

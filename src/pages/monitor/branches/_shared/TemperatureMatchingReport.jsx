@@ -39,6 +39,7 @@ export default function TemperatureMatchingReport({
   productVerifications = [],
   classify = defaultClassify,
   readOnly = false,
+  unitBadge, // optional (unit, index) => node shown beside the unit's name (e.g. calibration expiry)
   onTemp,
   onRemarks,
   onAddPV,
@@ -239,6 +240,7 @@ export default function TemperatureMatchingReport({
                 <span style={{ fontSize: "1.15rem" }}>{info.icon}</span>
                 <strong style={{ fontSize: "1.08rem", color: "#0f172a" }}>{unit?.name || `Unit ${i + 1}`}</strong>
                 <span style={rangeBadge}>{`${range.min}°C to ${range.max}°C`}</span>
+                {unitBadge ? unitBadge(unit, i) : null}
               </div>
               <span style={statusChip(status)}>{status.text}</span>
             </div>

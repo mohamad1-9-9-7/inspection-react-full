@@ -22,6 +22,7 @@
 //   readingsOf(payload, unitKey) → { slotKey: value }
 //   sameUnit(logUnit, unitKey) → bool
 //   inRange(def, v), emoji(def), rangeLabel(def)
+//   calib?: { branch, log } — shows each unit's calibration expiry (Calibration Log)
 //   qrUrl(unitKey)
 //   save(common, data) → { queued }
 // }
@@ -43,6 +44,7 @@ import { getCurrentUser } from "../../../../utils/perms";
 import { uploadImage } from "../../../../utils/imageUpload";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 import MonthlyTempReport from "./MonthlyTempReport";
+import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 
 /* ══════════════════════════════════════ Language (one per screen) */
 const LANG_KEY = "qcs_quick_lang";
@@ -344,6 +346,7 @@ const slotLabel = (A, key) => A.slots.find((sl) => sl.key === key)?.label || key
 
 function Hub({ A, t, lang, toggleLang }) {
   const { date, units, status, loading, error, reload } = useDayData(A);
+  const calibrations = useCalibrations();
   const [printing, setPrinting] = useState(false);
   const [monthly, setMonthly] = useState(false);
 
@@ -419,6 +422,12 @@ function Hub({ A, t, lang, toggleLang }) {
                   {t.range}: {A.rangeLabel(s.def)} ·{" "}
                   {lastSlot ? `${t.last}: ${s.readings[lastSlot]}°C @ ${slotLabel(A, lastSlot)}` : t.noneYet}
                 </div>
+                {A.calib && (
+                  <div style={{ marginTop: 6 }}>
+                    <CalibrationExpiryBadge records={calibrations} branch={A.calib.branch} log={A.calib.log}
+                      unitKey={s.unit} label={s.def.label} lang={lang} hideWhenNone={s.def.type === "ambient"} style={{ whiteSpace: "normal" }} />
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: "end" }}>
                 {s.recheck && (
@@ -452,6 +461,7 @@ function Hub({ A, t, lang, toggleLang }) {
 /* ══════════════════════════════════════ One unit */
 function UnitEntry({ A, unit, t, lang, toggleLang }) {
   const navigate = useNavigate();
+  const calibrations = useCalibrations();
   const { date, data, units, payload, status, loading, reload } = useDayData(A);
   const def = units.find((u) => u.key === unit)?.def || null;
   const st = status.find((s) => s.unit === unit);
@@ -569,6 +579,12 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
       <div className="card">
         <div className="t1">{A.emoji(def)} {def.label}</div>
         <div className="sm">{A.label} · {date} · {t.range}: {A.rangeLabel(def)}</div>
+        {A.calib && def && (
+          <div style={{ marginTop: 8 }}>
+            <CalibrationExpiryBadge records={calibrations} branch={A.calib.branch} log={A.calib.log}
+              unitKey={unit} label={def.label} lang={lang} hideWhenNone={def.type === "ambient"} style={{ whiteSpace: "normal" }} />
+          </div>
+        )}
       </div>
 
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}

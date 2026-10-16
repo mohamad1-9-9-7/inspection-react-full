@@ -4,6 +4,10 @@ import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../utils/reportOutbox";
 import { loadDay, quickIdsOf, saveBranchDay } from "../_shared/branchTempDay";
 import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
+import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
+import { CALIB_LOGS } from "../../../haccp and iso/Calibration/calibrationLink";
+
+const CALIB_BRANCH = "Al Ain Butchery";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -76,6 +80,7 @@ const toISODate = (s) => {
 const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 export default function POS11TemperatureInput() {
+  const calibrations = useCalibrations();
   const [coolers, setCoolers] = useState(() => {
     const d = loadDraft();
     return Array.isArray(d.coolers) && d.coolers.length
@@ -308,6 +313,9 @@ export default function POS11TemperatureInput() {
         <h4 style={{ color: "#2980b9", margin: "0 0 4px", fontWeight: 900, textAlign: "center" }}>Temperatures & Product Matching</h4>
         <TemperatureMatchingReport
           units={coolers}
+          unitBadge={(unit) => (
+            <CalibrationExpiryBadge records={calibrations} branch={CALIB_BRANCH} log={CALIB_LOGS[CALIB_BRANCH].log} unitKey={unit?.name} label={unit?.name} />
+          )}
           times={gridTimes}
           productVerifications={productVerifications}
           onTemp={setTemp}

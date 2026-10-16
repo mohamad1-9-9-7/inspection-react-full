@@ -35,6 +35,7 @@ import {
   unitDef,
 } from "./coolerQuick";
 import { canReport } from "../../../../utils/reportPerms";
+import { QCS_BRANCH, QCS_COOLERS_LOG } from "../../../haccp and iso/Calibration/calibrationLink";
 
 const QCS_ADAPTER = {
   label: "QCS",
@@ -42,6 +43,7 @@ const QCS_ADAPTER = {
   printTitle: "QCS",
   hubPath: QUICK_HUB_PATH,
   sheetPath: "/monitor/qcs?tab=coolers",
+  calib: { branch: QCS_BRANCH, log: QCS_COOLERS_LOG },
   allowed: () => canReport("QCS", "coolers", "input"),
   slots: COOLER_TIMES.map((s, i) => ({ key: s, label: s, short: s.replace(":00 ", "").toLowerCase(), hour: SLOT_HOURS[i] })),
   slotForNow: (now) => slotForNow(now),

@@ -12,6 +12,7 @@ import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
 import ImageLightbox, { Thumb, isImageUrl } from "../_shared/ImageLightbox";
+import { branchLabel } from "./calibrationLink";
 
 const TYPE = "calibration_record";
 const PREFS_KEY = "calib_view_prefs";
@@ -23,6 +24,7 @@ const BRANCHES = [
   "Al Barsha Butchery",
   "Abu Dhabi Butchery",
   "Al Ain Butchery",
+  "Motor City",
 ];
 
 const DAY = 86400000;
@@ -445,7 +447,7 @@ export default function CalibrationView() {
             </div>
           </div>
           <div className="cv-cell" data-label={L("الفرع", "Branch")}>
-            <div style={{ fontWeight: 700 }}>{p.branch || "—"}</div>
+            <div style={{ fontWeight: 700 }}>{p.branch ? branchLabel(p.branch) : "—"}</div>
             {p.location && <div className="cv-meta fs-xs">{p.location}</div>}
           </div>
           <div className="cv-cell" data-label={L("آخر معايرة", "Last calibrated")}>
@@ -571,7 +573,7 @@ export default function CalibrationView() {
           />
           <select className="cv-in" value={branchF} onChange={(e) => setBranchF(e.target.value)} aria-label={L("الفرع", "Branch")}>
             <option value="all">{L("كل الفروع", "All branches")}</option>
-            {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+            {branchOptions.map((b) => <option key={b} value={b}>{branchLabel(b)}</option>)}
           </select>
           <select className="cv-in" value={typeF} onChange={(e) => setTypeF(e.target.value)} aria-label={L("نوع الجهاز", "Equipment type")}>
             <option value="all">{L("كل الأنواع", "All types")}</option>
@@ -639,7 +641,7 @@ export default function CalibrationView() {
                 <React.Fragment key={g.key || "_all"}>
                   {grouped && (
                     <div className="cv-group fs-md">
-                      🏬 {g.key}
+                      🏬 {branchLabel(g.key)}
                       <span className="tag fs-xs t-nodate">{g.rows.length}</span>
                       {g.rows.filter((r) => r.status === "overdue" || r.status === "out").length > 0 && (
                         <span className="tag fs-xs t-overdue">

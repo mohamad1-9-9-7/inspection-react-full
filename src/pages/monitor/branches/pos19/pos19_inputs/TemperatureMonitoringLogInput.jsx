@@ -7,6 +7,10 @@ import { loadDay, quickIdsOf, saveBranchDay } from "../../_shared/branchTempDay"
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
+import CalibrationExpiryBadge, { useCalibrations } from "../../../../haccp and iso/Calibration/CalibrationExpiryBadge";
+import { CALIB_LOGS } from "../../../../haccp and iso/Calibration/calibrationLink";
+
+const CALIB_BRANCH = "Motor City";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "pos19_temperature_monitoring_draft_v1";
@@ -71,6 +75,7 @@ function isBreach(unitType, temp) {
 }
 
 export default function TemperatureMonitoringLogInput() {
+  const calibrations = useCalibrations();
   const [reportDate, setReportDate] = useState(() => {
     const dft = loadDraft();
     if (dft.reportDate) return dft.reportDate;
@@ -266,7 +271,21 @@ export default function TemperatureMonitoringLogInput() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                <td style={tdCell}><input type="text" value={r.equipment} onChange={e=>updateRow(i,"equipment",e.target.value)} style={inputStyle} placeholder="e.g., Chiller 1" /></td>
+                <td style={tdCell}>
+                  <input type="text" value={r.equipment} onChange={e=>updateRow(i,"equipment",e.target.value)} style={inputStyle} placeholder="e.g., Chiller 1" />
+                  {String(r.equipment || "").trim() && (
+                    <div style={{ marginTop: 4 }}>
+                      <CalibrationExpiryBadge
+                        records={calibrations}
+                        branch={CALIB_BRANCH}
+                        log={CALIB_LOGS[CALIB_BRANCH].log}
+                        unitKey={r.equipment.trim()}
+                        label={r.equipment.trim()}
+                        style={{ whiteSpace: "normal" }}
+                      />
+                    </div>
+                  )}
+                </td>
                 <td style={tdCell}>
                   <select value={r.unitType} onChange={e=>updateRow(i,"unitType",e.target.value)} style={inputStyle}>
                     {UNIT_TYPES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
