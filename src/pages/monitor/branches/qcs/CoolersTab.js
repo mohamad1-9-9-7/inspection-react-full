@@ -299,7 +299,7 @@ export default function CoolersTab(props) {
 
   const [date, setDate] = useState(() => {
     const d = loadDraft();
-    return d.date || new Date().toISOString().split("T")[0];
+    return d.date || localDate(); // UAE date, not UTC (UTC is still yesterday before 4 AM)
   });
 
   /* Manager verification name (signature line) */

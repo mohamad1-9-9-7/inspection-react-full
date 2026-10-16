@@ -39,9 +39,24 @@ export const RECHECK_AFTER_MIN = 30;
 
 export const slotHour = (slot) => SLOT_HOURS[COOLER_TIMES.indexOf(slot)];
 
+/* ══════════════════════════════════════ UAE time
+   Every site runs on UAE time (Asia/Dubai, UTC+4, no daylight saving). The
+   date and the slot must not depend on the timezone set on the phone or the
+   PC: a device left on another zone would file the reading under the wrong
+   day or slot. A fixed offset is used (not Intl time-zone data), so it also
+   holds on old phones without that data. */
+const UAE_OFFSET_MS = 4 * 60 * 60 * 1000;
+const uae = (d) => new Date(d.getTime() + UAE_OFFSET_MS); // read with getUTC*
+
+/** Minutes since midnight, UAE time. */
+export const uaeMinutes = (now = new Date()) => {
+  const u = uae(now);
+  return u.getUTCHours() * 60 + u.getUTCMinutes();
+};
+
 /** The slot nearest to `now` (clamped to the first/last slot of the day). */
 export function slotForNow(now = new Date()) {
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const mins = uaeMinutes(now);
   let best = COOLER_TIMES[0];
   let bestDiff = Infinity;
   SLOT_HOURS.forEach((h, i) => {
@@ -51,16 +66,20 @@ export function slotForNow(now = new Date()) {
   return best;
 }
 
-/** Local calendar date, YYYY-MM-DD (never toISOString — that is UTC). */
+/** Today's date in the UAE, YYYY-MM-DD. */
 export function localDate(d = new Date()) {
+  const u = uae(d);
   const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${u.getUTCFullYear()}-${p(u.getUTCMonth() + 1)}-${p(u.getUTCDate())}`;
 }
 
+/** "9:42 AM", UAE time. */
 export const timeLabel = (iso) => {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const u = uae(d);
+  const h = u.getUTCHours();
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(u.getUTCMinutes()).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
 /* ══════════════════════════════════════ Units */
@@ -112,7 +131,7 @@ const filled = (v) => v !== "" && v != null && !Number.isNaN(Number(v));
 export function dayStatus(payload, coolerDefs, loadingDef, now = new Date(), isToday = true) {
   const p = payload || {};
   const log = Array.isArray(p.quickReadings) ? p.quickReadings : [];
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const mins = uaeMinutes(now);
   return UNIT_KEYS.map((unit) => {
     const def = unitDef(unit, coolerDefs, loadingDef);
     const temps = unitBlock(p, unit)?.temps || {};
