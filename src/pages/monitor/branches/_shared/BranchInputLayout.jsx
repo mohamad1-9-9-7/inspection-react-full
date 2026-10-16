@@ -139,6 +139,7 @@ export default function BranchInputLayout({ config }) {
 
   return (
     <BranchSidebarHub
+      permBranch={branch}
       brandTitle={branch || "Branch"}
       brandSubtitle="Daily Inputs"
       BrandIcon={IconClipboard}

@@ -55,6 +55,110 @@ export const BRANCH_REPORTS = {
   ],
 };
 
+/* ── The other branches ───────────────────────────────────────────────────
+   Their input hubs (BranchInputLayout / POS6Hub / ProductionHub / POS19Layout)
+   and view hubs (BranchDailyView) use different keys for the same report, so
+   each row pairs them by hand. `r(id, label, input, view)`; the id is the
+   view key when there is one. Keep a row in step when a tab is added. */
+const r = (id, label, input, view) => ({ id, label, input, view });
+const OVERVIEW = r("overview", "Overview (all reports at a glance)", null, "overview");
+const CERTS = r("certificates", "Certificates", null, "certificates");
+
+/* POS 10 and POS 11 share the same forms and keys. */
+const POS_10_11 = [
+  r("hygiene",      "Personal Hygiene",                  "personal",     "hygiene"),
+  r("cleanliness",  "Daily Cleaning",                    "daily",        "cleanliness"),
+  r("temperature",  "Temperature",                       "temperature",  "temperature"),
+  r("traceability", "Traceability Log",                  "traceability", "traceability"),
+  r("receiving",    "Receiving Log",                     "receiving",    "receiving"),
+  r("pest",         "Pest Control",                      "pest",         "pest"),
+  r("sanitizer",    "Sanitizer Concentration",           "sanitizer",    "sanitizer"),
+  r("equipment",    "Equipment Inspection & Sanitizing", "equipment",    "equipment"),
+  OVERVIEW, CERTS,
+];
+
+const POS19_KEYS = [
+  ["receivingLog", "Receiving Log"], ["traceability", "Traceability Log"],
+  ["finishedProduct", "Finished Product Monitoring"], ["temperatureMonitoring", "Temperature Monitoring Log"],
+  ["foodTempVerification", "Food Temperature Verification"], ["cookingTemperature", "Cooking Temperature Record"],
+  ["hotHoldingTemp", "Hot Holding Temperature Log"], ["reheating", "Reheating Temperature Log"],
+  ["cooling", "Cooling Temperature Log"], ["defrosting", "Defrosting Record"],
+  ["blastFreezer", "Blast Freezer / Chiller Log"], ["dryStore", "Dry Store Temp & Humidity"],
+  ["calibration", "Thermometer Calibration Log"], ["cleaningProgramme", "Cleaning Programme Schedule"],
+  ["dailyCleaningButchery", "Daily Cleaning — Butchery"], ["equipmentInspection", "Equipment Inspection & Sanitizing"],
+  ["sanitizerConcentration", "Sanitizer Concentration"], ["vegSanitation", "Sanitation Record — Veg / Fruits"],
+  ["personalHygiene", "Personal Hygiene Checklist"], ["oilQuality", "Oil Quality Monitoring"],
+  ["glassItemsCondition", "Glass Items Condition"], ["woodenItemsCondition", "Wooden Items Condition"],
+  ["nonConformance", "Non-Conformance Report"], ["staffSickness", "Staff Sickness / Injury"],
+  ["employeeReturnToWork", "Employee Return to Work"],
+];
+
+/* FTR 1 and FTR 2: same forms; only the cooking-log input key differs. */
+const ftr = (cookInput) => [
+  r("hygiene",     "Personal Hygiene",    "personal",  "hygiene"),
+  r("cleanliness", "Daily Cleanliness",   "daily",     "cleanliness"),
+  r("temperature", "Temperature",         "temp",      "temperature"),
+  r("oil",         "Oil Calibration",     "oil",       "oil"),
+  r("receiving",   "Receiving Log",       "receiving", "receiving"),
+  r("cook",        "Cooking Temperature", cookInput,   "cook"),
+  OVERVIEW, CERTS,
+];
+
+/* POS 24 / POS 26: input forms not built yet, no reports page. */
+const PLACEHOLDER_BRANCH = [
+  r("personal",  "Personal Hygiene",      "personal",  null),
+  r("daily",     "Daily Cleaning",        "daily",     null),
+  r("oil",       "Oil Calibration",       "oil",       null),
+  r("detergent", "Detergent Calibration", "detergent", null),
+];
+
+Object.assign(BRANCH_REPORTS, {
+  "POS 6": [
+    r("hygiene",   "Personal Hygiene",      "personal",  "hygiene"),
+    r("cleaning",  "Cleaning Checklist",    "cleaning",  "cleaning"),
+    r("equipment", "Equipment Inspection",  "equipment", "equipment"),
+    r("receiving", "Receiving Log",         "receiving", "receiving"),
+    r("coolers",   "Coolers Temperatures",  "coolers",   "coolers"),
+    OVERVIEW, CERTS,
+  ],
+  "POS 10": POS_10_11,
+  "POS 11": POS_10_11,
+  "POS 15": [
+    r("hygiene",      "Personal Hygiene",                  "personal",     "hygiene"),
+    r("cleanliness",  "Daily Cleaning",                    "daily",        "cleanliness"),
+    r("temperature",  "Temperature",                       "temperature",  "temperature"),
+    r("receiving",    "Receiving Log",                     "receiving",    "receiving"),
+    r("traceability", "Traceability Log",                  "traceability", "traceability"),
+    r("equip_sanit",  "Equipment Inspection & Sanitizing", "equip_sanit",  "equip_sanit"),
+    r("pest",         "Pest Control",                      "pest",         "pest"),
+    r("sanitizer",    "Sanitizer Concentration",           "sanitizer",    "sanitizer"),
+    OVERVIEW, CERTS,
+  ],
+  "POS 19": [...POS19_KEYS.map(([k, label]) => r(k, label, k, k)), OVERVIEW, CERTS],
+  "POS 24": PLACEHOLDER_BRANCH,
+  "POS 26": PLACEHOLDER_BRANCH,
+  "FTR 1": ftr("cook"),
+  "FTR 2": ftr("cooklog"),
+  PRODUCTION: [
+    r("hygiene",       "Personal Hygiene",                  "personal",      "hygiene"),
+    r("cleaning",      "Cleaning Checklist",                "cleaning",      "cleaning"),
+    r("defrost",       "Defrosting Record",                 "defrost",       "defrost"),
+    r("trace",         "Traceability Log",                  "traceability",  "trace"),
+    r("cutting",       "Online Cutting Record",             "cutting",       "cutting"),
+    r("dried",         "Dried Meat Process",                "dried",         "dried"),
+    r("vegSanitation", "Sanitation Record — Veg / Fruits",  "vegSanitation", "vegSanitation"),
+    r("sanitizer",     "Sanitizer Concentration",           "sanitizer",     "sanitizer"),
+    r("equipment",     "Equipment Inspection & Sanitizing", "equipment",     "equipment"),
+    OVERVIEW, CERTS,
+  ],
+});
+
+/** View hubs name a branch by code ("POS-10", "FTR-1", "PRD"); permissions use the branch id. */
+export function permBranchOf(code) {
+  const id = String(code || "").replace(/-/g, " ").trim().toUpperCase();
+  return id === "PRD" ? "PRODUCTION" : id;
+}
+
 export const reportGrantKey = (branch, reportId, mode) => `${branch}:${reportId}:${mode}`;
 
 function grantList() {

@@ -130,6 +130,7 @@ export default function ProductionHub() {
 
   return (
     <BranchSidebarHub
+      permBranch="PRODUCTION"
       brandTitle={t("hub_title")}
       brandSubtitle={t("hub_subtitle")}
       BrandIcon={IconFactory}

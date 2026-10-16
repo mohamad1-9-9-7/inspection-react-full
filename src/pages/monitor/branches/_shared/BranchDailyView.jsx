@@ -17,6 +17,7 @@ import PrintStyles from "./PrintStyles";
 import PrintButton from "./PrintButton";
 import { BRANCHES } from "../../../../config/branches";
 import BranchCertificates, { hasCertificates } from "./BranchCertificates";
+import { permBranchOf, reportTabFilter } from "../../../../utils/reportPerms";
 
 /* "POS-19" → "POS 19" → the registry label ("Al Warqa Kitchen"). */
 function branchLabelOf(code) {
@@ -79,6 +80,9 @@ export default function BranchDailyView({
       : tabs
   ), [tabs, code]);
 
+  // Only the reports this account was given (per-report permissions).
+  const allowView = useMemo(() => reportTabFilter(permBranchOf(branchCode), "view"), [branchCode]);
+
   const { hubTabs, groups } = useMemo(() => {
     const colorOf = Object.fromEntries([OVERVIEW, ...SECTIONS, OTHER, CERTS].map((g) => [g.key, g.color]));
     const hubTabs = allTabs.map((t) => {
@@ -108,6 +112,7 @@ export default function BranchDailyView({
       <PrintStyles />
       <QcsSidebarHub
         tabs={hubTabs}
+        allow={allowView}
         groups={groups}
         brandTitle={code || "Reports"}
         brandSub={branchName || "Reports"}

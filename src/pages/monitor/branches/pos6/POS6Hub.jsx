@@ -50,6 +50,7 @@ export default function POS6Hub() {
 
   return (
     <BranchSidebarHub
+      permBranch="POS 6"
       brandTitle={t("hub_title")}
       brandSubtitle={t("hub_subtitle")}
       BrandIcon={IconStore}

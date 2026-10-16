@@ -3,6 +3,7 @@
 // Collapsible smart sidebar (same shell as QCSReport.jsx), kitchen-tuned.
 
 import React, { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from "react";
+import { reportTabFilter } from "../../../../utils/reportPerms";
 import { useSearchParams } from "react-router-dom";
 import {
   FiActivity,
@@ -179,7 +180,26 @@ function Highlight({ text, tokens }) {
   return out;
 }
 
+/* Only the forms this account was given (per-report permissions). The inner
+   component's TABS is that filtered list (it shadows the module-level one). */
 export default function POS19Layout() {
+  const allowed = useMemo(() => {
+    const allow = reportTabFilter("POS 19", "input");
+    return TABS.filter((tb) => allow(tb.key));
+  }, []);
+  if (!allowed.length) {
+    return (
+      <div style={{ maxWidth: 520, margin: "60px auto", padding: 24, textAlign: "center", background: "#fff",
+                    border: "1px solid #e2e8f0", borderRadius: 16, fontWeight: 700, color: "#475569" }}>
+        🔒 No input forms of POS 19 are enabled for your account.
+        <div style={{ marginTop: 8, fontWeight: 600 }}>Ask an administrator to grant the form you need.</div>
+      </div>
+    );
+  }
+  return <POS19LayoutInner TABS={allowed} />;
+}
+
+function POS19LayoutInner({ TABS }) {
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
 

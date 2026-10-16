@@ -8,7 +8,8 @@
 // ProductionHub still carries its own copy of this markup; it can drop onto
 // this component later with no visual change (same class names, same CSS).
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
+import { reportTabFilter } from "../../../../utils/reportPerms";
 
 export default function BranchSidebarHub({
   brandTitle,
@@ -16,7 +17,8 @@ export default function BranchSidebarHub({
   BrandIcon,
   todayText = "",
   breadcrumb = [],
-  tabs = [],
+  tabs: allTabs = [],
+  permBranch,       // branch id ("POS 10"): only the input forms this account was given
   activeKey,
   onSelect,
   labels = {},
@@ -28,8 +30,22 @@ export default function BranchSidebarHub({
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
+  const tabs = useMemo(() => {
+    if (!permBranch) return allTabs;
+    const allow = reportTabFilter(permBranch, "input");
+    return allTabs.filter((tb) => allow(tb.key));
+  }, [allTabs, permBranch]);
+
   const active = tabs.find((tb) => tb.key === activeKey) || tabs[0];
-  if (!active) return null;
+  if (!active) {
+    return permBranch && allTabs.length ? (
+      <div style={{ maxWidth: 520, margin: "60px auto", padding: 24, textAlign: "center", background: "#fff",
+                    border: "1px solid #e2e8f0", borderRadius: 16, fontWeight: 700, color: "#475569" }}>
+        🔒 No input forms of {permBranch} are enabled for your account.
+        <div style={{ marginTop: 8, fontWeight: 600 }}>Ask an administrator to grant the form you need.</div>
+      </div>
+    ) : null;
+  }
 
   const sepChar = isAr ? "‹" : "›";
   const ActiveIcon = active.Icon;
