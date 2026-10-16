@@ -51,6 +51,15 @@ function diffPayloads(oldV, newV, path = "", out = [], depth = 0) {
   return out;
 }
 
+/* A field that had a value before the edit and is empty after it. Many of
+   these in one edit = the form was saved blank (e.g. the edit page failed to
+   load the record) and the data was wiped. */
+const isBlank = (v) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+const WIPE_THRESHOLD = 3;
+function wipedCount(diff) {
+  return diff.filter((d) => !isBlank(d.oldVal) && typeof d.oldVal !== "object" && isBlank(d.newVal)).length;
+}
+
 function fmtVal(v) {
   if (v === undefined) return "—";
   if (v === null) return "null";
@@ -835,6 +844,14 @@ export default function AuditTrailView() {
                             : diff.length
                             ? `${diff.length} field${diff.length > 1 ? "s" : ""} changed`
                             : "payload replaced"}
+                          {r.action === "update" && wipedCount(diff) >= WIPE_THRESHOLD && (
+                            <div style={{
+                              display: "inline-block", marginTop: 6, borderRadius: 999, padding: "4px 12px",
+                              background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", fontWeight: 950, fontSize: 15,
+                            }}>
+                              🧹 {wipedCount(diff)} fields wiped — restorable
+                            </div>
+                          )}
                         </td>
                         <td style={cell}>
                           {fk.length ? (
@@ -864,7 +881,7 @@ export default function AuditTrailView() {
                       {isOpen && (
                         <tr>
                           <td colSpan={8} style={{ padding: 0, border: "none" }}>
-                            <DetailPanel row={r} diff={diff} />
+                            <DetailPanel row={r} diff={diff} onRestored={() => run(applied)} />
                           </td>
                         </tr>
                       )}
@@ -1206,7 +1223,85 @@ function TimelineLine({ icon, label, value, sub, color }) {
   );
 }
 
-function DetailPanel({ row, diff }) {
+/* ↩ Puts back the payload the record had BEFORE this edit (old_payload).
+   Checks the record first: if it was edited again after this entry, the
+   confirmation says so, because those later edits will be replaced too.
+   The restore is itself an edit, so it lands in this audit trail and can be
+   undone the same way. */
+function RestoreBox({ row, onRestored }) {
+  const [state, setState] = useState({ busy: false, done: false, error: "" });
+  const wiped = wipedCount(diffPayloads(row.old_payload, row.new_payload));
+
+  async function restore() {
+    setState({ busy: true, done: false, error: "" });
+    try {
+      const cur = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(row.report_id)}`, { cache: "no-store" });
+      if (cur.status === 404) throw new Error("The record no longer exists (it was deleted).");
+      if (!cur.ok) throw new Error(`Could not read the current record (HTTP ${cur.status}).`);
+      const json = await cur.json();
+      const rep = json?.report || json;
+      const currentPayload = rep?.payload || {};
+      const laterEdits = diffPayloads(row.new_payload, currentPayload)
+        .filter((d) => d.path !== "refNo").length > 0;
+
+      const msg = [
+        `Restore report #${row.report_id} (${row.report_type}) to how it was before the edit of ${fmtWhen(row.created_at)} by ${row.username || "—"}?`,
+        "",
+        laterEdits
+          ? "⚠ The record was changed again AFTER this edit. Restoring replaces those later changes too."
+          : "The record has not been changed since this edit.",
+        "",
+        "The restore is logged here as a new edit, so it can be undone the same way.",
+      ].join("\n");
+      if (!window.confirm(msg)) { setState({ busy: false, done: false, error: "" }); return; }
+
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(row.report_id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: row.report_type,
+          reporter: rep?.reporter || row.username || "admin",
+          payload: row.old_payload,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error || e?.message || `HTTP ${res.status}`);
+      }
+      setState({ busy: false, done: true, error: "" });
+      onRestored?.();
+    } catch (e) {
+      setState({ busy: false, done: false, error: e?.message || String(e) });
+    }
+  }
+
+  return (
+    <div style={S.restoreBox}>
+      <div style={{ flex: "1 1 320px" }}>
+        <div style={{ fontWeight: 1000, fontSize: 20, color: "#1e3a8a" }}>
+          ↩ Restore the version before this edit
+        </div>
+        <div style={{ fontSize: 16.5, fontWeight: 700, color: "#475569", marginTop: 4 }}>
+          {wiped >= WIPE_THRESHOLD
+            ? `This edit emptied ${wiped} fields that had data — restoring brings them all back.`
+            : "Puts the record back exactly as it was (the OLD column above)."}
+        </div>
+        {state.error && <div style={{ color: "#b91c1c", fontWeight: 900, marginTop: 8 }}>⚠ {state.error}</div>}
+        {state.done && <div style={{ color: "#15803d", fontWeight: 900, marginTop: 8 }}>✅ Restored — the record is back to the earlier version.</div>}
+      </div>
+      <button
+        type="button"
+        style={{ ...S.btnPrimary, opacity: state.busy || state.done ? 0.6 : 1 }}
+        disabled={state.busy || state.done}
+        onClick={restore}
+      >
+        {state.busy ? "Restoring…" : state.done ? "Restored ✓" : "↩ Restore previous version"}
+      </button>
+    </div>
+  );
+}
+
+function DetailPanel({ row, diff, onRestored }) {
   const [showRaw, setShowRaw] = useState(false);
   const meta = typeMeta(row.report_type);
   const tl = useRecordTimeline(row);
@@ -1332,6 +1427,10 @@ function DetailPanel({ row, diff }) {
         </div>
       )}
 
+      {row.action === "update" && row.report_id && row.old_payload && typeof row.old_payload === "object" && (
+        <RestoreBox row={row} onRestored={onRestored} />
+      )}
+
       {row.action === "create" && (
         <div style={{ fontWeight: 900, color: "#15803d", fontSize: 21, marginBottom: 14 }}>
           ➕ Record created{row.new_payload?.reportDate ? ` for ${row.new_payload.reportDate}` : ""}.
@@ -1415,6 +1514,11 @@ function DetailPanel({ row, diff }) {
 
 /* ================================ styles ================================ */
 const S = {
+  restoreBox: {
+    display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap",
+    background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 14,
+    padding: "16px 18px", marginBottom: 18,
+  },
   shell: {
     minHeight: "100vh",
     padding: "24px clamp(18px, 3vw, 48px) 48px",
