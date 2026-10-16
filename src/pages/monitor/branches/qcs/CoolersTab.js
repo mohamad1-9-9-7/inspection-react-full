@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/qcs/CoolersTab.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import { getLatestReport } from "../_shared/reportApi";
@@ -402,10 +402,80 @@ export default function CoolersTab(props) {
     }
   }
 
+  /* ---- Opening a date shows THAT date ----
+     The sheet used to be one draft whatever the date: picking another day
+     changed the date only and kept the old readings on screen. Now a date
+     change loads that day's saved record, or a blank sheet (same layout and
+     product rows, no readings) when nothing was saved for it yet. The first
+     open keeps the draft the user left (unsaved work), topped up with phone
+     readings. */
+  const firstOpenRef = useRef(true);
+  const loadSeqRef = useRef(0);
+  const savedSnapRef = useRef(null);
+  const sheetSnap = (c, l, pv) => JSON.stringify({ c, l, pv });
+  const hasReadings = (c, l, pv) =>
+    [...(c || []), l].some((b) => Object.values(b?.temps || {}).some((v) => String(v ?? "").trim() !== "")) ||
+    (pv || []).some((r) => String(r?.productTemp ?? "").trim() !== "");
+
+  async function openDate(d) {
+    const seq = ++loadSeqRef.current;
+    setPulling(true);
+    try {
+      const day = await fetchDay(d);
+      if (seq !== loadSeqRef.current) return; // a newer date was picked meanwhile
+      setServerDay(day);
+      let nextCoolers, nextLoading, nextChecks;
+      if (day) {
+        const saved = Array.isArray(day.coolers) ? day.coolers : [];
+        nextCoolers = makeDefaultCoolers().map((blank, i) => ({
+          ...blank,
+          ...(saved[i] || {}),
+          temps: { ...blank.temps, ...(saved[i]?.temps || {}) },
+        }));
+        const blankLoad = makeDefaultLoadingArea();
+        nextLoading = { ...blankLoad, ...(day.loadingArea || {}), temps: { ...blankLoad.temps, ...(day.loadingArea?.temps || {}) } };
+        nextChecks = Array.isArray(day.productVerifications) && day.productVerifications.length
+          ? day.productVerifications.map((r) => makeProductVerificationRow(r))
+          : makeDefaultProductVerifications();
+        setVerifiedByManager(day.verifiedByManager || "");
+        if (day.headers?.tmpHeader && !useExternalHeader) setLocalHeader({ ...defaultTMPHeader, ...day.headers.tmpHeader });
+      } else {
+        nextCoolers = makeDefaultCoolers().map((blank, i) => (dataCoolers[i] ? clearTemps(dataCoolers[i]) : blank));
+        nextLoading = clearTemps(loadingArea);
+        nextChecks = (productVerifications || []).map((r) => makeProductVerificationRow({ ...r, productTemp: "", remarks: "" }));
+      }
+      updateCoolers(nextCoolers);
+      setLoadingArea(nextLoading);
+      setProductVerifications(nextChecks);
+      savedSnapRef.current = sheetSnap(nextCoolers, nextLoading, nextChecks);
+    } catch (e) {
+      if (seq === loadSeqRef.current) alert(`❌ Could not load the sheet for ${d}: ${e.message || e}`);
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setPulling(false);
+        setClock(new Date());
+      }
+    }
+  }
+
   useEffect(() => {
-    pullPhoneReadings(true);
+    if (firstOpenRef.current) {
+      firstOpenRef.current = false;
+      pullPhoneReadings(true);
+      return;
+    }
+    if (date) openDate(date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  /** Date picker: unsaved readings of the current date are confirmed first. */
+  function changeDate(next) {
+    if (!next || next === date) return;
+    const now = sheetSnap(dataCoolers, loadingArea, productVerifications);
+    const dirty = now !== savedSnapRef.current && hasReadings(dataCoolers, loadingArea, productVerifications);
+    if (dirty && !window.confirm(`The readings on screen for ${date || "this sheet"} are not saved. Open ${next} anyway? (They will be cleared from the screen.)`)) return;
+    setDate(next);
+  }
 
   const isToday = date === localDate();
   const lateStatus = useMemo(() => {
@@ -676,6 +746,7 @@ export default function CoolersTab(props) {
       }
 
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      savedSnapRef.current = sheetSnap(sheetCoolers, sheetLoading, productVerifications);
       alert(`✅ Coolers saved for ${date}.`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);
@@ -1001,7 +1072,7 @@ export default function CoolersTab(props) {
         logoUrl={logoUrl}
         reportDate={formatDMYSmart(date)}
         dateValue={date}
-        onDateChange={(e) => setDate(e.target.value)}
+        onDateChange={(e) => changeDate(e.target.value)}
       />
 
       {/* 📱 Phone entry + late readings */}
