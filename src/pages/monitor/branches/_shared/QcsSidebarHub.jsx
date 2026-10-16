@@ -120,7 +120,24 @@ function Highlight({ text, tokens }) {
   return out;
 }
 
-export default function QcsSidebarHub({
+export default function QcsSidebarHub(props) {
+  /* `allow(tabKey)` hides the tabs this account was not given (per-report
+     permissions, utils/reportPerms.js). Nothing left → a short notice. */
+  const { tabs: ALL_TABS, allow } = props;
+  const TABS = useMemo(() => (allow ? ALL_TABS.filter((tb) => allow(tb.key)) : ALL_TABS), [ALL_TABS, allow]);
+  if (!TABS.length) {
+    return (
+      <div style={{ maxWidth: 520, margin: "60px auto", padding: 24, textAlign: "center", background: "#fff",
+                    border: "1px solid #e2e8f0", borderRadius: 16, fontWeight: 700, color: "#475569" }}>
+        🔒 No {props.itemNoun || "forms"} of {props.brandTitle || "QCS"} are enabled for your account.
+        <div style={{ marginTop: 8, fontWeight: 600 }}>Ask an administrator to grant the report you need.</div>
+      </div>
+    );
+  }
+  return <QcsSidebarHubInner {...props} tabs={TABS} />;
+}
+
+function QcsSidebarHubInner({
   tabs: TABS,
   groups: GROUPS,
   brandSub = "Daily Inputs",

@@ -2,7 +2,8 @@
 // QCS input forms. The sidebar layout is _shared/QcsSidebarHub (the QCS
 // reports hub uses the same one).
 
-import React, { lazy } from "react";
+import React, { lazy, useMemo } from "react";
+import { reportTabFilter } from "../../../utils/reportPerms";
 import QcsSidebarHub, {
   QCS_GROUPS,
   IconBox, IconSnow, IconHygiene, IconCleaning, IconChicken, IconTruck, IconFlask, IconPackage,
@@ -76,9 +77,12 @@ const GROUPS = QCS_GROUPS;
 /* The sidebar layout lives in _shared/QcsSidebarHub (shared with the QCS
    reports hub, QCSReportsView). This file only lists the input forms. */
 export default function QCSReport() {
+  // Only the forms this account was given (per-report permissions).
+  const allow = useMemo(() => reportTabFilter("QCS", "input"), []);
   return (
     <QcsSidebarHub
       tabs={TABS}
+      allow={allow}
       groups={GROUPS}
       brandSub="Daily Inputs"
       crumb="Inputs"

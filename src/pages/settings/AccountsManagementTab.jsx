@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
+import { BRANCH_REPORTS, REPORT_PERMS_KEY, isBranchReportRestricted, reportGrantKey } from "../../utils/reportPerms";
 import { useCompanyManifest, permissionSectionsOf } from "../../companies";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { logSettingsAudit } from "../../utils/settingsAudit";
@@ -516,6 +517,107 @@ function SubItemModal({ item, selected, theme, onSave, onClose }) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   REPORT ACCESS — per report, input and view (utils/reportPerms.js)
+   No entry for a branch = every report of it (as before). The first box
+   unticked switches the branch to "only what is ticked". Unticking the last
+   one keeps it restricted (a `none` marker), never back to "everything".
+═══════════════════════════════════════════════════════ */
+function ReportAccessPanel({ value, onChange, inputOn, viewOn }) {
+  const { t } = useSettingsLang();
+  const list = Array.isArray(value) ? value : [];
+  const theme = BRANCH_THEMES.daily;
+
+  return Object.entries(BRANCH_REPORTS).map(([branch, reports]) => {
+    const prefix = `${branch}:`;
+    const NONE = reportGrantKey(branch, "__none__", "none");
+    const others = list.filter(k => !String(k).startsWith(prefix));
+    const restricted = isBranchReportRestricted(branch, list);
+    const mine = list.filter(k => String(k).startsWith(prefix) && k !== NONE);
+    const allKeys = reports.flatMap(r => [
+      ...(r.input ? [reportGrantKey(branch, r.id, "input")] : []),
+      ...(r.view ? [reportGrantKey(branch, r.id, "view")] : []),
+    ]);
+    const isOn = key => !restricted || mine.includes(key);
+    const setMine = next => onChange([...others, ...(next.length ? next : [NONE])]);
+    const toggle = key => {
+      const base = restricted ? mine : allKeys;
+      setMine(base.includes(key) ? base.filter(k => k !== key) : [...base, key]);
+    };
+    const setColumn = (mode, on) => {
+      const base = restricted ? mine : allKeys;
+      const col = reports.filter(r => r[mode]).map(r => reportGrantKey(branch, r.id, mode));
+      setMine(on ? [...new Set([...base, ...col])] : base.filter(k => !col.includes(k)));
+    };
+    const cell = (r, mode, enabled) => {
+      if (!r[mode]) return <td style={{ textAlign: "center", color: "#cbd5e1" }}>—</td>;
+      const key = reportGrantKey(branch, r.id, mode);
+      return (
+        <td style={{ textAlign: "center" }}>
+          <input type="checkbox" checked={isOn(key)} disabled={!enabled} onChange={() => toggle(key)}
+            style={{ width: 18, height: 18, accentColor: theme.accent, cursor: enabled ? "pointer" : "not-allowed" }} />
+        </td>
+      );
+    };
+    const colBtn = (mode, enabled) => enabled && (
+      <span style={{ display: "inline-flex", gap: 4, marginInlineStart: 6 }}>
+        <button type="button" onClick={() => setColumn(mode, true)} style={{ fontSize: 11, border: `1px solid ${theme.border}`, background: "#fff", borderRadius: 6, cursor: "pointer", padding: "1px 6px" }}>✓</button>
+        <button type="button" onClick={() => setColumn(mode, false)} style={{ fontSize: 11, border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, cursor: "pointer", padding: "1px 6px" }}>✕</button>
+      </span>
+    );
+
+    return (
+      <div key={branch} style={{ border: `1.5px solid ${theme.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 14, background: theme.bg }}>
+        <div style={{ fontWeight: 900, fontSize: 16, color: theme.accent, marginBottom: 6 }}>
+          📋 {branch} — {t("amReportAccess")}
+        </div>
+        <p style={{ fontSize: 13, color: "#475569", marginBottom: 10, fontWeight: 700 }}>{t("amReportAccessDesc")}</p>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 10 }}>
+          <input type="checkbox" checked={!restricted}
+            onChange={() => onChange(restricted ? others : [...others, ...allKeys])}
+            style={{ width: 17, height: 17, accentColor: theme.accent }} />
+          <span style={{ fontWeight: 900, color: theme.accent, fontSize: 15 }}>⭐ {t("amAllReports")}</span>
+        </label>
+
+        {(!inputOn || !viewOn) && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+            {!inputOn && <div>• {t("amReportNeedsDaily")}</div>}
+            {!viewOn && <div>• {t("amReportNeedsAdmin")}</div>}
+          </div>
+        )}
+
+        <div style={{ overflowX: "auto", background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                <th style={{ textAlign: "start", padding: "8px 10px" }}>{t("amReport")}</th>
+                <th style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>✍️ {t("amReportInput")}{colBtn("input", inputOn)}</th>
+                <th style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>👁️ {t("amReportView")}{colBtn("view", viewOn)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map(r => (
+                <tr key={r.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: "7px 10px", fontWeight: 700 }}>{r.label}</td>
+                  {cell(r, "input", inputOn)}
+                  {cell(r, "view", viewOn)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {restricted && (
+          <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: theme.badgeBg, border: `1px solid ${theme.badgeBorder}`, fontSize: 13, fontWeight: 800, color: theme.badgeText }}>
+            🔒 {t("amReportRestricted")} {mine.length}
+          </div>
+        )}
+      </div>
+    );
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
    BRANCH / PAGE SELECTOR (light — inside form card)
 ═══════════════════════════════════════════════════════ */
 function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind = "branches" }) {
@@ -808,6 +910,17 @@ function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companie
           </div>
         );
       })()}
+
+      {/* Per-report access inside a branch — input and view separately */}
+      {!cardSections && !form.isFullAccess &&
+        (form.crudPerms?.daily?.length > 0 || form.crudPerms?.admin?.length > 0) && (
+        <ReportAccessPanel
+          value={(form.allowedBranches || {})[REPORT_PERMS_KEY]}
+          onChange={list => set("allowedBranches", { ...(form.allowedBranches || {}), [REPORT_PERMS_KEY]: list })}
+          inputOn={form.crudPerms?.daily?.length > 0}
+          viewOn={form.crudPerms?.admin?.length > 0}
+        />
+      )}
 
       {err && <div style={fs.err}>⚠️ {err}</div>}
 

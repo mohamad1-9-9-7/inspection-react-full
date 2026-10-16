@@ -41,6 +41,7 @@ import {
   unitDef,
 } from "./coolerQuick";
 import { getCurrentUser } from "../../../../utils/perms";
+import { canReport } from "../../../../utils/reportPerms";
 import { uploadImage } from "../../../../utils/imageUpload";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 
@@ -86,6 +87,7 @@ const T = {
     another: "Record another",
     slotFilled: (v) => `This slot was just recorded by someone else (${v}°C).`,
     unknownUnit: "Unknown unit.",
+    noAccess: "🔒 Your account is not allowed to record Coolers Temperatures. Ask an administrator to grant it.",
     stickerHint: "Scan to record the temperature",
     printNow: "Print",
     printHint: "Each unit prints on its own A4 page with a large code. Laminate it or put it in a plastic sleeve before sticking it on the unit.",
@@ -131,6 +133,7 @@ const T = {
     another: "تسجيل قراءة أخرى",
     slotFilled: (v) => `سجّلها شخص آخر للتو (${v}°م).`,
     unknownUnit: "وحدة غير معروفة.",
+    noAccess: "🔒 حسابك غير مسموح له بتسجيل حرارة البرادات. اطلب من المسؤول منحك الصلاحية.",
     stickerHint: "امسح لتسجيل درجة الحرارة",
     printNow: "طباعة",
     printHint: "كل وحدة تُطبع على صفحة A4 لوحدها برمز كبير. يُفضّل تغليفها بالبلاستيك قبل لصقها على البراد.",
@@ -674,7 +677,9 @@ export default function QcsCoolerQuick() {
   return (
     <div className={`cq cq${unit ? " has-dock" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
       <style>{CSS}</style>
-      {unit ? (
+      {!canReport("QCS", "coolers", "input") ? (
+        <div className="alert bad" style={{ marginTop: 30 }}>{t.noAccess}</div>
+      ) : unit ? (
         <UnitEntry key={unit} unit={unit} t={t} lang={lang} toggleLang={toggleLang} />
       ) : (
         <Hub t={t} lang={lang} toggleLang={toggleLang} />

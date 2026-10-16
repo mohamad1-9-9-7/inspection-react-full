@@ -2,7 +2,8 @@
 // QCS — reports hub. Same sidebar as the QCS input hub (QCSReport.jsx): one
 // shared component, _shared/QcsSidebarHub, so the two menus cannot drift.
 // The open report lives in ?rtab= (unchanged keys, old links still land).
-import React from "react";
+import React, { useMemo } from "react";
+import { reportTabFilter } from "../../../../utils/reportPerms";
 import lazyWithRetry from "../../../../utils/lazyWithRetry";
 import BranchDashboard from "../_shared/BranchDashboard";
 import QcsSidebarHub, {
@@ -148,9 +149,12 @@ const TABS = [
 ];
 
 export default function QCSReportsView() {
+  // Only the reports this account was given (per-report permissions).
+  const allow = useMemo(() => reportTabFilter("QCS", "view"), []);
   return (
     <QcsSidebarHub
       tabs={TABS}
+      allow={allow}
       groups={GROUPS}
       brandSub="Reports"
       crumb="Reports"
