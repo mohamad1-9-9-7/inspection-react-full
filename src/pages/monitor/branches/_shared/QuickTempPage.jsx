@@ -506,6 +506,9 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
   const valid = value !== null && Number.isFinite(value);
   const out = valid && def ? !A.inRange(def, value) : false;
 
+  // A loading area stores nothing — no Products tab there (user, 17 Oct 2026).
+  const storesGoods = unit !== "loading-area" && !/loading/i.test(String(def?.label || unit));
+
   if (!def) return loading ? <div className="sm" style={{ padding: 20 }}>…</div> : <div className="alert bad">{t.unknownUnit}</div>;
 
   const onPhoto = async (e) => {
@@ -601,14 +604,16 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
         )}
       </div>
 
+      {storesGoods && (
       <div className="acts" style={{ marginBottom: 10 }}>
         {[["temp", t.tabTemp], ["goods", t.tabGoods]].map(([k, label]) => (
           <button key={k} type="button" className={`chip ${view === k ? "on" : ""}`}
             style={{ textAlign: "center" }} onClick={() => setView(k)}>{label}</button>
         ))}
       </div>
+      )}
 
-      {view === "goods" ? (
+      {storesGoods && view === "goods" ? (
         <QuickGoodsPanel branch={A.calib?.branch || A.label} unit={unit} lang={lang} />
       ) : (<>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
