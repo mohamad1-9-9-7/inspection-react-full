@@ -69,11 +69,18 @@ const KEEPER_KEY = "cooler_goods_keeper";
 const lastKeeper = () => { try { return localStorage.getItem(KEEPER_KEY) || ""; } catch { return ""; } };
 const rememberKeeper = (v) => { try { localStorage.setItem(KEEPER_KEY, v); } catch { /* cache only */ } };
 
+/* The branches goods can go to — only the ones working now (user list, 17 Oct
+   2026). Names as in inspectionBranches.js; POS 47/48 are not there yet and
+   POS 19 goes by Al Warqa Kitchen (config/branches.js). */
+const ACTIVE_BRANCHES = ["POS 10", "POS 11", "POS 15", "POS 47", "POS 48", "POS 17", "POS 6", "FTR 1", "FTR 2", "PRODUCTION"]
+  .map((code) => INSPECTION_BRANCHES.find((b) => b.code === code) || { code, labelEn: code, labelAr: code })
+  .concat({ code: "POS 19", labelEn: "Al Warqa Kitchen", labelAr: "مطبخ الورقاء" });
+
 const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
 const destText = (m, s, ar) => {
   if (m.destType === "customer") return s.toCustomer;
   if (m.destType === "branch") {
-    const b = INSPECTION_BRANCHES.find((x) => x.code === m.destination);
+    const b = ACTIVE_BRANCHES.find((x) => x.code === m.destination);
     return `${s.to} ${b ? branchLabel(b, ar) : m.destination}`;
   }
   return "";
@@ -237,7 +244,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                     onChange={(e) => setToBranch(e.target.value)}
                     aria-label={s.branch}>
                     <option value="">{s.pickBranch}</option>
-                    {INSPECTION_BRANCHES.map((b) => <option key={b.code} value={b.code}>{branchLabel(b, ar)}</option>)}
+                    {ACTIVE_BRANCHES.map((b) => <option key={b.code} value={b.code}>{branchLabel(b, ar)}</option>)}
                   </select>
                 )}
               </>
