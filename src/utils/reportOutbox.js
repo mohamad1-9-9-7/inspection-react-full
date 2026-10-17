@@ -194,6 +194,36 @@ registerOutboxHandler(BRANCH_READING_KIND, (body) =>
     throw e;
   }));
 
+/* Cold rooms stock (cooler QR page, coldrooms/coldRoomsStock.js): one product
+   in or out through POST /api/reports/cold-rooms-stock/move, locked on the
+   server. A move queued offline replays with replay:true — the goods already
+   moved, so the server records it even when the list says otherwise. Same
+   moveId twice = the server ignores the copy. */
+export const STOCK_MOVE_KIND = "cold-rooms-stock-move";
+export async function postStockMove(body, signal) {
+  const res = await fetch(`${API_BASE}/api/reports/cold-rooms-stock/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    body: JSON.stringify(body),
+    signal,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(json?.error || `Save failed (${res.status})`);
+    e.status = res.status;
+    e.code = json?.error;
+    e.value = json?.value;
+    throw e;
+  }
+  return json;
+}
+registerOutboxHandler(STOCK_MOVE_KIND, (body) =>
+  withTimeout(REPLAY_TIMEOUT_MS, (signal) => postStockMove({ ...body, replay: true }, signal)).catch((e) => {
+    if (e?.status === 400) return null; // a bad move never becomes good — drop it
+    throw e;
+  }));
+
 /** Saves a report now, or keeps it on this device when there is no connection. */
 export async function saveReport({ body, id = null, byDate = null, label = "" }) {
   let spec = { body, id, byDate };

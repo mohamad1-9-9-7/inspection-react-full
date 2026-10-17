@@ -42,6 +42,11 @@ const TX = {
     pcs: "Number of pieces (if known)", pcsOut: "Pieces taken out (if known)", pcsShort: "pcs", expShort: "exp",
     needSupplier: "Type the supplier name.", needProd: "Choose the production date.", needExp: "Choose the expiry date.",
     badDates: "The expiry date must be after the production date.", autoExp: (d) => `Shelf life ${d} days — the other date was filled.`,
+    expired: "This product is already expired — it must not go into the cooler.",
+    fefo: (d) => `⚠️ An older lot of this product expires first (${d}). Take that one out first (FEFO).`,
+    fefoOk: "I know — take this lot out anyway", needFefo: "Confirm the warning about the older lot first.",
+    queued: "📴 No connection — the move is kept on this phone and will be sent automatically.",
+    offline: "📴 No connection — showing the list as last seen on this phone.",
   },
   ar: {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -60,6 +65,11 @@ const TX = {
     pcs: "عدد الحبات (إذا متوفر)", pcsOut: "عدد الحبات الخارجة (إذا متوفر)", pcsShort: "حبة", expShort: "ينتهي",
     needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
     badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
+    expired: "هذا المنتج منتهي الصلاحية — ممنوع يدخل المبرد.",
+    fefo: (d) => `⚠️ في دفعة أقدم من نفس المنتج بتنتهي قبلها (${d}). طلّع الأقدم أول (FEFO).`,
+    fefoOk: "بعرف — طلّع هالدفعة على كل حال", needFefo: "أكّد التنبيه عن الدفعة الأقدم أول.",
+    queued: "📴 ما في إنترنت — الحركة محفوظة على التلفون وبتنبعت لحالها أول ما يرجع النت.",
+    offline: "📴 ما في إنترنت — عم نعرض القائمة متل آخر مرة انشافت على هالتلفون.",
   },
 };
 
@@ -94,6 +104,7 @@ const addDays = (iso, n) => {
   return d.toISOString().slice(0, 10);
 };
 const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.split("-").reverse().join("/") : iso || "");
+const todayUae = () => new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10);
 const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate].map((v) => v || "").join("|");
 const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", pcs: it.pcs || 0, have: it.qty });
 
@@ -130,12 +141,27 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [pcs, setPcs] = useState("");
   const [shelfNote, setShelfNote] = useState("");
   const [suppliers, setSuppliers] = useState(null);
+  const [fefoOk, setFefoOk] = useState(false);
   const shelf = useShelfLife();
   const ar = lang === "ar";
 
+  /* Supplier suggestions: the full list is heavy for a phone on a weak
+     signal, so it is kept on the phone for a day (a convenience copy — the
+     typed name is what is saved) and topped up with the suppliers already
+     used in this unit. */
   useEffect(() => {
     if (mode !== "in" || suppliers) return;
-    fetchSuppliers().then(setSuppliers).catch(() => setSuppliers([]));
+    const KEY = "cooler_goods_suppliers_v1";
+    try {
+      const c = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (c && Date.now() - c.at < 864e5 && Array.isArray(c.list)) { setSuppliers(c.list); return; }
+    } catch { /* no copy */ }
+    fetchSuppliers()
+      .then((list) => {
+        setSuppliers(list);
+        try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), list })); } catch { /* cache only */ }
+      })
+      .catch(() => setSuppliers([]));
   }, [mode, suppliers]);
 
   /* Shelf life known for the product → one date fills the other (as on the
@@ -206,16 +232,32 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, items, catalog, needle]);
 
-  const resetLot = () => { setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); };
+  const supplierList = useMemo(() => {
+    const seen = new Map();
+    [...items.map((it) => it.supplier), ...(suppliers || [])].forEach((n) => {
+      const v = String(n || "").trim();
+      if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
+    });
+    return [...seen.values()];
+  }, [items, suppliers]);
+
+  // goods out: an older lot of the same product that expires before the picked one (FEFO)
+  const olderLot = mode === "out" && pick?.expDate
+    ? items.filter((it) => it !== pick && (pick.code ? it.code === pick.code : it.product === pick.product)
+        && it.expDate && it.expDate < pick.expDate && lotKey(it) !== lotKey(pick))
+      .sort((a, b) => a.expDate.localeCompare(b.expDate))[0] || null
+    : null;
+
+  const resetLot = () => { setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); setFefoOk(false); };
   const start = (m, it = null) => {
     setMode(m); setQ(""); setQty(""); setMsg(null); resetLot();
     setPick(it ? lotOf(it) : null); // from the list = goods out of that lot
     if (m) window.scrollTo({ top: 0, behavior: "smooth" });
   };
   // goods out: that exact lot; goods in: the product (the lot is typed)
-  const choose = (it) => setPick(mode === "out"
+  const choose = (it) => { setFefoOk(false); setPick(mode === "out"
     ? lotOf(it)
-    : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 });
+    : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 }); };
 
   const save = async () => {
     setMsg(null);
@@ -230,6 +272,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       if (destType === "branch" && !toBranch) return setMsg({ kind: "bad", text: s.needBranch });
       extra.destType = destType;
       extra.destination = destType === "branch" ? toBranch : "";
+      if (olderLot && !fefoOk) return setMsg({ kind: "bad", text: s.needFefo });
       // the lot being taken from
       extra.supplier = pick.supplier; extra.prodDate = pick.prodDate; extra.expDate = pick.expDate;
     } else {
@@ -237,20 +280,22 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       if (!prodDate) return setMsg({ kind: "bad", text: s.needProd });
       if (!expDate) return setMsg({ kind: "bad", text: s.needExp });
       if (expDate <= prodDate) return setMsg({ kind: "bad", text: s.badDates });
+      if (expDate < todayUae()) return setMsg({ kind: "bad", text: s.expired });
       extra.supplier = supplier.trim(); extra.prodDate = prodDate; extra.expDate = expDate;
     }
     setSaving(true);
     try {
-      const rec = await applyStockMove(target.key, { dir: mode, code: pick.code, product: pick.product, uom: pick.uom, qty: n, ...extra }, userName());
+      const { queued, room } = await applyStockMove(target.key,
+        { dir: mode, code: pick.code, product: pick.product, uom: pick.uom, qty: n, ...extra }, stock, userName());
       rememberKeeper(who);
-      setStock(rec);
-      const text = mode === "out" ? s.savedOut(fmt(n), pick.product || pick.code) : s.savedIn(fmt(n), pick.product || pick.code);
+      setStock(room);
+      const done = mode === "out" ? s.savedOut(fmt(n), pick.product || pick.code) : s.savedIn(fmt(n), pick.product || pick.code);
       setMode(null); setPick(null); setQty(""); setQ(""); setDestType(""); setToBranch(""); resetLot();
-      setMsg({ kind: "ok", text });
+      setMsg(queued ? { kind: "warn", text: `${done} ${s.queued}` } : { kind: "ok", text: done });
       try { navigator.vibrate?.(60); } catch {}
     } catch (e) {
-      const code = e?.message;
-      setMsg({ kind: "bad", text: code === "TOO_MUCH" ? s.tooMuch : code === "NOT_HERE" ? s.notHere : code === "QTY" ? s.needQty : String(code || e) });
+      const code = e?.code || e?.message;
+      setMsg({ kind: "bad", text: code === "TOO_MUCH" ? s.tooMuch : code === "NOT_HERE" ? s.notHere : code === "QTY" ? s.needQty : String(e?.message || e) });
       if (code === "TOO_MUCH" || code === "NOT_HERE") load();
     } finally {
       setSaving(false);
@@ -322,7 +367,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                 <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} value={supplier} list="cq-goods-suppliers"
                   placeholder={s.supplierPh} onChange={(e) => setSupplier(e.target.value)} autoComplete="off" />
                 <datalist id="cq-goods-suppliers">
-                  {(suppliers || []).map((n) => <option key={n} value={n} />)}
+                  {supplierList.map((n) => <option key={n} value={n} />)}
                 </datalist>
                 <div className="acts" style={{ marginTop: 0 }}>
                   <div>
@@ -358,6 +403,15 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                   </select>
                 )}
               </>
+            )}
+
+            {olderLot && (
+              <div className="alert warn" style={{ marginTop: 12, marginBottom: 0 }}>
+                <div>{s.fefo(`${dmy(olderLot.expDate)}${olderLot.supplier ? ` · ${olderLot.supplier}` : ""}`)}</div>
+                <label className="chk">
+                  <input type="checkbox" checked={fefoOk} onChange={(e) => setFefoOk(e.target.checked)} /> {s.fefoOk}
+                </label>
+              </div>
             )}
 
             <span className="lbl">{s.keeper}</span>
@@ -410,6 +464,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     <div>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
       {err && <div className="alert bad">{err}</div>}
+      {stock?.offline && <div className="alert warn">{s.offline}</div>}
 
       <div className="acts" style={{ marginBottom: 10 }}>
         <button type="button" className="btn pri full" onClick={() => start("in")} disabled={loading || !target}>{s.in}</button>
@@ -450,7 +505,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
           <div className="t2" style={{ marginBottom: 6 }}>{s.moves}</div>
           {moves.map((m, i) => (
             <div key={`${m.at}-${i}`} className="sm" style={{ padding: "3px 0" }}>
-              <b style={{ color: m.dir === "out" ? "#b45309" : "#047857" }}>{m.dir === "out" ? "−" : "+"}{fmt(m.qty)}</b>{" "}
+              {m.pending ? "⏳ " : ""}<b style={{ color: m.dir === "out" ? "#b45309" : "#047857" }}>{m.dir === "out" ? "−" : "+"}{fmt(m.qty)}</b>{" "}
               <span dir="ltr">{m.product || m.code}</span>
               {m.pcs ? ` (${fmt(m.pcs)} ${s.pcsShort})` : ""}
               {m.dir === "in" && m.supplier ? ` · ${m.supplier}` : ""}

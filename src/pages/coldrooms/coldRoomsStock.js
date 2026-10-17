@@ -8,14 +8,17 @@
 // config, so editing a room's limits never touches its stock):
 //   type = cold_rooms_stock , payload.reportDate = "stock"
 //   payload.rooms = { "7": { items: [{ code, product, uom, qty }], updatedAt, updatedBy } }
-// Products go in and out ONLY from the cooler QR page (applyStockMove); the
-// 3D screen just shows them. A move re-reads the record and replaces only
-// its own room.
+// Products go in and out ONLY from the cooler QR page, through the locked
+// server route POST /api/reports/cold-rooms-stock/move (applyStockMove);
+// the 3D screen just shows them. Full history: cold_rooms_moves, one record
+// per month.
 //
 // The code is ours: typing a known code fills the product and its unit from
 // the items catalogue (public/data/items.json).
 
 import API_BASE from "../../config/api";
+import { STOCK_MOVE_KIND, newOutboxId, postStockMove } from "../../utils/reportOutbox";
+import { enqueue, isTransient } from "../../utils/offlineOutbox";
 
 export const STOCK_TYPE = "cold_rooms_stock";
 const STOCK_KEY = "stock";
@@ -60,7 +63,7 @@ async function readRecord(signal) {
   const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(STOCK_TYPE)}&limit=5`, {
     cache: "no-store", signal, headers: { Accept: "application/json" },
   });
-  if (!res.ok) throw new Error(`Stock read failed (${res.status})`);
+  if (!res.ok) { const e = new Error(`Stock read failed (${res.status})`); e.status = res.status; throw e; }
   const json = await res.json().catch(() => null);
   const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
   const row = rows.find((r) => String(r?.payload?.reportDate || "") === STOCK_KEY) || rows[0] || null;
@@ -81,20 +84,16 @@ export async function fetchStock(signal) {
   }
 }
 
-async function writeRooms(rooms, user) {
-  const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ reporter: user || "cold-rooms-stock", type: STOCK_TYPE, payload: { reportDate: STOCK_KEY, rooms } }),
-  });
-  if (!res.ok) throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
-}
-
-/* ══════════════════════════════════════ Goods in / out (QR page)
+/* ══════════════════════════════════════ Products in / out (QR page)
    The stock key of a QR unit: the cold room linked to it (same index the 3D
-   screen uses), else its own key "unit:<branch>:<unit>" in the same record. */
+   screen uses), else its own key "unit:<branch>:<unit>" in the same record.
+   Moves go through POST /api/reports/cold-rooms-stock/move — the server
+   applies them under a row lock and keeps the month's full log. With no
+   connection a move waits on the phone (offline outbox) and the screen
+   shows the list as it will be once it is sent. */
 
 const MOVES_KEPT = 200;
+const CACHE_PREFIX = "cold_rooms_stock_cache_v1:";
 
 export async function stockKeyForUnit(branch, unit) {
   try {
@@ -106,63 +105,87 @@ export async function stockKeyForUnit(branch, unit) {
   return { key: `unit:${branch}:${unit}`, room: null, name: "" };
 }
 
-/** One room/unit's { items, moves, updatedAt, updatedBy } — fresh from the server. */
+const shapeRoom = (r) => ({ ...(r || {}), items: normalizeList(r?.items), moves: Array.isArray(r?.moves) ? r.moves : [] });
+// first-paint / no-connection copy only — the server record is the truth
+const readCache = (key) => { try { const v = localStorage.getItem(CACHE_PREFIX + key); return v ? shapeRoom(JSON.parse(v)) : null; } catch { return null; } };
+const writeCache = (key, room) => { try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(room)); } catch { /* cache only */ } };
+
+/** One room/unit's { items, moves, updatedAt, updatedBy, offline? } — fresh
+    from the server, or the copy kept on this phone when there is no connection. */
 export async function fetchUnitStock(key, signal) {
-  const rooms = await readRecord(signal);
-  const r = rooms[key] || {};
-  return { ...r, items: normalizeList(r.items), moves: Array.isArray(r.moves) ? r.moves : [] };
+  try {
+    const room = shapeRoom((await readRecord(signal))[key]);
+    writeCache(key, room);
+    return room;
+  } catch (e) {
+    const kept = readCache(key);
+    if (kept && isTransient(e)) return { ...kept, offline: true };
+    throw e;
+  }
 }
 
-/**
- * Goods in (dir "in") or out (dir "out") of one room/unit, applied to the
- * list as it is on the server now. In adds to the row of the same lot (same
- * code + supplier + production + expiry) or opens a new row; out takes off
- * the row of that lot and drops it at zero. pcs (pieces) is optional on both.
- */
-export async function applyStockMove(key, { dir, code, product, uom, qty, supplier, prodDate, expDate, pcs, ...extra }, user = "") {
-  const amount = toNum(qty);
-  if (!(amount > 0)) throw new Error("QTY");
-  const pieces = toNum(pcs) > 0 ? toNum(pcs) : 0;
-  const rooms = await readRecord();
-  const cur = rooms[key] || {};
-  const items = normalizeList(cur.items);
-  const lot = normalizeItem({ code, product, uom, qty: amount, supplier, prodDate, expDate, pcs: pieces });
+/* The same rules as the server, for the screen while a move waits offline. */
+function applyLocal(room, move) {
+  const items = normalizeList(room?.items);
+  const lot = normalizeItem(move);
   const at = items.findIndex((it) => sameLot(it, lot));
-  const name = lot.product || items[at]?.product || "";
-  const unitOf = lot.uom || items[at]?.uom || "";
   const round = (n) => Math.round(n * 1000) / 1000;
-  if (dir === "out") {
-    if (at < 0) throw new Error("NOT_HERE");
-    if (amount > items[at].qty + 1e-9) throw new Error("TOO_MUCH");
-    const left = round(items[at].qty - amount);
-    if (left <= 0) items.splice(at, 1);
-    else {
-      const row = { ...items[at], qty: left };
-      if (row.pcs && pieces) row.pcs = Math.max(0, row.pcs - pieces);
-      if (!row.pcs) delete row.pcs;
-      items[at] = row;
+  if (move.dir === "out") {
+    if (at >= 0) {
+      const left = round(items[at].qty - lot.qty);
+      if (left <= 0) items.splice(at, 1);
+      else {
+        const r = { ...items[at], qty: left };
+        if (r.pcs && move.pcs > 0) r.pcs = Math.max(0, r.pcs - move.pcs);
+        if (!r.pcs) delete r.pcs;
+        items[at] = r;
+      }
     }
   } else if (at >= 0) {
-    const row = { ...items[at], qty: round(items[at].qty + amount) };
-    if (pieces) row.pcs = (row.pcs || 0) + pieces;
-    items[at] = row;
+    const r = { ...items[at], qty: round(items[at].qty + lot.qty) };
+    if (move.pcs > 0) r.pcs = (r.pcs || 0) + move.pcs;
+    items[at] = r;
   } else {
     items.unshift(lot);
   }
-  const now = new Date().toISOString();
-  // extra: keeper = storekeeper's name; goods out: destType customer|branch, destination
-  const move = {
-    ...extra, at: now, by: user || "", dir: dir === "out" ? "out" : "in",
-    code: lot.code, product: name, uom: unitOf, qty: amount,
-    ...(lot.supplier ? { supplier: lot.supplier } : {}),
-    ...(lot.prodDate ? { prodDate: lot.prodDate } : {}),
-    ...(lot.expDate ? { expDate: lot.expDate } : {}),
-    ...(pieces ? { pcs: pieces } : {}),
+  const m = { ...move, product: lot.product || (at >= 0 ? room.items?.[at]?.product : "") || "", pending: true };
+  return { ...room, items, moves: [...(room?.moves || []), m].slice(-MOVES_KEPT), updatedAt: move.at };
+}
+
+/**
+ * One product in (dir "in") or out (dir "out") of a room/unit.
+ * move = { dir, code, product, uom, qty, pcs?, supplier?, prodDate?, expDate?,
+ *          keeper, destType?, destination? }; `current` = the room as shown.
+ * Returns { queued, room }. Throws err.code TOO_MUCH / NOT_HERE (409) and
+ * the server's message for a refused move.
+ */
+export async function applyStockMove(key, move, current, user = "") {
+  const body = {
+    ...move,
+    key,
+    qty: toNum(move.qty),
+    pcs: toNum(move.pcs) > 0 ? toNum(move.pcs) : 0,
+    moveId: newOutboxId(),
+    at: new Date().toISOString(),
+    by: user || "",
   };
-  const moves = [...(Array.isArray(cur.moves) ? cur.moves : []), move].slice(-MOVES_KEPT);
-  const next = { ...rooms, [key]: { ...cur, items, moves, updatedAt: now, updatedBy: user || "" } };
-  await writeRooms(next, user);
-  return { ...next[key], items: normalizeList(items), moves };
+  if (!(body.qty > 0)) throw new Error("QTY");
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 25_000);
+  try {
+    const json = await postStockMove(body, ctrl.signal);
+    const room = shapeRoom(json.room);
+    writeCache(key, room);
+    return { queued: false, room };
+  } catch (err) {
+    if (!isTransient(err)) throw err;
+    await enqueue(STOCK_MOVE_KIND, body.moveId, body, `Cold room ${body.dir} ${body.product || body.code}`);
+    const room = applyLocal(current, body);
+    writeCache(key, room);
+    return { queued: true, room };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /* ══════════════════════════════════════ Items catalogue */
