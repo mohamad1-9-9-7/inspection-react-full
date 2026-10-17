@@ -24,14 +24,30 @@ const toNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/* A lot added from the QR page also carries supplier · production date ·
+   expiry date (yyyy-mm-dd) and, when known, the number of pieces. Rows from
+   the Excel import / 3D editor simply have none of them. */
+const LOT_FIELDS = ["supplier", "prodDate", "expDate"];
+
 export function normalizeItem(raw) {
-  return {
+  const it = {
     code: String(raw?.code ?? "").trim(),
     product: String(raw?.product ?? "").trim(),
     uom: String(raw?.uom ?? "").trim(),
     qty: toNum(raw?.qty),
   };
+  LOT_FIELDS.forEach((k) => {
+    const v = String(raw?.[k] ?? "").trim();
+    if (v) it[k] = v;
+  });
+  if (raw?.pcs !== "" && raw?.pcs != null && toNum(raw.pcs) > 0) it.pcs = toNum(raw.pcs);
+  return it;
 }
+
+/** Same product AND same lot (supplier + both dates). */
+export const sameLot = (a, b) =>
+  (a.code ? a.code === b.code : a.product === b.product) &&
+  LOT_FIELDS.every((k) => String(a[k] || "") === String(b[k] || ""));
 
 const normalizeList = (list) =>
   (Array.isArray(list) ? list : []).map(normalizeItem).filter((it) => it.code || it.product);
@@ -109,34 +125,50 @@ export async function fetchUnitStock(key, signal) {
 
 /**
  * Goods in (dir "in") or out (dir "out") of one room/unit, applied to the
- * list as it is on the server now: in adds to the same code (or a new row),
- * out takes off the available quantity and drops the row at zero.
+ * list as it is on the server now. In adds to the row of the same lot (same
+ * code + supplier + production + expiry) or opens a new row; out takes off
+ * the row of that lot and drops it at zero. pcs (pieces) is optional on both.
  */
-export async function applyStockMove(key, { dir, code, product, uom, qty, ...extra }, user = "") {
+export async function applyStockMove(key, { dir, code, product, uom, qty, supplier, prodDate, expDate, pcs, ...extra }, user = "") {
   const amount = toNum(qty);
   if (!(amount > 0)) throw new Error("QTY");
+  const pieces = toNum(pcs) > 0 ? toNum(pcs) : 0;
   const rooms = await readRecord();
   const cur = rooms[key] || {};
   const items = normalizeList(cur.items);
-  const c = String(code || "").trim();
-  const p = String(product || "").trim();
-  const at = items.findIndex((it) => (c ? it.code === c : it.product === p));
-  const name = p || items[at]?.product || "";
-  const unitOf = uom || items[at]?.uom || "";
+  const lot = normalizeItem({ code, product, uom, qty: amount, supplier, prodDate, expDate, pcs: pieces });
+  const at = items.findIndex((it) => sameLot(it, lot));
+  const name = lot.product || items[at]?.product || "";
+  const unitOf = lot.uom || items[at]?.uom || "";
+  const round = (n) => Math.round(n * 1000) / 1000;
   if (dir === "out") {
     if (at < 0) throw new Error("NOT_HERE");
     if (amount > items[at].qty + 1e-9) throw new Error("TOO_MUCH");
-    const left = Math.round((items[at].qty - amount) * 1000) / 1000;
+    const left = round(items[at].qty - amount);
     if (left <= 0) items.splice(at, 1);
-    else items[at] = { ...items[at], qty: left };
+    else {
+      const row = { ...items[at], qty: left };
+      if (row.pcs && pieces) row.pcs = Math.max(0, row.pcs - pieces);
+      if (!row.pcs) delete row.pcs;
+      items[at] = row;
+    }
   } else if (at >= 0) {
-    items[at] = { ...items[at], qty: Math.round((items[at].qty + amount) * 1000) / 1000 };
+    const row = { ...items[at], qty: round(items[at].qty + amount) };
+    if (pieces) row.pcs = (row.pcs || 0) + pieces;
+    items[at] = row;
   } else {
-    items.unshift(normalizeItem({ code: c, product: p, uom, qty: amount }));
+    items.unshift(lot);
   }
   const now = new Date().toISOString();
-  // extra (goods out): keeper = storekeeper's name, destType customer|branch, destination
-  const move = { ...extra, at: now, by: user || "", dir: dir === "out" ? "out" : "in", code: c, product: name, uom: unitOf, qty: amount };
+  // extra: keeper = storekeeper's name; goods out: destType customer|branch, destination
+  const move = {
+    ...extra, at: now, by: user || "", dir: dir === "out" ? "out" : "in",
+    code: lot.code, product: name, uom: unitOf, qty: amount,
+    ...(lot.supplier ? { supplier: lot.supplier } : {}),
+    ...(lot.prodDate ? { prodDate: lot.prodDate } : {}),
+    ...(lot.expDate ? { expDate: lot.expDate } : {}),
+    ...(pieces ? { pcs: pieces } : {}),
+  };
   const moves = [...(Array.isArray(cur.moves) ? cur.moves : []), move].slice(-MOVES_KEPT);
   const next = { ...rooms, [key]: { ...cur, items, moves, updatedAt: now, updatedBy: user || "" } };
   await writeRooms(next, user);

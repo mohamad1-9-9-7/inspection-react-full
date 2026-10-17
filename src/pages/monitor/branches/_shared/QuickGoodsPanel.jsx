@@ -21,6 +21,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { applyStockMove, fetchUnitStock, loadCatalog, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
 import { getCurrentUser } from "../../../../utils/perms";
 import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
+import { useShelfLife } from "./shelfLife";
+import { fetchSuppliers } from "../../../complaints/complaintsCore";
 
 const TX = {
   en: {
@@ -36,6 +38,10 @@ const TX = {
     customer: "👤 Customer", branch: "🏬 Our branch", toCustomer: "to a customer",
     pickBranch: "— Choose the branch —", needKeeper: "Type the storekeeper's name.", needDest: "Choose where the goods are going.",
     needBranch: "Choose the branch.", to: "to", keeperShort: "storekeeper",
+    supplier: "Supplier", supplierPh: "Supplier name", prodDate: "Production date", expDate: "Expiry date",
+    pcs: "Number of pieces (if known)", pcsOut: "Pieces taken out (if known)", pcsShort: "pcs", expShort: "exp",
+    needSupplier: "Type the supplier name.", needProd: "Choose the production date.", needExp: "Choose the expiry date.",
+    badDates: "The expiry date must be after the production date.", autoExp: (d) => `Shelf life ${d} days — the other date was filled.`,
   },
   ar: {
     inside: "البضاعة الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -50,6 +56,10 @@ const TX = {
     customer: "👤 زبون", branch: "🏬 فرع من فروعنا", toCustomer: "إلى زبون",
     pickBranch: "— اختر الفرع —", needKeeper: "اكتب اسم أمين المخزن.", needDest: "اختر لوين رايحة البضاعة.",
     needBranch: "اختر الفرع.", to: "إلى", keeperShort: "أمين المخزن",
+    supplier: "المورد", supplierPh: "اسم المورد", prodDate: "تاريخ الإنتاج", expDate: "تاريخ الانتهاء",
+    pcs: "عدد الحبات (إذا متوفر)", pcsOut: "عدد الحبات الخارجة (إذا متوفر)", pcsShort: "حبة", expShort: "ينتهي",
+    needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
+    badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
   },
 };
 
@@ -75,6 +85,17 @@ const rememberKeeper = (v) => { try { localStorage.setItem(KEEPER_KEY, v); } cat
 const ACTIVE_BRANCHES = ["POS 10", "POS 11", "POS 15", "POS 47", "POS 48", "POS 17", "POS 6", "FTR 1", "FTR 2", "PRODUCTION"]
   .map((code) => INSPECTION_BRANCHES.find((b) => b.code === code) || { code, labelEn: code, labelAr: code })
   .concat({ code: "POS 19", labelEn: "Al Warqa Kitchen", labelAr: "مطبخ الورقاء" });
+
+/* yyyy-mm-dd helpers (the date inputs' value) */
+const addDays = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.split("-").reverse().join("/") : iso || "");
+const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate].map((v) => v || "").join("|");
+const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", pcs: it.pcs || 0, have: it.qty });
 
 const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
 const destText = (m, s, ar) => {
@@ -102,7 +123,37 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [keeper, setKeeper] = useState(() => lastKeeper() || userName());
   const [destType, setDestType] = useState(""); // customer | branch
   const [toBranch, setToBranch] = useState("");
+  // goods in: the lot
+  const [supplier, setSupplier] = useState("");
+  const [prodDate, setProdDate] = useState("");
+  const [expDate, setExpDate] = useState("");
+  const [pcs, setPcs] = useState("");
+  const [shelfNote, setShelfNote] = useState("");
+  const [suppliers, setSuppliers] = useState(null);
+  const shelf = useShelfLife();
   const ar = lang === "ar";
+
+  useEffect(() => {
+    if (mode !== "in" || suppliers) return;
+    fetchSuppliers().then(setSuppliers).catch(() => setSuppliers([]));
+  }, [mode, suppliers]);
+
+  /* Shelf life known for the product → one date fills the other (as on the
+     Raw Material Receipt). Only an empty date is filled. */
+  const daysFor = (p) => {
+    const r = p ? shelf.resolve({ code: p.code, name: p.product }) : null;
+    return r && r.days > 0 ? r.days : 0;
+  };
+  const onProd = (v) => {
+    setProdDate(v);
+    const d = daysFor(pick);
+    if (v && d && !expDate) { setExpDate(addDays(v, d)); setShelfNote(s.autoExp(d)); }
+  };
+  const onExp = (v) => {
+    setExpDate(v);
+    const d = daysFor(pick);
+    if (v && d && !prodDate) { setProdDate(addDays(v, -d)); setShelfNote(s.autoExp(d)); }
+  };
 
   useEffect(() => {
     let live = true;
@@ -131,11 +182,17 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   }, [mode, catalog.length]);
 
   const items = useMemo(() => stock?.items || [], [stock]);
-  const haveOf = useCallback((code, product) => items.find((it) => (code ? it.code === code : it.product === product)), [items]);
+  // all lots of a product added up
+  const haveOf = useCallback((code, product) => {
+    const lots = items.filter((it) => (code ? it.code === code : it.product === product));
+    return lots.length ? { qty: lots.reduce((n, it) => n + (Number(it.qty) || 0), 0) } : null;
+  }, [items]);
 
   const needle = q.trim().toLowerCase();
   const matches = (it) => !needle || it.code.toLowerCase().includes(needle) || it.product.toLowerCase().includes(needle);
-  const shownInside = items.filter(matches);
+  // same product together, the lot that expires first on top (FEFO)
+  const shownInside = items.filter(matches).slice().sort((a, b) =>
+    (a.product || a.code).localeCompare(b.product || b.code) || String(a.expDate || "9999").localeCompare(String(b.expDate || "9999")));
   // Goods in: what is already inside first, then the catalogue.
   const shownIn = useMemo(() => {
     if (mode !== "in") return [];
@@ -149,12 +206,16 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, items, catalog, needle]);
 
+  const resetLot = () => { setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); };
   const start = (m, it = null) => {
-    setMode(m); setQ(""); setQty(""); setMsg(null);
-    setPick(it ? { ...it, have: haveOf(it.code, it.product)?.qty || 0 } : null);
+    setMode(m); setQ(""); setQty(""); setMsg(null); resetLot();
+    setPick(it ? lotOf(it) : null); // from the list = goods out of that lot
     if (m) window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const choose = (it) => setPick({ code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 });
+  // goods out: that exact lot; goods in: the product (the lot is typed)
+  const choose = (it) => setPick(mode === "out"
+    ? lotOf(it)
+    : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 });
 
   const save = async () => {
     setMsg(null);
@@ -163,12 +224,20 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (mode === "out" && n > pick.have + 1e-9) return setMsg({ kind: "bad", text: s.tooMuch });
     const who = keeper.trim();
     if (!who) return setMsg({ kind: "bad", text: s.needKeeper });
-    const extra = { keeper: who };
+    const extra = { keeper: who, pcs: Number(pcs) > 0 ? Number(pcs) : 0 };
     if (mode === "out") {
       if (!destType) return setMsg({ kind: "bad", text: s.needDest });
       if (destType === "branch" && !toBranch) return setMsg({ kind: "bad", text: s.needBranch });
       extra.destType = destType;
       extra.destination = destType === "branch" ? toBranch : "";
+      // the lot being taken from
+      extra.supplier = pick.supplier; extra.prodDate = pick.prodDate; extra.expDate = pick.expDate;
+    } else {
+      if (!supplier.trim()) return setMsg({ kind: "bad", text: s.needSupplier });
+      if (!prodDate) return setMsg({ kind: "bad", text: s.needProd });
+      if (!expDate) return setMsg({ kind: "bad", text: s.needExp });
+      if (expDate <= prodDate) return setMsg({ kind: "bad", text: s.badDates });
+      extra.supplier = supplier.trim(); extra.prodDate = prodDate; extra.expDate = expDate;
     }
     setSaving(true);
     try {
@@ -176,7 +245,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       rememberKeeper(who);
       setStock(rec);
       const text = mode === "out" ? s.savedOut(fmt(n), pick.product || pick.code) : s.savedIn(fmt(n), pick.product || pick.code);
-      setMode(null); setPick(null); setQty(""); setQ(""); setDestType(""); setToBranch("");
+      setMode(null); setPick(null); setQty(""); setQ(""); setDestType(""); setToBranch(""); resetLot();
       setMsg({ kind: "ok", text });
       try { navigator.vibrate?.(60); } catch {}
     } catch (e) {
@@ -188,13 +257,23 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     }
   };
 
+  // supplier · production → expiry · pieces of one lot
+  const lotLine = (it) => {
+    const parts = [];
+    if (it.supplier) parts.push(it.supplier);
+    if (it.prodDate || it.expDate) parts.push(`${dmy(it.prodDate) || "?"} → ${s.expShort} ${dmy(it.expDate) || "?"}`);
+    if (it.pcs) parts.push(`${fmt(it.pcs)} ${s.pcsShort}`);
+    return parts.length ? <div className="sm" style={{ textAlign: "start", marginTop: 2 }}>{parts.join(" · ")}</div> : null;
+  };
+
   const row = (it, onClick, extra = null) => (
-    <button key={`${it.code}|${it.product}`} type="button" className="card" onClick={onClick}
+    <button key={lotKey(it)} type="button" className="card" onClick={onClick}
       style={{ width: "100%", textAlign: "start", cursor: "pointer", display: "block", font: "inherit", color: "inherit" }}>
       <div className="row">
         <div style={{ minWidth: 0 }}>
           <div className="t2" dir="ltr" style={{ textAlign: "start", overflowWrap: "anywhere" }}>{it.product || it.code}</div>
           <div className="sm" dir="ltr" style={{ textAlign: "start" }}>{it.code}{it.uom ? ` · ${it.uom}` : ""}</div>
+          {lotLine(it)}
         </div>
         {extra}
       </div>
@@ -218,6 +297,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
               <div style={{ minWidth: 0 }}>
                 <div className="t2" dir="ltr" style={{ textAlign: "start", overflowWrap: "anywhere" }}>{pick.product || pick.code}</div>
                 <div className="sm" dir="ltr" style={{ textAlign: "start" }}>{pick.code}{pick.uom ? ` · ${pick.uom}` : ""}</div>
+                {isOut && lotLine(pick)}
                 {(isOut || pick.have > 0) && <div className="sm" style={{ marginTop: 4, fontWeight: 800 }}>{s.available(fmt(pick.have), pick.uom || "")}</div>}
               </div>
               <button type="button" className="btn" onClick={() => setPick(null)} disabled={saving}>{s.change}</button>
@@ -227,8 +307,38 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
               <input inputMode="decimal" autoFocus autoComplete="off" value={qty} placeholder="0" aria-label={s.qty}
                 onChange={(e) => setQty(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }} />
-              {isOut && <button type="button" className="sign" style={{ width: 84 }} onClick={() => setQty(String(pick.have))}>{s.all}</button>}
+              {isOut && <button type="button" className="sign" style={{ width: 84 }}
+                onClick={() => { setQty(String(pick.have)); if (pick.pcs) setPcs(String(pick.pcs)); }}>{s.all}</button>}
             </div>
+
+            <span className="lbl">{isOut ? s.pcsOut : s.pcs}</span>
+            <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} inputMode="numeric" value={pcs}
+              placeholder={isOut && pick.pcs ? `${fmt(pick.pcs)} ${s.pcsShort}` : "0"}
+              onChange={(e) => setPcs(e.target.value.replace(/[^0-9]/g, ""))} />
+
+            {!isOut && (
+              <>
+                <span className="lbl">{s.supplier}</span>
+                <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} value={supplier} list="cq-goods-suppliers"
+                  placeholder={s.supplierPh} onChange={(e) => setSupplier(e.target.value)} autoComplete="off" />
+                <datalist id="cq-goods-suppliers">
+                  {(suppliers || []).map((n) => <option key={n} value={n} />)}
+                </datalist>
+                <div className="acts" style={{ marginTop: 0 }}>
+                  <div>
+                    <span className="lbl">{s.prodDate}</span>
+                    <input type="date" className="btn" style={{ width: "100%" }} value={prodDate} max={expDate || undefined}
+                      onChange={(e) => onProd(e.target.value)} />
+                  </div>
+                  <div>
+                    <span className="lbl">{s.expDate}</span>
+                    <input type="date" className="btn" style={{ width: "100%" }} value={expDate} min={prodDate || undefined}
+                      onChange={(e) => onExp(e.target.value)} />
+                  </div>
+                </div>
+                {shelfNote && <div className="sm" style={{ marginTop: 6, color: "#0369a1", fontWeight: 700 }}>{shelfNote}</div>}
+              </>
+            )}
 
             {isOut && (
               <>
@@ -342,6 +452,9 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
             <div key={`${m.at}-${i}`} className="sm" style={{ padding: "3px 0" }}>
               <b style={{ color: m.dir === "out" ? "#b45309" : "#047857" }}>{m.dir === "out" ? "−" : "+"}{fmt(m.qty)}</b>{" "}
               <span dir="ltr">{m.product || m.code}</span>
+              {m.pcs ? ` (${fmt(m.pcs)} ${s.pcsShort})` : ""}
+              {m.dir === "in" && m.supplier ? ` · ${m.supplier}` : ""}
+              {m.expDate ? ` · ${s.expShort} ${dmy(m.expDate)}` : ""}
               {m.dir === "out" && m.destType ? ` ${destText(m, s, ar)}` : ""} · {hhmm(m.at)}
               {m.keeper ? ` · ${s.keeperShort}: ${m.keeper}` : m.by ? ` · ${m.by}` : ""}
             </div>
