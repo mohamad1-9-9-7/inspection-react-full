@@ -47,15 +47,55 @@ const TIPS = [
   "A traceability record should answer in minutes: which supplier, which batch, which customer.",
 ];
 
-const tipOfToday = () => {
+/* The same tips in Arabic, in the same order (index = the day's tip). */
+const TIPS_AR = [
+  "الأغذية المبرّدة تبقى بين 0 و5 °م. افحص كل ثلاجة في بداية كل وردية ونهايتها.",
+  "المنتجات المجمّدة يجب أن تبقى عند −18 °م أو أبرد — ارفض أي شحنة تصل ليّنة.",
+  "اللحم النيء في الرف السفلي، والأغذية الجاهزة للأكل فوقه. أبدًا ليس العكس.",
+  "ما ينتهي أولًا يخرج أولًا: قدّم المخزون الأقدم إلى الأمام في كل مرة تعيد التعبئة.",
+  "اغسل يديك 20 ثانية على الأقل — قبل العمل، وبعد الاستراحة، وبعد لمس اللحم النيء.",
+  "ميزان الحرارة غير المعايَر مجرد تخمين. افحصه في ماء مثلّج (0 °م) كل أسبوع.",
+  "غطِّ أي جرح بلاصق أزرق مقاوم للماء وقفاز.",
+  "من يعاني من قيء أو إسهال أو حمّى يبتعد عن الطعام حتى يمرّ 48 ساعة بلا أعراض.",
+  "نظّف أولًا ثم عقّم — المعقّم لا يعمل على سطح متّسخ.",
+  "افحص تركيز المعقّم بشريط الاختبار، لا بالرائحة.",
+  "أبقِ أبواب الاستلام مغلقة. كل دقيقة مفتوحة تدفّئ الثلاجة وتجذب الآفات.",
+  "سجّل درجة الحرارة لحظة قياسها، لا من الذاكرة لاحقًا.",
+  "ضع ملصقًا على كل ما تفتحه أو تحضّره: المنتج، التاريخ، تاريخ الاستخدام.",
+  "ألواح وسكاكين منفصلة للنيء وللجاهز للأكل — ترميز الألوان له سبب.",
+  "أذِب التجميد داخل الثلاجة، لا على الطاولة بحرارة الغرفة.",
+  "اطهُ حتى تصل حرارة القلب إلى 75 °م. اقِس أسمك جزء، ونظّف المسبار بين المنتجات.",
+  "الطعام الساخن المعروض يبقى عند 60 °م أو أعلى — افحصه كل ساعتين.",
+  "برّد الطعام المطهو من 60 °م إلى أقل من 5 °م خلال 6 ساعات؛ الصواني الضحلة تبرد أسرع.",
+  "أعِد التسخين مرة واحدة فقط، وحتى 75 °م في القلب.",
+  "لا كراتين داخل الثلاجة — فهي تُدخل الأوساخ والآفات.",
+  "خزّن الطعام على ارتفاع 15 سم على الأقل عن الأرض ليسهل تنظيفها.",
+  "المواد الكيميائية في مخزنها المقفل الخاص، لا فوق الطعام ولا بجانبه.",
+  "رأيت فضلات أو آثار قضم أو حشرات؟ أبلغ في اليوم نفسه — مشاهدة واحدة تعني المزيد.",
+  "الحاويات: أغطية مغلقة، تُفرغ عند امتلاء 75 %، وتُنظّف يوميًا.",
+  "لا مجوهرات ولا ساعات ولا طلاء أظافر في مناطق الطعام — فهي تسقط في المنتج.",
+  "غطاء الشعر وغطاء اللحية قبل دخول منطقة الإنتاج.",
+  "كل حالة عدم مطابقة تحتاج إجراءً تصحيحيًا واسم المسؤول بجانبه.",
+  "إذا شككت فتخلّص منه — واكتب السبب.",
+  "افحص حرارة مركبة التوصيل قبل أن توقّع على استلام البضاعة.",
+  "سجل التتبع يجب أن يجيب خلال دقائق: أي مورّد، أي دفعة، أي عميل.",
+];
+
+const tipOfToday = (lang) => {
   const d = new Date();
   const day = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
-  return TIPS[day % TIPS.length];
+  return (lang === "ar" ? TIPS_AR : TIPS)[day % TIPS.length];
 };
 
 /* Heat bands are about the cold chain, not comfort. */
-function heatLevel(max) {
+function heatLevel(max, lang) {
   if (max == null) return null;
+  if (lang === "ar") {
+    if (max >= 45) return { tone: "red", icon: "🔥", label: "حرّ شديد جدًا", advice: "سلسلة التبريد في خطر: افحص حرارة المركبة عند الوصول، وأفرغ البضاعة مباشرة في الثلاجة، وأبقِ الأبواب مغلقة." };
+    if (max >= 40) return { tone: "amber", icon: "☀️", label: "حارّ جدًا", advice: "انقل الشحنات بسرعة من الشاحنة إلى الثلاجة وسجّل حرارة الثلاجات في وقتها." };
+    if (max >= 35) return { tone: "yellow", icon: "🌤️", label: "حارّ", advice: "أبقِ أبواب الثلاجات مغلقة وافحص ثلاجات العرض أكثر من المعتاد." };
+    return { tone: "calm", icon: "🌥️", label: "معتدل", advice: "يوم مناسب لتنظيف الثلاجات وإذابة الثلج عنها." };
+  }
   if (max >= 45) return { tone: "red", icon: "🔥", label: "Extreme heat", advice: "Cold chain at risk: check vehicle temperature on arrival, unload straight into the chiller, keep doors shut." };
   if (max >= 40) return { tone: "amber", icon: "☀️", label: "Very hot", advice: "Move deliveries quickly from the truck to the chiller and log chiller temperatures on time." };
   if (max >= 35) return { tone: "yellow", icon: "🌤️", label: "Hot", advice: "Keep chiller doors closed and check display fridges more often." };
@@ -89,10 +129,12 @@ const CSS = `
 #root .tfs.tfs .heat-calm   { background:#f0f9ff; border-color:#bae6fd; }
 #root .tfs.tfs .tip { background:linear-gradient(135deg,#f0fdfa,#f0f9ff); border-color:#99f6e4; }
 #root .tfs.tfs .tip .tfs-k { color:#0f766e; }
+#root .tfs.tfs[dir="rtl"] .tfs-k { letter-spacing:0; }
 @media (max-width: 760px) { #root .tfs.tfs { grid-template-columns:1fr; } }
 `;
 
-export default function TodayFoodSafetyStrip() {
+export default function TodayFoodSafetyStrip({ lang = "en" }) {
+  const ar = lang === "ar";
   const [wx, setWx] = useState(readCache);
 
   useEffect(() => {
@@ -116,17 +158,20 @@ export default function TodayFoodSafetyStrip() {
     return () => ctrl.abort();
   }, [wx]);
 
-  const heat = heatLevel(wx?.max);
+  const heat = heatLevel(wx?.max, lang);
 
   return (
-    <section className="tfs" aria-label="Today in food safety">
+    <section className="tfs tfs" dir={ar ? "rtl" : "ltr"} aria-label={ar ? "سلامة الغذاء اليوم" : "Today in food safety"}>
       <style>{CSS}</style>
       {heat && (
         <div className={`tfs-box heat-${heat.tone}`}>
           <span className="tfs-ic" aria-hidden="true">{heat.icon}</span>
           <div>
-            <div className="tfs-k">Dubai today · {heat.label}</div>
-            <div className="tfs-v">Up to {wx.max}°C{Number.isFinite(wx.now) ? ` · now ${wx.now}°C` : ""}</div>
+            <div className="tfs-k">{ar ? "دبي اليوم" : "Dubai today"} · {heat.label}</div>
+            <div className="tfs-v">
+              {ar ? `حتى ${wx.max} °م` : `Up to ${wx.max}°C`}
+              {Number.isFinite(wx.now) ? (ar ? ` · الآن ${wx.now} °م` : ` · now ${wx.now}°C`) : ""}
+            </div>
             <div className="tfs-t">{heat.advice}</div>
           </div>
         </div>
@@ -134,8 +179,8 @@ export default function TodayFoodSafetyStrip() {
       <div className="tfs-box tip" style={heat ? undefined : { gridColumn: "1 / -1" }}>
         <span className="tfs-ic" aria-hidden="true">💡</span>
         <div>
-          <div className="tfs-k">Food safety tip of the day</div>
-          <div className="tfs-tip">{tipOfToday()}</div>
+          <div className="tfs-k">{ar ? "نصيحة اليوم لسلامة الغذاء" : "Food safety tip of the day"}</div>
+          <div className="tfs-tip">{tipOfToday(lang)}</div>
         </div>
       </div>
     </section>

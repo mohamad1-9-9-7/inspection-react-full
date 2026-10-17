@@ -9,11 +9,59 @@ import { getActiveCompany, clearActiveCompany } from "../utils/companyContext";
 import { useInventoryOfficer } from "./workforce/workforceAccess";
 import { DM_CHECKED_URL, openExternal } from "../config/externalLinks";
 import TodayFoodSafetyStrip from "./dashboard/TodayFoodSafetyStrip";
+import { useLangState } from "../utils/appLang";
+
+/* Every visible string, in both languages. The language is the ACCOUNT's
+   (utils/appLang.js) — the ع|EN switcher flips this screen live. */
+const T = {
+  en: {
+    morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening",
+    eyebrow: "Al Mawashi QMS",
+    fullAccess: (n) => `Full access · ${n} sections`,
+    available: (n) => `${n} section${n !== 1 ? "s" : ""} available to you`,
+    admin: "👑 Admin · ", account: "Account:",
+    changeOperator: "🔄 Change operator", settings: "⚙️ Settings",
+    currently: (name) => `Currently: ${name}`, switchCompany: "Switch company",
+    signOut: "🚪 Sign out",
+    search: "Find a section…", clearSearch: "Clear search",
+    countOf: (a, b) => `${a} of ${b} sections`, count: (n) => `${n} sections`,
+    expires: (m) => `Session expires in ${m} minute${m !== 1 ? "s" : ""} - please save your work`,
+    noneFound: "No sections found", contactAdmin: "Contact your administrator.", tryAnother: "Try another search term.",
+    sectionsAria: "Dashboard sections", section: "Section",
+    open: "Open", openPortal: "Open portal",
+    footer: "Built by Eng. Mohammed Abdullah",
+    // operator picker
+    whoTitle: "Who is working now?", pickSub: "Select your name to log this session",
+    fromList: "📋 Select from list", typeName: "✏️ Type name",
+    enterName: "Enter your name…", start: "✅ Start Session",
+  },
+  ar: {
+    morning: "صباح الخير", afternoon: "مساء الخير", evening: "مساء الخير",
+    eyebrow: "نظام الجودة — المواشي",
+    fullAccess: (n) => `صلاحية كاملة · ${n} أقسام`,
+    available: (n) => (n === 1 ? "قسم واحد متاح لك" : `${n} أقسام متاحة لك`),
+    admin: "👑 مدير · ", account: "الحساب:",
+    changeOperator: "🔄 تغيير المشغّل", settings: "⚙️ الإعدادات",
+    currently: (name) => `الحالية: ${name}`, switchCompany: "تبديل الشركة",
+    signOut: "🚪 تسجيل الخروج",
+    search: "ابحث عن قسم…", clearSearch: "مسح البحث",
+    countOf: (a, b) => `${a} من ${b} أقسام`, count: (n) => `${n} أقسام`,
+    expires: (m) => `تنتهي الجلسة خلال ${m} ${m === 1 ? "دقيقة" : "دقائق"} — يرجى حفظ عملك`,
+    noneFound: "لا توجد أقسام", contactAdmin: "تواصل مع مدير النظام.", tryAnother: "جرّب كلمة بحث أخرى.",
+    sectionsAria: "أقسام لوحة التحكم", section: "قسم",
+    open: "فتح", openPortal: "فتح البوابة",
+    footer: "تطوير م. محمد عبدالله",
+    whoTitle: "من يعمل الآن؟", pickSub: "اختر اسمك لتسجيل هذه الجلسة",
+    fromList: "📋 اختيار من القائمة", typeName: "✏️ كتابة الاسم",
+    enterName: "اكتب اسمك…", start: "✅ بدء الجلسة",
+  },
+};
 
 /* ══════════════════════════════════════════
    OPERATOR PICKER — who is working now?
 ══════════════════════════════════════════ */
-function OperatorPicker({ employees, accountName, onConfirm }) {
+function OperatorPicker({ employees, accountName, onConfirm, lang = "en" }) {
+  const t = T[lang] || T.en;
   const [selected, setSelected] = useState("");
   const [custom,   setCustom]   = useState("");
   const [mode,     setMode]     = useState(employees.length > 0 ? "list" : "type");
@@ -26,16 +74,16 @@ function OperatorPicker({ employees, accountName, onConfirm }) {
 
   return (
     <div style={op.overlay}>
-      <div style={op.card}>
+      <div style={op.card} dir={lang === "ar" ? "rtl" : "ltr"}>
         {/* Icon */}
         <div style={op.iconWrap}>
           <span style={{ fontSize: 36 }}>👷</span>
         </div>
 
-        <h2 style={op.title}>Who is working now?</h2>
+        <h2 style={op.title}>{t.whoTitle}</h2>
         <p style={op.sub}>
-          Account: <strong style={{ color: "#2563eb" }}>{accountName}</strong><br/>
-          Select your name to log this session
+          {t.account} <strong style={{ color: "#2563eb" }}>{accountName}</strong><br/>
+          {t.pickSub}
         </p>
 
         {/* Toggle between list and type */}
@@ -44,11 +92,11 @@ function OperatorPicker({ employees, accountName, onConfirm }) {
             <button
               onClick={() => setMode("list")}
               style={{ ...op.modeBtn, ...(mode === "list" ? op.modeBtnActive : {}) }}
-            >📋 Select from list</button>
+            >{t.fromList}</button>
             <button
               onClick={() => setMode("type")}
               style={{ ...op.modeBtn, ...(mode === "type" ? op.modeBtnActive : {}) }}
-            >✏️ Type name</button>
+            >{t.typeName}</button>
           </div>
         )}
 
@@ -68,7 +116,7 @@ function OperatorPicker({ employees, accountName, onConfirm }) {
                   {name[0]?.toUpperCase()}
                 </span>
                 <span style={{ fontWeight: 800, fontSize: 16 }}>{name}</span>
-                {selected === name && <span style={{ marginLeft: "auto", color: "#2563eb", fontSize: 20 }}>✓</span>}
+                {selected === name && <span style={{ marginInlineStart: "auto", color: "#2563eb", fontSize: 20 }}>✓</span>}
               </button>
             ))}
           </div>
@@ -79,7 +127,7 @@ function OperatorPicker({ employees, accountName, onConfirm }) {
           <input
             autoFocus
             style={op.input}
-            placeholder="Enter your name…"
+            placeholder={t.enterName}
             value={custom}
             onChange={e => setCustom(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleConfirm()}
@@ -95,7 +143,7 @@ function OperatorPicker({ employees, accountName, onConfirm }) {
             cursor: (mode === "list" ? !selected : !custom.trim()) ? "not-allowed" : "pointer",
           }}
         >
-          ✅ Start Session
+          {t.start}
         </button>
       </div>
     </div>
@@ -151,7 +199,7 @@ const op = {
     padding: "12px 16px", borderRadius: 14,
     background: "#f8fafc", border: "2px solid #e2e8f0",
     cursor: "pointer", fontFamily: "inherit",
-    transition: "all .15s", textAlign: "left",
+    transition: "all .15s", textAlign: "start",
   },
   empBtnActive: {
     background: "#eff6ff", border: "2px solid #3b82f6",
@@ -308,6 +356,39 @@ const ROLE_INFO = {
   settings:         { tag: "Management", desc: "Accounts, permissions and setup" },
 };
 
+/* The same cards in Arabic — label, corner tag and one-liner. */
+const ROLE_INFO_AR = {
+  kpi:              { label: "مؤشرات الأداء",       tag: "الإدارة",   desc: "مؤشرات الأداء واتجاهاتها" },
+  inspector:        { label: "التفتيش",             tag: "العمليات",  desc: "تفتيش الفروع والتدقيق" },
+  daily:            { label: "المتابعة اليومية",     tag: "العمليات",  desc: "التقارير اليومية من كل الفروع" },
+  ohc:              { label: "الشهادات الصحية",      tag: "العمليات",  desc: "الشهادات الصحية للموظفين" },
+  returns:          { label: "المرتجعات",           tag: "العمليات",  desc: "مرتجعات الفروع والعملاء" },
+  finalProduct:     { label: "المنتج النهائي",       tag: "العمليات",  desc: "فحص المنتج النهائي" },
+  cars:             { label: "السيارات",            tag: "الإدارة",   desc: "سيارات التوصيل" },
+  maintenance:      { label: "الصيانة",             tag: "الإدارة",   desc: "طلبات الصيانة والإصلاح" },
+  qcsView:          { label: "شحنات QCS",           tag: "العمليات",  desc: "الشحنات الواردة والمواد الخام" },
+  training:         { label: "شهادات التدريب",       tag: "الجودة",    desc: "سجل شهادات التدريب" },
+  internalTraining: { label: "التدريب الداخلي",      tag: "الجودة",    desc: "الدورات والاختبارات والحضور" },
+  iso:              { label: "الأيزو والهاسب",       tag: "الجودة",    desc: "دليل نظام سلامة الغذاء والهاسب والوثائق" },
+  hse:              { label: "الصحة والسلامة والبيئة", tag: "الجودة",  desc: "الصحة والسلامة وسجل المخاطر" },
+  inventory:        { label: "المخزون",             tag: "العمليات",  desc: "الجزارة والتصنيع والقوى العاملة" },
+  productTrace:     { label: "تتبع المنتج",          tag: "الجودة",    desc: "من الشحنة حتى العميل برمز الصنف" },
+  emailCenter:      { label: "مركز البريد",          tag: "الإدارة",   desc: "إرسال رسائل التقارير ومتابعتها" },
+  dmChecked:        { label: "بلدية دبي",            tag: "خارجي",     desc: "بوابة بلدية دبي — تُفتح في تبويب جديد" },
+  settings:         { label: "الإعدادات",            tag: "الإدارة",   desc: "الحسابات والصلاحيات والإعداد" },
+};
+
+/** A card's label / tag / one-liner in the screen's language. */
+function roleText(role, lang) {
+  const en = ROLE_INFO[role.id] || {};
+  const ar = lang === "ar" ? ROLE_INFO_AR[role.id] : null;
+  return {
+    label: ar?.label || role.label,
+    tag: ar?.tag || en.tag || (lang === "ar" ? T.ar.section : T.en.section),
+    desc: ar?.desc || en.desc || "",
+  };
+}
+
 /* globals.css forces every #root font-size with !important, so the inline
    fontSize values never applied — real sizes live here (doubled class beats
    `#root *`) and follow the Aa text-size slider via --app-fs. */
@@ -334,14 +415,16 @@ const ND_CSS = `
 #root .ndx.ndx .ndx-foot { font-size:${fs(12)}; }
 #root .ndx.ndx .named-card .ndx-arrow { transition:transform .16s ease; }
 #root .ndx.ndx .named-card:hover .ndx-arrow { transform:translateX(4px); }
+#root .ndx.ndx[dir="rtl"] .named-card:hover .ndx-arrow { transform:translateX(-4px); }
+#root .ndx.ndx[dir="rtl"] .ndx-eyebrow { letter-spacing:0; }
 `;
 
 /* greeting based on time */
-function greeting() {
+function greeting(t) {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return t.morning;
+  if (h < 17) return t.afternoon;
+  return t.evening;
 }
 
 const nd = {
@@ -471,9 +554,9 @@ const nd = {
     lineHeight: 1.3,
   },
   clock: {
-    marginLeft: "auto",
-    paddingLeft: 14,
-    borderLeft: "1px solid rgba(255,255,255,0.24)",
+    marginInlineStart: "auto",
+    paddingInlineStart: 14,
+    borderInlineStart: "1px solid rgba(255,255,255,0.24)",
     color: "#fff",
     fontWeight: 1000,
     lineHeight: 1,
@@ -580,7 +663,7 @@ const nd = {
     background: "#fff",
     color: "#0f172a",
     cursor: "pointer",
-    textAlign: "left",
+    textAlign: "start",
     boxShadow: isHover ? `0 24px 52px ${role.glow}` : "0 12px 30px rgba(15,23,42,0.08)",
     transform: isHover ? "translateY(-3px)" : "translateY(0)",
     transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease",
@@ -661,6 +744,9 @@ export default function NamedDashboard() {
   const [hovered, setHovered] = useState(null);
   const [time, setTime] = useState(new Date());
   const [query, setQuery] = useState("");
+  const [lang] = useLangState("en");
+  const t = T[lang] || T.en;
+  const isAr = lang === "ar";
 
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);
@@ -671,7 +757,7 @@ export default function NamedDashboard() {
     try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
   })();
 
-  const displayName = currentUser.displayName || currentUser.username || "User";
+  const displayName = currentUser.displayName || currentUser.username || (isAr ? "مستخدم" : "User");
   const permissions = currentUser.permissions || [];
   const isFullAccess = permissions.includes("*") || permissions.length === 0;
   const isAdmin = !!currentUser.isAdmin;
@@ -734,6 +820,8 @@ export default function NamedDashboard() {
       !q ||
       role.label.toLowerCase().includes(q) ||
       (ROLE_INFO[role.id]?.desc || "").toLowerCase().includes(q) ||
+      (ROLE_INFO_AR[role.id]?.label || "").includes(q) ||
+      (ROLE_INFO_AR[role.id]?.desc || "").includes(q) ||
       (role.keywords || []).some((k) => k.toLowerCase().includes(q))
   );
   const openRole = (role) => (role.href ? openExternal(role.href) : navigate(role.route));
@@ -741,8 +829,9 @@ export default function NamedDashboard() {
     if (e.key === "Enter" && filteredRoles.length === 1) openRole(filteredRoles[0]);
     if (e.key === "Escape") setQuery("");
   };
+  const locale = isAr ? "ar-AE-u-nu-latn" : "en-GB";
   const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dateStr = time.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   const sessionNotice = (() => {
     if (currentUser.remember) return ""; // "Keep me signed in" — no 8-hour cut-off
@@ -752,18 +841,19 @@ export default function NamedDashboard() {
     const minsLeft = Math.floor((remaining % 3600000) / 60000);
     const hoursLeft = Math.floor(remaining / 3600000);
     return hoursLeft < 1 && minsLeft < 30 && minsLeft > 0
-      ? `Session expires in ${minsLeft} minute${minsLeft !== 1 ? "s" : ""} - please save your work`
+      ? t.expires(minsLeft)
       : "";
   })();
 
   return (
-    <main className="ndx ndx" style={nd.page}>
+    <main className="ndx ndx" style={nd.page} dir={isAr ? "rtl" : "ltr"} lang={lang}>
       <style>{ND_CSS}</style>
       {showPicker && (
         <OperatorPicker
           employees={employees}
           accountName={displayName}
           onConfirm={handleOperatorConfirm}
+          lang={lang}
         />
       )}
 
@@ -850,12 +940,10 @@ export default function NamedDashboard() {
             <div style={nd.brand}>
               <img src={logo} alt="Al Mawashi" style={nd.logo} />
               <div style={{ minWidth: 0 }}>
-                <p className="ndx-eyebrow" style={nd.eyebrow}>Al Mawashi QMS</p>
-                <h1 className="ndx-title" style={nd.title}>{greeting()}, {operator || displayName}</h1>
+                <p className="ndx-eyebrow" style={nd.eyebrow}>{t.eyebrow}</p>
+                <h1 className="ndx-title" style={nd.title}>{greeting(t)}{isAr ? "، " : ", "}{operator || displayName}</h1>
                 <p className="ndx-sub" style={nd.subtitle}>
-                  {isFullAccess
-                    ? `Full access · ${visibleRoles.length} sections`
-                    : `${visibleRoles.length} section${visibleRoles.length !== 1 ? "s" : ""} available to you`}
+                  {isFullAccess ? t.fullAccess(visibleRoles.length) : t.available(visibleRoles.length)}
                 </p>
                 <div className="ndx-date" style={nd.homeBadge}>
                   <span className="named-home-pulse" style={nd.homePulse} />
@@ -870,7 +958,7 @@ export default function NamedDashboard() {
                   <div className="ndx-avatar" style={nd.avatar}>{(operator || displayName)[0]?.toUpperCase() || "U"}</div>
                   <div>
                     <div className="ndx-umeta" style={nd.userMeta}>
-                      {isAdmin ? "👑 Admin · " : ""}Account: {displayName}
+                      {isAdmin ? t.admin : ""}{t.account} {displayName}
                     </div>
                     <div className="ndx-uname" style={nd.userName}>{operator || displayName}</div>
                   </div>
@@ -886,12 +974,12 @@ export default function NamedDashboard() {
                     style={nd.heroButton()}
                     onClick={() => { sessionStorage.removeItem(sessionKey); setOperator(null); setShowPicker(true); }}
                   >
-                    🔄 Change operator
+                    {t.changeOperator}
                   </button>
                 )}
                 {(currentUser.isAdmin || permissions.includes("settings") || isFullAccess) && (
                   <button type="button" className="ndx-hbtn" style={nd.heroButton()} onClick={() => navigate("/settings")}>
-                    ⚙️ Settings
+                    {t.settings}
                   </button>
                 )}
                 {isSuperAdmin && (
@@ -899,21 +987,21 @@ export default function NamedDashboard() {
                     type="button"
                     className="ndx-hbtn"
                     style={nd.heroButton()}
-                    title={activeCompany ? `Currently: ${activeCompany.name}` : ""}
+                    title={activeCompany ? t.currently(activeCompany.name) : ""}
                     onClick={() => { clearActiveCompany(); navigate("/select-company"); }}
                   >
-                    🏢 {activeCompany ? activeCompany.name : "Switch company"}
+                    🏢 {activeCompany ? activeCompany.name : t.switchCompany}
                   </button>
                 )}
                 <button type="button" className="ndx-hbtn" style={nd.heroButton("danger")} onClick={handleLogout}>
-                  🚪 Sign out
+                  {t.signOut}
                 </button>
               </div>
             </div>
           </div>
         </section>
 
-        <TodayFoodSafetyStrip />
+        <TodayFoodSafetyStrip lang={lang} />
 
         <section className="named-toolbar" style={nd.toolbar}>
           <label className="ndx-search" style={nd.searchWrap}>
@@ -922,11 +1010,11 @@ export default function NamedDashboard() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onSearchKey}
-              placeholder="Find a section…"
+              placeholder={t.search}
               style={nd.searchInput}
             />
             {query && (
-              <button type="button" className="ndx-clear" style={nd.clear} aria-label="Clear search" onClick={() => setQuery("")}>
+              <button type="button" className="ndx-clear" style={nd.clear} aria-label={t.clearSearch} onClick={() => setQuery("")}>
                 ✕
               </button>
             )}
@@ -934,7 +1022,7 @@ export default function NamedDashboard() {
 
           <div className="named-summary" style={nd.summary}>
             <div className="ndx-chip" style={nd.chip}>
-              {q ? `${filteredRoles.length} of ${visibleRoles.length} sections` : `${visibleRoles.length} sections`}
+              {q ? t.countOf(filteredRoles.length, visibleRoles.length) : t.count(visibleRoles.length)}
             </div>
           </div>
         </section>
@@ -943,13 +1031,14 @@ export default function NamedDashboard() {
 
         {filteredRoles.length === 0 ? (
           <div style={nd.empty}>
-            <div style={{ fontWeight: 1000, marginBottom: 8 }}>No sections found</div>
-            <div>{visibleRoles.length === 0 ? "Contact your administrator." : "Try another search term."}</div>
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>{t.noneFound}</div>
+            <div>{visibleRoles.length === 0 ? t.contactAdmin : t.tryAnother}</div>
           </div>
         ) : (
-          <section aria-label="Dashboard sections" style={nd.grid}>
+          <section aria-label={t.sectionsAria} style={nd.grid}>
             {filteredRoles.map((role) => {
               const isHover = hovered === role.id;
+              const txt = roleText(role, lang);
               return (
                 <button
                   key={role.id}
@@ -966,17 +1055,17 @@ export default function NamedDashboard() {
                     <div style={nd.iconWrap(role)}>
                       <span className="ndx-icon" style={nd.icon}>{role.icon}</span>
                     </div>
-                    <span className="ndx-tag" style={nd.roleTag}>{ROLE_INFO[role.id]?.tag || "Section"}</span>
+                    <span className="ndx-tag" style={nd.roleTag}>{txt.tag}</span>
                   </div>
 
                   <div>
-                    <h2 className="ndx-ctitle" style={nd.cardTitle}>{role.label}</h2>
-                    <div className="ndx-csub" style={nd.cardSub}>{ROLE_INFO[role.id]?.desc || ""}</div>
+                    <h2 className="ndx-ctitle" style={nd.cardTitle}>{txt.label}</h2>
+                    <div className="ndx-csub" style={nd.cardSub}>{txt.desc}</div>
                   </div>
 
                   <div className="ndx-cfoot" style={nd.cardBottom}>
-                    <span>{role.href ? "Open portal" : "Open"}</span>
-                    <span className="ndx-arrow" aria-hidden="true">{role.href ? "↗" : "→"}</span>
+                    <span>{role.href ? t.openPortal : t.open}</span>
+                    <span className="ndx-arrow" aria-hidden="true">{role.href ? (isAr ? "↖" : "↗") : (isAr ? "←" : "→")}</span>
                   </div>
                 </button>
               );
@@ -984,7 +1073,7 @@ export default function NamedDashboard() {
           </section>
         )}
 
-        <footer className="ndx-foot" style={nd.footer}>Built by Eng. Mohammed Abdullah</footer>
+        <footer className="ndx-foot" style={nd.footer}>{t.footer}</footer>
       </div>
     </main>
   );
