@@ -56,6 +56,7 @@ const InventoryHub = lazy(() => import("./pages/inventory/InventoryHub"));
 const WorkforceHub = lazy(() => import("./pages/workforce/WorkforceHub"));
 // 🧬 منظومة تتبع المنتج بالكود — Product Traceability
 const ProductTracePage = lazy(() => import("./pages/traceability/ProductTracePage"));
+const ColdRooms3D = lazy(() => import("./pages/coldrooms/ColdRooms3D"));
 // كتالوج المنتجات — نفس أداة الإعدادات، بمدخل تاني من المخزون
 const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalogPage"));
 
@@ -990,6 +991,16 @@ export default function App() {
           element={
             <SectionRoute section="productTrace">
               <ProductTracePage />
+            </SectionRoute>
+          }
+        />
+
+        {/* 🧊 غرف التبريد 3D — 8 غرف مربوطة بسجل الحرارة والمعايرة */}
+        <Route
+          path="/cold-rooms"
+          element={
+            <SectionRoute section="coldRooms">
+              <ColdRooms3D />
             </SectionRoute>
           }
         />

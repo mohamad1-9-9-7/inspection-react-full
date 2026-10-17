@@ -105,6 +105,7 @@ export const BRANCHES = [
       ["ftr1_preloading_inspection",             "FTR 1 - Preloading",           "Food Truck Preloading"],
       ["ftr2_preloading_inspection",             "FTR 2 - Preloading",           "Food Truck Preloading"],
       ["qcs_coolers_config",                     "Cooler Definitions (config)",  "Settings"],
+      ["cold_rooms_config",                      "Cold Rooms 3D (config)",       "Settings"],
     ],
   },
   {

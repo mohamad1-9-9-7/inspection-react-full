@@ -315,6 +315,13 @@ const ALL_ROLES = [
     glow: "rgba(124,58,237,.45)",
   },
   {
+    // 🧊 غرف التبريد ثلاثية الأبعاد — 8 غرف (4 مقابل 4) مربوطة بسجل الحرارة والمعايرة
+    id: "coldRooms", label: "Cold Rooms 3D", route: "/cold-rooms", icon: "🧊",
+    keywords: ["cold room", "chiller", "freezer", "3d", "temperature", "calibration", "غرف التبريد", "مبرد", "مجمد", "حرارة"],
+    grad: "linear-gradient(135deg,#0ea5e9,#1e3a8a)",
+    glow: "rgba(14,165,233,.45)",
+  },
+  {
     id: "emailCenter", label: "Email Center", route: "/email-center", icon: "📨",
     grad: "linear-gradient(135deg,#1e40af,#7c3aed)",
     glow: "rgba(30,64,175,.45)",
@@ -351,6 +358,7 @@ const ROLE_INFO = {
   hse:              { tag: "Quality",    desc: "Health, safety and risk register" },
   inventory:        { tag: "Operations", desc: "Butcher, manufacturing and workforce" },
   productTrace:     { tag: "Quality",    desc: "From shipment to customer by item code" },
+  coldRooms:        { tag: "Operations", desc: "3D view of the eight cold rooms with live temperatures" },
   emailCenter:      { tag: "Management", desc: "Send and track report e-mails" },
   dmChecked:        { tag: "External",   desc: "Dubai Municipality portal — opens in a new tab" },
   settings:         { tag: "Management", desc: "Accounts, permissions and setup" },
@@ -373,6 +381,7 @@ const ROLE_INFO_AR = {
   hse:              { label: "الصحة والسلامة والبيئة", tag: "الجودة",  desc: "الصحة والسلامة وسجل المخاطر" },
   inventory:        { label: "المخزون",             tag: "العمليات",  desc: "الجزارة والتصنيع والقوى العاملة" },
   productTrace:     { label: "تتبع المنتج",          tag: "الجودة",    desc: "من الشحنة حتى العميل برمز الصنف" },
+  coldRooms:        { label: "غرف التبريد 3D",       tag: "العمليات",  desc: "عرض ثلاثي الأبعاد للغرف الثماني مع الحرارة الحالية" },
   emailCenter:      { label: "مركز البريد",          tag: "الإدارة",   desc: "إرسال رسائل التقارير ومتابعتها" },
   dmChecked:        { label: "بلدية دبي",            tag: "خارجي",     desc: "بوابة بلدية دبي — تُفتح في تبويب جديد" },
   settings:         { label: "الإعدادات",            tag: "الإدارة",   desc: "الحسابات والصلاحيات والإعداد" },

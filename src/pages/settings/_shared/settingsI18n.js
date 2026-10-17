@@ -305,6 +305,7 @@ export const ST = {
   amSecWorkforce:        { en: "Workforce",         ar: "القوى العاملة" },
   amSecMrp:              { en: "Manufacturing",     ar: "التصنيع" },
   amSecProductTrace:     { en: "Product Traceability", ar: "تتبع المنتج" },
+  amSecColdRooms:        { en: "Cold Rooms 3D",     ar: "غرف التبريد 3D" },
   amSecEmailCenter:      { en: "Email Center",      ar: "مركز البريد" },
   amSecDmChecked:        { en: "Dubai Municipality", ar: "بلدية دبي" },
 

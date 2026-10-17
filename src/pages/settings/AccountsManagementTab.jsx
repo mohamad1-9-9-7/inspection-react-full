@@ -105,6 +105,7 @@ const SECTIONS = [
   { id: "workforce",        icon: "👥",   nameKey: "amSecWorkforce" },
   { id: "mrp",              icon: "🏭",   nameKey: "amSecMrp" },
   { id: "productTrace",     icon: "🧬",   nameKey: "amSecProductTrace" },
+  { id: "coldRooms",        icon: "🧊",   nameKey: "amSecColdRooms" },
   // Email Center was a dashboard card and a live route with NO entry here, so
   // it could be neither granted nor denied: the tile is drawn from
   // `permissions.includes(id)`, and no account could ever hold an id that the
@@ -164,6 +165,7 @@ const BRANCH_THEMES = {
   workforce:        { icon:"👥",  title:"Workforce",         bg:"#f5f3ff", border:"#ddd6fe", accent:"#6d28d9", chipOn:"#ede9fe", chipOnText:"#4c1d95", badgeBg:"#ede9fe", badgeBorder:"#c4b5fd", badgeText:"#4c1d95" },
   mrp:              { icon:"🏭",  title:"Manufacturing",     bg:"#ecfdf5", border:"#a7f3d0", accent:"#0f766e", chipOn:"#d1fae5", chipOnText:"#115e59", badgeBg:"#d1fae5", badgeBorder:"#6ee7b7", badgeText:"#115e59" },
   productTrace:     { icon:"🧬",  title:"Product Traceability", bg:"#f5f3ff", border:"#ddd6fe", accent:"#6d28d9", chipOn:"#ede9fe", chipOnText:"#4c1d95", badgeBg:"#ede9fe", badgeBorder:"#c4b5fd", badgeText:"#4c1d95" },
+  coldRooms:        { icon:"🧊",  title:"Cold Rooms 3D",     bg:"#f0f9ff", border:"#bae6fd", accent:"#0369a1", chipOn:"#e0f2fe", chipOnText:"#0c4a6e", badgeBg:"#e0f2fe", badgeBorder:"#7dd3fc", badgeText:"#0c4a6e" },
   emailCenter:      { icon:"📨",  title:"Email Center",      bg:"#eff6ff", border:"#bfdbfe", accent:"#1e40af", chipOn:"#dbeafe", chipOnText:"#1e3a8a", badgeBg:"#dbeafe", badgeBorder:"#93c5fd", badgeText:"#1e3a8a" },
   dmChecked:        { icon:"🏛️", title:"Dubai Municipality", bg:"#fef2f2", border:"#fecaca", accent:"#b91c1c", chipOn:"#fee2e2", chipOnText:"#7f1d1d", badgeBg:"#fee2e2", badgeBorder:"#fca5a5", badgeText:"#7f1d1d" },
   settings:         { icon:"⚙️",  title:"Settings",          bg:"#f1f5f9", border:"#cbd5e1", accent:"#334155", chipOn:"#e2e8f0", chipOnText:"#0f172a", badgeBg:"#e2e8f0", badgeBorder:"#94a3b8", badgeText:"#0f172a" },
