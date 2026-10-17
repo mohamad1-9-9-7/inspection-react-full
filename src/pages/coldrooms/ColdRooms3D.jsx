@@ -121,7 +121,7 @@ const CSS = `
 .cr3.cr3 .cr-stage { position:relative; margin-top:12px; height:calc(100vh - 118px); min-height:520px; border-radius:20px; overflow:hidden; border:1px solid #dbeafe; box-shadow:0 12px 34px rgba(14,116,144,.12); background:#e8f3fb; }
 .cr3.cr3 .cr-glass { background:rgba(255,255,255,.9); backdrop-filter:blur(8px); border:1px solid rgba(219,234,254,.9); border-radius:16px; box-shadow:0 8px 26px rgba(15,23,42,.10); }
 .cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; width:380px; max-width:calc(100% - 24px); max-height:calc(100% - 84px); overflow:auto; z-index:5; padding:16px; box-sizing:border-box; }
-.cr3.cr3 .cr-drawer.wide { width:min(620px, calc(100% - 24px)); }
+.cr3.cr3 .cr-drawer.wide { width:min(920px, calc(100% - 24px)); }
 .cr3.cr3 .cr-tools { position:absolute; right:12px; bottom:12px; display:flex; gap:6px; z-index:4; padding:6px; }
 .cr3.cr3 .cr-legend { position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:5px; z-index:4; padding:8px 10px; }
 .cr3.cr3 .cr-hint { position:absolute; left:50%; transform:translateX(-50%); bottom:14px; font-size:${fs(12.5)}; color:#0369a1; font-weight:800; padding:5px 12px; z-index:3; pointer-events:none; white-space:nowrap; }
