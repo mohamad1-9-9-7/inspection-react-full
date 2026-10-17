@@ -52,7 +52,7 @@ const TX = {
     newBarcode: (g) => `🆕 New barcode ${g} — choose our product below ONCE; every phone will know it after that.`,
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
-    fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one carton)`,
+    fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one piece / carton)`, noExpCode: "The barcode has no expiry date — type it from the label.",
     linkFail: "The barcode could not be linked (no connection) — the product is chosen for this time only.",
     wrongLink: "Wrong product? Change the link", removeLink: "Remove the link", relink: "Choose the right product below — the barcode will be linked to it.",
     removed: "🗑 Link removed — the barcode is new again on every phone.", removeAsk: (g, p) => `Remove the link between barcode ${g} and ${p}?`, unlinkFail: "Could not remove the link (no connection).",
@@ -77,7 +77,7 @@ const TX = {
     newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
-    fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (كرتونة وحدة)`,
+    fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (قطعة / كرتونة وحدة)`, noExpCode: "الباركود ما فيه تاريخ انتهاء — اكتبه من الليبل.",
     linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
     wrongLink: "منتج غلط؟ غيّر الربط", removeLink: "احذف الربط", relink: "اختار المنتج الصح من تحت — الباركود رح ينربط فيه.",
     removed: "🗑 انحذف الربط — صار الباركود جديد على كل التلفونات.", removeAsk: (g, p) => `بدك تحذف الربط بين الباركود ${g} و ${p}؟`, unlinkFail: "ما قدرنا نحذف الربط (ما في نت).",
@@ -203,6 +203,14 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     const d = daysFor(pick);
     if (v && d && !expDate) { setExpDate(addDays(v, d)); setShelfNote(s.autoExp(d)); }
   };
+  /* A barcode with a production date but no expiry (e.g. a carcass tag's
+     GS1-128: weight + date + serial only) — the product's shelf life gives
+     the expiry; without one the storekeeper types it from the label. */
+  const expiryFromShelf = (product, prod) => {
+    const d = daysFor(product);
+    if (d) { setExpDate(addDays(prod, d)); setShelfNote(s.autoExp(d)); }
+    else setShelfNote(s.noExpCode);
+  };
   const onExp = (v) => {
     setExpDate(v);
     const d = daysFor(pick);
@@ -312,6 +320,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       const it = { code: hit.code, product: cat?.product || hit.product, uom: cat?.uom || hit.uom };
       setLinkGtin(""); setWorldName(""); setKnown({ gtin: r.gtin, label: it.product || it.code });
       setPick({ ...it, have: haveOf(it.code, it.product)?.qty || 0 });
+      if (r.prodDate && !r.expDate) expiryFromShelf(it, r.prodDate);
       setScanNote([s.known(it.product || it.code), note].filter(Boolean).join(" — "));
     } else {
       setPick(null); setKnown(null);
@@ -350,6 +359,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   // a new barcode waiting: the product chosen now is learned for it (company-wide)
   const learn = async (it) => {
     const g = linkGtin;
+    if (prodDate && !expDate) expiryFromShelf(it, prodDate);
     setLinkGtin(""); setWorldName("");
     try {
       setCodeMap(await linkBarcode(g, it, userName()));
