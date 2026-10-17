@@ -19,7 +19,10 @@
 //   viewCmd { kind: "reset" | "top", n }    a new n triggers the move
 //   walkCmd { kind: "exit" | "auto", n }     drives the walk mode
 //   walkInput  ref { fwd, back, left, right } held by the on-screen buttons
-//   onWalk     ({ on, auto }) => void         walk mode changed
+//   onWalk     ({ on, auto, near, inside, open }) => void   walk mode changed
+//   stock      { [roomIndex]: { items } }     drawn as cartons on the racks
+//   onPick(i, { door })                      door = the click was on the door
+//   walkCmd also takes { kind: "door" } to open / close the door he stands at
 //
 // Walk mode: a person stands at the entrance of the corridor. Clicking him
 // puts the camera at his eye height and he starts walking down the corridor;
@@ -289,27 +292,75 @@ function buildRoom(mats, panelTex) {
     group.add(f);
   });
 
-  // stainless door, kick plate, handle, hinges
-  const door = new THREE.Mesh(new THREE.BoxGeometry(DW - 0.04, DH - 0.03, 0.1), mats.steel);
-  door.position.set(0, DH / 2, 0.02);
+  // stainless door on its hinges (left edge) — swings out into the corridor
+  const hinge = new THREE.Group();
+  hinge.position.set(-DW / 2 + 0.02, 0, 0.02);
+  group.add(hinge);
+  const doorParts = [];
+  const onDoor = (mesh, x, y, z) => {
+    mesh.position.set(x + DW / 2 - 0.02, y, z);
+    hinge.add(mesh);
+    doorParts.push(mesh);
+    return mesh;
+  };
+  const door = onDoor(new THREE.Mesh(new THREE.BoxGeometry(DW - 0.04, DH - 0.03, 0.1), mats.steel), 0, DH / 2, 0);
   door.castShadow = true;
-  group.add(door);
-  pick.push(door);
-  const kick = new THREE.Mesh(new THREE.BoxGeometry(DW - 0.06, 0.38, 0.02), mats.kick);
-  kick.position.set(0, 0.22, 0.08);
-  group.add(kick);
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), mats.dark);
-  handle.position.set(DW / 2 - 0.22, 1.15, 0.12);
-  group.add(handle);
-  [0.5, DH - 0.5].forEach((y) => {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.06), mats.dark);
-    h.position.set(-DW / 2 + 0.06, y, 0.1);
-    group.add(h);
-  });
+  onDoor(new THREE.Mesh(new THREE.BoxGeometry(DW - 0.06, 0.38, 0.02), mats.kick), 0, 0.22, 0.06);
+  onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), mats.dark), DW / 2 - 0.22, 1.15, 0.1);
+  [0.5, DH - 0.5].forEach((y) => onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.06), mats.dark), -DW / 2 + 0.06, y, 0.08));
   // viewing window
-  const win = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.02), mats.glass);
-  win.position.set(0, 1.65, 0.08);
-  group.add(win);
+  onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.02), mats.glass), 0, 1.65, 0.06);
+  doorParts.forEach((m) => { m.userData.door = true; pick.push(m); });
+
+  /* ── inside the room ── */
+  const inner = new THREE.Group();
+  group.add(inner);
+  const inFloor = new THREE.Mesh(new THREE.PlaneGeometry(RW - 2 * WT, RD - 2 * WT), mats.innerFloor);
+  inFloor.rotation.x = -Math.PI / 2;
+  inFloor.position.set(0, 0.012, -RD / 2);
+  inFloor.receiveShadow = true;
+  inner.add(inFloor);
+  // ceiling light panel
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 0.35), mats.lamp);
+  lamp.position.set(0, RH - 0.05, -RD / 2);
+  inner.add(lamp);
+  // evaporator on the back wall
+  const evap = new THREE.Mesh(new THREE.BoxGeometry(2, 0.5, 0.55), mats.unit);
+  evap.position.set(0, RH - 0.45, -RD + WT + 0.32);
+  inner.add(evap);
+  [-0.5, 0.5].forEach((x) => {
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(0.19, 28), mats.grille);
+    fan.position.set(x, RH - 0.45, -RD + WT + 0.6);
+    inner.add(fan);
+  });
+  // racks along both side walls: uprights + three shelves
+  const RACK_X = RW / 2 - WT - 0.38;
+  const RACK_Z0 = -1.3;
+  const RACK_Z1 = -RD + 0.5;
+  const RACK_LEN = RACK_Z0 - RACK_Z1;
+  const SHELF_Y = [0.12, 0.92, 1.72];
+  [-1, 1].forEach((sx) => {
+    SHELF_Y.forEach((y) => {
+      const sh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.04, RACK_LEN), mats.rack);
+      sh.position.set(sx * RACK_X, y, (RACK_Z0 + RACK_Z1) / 2);
+      sh.receiveShadow = true;
+      inner.add(sh);
+    });
+    for (let z = RACK_Z0; z >= RACK_Z1 - 0.01; z -= RACK_LEN / 4) {
+      [-0.29, 0.29].forEach((dx) => {
+        const up = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.3, 0.05), mats.upright);
+        up.position.set(sx * RACK_X + dx, 1.15, z);
+        inner.add(up);
+      });
+    }
+  });
+  // the cartons — rebuilt from the room's stock
+  const cartons = new THREE.Group();
+  inner.add(cartons);
+  const slots = [];
+  [-1, 1].forEach((sx) => SHELF_Y.forEach((y) => {
+    for (let z = RACK_Z0 - 0.3; z >= RACK_Z1 + 0.2; z -= 0.56) slots.push(new THREE.Vector3(sx * RACK_X, y + 0.2, z));
+  }));
 
   // digital display above the door
   const screen = canvasTex(640, 220);
@@ -374,7 +425,38 @@ function buildRoom(mats, panelTex) {
   glow.position.set(0, 0.012, 0.75);
   group.add(glow);
 
-  return { group, pick, accent, beaconMat, glowMat, screen, label, sprite, outline };
+  return { group, pick, accent, beaconMat, glowMat, screen, label, sprite, outline, hinge, cartons, slots, doorAngle: 0, doorTarget: 0 };
+}
+
+/* ══════════════════════════════════════ Cartons on the racks */
+
+const CARTON_GEO = new THREE.BoxGeometry(0.5, 0.36, 0.48);
+const cartonMats = new Map();
+function cartonMat(code) {
+  let h = 0;
+  for (const ch of String(code)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  const key = h % 12;
+  if (!cartonMats.has(key)) {
+    // cardboard browns, a slightly different shade per product so lines read as groups
+    cartonMats.set(key, new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL((24 + (key % 6) * 4) / 360, 0.42 + (key % 4) * 0.05, 0.5 + (key % 3) * 0.06), roughness: 0.85 }));
+  }
+  return cartonMats.get(key);
+}
+
+/** One to six cartons per product (by quantity), shelf slot after slot. */
+function fillCartons(r, items) {
+  while (r.cartons.children.length) r.cartons.remove(r.cartons.children[0]);
+  let slot = 0;
+  (items || []).forEach((it) => {
+    const n = Math.max(1, Math.min(6, Math.ceil(Math.log2((Number(it.qty) || 0) + 1))));
+    for (let k = 0; k < n && slot < r.slots.length; k += 1, slot += 1) {
+      const c = new THREE.Mesh(CARTON_GEO, cartonMat(it.code || it.product));
+      c.position.copy(r.slots[slot]);
+      c.rotation.y = ((slot * 37) % 7 - 3) * 0.015;
+      c.castShadow = true;
+      r.cartons.add(c);
+    }
+  });
 }
 
 /* ══════════════════════════════════════ The walker */
@@ -454,7 +536,7 @@ function paintPersonLabel(slot, text, ar) {
 
 /* ══════════════════════════════════════ Component */
 
-export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, t, viewCmd, walkCmd, walkInput, onWalk }) {
+export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, t, viewCmd, walkCmd, walkInput, onWalk, stock }) {
   const hostRef = useRef(null);
   const ctxRef = useRef(null);
   const onPickRef = useRef(onPick);
@@ -565,6 +647,10 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       unit: new THREE.MeshStandardMaterial({ color: "#e2e8f0", metalness: 0.3, roughness: 0.45 }),
       grille: new THREE.MeshStandardMaterial({ color: "#64748b", metalness: 0.5, roughness: 0.4 }),
       copper: new THREE.MeshStandardMaterial({ color: "#b87333", metalness: 0.8, roughness: 0.35 }),
+      innerFloor: new THREE.MeshStandardMaterial({ color: "#eef2f6", roughness: 0.5 }),
+      lamp: new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      rack: new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.6, roughness: 0.35 }),
+      upright: new THREE.MeshStandardMaterial({ color: "#2563eb", metalness: 0.4, roughness: 0.45 }),
     };
     const panelTex = panelTexture();
 
@@ -574,9 +660,15 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       r.group.position.set(p.x, 0, p.z);
       r.group.rotation.y = p.rotY;
       r.pick.forEach((m) => { m.userData.room = i; });
+      r.index = i;
+      r.place = placement(i);
       scene.add(r.group);
       return r;
     });
+
+    // a light that switches on inside the room whose door is open
+    const roomLight = new THREE.PointLight("#ffffff", 0, 9, 1.4);
+    scene.add(roomLight);
 
     // the walker, waiting at the entrance and facing into the store
     const person = buildPerson();
@@ -585,9 +677,61 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     scene.add(person.group);
 
     /* walk mode state */
-    const W = { on: false, pending: false, auto: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.04, dist: 0, turning: 0 };
+    const W = { on: false, pending: false, auto: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.04, dist: 0, turning: 0, near: null, inside: null };
     const keys = new Set();
-    const emitWalk = () => onWalkRef.current?.({ on: W.on || W.pending, auto: W.auto });
+    const emitWalk = () => {
+      const near = W.near != null ? roomObjs[W.near] : null;
+      onWalkRef.current?.({ on: W.on || W.pending, auto: W.auto, near: W.near, inside: W.inside, open: !!(near && near.doorTarget) });
+    };
+
+    /* where he may stand: the corridor, plus the doorway and inside of any open room */
+    const toLocal = (r, x, z) => {
+      const dx = x - r.place.x;
+      const dz = z - r.place.z;
+      const c = Math.cos(r.place.rotY);
+      const sn = Math.sin(r.place.rotY);
+      // inverse of the group's rotation about y
+      return { x: dx * c - dz * sn, z: dx * sn + dz * c };
+    };
+    const IN_X = RW / 2 - WT - 0.35;
+    const canStand = (x, z) => {
+      if (Math.abs(x) <= WALK.xMax && z >= WALK.zMin && z <= WALK.zMax) return true;
+      return roomObjs.some((r) => {
+        if (r.doorAngle > -0.9) return false; // only through a door that is open
+        const l = toLocal(r, x, z);
+        const doorway = Math.abs(l.x) <= DW / 2 - 0.25 && l.z <= 0.9 && l.z >= -0.6;
+        const room = Math.abs(l.x) <= IN_X - 0.25 && l.z <= -0.35 && l.z >= -RD + WT + 0.45;
+        // keep him off the racks: the middle aisle only
+        const aisle = room && Math.abs(l.x) <= IN_X - 0.75;
+        return doorway || aisle;
+      });
+    };
+    const whereIs = (x, z) => {
+      let near = null;
+      let best = Infinity;
+      let inside = null;
+      const fx = -Math.sin(W.yaw);
+      const fz = -Math.cos(W.yaw);
+      roomObjs.forEach((r, i) => {
+        const l = toLocal(r, x, z);
+        if (l.z < -0.4 && Math.abs(l.x) < RW / 2 && l.z > -RD) inside = i;
+        const d = Math.hypot(l.x, Math.max(0, l.z));
+        if (l.z <= -0.6 || d >= 2.6) return;
+        // two doors face each other: the one he looks at wins
+        const vx = r.place.x - x;
+        const vz = r.place.z - z;
+        const facing = (vx * fx + vz * fz) / (Math.hypot(vx, vz) || 1);
+        const score = d - facing * 1.5;
+        if (score < best) { best = score; near = i; }
+      });
+      return { near: inside != null ? inside : near, inside };
+    };
+    const setDoor = (i, open) => {
+      const r = roomObjs[i];
+      if (!r) return;
+      r.doorTarget = open ? -1.55 : 0;
+      emitWalk();
+    };
     const lookDir = () => new THREE.Vector3(-Math.sin(W.yaw) * Math.cos(W.pitch), Math.sin(W.pitch), -Math.cos(W.yaw) * Math.cos(W.pitch));
 
     // picking
@@ -601,7 +745,8 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       ray.setFromCamera(ndc, camera);
       const hit = ray.intersectObjects(pickables.filter((o) => o.visible !== false && (!o.userData.person || person.group.visible)), false)[0];
       if (!hit) return null;
-      return hit.object.userData.person ? "person" : hit.object.userData.room;
+      if (hit.object.userData.person) return "person";
+      return { room: hit.object.userData.room, door: !!hit.object.userData.door };
     };
     let down = null;
     let hover = null;
@@ -613,7 +758,12 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       if (moved > 6) return;
       const h = hitAt(e);
       if (h === "person") { startWalk(); return; }
-      onPickRef.current?.(h);
+      // walking: a click on the door he stands at opens / closes it
+      if (W.on && h && h.door && W.near === h.room && W.inside == null) {
+        setDoor(h.room, !roomObjs[h.room].doorTarget);
+        return;
+      }
+      onPickRef.current?.(h ? h.room : null, { door: !!(h && h.door) });
     };
     let hoverQueued = false;
     const onMove = (e) => {
@@ -629,7 +779,8 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       hoverQueued = true;
       requestAnimationFrame(() => {
         hoverQueued = false;
-        const h = hitAt(e);
+        const hh = hitAt(e);
+        const h = hh && typeof hh === "object" ? hh.room : hh;
         if (h !== hover) {
           hover = h;
           renderer.domElement.style.cursor = h == null ? "grab" : "pointer";
@@ -641,7 +792,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     renderer.domElement.addEventListener("pointermove", onMove);
     renderer.domElement.style.cursor = "grab";
 
-    const WALK_KEYS = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"];
+    const WALK_KEYS = ["w", "a", "s", "d", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"];
     const onKey = (e) => {
       if (!W.on) return;
       const k = String(e.key || "").toLowerCase();
@@ -649,6 +800,10 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       e.preventDefault();
+      if (e.type === "keydown" && k === "e") {
+        if (!e.repeat && W.near != null) setDoor(W.near, !roomObjs[W.near].doorTarget);
+        return;
+      }
       if (e.type === "keydown") {
         keys.add(k);
         // any key of his own takes over from the automatic walk
@@ -703,6 +858,9 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       W.on = false;
       W.pending = false;
       W.auto = false;
+      W.near = null;
+      W.inside = null;
+      roomObjs.forEach((o) => { o.doorTarget = 0; });
       keys.clear();
       person.group.visible = true;
       controls.enabled = true;
@@ -749,6 +907,10 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         const right = keys.has("d") || keys.has("arrowright") || inp.right;
         if (left) W.yaw += WALK.turn * dt;
         if (right) W.yaw -= WALK.turn * dt;
+        if ((left || right) && !fwd && !back) {
+          const where = whereIs(W.pos.x, W.pos.z);
+          if (where.near !== W.near) { W.near = where.near; emitWalk(); }
+        }
         if (W.turning > 0) {
           // turning round at the end of the corridor
           const d = Math.min(W.turning, WALK.turn * 1.2 * dt);
@@ -759,9 +921,17 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         if (step) {
           const nx = W.pos.x - Math.sin(W.yaw) * step;
           const nz = W.pos.z - Math.cos(W.yaw) * step;
-          W.pos.x = Math.max(-WALK.xMax, Math.min(WALK.xMax, nx));
-          W.pos.z = Math.max(WALK.zMin, Math.min(WALK.zMax, nz));
+          // slide along walls instead of stopping dead
+          if (canStand(nx, nz)) { W.pos.x = nx; W.pos.z = nz; }
+          else if (canStand(nx, W.pos.z)) W.pos.x = nx;
+          else if (canStand(W.pos.x, nz)) W.pos.z = nz;
           W.dist += Math.abs(step);
+          const where = whereIs(W.pos.x, W.pos.z);
+          if (where.near !== W.near || where.inside !== W.inside) {
+            W.near = where.near;
+            W.inside = where.inside;
+            emitWalk();
+          }
           // the automatic walk turns round at the far wall and stops back at the entrance
           if (W.auto && W.pos.z <= WALK.zMin + 0.05) { W.auto = false; W.turning = Math.PI; emitWalk(); }
           else if (W.auto && W.pos.z >= WALK.zMax - 0.05 && Math.cos(W.yaw) < 0) { W.auto = false; emitWalk(); }
@@ -777,12 +947,32 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         person.ringMat.opacity = 0.75 - (p - 1) * 1.4;
       }
       const anySel = roomObjs.some((o) => o.group.userData.selected);
+      let lit = null;
+      roomObjs.forEach((r) => {
+        r.doorAngle += (r.doorTarget - r.doorAngle) * Math.min(1, dt * 5);
+        r.hinge.rotation.y = r.doorAngle;
+        if (r.doorTarget && lit == null) lit = r;
+        // a door left open closes by itself once he is far from it
+        if (r.doorTarget && W.on && W.inside !== r.index) {
+          const l = toLocal(r, W.pos.x, W.pos.z);
+          if (Math.hypot(l.x, l.z) > 7) r.doorTarget = 0;
+        }
+      });
+      if (W.inside != null) lit = roomObjs[W.inside];
+      if (lit) {
+        const c = new THREE.Vector3(0, RH - 0.4, -RD / 2).applyMatrix4(lit.group.matrixWorld);
+        roomLight.position.copy(c);
+        roomLight.color.set(lit.isFreezer ? "#cfe8ff" : "#fff7ed");
+        roomLight.intensity = Math.min(1, -lit.doorAngle / 1.55) * 9 + (W.inside != null ? 4 : 0);
+      } else roomLight.intensity = 0;
       roomObjs.forEach((r, i) => {
         const alarm = r.group.userData.alarm;
         r.beaconMat.emissiveIntensity = alarm ? 0.8 + Math.abs(Math.sin(time * 4)) * 2.2 : 0.7;
         r.glowMat.opacity = alarm ? 0.18 + Math.abs(Math.sin(time * 4)) * 0.3 : 0.22;
         r.outline.visible = r.group.userData.selected;
         r.sprite.material.opacity = anySel && !r.group.userData.selected ? 0.3 : 1;
+        // inside a room the labels of the others would show through the walls
+        r.sprite.visible = W.inside == null;
         // gentle bob on the label of the selected room
         // walking: smaller labels just above the doors, so they stay in sight
         const sc = W.on ? 2.2 : 4.2;
@@ -800,6 +990,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       walking: () => W.on || W.pending,
       exitWalk,
       setAuto: (v) => { if (W.on) { W.auto = v; emitWalk(); } },
+      toggleNearDoor: () => { if (W.on && W.near != null) setDoor(W.near, !roomObjs[W.near].doorTarget); },
     };
 
     return () => {
@@ -839,6 +1030,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       r.beaconMat.emissive.set(STATUS_COLOR[status]);
       r.glowMat.color.set(STATUS_COLOR[status]);
       r.group.userData.alarm = status === "out";
+      r.isFreezer = room.kind === "freezer";
       r.group.userData.selected = pick === i;
       paintScreen(r.screen, { value, status, kindEmoji: k.emoji });
       paintLabel(r.label, {
@@ -871,12 +1063,20 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     else ctx.flyTo(ctx.HOME.pos, ctx.HOME.target);
   }, [viewCmd]);
 
+  /* stock → cartons on the racks */
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.roomObjs.forEach((r, i) => fillCartons(r, stock?.[String(i)]?.items || []));
+  }, [stock]);
+
   /* walk HUD commands */
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || !walkCmd) return;
     if (walkCmd.kind === "exit") ctx.exitWalk();
     else if (walkCmd.kind === "auto") ctx.setAuto(!!walkCmd.value);
+    else if (walkCmd.kind === "door") ctx.toggleNearDoor();
   }, [walkCmd]);
 
   return <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />;

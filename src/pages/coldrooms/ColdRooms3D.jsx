@@ -37,6 +37,8 @@ import {
   verdict,
 } from "./coldRoomsConfig";
 import ColdRoomsScene from "./ColdRoomsScene";
+import StockPanel from "./StockPanel";
+import { fetchStock, saveRoomStock } from "./coldRoomsStock";
 
 /* ══════════════════════════════════════ Text */
 const TX = {
@@ -53,7 +55,7 @@ const TX = {
     save: "Save", cancel: "Cancel", saving: "Saving…", saved: "Saved", loadErr: "Could not read the log",
     pick: "Click a room to see its details", reset: "Reset view", top: "Top view", tilt: "Tilt",
     by: "by", recheck: "recheck", loadingUnits: "Loading units…", firstRun: "Rooms seeded from the QCS cooler setup — save to keep them.",
-    drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
+    drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", openDoor: "Open door", closeDoor: "Close door", insideHint: "You are inside — walk back out through the door", tabInfo: "Details", tabStock: "Goods", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
   },
   ar: {
     title: "غرف التبريد 3D", sub: "ثماني غرف · الحرارة الحالية من السجل · حالة المعايرة",
@@ -68,7 +70,7 @@ const TX = {
     save: "حفظ", cancel: "إلغاء", saving: "جارٍ الحفظ…", saved: "تم الحفظ", loadErr: "تعذّر قراءة السجل",
     pick: "اضغط على غرفة لعرض تفاصيلها", reset: "إعادة العرض", top: "منظر علوي", tilt: "الميل",
     by: "بواسطة", recheck: "إعادة فحص", loadingUnits: "تحميل الوحدات…", firstRun: "تمت تعبئة الغرف من إعداد مبردات QCS — اضغط حفظ لتثبيتها.",
-    drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
+    drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", openDoor: "افتح الباب", closeDoor: "سكّر الباب", insideHint: "أنت داخل الغرفة — ارجع من الباب لتطلع", tabInfo: "التفاصيل", tabStock: "البضاعة", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
   },
 };
 
@@ -119,6 +121,7 @@ const CSS = `
 .cr3.cr3 .cr-stage { position:relative; margin-top:12px; height:calc(100vh - 118px); min-height:520px; border-radius:20px; overflow:hidden; border:1px solid #dbeafe; box-shadow:0 12px 34px rgba(14,116,144,.12); background:#e8f3fb; }
 .cr3.cr3 .cr-glass { background:rgba(255,255,255,.9); backdrop-filter:blur(8px); border:1px solid rgba(219,234,254,.9); border-radius:16px; box-shadow:0 8px 26px rgba(15,23,42,.10); }
 .cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; bottom:12px; width:370px; max-width:calc(100% - 24px); overflow:auto; z-index:5; padding:16px; box-sizing:border-box; }
+.cr3.cr3 .cr-drawer.wide { width:min(620px, calc(100% - 24px)); }
 .cr3.cr3 .cr-tools { position:absolute; right:12px; bottom:12px; display:flex; gap:6px; z-index:4; padding:6px; }
 .cr3.cr3 .cr-legend { position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:5px; z-index:4; padding:8px 10px; }
 .cr3.cr3 .cr-hint { position:absolute; left:50%; transform:translateX(-50%); bottom:14px; font-size:${fs(12.5)}; color:#0369a1; font-weight:800; padding:5px 12px; z-index:3; pointer-events:none; white-space:nowrap; }
@@ -253,6 +256,14 @@ export default function ColdRooms3D() {
   const [walk, setWalk] = useState({ on: false, auto: false });
   const [walkCmd, setWalkCmd] = useState(null);
   const walkInput = useRef({ fwd: false, back: false, left: false, right: false });
+  const [stock, setStock] = useState({});
+  const [tab, setTab] = useState("info");
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchStock(ctrl.signal).then((st) => { if (!ctrl.signal.aborted) setStock(st); });
+    return () => ctrl.abort();
+  }, []);
   const calibs = useCalibrations();
 
   /* rooms config */
@@ -305,17 +316,30 @@ export default function ColdRooms3D() {
     return c;
   }, [rooms, live, cals]);
 
-  const choose = useCallback((i) => {
+  const choose = useCallback((i, which = "info") => {
     setPick(i);
+    setTab(which);
     setEditing(false);
     setMsg("");
   }, []);
 
   // A click on empty floor closes the card — but never an editor mid-way.
-  const onScenePick = useCallback((i) => {
-    if (i != null) choose(i);
+  // A click on a door opens the room's goods.
+  const onScenePick = useCallback((i, info) => {
+    if (i != null) choose(i, info?.door ? "stock" : "info");
     else if (!editing) setPick(null);
   }, [choose, editing]);
+
+  // Stepping inside a room while walking shows what is in it.
+  useEffect(() => {
+    if (walk.inside != null) choose(walk.inside, "stock");
+  }, [walk.inside, choose]);
+
+  const saveStock = async (i, items) => {
+    const u = getCurrentUser();
+    const rec = await saveRoomStock(i, items, u.username || u.name || "");
+    setStock((st) => ({ ...st, [String(i)]: rec }));
+  };
 
   const saveRoom = async (i, next) => {
     setSaving(true);
@@ -368,7 +392,7 @@ export default function ColdRooms3D() {
       <div className="cr-stage" dir="ltr">
         {gl ? (
           <ColdRoomsScene rooms={rooms} live={live} cals={cals} pick={pick} onPick={onScenePick} lang={lang} t={t}
-            viewCmd={viewCmd} walkCmd={walkCmd} walkInput={walkInput} onWalk={setWalk} />
+            viewCmd={viewCmd} walkCmd={walkCmd} walkInput={walkInput} onWalk={setWalk} stock={stock} />
         ) : <div className="cr-nogl">{t.noWebgl}</div>}
 
         <div className="cr-glass cr-legend" dir={ar ? "rtl" : "ltr"}>
@@ -390,7 +414,15 @@ export default function ColdRooms3D() {
         {/* walk controls — hold an arrow to move */}
         {walk.on ? (
           <div className="cr-glass cr-walk" dir={ar ? "rtl" : "ltr"}>
-            <div className="cr-small" style={{ fontWeight: 800, textAlign: "center" }}>🚶 {t.walkHint}</div>
+            <div className="cr-small" style={{ fontWeight: 800, textAlign: "center" }}>
+              {walk.inside != null ? `🚪 ${t.insideHint}` : `🚶 ${t.walkHint}`}
+            </div>
+            {walk.near != null && walk.inside == null ? (
+              <button type="button" className="cr-btn pri" style={{ justifySelf: "center" }}
+                onClick={() => setWalkCmd({ kind: "door", n: Date.now() })}>
+                🚪 {walk.open ? t.closeDoor : t.openDoor} — {walk.near + 1}. {rooms?.[walk.near]?.name} (E)
+              </button>
+            ) : null}
             <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }} dir="ltr">
               {[["left", "⟲"], ["fwd", "⬆"], ["back", "⬇"], ["right", "⟳"]].map(([k, icon]) => (
                 <button
@@ -418,8 +450,21 @@ export default function ColdRooms3D() {
         ) : null}
 
         {sel ? (
-          <div className="cr-glass cr-drawer" dir={ar ? "rtl" : "ltr"}>
-            {editing ? (
+          <div className={`cr-glass cr-drawer${tab === "stock" && !editing ? " wide" : ""}`} dir={ar ? "rtl" : "ltr"}>
+            {!editing ? (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+                <button type="button" className={`cr-btn${tab === "info" ? " pri" : ""}`} onClick={() => setTab("info")}>ℹ️ {t.tabInfo}</button>
+                <button type="button" className={`cr-btn${tab === "stock" ? " pri" : ""}`} onClick={() => setTab("stock")}>
+                  📦 {t.tabStock} ({stock[String(pick)]?.items?.length || 0})
+                </button>
+                <span style={{ flex: 1 }} />
+                <button type="button" className="cr-btn" onClick={() => setPick(null)}>✕</button>
+              </div>
+            ) : null}
+            {!editing && tab === "stock" ? (
+              <StockPanel index={pick} room={sel} live={live[pick]} stock={stock[String(pick)]} editable={editable} ar={ar}
+                onSave={(items) => saveStock(pick, items)} />
+            ) : editing ? (
               <>
                 <div className="cr-ptitle" style={{ marginBottom: 10 }}>✏️ {pick + 1}. {sel.name}</div>
                 <RoomEditor key={pick} room={sel} t={t} ar={ar} saving={saving}
