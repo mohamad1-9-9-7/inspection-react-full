@@ -23,6 +23,9 @@ import { getCurrentUser } from "../../../../utils/perms";
 import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
 import { useShelfLife } from "./shelfLife";
 import { fetchSuppliers } from "../../../complaints/complaintsCore";
+import BarcodeScanner from "../../../../components/BarcodeScanner";
+import { parseBarcode } from "../../../../utils/gs1Barcode";
+import { fetchBarcodeMap, linkBarcode, offHint } from "../../../../utils/barcodeMap";
 
 const TX = {
   en: {
@@ -45,6 +48,12 @@ const TX = {
     expired: "This product is already expired — it must not go into the cooler.",
     fefo: (d) => `⚠️ An older lot of this product expires first (${d}). Take that one out first (FEFO).`,
     fefoOk: "I know — take this lot out anyway", needFefo: "Confirm the warning about the older lot first.",
+    scan: "📷 Scan barcode", batch: "Batch / lot (if any)", notProduct: "This code is not a product barcode — try the other code on the carton.",
+    newBarcode: (g) => `🆕 New barcode ${g} — choose our product below ONCE; every phone will know it after that.`,
+    worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
+    known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
+    fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one carton)`,
+    linkFail: "The barcode could not be linked (no connection) — the product is chosen for this time only.",
     queued: "📴 No connection — the move is kept on this phone and will be sent automatically.",
     offline: "📴 No connection — showing the list as last seen on this phone.",
   },
@@ -62,6 +71,12 @@ const TX = {
     pickBranch: "— اختر الفرع —", needKeeper: "اكتب اسم أمين المخزن.", needDest: "اختر لوين رايحة المنتجات.",
     needBranch: "اختر الفرع.", to: "إلى", keeperShort: "أمين المخزن",
     supplier: "المورد", supplierPh: "اسم المورد", prodDate: "تاريخ الإنتاج", expDate: "تاريخ الانتهاء",
+    scan: "📷 مسح الباركود", batch: "رقم الدفعة / اللوت (إذا موجود)", notProduct: "هالكود مش باركود منتج — جرّب الكود التاني على الكرتونة.",
+    newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
+    worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
+    known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
+    fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (كرتونة وحدة)`,
+    linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
     pcs: "عدد الحبات (إذا متوفر)", pcsOut: "عدد الحبات الخارجة (إذا متوفر)", pcsShort: "حبة", expShort: "ينتهي",
     needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
     badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
@@ -105,8 +120,8 @@ const addDays = (iso, n) => {
 };
 const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.split("-").reverse().join("/") : iso || "");
 const todayUae = () => new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10);
-const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate].map((v) => v || "").join("|");
-const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", pcs: it.pcs || 0, have: it.qty });
+const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate, it.batch].map((v) => v || "").join("|");
+const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", batch: it.batch || "", pcs: it.pcs || 0, have: it.qty });
 
 const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
 const destText = (m, s, ar) => {
@@ -140,6 +155,14 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [expDate, setExpDate] = useState("");
   const [pcs, setPcs] = useState("");
   const [shelfNote, setShelfNote] = useState("");
+  // barcode: batch from the carton, the scanner layer, the learned map, a new barcode waiting for its product
+  const [batch, setBatch] = useState("");
+  const [gtin, setGtin] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [codeMap, setCodeMap] = useState(null);
+  const [linkGtin, setLinkGtin] = useState(""); // unknown barcode → the next product chosen is linked to it
+  const [worldName, setWorldName] = useState("");
+  const [scanNote, setScanNote] = useState("");
   const [suppliers, setSuppliers] = useState(null);
   const [fefoOk, setFefoOk] = useState(false);
   const shelf = useShelfLife();
@@ -248,14 +271,69 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       .sort((a, b) => a.expDate.localeCompare(b.expDate))[0] || null
     : null;
 
-  const resetLot = () => { setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); setFefoOk(false); };
+  const resetLot = () => {
+    setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); setFefoOk(false);
+    setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote("");
+  };
+
+  // the learned barcode list — loaded when products start coming in
+  useEffect(() => {
+    if (mode !== "in" || codeMap) return;
+    fetchBarcodeMap().then(setCodeMap);
+  }, [mode, codeMap]);
+
+  /* A scan on "Products in": a known barcode picks our product at once; a
+     new one waits for the product to be chosen below (then it is learned).
+     A GS1 code also fills the dates, the batch and — when the quantity is
+     still empty — one carton's weight. */
+  const onScan = async (text) => {
+    setScanOpen(false);
+    setMsg(null);
+    const r = parseBarcode(text);
+    if (!r.gtin && !r.gs1) { setScanNote(""); setMsg({ kind: "bad", text: s.notProduct }); return; }
+    const filled = [];
+    if (r.prodDate) { setProdDate(r.prodDate); filled.push(`${s.fProd} ${dmy(r.prodDate)}`); }
+    if (r.expDate) { setExpDate(r.expDate); filled.push(`${s.fExp} ${dmy(r.expDate)}`); }
+    if (r.batch) { setBatch(r.batch); filled.push(`${s.fBatch} ${r.batch}`); }
+    if (r.weightKg > 0 && !qty) { setQty(String(r.weightKg)); filled.push(s.fWeight(r.weightKg)); }
+    const note = filled.length ? s.filled(filled.join(" · ")) : "";
+    if (!r.gtin) { setScanNote(note); return; }
+    setGtin(r.gtin);
+    const map = codeMap || (await fetchBarcodeMap());
+    if (!codeMap) setCodeMap(map);
+    const hit = map[r.gtin];
+    if (hit && hit.code) {
+      const cat = catalog.find((c) => c.code === hit.code);
+      const it = { code: hit.code, product: cat?.product || hit.product, uom: cat?.uom || hit.uom };
+      setLinkGtin(""); setWorldName("");
+      setPick({ ...it, have: haveOf(it.code, it.product)?.qty || 0 });
+      setScanNote([s.known(it.product || it.code), note].filter(Boolean).join(" — "));
+    } else {
+      setPick(null);
+      setLinkGtin(r.gtin);
+      setScanNote(note);
+      setWorldName("");
+      offHint(r.gtin).then((n) => setWorldName(n));
+    }
+  };
   const start = (m, it = null) => {
     setMode(m); setQ(""); setQty(""); setMsg(null); resetLot();
     setPick(it ? lotOf(it) : null); // from the list = goods out of that lot
     if (m) window.scrollTo({ top: 0, behavior: "smooth" });
   };
   // goods out: that exact lot; goods in: the product (the lot is typed)
-  const choose = (it) => { setFefoOk(false); setPick(mode === "out"
+  // a new barcode waiting: the product chosen now is learned for it (company-wide)
+  const learn = async (it) => {
+    const g = linkGtin;
+    setLinkGtin(""); setWorldName("");
+    try {
+      setCodeMap(await linkBarcode(g, it, userName()));
+      setScanNote((n) => [s.bcLinked, n].filter(Boolean).join(" — "));
+    } catch {
+      setScanNote((n) => [s.linkFail, n].filter(Boolean).join(" — "));
+    }
+  };
+  const choose = (it) => { if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPick(mode === "out"
     ? lotOf(it)
     : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 }); };
 
@@ -275,6 +353,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       if (olderLot && !fefoOk) return setMsg({ kind: "bad", text: s.needFefo });
       // the lot being taken from
       extra.supplier = pick.supplier; extra.prodDate = pick.prodDate; extra.expDate = pick.expDate;
+      if (pick.batch) extra.batch = pick.batch;
     } else {
       if (!supplier.trim()) return setMsg({ kind: "bad", text: s.needSupplier });
       if (!prodDate) return setMsg({ kind: "bad", text: s.needProd });
@@ -282,6 +361,8 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       if (expDate <= prodDate) return setMsg({ kind: "bad", text: s.badDates });
       if (expDate < todayUae()) return setMsg({ kind: "bad", text: s.expired });
       extra.supplier = supplier.trim(); extra.prodDate = prodDate; extra.expDate = expDate;
+      if (batch.trim()) extra.batch = batch.trim();
+      if (gtin) extra.gtin = gtin;
     }
     setSaving(true);
     try {
@@ -306,6 +387,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const lotLine = (it) => {
     const parts = [];
     if (it.supplier) parts.push(it.supplier);
+    if (it.batch) parts.push(`${s.fBatch} ${it.batch}`);
     if (it.prodDate || it.expDate) parts.push(`${dmy(it.prodDate) || "?"} → ${s.expShort} ${dmy(it.expDate) || "?"}`);
     if (it.pcs) parts.push(`${fmt(it.pcs)} ${s.pcsShort}`);
     return parts.length ? <div className="sm" style={{ textAlign: "start", marginTop: 2 }}>{parts.join(" · ")}</div> : null;
@@ -332,9 +414,18 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       <div>
         <div className="bar">
           <div className="t2">{isOut ? s.out : s.in}</div>
+          {!isOut && <button type="button" className="btn pri" onClick={() => setScanOpen(true)} disabled={saving}>{s.scan}</button>}
           <button type="button" className="btn" onClick={() => start(null)} disabled={saving}>{s.cancel}</button>
         </div>
         {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
+        {!isOut && linkGtin && (
+          <div className="alert warn">
+            <div dir="auto">{s.newBarcode(linkGtin.replace(/^0/, ""))}</div>
+            {worldName ? <div className="sm" style={{ marginTop: 4 }} dir="ltr">{s.worldName(worldName)}</div> : null}
+          </div>
+        )}
+        {!isOut && scanNote && <div className="alert ok">{scanNote}</div>}
+        <BarcodeScanner open={scanOpen} lang={lang} onResult={onScan} onClose={() => setScanOpen(false)} />
 
         {pick ? (
           <div className="card">
@@ -382,6 +473,9 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                   </div>
                 </div>
                 {shelfNote && <div className="sm" style={{ marginTop: 6, color: "#0369a1", fontWeight: 700 }}>{shelfNote}</div>}
+                <span className="lbl">{s.batch}</span>
+                <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} dir="ltr" value={batch}
+                  onChange={(e) => setBatch(e.target.value)} autoComplete="off" />
               </>
             )}
 

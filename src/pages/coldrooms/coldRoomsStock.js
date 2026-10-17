@@ -30,9 +30,10 @@ const toNum = (v) => {
 };
 
 /* A lot added from the QR page also carries supplier · production date ·
-   expiry date (yyyy-mm-dd) and, when known, the number of pieces. Rows from
-   the Excel import / 3D editor simply have none of them. */
-const LOT_FIELDS = ["supplier", "prodDate", "expDate"];
+   expiry date (yyyy-mm-dd) · batch (from the carton barcode when scanned)
+   and, when known, the number of pieces and the carton's GTIN. Older rows
+   simply have none of them. */
+const LOT_FIELDS = ["supplier", "prodDate", "expDate", "batch"];
 
 export function normalizeItem(raw) {
   const it = {
@@ -46,10 +47,12 @@ export function normalizeItem(raw) {
     if (v) it[k] = v;
   });
   if (raw?.pcs !== "" && raw?.pcs != null && toNum(raw.pcs) > 0) it.pcs = toNum(raw.pcs);
+  const gtin = String(raw?.gtin ?? "").replace(/[^0-9]/g, "");
+  if (gtin.length === 14) it.gtin = gtin; // the carton barcode, information only
   return it;
 }
 
-/** Same product AND same lot (supplier + both dates). */
+/** Same product AND same lot (supplier + both dates + batch). */
 export const sameLot = (a, b) =>
   (a.code ? a.code === b.code : a.product === b.product) &&
   LOT_FIELDS.every((k) => String(a[k] || "") === String(b[k] || ""));

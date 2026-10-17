@@ -19,7 +19,7 @@ const TXS = {
     inside: "Inside", products: "products", total: "Total quantity", empty: "No products recorded in this room yet.",
     emptyHint: "Products are added and taken out from the QR page on the unit.",
     search: "Search code, product or supplier…", code: "Code", product: "Product", uom: "Unit", qty: "Available Quantity",
-    supplier: "Supplier", prod: "Production", exp: "Expiry", pcs: "Pieces",
+    supplier: "Supplier", prod: "Production", exp: "Expiry", pcs: "Pieces", batch: "Batch",
     tapHint: "Tap a product to open its moves under it.",
     daysLeft: (n) => (n < 0 ? `expired ${-n} d ago` : n === 0 ? "expires today" : `${n} d left`),
     moves: "Moves of this product", noMoves: "No moves recorded for this product.", in: "In", out: "Out",
@@ -31,7 +31,7 @@ const TXS = {
     inside: "داخل", products: "منتج", total: "إجمالي الكمية", empty: "لا توجد منتجات مسجلة في هذه الغرفة بعد.",
     emptyHint: "المنتجات تُدخل وتُخرج من صفحة الـQR على الوحدة نفسها.",
     search: "ابحث بالكود أو المنتج أو المورد…", code: "الكود", product: "المنتج", uom: "الوحدة", qty: "الكمية المتوفرة",
-    supplier: "المورد", prod: "الإنتاج", exp: "الانتهاء", pcs: "الحبات",
+    supplier: "المورد", prod: "الإنتاج", exp: "الانتهاء", pcs: "الحبات", batch: "الدفعة",
     tapHint: "اضغط على أي منتج لتفتح حركاته تحته.",
     daysLeft: (n) => (n < 0 ? `منتهي منذ ${-n} يوم` : n === 0 ? "ينتهي اليوم" : `باقي ${n} يوم`),
     moves: "حركات هذا المنتج", noMoves: "لا توجد حركات مسجلة لهذا المنتج.", in: "إدخال", out: "إخراج",
@@ -50,9 +50,9 @@ const daysTo = (iso) => {
   return Math.round((Date.parse(`${iso}T00:00:00Z`) - t0) / 86400000);
 };
 const expColor = (n) => (n == null ? "#64748b" : n < 0 ? "#dc2626" : n <= 3 ? "#d97706" : "#16a34a");
-const sameLot = (a, b) => ["code", "product", "supplier", "prodDate", "expDate"].every((k) => String(a[k] || "") === String(b[k] || ""));
+const sameLot = (a, b) => ["code", "product", "supplier", "prodDate", "expDate", "batch"].every((k) => String(a[k] || "") === String(b[k] || ""));
 const num = (v) => Number(v || 0).toLocaleString("en-US", { maximumFractionDigits: 3 });
-const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate].map((v) => v || "").join("|");
+const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate, it.batch].map((v) => v || "").join("|");
 
 const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
 const CSS = `
@@ -108,7 +108,7 @@ export default function StockPanel({ index, room, live, stock, ar }) {
   const value = live?.value;
   const st = value != null ? verdict(room, value) : "none";
   const stColor = { ok: "#16a34a", warn: "#d97706", out: "#dc2626", none: "#64748b" }[st];
-  const COLS = 9;
+  const COLS = 10;
 
   return (
     <div className="crs crs">
@@ -146,7 +146,8 @@ export default function StockPanel({ index, room, live, stock, ar }) {
                 <col style={{ width: "7%" }} />
                 <col style={{ width: "10%" }} />
                 <col style={{ width: "7%" }} />
-                <col style={{ width: "14%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "9%" }} />
                 <col style={{ width: "10%" }} />
                 <col style={{ width: "13%" }} />
               </colgroup>
@@ -159,6 +160,7 @@ export default function StockPanel({ index, room, live, stock, ar }) {
                   <th className="num">{s.qty}</th>
                   <th className="num">{s.pcs}</th>
                   <th>{s.supplier}</th>
+                  <th>{s.batch}</th>
                   <th>{s.prod}</th>
                   <th>{s.exp}</th>
                 </tr>
@@ -179,6 +181,7 @@ export default function StockPanel({ index, room, live, stock, ar }) {
                         <td className="num" style={{ fontWeight: 800 }}>{num(it.qty)}</td>
                         <td className="num">{it.pcs ? num(it.pcs) : "—"}</td>
                         <td dir="ltr">{it.supplier || "—"}</td>
+                        <td dir="ltr">{it.batch || "—"}</td>
                         <td dir="ltr">{dmy(it.prodDate) || "—"}</td>
                         <td>
                           {it.expDate ? (

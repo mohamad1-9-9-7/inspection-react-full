@@ -108,6 +108,7 @@ export const BRANCHES = [
       ["cold_rooms_config",                      "Cold Rooms 3D (config)",       "Settings"],
       ["cold_rooms_stock",                       "Cold Rooms - Products inside", "Cold Rooms Stock"],
       ["cold_rooms_moves",                       "Cold Rooms - Product moves",   "Cold Rooms Stock"],
+      ["barcode_map",                            "Barcode → item code links",    "Cold Rooms Stock"],
     ],
   },
   {
