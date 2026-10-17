@@ -112,7 +112,7 @@ export async function fetchUnitStock(key, signal) {
  * list as it is on the server now: in adds to the same code (or a new row),
  * out takes off the available quantity and drops the row at zero.
  */
-export async function applyStockMove(key, { dir, code, product, uom, qty }, user = "") {
+export async function applyStockMove(key, { dir, code, product, uom, qty, ...extra }, user = "") {
   const amount = toNum(qty);
   if (!(amount > 0)) throw new Error("QTY");
   const rooms = await readRecord();
@@ -135,7 +135,8 @@ export async function applyStockMove(key, { dir, code, product, uom, qty }, user
     items.unshift(normalizeItem({ code: c, product: p, uom, qty: amount }));
   }
   const now = new Date().toISOString();
-  const move = { at: now, by: user || "", dir: dir === "out" ? "out" : "in", code: c, product: name, uom: unitOf, qty: amount };
+  // extra (goods out): keeper = storekeeper's name, destType customer|branch, destination
+  const move = { ...extra, at: now, by: user || "", dir: dir === "out" ? "out" : "in", code: c, product: name, uom: unitOf, qty: amount };
   const moves = [...(Array.isArray(cur.moves) ? cur.moves : []), move].slice(-MOVES_KEPT);
   const next = { ...rooms, [key]: { ...cur, items, moves, updatedAt: now, updatedBy: user || "" } };
   await writeRooms(next, user);

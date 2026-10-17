@@ -4,7 +4,10 @@
 // was scanned, and the two moves a storekeeper makes at the door:
 //   ➕ Goods in   pick the product (our item code or its name, from the items
 //                 catalogue or from what is already inside) + the quantity
-//   ➖ Goods out  pick one of the products inside + the quantity taken
+//   ➖ Goods out  pick one of the products inside + the quantity taken, and
+//                 where it goes: a customer (no name asked) or one of our
+//                 branches (must be chosen)
+// Both moves carry the storekeeper's name (remembered on the phone).
 //
 // Stored in the Cold Rooms stock record (coldRooms/coldRoomsStock.js): when a
 // cold room of the 3D screen is linked to this unit its list is the SAME one
@@ -17,6 +20,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { applyStockMove, fetchUnitStock, loadCatalog, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
 import { getCurrentUser } from "../../../../utils/perms";
+import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
 
 const TX = {
   en: {
@@ -28,6 +32,10 @@ const TX = {
     needQty: "Type the quantity first.", tooMuch: "More than what is inside.", notHere: "This product is no longer inside — refresh.",
     savedIn: (q, p) => `✅ ${q} × ${p} added.`, savedOut: (q, p) => `✅ ${q} × ${p} taken out.`, moves: "Last moves",
     refresh: "↻ Refresh", tapOut: "Tap a product to take it out.", loadErr: "Could not load the goods list.",
+    keeper: "Storekeeper name", keeperPh: "Who is handing the goods out", goesTo: "Where is it going?",
+    customer: "👤 Customer", branch: "🏬 Our branch", toCustomer: "to a customer",
+    pickBranch: "— Choose the branch —", needKeeper: "Type the storekeeper's name.", needDest: "Choose where the goods are going.",
+    needBranch: "Choose the branch.", to: "to", keeperShort: "storekeeper",
   },
   ar: {
     inside: "البضاعة الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -38,6 +46,10 @@ const TX = {
     needQty: "اكتب الكمية أولاً.", tooMuch: "أكثر من الموجود داخل الوحدة.", notHere: "هذا المنتج لم يعد موجوداً — حدّث الصفحة.",
     savedIn: (q, p) => `✅ تمت إضافة ${q} × ${p}.`, savedOut: (q, p) => `✅ تم إخراج ${q} × ${p}.`, moves: "آخر الحركات",
     refresh: "↻ تحديث", tapOut: "اضغط على منتج لإخراجه.", loadErr: "تعذّر تحميل قائمة البضاعة.",
+    keeper: "اسم أمين المخزن (الستور كيبر)", keeperPh: "مين عم يسلّم البضاعة", goesTo: "لوين رايحة البضاعة؟",
+    customer: "👤 زبون", branch: "🏬 فرع من فروعنا", toCustomer: "إلى زبون",
+    pickBranch: "— اختر الفرع —", needKeeper: "اكتب اسم أمين المخزن.", needDest: "اختر لوين رايحة البضاعة.",
+    needBranch: "اختر الفرع.", to: "إلى", keeperShort: "أمين المخزن",
   },
 };
 
@@ -49,6 +61,22 @@ const hhmm = (iso) => {
 const userName = () => {
   const u = getCurrentUser() || {};
   return String(u.displayName || u.name || u.username || "").trim();
+};
+
+/* The storekeeper's name is remembered on this phone (a convenience only —
+   it is saved on every move). */
+const KEEPER_KEY = "cooler_goods_keeper";
+const lastKeeper = () => { try { return localStorage.getItem(KEEPER_KEY) || ""; } catch { return ""; } };
+const rememberKeeper = (v) => { try { localStorage.setItem(KEEPER_KEY, v); } catch { /* cache only */ } };
+
+const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
+const destText = (m, s, ar) => {
+  if (m.destType === "customer") return s.toCustomer;
+  if (m.destType === "branch") {
+    const b = INSPECTION_BRANCHES.find((x) => x.code === m.destination);
+    return `${s.to} ${b ? branchLabel(b, ar) : m.destination}`;
+  }
+  return "";
 };
 
 export default function QuickGoodsPanel({ branch, unit, lang }) {
@@ -64,6 +92,10 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [catalog, setCatalog] = useState([]);
+  const [keeper, setKeeper] = useState(() => lastKeeper() || userName());
+  const [destType, setDestType] = useState(""); // customer | branch
+  const [toBranch, setToBranch] = useState("");
+  const ar = lang === "ar";
 
   useEffect(() => {
     let live = true;
@@ -122,12 +154,22 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     const n = Number(String(qty).replace(/,/g, ""));
     if (!(n > 0)) return setMsg({ kind: "bad", text: s.needQty });
     if (mode === "out" && n > pick.have + 1e-9) return setMsg({ kind: "bad", text: s.tooMuch });
+    const who = keeper.trim();
+    if (!who) return setMsg({ kind: "bad", text: s.needKeeper });
+    const extra = { keeper: who };
+    if (mode === "out") {
+      if (!destType) return setMsg({ kind: "bad", text: s.needDest });
+      if (destType === "branch" && !toBranch) return setMsg({ kind: "bad", text: s.needBranch });
+      extra.destType = destType;
+      extra.destination = destType === "branch" ? toBranch : "";
+    }
     setSaving(true);
     try {
-      const rec = await applyStockMove(target.key, { dir: mode, code: pick.code, product: pick.product, uom: pick.uom, qty: n }, userName());
+      const rec = await applyStockMove(target.key, { dir: mode, code: pick.code, product: pick.product, uom: pick.uom, qty: n, ...extra }, userName());
+      rememberKeeper(who);
       setStock(rec);
       const text = mode === "out" ? s.savedOut(fmt(n), pick.product || pick.code) : s.savedIn(fmt(n), pick.product || pick.code);
-      setMode(null); setPick(null); setQty(""); setQ("");
+      setMode(null); setPick(null); setQty(""); setQ(""); setDestType(""); setToBranch("");
       setMsg({ kind: "ok", text });
       try { navigator.vibrate?.(60); } catch {}
     } catch (e) {
@@ -180,6 +222,31 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }} />
               {isOut && <button type="button" className="sign" style={{ width: 84 }} onClick={() => setQty(String(pick.have))}>{s.all}</button>}
             </div>
+
+            {isOut && (
+              <>
+                <span className="lbl">{s.goesTo}</span>
+                <div className="acts">
+                  {[["customer", s.customer], ["branch", s.branch]].map(([k, label]) => (
+                    <button key={k} type="button" className={`chip ${destType === k ? "on" : ""}`} style={{ textAlign: "center" }}
+                      onClick={() => setDestType(k)}>{label}</button>
+                  ))}
+                </div>
+                {destType === "branch" && (
+                  <select className="btn" style={{ width: "100%", marginTop: 8, cursor: "pointer" }} value={toBranch}
+                    onChange={(e) => setToBranch(e.target.value)}
+                    aria-label={s.branch}>
+                    <option value="">{s.pickBranch}</option>
+                    {INSPECTION_BRANCHES.map((b) => <option key={b.code} value={b.code}>{branchLabel(b, ar)}</option>)}
+                  </select>
+                )}
+              </>
+            )}
+
+            <span className="lbl">{s.keeper}</span>
+            <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} value={keeper}
+              placeholder={s.keeperPh} onChange={(e) => setKeeper(e.target.value)} autoComplete="name" />
+
             <div style={{ height: 12 }} />
             <button type="button" className="btn pri full" onClick={save} disabled={saving}
               style={isOut ? { background: "#b45309", borderColor: "#b45309" } : undefined}>
@@ -267,7 +334,9 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
           {moves.map((m, i) => (
             <div key={`${m.at}-${i}`} className="sm" style={{ padding: "3px 0" }}>
               <b style={{ color: m.dir === "out" ? "#b45309" : "#047857" }}>{m.dir === "out" ? "−" : "+"}{fmt(m.qty)}</b>{" "}
-              <span dir="ltr">{m.product || m.code}</span> · {hhmm(m.at)}{m.by ? ` · ${m.by}` : ""}
+              <span dir="ltr">{m.product || m.code}</span>
+              {m.dir === "out" && m.destType ? ` ${destText(m, s, ar)}` : ""} · {hhmm(m.at)}
+              {m.keeper ? ` · ${s.keeperShort}: ${m.keeper}` : m.by ? ` · ${m.by}` : ""}
             </div>
           ))}
         </div>
