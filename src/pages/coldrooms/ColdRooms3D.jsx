@@ -80,10 +80,10 @@ const STATUS = {
 const CAL_ICON = { ok: "🎯", soon: "⏳", expired: "⛔", none: "" };
 
 /* ══════════════════════════════════════ Scene geometry (px on the floor) */
-const W = 150, D = 128, H = 84, GAP = 16, CORR = 116, PAD = 28;
+const W = 200, D = 165, H = 105, GAP = 12, CORR = 96, PAD = 18;
 const FLOOR_W = PAD * 2 + W * 4 + GAP * 3;
 const FLOOR_D = PAD * 2 + D * 2 + CORR;
-const VIEW0 = { spin: -18, tilt: 56, zoom: 1 };
+const VIEW0 = { spin: -10, tilt: 52, zoom: 1 };
 
 const roomPos = (i) => {
   const col = i % 4;
@@ -115,28 +115,30 @@ const CSS = `
 .cr3.cr3 .cr-ptitle { font-size:${fs(20)}; font-weight:900; }
 .cr3.cr3 .cr-input { font-size:${fs(15)}; font-weight:700; padding:8px 10px; border-radius:9px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; width:100%; box-sizing:border-box; font-family:inherit; }
 .cr3.cr3 .cr-kind { font-size:${fs(14)}; font-weight:800; border-radius:10px; padding:8px 6px; cursor:pointer; border:2px solid #e2e8f0; background:#fff; font-family:inherit; }
-.cr3.cr3 .cr-layout { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:16px; align-items:start; margin-top:14px; }
-@media (max-width: 1100px) { .cr3.cr3 .cr-layout { grid-template-columns:minmax(0,1fr); } }
+.cr3.cr3 .cr-layout { position:relative; margin-top:12px; }
+.cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; width:360px; max-width:calc(100% - 24px); max-height:calc(100% - 24px); overflow:auto; z-index:5; }
+.cr3.cr3 .cr-list { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px; }
+@media (max-width: 900px) { .cr3.cr3 .cr-list { grid-template-columns:repeat(2,minmax(0,1fr)); } .cr3.cr3 .cr-drawer { position:static; width:auto; max-height:none; margin-top:12px; } }
 .cr3.cr3 .cr-card { background:rgba(255,255,255,.88); border:1px solid #e0f2fe; border-radius:18px; box-shadow:0 10px 30px rgba(14,116,144,.10); }
-.cr3.cr3 .cr-stage { position:relative; height:560px; perspective:1700px; perspective-origin:50% 35%; overflow:hidden; cursor:grab; touch-action:none; user-select:none; border-radius:18px;
+.cr3.cr3 .cr-stage { position:relative; height:calc(100vh - 150px); min-height:540px; perspective:1700px; perspective-origin:50% 35%; overflow:hidden; cursor:grab; touch-action:none; user-select:none; border-radius:18px;
   background:radial-gradient(ellipse at 50% 30%,#ffffff 0%,#e0f2fe 55%,#bae6fd 100%); }
 .cr3.cr3 .cr-stage.drag { cursor:grabbing; }
-.cr3.cr3 .cr-floor { position:absolute; left:50%; top:52%; transform-style:preserve-3d; transition:transform .25s ease-out; }
+.cr3.cr3 .cr-floor { position:absolute; left:50%; top:50%; transform-style:preserve-3d; transition:transform .25s ease-out; }
 .cr3.cr3 .cr-stage.drag .cr-floor { transition:none; }
 .cr3.cr3 .cr-box { position:absolute; transform-style:preserve-3d; cursor:pointer; }
 .cr3.cr3 .cr-face { position:absolute; box-sizing:border-box; backface-visibility:visible; }
 .cr3.cr3 .cr-top { border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.35); }
-.cr3.cr3 .cr-tname { font-size:13px !important; font-weight:900; max-width:136px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cr3.cr3 .cr-ttemp { font-size:30px !important; font-weight:900; font-variant-numeric:tabular-nums; line-height:1.05; }
-.cr3.cr3 .cr-tmeta { font-size:11px !important; font-weight:800; opacity:.95; white-space:nowrap; }
-.cr3.cr3 .cr-num { font-size:12px !important; font-weight:900; background:rgba(255,255,255,.92); color:#0f172a; border-radius:999px; padding:0 7px; text-shadow:none; }
-.cr3.cr3 .cr-plate { font-size:12px !important; font-weight:900; color:#0f172a; background:rgba(255,255,255,.9); border-radius:5px; padding:1px 6px; white-space:nowrap; max-width:130px; overflow:hidden; text-overflow:ellipsis; }
-.cr3.cr3 .cr-corr { font-size:20px !important; font-weight:900; letter-spacing:6px; color:rgba(12,74,110,.35); }
+.cr3.cr3 .cr-tname { font-size:19px !important; font-weight:900; max-width:186px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cr3.cr3 .cr-ttemp { font-size:48px !important; font-weight:900; font-variant-numeric:tabular-nums; line-height:1.05; }
+.cr3.cr3 .cr-tmeta { font-size:15px !important; font-weight:800; opacity:.95; white-space:nowrap; }
+.cr3.cr3 .cr-num { font-size:16px !important; font-weight:900; background:rgba(255,255,255,.92); color:#0f172a; border-radius:999px; padding:0 10px; text-shadow:none; }
+.cr3.cr3 .cr-plate { font-size:16px !important; font-weight:900; color:#0f172a; background:rgba(255,255,255,.9); border-radius:6px; padding:1px 8px; white-space:nowrap; max-width:185px; overflow:hidden; text-overflow:ellipsis; }
+.cr3.cr3 .cr-corr { font-size:26px !important; font-weight:900; letter-spacing:6px; color:rgba(12,74,110,.35); }
 .cr3.cr3 .cr-hint { font-size:${fs(12.5)}; position:absolute; bottom:10px; left:12px; color:#0369a1; font-weight:800; background:rgba(255,255,255,.75); padding:3px 10px; border-radius:999px; pointer-events:none; }
 .cr3.cr3 .cr-ctrl { position:absolute; top:10px; right:10px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-items:center; background:rgba(255,255,255,.8); padding:6px 8px; border-radius:12px; }
 @keyframes crPulse { 0%,100% { box-shadow:0 0 0 3px rgba(220,38,38,.9), 0 0 18px rgba(220,38,38,.6); } 50% { box-shadow:0 0 0 3px rgba(220,38,38,.4), 0 0 34px rgba(220,38,38,.95); } }
 .cr3.cr3 .cr-alarm { animation:crPulse 1.4s ease-in-out infinite; }
-@media (max-width: 700px) { .cr3.cr3 .cr-stage { height:420px; } }
+@media (max-width: 700px) { .cr3.cr3 .cr-stage { height:460px; min-height:0; } }
 `;
 
 /* ══════════════════════════════════════ One room box */
@@ -174,7 +176,7 @@ function RoomBox({ i, room, live, cal, selected, onPick, t }) {
       >
         <span className="cr-plate">{i + 1} · {room.name}</span>
         <div style={{
-          width: 54, height: H - 30, marginTop: "auto", borderRadius: "5px 5px 0 0",
+          width: 72, height: H - 36, marginTop: "auto", borderRadius: "5px 5px 0 0",
           background: "linear-gradient(180deg,#e2e8f0,#94a3b8)", border: "2px solid #fff", position: "relative",
         }}>
           <span style={{ position: "absolute", right: 6, top: "45%", width: 4, height: 12, borderRadius: 2, background: "#334155" }} />
@@ -316,7 +318,7 @@ export default function ColdRooms3D() {
   const calibs = useCalibrations();
 
   const [view, setView] = useState(VIEW0);
-  const [scale, setScale] = useState(1);
+  const [box, setBox] = useState({ w: 1000, h: 600 });
   const stageRef = useRef(null);
   const dragRef = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -355,7 +357,7 @@ export default function ColdRooms3D() {
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(([e]) => setScale(Math.min(1.15, Math.max(0.42, (e.contentRect.width - 30) / (FLOOR_W + 140)))));
+    const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -417,6 +419,15 @@ export default function ColdRooms3D() {
     }
   };
 
+  // The rooms fill the stage: fit the turned, tilted floor to its width and height.
+  const scale = useMemo(() => {
+    const a = (view.spin * Math.PI) / 180;
+    const tl = (view.tilt * Math.PI) / 180;
+    const fw = Math.abs(FLOOR_W * Math.cos(a)) + Math.abs(FLOOR_D * Math.sin(a));
+    const fd = Math.abs(FLOOR_W * Math.sin(a)) + Math.abs(FLOOR_D * Math.cos(a));
+    const fh = fd * Math.cos(tl) + H * Math.sin(tl) + 40;
+    return Math.max(0.3, Math.min((box.w - 24) / fw, (box.h - 70) / fh));
+  }, [box, view.spin, view.tilt]);
   const floorTf = `translate(-50%,-50%) scale(${scale * view.zoom}) rotateX(${view.tilt}deg) rotateZ(${view.spin}deg)`;
   const sel = pick != null && rooms ? rooms[pick] : null;
   const selLive = pick != null ? live[pick] : null;
@@ -508,26 +519,10 @@ export default function ColdRooms3D() {
           </div>
         </div>
 
-        {/* details */}
-        <div className="cr-card" style={{ padding: 16 }}>
-          {!sel ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="cr-small" style={{ fontWeight: 800 }}>👆 {t.pick}</div>
-              {(rooms || []).map((r, i) => {
-                const v = live[i]?.value;
-                const s = STATUS[v != null ? verdict(r, v) : "none"];
-                return (
-                  <button key={i} type="button" className="cr-btn" onClick={() => setPick(i)}
-                    style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "start", borderColor: hexA(s.color, 0.4) }}>
-                    <span>{i + 1}. {kindOf(r.kind).emoji} {r.name}</span>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ color: s.color }}>{v != null ? `${v}°C` : "—"}</span>
-                    {cals[i] && CAL_ICON[cals[i].state] ? <span>{CAL_ICON[cals[i].state]}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : editing ? (
+        {/* details — a drawer over the scene, so the rooms keep the whole width */}
+        {sel ? (
+        <div className="cr-card cr-drawer" style={{ padding: 16 }}>
+          {editing ? (
             <>
               <div className="cr-ptitle" style={{ marginBottom: 10 }}>✏️ {pick + 1}. {sel.name}</div>
               <RoomEditor key={pick} room={sel} t={t} ar={ar} saving={saving}
@@ -544,6 +539,24 @@ export default function ColdRooms3D() {
             />
           )}
         </div>
+        ) : null}
+      </div>
+
+      {/* quick list under the scene */}
+      <div className="cr-list">
+        {(rooms || []).map((r, i) => {
+          const v = live[i]?.value;
+          const st = STATUS[v != null ? verdict(r, v) : "none"];
+          return (
+            <button key={i} type="button" className="cr-btn" onClick={() => { setPick(i); setEditing(false); setMsg(""); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "start", borderColor: hexA(st.color, 0.5), background: pick === i ? st.bg : undefined }}>
+              <span>{i + 1}. {kindOf(r.kind).emoji} {r.name}</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ color: st.color }}>{v != null ? `${v}°C` : "—"}</span>
+              {cals[i] && CAL_ICON[cals[i].state] ? <span>{CAL_ICON[cals[i].state]}</span> : null}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
