@@ -38,7 +38,7 @@ import {
 } from "./coldRoomsConfig";
 import ColdRoomsScene from "./ColdRoomsScene";
 import StockPanel from "./StockPanel";
-import { fetchStock, saveRoomStock } from "./coldRoomsStock";
+import { fetchStock } from "./coldRoomsStock";
 
 /* ══════════════════════════════════════ Text */
 const TX = {
@@ -55,7 +55,7 @@ const TX = {
     save: "Save", cancel: "Cancel", saving: "Saving…", saved: "Saved", loadErr: "Could not read the log",
     pick: "Click a room to see its details", reset: "Reset view", top: "Top view", tilt: "Tilt",
     by: "by", daysAgo: (n) => `${n} day(s) ago`, daysLeft: (n) => `in ${n} day(s)`, recheck: "recheck", loadingUnits: "Loading units…", firstRun: "Rooms seeded from the QCS cooler setup — save to keep them.",
-    drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", openDoor: "Open door", closeDoor: "Close door", insideHint: "You are inside — walk back out through the door", tabInfo: "Details", tabStock: "Goods", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
+    drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", openDoor: "Open door", closeDoor: "Close door", insideHint: "You are inside — walk back out through the door", tabInfo: "Details", tabStock: "Products", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
   },
   ar: {
     title: "غرف التبريد 3D", sub: "ثماني غرف · الحرارة الحالية من السجل · حالة المعايرة",
@@ -70,7 +70,7 @@ const TX = {
     save: "حفظ", cancel: "إلغاء", saving: "جارٍ الحفظ…", saved: "تم الحفظ", loadErr: "تعذّر قراءة السجل",
     pick: "اضغط على غرفة لعرض تفاصيلها", reset: "إعادة العرض", top: "منظر علوي", tilt: "الميل",
     by: "بواسطة", daysAgo: (n) => `منذ ${n} يوم`, daysLeft: (n) => `بعد ${n} يوم`, recheck: "إعادة فحص", loadingUnits: "تحميل الوحدات…", firstRun: "تمت تعبئة الغرف من إعداد مبردات QCS — اضغط حفظ لتثبيتها.",
-    drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", openDoor: "افتح الباب", closeDoor: "سكّر الباب", insideHint: "أنت داخل الغرفة — ارجع من الباب لتطلع", tabInfo: "التفاصيل", tabStock: "البضاعة", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
+    drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", openDoor: "افتح الباب", closeDoor: "سكّر الباب", insideHint: "أنت داخل الغرفة — ارجع من الباب لتطلع", tabInfo: "التفاصيل", tabStock: "المنتجات", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
   },
 };
 
@@ -332,7 +332,7 @@ export default function ColdRooms3D() {
   }, []);
 
   // A click on empty floor closes the card — but never an editor mid-way.
-  // A click on a door opens the room's goods.
+  // A click on a door opens the room's products.
   const onScenePick = useCallback((i, info) => {
     if (i != null) choose(i, info?.door ? "stock" : "info");
     else if (!editing) setPick(null);
@@ -343,11 +343,6 @@ export default function ColdRooms3D() {
     if (walk.inside != null) choose(walk.inside, "stock");
   }, [walk.inside, choose]);
 
-  const saveStock = async (i, items) => {
-    const u = getCurrentUser();
-    const rec = await saveRoomStock(i, items, u.username || u.name || "");
-    setStock((st) => ({ ...st, [String(i)]: rec }));
-  };
 
   const saveRoom = async (i, next) => {
     setSaving(true);
@@ -470,8 +465,7 @@ export default function ColdRooms3D() {
               </div>
             ) : null}
             {!editing && tab === "stock" ? (
-              <StockPanel index={pick} room={sel} live={live[pick]} stock={stock[String(pick)]} editable={editable} ar={ar}
-                onSave={(items) => saveStock(pick, items)} />
+              <StockPanel index={pick} room={sel} live={live[pick]} stock={stock[String(pick)]} ar={ar} />
             ) : editing ? (
               <>
                 <div className="cr-ptitle" style={{ marginBottom: 10 }}>✏️ {pick + 1}. {sel.name}</div>
