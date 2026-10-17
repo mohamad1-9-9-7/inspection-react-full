@@ -31,17 +31,21 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { kindOf, verdict } from "./coldRoomsConfig";
 
 /* ══════════════════════════════════════ Dimensions (metres) */
-const RW = 4.2;     // room width (along the corridor)
+const RW = 6;       // room width (along the corridor)
 const RD = 10;      // room depth (from the corridor outwards)
-const RH = 3.2;     // room height
+const RH = 3.6;     // room height
 const WT = 0.14;    // wall thickness (insulated panel)
 const GAP = 0.35;   // between two rooms
 const CORR = 4.4;   // corridor width
-const DW = 1.6;     // door width
-const DH = 2.45;    // door height
+const DW = 2.6;     // door width — a wide sliding door
+const DH = 2.9;     // door height
+// The door sits right of centre: it slides open to the LEFT (as seen from
+// the corridor) over the wall beside it, which must be at least as wide.
+const DOOR_X = RW / 2 - DW / 2 - 0.35;
 
 const STATUS_COLOR = { ok: "#16a34a", warn: "#f59e0b", out: "#dc2626", none: "#94a3b8" };
 const FONT = '"Segoe UI", Tahoma, Arial, sans-serif';
@@ -60,6 +64,18 @@ const WALK = {
   xMax: CORR / 2 - 0.45,
   zMin: slotZ(3) - RW / 2 - 0.6,
   zMax: ENTRY_Z + 1.5,
+};
+
+/* Racks inside a room: one along each side wall, one double rack in the middle. */
+const RACK_X = RW / 2 - WT - 0.38;
+const MID_RACK = 0.34;
+const MID_Z0 = -2.4;
+
+/** Room-local point → world, for a placement. */
+const localToWorld = (p, lx, lz) => {
+  const c = Math.cos(p.rotY);
+  const sn = Math.sin(p.rotY);
+  return { x: p.x + lx * c + lz * sn, z: p.z - lx * sn + lz * c };
 };
 
 /** Room i → where its group sits and which way its door faces. */
@@ -88,10 +104,10 @@ function panelTexture() {
   grd.addColorStop(1, "#eef2f7");
   g.fillStyle = grd;
   g.fillRect(0, 0, 256, 256);
-  g.fillStyle = "#cbd5e1";
-  g.fillRect(0, 0, 3, 256);
-  g.fillStyle = "rgba(148,163,184,.25)";
-  for (let y = 0; y < 256; y += 16) g.fillRect(0, y, 256, 1);
+  g.fillStyle = "#d5dce4";
+  g.fillRect(0, 0, 2, 256);
+  g.fillStyle = "rgba(148,163,184,.10)";
+  for (let y = 0; y < 256; y += 32) g.fillRect(0, y, 256, 1);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
@@ -234,82 +250,93 @@ function paintLabel(slot, { num, name, kind, value, status, cal, lang, t, linked
   tex.needsUpdate = true;
 }
 
-/* ══════════════════════════════════════ Building one room */
+/* ══════════════════════════════════════ Building one room
+   Modern cold-room look: matt white panels, anthracite plinth and fascia
+   with an LED line in the room's colour, aluminium corner trims, a flush
+   sliding door with a vertical status light, and inside: polished floor,
+   linear LED ceiling lights, anthracite racks with lit stainless shelves. */
+
+const SHELF_Y = [0.15, 0.85, 1.55, 2.25];
+const RACK_H = 2.55;
 
 function buildRoom(mats, panelTex) {
   const group = new THREE.Group();
   const pick = []; // meshes that select the room when clicked
+  const box = (w, h, d, mat, x, y, z, parent = group) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    parent.add(m);
+    return m;
+  };
 
   const wall = (w, h, d, x, y, z, repeatX) => {
     const tex = panelTex.clone();
     tex.repeat.set(Math.max(1, repeatX), 1);
     tex.needsUpdate = true;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0.05 }));
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    group.add(m);
+    const m = box(w, h, d, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, metalness: 0 }), x, y, z);
     pick.push(m);
     return m;
   };
 
   // back + sides
-  wall(RW, RH, WT, 0, RH / 2, -RD + WT / 2, RW / 1.1);
-  wall(WT, RH, RD, -RW / 2 + WT / 2, RH / 2, -RD / 2, RD / 1.1);
-  wall(WT, RH, RD, RW / 2 - WT / 2, RH / 2, -RD / 2, RD / 1.1);
+  wall(RW, RH, WT, 0, RH / 2, -RD + WT / 2, RW / 0.9);
+  wall(WT, RH, RD, -RW / 2 + WT / 2, RH / 2, -RD / 2, RD / 0.9);
+  wall(WT, RH, RD, RW / 2 - WT / 2, RH / 2, -RD / 2, RD / 0.9);
   // front, around the door opening
-  const sideW = (RW - DW) / 2;
-  wall(sideW, RH, WT, -(DW / 2 + sideW / 2), RH / 2, -WT / 2, sideW / 1.1);
-  wall(sideW, RH, WT, DW / 2 + sideW / 2, RH / 2, -WT / 2, sideW / 1.1);
-  wall(DW, RH - DH, WT, 0, DH + (RH - DH) / 2, -WT / 2, 1.5);
+  const leftW = RW / 2 + DOOR_X - DW / 2;
+  const rightW = RW / 2 - DOOR_X - DW / 2;
+  wall(leftW, RH, WT, -RW / 2 + leftW / 2, RH / 2, -WT / 2, leftW / 0.9);
+  wall(rightW, RH, WT, RW / 2 - rightW / 2, RH / 2, -WT / 2, Math.max(1, rightW / 0.9));
+  wall(DW, RH - DH, WT, DOOR_X, DH + (RH - DH) / 2, -WT / 2, 2);
+
+  // anthracite plinth (front pieces leave the door opening free) and side plinths
+  const PL = 0.28;
+  box(leftW, PL, 0.04, mats.anthracite, -RW / 2 + leftW / 2, PL / 2, 0.02);
+  box(rightW, PL, 0.04, mats.anthracite, RW / 2 - rightW / 2, PL / 2, 0.02);
+  [-1, 1].forEach((sx) => box(0.04, PL, RD, mats.anthracite, sx * (RW / 2 + 0.02), PL / 2, -RD / 2));
+  box(RW, PL, 0.04, mats.anthracite, 0, PL / 2, -RD - 0.02);
+
+  // fascia: anthracite band + LED line in the room's colour (front and sides)
+  const accent = new THREE.MeshStandardMaterial({ color: "#2563eb", emissive: "#2563eb", emissiveIntensity: 0.9, roughness: 0.3 });
+  const FH = 0.34;
+  box(RW + 0.08, FH, 0.06, mats.anthracite, 0, RH - FH / 2, 0.03);
+  box(RW + 0.08, 0.035, 0.07, accent, 0, RH - FH - 0.02, 0.035);
+  [-1, 1].forEach((sx) => {
+    box(0.06, FH, RD + 0.06, mats.anthracite, sx * (RW / 2 + 0.03), RH - FH / 2, -RD / 2);
+    box(0.07, 0.035, RD + 0.06, accent, sx * (RW / 2 + 0.035), RH - FH - 0.02, -RD / 2);
+  });
+  // aluminium corner trims
+  [[-1, 0], [1, 0], [-1, -RD], [1, -RD]].forEach(([sx, z]) => box(0.09, RH, 0.09, mats.alu, sx * (RW / 2), RH / 2, z));
 
   // roof
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(RW + 0.06, 0.12, RD + 0.06), mats.roof);
-  roof.position.set(0, RH + 0.06, -RD / 2);
-  roof.castShadow = true;
-  roof.receiveShadow = true;
-  group.add(roof);
+  const roof = box(RW + 0.1, 0.1, RD + 0.1, mats.roof, 0, RH + 0.05, -RD / 2);
   pick.push(roof);
 
-  // coloured kind band around the top of the front wall + roof edge
-  const accent = new THREE.MeshStandardMaterial({ color: "#2563eb", roughness: 0.4, metalness: 0.1, emissive: "#000000" });
-  const band = new THREE.Mesh(new THREE.BoxGeometry(RW + 0.08, 0.22, 0.05), accent);
-  band.position.set(0, RH - 0.14, 0.03);
-  group.add(band);
-  const bandL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, RD), accent);
-  bandL.position.set(-RW / 2 - 0.02, RH - 0.14, -RD / 2);
-  group.add(bandL);
-  const bandR = bandL.clone();
-  bandR.position.x = RW / 2 + 0.02;
-  group.add(bandR);
-  // door frame in the kind colour
-  const frameTop = new THREE.Mesh(new THREE.BoxGeometry(DW + 0.2, 0.1, 0.08), accent);
-  frameTop.position.set(0, DH + 0.05, 0.02);
-  group.add(frameTop);
-  [-1, 1].forEach((s) => {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, DH, 0.08), accent);
-    f.position.set(s * (DW / 2 + 0.05), DH / 2, 0.02);
-    group.add(f);
-  });
+  // door portal: deep anthracite frame
+  box(DW + 0.32, 0.16, 0.16, mats.anthracite, DOOR_X, DH + 0.08, 0.05);
+  [-1, 1].forEach((sx) => box(0.16, DH, 0.16, mats.anthracite, DOOR_X + sx * (DW / 2 + 0.08), DH / 2, 0.05));
 
-  // stainless door on its hinges (left edge) — swings out into the corridor
-  const hinge = new THREE.Group();
-  hinge.position.set(-DW / 2 + 0.02, 0, 0.02);
-  group.add(hinge);
+  // vertical status light beside the door
+  const beaconMat = new THREE.MeshStandardMaterial({ color: "#94a3b8", emissive: "#94a3b8", emissiveIntensity: 1, roughness: 0.2 });
+  box(0.06, DH - 0.3, 0.04, beaconMat, DOOR_X + DW / 2 + 0.3, DH / 2 + 0.1, 0.03);
+
+  // flush sliding door on a concealed rail: slides LEFT over the wall
+  box(DW * 2 + 0.4, 0.14, 0.12, mats.anthracite, DOOR_X - DW / 2 + 0.05, DH + 0.24, 0.22);
+  const slider = new THREE.Group();
+  slider.position.set(DOOR_X, 0, 0.16);
+  group.add(slider);
   const doorParts = [];
-  const onDoor = (mesh, x, y, z) => {
-    mesh.position.set(x + DW / 2 - 0.02, y, z);
-    hinge.add(mesh);
-    doorParts.push(mesh);
-    return mesh;
+  const onDoor = (w, h, d, mat, x, y, z) => {
+    const m = box(w, h, d, mat, x, y, z, slider);
+    doorParts.push(m);
+    return m;
   };
-  const door = onDoor(new THREE.Mesh(new THREE.BoxGeometry(DW - 0.04, DH - 0.03, 0.1), mats.steel), 0, DH / 2, 0);
-  door.castShadow = true;
-  onDoor(new THREE.Mesh(new THREE.BoxGeometry(DW - 0.06, 0.38, 0.02), mats.kick), 0, 0.22, 0.06);
-  onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), mats.dark), DW / 2 - 0.22, 1.15, 0.1);
-  [0.5, DH - 0.5].forEach((y) => onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.06), mats.dark), -DW / 2 + 0.06, y, 0.08));
-  // viewing window
-  onDoor(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.02), mats.glass), 0, 1.65, 0.06);
+  onDoor(DW + 0.12, DH + 0.06, 0.12, mats.steel, 0, DH / 2, 0);
+  onDoor(DW + 0.1, 0.3, 0.02, mats.kick, 0, 0.2, 0.07);                      // kick plate
+  onDoor(DW - 0.5, 0.16, 0.02, mats.glassDark, 0, 1.7, 0.07);                 // long glazing strip
+  onDoor(0.05, DH - 0.6, 0.06, mats.anthracite, DW / 2 - 0.16, DH / 2 + 0.05, 0.1); // full-height pull bar
   doorParts.forEach((m) => { m.userData.door = true; pick.push(m); });
 
   /* ── inside the room ── */
@@ -320,85 +347,77 @@ function buildRoom(mats, panelTex) {
   inFloor.position.set(0, 0.012, -RD / 2);
   inFloor.receiveShadow = true;
   inner.add(inFloor);
-  // ceiling light panel
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 0.35), mats.lamp);
-  lamp.position.set(0, RH - 0.05, -RD / 2);
-  inner.add(lamp);
-  // evaporator on the back wall
-  const evap = new THREE.Mesh(new THREE.BoxGeometry(2, 0.5, 0.55), mats.unit);
-  evap.position.set(0, RH - 0.45, -RD + WT + 0.32);
-  inner.add(evap);
-  [-0.5, 0.5].forEach((x) => {
-    const fan = new THREE.Mesh(new THREE.CircleGeometry(0.19, 28), mats.grille);
-    fan.position.set(x, RH - 0.45, -RD + WT + 0.6);
-    inner.add(fan);
+  // linear LED lights over both aisles
+  [-1.4, 1.4].forEach((x) => {
+    box(0.12, 0.04, RD - 1.4, mats.led, x, RH - 0.04, -RD / 2, inner).castShadow = false;
   });
-  // racks along both side walls: uprights + three shelves
-  const RACK_X = RW / 2 - WT - 0.38;
+  // evaporator: rounded white unit, three fans
+  box(2.6, 0.55, 0.6, mats.unitWhite, 0, RH - 0.5, -RD + WT + 0.34, inner);
+  [-0.8, 0, 0.8].forEach((x) => {
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), mats.anthracite);
+    fan.position.set(x, RH - 0.5, -RD + WT + 0.65);
+    inner.add(fan);
+    const hub = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), mats.alu);
+    hub.position.set(x, RH - 0.5, -RD + WT + 0.66);
+    inner.add(hub);
+  });
+  // racks: anthracite uprights, stainless shelves with an LED strip under the front edge
   const RACK_Z0 = -1.3;
   const RACK_Z1 = -RD + 0.5;
-  const RACK_LEN = RACK_Z0 - RACK_Z1;
-  const SHELF_Y = [0.12, 0.92, 1.72];
-  [-1, 1].forEach((sx) => {
+  const RACK_XS = [-RACK_X, -MID_RACK, MID_RACK, RACK_X];
+  RACK_XS.forEach((x) => {
+    const z0 = Math.abs(x) === MID_RACK ? MID_Z0 : RACK_Z0;
+    const len = z0 - RACK_Z1;
+    const zc = (z0 + RACK_Z1) / 2;
+    const aisleSide = Math.abs(x) === MID_RACK ? Math.sign(x) : -Math.sign(x); // the side that faces an aisle
     SHELF_Y.forEach((y) => {
-      const sh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.04, RACK_LEN), mats.rack);
-      sh.position.set(sx * RACK_X, y, (RACK_Z0 + RACK_Z1) / 2);
-      sh.receiveShadow = true;
-      inner.add(sh);
+      box(0.6, 0.03, len, mats.shelf, x, y, zc, inner);
+      box(0.6, 0.06, 0.02, mats.anthracite, x, y - 0.015, z0 + 0.01, inner);
+      const led = box(0.015, 0.012, len - 0.1, mats.led, x + aisleSide * 0.29, y - 0.03, zc, inner);
+      led.castShadow = false;
     });
-    for (let z = RACK_Z0; z >= RACK_Z1 - 0.01; z -= RACK_LEN / 4) {
-      [-0.29, 0.29].forEach((dx) => {
-        const up = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.3, 0.05), mats.upright);
-        up.position.set(sx * RACK_X + dx, 1.15, z);
-        inner.add(up);
-      });
+    for (let k = 0; k <= 4; k += 1) {
+      const z = z0 - (len * k) / 4;
+      [-0.28, 0.28].forEach((dx) => box(0.06, RACK_H, 0.06, mats.anthracite, x + dx, RACK_H / 2, z, inner));
     }
   });
   // the cartons — rebuilt from the room's stock
   const cartons = new THREE.Group();
   inner.add(cartons);
   const slots = [];
-  [-1, 1].forEach((sx) => SHELF_Y.forEach((y) => {
-    for (let z = RACK_Z0 - 0.3; z >= RACK_Z1 + 0.2; z -= 0.56) slots.push(new THREE.Vector3(sx * RACK_X, y + 0.2, z));
+  RACK_XS.forEach((x) => SHELF_Y.forEach((y) => {
+    const z0 = Math.abs(x) === MID_RACK ? MID_Z0 : RACK_Z0;
+    for (let z = z0 - 0.3; z >= RACK_Z1 + 0.2; z -= 0.56) slots.push(new THREE.Vector3(x, y + 0.2, z));
   }));
+  // goods fill from the door backwards, across every rack, eye-level shelves first
+  const LEVEL = { 0.85: 0, 1.55: 1, 0.15: 2, 2.25: 3 };
+  slots.sort((p, q) => q.z - p.z || LEVEL[(p.y - 0.2).toFixed(2) * 1] - LEVEL[(q.y - 0.2).toFixed(2) * 1]);
 
-  // digital display above the door
+  // digital display in the fascia above the door
   const screen = canvasTex(640, 220);
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 0.5), new THREE.MeshBasicMaterial({ map: screen.tex, toneMapped: false }));
-  scr.position.set(0, DH + 0.42, 0.03);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.45), new THREE.MeshBasicMaterial({ map: screen.tex, toneMapped: false }));
+  scr.position.set(DOOR_X, DH + (RH - FH - DH) / 2 + 0.05, 0.03);
   group.add(scr);
   pick.push(scr);
 
-  // status beacon on the roof edge above the door
-  const beaconMat = new THREE.MeshStandardMaterial({ color: "#94a3b8", emissive: "#94a3b8", emissiveIntensity: 0.6, roughness: 0.3 });
-  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.24, 24), beaconMat);
-  beacon.position.set(DW / 2 + 0.55, RH + 0.24, -0.15);
-  group.add(beacon);
-  const beaconBase = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 24), mats.dark);
-  beaconBase.position.set(DW / 2 + 0.55, RH + 0.12, -0.15);
-  group.add(beaconBase);
-
-  // condensing unit on the roof
+  // condensing unit on the roof: rounded anthracite housing, two fans
   const cu = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 0.95), mats.unit);
-  body.position.y = 0.35;
-  body.castShadow = true;
-  cu.add(body);
-  [-0.42, 0.42].forEach((x) => {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 32), mats.dark);
-    ring.position.set(x, 0.72, 0);
+  const housing = new THREE.Mesh(new RoundedBoxGeometry(1.9, 0.7, 1.0, 4, 0.08), mats.anthraciteSoft);
+  housing.position.y = 0.35;
+  housing.castShadow = true;
+  cu.add(housing);
+  [-0.45, 0.45].forEach((x) => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 10, 40), mats.alu);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(x, 0.71, 0);
     cu.add(ring);
-    const grille = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 32), mats.grille);
-    grille.position.set(x, 0.74, 0);
+    const grille = new THREE.Mesh(new THREE.CircleGeometry(0.31, 32), mats.grille);
+    grille.rotation.x = -Math.PI / 2;
+    grille.position.set(x, 0.705, 0);
     cu.add(grille);
   });
-  cu.position.set(-0.6, RH + 0.12, -RD + 1.1);
+  cu.position.set(-0.8, RH + 0.1, -RD + 1.3);
   group.add(cu);
-  // pipe from the unit down into the room
-  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 12), mats.copper);
-  pipe.rotation.x = Math.PI / 2;
-  pipe.position.set(0.4, RH + 0.2, -RD + 2.0);
-  group.add(pipe);
 
   // floating label
   const label = canvasTex(720, 330);
@@ -420,25 +439,47 @@ function buildRoom(mats, panelTex) {
 
   // the coloured glow on the floor in front of the door
   const glowMat = new THREE.MeshBasicMaterial({ color: "#94a3b8", transparent: true, opacity: 0.22, depthWrite: false });
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(DW + 0.9, 1.3), glowMat);
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(DW + 0.6, 1.3), glowMat);
   glow.rotation.x = -Math.PI / 2;
-  glow.position.set(0, 0.012, 0.75);
+  glow.position.set(DOOR_X, 0.012, 0.75);
   group.add(glow);
 
-  return { group, pick, accent, beaconMat, glowMat, screen, label, sprite, outline, hinge, cartons, slots, doorAngle: 0, doorTarget: 0 };
+  return { group, pick, accent, beaconMat, glowMat, screen, label, sprite, outline, slider, cartons, slots, doorOpen: 0, doorTarget: 0 };
 }
 
 /* ══════════════════════════════════════ Cartons on the racks */
+
+/** Kraft carton face with a white product label and a barcode. */
+let cartonTex = null;
+function cartonTexture() {
+  if (cartonTex) return cartonTex;
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 96;
+  const g = c.getContext("2d");
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, 128, 96);
+  g.fillStyle = "rgba(0,0,0,.06)";
+  g.fillRect(0, 44, 128, 6); // tape
+  g.fillStyle = "#ffffff";
+  g.fillRect(18, 58, 92, 30);
+  g.fillStyle = "#1f2937";
+  for (let x = 24; x < 104; x += 3) g.fillRect(x, 64, Math.random() > 0.5 ? 2 : 1, 16);
+  cartonTex = new THREE.CanvasTexture(c);
+  cartonTex.colorSpace = THREE.SRGBColorSpace;
+  return cartonTex;
+}
 
 const CARTON_GEO = new THREE.BoxGeometry(0.5, 0.36, 0.48);
 const cartonMats = new Map();
 function cartonMat(code) {
   let h = 0;
   for (const ch of String(code)) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  const key = h % 12;
+  const key = h % 10;
   if (!cartonMats.has(key)) {
-    // cardboard browns, a slightly different shade per product so lines read as groups
-    cartonMats.set(key, new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL((24 + (key % 6) * 4) / 360, 0.42 + (key % 4) * 0.05, 0.5 + (key % 3) * 0.06), roughness: 0.85 }));
+    // kraft browns plus a few printed-brand colours, so product lines read as groups
+    const tones = ["#c8a27a", "#bf9568", "#d1ad85", "#b8895c", "#c49a6c", "#e5e7eb", "#93c5fd", "#c7d2fe", "#d6c3a5", "#a3b18a"];
+    cartonMats.set(key, new THREE.MeshStandardMaterial({ map: cartonTexture(), color: tones[key], roughness: 0.8 }));
   }
   return cartonMats.get(key);
 }
@@ -452,7 +493,7 @@ function fillCartons(r, items) {
     for (let k = 0; k < n && slot < r.slots.length; k += 1, slot += 1) {
       const c = new THREE.Mesh(CARTON_GEO, cartonMat(it.code || it.product));
       c.position.copy(r.slots[slot]);
-      c.rotation.y = ((slot * 37) % 7 - 3) * 0.015;
+      c.rotation.y = Math.PI / 2 + ((slot * 37) % 7 - 3) * 0.012; // label towards the aisle
       c.castShadow = true;
       r.cartons.add(c);
     }
@@ -463,38 +504,71 @@ function fillCartons(r, items) {
 
 function buildPerson() {
   const g = new THREE.Group();
-  const m = (color, extra) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...extra });
-  const navy = m("#1e3a5f");
-  const vest = m("#facc15", { emissive: "#7c5e00", emissiveIntensity: 0.15 });
-  const strip = m("#f1f5f9", { metalness: 0.3, roughness: 0.25 });
-  const skin = m("#e0ac69");
-  const hat = m("#ffffff", { roughness: 0.3 });
-  const boot = m("#111827");
-  const add = (geo, mat, x, y, z) => {
+  const body = new THREE.Group(); // everything that breathes / turns
+  g.add(body);
+  const m = (color, extra) => new THREE.MeshStandardMaterial({ color, roughness: 0.65, ...extra });
+  const coat = m("#f8fafc", { roughness: 0.8 });
+  const trousers = m("#1e3a8a");
+  const boots = m("#ffffff", { roughness: 0.4 });
+  const skin = m("#d9a066");
+  const hair = m("#2b1d14");
+  const net = m("#93c5fd", { roughness: 0.9 });
+  const dark = m("#0f172a");
+  const add = (parent, geo, mat, x, y, z) => {
     const o = new THREE.Mesh(geo, mat);
     o.position.set(x, y, z);
     o.castShadow = true;
-    g.add(o);
+    parent.add(o);
     return o;
   };
-  [-0.1, 0.1].forEach((x) => {
-    add(new THREE.BoxGeometry(0.15, 0.82, 0.17), navy, x, 0.47, 0);
-    add(new THREE.BoxGeometry(0.16, 0.1, 0.26), boot, x, 0.05, 0.04);
-  });
-  add(new THREE.CylinderGeometry(0.21, 0.19, 0.62, 20), vest, 0, 1.19, 0);
-  add(new THREE.CylinderGeometry(0.215, 0.205, 0.05, 20), strip, 0, 1.06, 0);
-  add(new THREE.CylinderGeometry(0.215, 0.21, 0.05, 20), strip, 0, 1.3, 0);
-  [-1, 1].forEach((sx) => {
-    const arm = add(new THREE.CylinderGeometry(0.055, 0.05, 0.62, 12), navy, sx * 0.28, 1.17, 0);
-    arm.rotation.z = sx * 0.08;
-    add(new THREE.SphereGeometry(0.06, 12, 10), skin, sx * 0.3, 0.84, 0);
-  });
-  add(new THREE.CylinderGeometry(0.07, 0.08, 0.1, 12), skin, 0, 1.53, 0);
-  add(new THREE.SphereGeometry(0.13, 20, 16), skin, 0, 1.66, 0);
-  const dome = add(new THREE.SphereGeometry(0.145, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 1.7, 0);
-  dome.castShadow = true;
-  add(new THREE.CylinderGeometry(0.19, 0.19, 0.02, 20), hat, 0, 1.7, 0.02);
+  const cap = (rad, len) => new THREE.CapsuleGeometry(rad, len, 6, 14);
 
+  // legs + white boots
+  [-0.1, 0.1].forEach((x) => {
+    add(body, cap(0.075, 0.62), trousers, x, 0.5, 0);
+    const b = add(body, cap(0.065, 0.12), boots, x, 0.08, 0.04);
+    b.rotation.x = Math.PI / 2;
+  });
+  // white coat: body + skirt to the knee, buttons, pocket, ID badge
+  add(body, cap(0.19, 0.42), coat, 0, 1.22, 0).scale.set(1, 1, 0.75);
+  add(body, new THREE.CylinderGeometry(0.2, 0.25, 0.45, 20, 1, true), coat, 0, 0.82, 0).scale.set(1, 1, 0.75);
+  [1.36, 1.22, 1.08, 0.94].forEach((y) => add(body, new THREE.SphereGeometry(0.014, 8, 6), dark, 0, y, 0.152));
+  add(body, new THREE.BoxGeometry(0.1, 0.08, 0.01), m("#e2e8f0"), -0.09, 1.3, 0.145);
+  add(body, new THREE.BoxGeometry(0.06, 0.085, 0.01), m("#0284c7"), 0.1, 1.3, 0.148);
+  // arms: upper + fore arm in the coat, hands; the right one holds a clipboard
+  const arm = (sx, bend) => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(sx * 0.25, 1.43, 0);
+    body.add(shoulder);
+    const upper = add(shoulder, cap(0.06, 0.26), coat, 0, -0.17, 0);
+    upper.rotation.z = sx * 0.12;
+    const elbow = new THREE.Group();
+    elbow.position.set(sx * 0.035, -0.34, 0);
+    elbow.rotation.x = -bend;
+    shoulder.add(elbow);
+    add(elbow, cap(0.052, 0.24), coat, 0, -0.15, 0);
+    add(elbow, new THREE.SphereGeometry(0.052, 12, 10), skin, 0, -0.32, 0);
+    return elbow;
+  };
+  arm(-1, 0.15);
+  const holding = arm(1, 1.2);
+  const board = add(holding, new THREE.BoxGeometry(0.22, 0.3, 0.015), m("#8b5a2b"), -0.02, -0.33, 0.1);
+  board.rotation.x = 0.35;
+  add(board, new THREE.BoxGeometry(0.19, 0.25, 0.005), m("#ffffff"), 0, -0.01, 0.01).castShadow = false;
+  add(board, new THREE.BoxGeometry(0.08, 0.03, 0.02), m("#94a3b8"), 0, 0.14, 0.01);
+  // neck, head, face, hair under a blue hair net
+  add(body, new THREE.CylinderGeometry(0.055, 0.06, 0.09, 12), skin, 0, 1.6, 0);
+  const head = new THREE.Group();
+  head.position.set(0, 1.74, 0);
+  body.add(head);
+  add(head, new THREE.SphereGeometry(0.115, 24, 18), skin, 0, 0, 0).scale.set(0.92, 1.08, 1);
+  [-0.04, 0.04].forEach((x) => add(head, new THREE.SphereGeometry(0.014, 8, 6), dark, x, 0.015, 0.103));
+  add(head, new THREE.SphereGeometry(0.018, 8, 6), skin, 0, -0.015, 0.112);
+  [-1, 1].forEach((sx) => add(head, new THREE.SphereGeometry(0.025, 8, 6), skin, sx * 0.105, 0, 0).scale.set(0.5, 1, 0.8));
+  add(head, new THREE.SphereGeometry(0.118, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.1), hair, 0, 0.02, -0.01);
+  add(head, new THREE.SphereGeometry(0.128, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.3), net, 0, 0.035, -0.012);
+
+  g.userData.parts = { body, head };
   // a pulsing ring on the floor that says "click me"
   const ringMat = new THREE.MeshBasicMaterial({ color: "#0ea5e9", transparent: true, opacity: 0.6, depthWrite: false });
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.55, 40), ringMat);
@@ -511,11 +585,11 @@ function buildPerson() {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: label.tex, depthTest: false, toneMapped: false }));
   sprite.renderOrder = 11;
   sprite.scale.set(2.4, 2.4 * (150 / 560), 1);
-  sprite.position.y = 2.45;
+  sprite.position.y = 2.35;
   g.add(sprite);
 
   g.traverse((o) => { o.userData.person = true; });
-  return { group: g, pick: [hit, sprite], ring, ringMat, label };
+  return { group: g, pick: [hit, sprite], ring, ringMat, label, body, head };
 }
 
 function paintPersonLabel(slot, text, ar) {
@@ -564,11 +638,11 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#e8f3fb");
-    scene.fog = new THREE.Fog("#e8f3fb", 40, 85);
+    scene.fog = new THREE.Fog("#e8f3fb", 55, 110);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     // standing at the entrance, looking down the corridor
-    const HOME = { pos: new THREE.Vector3(0, 21, 27), target: new THREE.Vector3(0, 0, -2.5) };
+    const HOME = { pos: new THREE.Vector3(0, 26, 34), target: new THREE.Vector3(0, 0, -3) };
     camera.position.copy(HOME.pos);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -577,7 +651,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     controls.dampingFactor = 0.08;
     controls.maxPolarAngle = Math.PI / 2.08;
     controls.minDistance = 6;
-    controls.maxDistance = 48;
+    controls.maxDistance = 60;
     controls.screenSpacePanning = false;
     controls.update();
 
@@ -589,8 +663,8 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -26;
     sun.shadow.camera.right = 26;
-    sun.shadow.camera.top = 18;
-    sun.shadow.camera.bottom = -18;
+    sun.shadow.camera.top = 24;
+    sun.shadow.camera.bottom = -24;
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 70;
     sun.shadow.bias = -0.0004;
@@ -603,18 +677,18 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     // floor
     const fTex = floorTexture();
     fTex.repeat.set(14, 10);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(70, 50), new THREE.MeshStandardMaterial({ map: fTex, roughness: 0.75 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 80), new THREE.MeshStandardMaterial({ map: fTex, roughness: 0.75 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
     // corridor: lighter epoxy strip + yellow safety lines + arrows
     const corrLen = 4 * RW + 3 * GAP + 3;
-    const corr = new THREE.Mesh(new THREE.PlaneGeometry(CORR - 0.4, corrLen), new THREE.MeshStandardMaterial({ color: "#d6e4f0", roughness: 0.35, metalness: 0.05 }));
+    const corr = new THREE.Mesh(new THREE.PlaneGeometry(CORR - 0.4, corrLen), new THREE.MeshStandardMaterial({ color: "#cfd8e1", roughness: 0.22, metalness: 0.08 }));
     corr.rotation.x = -Math.PI / 2;
     corr.position.y = 0.004;
     corr.receiveShadow = true;
     scene.add(corr);
-    const lineMat = new THREE.MeshBasicMaterial({ color: "#facc15" });
+    const lineMat = new THREE.MeshBasicMaterial({ color: "#22c55e" });
     [-1, 1].forEach((s) => {
       const l = new THREE.Mesh(new THREE.PlaneGeometry(0.12, corrLen), lineMat);
       l.rotation.x = -Math.PI / 2;
@@ -640,17 +714,21 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     // shared materials
     const mats = {
       roof: new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.6 }),
-      steel: new THREE.MeshStandardMaterial({ color: "#dfe6ee", metalness: 0.55, roughness: 0.32 }),
+      steel: new THREE.MeshStandardMaterial({ color: "#eef2f6", metalness: 0.35, roughness: 0.32 }),
       kick: new THREE.MeshStandardMaterial({ color: "#e5e9ee", metalness: 0.95, roughness: 0.18 }),
       dark: new THREE.MeshStandardMaterial({ color: "#334155", metalness: 0.4, roughness: 0.5 }),
       glass: new THREE.MeshStandardMaterial({ color: "#9cc7e6", metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.75 }),
       unit: new THREE.MeshStandardMaterial({ color: "#e2e8f0", metalness: 0.3, roughness: 0.45 }),
       grille: new THREE.MeshStandardMaterial({ color: "#64748b", metalness: 0.5, roughness: 0.4 }),
       copper: new THREE.MeshStandardMaterial({ color: "#b87333", metalness: 0.8, roughness: 0.35 }),
-      innerFloor: new THREE.MeshStandardMaterial({ color: "#eef2f6", roughness: 0.5 }),
-      lamp: new THREE.MeshBasicMaterial({ color: "#ffffff" }),
-      rack: new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.6, roughness: 0.35 }),
-      upright: new THREE.MeshStandardMaterial({ color: "#2563eb", metalness: 0.4, roughness: 0.45 }),
+      innerFloor: new THREE.MeshStandardMaterial({ color: "#e9eef3", roughness: 0.25, metalness: 0.05 }),
+      led: new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      shelf: new THREE.MeshStandardMaterial({ color: "#e8edf2", metalness: 0.35, roughness: 0.3 }),
+      anthracite: new THREE.MeshStandardMaterial({ color: "#5b6573", metalness: 0.15, roughness: 0.5 }),
+      anthraciteSoft: new THREE.MeshStandardMaterial({ color: "#6b7480", metalness: 0.1, roughness: 0.55 }),
+      alu: new THREE.MeshStandardMaterial({ color: "#d5dbe2", metalness: 0.45, roughness: 0.3 }),
+      glassDark: new THREE.MeshStandardMaterial({ color: "#0f172a", metalness: 0.6, roughness: 0.1 }),
+      unitWhite: new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.4 }),
     };
     const panelTex = panelTexture();
 
@@ -667,7 +745,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     });
 
     // a light that switches on inside the room whose door is open
-    const roomLight = new THREE.PointLight("#ffffff", 0, 9, 1.4);
+    const roomLight = new THREE.PointLight("#ffffff", 0, 12, 1.3);
     scene.add(roomLight);
 
     // the walker, waiting at the entrance and facing into the store
@@ -677,7 +755,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     scene.add(person.group);
 
     /* walk mode state */
-    const W = { on: false, pending: false, auto: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.04, dist: 0, turning: 0, near: null, inside: null };
+    const W = { on: false, pending: false, auto: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.04, dist: 0, turning: 0, near: null, inside: null, path: [], faceYaw: null };
     const keys = new Set();
     const emitWalk = () => {
       const near = W.near != null ? roomObjs[W.near] : null;
@@ -693,16 +771,16 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       // inverse of the group's rotation about y
       return { x: dx * c - dz * sn, z: dx * sn + dz * c };
     };
-    const IN_X = RW / 2 - WT - 0.35;
     const canStand = (x, z) => {
       if (Math.abs(x) <= WALK.xMax && z >= WALK.zMin && z <= WALK.zMax) return true;
       return roomObjs.some((r) => {
-        if (r.doorAngle > -0.9) return false; // only through a door that is open
+        if (r.doorOpen < 0.6) return false; // only through a door that is open
         const l = toLocal(r, x, z);
-        const doorway = Math.abs(l.x) <= DW / 2 - 0.25 && l.z <= 0.9 && l.z >= -0.6;
-        const room = Math.abs(l.x) <= IN_X - 0.25 && l.z <= -0.35 && l.z >= -RD + WT + 0.45;
-        // keep him off the racks: the middle aisle only
-        const aisle = room && Math.abs(l.x) <= IN_X - 0.75;
+        const doorway = Math.abs(l.x - DOOR_X) <= DW / 2 - 0.3 && l.z <= 0.9 && l.z >= -0.6;
+        const room = l.z <= -0.35 && l.z >= -RD + WT + 0.45;
+        // keep him off the racks: the two aisles, and the front strip before the middle rack
+        const ax = Math.abs(l.x);
+        const aisle = room && ax <= RACK_X - 0.55 && (ax >= MID_RACK + 0.55 || l.z > MID_Z0 + 0.4);
         return doorway || aisle;
       });
     };
@@ -715,21 +793,49 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       roomObjs.forEach((r, i) => {
         const l = toLocal(r, x, z);
         if (l.z < -0.4 && Math.abs(l.x) < RW / 2 && l.z > -RD) inside = i;
-        const d = Math.hypot(l.x, Math.max(0, l.z));
-        if (l.z <= -0.6 || d >= 2.6) return;
+        const d = Math.hypot(l.x - DOOR_X, Math.max(0, l.z));
+        if (l.z <= -0.6 || d >= 2.8) return;
         // two doors face each other: the one he looks at wins
-        const vx = r.place.x - x;
-        const vz = r.place.z - z;
+        const dw = localToWorld(r.place, DOOR_X, 0);
+        const vx = dw.x - x;
+        const vz = dw.z - z;
         const facing = (vx * fx + vz * fz) / (Math.hypot(vx, vz) || 1);
         const score = d - facing * 1.5;
         if (score < best) { best = score; near = i; }
       });
       return { near: inside != null ? inside : near, inside };
     };
+    /* room-local point → world */
+    const toWorld = (rm, lx, lz) => localToWorld(rm.place, lx, lz);
+    const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
+    const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+    /* walk on his own to the front of room i's door and face it */
+    const walkTo = (i) => {
+      const rm = roomObjs[i];
+      if (!W.on || !rm || W.inside === i) return;
+      const path = [];
+      // inside another room: out through its door first
+      if (W.inside != null) {
+        const out = roomObjs[W.inside];
+        path.push(toWorld(out, DOOR_X, -1.2), toWorld(out, DOOR_X, 1.0));
+      }
+      // the middle of the corridor, square to the door: the whole door and
+      // its display in view
+      const stand = toWorld(rm, DOOR_X, CORR / 2);
+      stand.x = Math.max(-WALK.xMax, Math.min(WALK.xMax, stand.x));
+      path.push(stand);
+      W.path = path;
+      W.faceYaw = yawTo(-rm.place.face.x, -rm.place.face.z);
+      W.auto = false;
+      W.turning = 0;
+      emitWalk();
+    };
+
     const setDoor = (i, open) => {
       const r = roomObjs[i];
       if (!r) return;
-      r.doorTarget = open ? -1.55 : 0;
+      r.doorTarget = open ? 1 : 0;
       emitWalk();
     };
     const lookDir = () => new THREE.Vector3(-Math.sin(W.yaw) * Math.cos(W.pitch), Math.sin(W.pitch), -Math.cos(W.yaw) * Math.cos(W.pitch));
@@ -759,10 +865,12 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       const h = hitAt(e);
       if (h === "person") { startWalk(); return; }
       // walking: a click on the door he stands at opens / closes it
-      if (W.on && h && h.door && W.near === h.room && W.inside == null) {
+      if (W.on && h && h.door && W.near === h.room && W.inside == null && !W.path.length) {
         setDoor(h.room, !roomObjs[h.room].doorTarget);
         return;
       }
+      // walking: a click on any other room takes him there
+      if (W.on && h) walkTo(h.room);
       onPickRef.current?.(h ? h.room : null, { door: !!(h && h.door) });
     };
     let hoverQueued = false;
@@ -806,7 +914,9 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       }
       if (e.type === "keydown") {
         keys.add(k);
-        // any key of his own takes over from the automatic walk
+        // any key of his own takes over from the automatic or guided walk
+        W.path = [];
+        W.faceYaw = null;
         if (W.auto) { W.auto = false; emitWalk(); }
       } else keys.delete(k);
     };
@@ -860,6 +970,8 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       W.auto = false;
       W.near = null;
       W.inside = null;
+      W.path = [];
+      W.faceYaw = null;
       roomObjs.forEach((o) => { o.doorTarget = 0; });
       keys.clear();
       person.group.visible = true;
@@ -905,6 +1017,34 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         const back = keys.has("s") || keys.has("arrowdown") || inp.back;
         const left = keys.has("a") || keys.has("arrowleft") || inp.left;
         const right = keys.has("d") || keys.has("arrowright") || inp.right;
+        if (inp.fwd || inp.back || inp.left || inp.right) { W.path = []; W.faceYaw = null; }
+        let guided = 0;
+        if (W.path.length) {
+          // guided: head for the next point, turning on the way
+          const wp = W.path[0];
+          const dx = wp.x - W.pos.x;
+          const dz = wp.z - W.pos.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 0.12) W.path.shift();
+          else {
+            const diff = angDiff(yawTo(dx, dz), W.yaw);
+            W.yaw += Math.sign(diff) * Math.min(Math.abs(diff), WALK.turn * 2 * dt);
+            // slow down while the turn is still large
+            guided = Math.min(dist, WALK.speed * 1.25 * dt) * (Math.abs(diff) > 0.8 ? 0.25 : 1);
+          }
+        } else if (W.faceYaw != null) {
+          // arrived: turn to the door, then hand back control
+          const diff = angDiff(W.faceYaw, W.yaw);
+          W.yaw += Math.sign(diff) * Math.min(Math.abs(diff), WALK.turn * 2 * dt);
+          W.pitch += (0.12 - W.pitch) * Math.min(1, dt * 4); // look up a little, to the display
+          if (Math.abs(diff) < 0.01) {
+            W.faceYaw = null;
+            const where = whereIs(W.pos.x, W.pos.z);
+            W.near = where.near;
+            W.inside = where.inside;
+            emitWalk();
+          }
+        }
         if (left) W.yaw += WALK.turn * dt;
         if (right) W.yaw -= WALK.turn * dt;
         if ((left || right) && !fwd && !back) {
@@ -917,7 +1057,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
           W.yaw += d;
           W.turning -= d;
         }
-        const step = ((fwd ? 1 : 0) - (back ? 1 : 0)) * WALK.speed * dt;
+        const step = guided || ((fwd ? 1 : 0) - (back ? 1 : 0)) * WALK.speed * dt;
         if (step) {
           const nx = W.pos.x - Math.sin(W.yaw) * step;
           const nz = W.pos.z - Math.cos(W.yaw) * step;
@@ -941,7 +1081,8 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         camera.lookAt(camera.position.clone().add(lookDir()));
       } else if (person.group.visible) {
         // waiting: a slow look around and a pulsing ring
-        person.group.rotation.y = Math.PI + Math.sin(time * 0.8) * 0.25;
+        person.head.rotation.y = Math.sin(time * 0.7) * 0.45;
+        person.body.scale.y = 1 + Math.sin(time * 1.6) * 0.006;
         const p = 1 + Math.abs(Math.sin(time * 2)) * 0.35;
         person.ring.scale.set(p, p, p);
         person.ringMat.opacity = 0.75 - (p - 1) * 1.4;
@@ -949,13 +1090,14 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       const anySel = roomObjs.some((o) => o.group.userData.selected);
       let lit = null;
       roomObjs.forEach((r) => {
-        r.doorAngle += (r.doorTarget - r.doorAngle) * Math.min(1, dt * 5);
-        r.hinge.rotation.y = r.doorAngle;
+        r.doorOpen += (r.doorTarget - r.doorOpen) * Math.min(1, dt * 3.5);
+        // slides to the left as seen from the corridor (local -x)
+        r.slider.position.x = DOOR_X - r.doorOpen * (DW - 0.1);
         if (r.doorTarget && lit == null) lit = r;
         // a door left open closes by itself once he is far from it
         if (r.doorTarget && W.on && W.inside !== r.index) {
           const l = toLocal(r, W.pos.x, W.pos.z);
-          if (Math.hypot(l.x, l.z) > 7) r.doorTarget = 0;
+          if (Math.hypot(l.x - DOOR_X, l.z) > 8) r.doorTarget = 0;
         }
       });
       if (W.inside != null) lit = roomObjs[W.inside];
@@ -963,11 +1105,11 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         const c = new THREE.Vector3(0, RH - 0.4, -RD / 2).applyMatrix4(lit.group.matrixWorld);
         roomLight.position.copy(c);
         roomLight.color.set(lit.isFreezer ? "#cfe8ff" : "#fff7ed");
-        roomLight.intensity = Math.min(1, -lit.doorAngle / 1.55) * 9 + (W.inside != null ? 4 : 0);
+        roomLight.intensity = Math.min(1, lit.doorOpen) * 11 + (W.inside != null ? 5 : 0);
       } else roomLight.intensity = 0;
       roomObjs.forEach((r, i) => {
         const alarm = r.group.userData.alarm;
-        r.beaconMat.emissiveIntensity = alarm ? 0.8 + Math.abs(Math.sin(time * 4)) * 2.2 : 0.7;
+        r.beaconMat.emissiveIntensity = alarm ? 0.6 + Math.abs(Math.sin(time * 4)) * 2.4 : 1.1;
         r.glowMat.opacity = alarm ? 0.18 + Math.abs(Math.sin(time * 4)) * 0.3 : 0.22;
         r.outline.visible = r.group.userData.selected;
         r.sprite.material.opacity = 1;
@@ -990,6 +1132,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       walking: () => W.on || W.pending,
       exitWalk,
       setAuto: (v) => { if (W.on) { W.auto = v; emitWalk(); } },
+      walkTo,
       toggleNearDoor: () => { if (W.on && W.near != null) setDoor(W.near, !roomObjs[W.near].doorTarget); },
     };
 
@@ -1026,6 +1169,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       const value = live?.[i]?.value ?? null;
       const status = value != null ? verdict(room, value) : "none";
       r.accent.color.set(k.color);
+      r.accent.emissive.set(k.color);
       r.beaconMat.color.set(STATUS_COLOR[status]);
       r.beaconMat.emissive.set(STATUS_COLOR[status]);
       r.glowMat.color.set(STATUS_COLOR[status]);
@@ -1044,11 +1188,13 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
   /* fly to the picked room */
   useEffect(() => {
     const ctx = ctxRef.current;
-    if (!ctx || pick == null || ctx.walking()) return;
+    if (!ctx || pick == null) return;
+    if (ctx.walking()) { ctx.walkTo(pick); return; }
     const p = placement(pick);
     // stand across the corridor, above the opposite roof, a little towards
     // the entrance — the door, its display and the label all in view
-    const door = new THREE.Vector3(p.x, 0, p.z);
+    const dw = localToWorld(p, DOOR_X, 0);
+    const door = new THREE.Vector3(dw.x, 0, dw.z);
     const target = door.clone().addScaledVector(p.face, -1.2).add(new THREE.Vector3(0, 2.2, 0));
     const pos = door.clone().addScaledVector(p.face, CORR + 3.5).add(new THREE.Vector3(0, 7.5, 5));
     // the card opens on the left: shift the view so the door sits in the right half
