@@ -1,15 +1,15 @@
 // src/pages/coldrooms/ColdRooms3D.jsx
 //
-// 🧊 Cold Rooms 3D — eight rooms, four facing four across a corridor, drawn
-// in CSS 3D (no WebGL library: the labels stay real text, Arabic included).
+// 🧊 Cold Rooms 3D — eight rooms, four facing four across a corridor, in a
+// real 3D scene (three.js, ColdRoomsScene.jsx).
 //
 //   • each room: name · kind (chiller / dry store / freezer / general store)
 //     · the allowed band — all set here by the user (coldRoomsConfig.js)
 //   • linked to a unit of a temperature log → today's latest reading
 //   • linked to the calibration log → the calibration in force for that unit
 //
-// Drag the scene to turn it, the slider tilts it, a click on a room opens
-// its card. Data refreshes every 5 minutes while the tab is visible.
+// Orbit with the mouse, click a room to fly to it and open its card. Data
+// refreshes every 5 minutes while the tab is visible.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +36,7 @@ import {
   seedFromQcs,
   verdict,
 } from "./coldRoomsConfig";
+import ColdRoomsScene from "./ColdRoomsScene";
 
 /* ══════════════════════════════════════ Text */
 const TX = {
@@ -52,7 +53,7 @@ const TX = {
     save: "Save", cancel: "Cancel", saving: "Saving…", saved: "Saved", loadErr: "Could not read the log",
     pick: "Click a room to see its details", reset: "Reset view", top: "Top view", tilt: "Tilt",
     by: "by", recheck: "recheck", loadingUnits: "Loading units…", firstRun: "Rooms seeded from the QCS cooler setup — save to keep them.",
-    drag: "Drag to rotate", unlinked: "Not linked",
+    drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
   },
   ar: {
     title: "غرف التبريد 3D", sub: "ثماني غرف · الحرارة الحالية من السجل · حالة المعايرة",
@@ -67,9 +68,10 @@ const TX = {
     save: "حفظ", cancel: "إلغاء", saving: "جارٍ الحفظ…", saved: "تم الحفظ", loadErr: "تعذّر قراءة السجل",
     pick: "اضغط على غرفة لعرض تفاصيلها", reset: "إعادة العرض", top: "منظر علوي", tilt: "الميل",
     by: "بواسطة", recheck: "إعادة فحص", loadingUnits: "تحميل الوحدات…", firstRun: "تمت تعبئة الغرف من إعداد مبردات QCS — اضغط حفظ لتثبيتها.",
-    drag: "اسحب للتدوير", unlinked: "غير مربوطة",
+    drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
   },
 };
+
 
 const STATUS = {
   ok:   { color: "#16a34a", bg: "#dcfce7", icon: "✅" },
@@ -79,35 +81,34 @@ const STATUS = {
 };
 const CAL_ICON = { ok: "🎯", soon: "⏳", expired: "⛔", none: "" };
 
-/* ══════════════════════════════════════ Scene geometry (px on the floor) */
-const W = 200, D = 165, H = 105, GAP = 12, CORR = 96, PAD = 18;
-const FLOOR_W = PAD * 2 + W * 4 + GAP * 3;
-const FLOOR_D = PAD * 2 + D * 2 + CORR;
-const VIEW0 = { spin: -10, tilt: 52, zoom: 1 };
-
-const roomPos = (i) => {
-  const col = i % 4;
-  const rowB = i >= 4;
-  return { x: PAD + col * (W + GAP), y: rowB ? PAD + D + CORR : PAD, rowB };
-};
-
 const hexA = (hex, a) => {
   const h = hex.replace("#", "");
   const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
+const hasWebGL = () => {
+  try {
+    const c = document.createElement("canvas");
+    return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")));
+  } catch {
+    return false;
+  }
+};
+
 /* globals.css forces every font size with !important; the doubled class wins. */
 const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
 const CSS = `
-.cr3.cr3 { min-height:100vh; background:linear-gradient(180deg,#f0f9ff 0%,#e0f2fe 45%,#f8fafc 100%); color:#0f172a; padding:18px 16px 40px; box-sizing:border-box; }
-.cr3.cr3 .cr-h1 { font-size:${fs(26)}; font-weight:900; margin:0; }
-.cr3.cr3 .cr-sub { font-size:${fs(14)}; color:#475569; margin:2px 0 0; }
-.cr3.cr3 .cr-btn { font-size:${fs(14)}; font-weight:800; border:1px solid #bae6fd; background:#fff; color:#0c4a6e; border-radius:10px; padding:7px 13px; cursor:pointer; font-family:inherit; }
+.cr3.cr3 { min-height:100vh; background:#eef6fc; color:#0f172a; padding:12px 14px 28px; box-sizing:border-box; }
+.cr3.cr3 .cr-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #dbeafe; border-radius:16px; padding:10px 14px; box-shadow:0 4px 18px rgba(14,116,144,.07); }
+.cr3.cr3 .cr-h1 { font-size:${fs(22)}; font-weight:900; margin:0; line-height:1.2; }
+.cr3.cr3 .cr-sub { font-size:${fs(13)}; color:#64748b; margin:0; }
+.cr3.cr3 .cr-btn { font-size:${fs(14)}; font-weight:800; border:1px solid #cfe3f3; background:#fff; color:#0c4a6e; border-radius:10px; padding:7px 13px; cursor:pointer; font-family:inherit; }
 .cr3.cr3 .cr-btn:hover { background:#f0f9ff; }
-.cr3.cr3 .cr-btn.pri { background:linear-gradient(135deg,#0284c7,#1e3a8a); color:#fff; border:none; }
+.cr3.cr3 .cr-btn.pri { background:#0284c7; color:#fff; border-color:#0284c7; }
+.cr3.cr3 .cr-btn.pri:hover { background:#0369a1; }
 .cr3.cr3 .cr-btn:disabled { opacity:.55; cursor:default; }
-.cr3.cr3 .cr-chip { font-size:${fs(13.5)}; font-weight:800; border-radius:999px; padding:5px 12px; display:inline-flex; gap:6px; align-items:center; border:1px solid transparent; }
+.cr3.cr3 .cr-chip { font-size:${fs(13)}; font-weight:800; border-radius:999px; padding:4px 11px; display:inline-flex; gap:6px; align-items:center; border:1px solid transparent; white-space:nowrap; }
 .cr3.cr3 .cr-small { font-size:${fs(12.5)}; color:#64748b; }
 .cr3.cr3 .cr-lbl { font-size:${fs(12)}; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.3px; }
 .cr3.cr3 .cr-val { font-size:${fs(15)}; font-weight:800; }
@@ -115,96 +116,28 @@ const CSS = `
 .cr3.cr3 .cr-ptitle { font-size:${fs(20)}; font-weight:900; }
 .cr3.cr3 .cr-input { font-size:${fs(15)}; font-weight:700; padding:8px 10px; border-radius:9px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; width:100%; box-sizing:border-box; font-family:inherit; }
 .cr3.cr3 .cr-kind { font-size:${fs(14)}; font-weight:800; border-radius:10px; padding:8px 6px; cursor:pointer; border:2px solid #e2e8f0; background:#fff; font-family:inherit; }
-.cr3.cr3 .cr-layout { position:relative; margin-top:12px; }
-.cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; width:360px; max-width:calc(100% - 24px); max-height:calc(100% - 24px); overflow:auto; z-index:5; }
-.cr3.cr3 .cr-list { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px; }
-@media (max-width: 900px) { .cr3.cr3 .cr-list { grid-template-columns:repeat(2,minmax(0,1fr)); } .cr3.cr3 .cr-drawer { position:static; width:auto; max-height:none; margin-top:12px; } }
-.cr3.cr3 .cr-card { background:rgba(255,255,255,.88); border:1px solid #e0f2fe; border-radius:18px; box-shadow:0 10px 30px rgba(14,116,144,.10); }
-.cr3.cr3 .cr-stage { position:relative; height:calc(100vh - 150px); min-height:540px; perspective:1700px; perspective-origin:50% 35%; overflow:hidden; cursor:grab; touch-action:none; user-select:none; border-radius:18px;
-  background:radial-gradient(ellipse at 50% 30%,#ffffff 0%,#e0f2fe 55%,#bae6fd 100%); }
-.cr3.cr3 .cr-stage.drag { cursor:grabbing; }
-.cr3.cr3 .cr-floor { position:absolute; left:50%; top:50%; transform-style:preserve-3d; transition:transform .25s ease-out; }
-.cr3.cr3 .cr-stage.drag .cr-floor { transition:none; }
-.cr3.cr3 .cr-box { position:absolute; transform-style:preserve-3d; cursor:pointer; }
-.cr3.cr3 .cr-face { position:absolute; box-sizing:border-box; backface-visibility:visible; }
-.cr3.cr3 .cr-top { border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.35); }
-.cr3.cr3 .cr-tname { font-size:19px !important; font-weight:900; max-width:186px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cr3.cr3 .cr-ttemp { font-size:48px !important; font-weight:900; font-variant-numeric:tabular-nums; line-height:1.05; }
-.cr3.cr3 .cr-tmeta { font-size:15px !important; font-weight:800; opacity:.95; white-space:nowrap; }
-.cr3.cr3 .cr-num { font-size:16px !important; font-weight:900; background:rgba(255,255,255,.92); color:#0f172a; border-radius:999px; padding:0 10px; text-shadow:none; }
-.cr3.cr3 .cr-plate { font-size:16px !important; font-weight:900; color:#0f172a; background:rgba(255,255,255,.9); border-radius:6px; padding:1px 8px; white-space:nowrap; max-width:185px; overflow:hidden; text-overflow:ellipsis; }
-.cr3.cr3 .cr-corr { font-size:26px !important; font-weight:900; letter-spacing:6px; color:rgba(12,74,110,.35); }
-.cr3.cr3 .cr-hint { font-size:${fs(12.5)}; position:absolute; bottom:10px; left:12px; color:#0369a1; font-weight:800; background:rgba(255,255,255,.75); padding:3px 10px; border-radius:999px; pointer-events:none; }
-.cr3.cr3 .cr-ctrl { position:absolute; top:10px; right:10px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-items:center; background:rgba(255,255,255,.8); padding:6px 8px; border-radius:12px; }
-@keyframes crPulse { 0%,100% { box-shadow:0 0 0 3px rgba(220,38,38,.9), 0 0 18px rgba(220,38,38,.6); } 50% { box-shadow:0 0 0 3px rgba(220,38,38,.4), 0 0 34px rgba(220,38,38,.95); } }
-.cr3.cr3 .cr-alarm { animation:crPulse 1.4s ease-in-out infinite; }
-@media (max-width: 700px) { .cr3.cr3 .cr-stage { height:460px; min-height:0; } }
-`;
-
-/* ══════════════════════════════════════ One room box */
-function RoomBox({ i, room, live, cal, selected, onPick, t }) {
-  const { x, y, rowB } = roomPos(i);
-  const k = kindOf(room.kind);
-  const st = live?.value != null ? verdict(room, live.value) : "none";
-  const S = STATUS[st];
-  const wall = {
-    background: `linear-gradient(180deg, ${hexA(k.color, 0.38)}, ${hexA(k.color, 0.18)})`,
-    border: `1.5px solid ${hexA("#ffffff", 0.85)}`,
-  };
-  const sel = selected ? `0 0 0 4px #0f172a, 0 0 26px ${hexA(k.color, 0.9)}` : `0 0 0 3px ${S.color}`;
-  return (
-    <div
-      className="cr-box"
-      style={{ left: x, top: y, width: W, height: D, transform: rowB ? "rotateZ(180deg)" : "none" }}
-      onClick={(e) => { e.stopPropagation(); onPick(i); }}
-      title={room.name}
-    >
-      {/* floor shadow */}
-      <div className="cr-face" style={{ inset: -6, background: "rgba(15,23,42,.16)", filter: "blur(6px)", borderRadius: 8 }} />
-      {/* back */}
-      <div className="cr-face" style={{ left: 0, top: -H, width: W, height: H, transformOrigin: "50% 100%", transform: "rotateX(-90deg)", ...wall }} />
-      {/* left / right */}
-      <div className="cr-face" style={{ left: -H, top: 0, width: H, height: D, transformOrigin: "100% 50%", transform: "rotateY(90deg)", ...wall }} />
-      <div className="cr-face" style={{ left: W, top: 0, width: H, height: D, transformOrigin: "0 50%", transform: "rotateY(-90deg)", ...wall }} />
-      {/* front — the door, facing the corridor */}
-      <div
-        className="cr-face"
-        style={{
-          left: 0, top: D - H, width: W, height: H, transformOrigin: "50% 100%", transform: "rotateX(-90deg)", ...wall,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", paddingTop: 6, gap: 4,
-        }}
-      >
-        <span className="cr-plate">{i + 1} · {room.name}</span>
-        <div style={{
-          width: 72, height: H - 36, marginTop: "auto", borderRadius: "5px 5px 0 0",
-          background: "linear-gradient(180deg,#e2e8f0,#94a3b8)", border: "2px solid #fff", position: "relative",
-        }}>
-          <span style={{ position: "absolute", right: 6, top: "45%", width: 4, height: 12, borderRadius: 2, background: "#334155" }} />
-        </div>
-        <span style={{ position: "absolute", top: 0, left: 0, right: 0, height: 5, background: S.color }} />
-      </div>
-      {/* top — the live reading */}
-      <div
-        className={`cr-face cr-top${st === "out" ? " cr-alarm" : ""}`}
-        style={{
-          left: 0, top: 0, width: W, height: D, transform: `translateZ(${H}px)`,
-          background: `linear-gradient(145deg, ${hexA(k.color, 0.95)}, ${hexA(k.color, 0.7)})`,
-          boxShadow: sel,
-        }}
-      >
-        <div style={{ transform: rowB ? "rotate(180deg)" : "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-          <span className="cr-num">{i + 1} {k.emoji}</span>
-          <span className="cr-tname">{room.name}</span>
-          <span className="cr-ttemp">{live?.value != null ? `${live.value}°` : "—"}</span>
-          <span className="cr-tmeta">
-            {S.icon} {room.min}…{room.max}°C {cal && CAL_ICON[cal.state] ? ` ${CAL_ICON[cal.state]}` : ""}
-          </span>
-          {!room.link ? <span className="cr-tmeta">🔗 {t.unlinked}</span> : null}
-        </div>
-      </div>
-    </div>
-  );
+.cr3.cr3 .cr-stage { position:relative; margin-top:12px; height:calc(100vh - 118px); min-height:520px; border-radius:20px; overflow:hidden; border:1px solid #dbeafe; box-shadow:0 12px 34px rgba(14,116,144,.12); background:#e8f3fb; }
+.cr3.cr3 .cr-glass { background:rgba(255,255,255,.9); backdrop-filter:blur(8px); border:1px solid rgba(219,234,254,.9); border-radius:16px; box-shadow:0 8px 26px rgba(15,23,42,.10); }
+.cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; bottom:12px; width:370px; max-width:calc(100% - 24px); overflow:auto; z-index:5; padding:16px; box-sizing:border-box; }
+.cr3.cr3 .cr-tools { position:absolute; right:12px; bottom:12px; display:flex; gap:6px; z-index:4; padding:6px; }
+.cr3.cr3 .cr-legend { position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:5px; z-index:4; padding:8px 10px; }
+.cr3.cr3 .cr-hint { position:absolute; left:50%; transform:translateX(-50%); bottom:14px; font-size:${fs(12.5)}; color:#0369a1; font-weight:800; padding:5px 12px; z-index:3; pointer-events:none; white-space:nowrap; }
+.cr3.cr3 .cr-walk { position:absolute; left:50%; transform:translateX(-50%); bottom:12px; z-index:6; padding:10px 12px; display:grid; gap:8px; max-width:calc(100% - 24px); }
+.cr3.cr3 .cr-pad { min-width:52px; font-size:${fs(20)}; touch-action:none; user-select:none; }
+.cr3.cr3 .cr-strip { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+.cr3.cr3 .cr-side { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-content:start; }
+.cr3.cr3 .cr-room { text-align:start; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:10px 12px; cursor:pointer; font-family:inherit; display:grid; gap:2px; }
+.cr3.cr3 .cr-room:hover { box-shadow:0 6px 18px rgba(14,116,144,.12); }
+.cr3.cr3 .cr-rname { font-size:${fs(15)}; font-weight:900; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cr3.cr3 .cr-rtemp { font-size:${fs(26)}; font-weight:900; font-variant-numeric:tabular-nums; }
+.cr3.cr3 .cr-nogl { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:${fs(16)}; font-weight:800; color:#475569; padding:20px; text-align:center; }
+@media (max-width: 900px) {
+  .cr3.cr3 .cr-strip { grid-template-columns:1fr; }
+  .cr3.cr3 .cr-stage { height:62vh; min-height:380px; }
+  .cr3.cr3 .cr-drawer { left:8px; right:8px; top:auto; bottom:8px; width:auto; max-height:60%; }
+  .cr3.cr3 .cr-legend, .cr3.cr3 .cr-hint { display:none; }
 }
+`;
 
 /* ══════════════════════════════════════ Room editor */
 function RoomEditor({ room, t, ar, onCancel, onSave, saving }) {
@@ -305,6 +238,7 @@ export default function ColdRooms3D() {
   const ar = lang === "ar";
   const t = TX[ar ? "ar" : "en"];
   const editable = canEdit("coldRooms");
+  const [gl] = useState(hasWebGL);
 
   const [rooms, setRooms] = useState(() => loadCache());
   const [seeded, setSeeded] = useState(false);
@@ -315,13 +249,11 @@ export default function ColdRooms3D() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [viewCmd, setViewCmd] = useState(null);
+  const [walk, setWalk] = useState({ on: false, auto: false });
+  const [walkCmd, setWalkCmd] = useState(null);
+  const walkInput = useRef({ fwd: false, back: false, left: false, right: false });
   const calibs = useCalibrations();
-
-  const [view, setView] = useState(VIEW0);
-  const [box, setBox] = useState({ w: 1000, h: 600 });
-  const stageRef = useRef(null);
-  const dragRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
 
   /* rooms config */
   useEffect(() => {
@@ -353,35 +285,6 @@ export default function ColdRooms3D() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  /* fit the floor to the stage width */
-  useEffect(() => {
-    const el = stageRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  /* drag to rotate / tilt */
-  const onDown = (e) => {
-    if (e.button !== 0 && e.pointerType === "mouse") return;
-    dragRef.current = { x: e.clientX, y: e.clientY, v: view, moved: false };
-  };
-  const onMove = (e) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
-    if (!d.moved) { d.moved = true; setDragging(true); try { stageRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ } }
-    setView({ ...d.v, spin: d.v.spin + dx * 0.4, tilt: Math.max(0, Math.min(80, d.v.tilt - dy * 0.3)) });
-  };
-  const onUp = () => {
-    const d = dragRef.current;
-    dragRef.current = null;
-    if (d?.moved) setTimeout(() => setDragging(false), 0);
-  };
-
   const calOf = useCallback((room) => {
     if (!calibs || !room?.link) return null;
     const L = CALIB_LOGS[room.link.branch];
@@ -402,6 +305,18 @@ export default function ColdRooms3D() {
     return c;
   }, [rooms, live, cals]);
 
+  const choose = useCallback((i) => {
+    setPick(i);
+    setEditing(false);
+    setMsg("");
+  }, []);
+
+  // A click on empty floor closes the card — but never an editor mid-way.
+  const onScenePick = useCallback((i) => {
+    if (i != null) choose(i);
+    else if (!editing) setPick(null);
+  }, [choose, editing]);
+
   const saveRoom = async (i, next) => {
     setSaving(true);
     setMsg("");
@@ -419,144 +334,140 @@ export default function ColdRooms3D() {
     }
   };
 
-  // The rooms fill the stage: fit the turned, tilted floor to its width and height.
-  const scale = useMemo(() => {
-    const a = (view.spin * Math.PI) / 180;
-    const tl = (view.tilt * Math.PI) / 180;
-    const fw = Math.abs(FLOOR_W * Math.cos(a)) + Math.abs(FLOOR_D * Math.sin(a));
-    const fd = Math.abs(FLOOR_W * Math.sin(a)) + Math.abs(FLOOR_D * Math.cos(a));
-    const fh = fd * Math.cos(tl) + H * Math.sin(tl) + 40;
-    return Math.max(0.3, Math.min((box.w - 24) / fw, (box.h - 70) / fh));
-  }, [box, view.spin, view.tilt]);
-  const floorTf = `translate(-50%,-50%) scale(${scale * view.zoom}) rotateX(${view.tilt}deg) rotateZ(${view.spin}deg)`;
   const sel = pick != null && rooms ? rooms[pick] : null;
-  const selLive = pick != null ? live[pick] : null;
-  const selCal = pick != null ? cals[pick] : null;
 
   return (
     <div className="cr3 cr3" dir={ar ? "rtl" : "ltr"}>
       <style>{CSS}</style>
 
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      {/* top bar */}
+      <div className="cr-bar">
         <button type="button" className="cr-btn" onClick={() => navigate("/named-dashboard")}>{ar ? "→" : "←"} {t.back}</button>
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ minWidth: 200 }}>
           <h1 className="cr-h1">🧊 {t.title}</h1>
           <p className="cr-sub">{t.sub}</p>
         </div>
-        {!hideSectionLangToggle() ? (
-          <button type="button" className="cr-btn" onClick={() => setLang(ar ? "en" : "ar")}>{ar ? "EN" : "ع"}</button>
-        ) : null}
-        <button type="button" className="cr-btn pri" onClick={refresh} disabled={busy}>⟳ {t.refresh}</button>
-      </div>
-
-      {/* summary */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
+        <span style={{ flex: 1 }} />
         {["ok", "warn", "out", "none"].map((s) => (
-          <span key={s} className="cr-chip" style={{ background: STATUS[s].bg, color: STATUS[s].color, borderColor: hexA(STATUS[s].color, 0.35) }}>
+          <span key={s} className="cr-chip" style={{ background: STATUS[s].bg, color: STATUS[s].color, borderColor: hexA(STATUS[s].color, 0.3) }}>
             {STATUS[s].icon} {t[s]}: {counts[s]}
           </span>
         ))}
         {counts.cal ? (
           <span className="cr-chip" style={{ background: "#fef2f2", color: "#b91c1c", borderColor: "#fecaca" }}>⛔ {t.calibExpired}: {counts.cal}</span>
         ) : null}
-        <span style={{ flex: 1 }} />
-        {ROOM_KINDS.map((k) => (
-          <span key={k.key} className="cr-chip" style={{ background: hexA(k.color, 0.1), color: k.color }}>{k.emoji} {ar ? k.ar : k.en}</span>
-        ))}
         {stamp ? <span className="cr-small">{t.updated}: {timeLabel(stamp.toISOString())}</span> : null}
+        {!hideSectionLangToggle() ? (
+          <button type="button" className="cr-btn" onClick={() => setLang(ar ? "en" : "ar")}>{ar ? "EN" : "ع"}</button>
+        ) : null}
+        <button type="button" className="cr-btn pri" onClick={refresh} disabled={busy}>⟳ {t.refresh}</button>
       </div>
       {seeded ? <div className="cr-small" style={{ marginTop: 8, color: "#b45309", fontWeight: 800 }}>ℹ️ {t.firstRun}</div> : null}
 
-      <div className="cr-layout">
-        {/* 3D scene — geometry stays LTR whatever the language */}
-        <div className="cr-card" style={{ padding: 0 }}>
-          <div
-            ref={stageRef}
-            dir="ltr"
-            className={`cr-stage${dragging ? " drag" : ""}`}
-            onPointerDown={onDown}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
-            onPointerCancel={onUp}
-            onClickCapture={(e) => { if (dragging) e.stopPropagation(); }}
-            onClick={() => { if (!dragging) { setPick(null); setEditing(false); } }}
-          >
-            <div className="cr-floor" style={{ width: FLOOR_W, height: FLOOR_D, transform: floorTf }}>
-              {/* the floor slab */}
-              <div className="cr-face" style={{
-                inset: 0, borderRadius: 14,
-                background: "repeating-linear-gradient(0deg, #e2e8f0 0 1px, transparent 1px 32px), repeating-linear-gradient(90deg, #e2e8f0 0 1px, transparent 1px 32px), linear-gradient(135deg,#f8fafc,#cbd5e1)",
-                boxShadow: "0 30px 60px rgba(15,23,42,.25), inset 0 0 0 3px #fff",
-              }} />
-              {/* corridor */}
-              <div className="cr-face" style={{
-                left: PAD - 8, right: PAD - 8, top: PAD + D + 10, height: CORR - 20, borderRadius: 10,
-                background: "linear-gradient(90deg, rgba(14,165,233,.10), rgba(14,165,233,.22), rgba(14,165,233,.10))",
-                border: "2px dashed rgba(3,105,161,.35)", display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <span className="cr-corr">◀ {t.corridor} ▶</span>
-              </div>
-              {(rooms || []).map((room, i) => (
-                <RoomBox key={i} i={i} room={room} live={live[i]} cal={cals[i]} selected={pick === i} t={t}
-                  onPick={(n) => { if (!dragging) { setPick(n); setEditing(false); setMsg(""); } }} />
+      {/* 3D scene */}
+      <div className="cr-stage" dir="ltr">
+        {gl ? (
+          <ColdRoomsScene rooms={rooms} live={live} cals={cals} pick={pick} onPick={onScenePick} lang={lang} t={t}
+            viewCmd={viewCmd} walkCmd={walkCmd} walkInput={walkInput} onWalk={setWalk} />
+        ) : <div className="cr-nogl">{t.noWebgl}</div>}
+
+        <div className="cr-glass cr-legend" dir={ar ? "rtl" : "ltr"}>
+          {ROOM_KINDS.map((k) => (
+            <span key={k.key} className="cr-chip" style={{ background: hexA(k.color, 0.1), color: k.color, justifyContent: "flex-start" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: k.color, display: "inline-block" }} />
+              {k.emoji} {ar ? k.ar : k.en}
+            </span>
+          ))}
+        </div>
+
+        <div className="cr-glass cr-tools">
+          <button type="button" className="cr-btn" onClick={() => { setPick(null); setViewCmd({ kind: "reset", n: Date.now() }); }}>🏠 {t.reset}</button>
+          <button type="button" className="cr-btn" onClick={() => { setPick(null); setViewCmd({ kind: "top", n: Date.now() }); }}>⬇ {t.top}</button>
+        </div>
+
+        {!sel && gl && !walk.on ? <span className="cr-glass cr-hint" dir={ar ? "rtl" : "ltr"}>🖐 {t.drag}</span> : null}
+
+        {/* walk controls — hold an arrow to move */}
+        {walk.on ? (
+          <div className="cr-glass cr-walk" dir={ar ? "rtl" : "ltr"}>
+            <div className="cr-small" style={{ fontWeight: 800, textAlign: "center" }}>🚶 {t.walkHint}</div>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }} dir="ltr">
+              {[["left", "⟲"], ["fwd", "⬆"], ["back", "⬇"], ["right", "⟳"]].map(([k, icon]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="cr-btn cr-pad"
+                  onPointerDown={(e) => {
+                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+                    walkInput.current[k] = true;
+                    if (walk.auto && (k === "fwd" || k === "back")) setWalkCmd({ kind: "auto", value: false, n: Date.now() });
+                  }}
+                  onPointerUp={() => { walkInput.current[k] = false; }}
+                  onPointerCancel={() => { walkInput.current[k] = false; }}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  {icon}
+                </button>
               ))}
+              <button type="button" className="cr-btn" onClick={() => setWalkCmd({ kind: "auto", value: !walk.auto, n: Date.now() })}>
+                {walk.auto ? `⏸ ${t.walkPause}` : `▶ ${t.walkGo}`}
+              </button>
+              <button type="button" className="cr-btn pri" onClick={() => setWalkCmd({ kind: "exit", n: Date.now() })}>🚪 {t.walkExit}</button>
             </div>
-
-            <div className="cr-ctrl" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="cr-btn" onClick={() => setView((v) => ({ ...v, spin: v.spin - 45 }))}>⟲</button>
-              <button type="button" className="cr-btn" onClick={() => setView((v) => ({ ...v, spin: v.spin + 45 }))}>⟳</button>
-              <button type="button" className="cr-btn" onClick={() => setView((v) => ({ ...v, zoom: Math.max(0.6, +(v.zoom - 0.1).toFixed(2)) }))}>−</button>
-              <button type="button" className="cr-btn" onClick={() => setView((v) => ({ ...v, zoom: Math.min(1.6, +(v.zoom + 0.1).toFixed(2)) }))}>+</button>
-              <button type="button" className="cr-btn" onClick={() => setView((v) => ({ ...v, tilt: 0, spin: 0 }))}>{t.top}</button>
-              <button type="button" className="cr-btn" onClick={() => setView(VIEW0)}>{t.reset}</button>
-              <label className="cr-small" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 800 }}>
-                {t.tilt}
-                <input type="range" min="0" max="80" value={view.tilt} onChange={(e) => setView((v) => ({ ...v, tilt: Number(e.target.value) }))} />
-              </label>
-            </div>
-            <span className="cr-hint">🖐 {t.drag}</span>
           </div>
-        </div>
+        ) : null}
 
-        {/* details — a drawer over the scene, so the rooms keep the whole width */}
         {sel ? (
-        <div className="cr-card cr-drawer" style={{ padding: 16 }}>
-          {editing ? (
-            <>
-              <div className="cr-ptitle" style={{ marginBottom: 10 }}>✏️ {pick + 1}. {sel.name}</div>
-              <RoomEditor key={pick} room={sel} t={t} ar={ar} saving={saving}
-                onCancel={() => setEditing(false)} onSave={(next) => saveRoom(pick, next)} />
-              {msg ? <div className="cr-small" style={{ marginTop: 8, fontWeight: 800 }}>{msg}</div> : null}
-            </>
-          ) : (
-            <RoomDetails
-              i={pick} room={sel} live={selLive} cal={selCal} t={t} ar={ar} calibs={calibs}
-              editable={editable} msg={msg}
-              onEdit={() => { setEditing(true); setMsg(""); }}
-              onClose={() => setPick(null)}
-              onOpen={(path) => navigate(path)}
-            />
-          )}
-        </div>
+          <div className="cr-glass cr-drawer" dir={ar ? "rtl" : "ltr"}>
+            {editing ? (
+              <>
+                <div className="cr-ptitle" style={{ marginBottom: 10 }}>✏️ {pick + 1}. {sel.name}</div>
+                <RoomEditor key={pick} room={sel} t={t} ar={ar} saving={saving}
+                  onCancel={() => setEditing(false)} onSave={(next) => saveRoom(pick, next)} />
+                {msg ? <div className="cr-small" style={{ marginTop: 8, fontWeight: 800 }}>{msg}</div> : null}
+              </>
+            ) : (
+              <RoomDetails
+                i={pick} room={sel} live={live[pick]} cal={cals[pick]} t={t} ar={ar} calibs={calibs}
+                editable={editable} msg={msg}
+                onEdit={() => { setEditing(true); setMsg(""); }}
+                onClose={() => setPick(null)}
+                onOpen={(path) => navigate(path)}
+              />
+            )}
+          </div>
         ) : null}
       </div>
 
-      {/* quick list under the scene */}
-      <div className="cr-list">
-        {(rooms || []).map((r, i) => {
+      {/* the eight rooms as cards — as in the store: 5-8 on the left, 1-4 on the right */}
+      <div className="cr-strip" dir="ltr">
+        {[[4, 5, 6, 7], [0, 1, 2, 3]].map((side) => (
+        <div key={side[0]} className="cr-side" dir={ar ? "rtl" : "ltr"}>
+        {side.map((i) => {
+          const r = rooms?.[i];
+          if (!r) return null;
+          const k = kindOf(r.kind);
           const v = live[i]?.value;
           const st = STATUS[v != null ? verdict(r, v) : "none"];
+          const on = pick === i;
           return (
-            <button key={i} type="button" className="cr-btn" onClick={() => { setPick(i); setEditing(false); setMsg(""); }}
-              style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "start", borderColor: hexA(st.color, 0.5), background: pick === i ? st.bg : undefined }}>
-              <span>{i + 1}. {kindOf(r.kind).emoji} {r.name}</span>
-              <span style={{ flex: 1 }} />
-              <span style={{ color: st.color }}>{v != null ? `${v}°C` : "—"}</span>
-              {cals[i] && CAL_ICON[cals[i].state] ? <span>{CAL_ICON[cals[i].state]}</span> : null}
+            <button key={i} type="button" className="cr-room" onClick={() => choose(i)}
+              style={{ borderColor: on ? "#0ea5e9" : hexA(st.color, 0.45), boxShadow: on ? "0 0 0 3px rgba(14,165,233,.25)" : undefined }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span className="cr-chip" style={{ background: k.color, color: "#fff", padding: "1px 9px" }}>{i + 1}</span>
+                <span className="cr-rname">{r.name}</span>
+              </span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span className="cr-rtemp" style={{ color: st.color }}>{v != null ? `${v}°C` : "—"}</span>
+                <span style={{ flex: 1 }} />
+                {cals[i] && CAL_ICON[cals[i].state] ? <span>{CAL_ICON[cals[i].state]}</span> : null}
+              </span>
+              <span className="cr-small">{k.emoji} {ar ? k.ar : k.en} · {r.min}…{r.max}°C</span>
             </button>
           );
         })}
+        </div>
+        ))}
       </div>
     </div>
   );

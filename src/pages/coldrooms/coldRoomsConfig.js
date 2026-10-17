@@ -74,9 +74,10 @@ export async function seedFromQcs() {
       const d = defs?.[i];
       return {
         name: d?.label || `Room ${i + 1}`,
-        kind: FROM_QCS[d?.type] || "chiller",
-        min: d?.min,
-        max: d?.max,
+        // Room 8 is the freezer whatever the QCS sheet calls it.
+        kind: i === 7 ? "freezer" : FROM_QCS[d?.type] || "chiller",
+        min: i === 7 && d?.type !== "frozen" ? undefined : d?.min,
+        max: i === 7 && d?.type !== "frozen" ? undefined : d?.max,
         link: { branch: QCS_BRANCH, key: `cooler-${i}`, label: d?.label || `Cooler ${i + 1}` },
       };
     })
