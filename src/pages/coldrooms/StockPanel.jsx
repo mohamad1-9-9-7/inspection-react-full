@@ -46,7 +46,9 @@ const CSS = `
 .crs.crs .crs-tbl tr:hover td { background:#f8fbff; }
 .crs.crs .crs-cell { font-size:${fs(13.5)}; font-weight:700; padding:5px 7px; border-radius:7px; border:1px solid #cbd5e1; width:100%; box-sizing:border-box; font-family:inherit; background:#fff; }
 .crs.crs .crs-wrap { max-height:46vh; overflow:auto; border:1px solid #e2e8f0; border-radius:12px; }
-.crs.crs .crs-stat { font-size:${fs(22)}; font-weight:900; font-variant-numeric:tabular-nums; }
+.crs.crs .crs-stat { font-size:${fs(20)}; font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.crs.crs .crs-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:8px 12px; margin-top:8px; }
+.crs.crs .crs-tbl td.code { white-space:nowrap; font-weight:800; }
 `;
 
 export default function StockPanel({ index, room, live, stock, editable, ar, onSave }) {
@@ -117,9 +119,9 @@ export default function StockPanel({ index, room, live, stock, editable, ar, onS
       <div style={{ borderRadius: 14, padding: 12, background: `linear-gradient(135deg, ${k.color}14, #ffffff)`, border: `1px solid ${k.color}40` }}>
         <div className="cr-ptitle">🚪 {s.inside} {index + 1}. {room.name}</div>
         <div className="cr-small" style={{ marginTop: 2 }}>{k.emoji} {s.explain(ar ? k.ar : k.en.toLowerCase())}</div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+        <div className="crs-stats">
           <div><div className="cr-lbl">{s.temp}</div><div className="crs-stat" style={{ color: stColor }}>{value != null ? `${value}°C` : "—"}</div></div>
-          <div><div className="cr-lbl">{s.allowed}</div><div className="crs-stat">{room.min}…{room.max}°C</div></div>
+          <div><div className="cr-lbl">{s.allowed}</div><div className="crs-stat" dir="ltr">{room.min} … {room.max}°C</div></div>
           <div><div className="cr-lbl">{s.products}</div><div className="crs-stat">{items.length}</div></div>
           <div><div className="cr-lbl">{s.total}</div><div className="crs-stat">{totalQty(items).toLocaleString()}</div></div>
         </div>
@@ -156,7 +158,7 @@ export default function StockPanel({ index, room, live, stock, editable, ar, onS
           <table className="crs-tbl">
             <thead>
               <tr>
-                <th>{s.code}</th>
+                <th style={{ width: 1 }}>{s.code}</th>
                 <th>{s.product}</th>
                 <th>{s.uom}</th>
                 <th className="num">{s.qty}</th>
@@ -183,7 +185,7 @@ export default function StockPanel({ index, room, live, stock, editable, ar, onS
                     </>
                   ) : (
                     <>
-                      <td dir="ltr" style={{ fontWeight: 800 }}>{it.code}</td>
+                      <td dir="ltr" className="code">{it.code}</td>
                       <td dir="ltr">{it.product}</td>
                       <td dir="ltr">{it.uom}</td>
                       <td className="num" style={{ fontWeight: 800 }}>{Number(it.qty).toLocaleString()}</td>

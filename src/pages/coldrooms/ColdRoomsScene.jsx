@@ -970,9 +970,9 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
         r.beaconMat.emissiveIntensity = alarm ? 0.8 + Math.abs(Math.sin(time * 4)) * 2.2 : 0.7;
         r.glowMat.opacity = alarm ? 0.18 + Math.abs(Math.sin(time * 4)) * 0.3 : 0.22;
         r.outline.visible = r.group.userData.selected;
-        r.sprite.material.opacity = anySel && !r.group.userData.selected ? 0.3 : 1;
-        // inside a room the labels of the others would show through the walls
-        r.sprite.visible = W.inside == null;
+        r.sprite.material.opacity = 1;
+        // a selected room stands alone; inside a room the others would show through the walls
+        r.sprite.visible = W.inside == null && (!anySel || r.group.userData.selected || W.on);
         // gentle bob on the label of the selected room
         // walking: smaller labels just above the doors, so they stay in sight
         const sc = W.on ? 2.2 : 4.2;
@@ -1051,7 +1051,11 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     const door = new THREE.Vector3(p.x, 0, p.z);
     const target = door.clone().addScaledVector(p.face, -1.2).add(new THREE.Vector3(0, 2.2, 0));
     const pos = door.clone().addScaledVector(p.face, CORR + 3.5).add(new THREE.Vector3(0, 7.5, 5));
-    ctx.flyTo(pos, target);
+    // the card opens on the left: shift the view so the door sits in the right half
+    const fwd = target.clone().sub(pos).setY(0).normalize();
+    const left = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    const shift = ctx.camera.aspect > 1.2 ? 2.6 : 0;
+    ctx.flyTo(pos.addScaledVector(left, shift), target.addScaledVector(left, shift));
   }, [pick]);
 
   /* view buttons */

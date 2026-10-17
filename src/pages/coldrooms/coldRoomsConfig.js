@@ -140,6 +140,8 @@ export function verdict(room, value) {
   if (value === "" || value == null || !Number.isFinite(n)) return "none";
   if (n < room.min || n > room.max) return "out";
   const w = kindOf(room.kind).warn;
+  // colder is never a concern in a freezer — only the warm limit warns
+  if (room.kind === "freezer") return room.max - n < w ? "warn" : "ok";
   return n - room.min < w || room.max - n < w ? "warn" : "ok";
 }
 

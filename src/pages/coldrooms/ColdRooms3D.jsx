@@ -54,7 +54,7 @@ const TX = {
     name: "Room name", kind: "Kind", min: "Min °C", max: "Max °C", none_: "— none —",
     save: "Save", cancel: "Cancel", saving: "Saving…", saved: "Saved", loadErr: "Could not read the log",
     pick: "Click a room to see its details", reset: "Reset view", top: "Top view", tilt: "Tilt",
-    by: "by", recheck: "recheck", loadingUnits: "Loading units…", firstRun: "Rooms seeded from the QCS cooler setup — save to keep them.",
+    by: "by", daysAgo: (n) => `${n} day(s) ago`, daysLeft: (n) => `in ${n} day(s)`, recheck: "recheck", loadingUnits: "Loading units…", firstRun: "Rooms seeded from the QCS cooler setup — save to keep them.",
     drag: "Drag to rotate · wheel to zoom · right-drag to pan", noWebgl: "This device cannot show 3D (WebGL is off).", unlinked: "Not linked", walk: "Click to walk", walkExit: "Exit walk", walkPause: "Stop", walkGo: "Walk", openDoor: "Open door", closeDoor: "Close door", insideHint: "You are inside — walk back out through the door", tabInfo: "Details", tabStock: "Goods", walkHint: "W/S or ↑/↓ to walk · A/D or ←/→ to turn · drag to look around",
   },
   ar: {
@@ -69,7 +69,7 @@ const TX = {
     name: "اسم الغرفة", kind: "النوع", min: "الحد الأدنى °C", max: "الحد الأعلى °C", none_: "— بدون —",
     save: "حفظ", cancel: "إلغاء", saving: "جارٍ الحفظ…", saved: "تم الحفظ", loadErr: "تعذّر قراءة السجل",
     pick: "اضغط على غرفة لعرض تفاصيلها", reset: "إعادة العرض", top: "منظر علوي", tilt: "الميل",
-    by: "بواسطة", recheck: "إعادة فحص", loadingUnits: "تحميل الوحدات…", firstRun: "تمت تعبئة الغرف من إعداد مبردات QCS — اضغط حفظ لتثبيتها.",
+    by: "بواسطة", daysAgo: (n) => `منذ ${n} يوم`, daysLeft: (n) => `بعد ${n} يوم`, recheck: "إعادة فحص", loadingUnits: "تحميل الوحدات…", firstRun: "تمت تعبئة الغرف من إعداد مبردات QCS — اضغط حفظ لتثبيتها.",
     drag: "اسحب للتدوير · العجلة للتقريب · زر يمين للتحريك", noWebgl: "هذا الجهاز لا يدعم العرض ثلاثي الأبعاد (WebGL متوقف).", unlinked: "غير مربوطة", walk: "اضغط لتمشي", walkExit: "خروج من المشي", walkPause: "توقف", walkGo: "امشِ", openDoor: "افتح الباب", closeDoor: "سكّر الباب", insideHint: "أنت داخل الغرفة — ارجع من الباب لتطلع", tabInfo: "التفاصيل", tabStock: "البضاعة", walkHint: "W/S أو ↑/↓ للمشي · A/D أو ←/→ للالتفاف · اسحب للنظر حولك",
   },
 };
@@ -120,7 +120,7 @@ const CSS = `
 .cr3.cr3 .cr-kind { font-size:${fs(14)}; font-weight:800; border-radius:10px; padding:8px 6px; cursor:pointer; border:2px solid #e2e8f0; background:#fff; font-family:inherit; }
 .cr3.cr3 .cr-stage { position:relative; margin-top:12px; height:calc(100vh - 118px); min-height:520px; border-radius:20px; overflow:hidden; border:1px solid #dbeafe; box-shadow:0 12px 34px rgba(14,116,144,.12); background:#e8f3fb; }
 .cr3.cr3 .cr-glass { background:rgba(255,255,255,.9); backdrop-filter:blur(8px); border:1px solid rgba(219,234,254,.9); border-radius:16px; box-shadow:0 8px 26px rgba(15,23,42,.10); }
-.cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; bottom:12px; width:370px; max-width:calc(100% - 24px); overflow:auto; z-index:5; padding:16px; box-sizing:border-box; }
+.cr3.cr3 .cr-drawer { position:absolute; top:12px; left:12px; width:380px; max-width:calc(100% - 24px); max-height:calc(100% - 84px); overflow:auto; z-index:5; padding:16px; box-sizing:border-box; }
 .cr3.cr3 .cr-drawer.wide { width:min(620px, calc(100% - 24px)); }
 .cr3.cr3 .cr-tools { position:absolute; right:12px; bottom:12px; display:flex; gap:6px; z-index:4; padding:6px; }
 .cr3.cr3 .cr-legend { position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:5px; z-index:4; padding:8px 10px; }
@@ -273,7 +273,15 @@ export default function ColdRooms3D() {
       const got = await fetchRooms(ctrl.signal);
       if (ctrl.signal.aborted) return;
       if (got) { setRooms(got.rooms); setSeeded(false); return; }
-      if (!loadCache()) { setRooms(await seedFromQcs()); setSeeded(true); }
+      if (!loadCache()) {
+        const seed = await seedFromQcs();
+        if (ctrl.signal.aborted) return;
+        setRooms(seed);
+        if (canEdit("coldRooms")) {
+          const u = getCurrentUser();
+          saveRooms(seed, u.username || u.name || "").then(() => setSeeded(false)).catch(() => setSeeded(true));
+        } else setSeeded(true);
+      }
     })();
     return () => ctrl.abort();
   }, []);
@@ -476,7 +484,6 @@ export default function ColdRooms3D() {
                 i={pick} room={sel} live={live[pick]} cal={cals[pick]} t={t} ar={ar} calibs={calibs}
                 editable={editable} msg={msg}
                 onEdit={() => { setEditing(true); setMsg(""); }}
-                onClose={() => setPick(null)}
                 onOpen={(path) => navigate(path)}
               />
             )}
@@ -518,7 +525,7 @@ export default function ColdRooms3D() {
   );
 }
 
-function RoomDetails({ i, room, live, cal, t, ar, calibs, editable, msg, onEdit, onClose, onOpen }) {
+function RoomDetails({ i, room, live, cal, t, ar, calibs, editable, msg, onEdit, onOpen }) {
   const k = kindOf(room.kind);
   const st = live?.value != null ? verdict(room, live.value) : "none";
   const S = STATUS[st];
@@ -528,8 +535,6 @@ function RoomDetails({ i, room, live, cal, t, ar, calibs, editable, msg, onEdit,
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className="cr-chip" style={{ background: hexA(k.color, 0.12), color: k.color }}>{k.emoji} {ar ? k.ar : k.en}</span>
-        <span style={{ flex: 1 }} />
-        <button type="button" className="cr-btn" onClick={onClose}>✕</button>
       </div>
       <div className="cr-ptitle">{i + 1}. {room.name}</div>
 
@@ -577,7 +582,7 @@ function RoomDetails({ i, room, live, cal, t, ar, calibs, editable, msg, onEdit,
             <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px" }} className="cr-small">
               <span>{t.equipment}</span><b>{p.equipmentName || "—"}</b>
               <span>{t.lastCal}</span><b>{fmtDay(p.lastCalibrationDate)}</b>
-              <span>{t.nextDue}</span><b>{fmtDay(p.nextDueDate)}{cal.days != null ? ` (${cal.days})` : ""}</b>
+              <span>{t.nextDue}</span><b>{fmtDay(p.nextDueDate)}{cal.days != null ? ` · ${cal.days < 0 ? t.daysAgo(-cal.days) : t.daysLeft(cal.days)}` : ""}</b>
               <span>{t.result}</span><b style={{ color: p.result === "FAIL" ? "#b91c1c" : "#047857" }}>{p.result || "—"}</b>
             </div>
           ) : calibs ? <div className="cr-small">{t.notRecorded}</div> : null}
