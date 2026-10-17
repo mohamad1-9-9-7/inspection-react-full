@@ -98,7 +98,7 @@ const T = {
     closePrint: "Close",
     recheckWord: "recheck",
     tabTemp: "🌡️ Temperature",
-    tabGoods: "📦 Goods",
+    tabGoods: "📦 Products",
     noUnits: "No units yet — fill the full sheet once (or add the units there) and they appear here with their QR.",
   },
   ar: {
@@ -148,7 +148,7 @@ const T = {
     closePrint: "إغلاق",
     recheckWord: "إعادة فحص",
     tabTemp: "🌡️ الحرارة",
-    tabGoods: "📦 البضاعة",
+    tabGoods: "📦 المنتجات",
     noUnits: "لا توجد وحدات بعد — عبّئ السجل الكامل مرة واحدة (أو أضف الوحدات هناك) لتظهر هنا مع رمز QR.",
   },
 };
