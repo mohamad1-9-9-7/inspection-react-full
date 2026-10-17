@@ -11,7 +11,8 @@
 // One config record for the company:
 //   type = barcode_map , payload.reportDate = "map"
 //   payload.map = { "07891515408688": { code, product, uom, by, at } }
-// Saving re-reads the record and adds/replaces only its own barcode.
+// Saving re-reads the record and adds/replaces only its own barcode;
+// unlinkBarcode removes a wrong link (the barcode is "new" again).
 // localStorage holds a copy for a fast / offline lookup (cache only).
 //
 // offHint(gtin): the product's name from Open Food Facts when it is listed —
@@ -61,6 +62,17 @@ export async function linkBarcode(gtin, item, user = "") {
     by: user || "",
     at: new Date().toISOString(),
   };
+  return writeMap(map, user);
+}
+
+/** Removes a wrong link: the barcode is "new" again on every phone. */
+export async function unlinkBarcode(gtin, user = "") {
+  const map = await readRecord();
+  delete map[toGtin14(gtin)];
+  return writeMap(map, user);
+}
+
+async function writeMap(map, user) {
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Accept: "application/json" },

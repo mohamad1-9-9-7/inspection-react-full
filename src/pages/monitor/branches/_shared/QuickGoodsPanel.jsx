@@ -25,7 +25,7 @@ import { useShelfLife } from "./shelfLife";
 import { fetchSuppliers } from "../../../complaints/complaintsCore";
 import BarcodeScanner from "../../../../components/BarcodeScanner";
 import { parseBarcode } from "../../../../utils/gs1Barcode";
-import { fetchBarcodeMap, linkBarcode, offHint } from "../../../../utils/barcodeMap";
+import { fetchBarcodeMap, linkBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
 
 const TX = {
   en: {
@@ -54,6 +54,8 @@ const TX = {
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
     fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one carton)`,
     linkFail: "The barcode could not be linked (no connection) — the product is chosen for this time only.",
+    wrongLink: "Wrong product? Change the link", removeLink: "Remove the link", relink: "Choose the right product below — the barcode will be linked to it.",
+    removed: "🗑 Link removed — the barcode is new again on every phone.", removeAsk: (g, p) => `Remove the link between barcode ${g} and ${p}?`, unlinkFail: "Could not remove the link (no connection).",
     queued: "📴 No connection — the move is kept on this phone and will be sent automatically.",
     offline: "📴 No connection — showing the list as last seen on this phone.",
   },
@@ -77,6 +79,8 @@ const TX = {
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
     fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (كرتونة وحدة)`,
     linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
+    wrongLink: "منتج غلط؟ غيّر الربط", removeLink: "احذف الربط", relink: "اختار المنتج الصح من تحت — الباركود رح ينربط فيه.",
+    removed: "🗑 انحذف الربط — صار الباركود جديد على كل التلفونات.", removeAsk: (g, p) => `بدك تحذف الربط بين الباركود ${g} و ${p}؟`, unlinkFail: "ما قدرنا نحذف الربط (ما في نت).",
     pcs: "عدد الحبات (إذا متوفر)", pcsOut: "عدد الحبات الخارجة (إذا متوفر)", pcsShort: "حبة", expShort: "ينتهي",
     needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
     badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
@@ -163,6 +167,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [linkGtin, setLinkGtin] = useState(""); // unknown barcode → the next product chosen is linked to it
   const [worldName, setWorldName] = useState("");
   const [scanNote, setScanNote] = useState("");
+  const [known, setKnown] = useState(null); // { gtin, label } — the scanned barcode was already linked
   const [suppliers, setSuppliers] = useState(null);
   const [fefoOk, setFefoOk] = useState(false);
   const shelf = useShelfLife();
@@ -273,7 +278,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); setFefoOk(false);
-    setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote("");
+    setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
   // the learned barcode list — loaded when products start coming in
@@ -305,11 +310,11 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (hit && hit.code) {
       const cat = catalog.find((c) => c.code === hit.code);
       const it = { code: hit.code, product: cat?.product || hit.product, uom: cat?.uom || hit.uom };
-      setLinkGtin(""); setWorldName("");
+      setLinkGtin(""); setWorldName(""); setKnown({ gtin: r.gtin, label: it.product || it.code });
       setPick({ ...it, have: haveOf(it.code, it.product)?.qty || 0 });
       setScanNote([s.known(it.product || it.code), note].filter(Boolean).join(" — "));
     } else {
-      setPick(null);
+      setPick(null); setKnown(null);
       setLinkGtin(r.gtin);
       setScanNote(note);
       setWorldName("");
@@ -322,6 +327,26 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (m) window.scrollTo({ top: 0, behavior: "smooth" });
   };
   // goods out: that exact lot; goods in: the product (the lot is typed)
+  /* A wrong link: "change" puts the barcode back in learning mode — the
+     product chosen next replaces the link; "remove" deletes it for every phone. */
+  const relink = () => {
+    if (!known) return;
+    setLinkGtin(known.gtin); setKnown(null); setPick(null);
+    setScanNote(s.relink);
+  };
+  const removeLink = async () => {
+    if (!known) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(s.removeAsk(known.gtin.replace(/^0/, ""), known.label))) return;
+    try {
+      setCodeMap(await unlinkBarcode(known.gtin, userName()));
+      setKnown(null); setPick(null); setGtin("");
+      setScanNote(s.removed);
+    } catch {
+      setMsg({ kind: "bad", text: s.unlinkFail });
+    }
+  };
+
   // a new barcode waiting: the product chosen now is learned for it (company-wide)
   const learn = async (it) => {
     const g = linkGtin;
@@ -424,7 +449,17 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
             {worldName ? <div className="sm" style={{ marginTop: 4 }} dir="ltr">{s.worldName(worldName)}</div> : null}
           </div>
         )}
-        {!isOut && scanNote && <div className="alert ok">{scanNote}</div>}
+        {!isOut && scanNote && (
+          <div className="alert ok">
+            <div>{scanNote}</div>
+            {known ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <button type="button" className="btn" onClick={relink} disabled={saving}>✏️ {s.wrongLink}</button>
+                <button type="button" className="btn" onClick={removeLink} disabled={saving} style={{ color: "#b91c1c" }}>🗑 {s.removeLink}</button>
+              </div>
+            ) : null}
+          </div>
+        )}
         <BarcodeScanner open={scanOpen} lang={lang} onResult={onScan} onClose={() => setScanOpen(false)} />
 
         {pick ? (
