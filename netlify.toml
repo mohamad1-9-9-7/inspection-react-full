@@ -4,6 +4,12 @@
 
 [build.environment]
   PUBLIC_URL = "/"
+  # The build ran out of memory on Netlify (Oct 2026, after three.js + the
+  # barcode reader joined the bundle): Node's default heap (~2 GB) is not
+  # enough for react-scripts with source maps. No production source maps
+  # (the main memory cost — same as the local .env) and a 4 GB heap.
+  GENERATE_SOURCEMAP = "false"
+  NODE_OPTIONS = "--max-old-space-size=4096"
 
 [[redirects]]
   from = "/api/*"
