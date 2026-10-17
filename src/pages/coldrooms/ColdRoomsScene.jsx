@@ -17,16 +17,13 @@
 //   lang    "ar" | "en"
 //   t       text dictionary (for "No reading" / "Not linked")
 //   viewCmd { kind: "reset" | "top", n }    a new n triggers the move
-//   walkCmd { kind: "exit" | "auto", n }     drives the walk mode
-//   walkInput  ref { fwd, back, left, right } held by the on-screen buttons
-//   onWalk     ({ on, auto, near, inside, open }) => void   walk mode changed
-//   stock      { [roomIndex]: { items } }     drawn as cartons on the racks
+//   stock      { [roomIndex]: { items } }     drawn as cartons on the racks;
+//                                             the count shows on each label
 //   onPick(i, { door })                      door = the click was on the door
-//   walkCmd also takes { kind: "door" } to open / close the door he stands at
 //
-// Walk mode: a person stands at the entrance of the corridor. Clicking him
-// puts the camera at his eye height and he starts walking down the corridor;
-// W/S or ↑/↓ walk, A/D or ←/→ turn, dragging looks around.
+// Home view = a tidy view from above with all eight labels. Picking a room
+// flies to it and slides its door open (its light comes on inside).
+// The walking worker and walk mode were removed (user, 18 Oct 2026).
 
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
@@ -55,16 +52,8 @@ const FONT = '"Segoe UI", Tahoma, Arial, sans-serif';
    entrance (positive z), 4 and 8 at the far end. */
 const slotZ = (n) => (1.5 - n) * (RW + GAP);
 
-/* The entrance of the corridor, where the walker waits. */
-const ENTRY_Z = slotZ(0) + RW / 2 + 2.4;
-const WALK = {
-  eye: 1.65,
-  speed: 1.5, // m/s — a calm walk
-  turn: 1.6,  // rad/s
-  xMax: CORR / 2 - 0.45,
-  zMin: slotZ(3) - RW / 2 - 0.6,
-  zMax: ENTRY_Z + 1.5,
-};
+/* The wall that closes the far end of the corridor. */
+const END_Z = slotZ(3) - RW / 2 - 1.3;
 
 /* Racks inside a room: one along each side wall, one double rack in the middle. */
 const RACK_X = RW / 2 - WT - 0.38;
@@ -182,7 +171,7 @@ function paintScreen(slot, { value, status, kindEmoji }) {
 }
 
 /** The floating label that faces the camera. */
-function paintLabel(slot, { num, name, kind, value, status, cal, lang, t, linked, selected }) {
+function paintLabel(slot, { num, name, kind, value, status, cal, lang, t, linked, selected, count = 0 }) {
   const { c, tex } = slot;
   const g = c.getContext("2d");
   const W = c.width;
@@ -245,7 +234,8 @@ function paintLabel(slot, { num, name, kind, value, status, cal, lang, t, linked
   g.font = `800 38px ${FONT}`;
   g.direction = ar ? "rtl" : "ltr";
   g.fillStyle = "#64748b";
-  const sub = !linked ? `🔗 ${t.unlinked}` : value == null ? t.none : cal === "expired" ? `⛔ ${t.calibExpired}` : cal === "soon" ? `⏳ ${t.calib}` : cal === "ok" ? `🎯 ${t.calib} ✓` : "";
+  const state = !linked ? `🔗 ${t.unlinked}` : value == null ? t.none : cal === "expired" ? `⛔ ${t.calibExpired}` : cal === "soon" ? `⏳ ${t.calib}` : cal === "ok" ? `🎯 ${t.calib} ✓` : "";
+  const sub = [count ? `📦 ${count}` : "", state].filter(Boolean).join("  ·  ");
   if (sub) g.fillText(sub, W / 2, 292);
   tex.needsUpdate = true;
 }
@@ -500,125 +490,13 @@ function fillCartons(r, items) {
   });
 }
 
-/* ══════════════════════════════════════ The walker */
-
-function buildPerson() {
-  const g = new THREE.Group();
-  const body = new THREE.Group(); // everything that breathes / turns
-  g.add(body);
-  const m = (color, extra) => new THREE.MeshStandardMaterial({ color, roughness: 0.65, ...extra });
-  const coat = m("#f8fafc", { roughness: 0.8 });
-  const trousers = m("#1e3a8a");
-  const boots = m("#ffffff", { roughness: 0.4 });
-  const skin = m("#d9a066");
-  const hair = m("#2b1d14");
-  const net = m("#93c5fd", { roughness: 0.9 });
-  const dark = m("#0f172a");
-  const add = (parent, geo, mat, x, y, z) => {
-    const o = new THREE.Mesh(geo, mat);
-    o.position.set(x, y, z);
-    o.castShadow = true;
-    parent.add(o);
-    return o;
-  };
-  const cap = (rad, len) => new THREE.CapsuleGeometry(rad, len, 6, 14);
-
-  // legs + white boots
-  [-0.1, 0.1].forEach((x) => {
-    add(body, cap(0.075, 0.62), trousers, x, 0.5, 0);
-    const b = add(body, cap(0.065, 0.12), boots, x, 0.08, 0.04);
-    b.rotation.x = Math.PI / 2;
-  });
-  // white coat: body + skirt to the knee, buttons, pocket, ID badge
-  add(body, cap(0.19, 0.42), coat, 0, 1.22, 0).scale.set(1, 1, 0.75);
-  add(body, new THREE.CylinderGeometry(0.2, 0.25, 0.45, 20, 1, true), coat, 0, 0.82, 0).scale.set(1, 1, 0.75);
-  [1.36, 1.22, 1.08, 0.94].forEach((y) => add(body, new THREE.SphereGeometry(0.014, 8, 6), dark, 0, y, 0.152));
-  add(body, new THREE.BoxGeometry(0.1, 0.08, 0.01), m("#e2e8f0"), -0.09, 1.3, 0.145);
-  add(body, new THREE.BoxGeometry(0.06, 0.085, 0.01), m("#0284c7"), 0.1, 1.3, 0.148);
-  // arms: upper + fore arm in the coat, hands; the right one holds a clipboard
-  const arm = (sx, bend) => {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(sx * 0.25, 1.43, 0);
-    body.add(shoulder);
-    const upper = add(shoulder, cap(0.06, 0.26), coat, 0, -0.17, 0);
-    upper.rotation.z = sx * 0.12;
-    const elbow = new THREE.Group();
-    elbow.position.set(sx * 0.035, -0.34, 0);
-    elbow.rotation.x = -bend;
-    shoulder.add(elbow);
-    add(elbow, cap(0.052, 0.24), coat, 0, -0.15, 0);
-    add(elbow, new THREE.SphereGeometry(0.052, 12, 10), skin, 0, -0.32, 0);
-    return elbow;
-  };
-  arm(-1, 0.15);
-  const holding = arm(1, 1.2);
-  const board = add(holding, new THREE.BoxGeometry(0.22, 0.3, 0.015), m("#8b5a2b"), -0.02, -0.33, 0.1);
-  board.rotation.x = 0.35;
-  add(board, new THREE.BoxGeometry(0.19, 0.25, 0.005), m("#ffffff"), 0, -0.01, 0.01).castShadow = false;
-  add(board, new THREE.BoxGeometry(0.08, 0.03, 0.02), m("#94a3b8"), 0, 0.14, 0.01);
-  // neck, head, face, hair under a blue hair net
-  add(body, new THREE.CylinderGeometry(0.055, 0.06, 0.09, 12), skin, 0, 1.6, 0);
-  const head = new THREE.Group();
-  head.position.set(0, 1.74, 0);
-  body.add(head);
-  add(head, new THREE.SphereGeometry(0.115, 24, 18), skin, 0, 0, 0).scale.set(0.92, 1.08, 1);
-  [-0.04, 0.04].forEach((x) => add(head, new THREE.SphereGeometry(0.014, 8, 6), dark, x, 0.015, 0.103));
-  add(head, new THREE.SphereGeometry(0.018, 8, 6), skin, 0, -0.015, 0.112);
-  [-1, 1].forEach((sx) => add(head, new THREE.SphereGeometry(0.025, 8, 6), skin, sx * 0.105, 0, 0).scale.set(0.5, 1, 0.8));
-  add(head, new THREE.SphereGeometry(0.118, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.1), hair, 0, 0.02, -0.01);
-  add(head, new THREE.SphereGeometry(0.128, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2.3), net, 0, 0.035, -0.012);
-
-  g.userData.parts = { body, head };
-  // a pulsing ring on the floor that says "click me"
-  const ringMat = new THREE.MeshBasicMaterial({ color: "#0ea5e9", transparent: true, opacity: 0.6, depthWrite: false });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.55, 40), ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.012;
-  g.add(ring);
-
-  // a tall invisible box makes him easy to hit
-  const hit = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2, 0.9), new THREE.MeshBasicMaterial({ visible: false }));
-  hit.position.y = 1;
-  g.add(hit);
-
-  const label = canvasTex(560, 150);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: label.tex, depthTest: false, toneMapped: false }));
-  sprite.renderOrder = 11;
-  sprite.scale.set(2.4, 2.4 * (150 / 560), 1);
-  sprite.position.y = 2.35;
-  g.add(sprite);
-
-  g.traverse((o) => { o.userData.person = true; });
-  return { group: g, pick: [hit, sprite], ring, ringMat, label, body, head };
-}
-
-function paintPersonLabel(slot, text, ar) {
-  const { c, tex } = slot;
-  const g = c.getContext("2d");
-  g.clearRect(0, 0, c.width, c.height);
-  roundRect(g, 10, 10, c.width - 20, c.height - 20, 60);
-  g.fillStyle = "#0284c7";
-  g.fill();
-  g.fillStyle = "#fff";
-  g.font = `800 54px ${FONT}`;
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.direction = ar ? "rtl" : "ltr";
-  g.fillText(`🚶 ${text}`, c.width / 2, c.height / 2 + 2);
-  tex.needsUpdate = true;
-}
-
 /* ══════════════════════════════════════ Component */
 
-export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, t, viewCmd, walkCmd, walkInput, onWalk, stock }) {
+export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, t, viewCmd, stock }) {
   const hostRef = useRef(null);
   const ctxRef = useRef(null);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
-  const onWalkRef = useRef(onWalk);
-  onWalkRef.current = onWalk;
-  const inputRef = useRef(walkInput);
-  inputRef.current = walkInput;
 
   /* build the scene once */
   useEffect(() => {
@@ -638,27 +516,27 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#e8f3fb");
-    scene.fog = new THREE.Fog("#e8f3fb", 55, 110);
+    scene.fog = new THREE.Fog("#e8f3fb", 70, 130);
 
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
-    // standing at the entrance, looking down the corridor
-    const HOME = { pos: new THREE.Vector3(0, 26, 34), target: new THREE.Vector3(0, 0, -3) };
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 220);
+    // HOME = a tidy view from above: all eight rooms and their labels at once
+    const HOME = { pos: new THREE.Vector3(0, 46, 16), target: new THREE.Vector3(0, 0, -1) };
     camera.position.copy(HOME.pos);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.copy(HOME.target);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI / 2.08;
-    controls.minDistance = 6;
-    controls.maxDistance = 60;
+    controls.maxPolarAngle = Math.PI / 2.15;
+    controls.minDistance = 8;
+    controls.maxDistance = 80;
     controls.screenSpacePanning = false;
     controls.update();
 
     // light
-    scene.add(new THREE.HemisphereLight("#ffffff", "#cbd5e1", 1.1));
-    const sun = new THREE.DirectionalLight("#ffffff", 1.6);
-    sun.position.set(12, 22, 14);
+    scene.add(new THREE.HemisphereLight("#ffffff", "#cbd5e1", 1.15));
+    const sun = new THREE.DirectionalLight("#ffffff", 1.5);
+    sun.position.set(12, 30, 14);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -26;
@@ -666,7 +544,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     sun.shadow.camera.top = 24;
     sun.shadow.camera.bottom = -24;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 70;
+    sun.shadow.camera.far = 80;
     sun.shadow.bias = -0.0004;
     sun.shadow.radius = 4;
     scene.add(sun);
@@ -681,7 +559,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
-    // corridor: lighter epoxy strip + yellow safety lines + arrows
+    // corridor: lighter epoxy strip + green safety lines + arrows
     const corrLen = 4 * RW + 3 * GAP + 3;
     const corr = new THREE.Mesh(new THREE.PlaneGeometry(CORR - 0.4, corrLen), new THREE.MeshStandardMaterial({ color: "#cfd8e1", roughness: 0.22, metalness: 0.08 }));
     corr.rotation.x = -Math.PI / 2;
@@ -698,7 +576,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     const endTex = panelTexture();
     endTex.repeat.set(4, 1);
     const endWall = new THREE.Mesh(new THREE.BoxGeometry(CORR + 0.3, RH, WT), new THREE.MeshStandardMaterial({ map: endTex, roughness: 0.55 }));
-    endWall.position.set(0, RH / 2, WALK.zMin - 0.7);
+    endWall.position.set(0, RH / 2, END_Z);
     endWall.castShadow = true;
     endWall.receiveShadow = true;
     scene.add(endWall);
@@ -739,7 +617,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       r.group.rotation.y = p.rotY;
       r.pick.forEach((m) => { m.userData.room = i; });
       r.index = i;
-      r.place = placement(i);
+      r.place = p;
       scene.add(r.group);
       return r;
     });
@@ -748,147 +626,36 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     const roomLight = new THREE.PointLight("#ffffff", 0, 12, 1.3);
     scene.add(roomLight);
 
-    // the walker, waiting at the entrance and facing into the store
-    const person = buildPerson();
-    person.group.position.set(0, 0, ENTRY_Z);
-    person.group.rotation.y = Math.PI;
-    scene.add(person.group);
-
-    /* walk mode state */
-    const W = { on: false, pending: false, auto: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.04, dist: 0, turning: 0, near: null, inside: null, path: [], faceYaw: null };
-    const keys = new Set();
-    const emitWalk = () => {
-      const near = W.near != null ? roomObjs[W.near] : null;
-      onWalkRef.current?.({ on: W.on || W.pending, auto: W.auto, near: W.near, inside: W.inside, open: !!(near && near.doorTarget) });
-    };
-
-    /* where he may stand: the corridor, plus the doorway and inside of any open room */
-    const toLocal = (r, x, z) => {
-      const dx = x - r.place.x;
-      const dz = z - r.place.z;
-      const c = Math.cos(r.place.rotY);
-      const sn = Math.sin(r.place.rotY);
-      // inverse of the group's rotation about y
-      return { x: dx * c - dz * sn, z: dx * sn + dz * c };
-    };
-    const canStand = (x, z) => {
-      if (Math.abs(x) <= WALK.xMax && z >= WALK.zMin && z <= WALK.zMax) return true;
-      return roomObjs.some((r) => {
-        if (r.doorOpen < 0.6) return false; // only through a door that is open
-        const l = toLocal(r, x, z);
-        const doorway = Math.abs(l.x - DOOR_X) <= DW / 2 - 0.3 && l.z <= 0.9 && l.z >= -0.6;
-        const room = l.z <= -0.35 && l.z >= -RD + WT + 0.45;
-        // keep him off the racks: the two aisles, and the front strip before the middle rack
-        const ax = Math.abs(l.x);
-        const aisle = room && ax <= RACK_X - 0.55 && (ax >= MID_RACK + 0.55 || l.z > MID_Z0 + 0.4);
-        return doorway || aisle;
-      });
-    };
-    const whereIs = (x, z) => {
-      let near = null;
-      let best = Infinity;
-      let inside = null;
-      const fx = -Math.sin(W.yaw);
-      const fz = -Math.cos(W.yaw);
-      roomObjs.forEach((r, i) => {
-        const l = toLocal(r, x, z);
-        if (l.z < -0.4 && Math.abs(l.x) < RW / 2 && l.z > -RD) inside = i;
-        const d = Math.hypot(l.x - DOOR_X, Math.max(0, l.z));
-        if (l.z <= -0.6 || d >= 2.8) return;
-        // two doors face each other: the one he looks at wins
-        const dw = localToWorld(r.place, DOOR_X, 0);
-        const vx = dw.x - x;
-        const vz = dw.z - z;
-        const facing = (vx * fx + vz * fz) / (Math.hypot(vx, vz) || 1);
-        const score = d - facing * 1.5;
-        if (score < best) { best = score; near = i; }
-      });
-      return { near: inside != null ? inside : near, inside };
-    };
-    /* room-local point → world */
-    const toWorld = (rm, lx, lz) => localToWorld(rm.place, lx, lz);
-    const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
-    const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
-
-    /* walk on his own to the front of room i's door and face it */
-    const walkTo = (i) => {
-      const rm = roomObjs[i];
-      if (!W.on || !rm || W.inside === i) return;
-      const path = [];
-      // inside another room: out through its door first
-      if (W.inside != null) {
-        const out = roomObjs[W.inside];
-        path.push(toWorld(out, DOOR_X, -1.2), toWorld(out, DOOR_X, 1.0));
-      }
-      // the middle of the corridor, square to the door: the whole door and
-      // its display in view
-      const stand = toWorld(rm, DOOR_X, CORR / 2);
-      stand.x = Math.max(-WALK.xMax, Math.min(WALK.xMax, stand.x));
-      path.push(stand);
-      W.path = path;
-      W.faceYaw = yawTo(-rm.place.face.x, -rm.place.face.z);
-      W.auto = false;
-      W.turning = 0;
-      emitWalk();
-    };
-
-    const setDoor = (i, open) => {
-      const r = roomObjs[i];
-      if (!r) return;
-      r.doorTarget = open ? 1 : 0;
-      emitWalk();
-    };
-    const lookDir = () => new THREE.Vector3(-Math.sin(W.yaw) * Math.cos(W.pitch), Math.sin(W.pitch), -Math.cos(W.yaw) * Math.cos(W.pitch));
-
     // picking
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const pickables = [...roomObjs.flatMap((r) => r.pick), ...person.pick];
+    const pickables = roomObjs.flatMap((r) => r.pick);
     const hitAt = (ev) => {
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
       ray.setFromCamera(ndc, camera);
-      const hit = ray.intersectObjects(pickables.filter((o) => o.visible !== false && (!o.userData.person || person.group.visible)), false)[0];
-      if (!hit) return null;
-      if (hit.object.userData.person) return "person";
-      return { room: hit.object.userData.room, door: !!hit.object.userData.door };
+      const hit = ray.intersectObjects(pickables.filter((o) => o.visible !== false), false)[0];
+      return hit ? { room: hit.object.userData.room, door: !!hit.object.userData.door } : null;
     };
     let down = null;
     let hover = null;
-    const onDown = (e) => { down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY }; };
+    const onDown = (e) => { down = { x: e.clientX, y: e.clientY }; };
     const onUp = (e) => {
       if (!down) return;
       const moved = Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y);
       down = null;
-      if (moved > 6) return;
+      if (moved > 6) return; // a drag turned the view, not a click
       const h = hitAt(e);
-      if (h === "person") { startWalk(); return; }
-      // walking: a click on the door he stands at opens / closes it
-      if (W.on && h && h.door && W.near === h.room && W.inside == null && !W.path.length) {
-        setDoor(h.room, !roomObjs[h.room].doorTarget);
-        return;
-      }
-      // walking: a click on any other room takes him there
-      if (W.on && h) walkTo(h.room);
       onPickRef.current?.(h ? h.room : null, { door: !!(h && h.door) });
     };
     let hoverQueued = false;
     const onMove = (e) => {
-      if (down && W.on) {
-        // look around while walking
-        W.yaw -= (e.clientX - down.lx) * 0.004;
-        W.pitch = Math.max(-0.9, Math.min(0.9, W.pitch - (e.clientY - down.ly) * 0.004));
-        down.lx = e.clientX;
-        down.ly = e.clientY;
-        return;
-      }
       if (hoverQueued || down) return;
       hoverQueued = true;
       requestAnimationFrame(() => {
         hoverQueued = false;
-        const hh = hitAt(e);
-        const h = hh && typeof hh === "object" ? hh.room : hh;
+        const h = hitAt(e)?.room ?? null;
         if (h !== hover) {
           hover = h;
           renderer.domElement.style.cursor = h == null ? "grab" : "pointer";
@@ -900,30 +667,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     renderer.domElement.addEventListener("pointermove", onMove);
     renderer.domElement.style.cursor = "grab";
 
-    const WALK_KEYS = ["w", "a", "s", "d", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"];
-    const onKey = (e) => {
-      if (!W.on) return;
-      const k = String(e.key || "").toLowerCase();
-      if (!WALK_KEYS.includes(k)) return;
-      const tag = (e.target && e.target.tagName) || "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      e.preventDefault();
-      if (e.type === "keydown" && k === "e") {
-        if (!e.repeat && W.near != null) setDoor(W.near, !roomObjs[W.near].doorTarget);
-        return;
-      }
-      if (e.type === "keydown") {
-        keys.add(k);
-        // any key of his own takes over from the automatic or guided walk
-        W.path = [];
-        W.faceYaw = null;
-        if (W.auto) { W.auto = false; emitWalk(); }
-      } else keys.delete(k);
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKey);
-
-    // size
+    // size: a narrow (phone) screen widens the lens so all eight rooms stay in view
     const resize = () => {
       const w = host.clientWidth || 1;
       const h = host.clientHeight || 1;
@@ -931,8 +675,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       renderer.domElement.style.width = `${w}px`;
       renderer.domElement.style.height = `${h}px`;
       camera.aspect = w / h;
-      // a narrow screen backs the camera off so all eight rooms stay in view
-      camera.fov = w / h < 1 ? 58 : w / h < 1.4 ? 48 : 42;
+      camera.fov = w / h < 0.8 ? 66 : w / h < 1.2 ? 54 : w / h < 1.6 ? 46 : 40;
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(resize);
@@ -942,46 +685,6 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     // camera fly-to
     const fly = { pos: null, target: null };
     const flyTo = (pos, target) => { fly.pos = pos.clone(); fly.target = target.clone(); };
-
-    function startWalk() {
-      if (W.on || W.pending) return;
-      W.pos.set(0, 0, ENTRY_Z);
-      W.yaw = 0;
-      W.pitch = -0.04;
-      W.dist = 0;
-      W.turning = 0;
-      W.pending = true;
-      W.auto = true;
-      // he becomes the camera: hide him (and his label) as the camera flies in
-      person.group.visible = false;
-      keys.clear();
-      // the orbit limits would stop the camera short of his eyes
-      controls.minDistance = 0.1;
-      controls.maxPolarAngle = Math.PI;
-      const eye = new THREE.Vector3(0, WALK.eye, ENTRY_Z);
-      flyTo(eye, eye.clone().add(lookDir().multiplyScalar(6)));
-      onPickRef.current?.(null);
-      emitWalk();
-    }
-    function exitWalk() {
-      if (!W.on && !W.pending) return;
-      W.on = false;
-      W.pending = false;
-      W.auto = false;
-      W.near = null;
-      W.inside = null;
-      W.path = [];
-      W.faceYaw = null;
-      roomObjs.forEach((o) => { o.doorTarget = 0; });
-      keys.clear();
-      person.group.visible = true;
-      controls.enabled = true;
-      controls.minDistance = 6;
-      controls.maxPolarAngle = Math.PI / 2.08;
-      controls.target.copy(camera.position).add(lookDir().multiplyScalar(6));
-      flyTo(HOME.pos, HOME.target);
-      emitWalk();
-    }
 
     // loop (paused while the tab is hidden)
     let raf = 0;
@@ -995,146 +698,43 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       if (document.hidden) return;
       const time = clock.getElapsedTime();
       if (fly.pos) {
-        const k = W.pending ? 0.1 : 0.08;
-        camera.position.lerp(fly.pos, k);
-        controls.target.lerp(fly.target, k);
+        camera.position.lerp(fly.pos, 0.08);
+        controls.target.lerp(fly.target, 0.08);
         if (camera.position.distanceTo(fly.pos) < 0.05 && controls.target.distanceTo(fly.target) < 0.05) {
           fly.pos = null;
           fly.target = null;
-          if (W.pending) {
-            // arrived at his eyes: he is the camera now
-            W.pending = false;
-            W.on = true;
-            controls.enabled = false;
-            emitWalk();
-          }
         }
-      }
-
-      if (W.on) {
-        const inp = inputRef.current?.current || {};
-        const fwd = W.auto || keys.has("w") || keys.has("arrowup") || inp.fwd;
-        const back = keys.has("s") || keys.has("arrowdown") || inp.back;
-        const left = keys.has("a") || keys.has("arrowleft") || inp.left;
-        const right = keys.has("d") || keys.has("arrowright") || inp.right;
-        if (inp.fwd || inp.back || inp.left || inp.right) { W.path = []; W.faceYaw = null; }
-        let guided = 0;
-        if (W.path.length) {
-          // guided: head for the next point, turning on the way
-          const wp = W.path[0];
-          const dx = wp.x - W.pos.x;
-          const dz = wp.z - W.pos.z;
-          const dist = Math.hypot(dx, dz);
-          if (dist < 0.12) W.path.shift();
-          else {
-            const diff = angDiff(yawTo(dx, dz), W.yaw);
-            W.yaw += Math.sign(diff) * Math.min(Math.abs(diff), WALK.turn * 2 * dt);
-            // slow down while the turn is still large
-            guided = Math.min(dist, WALK.speed * 1.25 * dt) * (Math.abs(diff) > 0.8 ? 0.25 : 1);
-          }
-        } else if (W.faceYaw != null) {
-          // arrived: turn to the door, then hand back control
-          const diff = angDiff(W.faceYaw, W.yaw);
-          W.yaw += Math.sign(diff) * Math.min(Math.abs(diff), WALK.turn * 2 * dt);
-          W.pitch += (0.12 - W.pitch) * Math.min(1, dt * 4); // look up a little, to the display
-          if (Math.abs(diff) < 0.01) {
-            W.faceYaw = null;
-            const where = whereIs(W.pos.x, W.pos.z);
-            W.near = where.near;
-            W.inside = where.inside;
-            emitWalk();
-          }
-        }
-        if (left) W.yaw += WALK.turn * dt;
-        if (right) W.yaw -= WALK.turn * dt;
-        if ((left || right) && !fwd && !back) {
-          const where = whereIs(W.pos.x, W.pos.z);
-          if (where.near !== W.near) { W.near = where.near; emitWalk(); }
-        }
-        if (W.turning > 0) {
-          // turning round at the end of the corridor
-          const d = Math.min(W.turning, WALK.turn * 1.2 * dt);
-          W.yaw += d;
-          W.turning -= d;
-        }
-        const step = guided || ((fwd ? 1 : 0) - (back ? 1 : 0)) * WALK.speed * dt;
-        if (step) {
-          const nx = W.pos.x - Math.sin(W.yaw) * step;
-          const nz = W.pos.z - Math.cos(W.yaw) * step;
-          // slide along walls instead of stopping dead
-          if (canStand(nx, nz)) { W.pos.x = nx; W.pos.z = nz; }
-          else if (canStand(nx, W.pos.z)) W.pos.x = nx;
-          else if (canStand(W.pos.x, nz)) W.pos.z = nz;
-          W.dist += Math.abs(step);
-          const where = whereIs(W.pos.x, W.pos.z);
-          if (where.near !== W.near || where.inside !== W.inside) {
-            W.near = where.near;
-            W.inside = where.inside;
-            emitWalk();
-          }
-          // the automatic walk turns round at the far wall and stops back at the entrance
-          if (W.auto && W.pos.z <= WALK.zMin + 0.05) { W.auto = false; W.turning = Math.PI; emitWalk(); }
-          else if (W.auto && W.pos.z >= WALK.zMax - 0.05 && Math.cos(W.yaw) < 0) { W.auto = false; emitWalk(); }
-        }
-        const bob = step ? Math.sin(W.dist * 7) * 0.035 : 0;
-        camera.position.set(W.pos.x, WALK.eye + bob, W.pos.z);
-        camera.lookAt(camera.position.clone().add(lookDir()));
-      } else if (person.group.visible) {
-        // waiting: a slow look around and a pulsing ring
-        person.head.rotation.y = Math.sin(time * 0.7) * 0.45;
-        person.body.scale.y = 1 + Math.sin(time * 1.6) * 0.006;
-        const p = 1 + Math.abs(Math.sin(time * 2)) * 0.35;
-        person.ring.scale.set(p, p, p);
-        person.ringMat.opacity = 0.75 - (p - 1) * 1.4;
       }
       const anySel = roomObjs.some((o) => o.group.userData.selected);
       let lit = null;
-      roomObjs.forEach((r) => {
-        r.doorOpen += (r.doorTarget - r.doorOpen) * Math.min(1, dt * 3.5);
-        // slides to the left as seen from the corridor (local -x)
-        r.slider.position.x = DOOR_X - r.doorOpen * (DW - 0.1);
-        if (r.doorTarget && lit == null) lit = r;
-        // a door left open closes by itself once he is far from it
-        if (r.doorTarget && W.on && W.inside !== r.index) {
-          const l = toLocal(r, W.pos.x, W.pos.z);
-          if (Math.hypot(l.x - DOOR_X, l.z) > 8) r.doorTarget = 0;
-        }
-      });
-      if (W.inside != null) lit = roomObjs[W.inside];
-      if (lit) {
-        const c = new THREE.Vector3(0, RH - 0.4, -RD / 2).applyMatrix4(lit.group.matrixWorld);
-        roomLight.position.copy(c);
-        roomLight.color.set(lit.isFreezer ? "#cfe8ff" : "#fff7ed");
-        roomLight.intensity = Math.min(1, lit.doorOpen) * 11 + (W.inside != null ? 5 : 0);
-      } else roomLight.intensity = 0;
       roomObjs.forEach((r, i) => {
+        // the selected room's door slides open (to the left as seen from the corridor)
+        r.doorTarget = r.group.userData.selected ? 1 : 0;
+        r.doorOpen += (r.doorTarget - r.doorOpen) * Math.min(1, dt * 3.5);
+        r.slider.position.x = DOOR_X - r.doorOpen * (DW - 0.1);
+        if (r.doorTarget) lit = r;
         const alarm = r.group.userData.alarm;
         r.beaconMat.emissiveIntensity = alarm ? 0.6 + Math.abs(Math.sin(time * 4)) * 2.4 : 1.1;
         r.glowMat.opacity = alarm ? 0.18 + Math.abs(Math.sin(time * 4)) * 0.3 : 0.22;
         r.outline.visible = r.group.userData.selected;
-        r.sprite.material.opacity = 1;
-        // a selected room stands alone; inside a room the others would show through the walls
-        r.sprite.visible = W.inside == null && (!anySel || r.group.userData.selected || W.on);
-        // gentle bob on the label of the selected room
-        // walking: smaller labels just above the doors, so they stay in sight
-        const sc = W.on ? 2.2 : 4.2;
-        r.sprite.scale.set(sc, sc * (330 / 720), 1);
-        r.sprite.position.y = (W.on ? RH + 0.85 : RH + 2.3) + (r.group.userData.selected ? Math.sin(time * 2.5) * 0.08 : 0) + (i === hover ? 0.12 : 0);
-        r.sprite.position.z = W.on ? 0.3 : -RD / 2 + 0.4;
+        // a selected room stands alone; the others' labels step back
+        r.sprite.visible = !anySel || r.group.userData.selected;
+        r.sprite.scale.set(5, 5 * (330 / 720), 1);
+        r.sprite.position.y = RH + 2.6 + (r.group.userData.selected ? Math.sin(time * 2.5) * 0.08 : 0) + (i === hover ? 0.15 : 0);
+        r.sprite.position.z = -RD / 2 + 0.4;
       });
-      if (!W.on) controls.update();
+      if (lit) {
+        const c = new THREE.Vector3(0, RH - 0.4, -RD / 2).applyMatrix4(lit.group.matrixWorld);
+        roomLight.position.copy(c);
+        roomLight.color.set(lit.isFreezer ? "#cfe8ff" : "#fff7ed");
+        roomLight.intensity = Math.min(1, lit.doorOpen) * 11;
+      } else roomLight.intensity = 0;
+      controls.update();
       renderer.render(scene, camera);
     };
     tick();
 
-    ctxRef.current = {
-      roomObjs, flyTo, HOME, camera, controls, person,
-      walking: () => W.on || W.pending,
-      exitWalk,
-      setAuto: (v) => { if (W.on) { W.auto = v; emitWalk(); } },
-      walkTo,
-      toggleNearDoor: () => { if (W.on && W.near != null) setDoor(W.near, !roomObjs[W.near].doorTarget); },
-    };
+    ctxRef.current = { roomObjs, flyTo, HOME, camera };
 
     return () => {
       cancelAnimationFrame(raf);
@@ -1142,8 +742,6 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
       renderer.domElement.removeEventListener("pointermove", onMove);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKey);
       controls.dispose();
       scene.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
@@ -1179,25 +777,23 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
       paintScreen(r.screen, { value, status, kindEmoji: k.emoji });
       paintLabel(r.label, {
         num: i + 1, name: room.name, kind: k, value, status, cal: cals?.[i]?.state || "", lang, t,
-        linked: !!room.link, selected: pick === i,
+        linked: !!room.link, selected: pick === i, count: stock?.[String(i)]?.items?.length || 0,
       });
     });
-    paintPersonLabel(ctx.person.label, t.walk, lang === "ar");
-  }, [rooms, live, cals, pick, lang, t]);
+  }, [rooms, live, cals, pick, lang, t, stock]);
 
   /* fly to the picked room */
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || pick == null) return;
-    if (ctx.walking()) { ctx.walkTo(pick); return; }
     const p = placement(pick);
     // stand across the corridor, above the opposite roof, a little towards
-    // the entrance — the door, its display and the label all in view
+    // the entrance — the open door, its display and the label all in view
     const dw = localToWorld(p, DOOR_X, 0);
     const door = new THREE.Vector3(dw.x, 0, dw.z);
     const target = door.clone().addScaledVector(p.face, -1.2).add(new THREE.Vector3(0, 2.2, 0));
     const pos = door.clone().addScaledVector(p.face, CORR + 3.5).add(new THREE.Vector3(0, 7.5, 5));
-    // the card opens on the left: shift the view so the door sits in the right half
+    // a wide screen: the panel opens on the left, so keep the door in the right half
     const fwd = target.clone().sub(pos).setY(0).normalize();
     const left = new THREE.Vector3(fwd.z, 0, -fwd.x);
     const shift = ctx.camera.aspect > 1.2 ? 2.6 : 0;
@@ -1208,8 +804,7 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || !viewCmd) return;
-    ctx.exitWalk();
-    if (viewCmd.kind === "top") ctx.flyTo(new THREE.Vector3(0, 32, 0.6), new THREE.Vector3(0, 0, 0));
+    if (viewCmd.kind === "top") ctx.flyTo(new THREE.Vector3(0, 52, 0.6), new THREE.Vector3(0, 0, 0));
     else ctx.flyTo(ctx.HOME.pos, ctx.HOME.target);
   }, [viewCmd]);
 
@@ -1219,15 +814,6 @@ export default function ColdRoomsScene({ rooms, live, cals, pick, onPick, lang, 
     if (!ctx) return;
     ctx.roomObjs.forEach((r, i) => fillCartons(r, stock?.[String(i)]?.items || []));
   }, [stock]);
-
-  /* walk HUD commands */
-  useEffect(() => {
-    const ctx = ctxRef.current;
-    if (!ctx || !walkCmd) return;
-    if (walkCmd.kind === "exit") ctx.exitWalk();
-    else if (walkCmd.kind === "auto") ctx.setAuto(!!walkCmd.value);
-    else if (walkCmd.kind === "door") ctx.toggleNearDoor();
-  }, [walkCmd]);
 
   return <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />;
 }
