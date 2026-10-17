@@ -1,6 +1,8 @@
 // src/components/LanguageSwitcher.jsx
-// The one language switch for Al Mawashi: a small عربي | EN pill, fixed
-// bottom-left above the "Aa" and day/night buttons, on every signed-in page.
+// The one language switch for Al Mawashi: a round button, fixed bottom-left
+// above the "Aa" and day/night buttons (same size and look, same 48px step),
+// on every signed-in page. It shows the language a tap switches TO
+// ("ع" while in English, "EN" while in Arabic).
 // It changes the ACCOUNT's language for every section at once
 // (utils/appLang.js). Mounted once in App.jsx; other companies don't see it.
 import React, { useEffect, useState } from "react";
@@ -17,16 +19,14 @@ const PUBLIC_PREFIXES = [
 // globals.css forces `#root *` font sizes with !important — a doubled class
 // out-ranks it (same trick as AccessibilityMenu).
 const CSS = `
-#root .lsw.lsw, #root .lsw.lsw * { font-size: 13px !important; font-weight: 800; }
-.lsw { position: fixed; bottom: 110px; left: 14px; z-index: 9990; display: flex; flex-direction: column;
-  border-radius: 14px; overflow: hidden; border: 1px solid rgba(15,23,42,.15); background: #fff;
-  box-shadow: 0 4px 14px rgba(15,23,42,.22); opacity: .92; }
-.lsw:hover { opacity: 1; }
-.lsw button { width: 40px; height: 30px; border: none; background: transparent; color: #1e3a5f;
-  cursor: pointer; padding: 0; font-family: inherit; line-height: 1; }
-.lsw button + button { border-top: 1px solid #e2e8f0; }
-.lsw button[aria-pressed="true"] { background: #0ea5e9; color: #fff; }
-.lsw button:focus-visible { outline: 3px solid #38bdf8; outline-offset: -3px; }
+#root .lsw.lsw { font-size: 15px !important; font-weight: 800; }
+#root .lsw.lsw[lang="ar"] { font-size: 19px !important; }
+.lsw { position: fixed; bottom: 110px; left: 14px; z-index: 9990; width: 40px; height: 40px; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(15,23,42,.15); background: #fff; color: #1e3a5f;
+  box-shadow: 0 4px 14px rgba(15,23,42,.22); cursor: pointer; display: grid; place-items: center;
+  font-family: inherit; line-height: 1; opacity: .9; transition: transform .15s, opacity .15s; }
+.lsw:hover { opacity: 1; transform: scale(1.06); }
+.lsw:focus-visible { outline: 3px solid #38bdf8; outline-offset: 2px; }
 @media print { .lsw { display: none !important; } }
 `;
 
@@ -49,17 +49,22 @@ export default function LanguageSwitcher() {
   if (PUBLIC_PAGES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return null;
   if (!isUnifiedLang()) return null;
 
-  const pick = (l) => { if (l !== lang) setAppLang(l); };
+  const next = lang === "ar" ? "en" : "ar";
+  const label = next === "ar" ? "التبديل إلى العربية" : "Switch to English";
 
   return (
-    <div className="lsw" role="group" aria-label="Language / اللغة">
+    <>
       <style>{CSS}</style>
-      <button type="button" lang="ar" aria-pressed={lang === "ar"} onClick={() => pick("ar")} title="العربية">
-        ع
+      <button
+        type="button"
+        className="lsw lsw"
+        lang={next}
+        onClick={() => setAppLang(next)}
+        title={label}
+        aria-label={label}
+      >
+        {next === "ar" ? "ع" : "EN"}
       </button>
-      <button type="button" lang="en" aria-pressed={lang === "en"} onClick={() => pick("en")} title="English">
-        EN
-      </button>
-    </div>
+    </>
   );
 }
