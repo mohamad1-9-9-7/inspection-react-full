@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 import logo from "../../assets/almawashi-logo.jpg";
 import { useGlobalLang } from "./TrainingSessionsList.helpers";
+import { hideSectionLangToggle } from "../../utils/appLang";
 
 const cards = [
   {
@@ -225,9 +226,11 @@ export default function TrainingHome() {
               <span className="tm-avatar">{String(displayName || "U").slice(0, 1).toUpperCase()}</span>
               <span>{displayName}</span>
             </div>
+            {!hideSectionLangToggle() && (
             <button className="tm-topBtn" onClick={() => setLang(isAr ? "en" : "ar")}>
               {isAr ? "EN" : "ع"}
             </button>
+            )}
             <button className="tm-topBtn" onClick={() => navigate("/named-dashboard")}>
               <FiHome size={15} />
               <span>{isAr ? "الرئيسية" : "Dashboard Home"}</span>

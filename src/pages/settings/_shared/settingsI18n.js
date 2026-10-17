@@ -9,6 +9,7 @@
 //   <h1>{t("accountManagement")}</h1>   // or t({en:"Save", ar:"حفظ"})
 
 import { useState, useEffect, useCallback } from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 export const SETTINGS_LANG_KEY = "settings_lang";
 
@@ -634,7 +635,7 @@ export function translate(lang, key) {
 }
 
 export function useSettingsLang() {
-  const [lang, setLangState] = useState(getSettingsLang);
+  const [lang, setLangState] = useLangState(getSettingsLang);
 
   const setLang = useCallback((next) => {
     setLangState(next);
@@ -659,6 +660,7 @@ export function useSettingsLang() {
 
 /* Small EN/AR pill toggle, reusable across Settings tabs. */
 export function LangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

@@ -7,6 +7,7 @@ import { MODULES as CANON_MODULES, QUESTION_BANK as CANON_QB } from "./TrainingS
 import { MODULE_DETAILS_BI, DEFAULT_DETAILS_BI } from "./TrainingReferenceModal";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { hideSectionLangToggle } from "../../utils/appLang";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
@@ -1012,9 +1013,11 @@ export default function TrainingAdmin() {
               <span style={{ color: T.textMuted }}>🔍 {tt("search_anything")}</span>
               <span style={{ fontSize: 10, padding: "2px 6px", border: `1px solid ${T.cardBorder}`, borderRadius: 4, color: T.textMuted }}>⌘K</span>
             </button>
+            {!hideSectionLangToggle() && (
             <button onClick={() => setLang(isAr ? "en" : "ar")} style={btnStyle(theme)} title={isAr ? "Switch to English" : "بدّل إلى العربية"}>
               🌐 {isAr ? "EN" : "ع"}
             </button>
+            )}
             <button onClick={loadAll} style={btnStyle(theme)} title={tt("btn_refresh")}>{loading ? "⏳" : "🔄"}</button>
             <button onClick={() => navigate("/training")} style={btnStyle(theme, "ghost")}>{tt("btn_back")}</button>
           </div>

@@ -25,6 +25,7 @@ import {
   canonicalInspectionBranch,
   getInspectionBranchLabel,
 } from "../inspection/inspectionBranches";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_KEY = "internal_multi_audit";
@@ -493,7 +494,7 @@ export default function InternalAuditReportsView() {
     Array.from(new Set(normalized.filter((r) => y == null || r.y === y).map((r) => r.m))).sort((a, b) => a - b);
 
   /* ===== UI language toggle (per page) ===== */
-  const [pageLang, setPageLang] = useState(() => {
+  const [pageLang, setPageLang] = useLangState(() => {
     try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
   });
   const isAr = pageLang === "ar";
@@ -1701,7 +1702,7 @@ export default function InternalAuditReportsView() {
           <div className="ia-sub">{tt("Findings, corrective actions and branch evidence — FS-QM/REC/CA/1", "الملاحظات والإجراءات التصحيحية وأدلة الفروع — FS-QM/REC/CA/1")}</div>
         </div>
         <div className="ia-toolbar ia-no-print">
-          <button type="button" className="ia-btn" onClick={togglePageLang}>🌐 {isAr ? "English" : "عربي"}</button>
+          {!hideSectionLangToggle() && <button type="button" className="ia-btn" onClick={togglePageLang}>🌐 {isAr ? "English" : "عربي"}</button>}
           <button type="button" className="ia-btn" onClick={loadReports} disabled={loading}>↻ {tt("Refresh", "تحديث")}</button>
           <button type="button" className="ia-btn" onClick={() => window.print()}>🖨 {tt("Print", "طباعة")}</button>
         </div>

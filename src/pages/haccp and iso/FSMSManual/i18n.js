@@ -2,6 +2,7 @@
 // FSMS Manual — Bilingual dictionary (AR / EN)
 
 import { useEffect, useState } from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const STORAGE_KEY = "fsms_lang_v1";
 
@@ -133,7 +134,7 @@ export const STRINGS = {
 };
 
 export function useLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
       return v === "en" || v === "ar" ? v : "en";
@@ -164,6 +165,7 @@ export function useLang() {
 }
 
 export function LangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

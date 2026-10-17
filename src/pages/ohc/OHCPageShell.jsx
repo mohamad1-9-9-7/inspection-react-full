@@ -2,9 +2,10 @@
 // Sticky header with "Back to Hub" + language toggle, used by Upload/View pages.
 
 import React from "react";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 export default function OHCPageShell({ title, subtitle, accent = "#2563eb", onBack, children }) {
-  const [lang, setLang] = React.useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("ohc_hub_lang") || "en"; } catch { return "en"; }
   });
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -61,6 +62,7 @@ export default function OHCPageShell({ title, subtitle, accent = "#2563eb", onBa
           )}
         </div>
 
+        {!hideSectionLangToggle() && (
         <button
           type="button"
           onClick={toggleLang}
@@ -73,6 +75,7 @@ export default function OHCPageShell({ title, subtitle, accent = "#2563eb", onBa
           }}
           title="Toggle language"
         >🌐 {lang === "ar" ? "EN" : "AR"}</button>
+        )}
       </div>
 
       <div>{children}</div>

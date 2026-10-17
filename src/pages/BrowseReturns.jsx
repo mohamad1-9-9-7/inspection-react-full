@@ -17,6 +17,7 @@ import { getRefNo, isPendingRef } from "../utils/reportRef";
 import ImageLightbox from "./shared/ImageLightbox";
 import { useNavigate } from "react-router-dom";
 import { isItemAllowed } from "../utils/sectionItems";
+import { useLangState, hideSectionLangToggle } from "../utils/appLang";
 
 /* Left date-tree panel: remember whether the user folded it away (UI preference only). */
 const TREE_HIDDEN_KEY = "browseReturns.treeHidden";
@@ -3050,7 +3051,7 @@ export default function BrowseReturns() {
   const [periodType, setPeriodType] = useState("monthly");
   const [reportTab, setReportTab] = useState("scope");    // preset | scope | content | analysis | details
   /* Builder popup language — remembered between sessions. The PDF stays English. */
-  const [rbLang, setRbLang] = useState(() => {
+  const [rbLang, setRbLang] = useLangState(() => {
     try { return localStorage.getItem("returnsReportLang") === "ar" ? "ar" : "en"; } catch { return "en"; }
   });
   useEffect(() => {
@@ -8001,6 +8002,7 @@ export default function BrowseReturns() {
                   <div style={{ fontSize: 12, opacity: .9 }}>{L("subtitle")}</div>
                 </div>
                 {/* Popup language — the generated PDF stays English either way. */}
+                {!hideSectionLangToggle() && (
                 <button
                   onClick={() => setRbLang(isAr ? "en" : "ar")}
                   title={isAr ? "Switch to English" : "التبديل إلى العربية"}
@@ -8011,6 +8013,7 @@ export default function BrowseReturns() {
                     fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap",
                   }}
                 >{isAr ? "🇬🇧 EN" : "🇸🇦 عربي"}</button>
+                )}
                 <button onClick={() => !monthlyBusy && setMonthlyOpen(false)} style={{
                   ...sx.btnGhost, color: "#fff", cursor: "pointer", padding: 4,
                 }}><FiX size={18} /></button>

@@ -4,6 +4,7 @@
 // EN/AR toggle stays in sync across the whole ISO hub.
 
 import { useEffect, useState } from "react";
+import { useLangState } from "../../../utils/appLang";
 
 const STORAGE_KEY = "haccp_modules_lang_v1";
 
@@ -464,7 +465,7 @@ export const KT = {
 };
 
 export function useKitchenLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
       return v === "en" || v === "ar" ? v : "en";

@@ -7,6 +7,7 @@ import { SUB_CACHE_KEY, writeSubscriptionCache } from "../utils/subscriptionLock
 import LoginShowcase, { SC_CSS } from "./LoginShowcase";
 import { usePublicTitle } from "../config/pageTitles";
 import { useSiteStats } from "../utils/siteStats";
+import { applyAccountLang } from "../utils/appLang";
 
 const BRAND = "/brand/inspect-pro";
 // Per-viewer conveniences only (never a source of truth).
@@ -348,8 +349,11 @@ function Login() {
             // token's own life) instead of the security setting's hours.
             remember: !!remember,
             loginAt: Date.now(),
+            // The account's own interface language (utils/appLang.js).
+            uiLang: data.user.uiLang || null,
           })
         );
+        applyAccountLang();
         // The login response already carries the company's subscription
         // state — seed the lock's cache from it instead of a pre-login read.
         if (data.user.company?.id && !data.user.isSuperAdmin) {

@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 /* ===================== API base (Vite + CRA + window override) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -555,7 +556,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     } catch {}
     return "en";
   }, []);
-  const [lang, setLang] = useState(initialLang);
+  const [lang, setLang] = useLangState(initialLang);
   const t = UI[lang] || UI.en;
   const isRTL = lang === "ar";
 
@@ -1043,6 +1044,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               {/* Language toggle */}
+              {(publicMode || !hideSectionLangToggle()) && (
               <span style={chip}>
                 {t.lang}:
                 <button
@@ -1059,6 +1061,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
                   AR
                 </button>
               </span>
+              )}
 
               {!publicMode ? (
                 <>

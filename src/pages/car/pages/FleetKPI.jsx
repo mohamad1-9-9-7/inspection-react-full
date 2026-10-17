@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const APPROVALS_TYPE = "car_approvals";
 const LOADING_TYPE   = "cars_loading_inspection";
@@ -114,7 +115,7 @@ function diffMinutes(start, end) {
 
 export default function FleetKPI() {
   const navigate = useNavigate();
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("fleet_kpi_lang") || "en"; } catch { return "en"; }
   });
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -333,7 +334,9 @@ export default function FleetKPI() {
             ))}
           </div>
 
+          {!hideSectionLangToggle() && (
           <button type="button" onClick={toggleLang} style={st.btn}>🌐 {lang === "ar" ? "EN" : "AR"}</button>
+          )}
           <button type="button" onClick={loadAll} disabled={loading} style={st.btn}>
             ↻ {pick({ ar: "تحديث", en: "Refresh" })}
           </button>

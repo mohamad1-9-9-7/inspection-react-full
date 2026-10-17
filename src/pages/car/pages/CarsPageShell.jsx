@@ -2,11 +2,12 @@
 // Shared shell wrapping single-purpose Cars pages (input/report) with a "Back to Hub" header.
 
 import React from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const pickFn = (lang) => (d) => (typeof d === "string" ? d : d?.[lang] || d?.ar || d?.en || "");
 
 export default function CarsPageShell({ title, subtitle, accent = "#2563eb", onBack, children }) {
-  const [lang, setLang] = React.useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("cars_hub_lang") || "en"; } catch { return "en"; }
   });
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -63,6 +64,7 @@ export default function CarsPageShell({ title, subtitle, accent = "#2563eb", onB
           )}
         </div>
 
+        {!hideSectionLangToggle() && (
         <button
           type="button"
           onClick={toggleLang}
@@ -75,6 +77,7 @@ export default function CarsPageShell({ title, subtitle, accent = "#2563eb", onB
           }}
           title="Toggle language"
         >🌐 {lang === "ar" ? "EN" : "AR"}</button>
+        )}
       </div>
 
       <div>{children}</div>

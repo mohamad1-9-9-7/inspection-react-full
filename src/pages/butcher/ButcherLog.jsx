@@ -47,6 +47,7 @@ import { EMPLOYEES } from "../ohc/OHCUpload";
 // الجزار المربوط بحساب ما بيكتب رقمه ولا بيختار ملحمته: بتنعبّى وبتنقفل.
 import { accountIdentity, useWorkforce } from "../workforce/workforceConfig";
 import { getCurrentUser } from "../../utils/perms";
+import { hideSectionLangToggle } from "../../utils/appLang";
 
 const LAST_EMP_KEY = "butcher_last_emp";
 /** مفتاح «وزن المادة الخام» بلوحة الأرقام. */
@@ -1380,6 +1381,7 @@ export default function ButcherLog() {
                     : `📤 ${outbox.pending} ${t({ en: "unsynced", ar: "غير مُزامن" })}`}
               </button>
             )}
+            {!hideSectionLangToggle() && (
             <span className="bt-toggle">
               {tight ? (
                 /* الجوال: أيقونة بس — الكلمة بتاكل الترويسة، وإخفاء الزرّ
@@ -1397,6 +1399,7 @@ export default function ButcherLog() {
                 <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
               )}
             </span>
+            )}
             {step === "emp" && isLoggedIn && (
               <button className="bt-small" style={S.chg} onClick={() => navigate("/butcher", { replace: true })}>
                 {t({ en: "Back to section", ar: "رجوع للقسم" })}

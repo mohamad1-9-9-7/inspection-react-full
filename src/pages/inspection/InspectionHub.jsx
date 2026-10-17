@@ -16,6 +16,7 @@ import {
 import logo from "../../assets/almawashi-logo.jpg";
 import API_BASE from "../../config/api";
 import { parseReportDate, resolveReportBranch } from "./inspectionBranches";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 const AUDIT_TYPE = "internal_multi_audit";
 
@@ -79,7 +80,7 @@ function unwrapList(data) {
 
 export default function InspectionHub() {
   const navigate = useNavigate();
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
   });
   const isAr = lang === "ar";
@@ -260,7 +261,9 @@ export default function InspectionHub() {
               <span className="ih-avatar">{String(displayName || "U").slice(0, 1).toUpperCase()}</span>
               <span>{displayName}</span>
             </div>
+            {!hideSectionLangToggle() && (
             <button className="ih-topBtn" onClick={toggleLang}>{isAr ? "EN" : "ع"}</button>
+            )}
             <button className="ih-topBtn" onClick={() => navigate("/named-dashboard")}>
               <FiHome size={15} />
               <span>{isAr ? "الرئيسية" : "Dashboard Home"}</span>

@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../config/api";
 import { canDelete } from "../../utils/perms";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 /* ========== Delete permission ==========
    Deleting an HSE record is permanent, so it needs the account's "delete"
@@ -21,7 +22,7 @@ export const HSE_DELETE_DENIED = {
 const LANG_KEY = "hse_lang";
 
 export function useHSELang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem(LANG_KEY) || "en"; } catch { return "en"; }
   });
   useEffect(() => {
@@ -47,6 +48,7 @@ export function useHSELang() {
 
 /** تبديل اللغة — زرّ موحّد لكل صفحات HSE */
 export function HSELangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

@@ -2,6 +2,7 @@
 // قاموس ثنائي اللغة (عربي/إنكليزي) لـ Mock Recall
 
 import { useEffect, useState } from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const STORAGE_KEY = "mr_lang_v1";
 
@@ -643,7 +644,7 @@ export function pickRowsArray(payload) {
 
 /* ===== Hook ===== */
 export function useLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
       return v === "en" || v === "ar" ? v : "en";
@@ -682,6 +683,7 @@ export function useLang() {
 
 /* ===== زر تبديل اللغة ===== */
 export function LangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

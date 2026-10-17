@@ -6,6 +6,7 @@
 //   t("save", lang)  →  "Save" or "حفظ"
 
 import { useEffect, useState, useCallback } from "react";
+import { useLangState } from "../../../../../utils/appLang";
 
 const STORAGE_KEY = "prd_lang";
 
@@ -311,7 +312,7 @@ export function t(key, lang = "en") {
 
 /* ─── React hook ─── */
 export function useLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) || "en";
     } catch {

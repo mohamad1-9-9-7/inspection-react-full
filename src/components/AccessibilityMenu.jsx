@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FONT_STEPS, DEFAULT_STEP, getFontStep, setFontStep } from "../utils/fontScale";
+import { isUnifiedLang, getAppLang, onAppLang } from "../utils/appLang";
 
 // Public sales pages carry their own design (same list as ThemeToggle).
 const PUBLIC_PAGES = ["/demo", "/readiness"];
@@ -33,6 +34,7 @@ const TXT = {
 };
 
 const getLang = () => {
+  if (isUnifiedLang()) return getAppLang();
   try { return localStorage.getItem("settings_lang") === "en" ? "en" : "ar"; } catch { return "ar"; }
 };
 
@@ -93,7 +95,9 @@ export default function AccessibilityMenu() {
     const onLang = () => setLang(getLang());
     window.addEventListener("app:font-scale-changed", onScale);
     window.addEventListener("storage", onLang);
+    const offApp = onAppLang(onLang);
     return () => {
+      offApp();
       window.removeEventListener("app:font-scale-changed", onScale);
       window.removeEventListener("storage", onLang);
     };

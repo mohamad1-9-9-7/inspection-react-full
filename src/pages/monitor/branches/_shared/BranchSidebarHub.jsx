@@ -10,6 +10,7 @@
 
 import React, { Suspense, useMemo, useState } from "react";
 import { reportTabFilter } from "../../../../utils/reportPerms";
+import { hideSectionLangToggle } from "../../../../utils/appLang";
 
 export default function BranchSidebarHub({
   brandTitle,
@@ -128,7 +129,7 @@ export default function BranchSidebarHub({
             </div>
           </div>
           <div className="prd-topbar-right">
-            {onToggleLang && (
+            {onToggleLang && !hideSectionLangToggle() && (
               <button
                 className="prd-lang-btn"
                 onClick={onToggleLang}

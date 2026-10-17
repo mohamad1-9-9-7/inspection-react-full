@@ -10,6 +10,7 @@ import { SOP_GROUPS, SOP_TOTAL, policiesForSop } from "./hseSopData";
 import { findPolicy } from "./hsePolicyData";
 import { exportNodeToPdf, safeFileName, pdfStageStyle, PDF_UI } from "./hsePdf";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
+import { hideSectionLangToggle } from "../../utils/appLang";
 
 /* PDF exports are English-only: html2canvas cannot shape Arabic, so an Arabic
    page would print broken letters. The PDF stage always renders with this
@@ -444,6 +445,7 @@ export default function HSESOPs() {
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", position: "relative", flexWrap: "wrap" }}>
+            {!hideSectionLangToggle() && (
             <div style={{ display: "flex", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(34,211,238,0.40)" }}>
               {["en", "ar"].map((l) => (
                 <button key={l} onClick={() => setLang(l)} style={{
@@ -455,6 +457,7 @@ export default function HSESOPs() {
                 </button>
               ))}
             </div>
+            )}
 
             <button style={{ ...glassBtn("#0f766e"), opacity: exporting === "register" ? 0.6 : 1 }}
               onClick={() => exportPdf("register")} disabled={!!exporting}>

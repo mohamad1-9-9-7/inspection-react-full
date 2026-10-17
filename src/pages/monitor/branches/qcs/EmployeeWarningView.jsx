@@ -15,6 +15,7 @@ import {
   TYPE, LEVELS, levelById, levelName, catName, catEn, dmy, recId, tr, fetchWarnings, historyFor,
   consequenceOf, warningSubject, buildWarningHtml, buildWarningText, generateWarningPdf, printWarning,
 } from "./employeeWarningCore";
+import { hideSectionLangToggle } from "../../../../utils/appLang";
 
 const panel = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", boxShadow: "0 8px 18px rgba(2,6,23,.06)", padding: 14 };
 const input = { width: "100%", boxSizing: "border-box", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 10px", fontSize: 13 };
@@ -181,10 +182,12 @@ export default function EmployeeWarningView({ type = TYPE, reporter = "qcs" } = 
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>{T("records")}</h2>
+          {!hideSectionLangToggle() && (
           <button onClick={toggle} style={{ ...btn("#fff", "#0f3d2e", "#0f3d2e"), borderRadius: 999 }}
             title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}>
             {lang === "ar" ? "🌐 English" : "🌐 عربي"}
           </button>
+          )}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           <button onClick={() => setLevelFilter("")} style={{ ...btn(levelFilter ? "#fff" : "#0f172a", levelFilter ? "#0f172a" : "#fff", "#0f172a"), padding: "4px 12px", fontSize: 12 }}>

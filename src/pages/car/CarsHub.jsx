@@ -3,6 +3,7 @@
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 const sections = [
   {
@@ -90,7 +91,7 @@ const sections = [
 export default function CarsHub() {
   const navigate = useNavigate();
   const [hover, setHover] = React.useState(null);
-  const [lang, setLang] = React.useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("cars_hub_lang") || "en"; } catch { return "en"; }
   });
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -117,9 +118,11 @@ export default function CarsHub() {
             </div>
           </div>
           <div style={{ flex: 1 }} />
+          {!hideSectionLangToggle() && (
           <button type="button" onClick={toggleLang} style={s.langBtn} title="Toggle language">
             🌐 {lang === "ar" ? "EN" : "AR"}
           </button>
+          )}
           <button type="button" onClick={() => window.history.back()} style={s.backBtn}>
             ← {pick({ ar: "رجوع", en: "Back" })}
           </button>

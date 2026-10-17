@@ -6,6 +6,7 @@ import {
   INSPECTION_BRANCHES,
   canonicalInspectionBranch,
 } from "./inspection/inspectionBranches";
+import { useLangState, hideSectionLangToggle } from "../utils/appLang";
 
 /* ===== Routing ===== */
 const REPORTS_ROUTE = "/monitor/internal-audit";
@@ -75,7 +76,7 @@ export default function Inspection() {
   const navigate = useNavigate();
 
   /* ===== Language (synced with view page) ===== */
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
   });
   const isAr = lang === "ar";
@@ -660,7 +661,9 @@ export default function Inspection() {
           </div>
           <div style={{display:"flex", gap:8, flexWrap:"wrap"}} className="ins-no-print">
             <button onClick={()=>navigate("/inspection")} style={toolBtn} title={tt("Inspection sections","أقسام التفتيش")}>🏠 {tt("Sections","الأقسام")}</button>
+            {!hideSectionLangToggle() && (
             <button onClick={toggleLang} style={toolBtn} title="Toggle language">🌐 {isAr ? "EN" : "AR"}</button>
+            )}
             <button onClick={()=>window.print()} style={toolBtn} title="Print">🖨️ {tt("Print", "طباعة")}</button>
             <button onClick={()=>navigate("/ai-assistant")} style={aiBtn} title="AI Assistant">🤖 AI</button>
             <button onClick={()=>navigate(REPORTS_ROUTE)} style={viewBtn}>📄 {tt("View Reports", "عرض التقارير")}</button>

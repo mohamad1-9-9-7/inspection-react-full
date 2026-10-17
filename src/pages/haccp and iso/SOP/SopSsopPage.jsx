@@ -7,6 +7,7 @@ import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import { sopsData, ssopsData, policiesData } from "./sopData";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import API_BASE from "../../../config/api";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 // خط انسيابي مموّج يُحاكي شكل التوقيع اليدوي — التوقيع يُحفظ كنص عادي.
 const SIGNATURE_FONT = "'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Comic Sans MS', cursive";
@@ -1074,7 +1075,7 @@ function SopCard({ sop, isAr, t, hoverId, setHoverId, setSelectedSop, accent, me
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SopSsopPage() {
   const navigate = useNavigate();
-  const [lang, setLang] = useState("en");
+  const [lang, setLang] = useLangState("en");
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [hoverId, setHoverId] = useState(null);
@@ -1157,6 +1158,7 @@ export default function SopSsopPage() {
           {/* Right controls */}
           <div style={{ display: "flex", gap: "10px", alignItems: "center", position: "relative" }}>
             {/* Lang toggle */}
+            {!hideSectionLangToggle() && (
             <div style={{
               display: "flex", borderRadius: "999px", overflow: "hidden",
               border: "1px solid rgba(34,211,238,0.40)",
@@ -1174,6 +1176,7 @@ export default function SopSsopPage() {
                 </button>
               ))}
             </div>
+            )}
 
             <button style={{
               display: "inline-flex", alignItems: "center", gap: "6px",

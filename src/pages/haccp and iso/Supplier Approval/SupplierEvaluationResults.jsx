@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
 import { getPublicOrigin } from "../../../config/publicOrigin";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -1231,7 +1232,7 @@ function AttachmentModal({ file, onClose, t }) {
 export default function SupplierEvaluationResults() {
   const nav = useNavigate();
 
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const saved = localStorage.getItem("qcs_results_lang");
       if (saved === "ar" || saved === "en") return saved;
@@ -2065,6 +2066,7 @@ export default function SupplierEvaluationResults() {
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {/* Language toggle */}
+            {!hideSectionLangToggle() && (
             <span
               style={{
                 padding: "9px 14px",
@@ -2093,6 +2095,7 @@ export default function SupplierEvaluationResults() {
                 {t.arBtn}
               </button>
             </span>
+            )}
 
             <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
               {t.back}

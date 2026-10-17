@@ -45,6 +45,7 @@ import { uploadImage } from "../../../../utils/imageUpload";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 import MonthlyTempReport from "./MonthlyTempReport";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
+import { useLangState, hideSectionLangToggle } from "../../../../utils/appLang";
 
 /* ══════════════════════════════════════ Language (one per screen) */
 const LANG_KEY = "qcs_quick_lang";
@@ -148,7 +149,7 @@ const T = {
 };
 
 function useLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem(LANG_KEY) === "ar" ? "ar" : "en"; } catch { return "en"; }
   });
   const toggle = () => {
@@ -384,7 +385,9 @@ function Hub({ A, t, lang, toggleLang }) {
           <h1 className="t1">🌡️ {A.label} · {t.hubTitle}</h1>
           <div className="sm">{date} · {t.hubSub(LATE_GRACE_MIN)}</div>
         </div>
+        {!hideSectionLangToggle() && (
         <button className="btn" onClick={toggleLang}>{lang === "ar" ? "EN" : "عربي"}</button>
+        )}
       </div>
 
       <div className="bar">
@@ -573,7 +576,9 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
     <div>
       <div className="bar">
         <Link className="btn" to={A.hubPath}>{t.back}</Link>
+        {!hideSectionLangToggle() && (
         <button className="btn" onClick={toggleLang}>{lang === "ar" ? "EN" : "عربي"}</button>
+        )}
       </div>
 
       <div className="card">

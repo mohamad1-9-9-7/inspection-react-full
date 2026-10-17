@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../config/api";
+import { useLangState, hideSectionLangToggle } from "../utils/appLang";
 
 /* Detect Arabic in user input — used to pick response language */
 function isArabicText(s) {
@@ -1027,7 +1028,7 @@ export default function AIAssistant() {
   const navigate = useNavigate();
 
   /* Language toggle — synced with the rest of the app via localStorage. */
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       return localStorage.getItem("ai_assistant_lang")
         || localStorage.getItem("internal_audit_lang")
@@ -1085,6 +1086,7 @@ export default function AIAssistant() {
           </button>
           <div style={{ flex: 1 }} />
           {/* Language toggle */}
+          {!hideSectionLangToggle() && (
           <div style={s.langGroup}>
             <button
               type="button"
@@ -1097,6 +1099,7 @@ export default function AIAssistant() {
               style={{ ...s.langBtn, ...(lang === "ar" ? s.langBtnActive : {}) }}
             >AR</button>
           </div>
+          )}
           <div style={s.brand}>
             <div style={s.brandIco}>🤖</div>
             <div>

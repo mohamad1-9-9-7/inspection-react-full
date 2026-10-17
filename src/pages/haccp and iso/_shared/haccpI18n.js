@@ -3,6 +3,7 @@
 // (Dashboard, MRM, Internal Audit, Calibration)
 
 import { useEffect, useState } from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const STORAGE_KEY = "haccp_modules_lang_v1";
 
@@ -2094,7 +2095,7 @@ export const T = {
 };
 
 export function useHaccpLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
       return v === "en" || v === "ar" ? v : "en";
@@ -2129,6 +2130,7 @@ export function useHaccpLang() {
 }
 
 export function HaccpLangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

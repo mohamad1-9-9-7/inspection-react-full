@@ -18,6 +18,7 @@ import {
   parseReportDate,
   resolveReportBranch,
 } from "./inspectionBranches";
+import { useLangState, hideSectionLangToggle } from "../../utils/appLang";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const PLAN_TYPE = "inspection_annual_plan";
@@ -152,7 +153,7 @@ const tdBase = { padding: 6, borderBottom: `1px solid ${C.line}`, verticalAlign:
 export default function InspectionAnnualPlan() {
   const navigate = useNavigate();
 
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
   });
   const isAr = lang === "ar";
@@ -885,7 +886,9 @@ export default function InspectionAnnualPlan() {
           <span>{tt("Show all branches", "إظهار كل الأفرع")}</span>
         </label>
 
+        {!hideSectionLangToggle() && (
         <button onClick={toggleLang} style={btn("rgba(255,255,255,.14)", "#fff")}>🌐 {isAr ? "EN" : "ع"}</button>
+        )}
         <button onClick={resetToRule} style={btn("#f59e0b")} title={tt("Back to 1 / month everywhere", "العودة إلى تفتيش شهري لكل فرع")}>♻ {tt("Reset rule", "إعادة القاعدة")}</button>
         <button onClick={() => loadAll(year)} style={btn("rgba(255,255,255,.14)", "#fff")}>🔄 {tt("Refresh", "تحديث")}</button>
         <button onClick={exportXLSX} style={btn("linear-gradient(135deg,#16a34a,#15803d)")} title={tt("Export the matrix + the underlying reports", "تصدير الجدول مع تفاصيل التقارير")}>

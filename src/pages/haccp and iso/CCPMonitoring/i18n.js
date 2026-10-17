@@ -2,6 +2,7 @@
 // قاموس ثنائي اللغة لـ CCP Monitoring + قائمة CCPs الافتراضية
 
 import { useEffect, useState } from "react";
+import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 
 const STORAGE_KEY = "ccp_lang_v1";
 
@@ -386,7 +387,7 @@ export const DEFAULT_CCPS = [
 
 /* ===== Hook اللغة ===== */
 export function useLang() {
-  const [lang, setLang] = useState(() => {
+  const [lang, setLang] = useLangState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
       return v === "en" || v === "ar" ? v : "en";
@@ -408,6 +409,7 @@ export function useLang() {
 }
 
 export function LangToggle({ lang, toggle, style }) {
+  if (hideSectionLangToggle()) return null; // Al Mawashi: one switcher for the whole app
   return (
     <button
       type="button"

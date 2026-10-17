@@ -1,5 +1,6 @@
 import React from "react";
 import { getPublicOrigin, buildPublicUrl } from "../../config/publicOrigin";
+import { useLangState } from "../../utils/appLang";
 
 /* ===================== API base ===================== */
 export const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -34,7 +35,7 @@ export function setStoredLang(lang) {
 }
 
 export function useGlobalLang() {
-  const [lang, setLangState] = React.useState(getStoredLang);
+  const [lang, setLangState] = useLangState(getStoredLang);
 
   React.useEffect(() => {
     function onStorage(e) {
