@@ -68,15 +68,78 @@ export async function saveRoomStock(index, items, user = "") {
   const rooms = await readRecord();
   const next = {
     ...rooms,
-    [String(index)]: { items: normalizeList(items), updatedAt: new Date().toISOString(), updatedBy: user || "" },
+    // keep the room's movement log (QR page in/out) when the list is edited
+    [String(index)]: { ...(rooms[String(index)] || {}), items: normalizeList(items), updatedAt: new Date().toISOString(), updatedBy: user || "" },
   };
+  await writeRooms(next, user);
+  return next[String(index)];
+}
+
+async function writeRooms(rooms, user) {
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ reporter: user || "cold-rooms-stock", type: STOCK_TYPE, payload: { reportDate: STOCK_KEY, rooms: next } }),
+    body: JSON.stringify({ reporter: user || "cold-rooms-stock", type: STOCK_TYPE, payload: { reportDate: STOCK_KEY, rooms } }),
   });
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
-  return next[String(index)];
+}
+
+/* ══════════════════════════════════════ Goods in / out (QR page)
+   The stock key of a QR unit: the cold room linked to it (same index the 3D
+   screen uses), else its own key "unit:<branch>:<unit>" in the same record. */
+
+const MOVES_KEPT = 200;
+
+export async function stockKeyForUnit(branch, unit) {
+  try {
+    const { fetchRooms, loadCache } = await import("./coldRoomsConfig");
+    const rooms = (await fetchRooms())?.rooms || loadCache() || [];
+    const i = rooms.findIndex((r) => r?.link && r.link.branch === branch && r.link.key === unit);
+    if (i >= 0) return { key: String(i), room: i, name: rooms[i].name };
+  } catch { /* no rooms config — the unit keeps its own list */ }
+  return { key: `unit:${branch}:${unit}`, room: null, name: "" };
+}
+
+/** One room/unit's { items, moves, updatedAt, updatedBy } — fresh from the server. */
+export async function fetchUnitStock(key, signal) {
+  const rooms = await readRecord(signal);
+  const r = rooms[key] || {};
+  return { ...r, items: normalizeList(r.items), moves: Array.isArray(r.moves) ? r.moves : [] };
+}
+
+/**
+ * Goods in (dir "in") or out (dir "out") of one room/unit, applied to the
+ * list as it is on the server now: in adds to the same code (or a new row),
+ * out takes off the available quantity and drops the row at zero.
+ */
+export async function applyStockMove(key, { dir, code, product, uom, qty }, user = "") {
+  const amount = toNum(qty);
+  if (!(amount > 0)) throw new Error("QTY");
+  const rooms = await readRecord();
+  const cur = rooms[key] || {};
+  const items = normalizeList(cur.items);
+  const c = String(code || "").trim();
+  const p = String(product || "").trim();
+  const at = items.findIndex((it) => (c ? it.code === c : it.product === p));
+  const name = p || items[at]?.product || "";
+  const unitOf = uom || items[at]?.uom || "";
+  if (dir === "out") {
+    if (at < 0) throw new Error("NOT_HERE");
+    if (amount > items[at].qty + 1e-9) throw new Error("TOO_MUCH");
+    const left = Math.round((items[at].qty - amount) * 1000) / 1000;
+    if (left <= 0) items.splice(at, 1);
+    else items[at] = { ...items[at], qty: left };
+  } else if (at >= 0) {
+    items[at] = { ...items[at], qty: Math.round((items[at].qty + amount) * 1000) / 1000 };
+  } else {
+    items.unshift(normalizeItem({ code: c, product: p, uom, qty: amount }));
+  }
+  const now = new Date().toISOString();
+  const move = { at: now, by: user || "", dir: dir === "out" ? "out" : "in", code: c, product: name, uom: unitOf, qty: amount };
+  const moves = [...(Array.isArray(cur.moves) ? cur.moves : []), move].slice(-MOVES_KEPT);
+  const next = { ...rooms, [key]: { ...cur, items, moves, updatedAt: now, updatedBy: user || "" } };
+  await writeRooms(next, user);
+  return { ...next[key], items: normalizeList(items), moves };
 }
 
 /* ══════════════════════════════════════ Items catalogue */

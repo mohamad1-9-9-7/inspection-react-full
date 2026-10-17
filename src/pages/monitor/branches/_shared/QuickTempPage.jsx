@@ -44,6 +44,7 @@ import { getCurrentUser } from "../../../../utils/perms";
 import { uploadImage } from "../../../../utils/imageUpload";
 import { notifyOutOfRange } from "../../../../utils/notifications";
 import MonthlyTempReport from "./MonthlyTempReport";
+import QuickGoodsPanel from "./QuickGoodsPanel";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 import { useLangState, hideSectionLangToggle } from "../../../../utils/appLang";
 
@@ -96,6 +97,8 @@ const T = {
     printHint: "Each unit prints on its own A4 page with a large code. Laminate it or put it in a plastic sleeve before sticking it on the unit.",
     closePrint: "Close",
     recheckWord: "recheck",
+    tabTemp: "🌡️ Temperature",
+    tabGoods: "📦 Goods",
     noUnits: "No units yet — fill the full sheet once (or add the units there) and they appear here with their QR.",
   },
   ar: {
@@ -144,6 +147,8 @@ const T = {
     printHint: "كل وحدة تُطبع على صفحة A4 لوحدها برمز كبير. يُفضّل تغليفها بالبلاستيك قبل لصقها على البراد.",
     closePrint: "إغلاق",
     recheckWord: "إعادة فحص",
+    tabTemp: "🌡️ الحرارة",
+    tabGoods: "📦 البضاعة",
     noUnits: "لا توجد وحدات بعد — عبّئ السجل الكامل مرة واحدة (أو أضف الوحدات هناك) لتظهر هنا مع رمز QR.",
   },
 };
@@ -480,6 +485,10 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null); // { kind: ok|bad|warn, text }
   const [done, setDone] = useState(false);
+  // 🌡️ reading | 📦 goods inside the unit (?tab=goods opens the goods)
+  const [view, setView] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("tab") === "goods" ? "goods" : "temp"; } catch { return "temp"; }
+  });
   const slotsRef = useRef(null);
 
   // Keep the chosen time slot visible in the swipeable row.
@@ -592,6 +601,16 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
         )}
       </div>
 
+      <div className="acts" style={{ marginBottom: 10 }}>
+        {[["temp", t.tabTemp], ["goods", t.tabGoods]].map(([k, label]) => (
+          <button key={k} type="button" className={`chip ${view === k ? "on" : ""}`}
+            style={{ textAlign: "center" }} onClick={() => setView(k)}>{label}</button>
+        ))}
+      </div>
+
+      {view === "goods" ? (
+        <QuickGoodsPanel branch={A.calib?.branch || A.label} unit={unit} lang={lang} />
+      ) : (<>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
 
       {done ? (
@@ -716,6 +735,7 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
             ))}
         </div>
       )}
+      </>)}
     </div>
   );
 }
