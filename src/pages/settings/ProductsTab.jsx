@@ -22,9 +22,10 @@ import {
 } from "../monitor/branches/_shared/ProductPicker";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import {
-  addBarcode, barcodesByCode, fetchBarcodeMap, normBarcode, removeBarcode, replaceBarcode, showBarcode,
+  addBarcode, barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, removeBarcode, replaceBarcode, showBarcode,
 } from "../../utils/barcodeMap";
 import { getCurrentUser } from "../../utils/perms";
+import useWedgeScanner from "../../utils/useWedgeScanner";
 
 const userName = () => {
   const u = getCurrentUser() || {};
@@ -54,6 +55,13 @@ export default function ProductsTab() {
   const [bcEdit, setBcEdit] = useState(null); // { key, value }
   const [bcErr, setBcErr] = useState(null); // { text, retry? }
   const [bcBusy, setBcBusy] = useState(false);
+
+  // smart tools: category / barcode / source filters + sort
+  const [fCat, setFCat] = useState("*");
+  const [fBc, setFBc] = useState("*"); // * | with | without | many
+  const [fSrc, setFSrc] = useState("*"); // * | base | mine
+  const [sort, setSort] = useState("name"); // name | code | bc | cat
+  const [scanHit, setScanHit] = useState(null); // { barcode, code?, name? } — the last handheld scan
 
   useEffect(() => { fetchBarcodeMap().then((m) => setBcMap(m || {})); }, []);
   const byCode = useMemo(() => barcodesByCode(bcMap), [bcMap]);
@@ -133,7 +141,9 @@ export default function ProductsTab() {
       const name = String(it?.description ?? it?.productName ?? it?.name ?? "").trim();
       if (!name) return null;
       const key = normalizeCode(code) || normalizeCode(name);
-      return key ? { key, code, name } : null;
+      const category = String(it?.category || "").trim();
+      const uom = String(it?.uom || "").trim();
+      return key ? { key, code, name, category, uom } : null;
     };
     base.forEach((it) => {
       const r = norm(it);
@@ -141,25 +151,82 @@ export default function ProductsTab() {
     });
     custom.forEach((it) => {
       const r = norm(it);
-      if (r) map.set(r.key, { ...r, source: map.has(r.key) ? "edited" : "custom" });
+      if (!r) return;
+      const was = map.get(r.key);
+      // an override keeps the master's category / unit unless it has its own
+      map.set(r.key, {
+        ...r,
+        category: r.category || was?.category || "",
+        uom: r.uom || was?.uom || "",
+        source: was ? "edited" : "custom",
+      });
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [base, custom]);
 
+  const categories = useMemo(() => {
+    const c = {};
+    rows.forEach((r) => { const k = r.category || ""; c[k] = (c[k] || 0) + 1; });
+    return Object.entries(c).sort((a, b) => (a[0] || "~").localeCompare(b[0] || "~"));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     const ns = normalizeCode(q);
-    let list = rows;
     const bq = q.replace(/\s+/g, "").toUpperCase();
+    const nbc = (r) => (byCode[String(r.code).trim()] || []).length;
+    let list = rows;
     if (s || ns) {
-      list = rows.filter((r) => (ns && normalizeCode(r.code).includes(ns)) || (s && r.name.toLowerCase().includes(s))
+      list = list.filter((r) => (ns && normalizeCode(r.code).includes(ns)) || (s && r.name.toLowerCase().includes(s))
+        || (s && r.category.toLowerCase().includes(s))
         || (bq.length >= 4 && (byCode[String(r.code).trim()] || []).some((b) => b.includes(bq))));
     }
+    if (fCat !== "*") list = list.filter((r) => (r.category || "") === fCat);
+    if (fBc === "with") list = list.filter((r) => nbc(r) > 0);
+    if (fBc === "without") list = list.filter((r) => nbc(r) === 0);
+    if (fBc === "many") list = list.filter((r) => nbc(r) > 1);
+    if (fSrc === "base") list = list.filter((r) => r.source === "base");
+    if (fSrc === "mine") list = list.filter((r) => r.source !== "base");
+    if (sort === "code") {
+      list = [...list].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+    } else if (sort === "bc") {
+      list = [...list].sort((a, b) => nbc(b) - nbc(a) || a.name.localeCompare(b.name));
+    } else if (sort === "cat") {
+      list = [...list].sort((a, b) => (a.category || "~").localeCompare(b.category || "~") || a.name.localeCompare(b.name));
+    }
     return list;
-  }, [rows, q, byCode]);
+  }, [rows, q, byCode, fCat, fBc, fSrc, sort]);
+
+  const filtersOn = fCat !== "*" || fBc !== "*" || fSrc !== "*" || sort !== "name" || !!q.trim();
+  const clearFilters = () => { setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setSort("name"); };
+
+  /* Excel-friendly CSV of what is on screen (all matching rows, not only the first 400) */
+  const exportCsv = () => {
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [["Code", "Product Name", "Category", "UOM", "Barcodes", "Barcode count", "Source"].map(cell).join(",")];
+    filtered.forEach((r) => {
+      const bcs = (byCode[String(r.code).trim()] || []).map(showBarcode);
+      // ="…" keeps long barcodes as text in Excel (no 6.29E+12)
+      lines.push([
+        cell(r.code), cell(r.name), cell(r.category), cell(r.uom),
+        bcs.length ? `"=""${bcs.join(" | ")}"""` : cell(""), cell(bcs.length),
+        cell(r.source === "base" ? "Master" : r.source === "edited" ? "Edited" : "Custom"),
+      ].join(","));
+    });
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `products-catalog-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
 
   const stats = useMemo(() => ({
     total: rows.length,
+    withBc: rows.filter((r) => (byCode[String(r.code).trim()] || []).length > 0).length,
+    barcodes: Object.keys(bcMap).length,
     base: rows.filter((r) => r.source === "base").length,
     custom: rows.filter((r) => r.source !== "base").length,
   }), [rows]);
@@ -214,8 +281,14 @@ export default function ProductsTab() {
     const item = { item_code: code, description: name };
     const next = [item, ...custom.filter((it) => normKeyOf(it) !== form.editingKey)];
     const synced = await commitCustom(next, item, { oldCode: form.oldCode || form.editingKey });
+    // its barcodes follow it to the new code
+    let bcFail = false;
+    if (form.oldCode && (byCode[form.oldCode.trim()] || []).length) {
+      try { setBcMap(await recodeBarcodes(form.oldCode, { code, product: name }, userName())); } catch { bcFail = true; }
+    }
     resetForm();
-    return flash(synced ? "✅ Product updated." : "⚠️ Product saved locally only.");
+    return flash(bcFail ? "⚠️ Product updated, but its barcodes still point to the old code — try again."
+      : synced ? "✅ Product updated." : "⚠️ Product saved locally only.");
   };
 
   const requestRemoveRow = (row) => {
@@ -228,6 +301,10 @@ export default function ProductsTab() {
     if (!row) return;
     const next = custom.filter((it) => normKeyOf(it) !== row.key);
     const synced = await commitCustom(next, null, { deleteCode: row.code });
+    // a removed product takes its barcodes with it (a revert keeps them — the master product stays)
+    if (row.source === "custom" && barcodesOf(row).length) {
+      try { setBcMap(await recodeBarcodes(row.code, null, userName())); } catch { /* the list keeps them; remove from Barcodes */ }
+    }
     if (form.editingKey === row.key) resetForm();
     flash(synced ? (row.source === "edited" ? "✅ Reverted to master value." : "✅ Removed.") : "⚠️ Removed locally only.");
     setConfirmRemove(null);
@@ -235,9 +312,37 @@ export default function ProductsTab() {
 
   /* ---- barcodes of one product ---- */
   const openBarcodes = (row) => {
-    setBcOpen((k) => (k === row.key ? null : row.key));
-    setBcNew(""); setBcEdit(null); setBcErr(null);
+    const opening = bcOpen !== row.key;
+    setBcOpen(opening ? row.key : null);
+    // a scanned barcode that belongs to nobody waits here to be added
+    setBcNew(opening && scanHit && !scanHit.code ? showBarcode(scanHit.barcode) : "");
+    setBcEdit(null); setBcErr(null);
   };
+
+  /* 🔫 Handheld reader anywhere on the page: a known barcode jumps to its
+     product (barcodes open); an unknown one waits to be added. The barcode
+     boxes themselves (data-scan-input) just take the scan as typing. */
+  useWedgeScanner((text) => {
+    if (document.activeElement?.closest?.("[data-scan-input]")) return false;
+    const key = normBarcode(text);
+    if (!key) return false;
+    const owner = bcMap[key];
+    const row = owner?.code ? rows.find((r) => String(r.code).trim() === String(owner.code).trim()) : null;
+    // after the reader's keys are taken back out of the search box (its own onChange would win otherwise)
+    setTimeout(() => {
+      setFCat("*"); setFBc("*"); setFSrc("*");
+      if (row) {
+        setQ(showBarcode(key));
+        setBcOpen(row.key); setBcNew(""); setBcEdit(null); setBcErr(null);
+        setScanHit({ barcode: key, code: row.code, name: row.name });
+      } else {
+        setQ("");
+        setBcOpen(null);
+        setScanHit({ barcode: key, code: owner?.code || "", name: owner?.product || "" });
+      }
+    }, 0);
+    return true;
+  }, !loading);
   // fn(move) saves; a barcode on another code comes back as a conflict with a "move it here" retry
   const bcRun = async (fn, done) => {
     setBcBusy(true); setBcErr(null);
@@ -302,6 +407,8 @@ export default function ProductsTab() {
           <span style={chip("#eef2ff", "#3730a3")}>Total: {stats.total}</span>
           <span style={chip("#f1f5f9", "#334155")}>Master: {stats.base}</span>
           <span style={chip("#dcfce7", "#065f46")}>Added/Edited: {stats.custom}</span>
+          <span style={chip("#e0f2fe", "#075985")}>With barcode: {stats.withBc}/{stats.total}</span>
+          <span style={chip("#f1f5f9", "#334155")}>Barcodes: {stats.barcodes}</span>
           <span style={chip(serverOnline ? "#dcfce7" : "#fee2e2", serverOnline ? "#065f46" : "#991b1b")}>
             {serverOnline ? "Server sync" : "Local fallback"}
           </span>
@@ -341,6 +448,7 @@ export default function ProductsTab() {
             <div style={{ flex: "0 1 200px", minWidth: 140 }}>
               <span style={label}>Barcode (optional)</span>
               <input
+                data-scan-input=""
                 value={form.barcode}
                 onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
                 placeholder="scan or type"
@@ -360,15 +468,71 @@ export default function ProductsTab() {
         )}
       </div>
 
-      {/* Search + status */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+      {/* Handheld scan result */}
+      {scanHit && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "10px 12px",
+          borderRadius: 10, border: `1px solid ${scanHit.code ? "#bbf7d0" : "#fde68a"}`,
+          background: scanHit.code ? "#f0fdf4" : "#fffbeb", fontWeight: 700, color: "#0f172a",
+        }}>
+          <span style={{ fontFamily: "monospace", fontWeight: 900 }}>🔫 {showBarcode(scanHit.barcode)}</span>
+          {scanHit.code && rows.some((r) => String(r.code).trim() === String(scanHit.code).trim()) ? (
+            <span>→ {scanHit.code} · {scanHit.name}</span>
+          ) : scanHit.code ? (
+            <span>is linked to code {scanHit.code}, which is not in this catalog — add that product, or move the barcode to another one.</span>
+          ) : (
+            <>
+              <span>is not on any product yet. Open a product's barcodes (➕) and it is filled in — or start a new product with it.</span>
+              <Button
+                onClick={() => { setForm({ ...EMPTY_FORM, barcode: showBarcode(scanHit.barcode) }); setErr(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                tone="secondary"
+                style={{ minHeight: 30, padding: "4px 12px" }}
+              >
+                ➕ New product with it
+              </Button>
+            </>
+          )}
+          <button type="button" onClick={() => setScanHit(null)} style={{ ...ghost, minHeight: 28, padding: "2px 10px", marginInlineStart: "auto" }}>✕</button>
+        </div>
+      )}
+
+      {/* Search + smart filters + sort */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="🔍 Search by code, barcode or name…"
-          style={{ ...input, flex: "1 1 240px", maxWidth: 360 }}
+          placeholder="🔍 Search by code, barcode, name or category…"
+          style={{ ...input, flex: "1 1 240px", maxWidth: 340 }}
         />
+        <select value={fCat} onChange={(e) => setFCat(e.target.value)} style={{ ...ghost, maxWidth: 220 }} title="Category">
+          <option value="*">All categories</option>
+          {categories.map(([c, n]) => <option key={c || "-"} value={c}>{c || "(no category)"} · {n}</option>)}
+        </select>
+        <select value={fBc} onChange={(e) => setFBc(e.target.value)} style={ghost} title="Barcodes">
+          <option value="*">Any barcodes</option>
+          <option value="with">With barcode</option>
+          <option value="without">No barcode yet</option>
+          <option value="many">2+ barcodes</option>
+        </select>
+        <select value={fSrc} onChange={(e) => setFSrc(e.target.value)} style={ghost} title="Source">
+          <option value="*">Master + added</option>
+          <option value="base">Master only</option>
+          <option value="mine">Added / edited only</option>
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} style={ghost} title="Sort">
+          <option value="name">Sort: name A→Z</option>
+          <option value="code">Sort: code</option>
+          <option value="cat">Sort: category</option>
+          <option value="bc">Sort: most barcodes</option>
+        </select>
+        {filtersOn && <Button onClick={clearFilters} tone="secondary" style={{ minHeight: 34, padding: "5px 12px" }}>✕ Clear</Button>}
+        <Button onClick={exportCsv} tone="secondary" disabled={!filtered.length} style={{ minHeight: 34, padding: "5px 12px" }} title="Download what is shown as a CSV file (opens in Excel)">
+          ⬇ Export ({filtered.length})
+        </Button>
         {msg && <span style={{ color: "#065f46", fontWeight: 800 }}>{msg}</span>}
+      </div>
+      <div style={{ color: "#64748b", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+        Showing {Math.min(filtered.length, MAX_ROWS)} of {filtered.length} matching · 🔫 a handheld barcode reader works anywhere on this page — scan a carton to find its product.
       </div>
 
       {/* Table */}
@@ -397,7 +561,18 @@ export default function ProductsTab() {
                   <React.Fragment key={row.key}>
                   <tr>
                     <td style={{ ...td, fontWeight: 800, color: "#0f172a", fontFamily: "monospace" }}>{row.code || "—"}</td>
-                    <td style={{ ...td, color: "#334155" }}>{row.name}</td>
+                    <td style={{ ...td, color: "#334155" }}>
+                      <div>{row.name}</div>
+                      {(row.category || row.uom) && (
+                        <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
+                          {row.category && (
+                            <button type="button" onClick={() => setFCat(row.category)} title="Show this category only"
+                              style={{ ...chip("#f5f3ff", "#5b21b6"), border: 0, cursor: "pointer" }}>{row.category}</button>
+                          )}
+                          {row.uom && <span style={chip("#f1f5f9", "#475569")}>{row.uom}</span>}
+                        </div>
+                      )}
+                    </td>
                     <td style={td}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                         {bcs.slice(0, 2).map((b) => (
@@ -447,6 +622,7 @@ export default function ProductsTab() {
                                 <>
                                   <input
                                     autoFocus
+                                    data-scan-input=""
                                     value={bcEdit.value}
                                     onChange={(e) => setBcEdit({ key: b, value: e.target.value })}
                                     onKeyDown={(e) => { if (e.key === "Enter") bcSaveEdit(row); if (e.key === "Escape") setBcEdit(null); }}
@@ -468,6 +644,7 @@ export default function ProductsTab() {
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           <input
+                            data-scan-input=""
                             value={bcNew}
                             onChange={(e) => setBcNew(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") bcAdd(row); }}
@@ -512,7 +689,9 @@ export default function ProductsTab() {
       <ConfirmModal
         open={!!confirmRemove}
         title={confirmRemove?.source === "edited" ? "Revert catalog override?" : "Remove product?"}
-        body={confirmRemove ? `${confirmRemove.name} (${confirmRemove.code})` : ""}
+        body={confirmRemove
+          ? `${confirmRemove.name} (${confirmRemove.code})${confirmRemove.source === "custom" && barcodesOf(confirmRemove).length ? ` — its ${barcodesOf(confirmRemove).length} barcode(s) are removed too.` : ""}`
+          : ""}
         confirmText={confirmRemove?.source === "edited" ? "Revert" : "Remove"}
         cancelText="Cancel"
         onConfirm={removeRow}

@@ -123,6 +123,22 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
   return writeMap(map, user);
 }
 
+/** A product's code changed (item = new code) or it was removed (item = null):
+    its barcodes follow it, or go with it. Writes only when something changed. */
+export async function recodeBarcodes(oldCode, item, user = "") {
+  const from = String(oldCode || "").trim();
+  if (!from) return null;
+  const map = await readRecord();
+  let changed = false;
+  Object.keys(map).forEach((bc) => {
+    if (String(map[bc]?.code || "").trim() !== from) return;
+    changed = true;
+    if (item) map[bc] = entry(item, user);
+    else delete map[bc];
+  });
+  return changed ? writeMap(map, user) : map;
+}
+
 /** Links one barcode to one of our products, for the whole company. */
 export async function linkBarcode(gtin, item, user = "") {
   const g = toGtin14(gtin);
