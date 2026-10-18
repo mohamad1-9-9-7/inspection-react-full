@@ -9,14 +9,27 @@
 // when every key came within GAP_MS of the one before and it ends in Enter
 // (or Tab); a person typing is far slower, so normal typing is untouched.
 // If the burst landed inside a text box, it is taken back out of that box.
-// Works with the keyboard set to Arabic too (letters are read from the key
-// position), and turns Ctrl+] / the GS key into the GS1 separator.
+// Works with the keyboard set to Arabic too (letters, digits and the URL
+// symbols are read from the key position), and turns Ctrl+] / the GS key
+// into the GS1 separator.
+//
+// The callback may return false: "not mine" — the keys are then left alone
+// (another listener, e.g. the app-wide cooler-link opener, takes that scan).
 
 import { useEffect, useRef } from "react";
 
 const GAP_MS = 50;
 const MIN_LEN = 6;
 const GS = "\u001d";
+
+// US-layout characters by key position: [plain, with Shift]
+const SYM = {
+  Slash: ["/", "?"], Period: [".", ">"], Comma: [",", "<"], Semicolon: [";", ":"], Quote: ["'", '"'],
+  Minus: ["-", "_"], Equal: ["=", "+"], BracketLeft: ["[", "{"], BracketRight: ["]", "}"],
+  Backslash: ["\\", "|"], Backquote: ["`", "~"],
+  Digit1: ["1", "!"], Digit2: ["2", "@"], Digit3: ["3", "#"], Digit4: ["4", "$"], Digit5: ["5", "%"],
+  Digit6: ["6", "^"], Digit7: ["7", "&"], Digit8: ["8", "*"], Digit9: ["9", "("], Digit0: ["0", ")"],
+};
 
 function charOf(e) {
   if (e.ctrlKey && (e.key === "]" || e.code === "BracketRight")) return GS;
@@ -25,10 +38,10 @@ function charOf(e) {
   if (e.key.length !== 1) return "";
   if (e.key.charCodeAt(0) < 128) return e.key;
   // non-English keyboard layout: read the key position instead
-  const m = /^(Key([A-Z])|Digit(\d)|Numpad(\d))$/.exec(e.code || "");
-  if (!m) return "";
-  if (m[2]) return e.shiftKey ? m[2] : m[2].toLowerCase();
-  return m[3] || m[4];
+  const c = e.code || "";
+  const m = /^(Key([A-Z])|Numpad(\d))$/.exec(c);
+  if (m) return m[2] ? (e.shiftKey ? m[2] : m[2].toLowerCase()) : m[3];
+  return SYM[c] ? SYM[c][e.shiftKey ? 1 : 0] : "";
 }
 
 function takeBack(el, text) {
@@ -67,10 +80,10 @@ export default function useWedgeScanner(onCode, enabled = true) {
         const n = typed;
         buf = ""; typed = 0; target = null;
         if (fast && code.replace(new RegExp(GS, "g"), "").length >= MIN_LEN) {
+          if (cbRef.current?.(code) === false) return;
           e.preventDefault();
           e.stopPropagation();
           if (n) takeBack(el, code.slice(code.length - n));
-          cbRef.current?.(code);
         }
         return;
       }

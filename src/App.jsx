@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useParams, useLocation } from "react-router-do
 import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
+import ScannedLinkOpener from "./components/ScannedLinkOpener";
 import ThemeToggle from "./components/ThemeToggle";
 import AccessibilityMenu from "./components/AccessibilityMenu";
 import LanguageSwitcher from "./components/LanguageSwitcher";
@@ -895,6 +896,7 @@ export default function App() {
       <Suspense fallback={null}><TrialBanner /></Suspense>
       <Suspense fallback={null}><BillingDueBanner /></Suspense>
       <GlobalDatePicker />
+      <ScannedLinkOpener />
       <GlobalTimePicker />
       <ThemeToggle />
       <AccessibilityMenu />

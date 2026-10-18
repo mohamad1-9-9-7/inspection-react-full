@@ -336,6 +336,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   /* A handheld reader (keyboard-style) works anywhere on this screen — no
      camera, no box to tap: from the main screen it opens "Products in". */
   useWedgeScanner((text) => {
+    if (/^https?:\/\//i.test(text)) return false; // a unit's QR link — the app-wide opener takes it
     if (!mode) start("in");
     onScan(text);
   }, !scanOpen && !saving && mode !== "out" && !!target && !loading);
