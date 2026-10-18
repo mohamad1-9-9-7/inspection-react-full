@@ -24,54 +24,70 @@ import { ALLERGENS, STORAGE } from "../../utils/productMedia";
 
 const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true };
 
+/* Sizes follow the Aa text-size control (--app-fs on <html>), like the rest of the app. */
+const z = (px) => `calc(${px}px * var(--app-fs, 1))`;
 const CSS = `
-.pfm { position:fixed; inset:0; z-index:10500; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; padding:12px;
-  font-family: system-ui,-apple-system,"Segoe UI",Cairo,sans-serif; color:#0f172a; font-size:14px; }
-.pfm-box { background:#fff; border-radius:16px; width:min(720px,100%); max-height:96vh; display:flex; flex-direction:column; overflow:hidden;
-  box-shadow:0 24px 60px rgba(2,6,23,.32); direction:ltr; }
-.pfm-head { padding:14px 18px; background:linear-gradient(135deg,#0ea5e9,#0d9488); color:#fff; display:flex; align-items:center; gap:10px; }
-.pfm-head h2 { margin:0; font-size:18px; font-weight:900; flex:1; }
-.pfm-x { border:0; background:rgba(255,255,255,.18); color:#fff; border-radius:10px; width:34px; height:34px; font-size:16px; cursor:pointer; }
-.pfm-body { padding:16px 18px; overflow:auto; display:flex; flex-direction:column; gap:14px; }
-.pfm-grid { display:grid; grid-template-columns: 1fr 180px; gap:12px; }
-@media (max-width:560px) { .pfm-grid { grid-template-columns:1fr; } }
-.pfm label.l { display:block; font-weight:800; font-size:13px; color:#334155; margin-bottom:5px; }
+.pfm { position:fixed; inset:0; z-index:10500; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px;
+  font-family: system-ui,-apple-system,"Segoe UI",Cairo,sans-serif; color:#0f172a; font-size:${z(16)}; line-height:1.45; }
+.pfm * { box-sizing:border-box; }
+.pfm-box { background:#fff; border-radius:20px; width:min(1080px,100%); max-height:94vh; display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 30px 70px rgba(2,6,23,.35); direction:ltr; }
+.pfm-head { padding:18px 24px; background:linear-gradient(135deg,#0ea5e9,#0d9488); color:#fff; display:flex; align-items:center; gap:12px; }
+.pfm-head .ic { font-size:${z(26)}; }
+.pfm-head h2 { margin:0; font-size:${z(22)}; font-weight:900; flex:1; letter-spacing:-.01em; }
+.pfm-x { border:0; background:rgba(255,255,255,.2); color:#fff; border-radius:12px; width:42px; height:42px; font-size:${z(18)}; cursor:pointer; }
+.pfm-x:hover { background:rgba(255,255,255,.32); }
+.pfm-body { padding:20px 24px; overflow:auto; display:flex; flex-direction:column; gap:16px; background:#f6f9fc; }
+.pfm-grid { display:grid; grid-template-columns: 1fr 240px; gap:14px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:16px; }
+.pfm-cols { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
+.pfm-cols .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+@media (max-width:860px) { .pfm-cols { grid-template-columns:1fr; } }
+@media (max-width:560px) { .pfm-grid { grid-template-columns:1fr; } .pfm-body { padding:14px; } }
+.pfm label.l { display:block; font-weight:800; font-size:${z(15)}; color:#334155; margin-bottom:6px; }
 .pfm .req { color:#dc2626; }
-.pfm input.i { width:100%; box-sizing:border-box; border:1.5px solid #cbd5e1; border-radius:10px; padding:9px 11px; font-size:14px; font-family:inherit; background:#fff; color:#0f172a; }
-.pfm input.i:focus { outline:none; border-color:#0ea5e9; box-shadow:0 0 0 3px rgba(14,165,233,.18); }
-.pfm input.i:disabled { background:#f1f5f9; color:#64748b; }
-.pfm input.mono { font-family: ui-monospace,Consolas,monospace; }
-.pfm .hint { color:#64748b; font-size:12px; margin-top:4px; }
-.pfm .sec { border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#f8fbff; }
-.pfm .sec-t { font-weight:900; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
-.pfm .bc-row { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
-.pfm .bc-n { width:24px; text-align:center; font-weight:900; color:#64748b; }
-.pfm .btn { border:1.5px solid #cbd5e1; background:#fff; color:#0f172a; border-radius:10px; padding:8px 14px; font-weight:800; font-size:13px; cursor:pointer; font-family:inherit; }
+.pfm input.i { width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:12px 14px; font-size:${z(17)}; font-family:inherit; background:#fff; color:#0f172a; min-height:50px; }
+.pfm input.i:focus { outline:none; border-color:#0ea5e9; box-shadow:0 0 0 4px rgba(14,165,233,.18); }
+.pfm input.i:disabled { background:#f1f5f9; color:#475569; }
+.pfm input.mono { font-family: ui-monospace,Consolas,monospace; letter-spacing:.02em; }
+.pfm .hint { color:#64748b; font-size:${z(14)}; margin-top:6px; }
+.pfm .sec { border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#fff; }
+.pfm .sec-t { font-weight:900; font-size:${z(17)}; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+.pfm .sec-s { color:#64748b; font-size:${z(14)}; font-weight:600; margin-bottom:12px; }
+.pfm .bc-row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+.pfm .bc-n { width:30px; height:30px; border-radius:50%; background:#e0f2fe; color:#075985; display:grid; place-items:center; font-weight:900; font-size:${z(14)}; flex-shrink:0; }
+.pfm .btn { border:1.5px solid #cbd5e1; background:#fff; color:#0f172a; border-radius:12px; padding:11px 18px; font-weight:800; font-size:${z(16)}; cursor:pointer; font-family:inherit; min-height:46px; }
+.pfm .btn:hover { background:#f0f7fe; }
 .pfm .btn:disabled { opacity:.55; cursor:default; }
 .pfm .btn.pri { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
+.pfm .btn.pri:hover { background:#0284c7; }
 .pfm .btn.dan { color:#b91c1c; border-color:#fecaca; }
-.pfm .btn.sm { padding:5px 10px; }
-.pfm .imgs { display:flex; flex-wrap:wrap; gap:10px; }
-.pfm .img { position:relative; width:96px; height:96px; border-radius:10px; overflow:hidden; border:1px solid #e2e8f0; background:#fff; }
+.pfm .btn.icon { width:50px; padding:0; flex-shrink:0; font-size:${z(18)}; }
+.pfm .unit { font-weight:800; color:#475569; font-size:${z(16)}; }
+.pfm .imgs { display:flex; flex-wrap:wrap; gap:12px; }
+.pfm .img { position:relative; width:120px; height:120px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; background:#fff; }
 .pfm .img img { width:100%; height:100%; object-fit:cover; display:block; }
-.pfm .img button { position:absolute; top:4px; right:4px; border:0; border-radius:8px; background:rgba(15,23,42,.7); color:#fff; width:24px; height:24px; cursor:pointer; font-size:12px; }
-.pfm .img .main { position:absolute; left:4px; bottom:4px; background:#0d9488; color:#fff; font-size:10px; font-weight:800; border-radius:6px; padding:1px 6px; }
-.pfm .add-img { width:96px; height:96px; border-radius:10px; border:2px dashed #94a3b8; background:#fff; color:#475569; font-weight:800; font-size:12px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
-.pfm .modes { display:flex; gap:6px; flex-wrap:wrap; }
-.pfm .mode { border:1.5px solid #cbd5e1; background:#fff; border-radius:999px; padding:6px 12px; font-weight:800; font-size:13px; cursor:pointer; font-family:inherit; color:#334155; }
-.pfm .mode.on { background:#e0f2fe; border-color:#0ea5e9; color:#075985; }
-.pfm .temps { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
-.pfm .temps input.i { width:90px; }
-.pfm .alg { display:flex; gap:6px; flex-wrap:wrap; }
-.pfm .alg button { border:1.5px solid #cbd5e1; background:#fff; border-radius:999px; padding:5px 10px; font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; color:#334155; }
-.pfm .alg button.on { background:#fff7ed; border-color:#fb923c; color:#9a3412; }
-.pfm .sw { display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
-.pfm .sw i { width:42px; height:24px; border-radius:99px; background:#cbd5e1; position:relative; transition:background .15s; flex-shrink:0; }
-.pfm .sw i::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+.pfm .img button { position:absolute; top:6px; right:6px; border:0; border-radius:9px; background:rgba(15,23,42,.72); color:#fff; width:30px; height:30px; cursor:pointer; font-size:${z(14)}; }
+.pfm .img .main { position:absolute; left:6px; bottom:6px; background:#0d9488; color:#fff; font-size:${z(12)}; font-weight:800; border-radius:7px; padding:2px 8px; }
+.pfm .add-img { width:120px; height:120px; border-radius:12px; border:2px dashed #94a3b8; background:#f8fbff; color:#475569; font-weight:800; font-size:${z(14)}; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; font-family:inherit; }
+.pfm .add-img:hover { border-color:#0ea5e9; color:#0369a1; }
+.pfm .add-img span { font-size:${z(30)}; }
+.pfm .modes { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.pfm .mode { border:1.5px solid #cbd5e1; background:#fff; border-radius:12px; padding:12px 10px; font-weight:800; font-size:${z(16)}; cursor:pointer; font-family:inherit; color:#334155; min-height:50px; }
+.pfm .mode.on { background:#e0f2fe; border-color:#0ea5e9; color:#075985; box-shadow:0 0 0 3px rgba(14,165,233,.15); }
+.pfm .temps { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+.pfm .temps input.i { width:110px; }
+.pfm .alg { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+.pfm .alg button { border:1.5px solid #cbd5e1; background:#fff; border-radius:12px; padding:10px 12px; font-weight:700; font-size:${z(15)}; cursor:pointer; font-family:inherit; color:#334155; text-align:start; min-height:46px; }
+.pfm .alg button.on { background:#fff7ed; border-color:#fb923c; color:#9a3412; font-weight:900; box-shadow:0 0 0 3px rgba(251,146,60,.15); }
+.pfm .sw { display:flex; align-items:center; gap:14px; cursor:pointer; user-select:none; }
+.pfm .sw i { width:56px; height:32px; border-radius:99px; background:#cbd5e1; position:relative; transition:background .15s; flex-shrink:0; }
+.pfm .sw i::after { content:""; position:absolute; top:4px; left:4px; width:24px; height:24px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
 .pfm .sw.on i { background:#10b981; }
-.pfm .sw.on i::after { left:21px; }
-.pfm .err { color:#b91c1c; font-weight:800; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px 12px; }
-.pfm-foot { padding:12px 18px; border-top:1px solid #e2e8f0; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; background:#fff; }
+.pfm .sw.on i::after { left:28px; }
+.pfm .sw b { font-size:${z(17)}; font-weight:900; }
+.pfm .err { color:#b91c1c; font-weight:800; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; padding:12px 16px; font-size:${z(15)}; }
+.pfm-foot { padding:16px 24px; border-top:1px solid #e2e8f0; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; background:#fff; }
+.pfm-foot .btn { min-width:140px; }
 `;
 
 export default function ProductFormModal({ open, mode = "add", initial, codeLocked = false, shelfHint = "", onSave, onClose }) {
@@ -212,7 +228,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       <style>{CSS}</style>
       <div className="pfm-box">
         <div className="pfm-head">
-          <span style={{ fontSize: 22 }}>{mode === "edit" ? "✏️" : "➕"}</span>
+          <span className="ic">{mode === "edit" ? "✏️" : "➕"}</span>
           <h2>{mode === "edit" ? "Edit product" : "Add product"}</h2>
           <button type="button" className="pfm-x" onClick={cancel} aria-label="Close">✕</button>
         </div>
@@ -229,12 +245,15 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
               <input id="pfm-code" className="i mono" value={f.code} onChange={(e) => set("code", e.target.value)}
                 placeholder="e.g. 20060" disabled={codeLocked}
                 title={codeLocked ? "Master codes can't be changed — only the name." : undefined} />
-              {codeLocked && <div className="hint">Master code — can't change.</div>}
+              {codeLocked && <div className="hint">Master code — it can't be changed.</div>}
             </div>
           </div>
 
+          <div className="pfm-cols">
+          <div className="col">
           <div className="sec">
-            <div className="sec-t">🏷 Barcodes <span className="hint" style={{ margin: 0, fontWeight: 600 }}>one product, many barcodes — each barcode on this code only</span></div>
+            <div className="sec-t">🏷 Barcodes</div>
+            <div className="sec-s">One product, many barcodes — each barcode belongs to this code only.</div>
             {f.barcodes.map((b, i) => (
               // eslint-disable-next-line react/no-array-index-key
               <div className="bc-row" key={i}>
@@ -242,21 +261,21 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                 <input className="i mono" data-scan-input="" value={b} onChange={(e) => setBc(i, e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (b.trim() && i === f.barcodes.length - 1) addBc(); } }}
                   placeholder={`Barcode ${i + 1} — scan or type`} />
-                <button type="button" className="btn dan sm" onClick={() => delBc(i)} title="Remove this barcode"
+                <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
                   disabled={f.barcodes.length === 1 && !b}>🗑</button>
               </div>
             ))}
-            <button type="button" className="btn sm" onClick={addBc}>➕ Another barcode</button>
+            <button type="button" className="btn" onClick={addBc}>➕ Another barcode</button>
             <div className="hint">🔫 With the handheld reader: click a box and scan — Enter opens the next box.</div>
           </div>
 
           <div>
             <div className="sec">
               <div className="sec-t">⏳ Shelf life</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
                 <input className="i" type="number" min={0} max={3650} value={f.shelfDays}
-                  onChange={(e) => set("shelfDays", e.target.value)} placeholder="days" style={{ width: 110 }} />
-                <span style={{ fontWeight: 800, color: "#475569" }}>days</span>
+                  onChange={(e) => set("shelfDays", e.target.value)} placeholder="days" style={{ width: 140 }} />
+                <span className="unit">days</span>
               </div>
               <div className="hint">
                 Empty = {shelfHint || "no shelf life"}. 0 = no automatic expiry. The Raw Material Receipt calculates the expiry from it.
@@ -265,7 +284,8 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
           </div>
 
           <div className="sec">
-            <div className="sec-t">🌡 Storage temperature <span className="hint" style={{ margin: 0, fontWeight: 600 }}>optional</span></div>
+            <div className="sec-t">🌡 Storage temperature</div>
+            <div className="sec-s">Optional — tap again to clear.</div>
             <div className="modes">
               {Object.entries(STORAGE).map(([k, v]) => (
                 <button key={k} type="button" className={`mode ${f.mode === k ? "on" : ""}`} onClick={() => pickMode(k)}>{v.icon} {v.label}</button>
@@ -273,17 +293,20 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
             </div>
             {f.mode && (
               <div className="temps">
-                <span style={{ fontWeight: 800, color: "#475569" }}>from</span>
+                <span className="unit">from</span>
                 <input className="i" type="number" step="0.5" value={f.tMin} onChange={(e) => set("tMin", e.target.value)} placeholder="min" />
-                <span style={{ fontWeight: 800, color: "#475569" }}>to</span>
+                <span className="unit">to</span>
                 <input className="i" type="number" step="0.5" value={f.tMax} onChange={(e) => set("tMax", e.target.value)} placeholder="max" />
-                <span style={{ fontWeight: 800, color: "#475569" }}>°C</span>
+                <span className="unit">°C</span>
               </div>
             )}
           </div>
 
+          </div>
+          <div className="col">
           <div className="sec">
-            <div className="sec-t">⚠️ Allergens <span className="hint" style={{ margin: 0, fontWeight: 600 }}>tap what the product contains</span></div>
+            <div className="sec-t">⚠️ Allergens</div>
+            <div className="sec-s">Tap what the product contains.</div>
             <div className="alg">
               {ALLERGENS.map((a) => (
                 <button key={a.id} type="button" className={f.allergens.includes(a.id) ? "on" : ""} onClick={() => flipAllergen(a.id)}>
@@ -299,7 +322,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
               onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); set("active", !f.active); } }}>
               <i />
               <div>
-                <div style={{ fontWeight: 900 }}>{f.active ? "Active" : "Stopped"}</div>
+                <b>{f.active ? "Active" : "Stopped"}</b>
                 <div className="hint" style={{ margin: 0 }}>
                   {f.active ? "Shows in every product list of the app." : "Hidden from the product lists — kept, and old records still show it."}
                 </div>
@@ -308,7 +331,8 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
           </div>
 
           <div className="sec">
-            <div className="sec-t">🖼 Product photos <span className="hint" style={{ margin: 0, fontWeight: 600 }}>optional — the first one is the main photo</span></div>
+            <div className="sec-t">🖼 Product photos</div>
+            <div className="sec-s">Optional — the first one is the main photo; tap another to make it main.</div>
             <div className="imgs">
               {f.images.map((u, i) => (
                 <div className="img" key={u}>
@@ -318,12 +342,15 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                 </div>
               ))}
               <button type="button" className="add-img" onClick={() => fileRef.current?.click()} disabled={busy}>
-                <span style={{ fontSize: 22 }}>📷</span>
+                <span>📷</span>
                 {uploading ? `Uploading ${uploading}…` : "Add photos"}
               </button>
               <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }}
                 onChange={(e) => { pickImages(e.target.files); e.target.value = ""; }} />
             </div>
+          </div>
+
+          </div>
           </div>
 
           {err && (
@@ -332,7 +359,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                 <>
                   <div>These barcodes already belong to another product: {err.text}</div>
                   <div style={{ fontWeight: 600, marginTop: 4 }}>One barcode can belong to one code only.</div>
-                  <button type="button" className="btn dan sm" style={{ marginTop: 8 }} onClick={() => save(true)} disabled={busy}>
+                  <button type="button" className="btn dan" style={{ marginTop: 10 }} onClick={() => save(true)} disabled={busy}>
                     Move them to this product
                   </button>
                 </>
