@@ -25,7 +25,7 @@ import { useShelfLife } from "./shelfLife";
 import { fetchSuppliers } from "../../../complaints/complaintsCore";
 import BarcodeScanner from "../../../../components/BarcodeScanner";
 import { parseBarcode } from "../../../../utils/gs1Barcode";
-import { fetchBarcodeMap, linkBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
+import { fetchBarcodeMap, linkBarcode, normBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
 import useWedgeScanner from "../../../../utils/useWedgeScanner";
 
 const TX = {
@@ -305,8 +305,15 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const onScan = async (text) => {
     setScanOpen(false);
     setMsg(null);
-    const r = parseBarcode(text);
-    if (!r.gtin && !r.gs1) { setScanNote(""); setMsg({ kind: "bad", text: s.notProduct }); return; }
+    let r = parseBarcode(text);
+    if (!r.gtin && !r.gs1) {
+      // not a GTIN — maybe one of our own barcodes added in the Products Catalog
+      const own = normBarcode(text);
+      const m = codeMap || (await fetchBarcodeMap());
+      if (!codeMap) setCodeMap(m);
+      if (!own || !m[own]) { setScanNote(""); setMsg({ kind: "bad", text: s.notProduct }); return; }
+      r = { ...r, gtin: own };
+    }
     const filled = [];
     if (r.prodDate) { setProdDate(r.prodDate); filled.push(`${s.fProd} ${dmy(r.prodDate)}`); }
     if (r.expDate) { setExpDate(r.expDate); filled.push(`${s.fExp} ${dmy(r.expDate)}`); }

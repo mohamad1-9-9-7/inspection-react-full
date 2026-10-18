@@ -13,13 +13,19 @@
 //   payload.map = { "07891515408688": { code, product, uom, by, at } }
 // Saving re-reads the record and adds/replaces only its own barcode;
 // unlinkBarcode removes a wrong link (the barcode is "new" again).
+// One barcode → ONE product code (the map key guarantees it); one product
+// may carry many barcodes (carton, piece, another supplier…). The Products
+// Catalog edits them with addBarcode / removeBarcode / replaceBarcode, which
+// refuse a barcode already linked to another code (unless told to move it).
+// Keys: a real GTIN is stored as 14 digits; any other code (an internal
+// Code-128 label…) as typed, upper-case, without spaces.
 // localStorage holds a copy for a fast / offline lookup (cache only).
 //
 // offHint(gtin): the product's name from Open Food Facts when it is listed —
 // a hint for the person linking it, never the link itself.
 
 import API_BASE from "../config/api";
-import { toGtin14 } from "./gs1Barcode";
+import { isValidGtin, toGtin14 } from "./gs1Barcode";
 
 export const BARCODE_TYPE = "barcode_map";
 const KEY = "map";
@@ -51,6 +57,72 @@ export async function fetchBarcodeMap(signal) {
   }
 }
 
+/** The map key of anything a reader typed / a person entered ("" = nothing). */
+export function normBarcode(raw) {
+  const s = String(raw || "").replace(/\s+/g, "").trim();
+  if (!s) return "";
+  if (/^\d{8}$|^\d{12,14}$/.test(s) && isValidGtin(s)) return toGtin14(s);
+  return s.toUpperCase();
+}
+
+/** A key as people read it (a GTIN without its padding zero). */
+export const showBarcode = (key) => String(key || "").replace(/^0(?=\d{13}$)/, "");
+
+/** { code: [barcode keys…] } — every product's barcodes. */
+export function barcodesByCode(map) {
+  const out = {};
+  Object.entries(map || {}).forEach(([bc, v]) => {
+    const c = String(v?.code || "").trim();
+    if (c) (out[c] = out[c] || []).push(bc);
+  });
+  return out;
+}
+
+const entry = (item, user) => ({
+  code: String(item.code || "").trim(),
+  product: String(item.product || "").trim(),
+  uom: String(item.uom || "").trim(),
+  by: user || "",
+  at: new Date().toISOString(),
+});
+
+function conflictError(key, hit) {
+  const e = new Error(`Barcode ${showBarcode(key)} already belongs to ${hit.code}${hit.product ? ` · ${hit.product}` : ""}.`);
+  e.conflict = { barcode: key, code: hit.code, product: hit.product || "" };
+  return e;
+}
+
+/** Adds a barcode to a product. Taken by another code → throws (err.conflict) unless move. */
+export async function addBarcode(raw, item, user = "", { move = false } = {}) {
+  const key = normBarcode(raw);
+  if (!key) throw new Error("Type or scan a barcode.");
+  const map = await readRecord();
+  const hit = map[key];
+  if (hit && hit.code && hit.code !== String(item.code || "").trim() && !move) throw conflictError(key, hit);
+  map[key] = entry(item, user);
+  return writeMap(map, user);
+}
+
+/** Removes one barcode (whatever product it was on). */
+export async function removeBarcode(raw, user = "") {
+  const map = await readRecord();
+  delete map[normBarcode(raw)];
+  delete map[raw];
+  return writeMap(map, user);
+}
+
+/** Edits a barcode: the old one goes, the new one comes, in one save. */
+export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = false } = {}) {
+  const key = normBarcode(newRaw);
+  if (!key) throw new Error("Type or scan a barcode.");
+  const map = await readRecord();
+  const hit = map[key];
+  if (hit && hit.code && hit.code !== String(item.code || "").trim() && !move) throw conflictError(key, hit);
+  delete map[oldRaw];
+  map[key] = entry(item, user);
+  return writeMap(map, user);
+}
+
 /** Links one barcode to one of our products, for the whole company. */
 export async function linkBarcode(gtin, item, user = "") {
   const g = toGtin14(gtin);
@@ -69,6 +141,7 @@ export async function linkBarcode(gtin, item, user = "") {
 export async function unlinkBarcode(gtin, user = "") {
   const map = await readRecord();
   delete map[toGtin14(gtin)];
+  delete map[gtin]; // one of our own (non-GTIN) barcodes
   return writeMap(map, user);
 }
 
