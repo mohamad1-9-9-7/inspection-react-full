@@ -123,6 +123,37 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
   return writeMap(map, user);
 }
 
+/**
+ * A product's whole barcode list in one save (the Add / Edit product window):
+ * every barcode of oldCode (or item.code) not in `list` is dropped, every one
+ * in `list` is put on item.code. A barcode on ANOTHER code throws
+ * (err.conflicts = [{ barcode, code, product }]) unless move.
+ */
+export async function setCodeBarcodes(oldCode, item, list, user = "", { move = false } = {}) {
+  const to = String(item.code || "").trim();
+  const from = String(oldCode || to).trim();
+  const keys = [...new Set((list || []).map(normBarcode).filter(Boolean))];
+  const map = await readRecord();
+  const conflicts = keys
+    .filter((k) => map[k]?.code && ![to, from].includes(String(map[k].code).trim()))
+    .map((k) => ({ barcode: k, code: map[k].code, product: map[k].product || "" }));
+  if (conflicts.length && !move) {
+    const e = new Error(conflicts.map((c) => `${showBarcode(c.barcode)} → ${c.code}${c.product ? ` · ${c.product}` : ""}`).join(", "));
+    e.conflicts = conflicts;
+    throw e;
+  }
+  Object.keys(map).forEach((bc) => {
+    const c = String(map[bc]?.code || "").trim();
+    if ((c === from || c === to) && !keys.includes(bc)) delete map[bc];
+  });
+  keys.forEach((k) => {
+    const same = map[k] && String(map[k].code).trim() === to;
+    if (!same) map[k] = entry(item, user);
+    else map[k] = { ...map[k], product: String(item.product || map[k].product || "").trim() };
+  });
+  return writeMap(map, user);
+}
+
 /** A product's code changed (item = new code) or it was removed (item = null):
     its barcodes follow it, or go with it. Writes only when something changed. */
 export async function recodeBarcodes(oldCode, item, user = "") {

@@ -22,12 +22,16 @@ import {
 } from "../monitor/branches/_shared/ProductPicker";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 import {
-  addBarcode, barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, removeBarcode, replaceBarcode, showBarcode,
+  addBarcode, barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, removeBarcode, replaceBarcode, setCodeBarcodes, showBarcode,
 } from "../../utils/barcodeMap";
 import { getCurrentUser } from "../../utils/perms";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { useShelfLife } from "../monitor/branches/_shared/shelfLife";
 import ShelfLifeModal from "../monitor/branches/_shared/ShelfLifeModal";
+import { resolveShelfLife } from "../monitor/branches/_shared/shelfLife";
+import ProductFormModal from "./ProductFormModal";
+import { fetchProductMedia, imagesOf, setProductImages } from "../../utils/productMedia";
+import { deleteImage, thumbUrl } from "../../utils/imageUpload";
 
 const SHELF_SRC = { code: "Product", category: "Category", default: "Default" };
 
@@ -36,7 +40,6 @@ const userName = () => {
   return String(u.displayName || u.name || u.username || "").trim();
 };
 
-const EMPTY_FORM = { code: "", name: "", barcode: "", editingKey: null, oldCode: "", codeLocked: false };
 
 const normKeyOf = (it) => normalizeCode(it?.item_code ?? it?.itemCode ?? "");
 
@@ -50,7 +53,10 @@ export default function ProductsTab() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [serverOnline, setServerOnline] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  // the ➕ / ✏️ product window: null = closed; { row } = edit that row, { row: null, initial } = add
+  const [pf, setPf] = useState(null);
+  const [media, setMedia] = useState({});
+  useEffect(() => { fetchProductMedia().then((m) => setMedia(m || {})); }, []);
   const [confirmRemove, setConfirmRemove] = useState(null);
   // barcodes: the company list, the product whose barcodes are open, the editor's state
   const [bcMap, setBcMap] = useState({});
@@ -245,64 +251,84 @@ export default function ProductsTab() {
     custom: rows.filter((r) => r.source !== "base").length,
   }), [rows]);
 
-  /* ---- actions ---- */
-  const startAdd = () => { setForm(EMPTY_FORM); setErr(""); };
+  /* ---- actions: the product window ---- */
+  const ownShelf = (code) => shelf.config.rules.find((x) => x.scope === "code" && normalizeCode(x.match) === normalizeCode(code));
+  const openAdd = (initial = {}) => { setErr(""); setPf({ row: null, initial: { barcodes: [], ...initial } }); };
   const startEdit = (row) => {
-    setForm({ ...EMPTY_FORM, code: row.code, name: row.name, editingKey: row.key, oldCode: row.code, codeLocked: row.source !== "custom" });
     setErr("");
+    const own = ownShelf(row.code);
+    setPf({
+      row,
+      initial: {
+        code: row.code, name: row.name,
+        barcodes: barcodesOf(row).map(showBarcode),
+        shelfDays: own ? own.days : "",
+        images: imagesOf(media, row.code),
+      },
+    });
   };
-  const resetForm = () => { setForm(EMPTY_FORM); setErr(""); };
+  // what the product gets with no days of its own (category rule / default)
+  const shelfHint = useMemo(() => {
+    if (!pf) return "";
+    const code = pf.row?.code || "";
+    const cfg = { ...shelf.config, rules: shelf.config.rules.filter((x) => !(x.scope === "code" && normalizeCode(x.match) === normalizeCode(code))) };
+    const sl = resolveShelfLife(cfg, shelf.catalog, { code, name: pf.row?.name || "" });
+    if (!sl) return "";
+    return sl.source === "category" ? `${sl.days} days from category ${sl.label}` : `default ${sl.days} days`;
+  }, [pf, shelf.config, shelf.catalog]);
 
-  const upsert = async () => {
-    const code = form.code.trim();
-    const name = form.name.trim();
-    if (!code) return setErr("Code is required.");
-    if (!name) return setErr("Product name is required.");
+  /* One Save: barcodes first (a barcode on another product stops it before
+     anything changes), then the product, its shelf life and its photos. */
+  const saveProduct = async (data, { move }) => {
+    const { code, name } = data;
     const key = normalizeCode(code);
+    const editing = pf?.row || null;
+    const codeLocked = editing ? editing.source !== "custom" : false;
+    if (!editing && rows.some((x) => x.key === key)) throw new Error("This code already exists — use Edit on that product instead.");
+    if (editing && key !== editing.key && rows.some((x) => x.key === key)) throw new Error("This code already exists — choose another.");
+    const oldCode = editing?.code || "";
+    const user = userName();
+    const warn = [];
 
-    if (!form.editingKey) {
-      // adding new
-      if (rows.some((r) => r.key === key)) return setErr("This code already exists — use Edit instead.");
-      const bc = normBarcode(form.barcode);
-      const owner = bc && bcMap[bc];
-      if (owner && owner.code && owner.code !== code) {
-        return setErr(`Barcode ${showBarcode(bc)} already belongs to ${owner.code}${owner.product ? ` · ${owner.product}` : ""} — one barcode, one code.`);
-      }
+    // 1) barcodes — may throw err.conflicts back to the window
+    const hadBc = editing ? barcodesOf(editing).join("|") : "";
+    const wantBc = data.barcodes.map(normBarcode).join("|");
+    if (wantBc !== hadBc || (editing && code !== oldCode)) {
+      setBcMap(await setCodeBarcodes(oldCode || code, { code, product: name }, data.barcodes, user, { move }));
+    }
+
+    // 2) the product (skipped when only barcodes / shelf life / photos changed)
+    let synced = true;
+    if (!editing || name !== editing.name || code !== oldCode) {
       const item = { item_code: code, description: name };
-      const synced = await commitCustom([item, ...custom], item);
-      let bcFail = false;
-      if (bc) {
-        try { setBcMap(await addBarcode(bc, { code, product: name }, userName())); } catch { bcFail = true; }
-      }
-      resetForm();
-      return flash(bcFail ? "⚠️ Product added, but the barcode was not saved — add it from Barcodes."
-        : synced ? "✅ Product added." : "⚠️ Product saved locally only.");
+      let next;
+      if (!editing) next = [item, ...custom];
+      else if (codeLocked || key === editing.key) {
+        const idx = custom.findIndex((it) => normKeyOf(it) === key);
+        next = idx >= 0 ? custom.map((it, i) => (i === idx ? item : it)) : [item, ...custom];
+      } else next = [item, ...custom.filter((it) => normKeyOf(it) !== editing.key)];
+      synced = await commitCustom(next, item, editing ? { oldCode: oldCode || code } : {});
+      setErr("");
     }
 
-    // editing
-    if (form.codeLocked || key === form.editingKey) {
-      // override / update under the same code
-      const item = { item_code: code, description: name };
-      const idx = custom.findIndex((it) => normKeyOf(it) === key);
-      const next = idx >= 0 ? custom.map((it, i) => (i === idx ? item : it)) : [item, ...custom];
-      const synced = await commitCustom(next, item, { oldCode: form.oldCode || code });
-      resetForm();
-      return flash(synced ? "✅ Product updated." : "⚠️ Product saved locally only.");
+    // 3) shelf life — the product's own days (empty = category / default)
+    const had = editing ? ownShelf(oldCode) : null;
+    const days = data.shelfDays === "" ? null : Number(data.shelfDays);
+    if ((had ? had.days : null) !== days || (had && code !== oldCode)) {
+      const keep = shelf.config.rules.filter((x) => !(x.scope === "code" && [normalizeCode(oldCode), key].includes(normalizeCode(x.match))));
+      const rules = days === null ? keep : [...keep, { scope: "code", match: code, days, note: name }];
+      try { await shelf.save({ ...shelf.config, rules }, user); } catch { warn.push("shelf life"); }
     }
 
-    // custom item re-keyed to a new barcode
-    if (rows.some((r) => r.key === key)) return setErr("This code already exists — choose another.");
-    const item = { item_code: code, description: name };
-    const next = [item, ...custom.filter((it) => normKeyOf(it) !== form.editingKey)];
-    const synced = await commitCustom(next, item, { oldCode: form.oldCode || form.editingKey });
-    // its barcodes follow it to the new code
-    let bcFail = false;
-    if (form.oldCode && (byCode[form.oldCode.trim()] || []).length) {
-      try { setBcMap(await recodeBarcodes(form.oldCode, { code, product: name }, userName())); } catch { bcFail = true; }
+    // 4) photos
+    const hadImg = editing ? imagesOf(media, oldCode) : [];
+    if (hadImg.join("|") !== data.images.join("|") || (editing && code !== oldCode && hadImg.length)) {
+      try { setMedia(await setProductImages(code, data.images, user, oldCode)); } catch { warn.push("photos"); }
     }
-    resetForm();
-    return flash(bcFail ? "⚠️ Product updated, but its barcodes still point to the old code — try again."
-      : synced ? "✅ Product updated." : "⚠️ Product saved locally only.");
+
+    flash(warn.length ? `⚠️ Saved, but not the ${warn.join(" and ")} — open it again and retry.`
+      : !synced ? "⚠️ Product saved on this device only."
+      : editing ? "✅ Product updated." : "✅ Product added.");
   };
 
   const requestRemoveRow = (row) => {
@@ -319,7 +345,11 @@ export default function ProductsTab() {
     if (row.source === "custom" && barcodesOf(row).length) {
       try { setBcMap(await recodeBarcodes(row.code, null, userName())); } catch { /* the list keeps them; remove from Barcodes */ }
     }
-    if (form.editingKey === row.key) resetForm();
+    // and its photos (the master product of a revert keeps them)
+    if (row.source === "custom" && imagesOf(media, row.code).length) {
+      const imgs = imagesOf(media, row.code);
+      try { setMedia(await setProductImages(row.code, [], userName())); imgs.forEach((u) => deleteImage(u).catch(() => {})); } catch { /* kept */ }
+    }
     flash(synced ? (row.source === "edited" ? "✅ Reverted to master value." : "✅ Removed.") : "⚠️ Removed locally only.");
     setConfirmRemove(null);
   };
@@ -356,7 +386,7 @@ export default function ProductsTab() {
       }
     }, 0);
     return true;
-  }, !loading);
+  }, !loading && !pf && !shelfOpen);
   // fn(move) saves; a barcode on another code comes back as a conflict with a "move it here" retry
   const bcRun = async (fn, done) => {
     setBcBusy(true); setBcErr(null);
@@ -502,58 +532,6 @@ export default function ProductsTab() {
         }
       />
 
-      {/* Add / Edit form */}
-      <div style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-          <strong style={{ color: "#0f172a", fontSize: 15 }}>{form.editingKey ? "✏️ Edit product" : "➕ Add product"}</strong>
-          {form.editingKey && <Button onClick={startAdd} tone="secondary">+ New instead</Button>}
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ flex: "0 1 200px", minWidth: 140 }}>
-            <span style={label}>Code</span>
-            <input
-              value={form.code}
-              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-              placeholder="e.g. 20060"
-              style={{ ...input, background: form.codeLocked ? "#f1f5f9" : "#fff" }}
-              disabled={form.codeLocked}
-              title={form.codeLocked ? "Master codes can't be changed — only the name." : undefined}
-            />
-          </div>
-          <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-            <span style={label}>Product Name</span>
-            <input
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. BRAZILIAN BEEF TOPSIDE - KG"
-              style={input}
-              onKeyDown={(e) => { if (e.key === "Enter") upsert(); }}
-            />
-          </div>
-          {!form.editingKey && (
-            <div style={{ flex: "0 1 200px", minWidth: 140 }}>
-              <span style={label}>Barcode (optional)</span>
-              <input
-                data-scan-input=""
-                value={form.barcode}
-                onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
-                placeholder="scan or type"
-                style={{ ...input, fontFamily: "monospace" }}
-                onKeyDown={(e) => { if (e.key === "Enter") upsert(); }}
-              />
-            </div>
-          )}
-          <Button onClick={upsert} tone="primary">{form.editingKey ? "Save changes" : "Add product"}</Button>
-          {form.editingKey && <Button onClick={resetForm} tone="secondary">Cancel</Button>}
-        </div>
-        {err && <div style={{ color: "#b91c1c", fontWeight: 800, marginTop: 10 }}>{err}</div>}
-        {form.codeLocked && (
-          <div style={{ color: "#64748b", fontSize: 12, marginTop: 8 }}>
-            This code comes from the master file — you can update its name (saved as an override). To use a different code, add a new product. Barcodes are edited from the Barcodes button in the list.
-          </div>
-        )}
-      </div>
-
       {/* Handheld scan result */}
       {scanHit && (
         <div style={{
@@ -570,7 +548,7 @@ export default function ProductsTab() {
             <>
               <span>is not on any product yet. Open a product's barcodes (➕) and it is filled in — or start a new product with it.</span>
               <Button
-                onClick={() => { setForm({ ...EMPTY_FORM, barcode: showBarcode(scanHit.barcode) }); setErr(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                onClick={() => openAdd({ barcodes: [showBarcode(scanHit.barcode)] })}
                 tone="secondary"
                 style={{ minHeight: 30, padding: "4px 12px" }}
               >
@@ -584,6 +562,19 @@ export default function ProductsTab() {
 
       {/* Search + smart filters + sort */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => openAdd()}
+          title="Add product"
+          aria-label="Add product"
+          style={{
+            width: 44, height: 44, borderRadius: 14, border: 0, cursor: "pointer", flexShrink: 0,
+            background: "linear-gradient(135deg,#0ea5e9,#0d9488)", color: "#fff", fontSize: 22, fontWeight: 900,
+            boxShadow: "0 8px 18px rgba(14,165,233,.35)", display: "grid", placeItems: "center",
+          }}
+        >
+          ➕
+        </button>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -650,6 +641,12 @@ export default function ProductsTab() {
                   <tr>
                     <td style={{ ...td, fontWeight: 800, color: "#0f172a", fontFamily: "monospace" }}>{row.code || "—"}</td>
                     <td style={{ ...td, color: "#334155" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {imagesOf(media, row.code)[0] && (
+                        <img src={thumbUrl(imagesOf(media, row.code)[0], 80)} alt="" onClick={() => startEdit(row)}
+                          style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0", cursor: "pointer", flexShrink: 0 }} />
+                      )}
+                      <div style={{ minWidth: 0 }}>
                       <div>{row.name}</div>
                       {(row.category || row.uom) && (
                         <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
@@ -660,6 +657,8 @@ export default function ProductsTab() {
                           {row.uom && <span style={chip("#f1f5f9", "#475569")}>{row.uom}</span>}
                         </div>
                       )}
+                      </div>
+                      </div>
                     </td>
                     <td style={td}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
@@ -775,6 +774,15 @@ export default function ProductsTab() {
       </div>
 
       <StatusMessage message={err ? { kind: "err", text: err } : null} />
+      <ProductFormModal
+        open={!!pf}
+        mode={pf?.row ? "edit" : "add"}
+        initial={pf?.initial}
+        codeLocked={!!pf?.row && pf.row.source !== "custom"}
+        shelfHint={shelfHint}
+        onSave={saveProduct}
+        onClose={() => setPf(null)}
+      />
       <ShelfLifeModal
         open={shelfOpen}
         config={shelf.config}
