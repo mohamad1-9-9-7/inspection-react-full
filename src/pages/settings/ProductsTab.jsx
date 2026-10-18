@@ -58,7 +58,7 @@ const hueOf = (s) => {
 };
 const initials = (name) => String(name || "?").replace(/[^A-Za-z0-9؀-ۿ ]/g, " ").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 
-const fs = (px) => `calc(${px}px * var(--app-fs, 1))`;
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
 const CSS = `
 #root .pc.pc { --ink:#0f2740; --soft:#5b7088; --mute:#8aa0b6; --line:#e3edf7; --sky:#0ea5e9; --sky2:#e0f2fe; --teal:#0d9488;
   --bg:#f5f9fd; color:var(--ink); font-family: system-ui,-apple-system,"Segoe UI",Cairo,sans-serif; display:flex; flex-direction:column; gap:12px; }
@@ -89,12 +89,18 @@ const CSS = `
 /* KPI cards */
 #root .pc.pc .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; }
 #root .pc.pc .kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 14px; text-align:start; cursor:pointer;
-  font-family:inherit; color:inherit; transition:border-color .15s, box-shadow .15s; }
+  font-family:inherit; color:inherit; transition:border-color .15s, box-shadow .15s; display:block; width:100%; }
 #root .pc.pc .kpi:hover { border-color:#bae0fb; box-shadow:0 6px 16px rgba(15,39,64,.06); }
 #root .pc.pc .kpi.on { border-color:var(--sky); box-shadow:0 0 0 3px var(--sky2); }
 #root .pc.pc .kpi .k-l { color:var(--soft); font-size:${fs(12)}; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 #root .pc.pc .kpi .k-v { font-size:${fs(24)}; font-weight:900; margin-top:2px; line-height:1.15; }
 #root .pc.pc .kpi .k-v small { font-size:${fs(13)}; color:var(--mute); font-weight:700; margin-inline-start:4px; }
+#root .pc.pc .kpi { position:relative; }
+#root .pc.pc .k-miss { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+#root .pc.pc .k-miss button { border:1px solid var(--line); background:#fff; border-radius:999px; padding:2px 9px; font-weight:800;
+  font-size:${fs(11)}; color:var(--soft); cursor:pointer; font-family:inherit; }
+#root .pc.pc .k-miss button:hover { background:#f0f7fe; }
+#root .pc.pc .k-miss button.on { background:#fff7ed; border-color:#fdba74; color:#9a3412; }
 #root .pc.pc .bar { height:5px; border-radius:9px; background:#eef4fa; margin-top:8px; overflow:hidden; }
 #root .pc.pc .bar b { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg,#38bdf8,#14b8a6); }
 
@@ -128,7 +134,15 @@ const CSS = `
 #root .pc.pc table * { font-size:${fs(14)}; }
 #root .pc.pc th { position:sticky; top:0; z-index:1; background:#f8fbfe; color:var(--soft); font-size:${fs(12)}; font-weight:800; text-transform:uppercase;
   letter-spacing:.04em; text-align:start; padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
-#root .pc.pc td { padding:9px 12px; border-bottom:1px solid #f0f5fa; vertical-align:middle; }
+#root .pc.pc td { padding:9px 12px; border-bottom:1px solid #edf3f9; vertical-align:middle; }
+/* column lines */
+#root .pc.pc th, #root .pc.pc td { border-inline-end:1px solid #e8eff6; }
+#root .pc.pc th:last-child, #root .pc.pc td:last-child { border-inline-end:0; }
+#root .pc.pc tbody tr:nth-child(even) { background:#fbfdff; }
+#root .pc.pc tbody tr:nth-child(even):hover { background:#f5faff; }
+/* row number */
+#root .pc.pc .no { width:56px; text-align:center; color:var(--mute); font-weight:800; font-variant-numeric:tabular-nums; }
+#root .pc.pc td.no { font-size:${fs(12)}; }
 #root .pc.pc tbody tr { cursor:pointer; transition:background .12s; }
 #root .pc.pc tbody tr:hover { background:#f5faff; }
 #root .pc.pc tbody tr.hit { background:#ecfdf5; box-shadow:inset 3px 0 0 #10b981; }
@@ -193,6 +207,7 @@ export default function ProductsTab({ navActions = null }) {
   const [fBc, setFBc] = useState("*"); // * | with | without | many
   const [fSrc, setFSrc] = useState("*"); // * | base | mine
   const [fSl, setFSl] = useState("*"); // * | set | none
+  const [fImg, setFImg] = useState("*"); // * | with | none
   const [sort, setSort] = useState("name"); // name | code | cat | bc | shelf
   const [limit, setLimit] = useState(PAGE);
   const [scanHit, setScanHit] = useState(null); // { barcode, code?, name? } — the last handheld scan
@@ -315,17 +330,19 @@ export default function ProductsTab({ navActions = null }) {
     if (fSrc === "mine") list = list.filter((r) => r.source !== "base");
     if (fSl === "set") list = list.filter((r) => days(r) > 0);
     if (fSl === "none") list = list.filter((r) => days(r) === 0);
+    if (fImg === "with") list = list.filter((r) => imagesOf(media, r.code).length > 0);
+    if (fImg === "none") list = list.filter((r) => imagesOf(media, r.code).length === 0);
     if (sort === "code") list = [...list].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     else if (sort === "bc") list = [...list].sort((a, b) => nbc(b) - nbc(a) || a.name.localeCompare(b.name));
     else if (sort === "shelf") list = [...list].sort((a, b) => (days(a) || Infinity) - (days(b) || Infinity) || a.name.localeCompare(b.name));
     else if (sort === "cat") list = [...list].sort((a, b) => (a.category || "~").localeCompare(b.category || "~") || a.name.localeCompare(b.name));
     return list;
-  }, [rows, q, barcodesOf, shelfOf, fCat, fBc, fSrc, fSl, sort]);
+  }, [rows, q, barcodesOf, shelfOf, media, fCat, fBc, fSrc, fSl, fImg, sort]);
 
-  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, sort]);
+  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, sort]);
 
-  const filtersOn = fCat !== "*" || fBc !== "*" || fSrc !== "*" || fSl !== "*" || sort !== "name" || !!q.trim();
-  const clearFilters = () => { setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setSort("name"); };
+  const filtersOn = fCat !== "*" || fBc !== "*" || fSrc !== "*" || fSl !== "*" || fImg !== "*" || sort !== "name" || !!q.trim();
+  const clearFilters = () => { setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*"); setSort("name"); };
 
   const stats = useMemo(() => {
     let withBc = 0; let withSl = 0; let withImg = 0;
@@ -477,7 +494,7 @@ export default function ProductsTab({ navActions = null }) {
     const row = owner?.code ? rows.find((r) => String(r.code).trim() === String(owner.code).trim()) : null;
     // after the reader's keys are taken back out of the search box (its own onChange would win otherwise)
     setTimeout(() => {
-      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*");
+      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*");
       setQ(row ? showBarcode(key) : "");
       setScanHit({ barcode: key, code: owner?.code || "", name: row?.name || owner?.product || "", known: !!row });
     }, 0);
@@ -526,28 +543,33 @@ export default function ProductsTab({ navActions = null }) {
         </div>
       </div>
 
-      {/* ── KPI cards (click = filter) ── */}
+      {/* ── KPI cards: the card shows the products that HAVE it, "missing" the ones that don't ── */}
       <div className="kpis">
-        <button type="button" className={`kpi ${!filtersOn ? "on" : ""}`} onClick={clearFilters}>
+        <button type="button" className={`kpi ${!filtersOn ? "on" : ""}`} onClick={clearFilters} title="Show all products">
           <div className="k-l">Products</div>
           <div className="k-v">{stats.total}<small>{stats.mine} added / edited</small></div>
           <div className="bar"><b style={{ width: "100%" }} /></div>
         </button>
-        <button type="button" className={`kpi ${fBc === "without" ? "on" : ""}`} onClick={() => setFBc(fBc === "without" ? "*" : "without")} title="Show the products with no barcode yet">
-          <div className="k-l">With barcode</div>
-          <div className="k-v">{stats.withBc}<small>{pct(stats.withBc)}% · {stats.barcodes} barcodes</small></div>
-          <div className="bar"><b style={{ width: `${pct(stats.withBc)}%` }} /></div>
-        </button>
-        <button type="button" className={`kpi ${fSl === "none" ? "on" : ""}`} onClick={() => setFSl(fSl === "none" ? "*" : "none")} title="Show the products with no shelf life">
-          <div className="k-l">With shelf life</div>
-          <div className="k-v">{stats.withSl}<small>{pct(stats.withSl)}%{shelf.config.defaultDays > 0 ? ` · default ${shelf.config.defaultDays} d` : ""}</small></div>
-          <div className="bar"><b style={{ width: `${pct(stats.withSl)}%` }} /></div>
-        </button>
-        <div className="kpi" style={{ cursor: "default" }}>
-          <div className="k-l">With photo</div>
-          <div className="k-v">{stats.withImg}<small>{pct(stats.withImg)}%</small></div>
-          <div className="bar"><b style={{ width: `${pct(stats.withImg)}%` }} /></div>
-        </div>
+        {[
+          { l: "With barcode", n: stats.withBc, extra: `${stats.barcodes} barcodes`, v: fBc, set: setFBc, on: "with", off: "without" },
+          { l: "With shelf life", n: stats.withSl, extra: shelf.config.defaultDays > 0 ? `default ${shelf.config.defaultDays} d` : "", v: fSl, set: setFSl, on: "set", off: "none" },
+          { l: "With photo", n: stats.withImg, extra: "", v: fImg, set: setFImg, on: "with", off: "none" },
+        ].map((k) => (
+          <div key={k.l} role="button" tabIndex={0} className={`kpi ${k.v === k.on ? "on" : ""}`}
+            onClick={() => k.set(k.v === k.on ? "*" : k.on)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); k.set(k.v === k.on ? "*" : k.on); } }}
+            title={`Show the products ${k.l.toLowerCase()}`}>
+            <div className="k-l">{k.l}</div>
+            <div className="k-v">{k.n}<small>{pct(k.n)}%{k.extra ? ` · ${k.extra}` : ""}</small></div>
+            <div className="bar"><b style={{ width: `${pct(k.n)}%` }} /></div>
+            <div className="k-miss">
+              <button type="button" className={k.v === k.off ? "on" : ""}
+                onClick={(e) => { e.stopPropagation(); k.set(k.v === k.off ? "*" : k.off); }}>
+                ✕ {stats.total - k.n} missing
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* ── handheld scan result ── */}
@@ -596,6 +618,11 @@ export default function ProductsTab({ navActions = null }) {
           <option value="set">With shelf life</option>
           <option value="none">No shelf life</option>
         </select>
+        <select className={`s ${fImg !== "*" ? "on" : ""}`} value={fImg} onChange={(e) => setFImg(e.target.value)} title="Photos">
+          <option value="*">Any photo</option>
+          <option value="with">With photo</option>
+          <option value="none">No photo</option>
+        </select>
         <select className={`s ${sort !== "name" ? "on" : ""}`} value={sort} onChange={(e) => setSort(e.target.value)} title="Sort">
           <option value="name">Sort · Name A→Z</option>
           <option value="code">Sort · Code</option>
@@ -613,6 +640,7 @@ export default function ProductsTab({ navActions = null }) {
           <table>
             <thead>
               <tr>
+                <th className="no">#</th>
                 <th>Product</th>
                 <th style={{ width: 120 }}>Code</th>
                 <th style={{ width: 260 }}>Barcodes</th>
@@ -624,21 +652,22 @@ export default function ProductsTab({ navActions = null }) {
             <tbody>
               {loading ? (
                 [0, 1, 2, 3, 4, 5].map((i) => (
-                  <tr key={i} className="skel"><td colSpan={6}><div style={{ width: `${60 + ((i * 13) % 35)}%` }} /></td></tr>
+                  <tr key={i} className="skel"><td colSpan={7}><div style={{ width: `${60 + ((i * 13) % 35)}%` }} /></td></tr>
                 ))
               ) : shown.length === 0 ? (
-                <tr><td colSpan={6} className="empty">
+                <tr><td colSpan={7} className="empty">
                   <b>No products match</b>
                   {filtersOn ? <button type="button" className="b" onClick={clearFilters} style={{ marginTop: 8 }}>✕ Clear the filters</button> : "Add the first one with ＋."}
                 </td></tr>
               ) : (
-                shown.map((row) => {
+                shown.map((row, i) => {
                   const bcs = barcodesOf(row);
                   const img = imagesOf(media, row.code)[0];
                   const sl = shelfOf(row);
                   const hue = hueOf(row.category || row.name);
                   return (
                     <tr key={row.key} className={hitCode && String(row.code).trim() === hitCode ? "hit" : ""} onClick={() => startEdit(row)}>
+                      <td className="no">{i + 1}</td>
                       <td>
                         <div className="prod">
                           <div className="av" style={img ? undefined : { background: `hsl(${hue} 85% 93%)`, color: `hsl(${hue} 55% 32%)` }}>
