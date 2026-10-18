@@ -26,6 +26,10 @@ import {
 } from "../../utils/barcodeMap";
 import { getCurrentUser } from "../../utils/perms";
 import useWedgeScanner from "../../utils/useWedgeScanner";
+import { useShelfLife } from "../monitor/branches/_shared/shelfLife";
+import ShelfLifeModal from "../monitor/branches/_shared/ShelfLifeModal";
+
+const SHELF_SRC = { code: "Product", category: "Category", default: "Default" };
 
 const userName = () => {
   const u = getCurrentUser() || {};
@@ -62,6 +66,12 @@ export default function ProductsTab() {
   const [fSrc, setFSrc] = useState("*"); // * | base | mine
   const [sort, setSort] = useState("name"); // name | code | bc | cat
   const [scanHit, setScanHit] = useState(null); // { barcode, code?, name? } — the last handheld scan
+  // shelf life: the same record the Raw Material Receipt calculates expiry from (shelf_life_config)
+  const shelf = useShelfLife();
+  const [shelfOpen, setShelfOpen] = useState(false);
+  const [slEdit, setSlEdit] = useState(null); // { key, value }
+  const [slBusy, setSlBusy] = useState(false);
+  const shelfOf = useCallback((r) => shelf.resolve({ code: r.code, name: r.name }), [shelf]);
 
   useEffect(() => { fetchBarcodeMap().then((m) => setBcMap(m || {})); }, []);
   const byCode = useMemo(() => barcodesByCode(bcMap), [bcMap]);
@@ -191,11 +201,14 @@ export default function ProductsTab() {
       list = [...list].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     } else if (sort === "bc") {
       list = [...list].sort((a, b) => nbc(b) - nbc(a) || a.name.localeCompare(b.name));
+    } else if (sort === "shelf") {
+      const d = (r) => { const x = shelfOf(r); return x && x.days > 0 ? x.days : Infinity; };
+      list = [...list].sort((a, b) => d(a) - d(b) || a.name.localeCompare(b.name));
     } else if (sort === "cat") {
       list = [...list].sort((a, b) => (a.category || "~").localeCompare(b.category || "~") || a.name.localeCompare(b.name));
     }
     return list;
-  }, [rows, q, byCode, fCat, fBc, fSrc, sort]);
+  }, [rows, q, byCode, fCat, fBc, fSrc, sort, shelfOf]);
 
   const filtersOn = fCat !== "*" || fBc !== "*" || fSrc !== "*" || sort !== "name" || !!q.trim();
   const clearFilters = () => { setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setSort("name"); };
@@ -203,13 +216,14 @@ export default function ProductsTab() {
   /* Excel-friendly CSV of what is on screen (all matching rows, not only the first 400) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Category", "UOM", "Barcodes", "Barcode count", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Category", "UOM", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = (byCode[String(r.code).trim()] || []).map(showBarcode);
       // ="…" keeps long barcodes as text in Excel (no 6.29E+12)
       lines.push([
         cell(r.code), cell(r.name), cell(r.category), cell(r.uom),
         bcs.length ? `"=""${bcs.join(" | ")}"""` : cell(""), cell(bcs.length),
+        cell(shelfOf(r)?.days > 0 ? shelfOf(r).days : ""), cell(shelfOf(r)?.days > 0 ? SHELF_SRC[shelfOf(r).source] : ""),
         cell(r.source === "base" ? "Master" : r.source === "edited" ? "Edited" : "Custom"),
       ].join(","));
     });
@@ -380,6 +394,74 @@ export default function ProductsTab() {
     bcRun(() => removeBarcode(key, userName()));
   };
 
+  /* ---- shelf life of one product: its own number of days, or back to category / default ---- */
+  const slRule = (row) => shelf.config.rules.find((x) => x.scope === "code" && normalizeCode(x.match) === normalizeCode(row.code));
+  const slSave = async (row, raw) => {
+    const txt = String(raw ?? "").trim();
+    const days = txt === "" ? null : Math.round(Number(txt));
+    if (days !== null && (!Number.isFinite(days) || days < 0 || days > 3650)) return setErr("Shelf life: 0 – 3650 days (0 = no automatic expiry).");
+    const others = shelf.config.rules.filter((x) => !(x.scope === "code" && normalizeCode(x.match) === normalizeCode(row.code)));
+    const rules = days === null ? others : [...others, { scope: "code", match: row.code, days, note: row.name }];
+    setSlBusy(true); setErr("");
+    try {
+      await shelf.save({ ...shelf.config, rules }, userName());
+      setSlEdit(null);
+      flash(days === null ? "✅ Shelf life back to the category / default." : `✅ Shelf life ${days} days saved.`);
+    } catch {
+      setErr("Shelf life was not saved — check the connection.");
+    } finally {
+      setSlBusy(false);
+    }
+    return null;
+  };
+  const shelfCell = (row) => {
+    if (!row.code) return <span style={{ color: "#94a3b8" }}>—</span>;
+    if (slEdit?.key === row.key) {
+      return (
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input
+            autoFocus
+            type="number"
+            min={0}
+            max={3650}
+            value={slEdit.value}
+            onChange={(e) => setSlEdit({ key: row.key, value: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter") slSave(row, slEdit.value); if (e.key === "Escape") setSlEdit(null); }}
+            placeholder="days"
+            style={{ ...input, width: 70, padding: "4px 6px", minHeight: 30 }}
+          />
+          <Button onClick={() => slSave(row, slEdit.value)} tone="primary" disabled={slBusy} style={{ minHeight: 30, padding: "4px 8px" }}>✓</Button>
+          {slRule(row) && (
+            <Button onClick={() => slSave(row, "")} tone="secondary" disabled={slBusy} style={{ minHeight: 30, padding: "4px 8px" }}
+              title="Remove this product's own number — use the category / default">↺</Button>
+          )}
+          <Button onClick={() => setSlEdit(null)} tone="secondary" disabled={slBusy} style={{ minHeight: 30, padding: "4px 8px" }}>✕</Button>
+        </div>
+      );
+    }
+    const sl = shelfOf(row);
+    const own = sl?.source === "code";
+    return (
+      <button
+        type="button"
+        onClick={() => setSlEdit({ key: row.key, value: own ? String(sl.days) : "" })}
+        title={sl ? `From: ${SHELF_SRC[sl.source]}${sl.source === "category" ? ` (${sl.label})` : ""} — click to set this product's own days` : "No shelf life — click to set one"}
+        style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}
+      >
+        {!sl ? (
+          <span style={{ color: "#94a3b8", fontWeight: 700 }}>— set</span>
+        ) : sl.days === 0 ? (
+          <span style={chip("#fee2e2", "#991b1b")}>Off (0 d)</span>
+        ) : (
+          <>
+            <span style={{ fontWeight: 900, color: "#0f172a" }}>{sl.days} d</span>{" "}
+            <span style={chip(own ? "#ede9fe" : "#f1f5f9", own ? "#5b21b6" : "#64748b")}>{SHELF_SRC[sl.source]}</span>
+          </>
+        )}
+      </button>
+    );
+  };
+
   /* ---- styles ---- */
   const card = ui.subtleCard;
   const label = ui.label;
@@ -409,6 +491,10 @@ export default function ProductsTab() {
           <span style={chip("#dcfce7", "#065f46")}>Added/Edited: {stats.custom}</span>
           <span style={chip("#e0f2fe", "#075985")}>With barcode: {stats.withBc}/{stats.total}</span>
           <span style={chip("#f1f5f9", "#334155")}>Barcodes: {stats.barcodes}</span>
+          <button type="button" onClick={() => setShelfOpen(true)} style={{ ...chip("#ede9fe", "#5b21b6"), border: 0, cursor: "pointer" }}
+            title="Open the shelf-life list used by the Raw Material Receipt">
+            ⏳ Shelf life{shelf.config.defaultDays > 0 ? ` · default ${shelf.config.defaultDays} d` : ""}
+          </button>
           <span style={chip(serverOnline ? "#dcfce7" : "#fee2e2", serverOnline ? "#065f46" : "#991b1b")}>
             {serverOnline ? "Server sync" : "Local fallback"}
           </span>
@@ -524,6 +610,7 @@ export default function ProductsTab() {
           <option value="code">Sort: code</option>
           <option value="cat">Sort: category</option>
           <option value="bc">Sort: most barcodes</option>
+          <option value="shelf">Sort: shortest shelf life</option>
         </select>
         {filtersOn && <Button onClick={clearFilters} tone="secondary" style={{ minHeight: 34, padding: "5px 12px" }}>✕ Clear</Button>}
         <Button onClick={exportCsv} tone="secondary" disabled={!filtered.length} style={{ minHeight: 34, padding: "5px 12px" }} title="Download what is shown as a CSV file (opens in Excel)">
@@ -538,21 +625,22 @@ export default function ProductsTab() {
       {/* Table */}
       <div style={ui.tableWrap}>
         <div style={{ maxHeight: "max(52vh, calc(100vh - 300px))", overflowY: "auto" }}>
-          <table style={{ ...ui.table, minWidth: 760 }}>
+          <table style={{ ...ui.table, minWidth: 900 }}>
             <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <tr>
                 <th style={{ ...th, width: 120 }}>Code</th>
                 <th style={th}>Product Name</th>
                 <th style={{ ...th, width: 210 }}>Barcodes</th>
+                <th style={{ ...th, width: 150 }}>Shelf life</th>
                 <th style={{ ...th, width: 110 }}>Source</th>
                 <th style={{ ...th, width: 150, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "#64748b", fontWeight: 700 }}>Loading catalog…</td></tr>
+                <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "#64748b", fontWeight: 700 }}>Loading catalog…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "#64748b", fontWeight: 700 }}>No products match your search.</td></tr>
+                <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "#64748b", fontWeight: 700 }}>No products match your search.</td></tr>
               ) : (
                 filtered.slice(0, MAX_ROWS).map((row) => {
                   const bcs = barcodesOf(row);
@@ -590,6 +678,7 @@ export default function ProductsTab() {
                         </button>
                       </div>
                     </td>
+                    <td style={td}>{shelfCell(row)}</td>
                     <td style={td}>{sourceChip(row.source)}</td>
                     <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
                       <Button onClick={() => startEdit(row)} tone="secondary" style={{ minHeight: 32, padding: "5px 12px", marginInlineEnd: 6 }}>Edit</Button>
@@ -607,7 +696,7 @@ export default function ProductsTab() {
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={5} style={{ ...td, background: "#f8fbff" }}>
+                      <td colSpan={6} style={{ ...td, background: "#f8fbff" }}>
                         <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>
                           Barcodes of {row.code} · {row.name}
                           <span style={{ color: "#64748b", fontWeight: 600, fontSize: 12, marginInlineStart: 8 }}>
@@ -686,6 +775,13 @@ export default function ProductsTab() {
       </div>
 
       <StatusMessage message={err ? { kind: "err", text: err } : null} />
+      <ShelfLifeModal
+        open={shelfOpen}
+        config={shelf.config}
+        onSave={(next, user) => shelf.save(next, user || userName())}
+        onClose={() => setShelfOpen(false)}
+        user={userName()}
+      />
       <ConfirmModal
         open={!!confirmRemove}
         title={confirmRemove?.source === "edited" ? "Revert catalog override?" : "Remove product?"}
