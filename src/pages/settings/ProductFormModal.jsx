@@ -215,7 +215,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
             <div className="hint">🔫 With the handheld reader: click a box and scan — Enter opens the next box.</div>
           </div>
 
-          <div className="pfm-grid">
+          <div>
             <div className="sec">
               <div className="sec-t">⏳ Shelf life</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -227,7 +227,6 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                 Empty = {shelfHint || "no shelf life"}. 0 = no automatic expiry. The Raw Material Receipt calculates the expiry from it.
               </div>
             </div>
-            <div />
           </div>
 
           <div className="sec">
