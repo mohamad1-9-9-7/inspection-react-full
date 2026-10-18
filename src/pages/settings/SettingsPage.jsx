@@ -552,14 +552,13 @@ export default function SettingsPage() {
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: "24px clamp(18px, 3vw, 48px) 38px",
+    padding: "12px 12px 24px",
     background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
     color: "#0f172a",
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
   layout: {
-    width: "min(1760px, 100%)",
-    margin: "0 auto",
+    width: "100%",
   },
   hero: {
     position: "relative",
@@ -904,10 +903,10 @@ const styles = {
   fullTitle: { fontWeight: 1000, color: "#0f172a" },
   fullLang: { minHeight: 46 },
   panelShell: {
-    marginTop: 22,
+    marginTop: 12,
     display: "grid",
-    gridTemplateColumns: "320px minmax(0, 1fr)",
-    gap: 18,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 10,
     alignItems: "start",
   },
   panelAside: {
@@ -915,9 +914,11 @@ const styles = {
     background: "#fff",
     border: "1px solid rgba(15,23,42,0.12)",
     boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
-    padding: 18,
-    display: "grid",
-    gap: 18,
+    padding: "8px 12px",
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 14,
   },
   backToTools: {
     minHeight: 46,
@@ -933,11 +934,14 @@ const styles = {
     cursor: "pointer",
   },
   activeTool: {
-    display: "grid",
-    gap: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+    flex: "1 1 300px",
   },
   activeSection: {
-    marginBottom: 8,
+    marginBottom: 2,
     color: "#0f766e",
     fontWeight: 1000,
     textTransform: "uppercase",
@@ -950,7 +954,7 @@ const styles = {
     lineHeight: 1.2,
   },
   activeDesc: {
-    margin: "8px 0 0",
+    margin: "2px 0 0",
     color: "#64748b",
     lineHeight: 1.55,
     fontWeight: 750,
@@ -980,7 +984,7 @@ const styles = {
     background: "#fff",
     border: "1px solid rgba(15,23,42,0.12)",
     boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
-    padding: "22px clamp(16px, 2vw, 26px)",
+    padding: "14px",
     overflow: "auto",
   },
   footer: {
