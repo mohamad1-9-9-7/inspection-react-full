@@ -435,7 +435,7 @@ function ExcelPasteModal({ open, initialText, catalog, onClose, onApply }) {
 /* ====================== PAGE ====================== */
 export default function DestructionInput() {
   const navigate = useNavigate();
-  const { allItems } = useProductCatalog();
+  const { allItems, pickItems } = useProductCatalog(); // pickItems = active products (suggestions)
 
   const [reportDate, setReportDate] = useState(getToday());
   const [header, setHeader] = useState(blankHeader());
@@ -520,10 +520,10 @@ export default function DestructionInput() {
      starts with what was typed first, then any code or name containing it. */
   const localSearch = (q) => {
     const s = normalizeCode(q);
-    if (!s) return allItems.slice(0, 20);
+    if (!s) return pickItems.slice(0, 20);
     const starts = [];
     const rest = [];
-    for (const it of allItems) {
+    for (const it of pickItems) {
       const code = normalizeCode(it.item_code);
       const name = normalizeCode(it.description);
       if (code.startsWith(s)) starts.push(it);

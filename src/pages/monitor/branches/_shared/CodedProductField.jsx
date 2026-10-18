@@ -65,7 +65,7 @@ export function CodedName({ code, name, accent = "#4f46e5", dash = "—" }) {
 
 /* Build byCode / byName lookups over the catalog. */
 export function useCatalogIndex() {
-  const { allItems, loading } = useProductCatalog();
+  const { allItems, pickItems, loading } = useProductCatalog();
   const index = useMemo(() => {
     const byCode = new Map();
     const byName = new Map();
@@ -77,7 +77,8 @@ export function useCatalogIndex() {
     });
     return { byCode, byName };
   }, [allItems]);
-  return { items: allItems || [], loading, ...index };
+  // suggestions offer active products only; the lookups know every one
+  return { items: pickItems || [], loading, ...index };
 }
 
 /** Resolve a { code, name } pair against the catalog: whichever side is

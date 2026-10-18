@@ -10,6 +10,7 @@
 // the product name always comes from the shared catalog.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { cachedProductMedia, fetchProductMedia, MEDIA_EVENT } from "../../../../utils/productMedia";
 
 export const CUSTOM_ITEMS_KEY = "returns_custom_items_v1";
 // Fired when the editable catalog layer changes, so open dropdowns refresh live.
@@ -139,7 +140,24 @@ export async function deleteServerItem(code) {
 }
 
 /* ===== Shared catalog loader (items.json + custom items) ===== */
+/* Products stopped in the Products Catalog (product_media … active:false):
+   they stay in allItems — old records still show their names — but are left
+   out of pickItems, the list a dropdown offers. One read per page load. */
+let mediaOnce = null;
+const stoppedCodes = (map) => new Set(
+  Object.entries(map || {}).filter(([, v]) => v && v.active === false).map(([c]) => normalizeCode(c))
+);
+
 export function useProductCatalog() {
+  const [stopped, setStopped] = useState(() => stoppedCodes(cachedProductMedia()));
+  useEffect(() => {
+    let alive = true;
+    if (!mediaOnce) mediaOnce = fetchProductMedia();
+    mediaOnce.then((m) => { if (alive) setStopped(stoppedCodes(m)); });
+    const onChange = () => setStopped(stoppedCodes(cachedProductMedia()));
+    window.addEventListener(MEDIA_EVENT, onChange);
+    return () => { alive = false; window.removeEventListener(MEDIA_EVENT, onChange); };
+  }, []);
   const [itemsAll, setItemsAll] = useState([]);
   const [serverItems, setServerItems] = useState([]);
   const [customItems, setCustomItems] = useState([]);
@@ -227,7 +245,12 @@ export function useProductCatalog() {
     return Array.from(map.values());
   }, [itemsAll, customItems, serverItems]);
 
-  return { allItems, loading };
+  const pickItems = useMemo(
+    () => (stopped.size ? allItems.filter((it) => !stopped.has(normalizeCode(it.item_code))) : allItems),
+    [allItems, stopped]
+  );
+
+  return { allItems, pickItems, loading };
 }
 
 /* ===== Searchable, catalog-restricted product dropdown ===== */
@@ -241,7 +264,7 @@ export default function ProductPicker({
   inputStyle = {},
   maxResults = 30,
 }) {
-  const { allItems, loading } = useProductCatalog();
+  const { pickItems: allItems, loading } = useProductCatalog();
   const boxRef = useRef(null);
 
   const [open, setOpen] = useState(false);

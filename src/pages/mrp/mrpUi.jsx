@@ -446,7 +446,7 @@ export function CatalogCodeInput({
   value = "", onChange, onPick, placeholder, style, disabled = false, maxResults = 30,
 }) {
   const { t } = useSettingsLang();
-  const { allItems, loading } = useProductCatalog();
+  const { allItems, pickItems, loading } = useProductCatalog(); // pickItems = active products (suggestions)
   const boxRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState(0);
@@ -466,15 +466,15 @@ export function CatalogCodeInput({
   const results = useMemo(() => {
     const qCode = normalizeCode(value);
     const qText = String(value || "").toLowerCase().trim();
-    if (!qCode && !qText) return allItems.slice(0, maxResults);
-    return allItems
+    if (!qCode && !qText) return pickItems.slice(0, maxResults);
+    return pickItems
       .filter((it) => {
         const c = normalizeCode(it.item_code);
         const n = String(it.description || "").toLowerCase();
         return (qCode && c.includes(qCode)) || (qText && n.includes(qText));
       })
       .slice(0, maxResults);
-  }, [allItems, value, maxResults]);
+  }, [pickItems, value, maxResults]);
 
   useEffect(() => {
     if (!open) return undefined;

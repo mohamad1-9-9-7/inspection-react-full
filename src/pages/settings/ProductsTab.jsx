@@ -36,10 +36,46 @@ import useWedgeScanner from "../../utils/useWedgeScanner";
 import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shelfLife";
 import ShelfLifeModal from "../monitor/branches/_shared/ShelfLifeModal";
 import ProductFormModal from "./ProductFormModal";
-import { fetchProductMedia, imagesOf, setProductImages } from "../../utils/productMedia";
+import {
+  ALLERGENS, allergenOf, allergensOf, changeOf, fetchProductMedia, imagesOf, isActive, setProductExtras, STORAGE, storageOf,
+} from "../../utils/productMedia";
 import { deleteImage, thumbUrl } from "../../utils/imageUpload";
 
 const SHELF_SRC = { code: "own", category: "category", default: "default" };
+
+/* The list's columns. "product" and the actions always show; the others can
+   be hidden from ▦ Columns (a per-viewer preference, kept on this device). */
+const COLS = [
+  { id: "code", label: "Code", w: 110 },
+  { id: "category", label: "Category", w: 160 },
+  { id: "uom", label: "UOM", w: 70 },
+  { id: "origin", label: "Origin", w: 80 },
+  { id: "barcodes", label: "Barcodes", w: 230 },
+  { id: "shelf", label: "Shelf life", w: 110 },
+  { id: "storage", label: "Storage", w: 130 },
+  { id: "allergens", label: "Allergens", w: 150 },
+  { id: "status", label: "Status", w: 90 },
+  { id: "changed", label: "Last change", w: 140 },
+  { id: "source", label: "Source", w: 90 },
+];
+const COLS_KEY = "products_catalog_hidden_cols_v1";
+const readHidden = () => { try { const v = JSON.parse(localStorage.getItem(COLS_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
+const writeHidden = (v) => { try { localStorage.setItem(COLS_KEY, JSON.stringify(v)); } catch { /* preference only */ } };
+
+const dmy = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+};
+const tempText = (s) => {
+  if (!s) return "";
+  const n = (v) => (v === null || v === undefined || v === "" ? "" : `${v}`);
+  const lo = n(s.min); const hi = n(s.max);
+  if (lo !== "" && hi !== "") return `${lo} … ${hi} °C`;
+  if (hi !== "") return `≤ ${hi} °C`;
+  if (lo !== "") return `≥ ${lo} °C`;
+  return "";
+};
 const PAGE = 100;
 
 const userName = () => {
@@ -130,7 +166,7 @@ const CSS = `
 /* list */
 #root .pc.pc .list { background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
 #root .pc.pc .scroll { max-height:max(56vh, calc(100vh - 340px)); overflow:auto; }
-#root .pc.pc table { width:100%; border-collapse:separate; border-spacing:0; min-width:880px; }
+#root .pc.pc table { width:100%; border-collapse:separate; border-spacing:0; }
 #root .pc.pc table * { font-size:${fs(14)}; }
 #root .pc.pc th { position:sticky; top:0; z-index:1; background:#f8fbfe; color:var(--soft); font-size:${fs(12)}; font-weight:800; text-transform:uppercase;
   letter-spacing:.04em; text-align:start; padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
@@ -179,6 +215,31 @@ const CSS = `
 #root .pc.pc .skel td div { height:14px; border-radius:6px; background:linear-gradient(90deg,#eef4fa,#f7fafd,#eef4fa); background-size:200% 100%; animation:pcSk 1.2s infinite; }
 @keyframes pcSk { from { background-position:200% 0; } to { background-position:-200% 0; } }
 
+#root .pc.pc tbody tr.stopped td { opacity:.55; }
+#root .pc.pc tbody tr.stopped td.no, #root .pc.pc tbody tr.stopped td:last-child { opacity:1; }
+#root .pc.pc .st-on { background:#dcfce7; color:#065f46; }
+#root .pc.pc .st-off { background:#fee2e2; color:#991b1b; }
+#root .pc.pc .stg { display:inline-flex; flex-direction:column; line-height:1.25; }
+#root .pc.pc .stg b { font-weight:800; }
+#root .pc.pc .stg small { color:var(--soft); font-weight:700; font-size:${fs(11)}; }
+#root .pc.pc .stg.chilled b { color:#0369a1; }
+#root .pc.pc .stg.frozen b { color:#4338ca; }
+#root .pc.pc .stg.ambient b { color:#a16207; }
+#root .pc.pc .algs { display:flex; flex-wrap:wrap; gap:3px; }
+#root .pc.pc .alg { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; border-radius:7px; padding:1px 6px; font-weight:800; font-size:${fs(11)}; white-space:nowrap; }
+#root .pc.pc .chg { line-height:1.25; }
+#root .pc.pc .chg small { display:block; color:var(--soft); font-weight:700; font-size:${fs(11)}; }
+#root .pc.pc .orig { font-weight:800; letter-spacing:.03em; }
+#root .pc.pc .colsel { position:relative; }
+#root .pc.pc .colmenu { position:absolute; z-index:20; top:calc(100% + 6px); inset-inline-end:0; background:#fff; border:1px solid var(--line); border-radius:12px;
+  box-shadow:0 14px 30px rgba(15,39,64,.14); padding:8px; min-width:200px; display:grid; gap:2px; }
+#root .pc.pc .colmenu label { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; font-weight:700; }
+#root .pc.pc .colmenu label:hover { background:#f0f7fe; }
+#root .pc.pc .colmenu .cm-a { display:flex; gap:6px; padding:6px 4px 2px; border-top:1px solid var(--line); margin-top:4px; }
+#root .pc.pc th.sortable { cursor:pointer; }
+#root .pc.pc th.sortable:hover { color:var(--ink); }
+#root .pc.pc th .arr { color:var(--sky); margin-inline-start:4px; }
+
 /* toast */
 .pc-toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:10400; background:#0f2740; color:#fff; padding:11px 18px;
   border-radius:12px; font:700 14px system-ui,-apple-system,"Segoe UI",Cairo,sans-serif; box-shadow:0 12px 30px rgba(15,39,64,.25); max-width:92vw; }
@@ -208,6 +269,22 @@ export default function ProductsTab({ navActions = null }) {
   const [fSrc, setFSrc] = useState("*"); // * | base | mine
   const [fSl, setFSl] = useState("*"); // * | set | none
   const [fImg, setFImg] = useState("*"); // * | with | none
+  const [fOrig, setFOrig] = useState("*");
+  const [fUom, setFUom] = useState("*");
+  const [fStg, setFStg] = useState("*"); // * | chilled | frozen | ambient | none
+  const [fAlg, setFAlg] = useState("*"); // * | any | none | <allergen id>
+  const [fAct, setFAct] = useState("*"); // * | on | off
+  const [hidden, setHidden] = useState(readHidden);
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef(null);
+  const showCol = (id) => !hidden.includes(id);
+  const flipCol = (id) => setHidden((h) => { const n = h.includes(id) ? h.filter((x) => x !== id) : [...h, id]; writeHidden(n); return n; });
+  useEffect(() => {
+    if (!colsOpen) return undefined;
+    const onDoc = (e) => { if (colsRef.current && !colsRef.current.contains(e.target)) setColsOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [colsOpen]);
   const [sort, setSort] = useState("name"); // name | code | cat | bc | shelf
   const [limit, setLimit] = useState(PAGE);
   const [scanHit, setScanHit] = useState(null); // { barcode, code?, name? } — the last handheld scan
@@ -229,6 +306,14 @@ export default function ProductsTab({ navActions = null }) {
   const byCode = useMemo(() => barcodesByCode(bcMap), [bcMap]);
   const barcodesOf = useCallback((row) => (row?.code ? byCode[String(row.code).trim()] || [] : []), [byCode]);
   const shelfOf = useCallback((r) => shelf.resolve({ code: r.code, name: r.name }), [shelf]);
+  const lastChangeOf = useCallback((r) => {
+    let best = changeOf(media, r.code);
+    barcodesOf(r).forEach((b) => {
+      const e = bcMap[b];
+      if (e?.at && (!best || e.at > best.at)) best = { at: e.at, by: e.by || "" };
+    });
+    return best;
+  }, [media, bcMap, barcodesOf]);
 
   useEffect(() => {
     let cancelled = false;
@@ -288,7 +373,8 @@ export default function ProductsTab({ navActions = null }) {
       const key = normalizeCode(code) || normalizeCode(name);
       const category = String(it?.category || "").trim();
       const uom = String(it?.uom || "").trim();
-      return key ? { key, code, name, category, uom } : null;
+      const origin = String(it?.origin || "").trim();
+      return key ? { key, code, name, category, uom, origin } : null;
     };
     base.forEach((it) => {
       const r = norm(it);
@@ -299,7 +385,7 @@ export default function ProductsTab({ navActions = null }) {
       if (!r) return;
       const was = map.get(r.key);
       // an override keeps the master's category / unit unless it has its own
-      map.set(r.key, { ...r, category: r.category || was?.category || "", uom: r.uom || was?.uom || "", source: was ? "edited" : "custom" });
+      map.set(r.key, { ...r, category: r.category || was?.category || "", uom: r.uom || was?.uom || "", origin: r.origin || was?.origin || "", source: was ? "edited" : "custom" });
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [base, custom]);
@@ -309,6 +395,14 @@ export default function ProductsTab({ navActions = null }) {
     rows.forEach((r) => { const k = r.category || ""; c[k] = (c[k] || 0) + 1; });
     return Object.entries(c).sort((a, b) => (a[0] || "~").localeCompare(b[0] || "~"));
   }, [rows]);
+
+  const optionsOf = (field) => {
+    const c = {};
+    rows.forEach((r) => { const k = r[field] || ""; c[k] = (c[k] || 0) + 1; });
+    return Object.entries(c).sort((a, b) => (a[0] || "~").localeCompare(b[0] || "~"));
+  };
+  const origins = useMemo(() => optionsOf("origin"), [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const uoms = useMemo(() => optionsOf("uom"), [rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -332,17 +426,32 @@ export default function ProductsTab({ navActions = null }) {
     if (fSl === "none") list = list.filter((r) => days(r) === 0);
     if (fImg === "with") list = list.filter((r) => imagesOf(media, r.code).length > 0);
     if (fImg === "none") list = list.filter((r) => imagesOf(media, r.code).length === 0);
+    if (fOrig !== "*") list = list.filter((r) => (r.origin || "") === fOrig);
+    if (fUom !== "*") list = list.filter((r) => (r.uom || "") === fUom);
+    if (fStg === "none") list = list.filter((r) => !storageOf(media, r.code));
+    else if (fStg !== "*") list = list.filter((r) => storageOf(media, r.code)?.mode === fStg);
+    if (fAlg === "any") list = list.filter((r) => allergensOf(media, r.code).length > 0);
+    else if (fAlg === "none") list = list.filter((r) => allergensOf(media, r.code).length === 0);
+    else if (fAlg !== "*") list = list.filter((r) => allergensOf(media, r.code).includes(fAlg));
+    if (fAct === "on") list = list.filter((r) => isActive(media, r.code));
+    if (fAct === "off") list = list.filter((r) => !isActive(media, r.code));
     if (sort === "code") list = [...list].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     else if (sort === "bc") list = [...list].sort((a, b) => nbc(b) - nbc(a) || a.name.localeCompare(b.name));
     else if (sort === "shelf") list = [...list].sort((a, b) => (days(a) || Infinity) - (days(b) || Infinity) || a.name.localeCompare(b.name));
     else if (sort === "cat") list = [...list].sort((a, b) => (a.category || "~").localeCompare(b.category || "~") || a.name.localeCompare(b.name));
+    else if (sort === "origin") list = [...list].sort((a, b) => (a.origin || "~").localeCompare(b.origin || "~") || a.name.localeCompare(b.name));
+    else if (sort === "uom") list = [...list].sort((a, b) => (a.uom || "~").localeCompare(b.uom || "~") || a.name.localeCompare(b.name));
+    else if (sort === "changed") list = [...list].sort((a, b) => String(lastChangeOf(b)?.at || "").localeCompare(String(lastChangeOf(a)?.at || "")) || a.name.localeCompare(b.name));
     return list;
-  }, [rows, q, barcodesOf, shelfOf, media, fCat, fBc, fSrc, fSl, fImg, sort]);
+  }, [rows, q, barcodesOf, shelfOf, lastChangeOf, media, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, sort]);
 
-  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, sort]);
+  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, sort]);
 
-  const filtersOn = fCat !== "*" || fBc !== "*" || fSrc !== "*" || fSl !== "*" || fImg !== "*" || sort !== "name" || !!q.trim();
-  const clearFilters = () => { setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*"); setSort("name"); };
+  const filtersOn = [fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct].some((v) => v !== "*") || sort !== "name" || !!q.trim();
+  const clearFilters = () => {
+    setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*");
+    setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*"); setSort("name");
+  };
 
   const stats = useMemo(() => {
     let withBc = 0; let withSl = 0; let withImg = 0;
@@ -352,22 +461,31 @@ export default function ProductsTab({ navActions = null }) {
       if (sl && sl.days > 0) withSl += 1;
       if (imagesOf(media, r.code).length) withImg += 1;
     });
-    return { total: rows.length, withBc, withSl, withImg, barcodes: Object.keys(bcMap).length, mine: rows.filter((r) => r.source !== "base").length };
+    return {
+      total: rows.length, withBc, withSl, withImg, barcodes: Object.keys(bcMap).length,
+      mine: rows.filter((r) => r.source !== "base").length,
+      stopped: rows.filter((r) => !isActive(media, r.code)).length,
+    };
   }, [rows, barcodesOf, shelfOf, media, bcMap]);
   const pct = (n) => (stats.total ? Math.round((n / stats.total) * 100) : 0);
 
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Category", "UOM", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
       // ="…" keeps long barcodes as text in Excel (no 6.29E+12)
       lines.push([
-        cell(r.code), cell(r.name), cell(r.category), cell(r.uom),
+        cell(r.code), cell(r.name), cell(r.category), cell(r.uom), cell(r.origin),
         bcs.length ? `"=""${bcs.join(" | ")}"""` : cell(""), cell(bcs.length),
-        cell(sl ? sl.days : ""), cell(sl ? SHELF_SRC[sl.source] : ""), cell(imagesOf(media, r.code).length),
+        cell(sl ? sl.days : ""), cell(sl ? SHELF_SRC[sl.source] : ""),
+        cell(storageOf(media, r.code) ? STORAGE[storageOf(media, r.code).mode].label : ""), cell(tempText(storageOf(media, r.code))),
+        cell(allergensOf(media, r.code).map((a) => allergenOf(a).label).join(", ")),
+        cell(isActive(media, r.code) ? "Active" : "Stopped"),
+        cell(lastChangeOf(r) ? dmy(lastChangeOf(r).at) : ""), cell(lastChangeOf(r)?.by || ""),
+        cell(imagesOf(media, r.code).length),
         cell(r.source === "base" ? "Master" : r.source === "edited" ? "Edited" : "Custom"),
       ].join(","));
     });
@@ -396,6 +514,9 @@ export default function ProductsTab({ navActions = null }) {
         barcodes: [...have, ...pendingBc.filter((b) => !have.includes(b))],
         shelfDays: own ? own.days : "",
         images: imagesOf(media, row.code),
+        storage: storageOf(media, row.code),
+        allergens: allergensOf(media, row.code),
+        active: isActive(media, row.code),
       },
     });
   };
@@ -451,10 +572,19 @@ export default function ProductsTab({ navActions = null }) {
       try { await shelf.save({ ...shelf.config, rules }, user); } catch { warn.push("shelf life"); }
     }
 
-    // 4) photos
+    // 4) photos, storage, allergens, active — one write, only what changed
+    const extras = {};
     const hadImg = editing ? imagesOf(media, oldCode) : [];
-    if (hadImg.join("|") !== data.images.join("|") || (editing && code !== oldCode && hadImg.length)) {
-      try { setMedia(await setProductImages(code, data.images, user, oldCode)); } catch { warn.push("photos"); }
+    if (hadImg.join("|") !== data.images.join("|")) extras.images = data.images;
+    const hadStg = editing ? storageOf(media, oldCode) : null;
+    if (JSON.stringify(hadStg || null) !== JSON.stringify(data.storage || null)) extras.storage = data.storage || null;
+    const hadAlg = editing ? allergensOf(media, oldCode) : [];
+    if ([...hadAlg].sort().join("|") !== [...(data.allergens || [])].sort().join("|")) extras.allergens = data.allergens || [];
+    const hadAct = editing ? isActive(media, oldCode) : true;
+    if (hadAct !== (data.active !== false)) extras.active = data.active !== false;
+    const moved = editing && code !== oldCode && media[String(oldCode).trim()];
+    if (Object.keys(extras).length || moved) {
+      try { setMedia(await setProductExtras(code, extras, user, oldCode)); } catch { warn.push("photos / storage / allergens"); }
     }
 
     if (scanHit && !scanHit.code && data.barcodes.map(normBarcode).includes(scanHit.barcode)) setScanHit(null);
@@ -475,8 +605,11 @@ export default function ProductsTab({ navActions = null }) {
         try { setBcMap(await recodeBarcodes(row.code, null, userName())); } catch { /* the list keeps them */ }
       }
       const imgs = imagesOf(media, row.code);
-      if (imgs.length) {
-        try { setMedia(await setProductImages(row.code, [], userName())); imgs.forEach((u) => deleteImage(u).catch(() => {})); } catch { /* kept */ }
+      if (media[String(row.code).trim()]) {
+        try {
+          setMedia(await setProductExtras(row.code, { images: [], storage: null, allergens: [], active: true }, userName()));
+          imgs.forEach((u) => deleteImage(u).catch(() => {}));
+        } catch { /* kept */ }
       }
     }
     if (!synced) flash("Removed on this device only — the server could not be reached.", true);
@@ -494,7 +627,7 @@ export default function ProductsTab({ navActions = null }) {
     const row = owner?.code ? rows.find((r) => String(r.code).trim() === String(owner.code).trim()) : null;
     // after the reader's keys are taken back out of the search box (its own onChange would win otherwise)
     setTimeout(() => {
-      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*");
+      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*"); setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*");
       setQ(row ? showBarcode(key) : "");
       setScanHit({ barcode: key, code: owner?.code || "", name: row?.name || owner?.product || "", known: !!row });
     }, 0);
@@ -547,7 +680,7 @@ export default function ProductsTab({ navActions = null }) {
       <div className="kpis">
         <button type="button" className={`kpi ${!filtersOn ? "on" : ""}`} onClick={clearFilters} title="Show all products">
           <div className="k-l">Products</div>
-          <div className="k-v">{stats.total}<small>{stats.mine} added / edited</small></div>
+          <div className="k-v">{stats.total}<small>{stats.mine} added / edited{stats.stopped ? ` · ${stats.stopped} stopped` : ""}</small></div>
           <div className="bar"><b style={{ width: "100%" }} /></div>
         </button>
         {[
@@ -623,39 +756,88 @@ export default function ProductsTab({ navActions = null }) {
           <option value="with">With photo</option>
           <option value="none">No photo</option>
         </select>
+        <select className={`s ${fOrig !== "*" ? "on" : ""}`} value={fOrig} onChange={(e) => setFOrig(e.target.value)} title="Origin">
+          <option value="*">All origins</option>
+          {origins.map(([c, n]) => <option key={c || "-"} value={c}>{c || "(no origin)"} · {n}</option>)}
+        </select>
+        <select className={`s ${fUom !== "*" ? "on" : ""}`} value={fUom} onChange={(e) => setFUom(e.target.value)} title="Unit">
+          <option value="*">All units</option>
+          {uoms.map(([c, n]) => <option key={c || "-"} value={c}>{c || "(no unit)"} · {n}</option>)}
+        </select>
+        <select className={`s ${fStg !== "*" ? "on" : ""}`} value={fStg} onChange={(e) => setFStg(e.target.value)} title="Storage">
+          <option value="*">Any storage</option>
+          {Object.entries(STORAGE).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          <option value="none">Storage not set</option>
+        </select>
+        <select className={`s ${fAlg !== "*" ? "on" : ""}`} value={fAlg} onChange={(e) => setFAlg(e.target.value)} title="Allergens">
+          <option value="*">Any allergens</option>
+          <option value="any">Has allergens</option>
+          <option value="none">No allergens set</option>
+          {ALLERGENS.map((a) => <option key={a.id} value={a.id}>Contains {a.label}</option>)}
+        </select>
+        <select className={`s ${fAct !== "*" ? "on" : ""}`} value={fAct} onChange={(e) => setFAct(e.target.value)} title="Status">
+          <option value="*">Active + stopped</option>
+          <option value="on">Active only</option>
+          <option value="off">Stopped only</option>
+        </select>
         <select className={`s ${sort !== "name" ? "on" : ""}`} value={sort} onChange={(e) => setSort(e.target.value)} title="Sort">
           <option value="name">Sort · Name A→Z</option>
           <option value="code">Sort · Code</option>
           <option value="cat">Sort · Category</option>
+          <option value="origin">Sort · Origin</option>
+          <option value="uom">Sort · Unit</option>
+          <option value="changed">Sort · Last change</option>
           <option value="bc">Sort · Most barcodes</option>
           <option value="shelf">Sort · Shortest shelf life</option>
         </select>
         {filtersOn && <button type="button" className="b" onClick={clearFilters}>✕ Clear</button>}
+        <div className="colsel" ref={colsRef}>
+          <button type="button" className="b" onClick={() => setColsOpen((o) => !o)} aria-expanded={colsOpen}>
+            ▦ Columns{hidden.length ? ` (${COLS.length - hidden.length}/${COLS.length})` : ""}
+          </button>
+          {colsOpen && (
+            <div className="colmenu">
+              {COLS.map((c) => (
+                <label key={c.id}>
+                  <input type="checkbox" checked={showCol(c.id)} onChange={() => flipCol(c.id)} /> {c.label}
+                </label>
+              ))}
+              <div className="cm-a">
+                <button type="button" className="b" onClick={() => { setHidden([]); writeHidden([]); }}>Show all</button>
+              </div>
+            </div>
+          )}
+        </div>
         <span className="count">{filtered.length === rows.length ? `${rows.length} products` : `${filtered.length} of ${rows.length}`}</span>
       </div>
 
       {/* ── the list ── */}
       <div className="list">
         <div className="scroll">
-          <table>
+          <table style={{ minWidth: 380 + COLS.filter((c) => showCol(c.id)).reduce((s, c) => s + c.w, 0) }}>
             <thead>
               <tr>
                 <th className="no">#</th>
-                <th>Product</th>
-                <th style={{ width: 120 }}>Code</th>
-                <th style={{ width: 260 }}>Barcodes</th>
-                <th style={{ width: 140 }}>Shelf life</th>
-                <th style={{ width: 100 }}>Source</th>
+                <th className="sortable" onClick={() => setSort("name")}>Product{sort === "name" && <span className="arr">↓</span>}</th>
+                {COLS.filter((c) => showCol(c.id)).map((c) => {
+                  const key = { code: "code", category: "cat", origin: "origin", uom: "uom", barcodes: "bc", shelf: "shelf", changed: "changed" }[c.id];
+                  return (
+                    <th key={c.id} style={{ width: c.w }} className={key ? "sortable" : ""} onClick={key ? () => setSort(key) : undefined}
+                      title={key ? `Sort by ${c.label.toLowerCase()}` : undefined}>
+                      {c.label}{key && sort === key && <span className="arr">↓</span>}
+                    </th>
+                  );
+                })}
                 <th style={{ width: 92 }} aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 [0, 1, 2, 3, 4, 5].map((i) => (
-                  <tr key={i} className="skel"><td colSpan={7}><div style={{ width: `${60 + ((i * 13) % 35)}%` }} /></td></tr>
+                  <tr key={i} className="skel"><td colSpan={3 + COLS.length}><div style={{ width: `${60 + ((i * 13) % 35)}%` }} /></td></tr>
                 ))
               ) : shown.length === 0 ? (
-                <tr><td colSpan={7} className="empty">
+                <tr><td colSpan={3 + COLS.length} className="empty">
                   <b>No products match</b>
                   {filtersOn ? <button type="button" className="b" onClick={clearFilters} style={{ marginTop: 8 }}>✕ Clear the filters</button> : "Add the first one with ＋."}
                 </td></tr>
@@ -664,47 +846,59 @@ export default function ProductsTab({ navActions = null }) {
                   const bcs = barcodesOf(row);
                   const img = imagesOf(media, row.code)[0];
                   const sl = shelfOf(row);
+                  const stg = storageOf(media, row.code);
+                  const algs = allergensOf(media, row.code);
+                  const active = isActive(media, row.code);
+                  const chg = lastChangeOf(row);
                   const hue = hueOf(row.category || row.name);
+                  const cell = {
+                    code: row.code ? <span className="code mono">{row.code}</span> : <span className="none">—</span>,
+                    category: row.category ? (
+                      <button type="button" className="tag" title="Show this category only"
+                        style={{ background: `hsl(${hue} 85% 95%)`, color: `hsl(${hue} 50% 32%)` }}
+                        onClick={(e) => { e.stopPropagation(); setFCat(row.category); }}>{row.category}</button>
+                    ) : <span className="none">—</span>,
+                    uom: row.uom ? <span className="tag">{row.uom}</span> : <span className="none">—</span>,
+                    origin: row.origin ? (
+                      <button type="button" className="tag orig" title="Show this origin only"
+                        onClick={(e) => { e.stopPropagation(); setFOrig(row.origin); }}>{row.origin}</button>
+                    ) : <span className="none">—</span>,
+                    barcodes: bcs.length ? (
+                      <div className="bcs">
+                        {bcs.slice(0, 3).map((b) => <span key={b} className="bc mono">{showBarcode(b)}</span>)}
+                        {bcs.length > 3 && <span className="bc">+{bcs.length - 3}</span>}
+                      </div>
+                    ) : <span className="none">— none</span>,
+                    shelf: !sl ? <span className="none">—</span>
+                      : sl.days === 0 ? <span className="sl off"><b>Off</b><small>{SHELF_SRC[sl.source]}</small></span>
+                        : <span className="sl" title={sl.source === "category" ? `From category ${sl.label}` : undefined}><b>{sl.days} d</b><small>{SHELF_SRC[sl.source]}</small></span>,
+                    storage: stg ? (
+                      <span className={`stg ${stg.mode}`}><b>{STORAGE[stg.mode].icon} {STORAGE[stg.mode].label}</b>{tempText(stg) && <small>{tempText(stg)}</small>}</span>
+                    ) : <span className="none">—</span>,
+                    allergens: algs.length ? (
+                      <div className="algs" title={algs.map((a) => allergenOf(a).label).join(", ")}>
+                        {algs.slice(0, 3).map((a) => <span key={a} className="alg">{allergenOf(a).icon} {allergenOf(a).label}</span>)}
+                        {algs.length > 3 && <span className="alg">+{algs.length - 3}</span>}
+                      </div>
+                    ) : <span className="none">—</span>,
+                    status: <span className={`tag ${active ? "st-on" : "st-off"}`}>{active ? "Active" : "Stopped"}</span>,
+                    changed: chg ? <span className="chg">{dmy(chg.at)}{chg.by && <small>{chg.by}</small>}</span> : <span className="none">—</span>,
+                    source: <span className={`tag src-${row.source}`}>{row.source === "base" ? "Master" : row.source === "edited" ? "Edited" : "Custom"}</span>,
+                  };
                   return (
-                    <tr key={row.key} className={hitCode && String(row.code).trim() === hitCode ? "hit" : ""} onClick={() => startEdit(row)}>
+                    <tr key={row.key}
+                      className={[hitCode && String(row.code).trim() === hitCode ? "hit" : "", active ? "" : "stopped"].filter(Boolean).join(" ")}
+                      onClick={() => startEdit(row)}>
                       <td className="no">{i + 1}</td>
                       <td>
                         <div className="prod">
                           <div className="av" style={img ? undefined : { background: `hsl(${hue} 85% 93%)`, color: `hsl(${hue} 55% 32%)` }}>
                             {img ? <img src={thumbUrl(img, 96)} alt="" loading="lazy" /> : initials(row.name)}
                           </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="nm">{row.name}</div>
-                            {(row.category || row.uom) && (
-                              <div className="sub">
-                                {row.category && (
-                                  <button type="button" className="tag" title="Show this category only"
-                                    style={{ background: `hsl(${hue} 85% 95%)`, color: `hsl(${hue} 50% 32%)` }}
-                                    onClick={(e) => { e.stopPropagation(); setFCat(row.category); }}>{row.category}</button>
-                                )}
-                                {row.uom && <span className="tag">{row.uom}</span>}
-                              </div>
-                            )}
-                          </div>
+                          <div className="nm" style={{ minWidth: 0 }}>{row.name}</div>
                         </div>
                       </td>
-                      <td>{row.code ? <span className="code mono">{row.code}</span> : <span className="none">—</span>}</td>
-                      <td>
-                        {bcs.length ? (
-                          <div className="bcs">
-                            {bcs.slice(0, 3).map((b) => <span key={b} className="bc mono">{showBarcode(b)}</span>)}
-                            {bcs.length > 3 && <span className="bc">+{bcs.length - 3}</span>}
-                          </div>
-                        ) : <span className="none">— none</span>}
-                      </td>
-                      <td>
-                        {!sl ? <span className="none">—</span>
-                          : sl.days === 0 ? <span className="sl off"><b>Off</b><small>{SHELF_SRC[sl.source]}</small></span>
-                            : <span className="sl" title={sl.source === "category" ? `From category ${sl.label}` : undefined}><b>{sl.days} d</b><small>{SHELF_SRC[sl.source]}</small></span>}
-                      </td>
-                      <td>
-                        <span className={`tag src-${row.source}`}>{row.source === "base" ? "Master" : row.source === "edited" ? "Edited" : "Custom"}</span>
-                      </td>
+                      {COLS.filter((c) => showCol(c.id)).map((c) => <td key={c.id}>{cell[c.id]}</td>)}
                       <td>
                         <div className="acts">
                           <button type="button" className="ib" title="Edit" aria-label="Edit" onClick={(e) => { e.stopPropagation(); startEdit(row); }}>✏️</button>
@@ -734,7 +928,7 @@ export default function ProductsTab({ navActions = null }) {
       </div>
 
       <div className="foot">
-        Click a product to edit it. 🔫 A handheld barcode reader works anywhere on this page — scan a carton to find its product.
+        Click a product to edit it; click a column title to sort. A stopped product is hidden from the app's product lists, but old records keep showing it. 🔫 A handheld barcode reader works anywhere on this page — scan a carton to find its product.
         Master products come from the bundled catalog file: they can be renamed (saved as an override) but not removed.
       </div>
 

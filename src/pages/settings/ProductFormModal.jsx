@@ -1,12 +1,14 @@
 // src/pages/settings/ProductFormModal.jsx
 //
 // ➕ / ✏️ The product window of the Products Catalog: name, code, as many
-// barcodes as the product has, its shelf life and its photos — one Save.
+// barcodes as the product has, shelf life, storage temperature, allergens,
+// active / stopped and photos — one Save.
 //
 //   <ProductFormModal open mode="add"|"edit" initial={…} codeLocked shelfHint
 //     onSave={async (data, { move }) => …} onClose={…} />
 //
-// initial = { code, name, barcodes: [], shelfDays: "", images: [] }
+// initial = { code, name, barcodes: [], shelfDays: "", images: [],
+//             storage: { mode, min, max } | null, allergens: [], active: true }
 // onSave throws an Error; err.conflicts (barcodes on another code) shows a
 // "move them here" choice that calls onSave again with move = true.
 //
@@ -18,8 +20,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { deleteImage, thumbUrl, uploadImage } from "../../utils/imageUpload";
 import useWedgeScanner from "../../utils/useWedgeScanner";
+import { ALLERGENS, STORAGE } from "../../utils/productMedia";
 
-const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [] };
+const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true };
 
 const CSS = `
 .pfm { position:fixed; inset:0; z-index:10500; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; padding:12px;
@@ -54,6 +57,19 @@ const CSS = `
 .pfm .img button { position:absolute; top:4px; right:4px; border:0; border-radius:8px; background:rgba(15,23,42,.7); color:#fff; width:24px; height:24px; cursor:pointer; font-size:12px; }
 .pfm .img .main { position:absolute; left:4px; bottom:4px; background:#0d9488; color:#fff; font-size:10px; font-weight:800; border-radius:6px; padding:1px 6px; }
 .pfm .add-img { width:96px; height:96px; border-radius:10px; border:2px dashed #94a3b8; background:#fff; color:#475569; font-weight:800; font-size:12px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+.pfm .modes { display:flex; gap:6px; flex-wrap:wrap; }
+.pfm .mode { border:1.5px solid #cbd5e1; background:#fff; border-radius:999px; padding:6px 12px; font-weight:800; font-size:13px; cursor:pointer; font-family:inherit; color:#334155; }
+.pfm .mode.on { background:#e0f2fe; border-color:#0ea5e9; color:#075985; }
+.pfm .temps { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.pfm .temps input.i { width:90px; }
+.pfm .alg { display:flex; gap:6px; flex-wrap:wrap; }
+.pfm .alg button { border:1.5px solid #cbd5e1; background:#fff; border-radius:999px; padding:5px 10px; font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; color:#334155; }
+.pfm .alg button.on { background:#fff7ed; border-color:#fb923c; color:#9a3412; }
+.pfm .sw { display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+.pfm .sw i { width:42px; height:24px; border-radius:99px; background:#cbd5e1; position:relative; transition:background .15s; flex-shrink:0; }
+.pfm .sw i::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+.pfm .sw.on i { background:#10b981; }
+.pfm .sw.on i::after { left:21px; }
 .pfm .err { color:#b91c1c; font-weight:800; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px 12px; }
 .pfm-foot { padding:12px 18px; border-top:1px solid #e2e8f0; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; background:#fff; }
 `;
@@ -76,6 +92,11 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       barcodes: i.barcodes && i.barcodes.length ? [...i.barcodes] : [""],
       shelfDays: i.shelfDays === 0 || i.shelfDays ? String(i.shelfDays) : "",
       images: [...(i.images || [])],
+      mode: i.storage?.mode || "",
+      tMin: i.storage && i.storage.min !== undefined && i.storage.min !== null ? String(i.storage.min) : "",
+      tMax: i.storage && i.storage.max !== undefined && i.storage.max !== null ? String(i.storage.max) : "",
+      allergens: [...(i.allergens || [])],
+      active: i.active !== false,
     });
     setErr(null); setBusy(false); fresh.current = [];
     setTimeout(() => firstRef.current?.focus(), 30);
@@ -128,6 +149,12 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       deleteImage(url).catch(() => {});
     }
   };
+  const pickMode = (m) => setF((p) => (p.mode === m
+    ? { ...p, mode: "", tMin: "", tMax: "" }
+    : { ...p, mode: m, tMin: String(STORAGE[m].min), tMax: String(STORAGE[m].max) }));
+  const flipAllergen = (id) => setF((p) => ({
+    ...p, allergens: p.allergens.includes(id) ? p.allergens.filter((x) => x !== id) : [...p.allergens, id],
+  }));
   const makeMain = (url) => setF((p) => ({ ...p, images: [url, ...p.images.filter((u) => u !== url)] }));
 
   const cancel = () => {
@@ -154,10 +181,18 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       const n = Number(sd);
       if (!Number.isInteger(n) || n < 0 || n > 3650) return setErr({ text: "Shelf life: whole days 0 – 3650 (0 = no automatic expiry), or empty." });
     }
+    let storage = null;
+    if (f.mode) {
+      const num = (v) => (String(v).trim() === "" ? null : Number(v));
+      const lo = num(f.tMin); const hi = num(f.tMax);
+      if ((lo !== null && !Number.isFinite(lo)) || (hi !== null && !Number.isFinite(hi))) return setErr({ text: "Storage temperature: numbers only (°C)." });
+      if (lo !== null && hi !== null && lo > hi) return setErr({ text: "Storage temperature: the lowest must be below the highest." });
+      storage = { mode: f.mode, min: lo, max: hi };
+    }
     if (uploading) return setErr({ text: "Wait for the photos to finish uploading." });
     setBusy(true); setErr(null);
     try {
-      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images }, { move });
+      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images, storage, allergens: f.allergens, active: f.active }, { move });
       // the photos taken out in this window are deleted from the store now that the save is done
       (initial?.images || []).filter((u) => !f.images.includes(u)).forEach((u) => deleteImage(u).catch(() => {}));
       fresh.current = [];
@@ -225,6 +260,49 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
               </div>
               <div className="hint">
                 Empty = {shelfHint || "no shelf life"}. 0 = no automatic expiry. The Raw Material Receipt calculates the expiry from it.
+              </div>
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="sec-t">🌡 Storage temperature <span className="hint" style={{ margin: 0, fontWeight: 600 }}>optional</span></div>
+            <div className="modes">
+              {Object.entries(STORAGE).map(([k, v]) => (
+                <button key={k} type="button" className={`mode ${f.mode === k ? "on" : ""}`} onClick={() => pickMode(k)}>{v.icon} {v.label}</button>
+              ))}
+            </div>
+            {f.mode && (
+              <div className="temps">
+                <span style={{ fontWeight: 800, color: "#475569" }}>from</span>
+                <input className="i" type="number" step="0.5" value={f.tMin} onChange={(e) => set("tMin", e.target.value)} placeholder="min" />
+                <span style={{ fontWeight: 800, color: "#475569" }}>to</span>
+                <input className="i" type="number" step="0.5" value={f.tMax} onChange={(e) => set("tMax", e.target.value)} placeholder="max" />
+                <span style={{ fontWeight: 800, color: "#475569" }}>°C</span>
+              </div>
+            )}
+          </div>
+
+          <div className="sec">
+            <div className="sec-t">⚠️ Allergens <span className="hint" style={{ margin: 0, fontWeight: 600 }}>tap what the product contains</span></div>
+            <div className="alg">
+              {ALLERGENS.map((a) => (
+                <button key={a.id} type="button" className={f.allergens.includes(a.id) ? "on" : ""} onClick={() => flipAllergen(a.id)}>
+                  {a.icon} {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className={`sw ${f.active ? "on" : ""}`} role="switch" aria-checked={f.active} tabIndex={0}
+              onClick={() => set("active", !f.active)}
+              onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); set("active", !f.active); } }}>
+              <i />
+              <div>
+                <div style={{ fontWeight: 900 }}>{f.active ? "Active" : "Stopped"}</div>
+                <div className="hint" style={{ margin: 0 }}>
+                  {f.active ? "Shows in every product list of the app." : "Hidden from the product lists — kept, and old records still show it."}
+                </div>
               </div>
             </div>
           </div>
