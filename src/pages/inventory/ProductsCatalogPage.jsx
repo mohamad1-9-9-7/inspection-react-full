@@ -53,8 +53,8 @@ export default function ProductsCatalogPage() {
 const FONT = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Cairo, sans-serif';
 
 const S = {
-  page: { minHeight: "100vh", background: "#f2f7fc", fontFamily: FONT, color: "#0f2740", padding: "18px 14px 40px" },
-  wrap: { maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 },
+  page: { minHeight: "100vh", background: "#f2f7fc", fontFamily: FONT, color: "#0f2740", padding: "10px 12px 24px" },
+  wrap: { width: "100%", display: "flex", flexDirection: "column", gap: 10 },
   bar: {
     display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
     background: "#fff", border: "1px solid #e3edf7", borderRadius: 18,
@@ -74,6 +74,6 @@ const S = {
   },
   card: {
     background: "#fff", border: "1px solid #e3edf7", borderRadius: 18,
-    padding: "18px 16px", boxShadow: "0 12px 30px rgba(15,39,64,.07)",
+    padding: "12px", boxShadow: "0 12px 30px rgba(15,39,64,.07)",
   },
 };

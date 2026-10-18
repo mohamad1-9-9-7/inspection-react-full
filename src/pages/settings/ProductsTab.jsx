@@ -537,7 +537,7 @@ export default function ProductsTab() {
 
       {/* Table */}
       <div style={ui.tableWrap}>
-        <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
+        <div style={{ maxHeight: "max(52vh, calc(100vh - 300px))", overflowY: "auto" }}>
           <table style={{ ...ui.table, minWidth: 760 }}>
             <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <tr>
