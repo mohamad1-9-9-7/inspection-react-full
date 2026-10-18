@@ -26,6 +26,7 @@ import { fetchSuppliers } from "../../../complaints/complaintsCore";
 import BarcodeScanner from "../../../../components/BarcodeScanner";
 import { parseBarcode } from "../../../../utils/gs1Barcode";
 import { fetchBarcodeMap, linkBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
+import useWedgeScanner from "../../../../utils/useWedgeScanner";
 
 const TX = {
   en: {
@@ -49,6 +50,7 @@ const TX = {
     fefo: (d) => `⚠️ An older lot of this product expires first (${d}). Take that one out first (FEFO).`,
     fefoOk: "I know — take this lot out anyway", needFefo: "Confirm the warning about the older lot first.",
     scan: "📷 Scan barcode", batch: "Batch / lot (if any)", notProduct: "This code is not a product barcode — try the other code on the carton.",
+    wedgeHint: "🔫 A handheld barcode reader works here directly — just scan.",
     newBarcode: (g) => `🆕 New barcode ${g} — choose our product below ONCE; every phone will know it after that.`,
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
@@ -74,6 +76,7 @@ const TX = {
     needBranch: "اختر الفرع.", to: "إلى", keeperShort: "أمين المخزن",
     supplier: "المورد", supplierPh: "اسم المورد", prodDate: "تاريخ الإنتاج", expDate: "تاريخ الانتهاء",
     scan: "📷 مسح الباركود", batch: "رقم الدفعة / اللوت (إذا موجود)", notProduct: "هالكود مش باركود منتج — جرّب الكود التاني على الكرتونة.",
+    wedgeHint: "🔫 قارئ الباركود اليدوي بيشتغل هون مباشرة — بس امسح.",
     newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
@@ -330,6 +333,12 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       offHint(r.gtin).then((n) => setWorldName(n));
     }
   };
+  /* A handheld reader (keyboard-style) works anywhere on this screen — no
+     camera, no box to tap: from the main screen it opens "Products in". */
+  useWedgeScanner((text) => {
+    if (!mode) start("in");
+    onScan(text);
+  }, !scanOpen && !saving && mode !== "out" && !!target && !loading);
   const start = (m, it = null) => {
     setMode(m); setQ(""); setQty(""); setMsg(null); resetLot();
     setPick(it ? lotOf(it) : null); // from the list = goods out of that lot
@@ -452,6 +461,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
           {!isOut && <button type="button" className="btn pri" onClick={() => setScanOpen(true)} disabled={saving}>{s.scan}</button>}
           <button type="button" className="btn" onClick={() => start(null)} disabled={saving}>{s.cancel}</button>
         </div>
+        {!isOut && !pick && !linkGtin && !scanNote && <div className="sm" style={{ margin: "6px 0" }}>{s.wedgeHint}</div>}
         {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
         {!isOut && linkGtin && (
           <div className="alert warn">

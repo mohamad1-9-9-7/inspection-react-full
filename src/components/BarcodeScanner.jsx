@@ -206,7 +206,8 @@ export default function BarcodeScanner({ open, lang = "en", onResult, onClose })
       <div className="bcs-bottom">
         <label htmlFor="bcs-typed">{s.manual}</label>
         <div className="bcs-row">
-          <input id="bcs-typed" value={typed} inputMode="text" autoComplete="off" autoCorrect="off" spellCheck={false}
+          <input id="bcs-typed" value={typed} inputMode="text"
+            autoFocus={typeof window !== "undefined" && !!window.matchMedia?.("(pointer: fine)").matches} autoComplete="off" autoCorrect="off" spellCheck={false}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitTyped(); } }} />
           <button type="button" className="bcs-btn pri" onClick={submitTyped}>{s.use}</button>
