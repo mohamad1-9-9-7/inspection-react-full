@@ -217,7 +217,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       if (lo !== null && hi !== null && lo > hi) return setErr({ text: "Storage temperature: the lowest must be below the highest." });
       storage = { mode: f.mode, min: lo, max: hi };
     }
-    if (f.tgroup === "final" && !f.ptype) return setErr({ text: "Product type: choose Cooked or Ready to cook / sale." });
+    if (f.tgroup === "final" && !f.ptype) return setErr({ text: "Product type: choose Ready to cook / for sale, or Cooked — ready to eat." });
     if (uploading) return setErr({ text: "Wait for the photos to finish uploading." });
     setBusy(true); setErr(null);
     try {

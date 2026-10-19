@@ -49,8 +49,8 @@ export const allergenOf = (id) => ALLERGENS.find((a) => a.id === id) || { id, la
 export const PRODUCT_TYPES = [
   { id: "raw", group: "raw", label: "Raw", icon: "🥩" },
   { id: "raw_marinated", group: "raw", label: "Raw marinated", icon: "🧂" },
-  { id: "cooked", group: "final", label: "Cooked", icon: "🍲" },
-  { id: "ready", group: "final", label: "Ready to cook / sale", icon: "📦" },
+  { id: "ready", group: "final", label: "Ready to cook / for sale", icon: "📦" },
+  { id: "cooked", group: "final", label: "Cooked — ready to eat", icon: "🍲" },
 ];
 export const TYPE_GROUPS = { raw: "Raw", final: "Final" };
 export const typeOfId = (id) => PRODUCT_TYPES.find((p) => p.id === id) || null;
