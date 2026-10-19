@@ -64,7 +64,7 @@ const TXT = {
     ctaDemo: "Book a free demo",
     ctaCheck: "Check your readiness — 2 min",
     ctaPrices: "See prices",
-    ctaTrial: "Try it free — 3 days",
+    ctaTrial: "Try it free — 30 days",
     mock: {
       title: "Dashboard", today: "Today",
       k1: "Branches reporting", k2: "Open NCRs", k3: "Readiness",
@@ -153,7 +153,7 @@ const TXT = {
     ctaDemo: "احجز عرضًا تجريبيًا مجانيًا",
     ctaCheck: "قِس جاهزيتك — دقيقتان",
     ctaPrices: "اطّلع على الأسعار",
-    ctaTrial: "جرّبه مجانًا — 3 أيام",
+    ctaTrial: "جرّبه مجانًا — 30 يومًا",
     mock: {
       title: "لوحة التحكم", today: "اليوم",
       k1: "فروع سجّلت", k2: "حالات عدم مطابقة مفتوحة", k3: "الجاهزية",
@@ -436,7 +436,10 @@ export default function DemoRequest() {
   // the owner in Platform Center → Demo Requests; anything unset is not shown.
   const cfg = useDemoConfig();
   const waNumber = cfg.whatsapp;
-  const quizHref = `/readiness${source ? `?src=${encodeURIComponent(source)}` : ""}`;
+  const quizParams = new URLSearchParams();
+  if (source) quizParams.set("src", source);
+  quizParams.set("lang", lang);
+  const quizHref = `/readiness?${quizParams.toString()}`;
   // The source rides along in the message, so the chat itself says which link it came from.
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(t.waMsg + (source ? ` [${source}]` : ""))}`

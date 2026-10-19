@@ -214,7 +214,7 @@ export default function ReadinessCheck() {
     }
   };
 
-  const shareLink = `${getPublicOrigin()}/readiness?src=share`;
+  const shareLink = `${getPublicOrigin()}/readiness?${new URLSearchParams({ src: "share", lang }).toString()}`;
   const share = async () => {
     try {
       if (navigator.share) { await navigator.share({ title: t.introTitle, url: shareLink }); return; }
@@ -237,7 +237,10 @@ export default function ReadinessCheck() {
       }).catch(() => {});
     } catch { /* best-effort */ }
   };
-  const demoHref = `/demo${source ? `?src=${encodeURIComponent(source)}` : ""}`;
+  const demoParams = new URLSearchParams();
+  if (source) demoParams.set("src", source);
+  demoParams.set("lang", lang);
+  const demoHref = `/demo?${demoParams.toString()}`;
 
   const q = step >= 0 && step < N ? READINESS_QUESTIONS[step] : null;
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -260,7 +263,7 @@ export default function ReadinessCheck() {
             <ul style={S.points}>
               {t.introPoints.map((p) => <li key={p} style={S.point}><span style={S.tick}>✓</span>{p}</li>)}
             </ul>
-            <button type="button" className="rd-primary" style={{ ...S.primary, width: "100%" }} onClick={begin}>{t.start} →</button>
+            <button type="button" className="rd-primary" style={{ ...S.primary, width: "100%" }} onClick={begin}>{t.start} {isAr ? "←" : "→"}</button>
             <p style={S.fine}>{t.disclaimer}</p>
           </section>
         )}

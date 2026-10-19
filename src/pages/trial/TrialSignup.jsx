@@ -1,5 +1,5 @@
 // src/pages/trial/TrialSignup.jsx
-// "Try it free for 3 days" — the sign-up window on /demo.
+// "Try it free for 30 days" — the sign-up window on /demo.
 //
 // 1. the visitor fills a short form and MUST tick that nothing in a trial is
 //    kept (the server refuses without it);
@@ -52,14 +52,14 @@ const T = {
     },
   },
   ar: {
-    title: `جرّب InspectPro مجانًا لمدة ${TRIAL_DAYS} أيام`,
+    title: `جرّب InspectPro مجانًا لمدة ${TRIAL_DAYS} يومًا`,
     sub: "شركة خاصة بك فيها سجلات تجريبية واقعية. افتحها من جوالك وعبّئ فحصًا بنفسك.",
     company: "اسم الشركة", contact: "اسمك", phone: "الجوال / واتساب", country: "رمز الدولة", email: "البريد الإلكتروني (اختياري)",
     sector: "نوع النشاط", password: "اختر كلمة مرور", passwordHint: "8 أحرف على الأقل",
     pick: "اختر…",
     warnTitle: "هذا حساب تجريبي",
     warn: [
-      `يعمل لمدة ${TRIAL_DAYS} أيام ثم يُقفل.`,
+      `يعمل لمدة ${TRIAL_DAYS} يومًا ثم يُقفل.`,
       "لا يُحفظ أي شيء فيه: تُحذف جميع البيانات نهائيًا ولا يمكن استعادتها.",
       "عند الاشتراك ننشئ لك شركة جديدة من البداية.",
     ],
