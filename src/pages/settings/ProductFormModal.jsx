@@ -20,9 +20,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { deleteImage, thumbUrl, uploadImage } from "../../utils/imageUpload";
 import useWedgeScanner from "../../utils/useWedgeScanner";
-import { ALLERGENS, STORAGE } from "../../utils/productMedia";
+import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
 
-const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true };
+const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
 
 /* Sizes follow the Aa text-size control (--app-fs on <html>), like the rest of the app. */
 const z = (px) => `calc(${px}px * var(--app-fs, 1))`;
@@ -74,6 +74,11 @@ const CSS = `
 .pfm .modes { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .pfm .mode { border:1.5px solid #cbd5e1; background:#fff; border-radius:12px; padding:12px 10px; font-weight:800; font-size:${z(16)}; cursor:pointer; font-family:inherit; color:#334155; min-height:50px; }
 .pfm .mode.on { background:#e0f2fe; border-color:#0ea5e9; color:#075985; box-shadow:0 0 0 3px rgba(14,165,233,.15); }
+.pfm .tgroups { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.pfm .tgroup { border:1.5px solid #cbd5e1; background:#fff; border-radius:12px; padding:12px; font-weight:900; font-size:${z(17)}; cursor:pointer; font-family:inherit; color:#334155; min-height:54px; }
+.pfm .tgroup.on.raw { background:#fef2f2; border-color:#f87171; color:#991b1b; box-shadow:0 0 0 3px rgba(248,113,113,.15); }
+.pfm .tgroup.on.final { background:#ecfdf5; border-color:#34d399; color:#065f46; box-shadow:0 0 0 3px rgba(52,211,153,.15); }
+.pfm .tkinds { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed #e2e8f0; }
 .pfm .temps { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
 .pfm .temps input.i { width:110px; }
 .pfm .alg { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
@@ -113,6 +118,8 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       tMax: i.storage && i.storage.max !== undefined && i.storage.max !== null ? String(i.storage.max) : "",
       allergens: [...(i.allergens || [])],
       active: i.active !== false,
+      ptype: i.ptype || "",
+      tgroup: typeOfId(i.ptype)?.group || "",
     });
     setErr(null); setBusy(false); fresh.current = [];
     setTimeout(() => firstRef.current?.focus(), 30);
@@ -168,6 +175,11 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
   const pickMode = (m) => setF((p) => (p.mode === m
     ? { ...p, mode: "", tMin: "", tMax: "" }
     : { ...p, mode: m, tMin: String(STORAGE[m].min), tMax: String(STORAGE[m].max) }));
+  // Raw / Final first, then the kind inside it; tapping the chosen group again clears both
+  const pickGroup = (g) => setF((p) => (p.tgroup === g
+    ? { ...p, tgroup: "", ptype: "" }
+    : { ...p, tgroup: g, ptype: g === "raw" ? "raw" : "" }));
+  const pickType = (id) => setF((p) => ({ ...p, ptype: p.ptype === id && p.tgroup !== "raw" ? "" : id }));
   const flipAllergen = (id) => setF((p) => ({
     ...p, allergens: p.allergens.includes(id) ? p.allergens.filter((x) => x !== id) : [...p.allergens, id],
   }));
@@ -205,10 +217,11 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       if (lo !== null && hi !== null && lo > hi) return setErr({ text: "Storage temperature: the lowest must be below the highest." });
       storage = { mode: f.mode, min: lo, max: hi };
     }
+    if (f.tgroup === "final" && !f.ptype) return setErr({ text: "Product type: choose Cooked or Ready to cook / sale." });
     if (uploading) return setErr({ text: "Wait for the photos to finish uploading." });
     setBusy(true); setErr(null);
     try {
-      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images, storage, allergens: f.allergens, active: f.active }, { move });
+      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images, storage, allergens: f.allergens, active: f.active, ptype: f.ptype || null }, { move });
       // the photos taken out in this window are deleted from the store now that the save is done
       (initial?.images || []).filter((u) => !f.images.includes(u)).forEach((u) => deleteImage(u).catch(() => {}));
       fresh.current = [];
@@ -251,6 +264,27 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
 
           <div className="pfm-cols">
           <div className="col">
+          <div className="sec">
+            <div className="sec-t">🏷 Product type</div>
+            <div className="sec-s">Raw or final — then which kind.</div>
+            <div className="tgroups">
+              {Object.entries(TYPE_GROUPS).map(([g, label]) => (
+                <button key={g} type="button" className={`tgroup ${g} ${f.tgroup === g ? "on" : ""}`} onClick={() => pickGroup(g)}>
+                  {g === "raw" ? "🥩" : "✅"} {label}
+                </button>
+              ))}
+            </div>
+            {f.tgroup && (
+              <div className="tkinds">
+                {PRODUCT_TYPES.filter((p) => p.group === f.tgroup).map((p) => (
+                  <button key={p.id} type="button" className={`mode ${f.ptype === p.id ? "on" : ""}`} onClick={() => pickType(p.id)}>
+                    {p.icon} {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="sec">
             <div className="sec-t">🏷 Barcodes</div>
             <div className="sec-s">One product, many barcodes — each barcode belongs to this code only.</div>

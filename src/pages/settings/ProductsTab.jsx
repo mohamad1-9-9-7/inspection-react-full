@@ -37,7 +37,7 @@ import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shel
 import ShelfLifeModal from "../monitor/branches/_shared/ShelfLifeModal";
 import ProductFormModal from "./ProductFormModal";
 import {
-  ALLERGENS, allergenOf, allergensOf, changeOf, fetchProductMedia, imagesOf, isActive, setProductExtras, STORAGE, storageOf,
+  ALLERGENS, allergenOf, allergensOf, changeOf, fetchProductMedia, imagesOf, isActive, PRODUCT_TYPES, ptypeOf, setProductExtras, STORAGE, storageOf,
 } from "../../utils/productMedia";
 import { deleteImage, thumbUrl } from "../../utils/imageUpload";
 
@@ -47,6 +47,7 @@ const SHELF_SRC = { code: "own", category: "category", default: "default" };
    be hidden from ▦ Columns (a per-viewer preference, kept on this device). */
 const COLS = [
   { id: "code", label: "Code", w: 110 },
+  { id: "ptype", label: "Type", w: 150 },
   { id: "category", label: "Category", w: 160 },
   { id: "uom", label: "UOM", w: 70 },
   { id: "origin", label: "Origin", w: 80 },
@@ -233,6 +234,13 @@ const CSS = `
 #root .pc.pc .chg { line-height:1.25; }
 #root .pc.pc .chg small { display:block; color:var(--soft); font-weight:700; font-size:${fs(11)}; }
 #root .pc.pc .orig { font-weight:800; letter-spacing:.03em; }
+#root .pc.pc .pt { display:inline-flex; flex-direction:column; line-height:1.25; }
+#root .pc.pc .pt b { font-weight:800; white-space:nowrap; }
+#root .pc.pc .pt small { font-weight:800; font-size:${fs(10)}; text-transform:uppercase; letter-spacing:.06em; }
+#root .pc.pc .pt.raw b { color:#b91c1c; }
+#root .pc.pc .pt.raw small { color:#f87171; }
+#root .pc.pc .pt.final b { color:#047857; }
+#root .pc.pc .pt.final small { color:#34d399; }
 #root .pc.pc .colsel { position:relative; }
 #root .pc.pc .colmenu { position:absolute; z-index:20; top:calc(100% + 6px); inset-inline-end:0; background:#fff; border:1px solid var(--line); border-radius:12px;
   box-shadow:0 14px 30px rgba(15,39,64,.14); padding:8px; min-width:200px; display:grid; gap:2px; }
@@ -277,6 +285,7 @@ export default function ProductsTab({ navActions = null }) {
   const [fStg, setFStg] = useState("*"); // * | chilled | frozen | ambient | none
   const [fAlg, setFAlg] = useState("*"); // * | any | none | <allergen id>
   const [fAct, setFAct] = useState("*"); // * | on | off
+  const [fType, setFType] = useState("*"); // * | raw | final | none | <type id>
   const [hidden, setHidden] = useState(readHidden);
   const [colsOpen, setColsOpen] = useState(false);
   const colsRef = useRef(null);
@@ -436,24 +445,30 @@ export default function ProductsTab({ navActions = null }) {
     if (fAlg === "any") list = list.filter((r) => allergensOf(media, r.code).length > 0);
     else if (fAlg === "none") list = list.filter((r) => allergensOf(media, r.code).length === 0);
     else if (fAlg !== "*") list = list.filter((r) => allergensOf(media, r.code).includes(fAlg));
+    if (fType === "raw" || fType === "final") list = list.filter((r) => ptypeOf(media, r.code)?.group === fType);
+    else if (fType === "none") list = list.filter((r) => !ptypeOf(media, r.code));
+    else if (fType !== "*") list = list.filter((r) => ptypeOf(media, r.code)?.id === fType);
     if (fAct === "on") list = list.filter((r) => isActive(media, r.code));
     if (fAct === "off") list = list.filter((r) => !isActive(media, r.code));
     if (sort === "code") list = [...list].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     else if (sort === "bc") list = [...list].sort((a, b) => nbc(b) - nbc(a) || a.name.localeCompare(b.name));
     else if (sort === "shelf") list = [...list].sort((a, b) => (days(a) || Infinity) - (days(b) || Infinity) || a.name.localeCompare(b.name));
     else if (sort === "cat") list = [...list].sort((a, b) => (a.category || "~").localeCompare(b.category || "~") || a.name.localeCompare(b.name));
-    else if (sort === "origin") list = [...list].sort((a, b) => (a.origin || "~").localeCompare(b.origin || "~") || a.name.localeCompare(b.name));
+    else if (sort === "ptype") {
+      const rank = (r) => { const p = ptypeOf(media, r.code); return p ? PRODUCT_TYPES.indexOf(p) : 99; };
+      list = [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+    } else if (sort === "origin") list = [...list].sort((a, b) => (a.origin || "~").localeCompare(b.origin || "~") || a.name.localeCompare(b.name));
     else if (sort === "uom") list = [...list].sort((a, b) => (a.uom || "~").localeCompare(b.uom || "~") || a.name.localeCompare(b.name));
     else if (sort === "changed") list = [...list].sort((a, b) => String(lastChangeOf(b)?.at || "").localeCompare(String(lastChangeOf(a)?.at || "")) || a.name.localeCompare(b.name));
     return list;
-  }, [rows, q, barcodesOf, shelfOf, lastChangeOf, media, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, sort]);
+  }, [rows, q, barcodesOf, shelfOf, lastChangeOf, media, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType, sort]);
 
-  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, sort]);
+  useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType, sort]);
 
-  const filtersOn = [fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct].some((v) => v !== "*") || sort !== "name" || !!q.trim();
+  const filtersOn = [fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType].some((v) => v !== "*") || sort !== "name" || !!q.trim();
   const clearFilters = () => {
     setQ(""); setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*");
-    setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*"); setSort("name");
+    setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*"); setFType("*"); setSort("name");
   };
 
   const stats = useMemo(() => {
@@ -475,13 +490,15 @@ export default function ProductsTab({ navActions = null }) {
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
       // ="…" keeps long barcodes as text in Excel (no 6.29E+12)
       lines.push([
-        cell(r.code), cell(r.name), cell(r.category), cell(r.uom), cell(r.origin),
+        cell(r.code), cell(r.name),
+        cell(ptypeOf(media, r.code) ? (ptypeOf(media, r.code).group === "raw" ? "Raw" : "Final") : ""), cell(ptypeOf(media, r.code)?.label || ""),
+        cell(r.category), cell(r.uom), cell(r.origin),
         bcs.length ? `"=""${bcs.join(" | ")}"""` : cell(""), cell(bcs.length),
         cell(sl ? sl.days : ""), cell(sl ? SHELF_SRC[sl.source] : ""),
         cell(storageOf(media, r.code) ? STORAGE[storageOf(media, r.code).mode].label : ""), cell(tempText(storageOf(media, r.code))),
@@ -517,6 +534,7 @@ export default function ProductsTab({ navActions = null }) {
         barcodes: [...have, ...pendingBc.filter((b) => !have.includes(b))],
         shelfDays: own ? own.days : "",
         images: imagesOf(media, row.code),
+        ptype: ptypeOf(media, row.code)?.id || "",
         storage: storageOf(media, row.code),
         allergens: allergensOf(media, row.code),
         active: isActive(media, row.code),
@@ -585,6 +603,8 @@ export default function ProductsTab({ navActions = null }) {
     if ([...hadAlg].sort().join("|") !== [...(data.allergens || [])].sort().join("|")) extras.allergens = data.allergens || [];
     const hadAct = editing ? isActive(media, oldCode) : true;
     if (hadAct !== (data.active !== false)) extras.active = data.active !== false;
+    const hadType = editing ? ptypeOf(media, oldCode)?.id || null : null;
+    if (hadType !== (data.ptype || null)) extras.ptype = data.ptype || null;
     const moved = editing && code !== oldCode && media[String(oldCode).trim()];
     if (Object.keys(extras).length || moved) {
       try { setMedia(await setProductExtras(code, extras, user, oldCode)); } catch { warn.push("photos / storage / allergens"); }
@@ -610,7 +630,7 @@ export default function ProductsTab({ navActions = null }) {
       const imgs = imagesOf(media, row.code);
       if (media[String(row.code).trim()]) {
         try {
-          setMedia(await setProductExtras(row.code, { images: [], storage: null, allergens: [], active: true }, userName()));
+          setMedia(await setProductExtras(row.code, { images: [], storage: null, allergens: [], active: true, ptype: null }, userName()));
           imgs.forEach((u) => deleteImage(u).catch(() => {}));
         } catch { /* kept */ }
       }
@@ -630,7 +650,7 @@ export default function ProductsTab({ navActions = null }) {
     const row = owner?.code ? rows.find((r) => String(r.code).trim() === String(owner.code).trim()) : null;
     // after the reader's keys are taken back out of the search box (its own onChange would win otherwise)
     setTimeout(() => {
-      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*"); setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*");
+      setFCat("*"); setFBc("*"); setFSrc("*"); setFSl("*"); setFImg("*"); setFOrig("*"); setFUom("*"); setFStg("*"); setFAlg("*"); setFAct("*"); setFType("*");
       setQ(row ? showBarcode(key) : "");
       setScanHit({ barcode: key, code: owner?.code || "", name: row?.name || owner?.product || "", known: !!row });
     }, 0);
@@ -759,6 +779,14 @@ export default function ProductsTab({ navActions = null }) {
           <option value="with">With photo</option>
           <option value="none">No photo</option>
         </select>
+        <select className={`s ${fType !== "*" ? "on" : ""}`} value={fType} onChange={(e) => setFType(e.target.value)} title="Product type">
+          <option value="*">Any type</option>
+          <option value="raw">Raw (all)</option>
+          {PRODUCT_TYPES.filter((p) => p.group === "raw").map((p) => <option key={p.id} value={p.id}>· {p.label}</option>)}
+          <option value="final">Final (all)</option>
+          {PRODUCT_TYPES.filter((p) => p.group === "final").map((p) => <option key={p.id} value={p.id}>· {p.label}</option>)}
+          <option value="none">Type not set</option>
+        </select>
         <select className={`s ${fOrig !== "*" ? "on" : ""}`} value={fOrig} onChange={(e) => setFOrig(e.target.value)} title="Origin">
           <option value="*">All origins</option>
           {origins.map(([c, n]) => <option key={c || "-"} value={c}>{c || "(no origin)"} · {n}</option>)}
@@ -787,6 +815,7 @@ export default function ProductsTab({ navActions = null }) {
           <option value="name">Sort · Name A→Z</option>
           <option value="code">Sort · Code</option>
           <option value="cat">Sort · Category</option>
+          <option value="ptype">Sort · Type</option>
           <option value="origin">Sort · Origin</option>
           <option value="uom">Sort · Unit</option>
           <option value="changed">Sort · Last change</option>
@@ -823,7 +852,7 @@ export default function ProductsTab({ navActions = null }) {
                 <th className="no">#</th>
                 <th className="sortable" onClick={() => setSort("name")}>Product{sort === "name" && <span className="arr">↓</span>}</th>
                 {COLS.filter((c) => showCol(c.id)).map((c) => {
-                  const key = { code: "code", category: "cat", origin: "origin", uom: "uom", barcodes: "bc", shelf: "shelf", changed: "changed" }[c.id];
+                  const key = { code: "code", ptype: "ptype", category: "cat", origin: "origin", uom: "uom", barcodes: "bc", shelf: "shelf", changed: "changed" }[c.id];
                   return (
                     <th key={c.id} style={{ width: c.w }} className={key ? "sortable" : ""} onClick={key ? () => setSort(key) : undefined}
                       title={key ? `Sort by ${c.label.toLowerCase()}` : undefined}>
@@ -853,9 +882,17 @@ export default function ProductsTab({ navActions = null }) {
                   const algs = allergensOf(media, row.code);
                   const active = isActive(media, row.code);
                   const chg = lastChangeOf(row);
+                  const pt = ptypeOf(media, row.code);
                   const hue = hueOf(row.category || row.name);
                   const cell = {
                     code: row.code ? <span className="code mono">{row.code}</span> : <span className="none">—</span>,
+                    ptype: pt ? (
+                      <button type="button" className={`pt ${pt.group}`} title="Show this type only"
+                        style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}
+                        onClick={(e) => { e.stopPropagation(); setFType(pt.id); }}>
+                        <small>{pt.group === "raw" ? "Raw" : "Final"}</small><b>{pt.icon} {pt.label}</b>
+                      </button>
+                    ) : <span className="none">—</span>,
                     category: row.category ? (
                       <button type="button" className="tag" title="Show this category only"
                         style={{ background: `hsl(${hue} 85% 95%)`, color: `hsl(${hue} 50% 32%)` }}

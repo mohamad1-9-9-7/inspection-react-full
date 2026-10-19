@@ -12,6 +12,7 @@
 //     storage:   { mode: "chilled"|"frozen"|"ambient", min: 0, max: 4 },  // °C
 //     allergens: ["milk", "gluten"],                 // ALLERGENS ids
 //     active:    false,                             // only stored when stopped
+//     ptype:     "raw" | "raw_marinated" | "cooked" | "ready",   // PRODUCT_TYPES
 //     by, at } }                                    // the last change
 // The photo files are on Cloudinary (utils/imageUpload) — never base64.
 // Saving re-reads the record and changes only its own code.
@@ -42,6 +43,17 @@ export const ALLERGENS = [
   { id: "molluscs", label: "Molluscs", icon: "🐚" },
 ];
 export const allergenOf = (id) => ALLERGENS.find((a) => a.id === id) || { id, label: id, icon: "⚠️" };
+
+/* Product type — two levels: Raw (plain / marinated) or Final (cooked /
+   ready to cook or for sale). One id is stored; the group comes from it. */
+export const PRODUCT_TYPES = [
+  { id: "raw", group: "raw", label: "Raw", icon: "🥩" },
+  { id: "raw_marinated", group: "raw", label: "Raw marinated", icon: "🧂" },
+  { id: "cooked", group: "final", label: "Cooked", icon: "🍲" },
+  { id: "ready", group: "final", label: "Ready to cook / sale", icon: "📦" },
+];
+export const TYPE_GROUPS = { raw: "Raw", final: "Final" };
+export const typeOfId = (id) => PRODUCT_TYPES.find((p) => p.id === id) || null;
 
 /* Storage modes and the usual range a new choice starts with (°C, editable). */
 export const STORAGE = {
@@ -103,6 +115,7 @@ export const storageOf = (map, code) => {
   const s = entryOf(map, code)?.storage;
   return s && STORAGE[s.mode] ? s : null;
 };
+export const ptypeOf = (map, code) => typeOfId(entryOf(map, code)?.ptype);
 export const allergensOf = (map, code) => {
   const a = entryOf(map, code)?.allergens;
   return Array.isArray(a) ? a.filter(Boolean) : [];
@@ -115,12 +128,12 @@ export const changeOf = (map, code) => {
 };
 
 const isEmpty = (v) => !v || (
-  !(v.images && v.images.length) && !v.storage && !(v.allergens && v.allergens.length) && v.active !== false
+  !(v.images && v.images.length) && !v.storage && !(v.allergens && v.allergens.length) && v.active !== false && !v.ptype
 );
 
 /**
  * Changes a product's extra data: `patch` holds only the fields to change
- * ({ images?, storage?, allergens?, active? }; storage null = cleared).
+ * ({ images?, storage?, allergens?, active?, ptype? }; storage / ptype null = cleared).
  * oldCode (when the code changed) hands its entry over and loses it.
  */
 export async function setProductExtras(code, patch, user = "", oldCode = "") {
@@ -136,6 +149,10 @@ export async function setProductExtras(code, patch, user = "", oldCode = "") {
   if ("storage" in patch) {
     if (patch.storage && STORAGE[patch.storage.mode]) next.storage = patch.storage;
     else delete next.storage;
+  }
+  if ("ptype" in patch) {
+    if (typeOfId(patch.ptype)) next.ptype = patch.ptype;
+    else delete next.ptype;
   }
   if ("active" in patch) {
     if (patch.active === false) next.active = false;
