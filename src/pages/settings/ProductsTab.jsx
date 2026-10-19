@@ -177,7 +177,10 @@ const CSS = `
 #root .pc.pc tbody tr:nth-child(even) { background:#fbfdff; }
 #root .pc.pc tbody tr:nth-child(even):hover { background:#f5faff; }
 /* row number */
-#root .pc.pc .no { width:56px; text-align:center; color:var(--mute); font-weight:800; font-variant-numeric:tabular-nums; }
+#root .pc.pc .no { width:64px; min-width:64px; text-align:center; color:var(--mute); font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap !important; word-break:normal !important; overflow-wrap:normal !important; }
+/* globals.css lets words break anywhere — codes, barcodes and tags must stay whole */
+#root .pc.pc .code, #root .pc.pc .bc, #root .pc.pc .tag, #root .pc.pc .alg, #root .pc.pc .sl, #root .pc.pc .chg, #root .pc.pc th { white-space:nowrap; word-break:normal !important; overflow-wrap:normal !important; }
+#root .pc.pc td { word-break:normal; overflow-wrap:break-word; }
 #root .pc.pc td.no { font-size:${fs(12)}; }
 #root .pc.pc tbody tr { cursor:pointer; transition:background .12s; }
 #root .pc.pc tbody tr:hover { background:#f5faff; }
