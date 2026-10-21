@@ -27,6 +27,7 @@ import BarcodeScanner from "../../../../components/BarcodeScanner";
 import { parseBarcode } from "../../../../utils/gs1Barcode";
 import { fetchBarcodeMap, linkBarcode, normBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
 import useWedgeScanner from "../../../../utils/useWedgeScanner";
+import SupplierPicker from "./SupplierPicker";
 
 const TX = {
   en: {
@@ -42,7 +43,7 @@ const TX = {
     customer: "👤 Customer", branch: "🏬 Our branch", toCustomer: "to a customer",
     pickBranch: "— Choose the branch —", needKeeper: "Type the storekeeper's name.", needDest: "Choose where the products are going.",
     needBranch: "Choose the branch.", to: "to", keeperShort: "storekeeper",
-    supplier: "Supplier", supplierPh: "Supplier name", prodDate: "Production date", expDate: "Expiry date",
+    supplier: "Supplier", prodDate: "Production date", expDate: "Expiry date",
     pcs: "Number of pieces (if known)", pcsOut: "Pieces taken out (if known)", pcsUnit: "Each one is a…", expShort: "exp",
     needSupplier: "Type the supplier name.", needProd: "Choose the production date.", needExp: "Choose the expiry date.",
     badDates: "The expiry date must be after the production date.", autoExp: (d) => `Shelf life ${d} days — the other date was filled.`,
@@ -74,7 +75,7 @@ const TX = {
     customer: "👤 زبون", branch: "🏬 فرع من فروعنا", toCustomer: "إلى زبون",
     pickBranch: "— اختر الفرع —", needKeeper: "اكتب اسم أمين المخزن.", needDest: "اختر لوين رايحة المنتجات.",
     needBranch: "اختر الفرع.", to: "إلى", keeperShort: "أمين المخزن",
-    supplier: "المورد", supplierPh: "اسم المورد", prodDate: "تاريخ الإنتاج", expDate: "تاريخ الانتهاء",
+    supplier: "المورد", prodDate: "تاريخ الإنتاج", expDate: "تاريخ الانتهاء",
     scan: "📷 مسح الباركود", batch: "رقم الدفعة / اللوت (إذا موجود)", notProduct: "هالكود مش باركود منتج — جرّب الكود التاني على الكرتونة.",
     wedgeHint: "🔫 قارئ الباركود اليدوي بيشتغل هون مباشرة — بس امسح.",
     newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
@@ -280,6 +281,21 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     });
     return [...seen.values()];
   }, [items, suppliers]);
+  // suppliers of this unit's goods-in, newest first; and the one this product came from last time
+  const recentSuppliers = useMemo(() => {
+    const out = [];
+    (stock?.moves || []).slice().reverse().forEach((m) => {
+      const v = String(m?.supplier || "").trim();
+      if (m?.dir === "in" && v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    });
+    return out;
+  }, [stock]);
+  const lastSupplier = useMemo(() => {
+    if (mode !== "in" || !pick) return "";
+    const m = (stock?.moves || []).slice().reverse().find((x) => x?.dir === "in" && x.supplier
+      && (pick.code ? x.code === pick.code : x.product === pick.product));
+    return m ? m.supplier : "";
+  }, [mode, pick, stock]);
 
   // goods out: an older lot of the same product that expires before the picked one (FEFO)
   const olderLot = mode === "out" && pick?.expDate
@@ -532,11 +548,8 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
             {!isOut && (
               <>
                 <span className="lbl">{s.supplier}</span>
-                <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} value={supplier} list="cq-goods-suppliers"
-                  placeholder={s.supplierPh} onChange={(e) => setSupplier(e.target.value)} autoComplete="off" />
-                <datalist id="cq-goods-suppliers">
-                  {supplierList.map((n) => <option key={n} value={n} />)}
-                </datalist>
+                <SupplierPicker value={supplier} onChange={setSupplier} list={supplierList}
+                  recent={recentSuppliers} last={lastSupplier} lang={lang} />
                 <div className="acts" style={{ marginTop: 0 }}>
                   <div>
                     <span className="lbl">{s.prodDate}</span>
