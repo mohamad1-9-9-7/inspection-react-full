@@ -44,6 +44,7 @@ export const LEGACY_LANG_KEYS = [
   "qcs_supplier_lang",
   "returnsReportLang",
   "ai_assistant_lang",
+  "cold_rooms_lang",
 ];
 
 /* The custom events the section hooks already listened to — fired too, so a

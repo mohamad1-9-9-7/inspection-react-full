@@ -294,10 +294,20 @@ const firstView = (gl) => {
   return gl && window.innerWidth >= 700 ? "3d" : "simple";
 };
 
+const COLD_ROOMS_LANG_KEY = "cold_rooms_lang";
+
 /* ══════════════════════════════════════ Page */
 export default function ColdRooms3D() {
   const navigate = useNavigate();
-  const [lang, setLang] = useLangState("ar");
+  // Outside the one-language mode the page keeps its own choice, so a
+  // refresh does not drop back to Arabic.
+  const [lang, setLangRaw] = useLangState(() => {
+    try { return localStorage.getItem(COLD_ROOMS_LANG_KEY) === "en" ? "en" : "ar"; } catch { return "ar"; }
+  });
+  const setLang = (v) => {
+    try { localStorage.setItem(COLD_ROOMS_LANG_KEY, v); } catch { /* storage blocked */ }
+    setLangRaw(v);
+  };
   const ar = lang === "ar";
   const t = TX[ar ? "ar" : "en"];
   const editable = canEdit("coldRooms");
