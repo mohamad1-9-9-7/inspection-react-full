@@ -84,6 +84,8 @@ const TX = {
     lockedBc: "🔒 From the barcode — change it in the Products Catalog (Barcodes tab).",
     lockedProd: "🔒 The only supplier on this product's barcodes — change it in the Products Catalog (Barcodes tab).",
     pickSupplier: "This product's barcodes name these suppliers — choose one (others are added in the Products Catalog):",
+    noSupplier: "⛔ This product has no supplier in the Products Catalog — it can't go in. Add the supplier on its barcode first (Products Catalog → Barcodes tab).",
+    checkingSup: "Checking the product's suppliers…",
   },
   ar: {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -131,6 +133,8 @@ const TX = {
     lockedBc: "🔒 من الباركود — بيتغيّر من كتالوج المنتجات (تبويب الباركودات).",
     lockedProd: "🔒 المورد الوحيد المسجّل على باركودات هالمنتج — بيتغيّر من كتالوج المنتجات (تبويب الباركودات).",
     pickSupplier: "باركودات هالمنتج مسجّل عليها هالموردين — اختار واحد (غيرهم بينضافوا من كتالوج المنتجات):",
+    noSupplier: "⛔ هالمنتج ما إله مورد بكتالوج المنتجات — ما بينفع يدخل. ضيف المورد على باركوده أول (كتالوج المنتجات ← تبويب الباركودات).",
+    checkingSup: "عم نتأكد من موردين المنتج…",
   },
 };
 
@@ -406,6 +410,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     return [...seen.values()];
   }, [mode, pick, codeMap]);
   const [supNote, setSupNote] = useState("");
+  // goods in is allowed only for a product whose supplier is in the Products Catalog (user, 21 Oct 2026)
+  const supState = mode !== "in" || !pick ? "" : lock.supplier || productSuppliers.length ? "ok" : codeMap ? "none" : "loading";
   useEffect(() => {
     if (lock.supplier) return; // the scanned barcode already decided it
     if (productSuppliers.length === 1) {
@@ -569,6 +575,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     } else {
       if (isStopped(pick.code)) return setMsg({ kind: "bad", text: s.stopped });
       if (["warm", "cold"].includes(clashOf(pick.code)) && !tempOk) return setMsg({ kind: "bad", text: s.needTempOk });
+      if (supState === "none") return setMsg({ kind: "bad", text: s.noSupplier });
+      if (supState === "loading") return setMsg({ kind: "bad", text: s.checkingSup });
       if (!supplier.trim()) return setMsg({ kind: "bad", text: s.needSupplier });
       if (!prodDate) return setMsg({ kind: "bad", text: s.needProd });
       if (!expDate) return setMsg({ kind: "bad", text: s.needExp });
@@ -733,7 +741,11 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
             {!isOut && (
               <>
                 <span className="lbl">{s.supplier}</span>
-                {!lock.supplier && productSuppliers.length > 1 ? (
+                {supState === "none" ? (
+                  <div className="alert bad" style={{ margin: 0 }}>{s.noSupplier}</div>
+                ) : supState === "loading" ? (
+                  <div className="sm">{s.checkingSup}</div>
+                ) : !lock.supplier && productSuppliers.length > 1 ? (
                   <div>
                     <div className="sm" style={{ marginBottom: 6 }}>{s.pickSupplier}</div>
                     <div className="chips">
@@ -800,7 +812,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
               placeholder={s.keeperPh} onChange={(e) => setKeeper(e.target.value)} autoComplete="name" />
 
             <div style={{ height: 12 }} />
-            <button type="button" className="btn pri full" onClick={save} disabled={saving}
+            <button type="button" className="btn pri full" onClick={save} disabled={saving || (!isOut && supState === "none")}
               style={isOut ? { background: "#b45309", borderColor: "#b45309" } : undefined}>
               {saving ? s.saving : isOut ? s.saveOut : s.saveIn}{qty ? ` · ${qty}` : ""}
             </button>
