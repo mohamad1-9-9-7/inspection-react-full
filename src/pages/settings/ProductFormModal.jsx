@@ -5,7 +5,7 @@
 // active / stopped and photos — one Save.
 //
 //   <ProductFormModal open mode="add"|"edit" initial={…} codeLocked shelfHint
-//     onSave={async (data, { move }) => …} onClose={…} />
+//     onSave={async (data) => …} onClose={…} />
 //
 // initial = { code, name, barcodes: [], shelfDays: "", images: [],
 //             storage: { mode, min, max } | null, allergens: [], active: true }
@@ -17,8 +17,8 @@
 // each have their own); onSave gets those rows. initial.tab = "barcodes" opens
 // on that tab.
 // brandOptions / uomOptions / supplierOptions feed the suggestions; defaultUom = the product's unit.
-// onSave throws an Error; err.conflicts (barcodes on another code) shows a
-// "move them here" choice that calls onSave again with move = true.
+// onSave throws an Error; err.conflicts (barcodes on another code) is a hard
+// stop — a barcode is never on two products and never moved from here.
 //
 // Photos go straight to Cloudinary when picked (never base64). Cancel deletes
 // the ones picked in this window; a Save deletes the ones removed from it.
@@ -31,7 +31,7 @@ import useWedgeScanner from "../../utils/useWedgeScanner";
 import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 import { GS1_COUNTRIES, gs1Country, gs1Info, splitGtin } from "../../utils/gs1Barcode";
-import { showBarcode, suggestAttrs } from "../../utils/barcodeMap";
+import { normBarcode, showBarcode, suggestAttrs } from "../../utils/barcodeMap";
 
 const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "", kg: "", origin: "" };
 const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim() || String(b.kg).trim() || b.origin);
@@ -276,7 +276,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     onClose?.();
   };
 
-  const save = async (move = false) => {
+  const save = async () => {
     const name = f.name.trim();
     const code = f.code.trim();
     const toInfo = (text) => { setTab("info"); return setErr({ text }); };
@@ -291,8 +291,8 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     }
     const seen = new Set();
     for (const { barcode: b } of bcs) {
-      const k = b.replace(/\s+/g, "").toUpperCase();
-      if (seen.has(k)) return toBc(`Barcode ${b} is written twice.`);
+      const k = normBarcode(b); // 6291… and 06291…, a UPC and its EAN-13 are the same barcode
+      if (seen.has(k)) return toBc(`Barcode ${b} is written twice — the same barcode can be there only once.`);
       seen.add(k);
     }
     const badKg = bcs.find((b) => b.kg !== "" && !(Number(b.kg) > 0 && Number(b.kg) <= 5000));
@@ -314,7 +314,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     if (uploading) return setErr({ text: "Wait for the photos to finish uploading." });
     setBusy(true); setErr(null);
     try {
-      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images, storage, allergens: f.allergens, active: f.active, ptype: f.ptype || null }, { move });
+      await onSave({ code, name, barcodes: bcs, shelfDays: sd, images: f.images, storage, allergens: f.allergens, active: f.active, ptype: f.ptype || null });
       // the photos taken out in this window are deleted from the store now that the save is done
       (initial?.images || []).filter((u) => !f.images.includes(u)).forEach((u) => deleteImage(u).catch(() => {}));
       fresh.current = [];
@@ -546,11 +546,10 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
             <div className="err">
               {err.conflicts ? (
                 <>
-                  <div>These barcodes already belong to another product: {err.text}</div>
-                  <div style={{ fontWeight: 600, marginTop: 4 }}>One barcode can belong to one code only.</div>
-                  <button type="button" className="btn dan" style={{ marginTop: 10 }} onClick={() => save(true)} disabled={busy}>
-                    Move them to this product
-                  </button>
+                  <div>⛔ Not saved — these barcodes already belong to another product: {err.text}</div>
+                  <div style={{ fontWeight: 600, marginTop: 4 }}>
+                    The same barcode can never be on two products. Remove it from this window, or first remove it from the product that has it.
+                  </div>
                 </>
               ) : err.text}
             </div>
@@ -559,7 +558,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
 
         <div className="pfm-foot">
           <button type="button" className="btn" onClick={cancel} disabled={busy}>Cancel</button>
-          <button type="button" className="btn pri" onClick={() => save(false)} disabled={busy || uploading > 0}>
+          <button type="button" className="btn pri" onClick={() => save()} disabled={busy || uploading > 0}>
             {busy ? "Saving…" : mode === "edit" ? "Save changes" : "Add product"}
           </button>
         </div>

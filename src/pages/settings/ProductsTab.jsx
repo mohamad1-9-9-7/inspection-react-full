@@ -598,7 +598,7 @@ export default function ProductsTab({ navActions = null }) {
 
   /* One Save: barcodes first (a barcode on another product stops it before
      anything changes), then the product, its shelf life and its photos. */
-  const saveProduct = async (data, { move }) => {
+  const saveProduct = async (data) => {
     const { code, name } = data;
     const key = normalizeCode(code);
     const editing = pf?.row || null;
@@ -615,7 +615,7 @@ export default function ProductsTab({ navActions = null }) {
     const hadBc = editing ? barcodesOf(editing).map((b) => sig(b, barcodeAttrs(bcMap[b]))).join("|") : "";
     const wantBc = data.barcodes.map((b) => sig(normBarcode(b.barcode), barcodeAttrs(b))).join("|");
     if (wantBc !== hadBc || (editing && code !== oldCode)) {
-      setBcMap(await setCodeBarcodes(oldCode || code, { code, product: name }, data.barcodes, user, { move }));
+      setBcMap(await setCodeBarcodes(oldCode || code, { code, product: name }, data.barcodes, user));
     }
 
     // 2) the product (skipped when only barcodes / shelf life / photos changed)
@@ -785,7 +785,7 @@ export default function ProductsTab({ navActions = null }) {
               <button type="button" className="b" onClick={() => { const r = rows.find((x) => String(x.code).trim() === hitCode); if (r) startEdit(r); }}>✏️ Open</button>
             </>
           ) : scanHit.code ? (
-            <span>is linked to code {scanHit.code}, which is not in this catalog — add that product, or open another product to move the barcode to it.</span>
+            <span>is linked to code {scanHit.code}, which is not in this catalog — add that product, or remove the barcode from it first — a barcode is never on two products.</span>
           ) : (
             <>
               <span>is on no product yet — open any product (✏️) and it is added there, or:</span>

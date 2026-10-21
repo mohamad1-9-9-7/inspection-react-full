@@ -25,7 +25,9 @@
 // One barcode → ONE product code (the map key guarantees it); one product
 // may carry many barcodes (carton, piece, another supplier…). The Products
 // Catalog edits them with addBarcode / removeBarcode / replaceBarcode, which
-// refuse a barcode already linked to another code (unless told to move it).
+// refuse a barcode already linked to another code — ALWAYS: one barcode is
+// never on two products, and it is never moved silently. To give it to another
+// product it is first removed from the one that has it.
 // Keys: a real GTIN is stored as 14 digits; any other code (an internal
 // Code-128 label…) as typed, upper-case, without spaces.
 // findBarcode(map, text) also knows a carton by its piece (and back): a GTIN
@@ -146,13 +148,13 @@ function conflictError(key, hit) {
   return e;
 }
 
-/** Adds a barcode to a product. Taken by another code → throws (err.conflict) unless move. */
-export async function addBarcode(raw, item, user = "", { move = false } = {}) {
+/** Adds a barcode to a product. Taken by another code → throws (err.conflict). */
+export async function addBarcode(raw, item, user = "") {
   const key = normBarcode(raw);
   if (!key) throw new Error("Type or scan a barcode.");
   const map = await readRecord();
   const hit = map[key];
-  if (hit && hit.code && hit.code !== String(item.code || "").trim() && !move) throw conflictError(key, hit);
+  if (hit && hit.code && hit.code !== String(item.code || "").trim()) throw conflictError(key, hit);
   map[key] = entry(item, user);
   return writeMap(map, user);
 }
@@ -166,12 +168,12 @@ export async function removeBarcode(raw, user = "") {
 }
 
 /** Edits a barcode: the old one goes, the new one comes, in one save. */
-export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = false } = {}) {
+export async function replaceBarcode(oldRaw, newRaw, item, user = "") {
   const key = normBarcode(newRaw);
   if (!key) throw new Error("Type or scan a barcode.");
   const map = await readRecord();
   const hit = map[key];
-  if (hit && hit.code && hit.code !== String(item.code || "").trim() && !move) throw conflictError(key, hit);
+  if (hit && hit.code && hit.code !== String(item.code || "").trim()) throw conflictError(key, hit);
   delete map[oldRaw];
   map[key] = entry(item, user);
   return writeMap(map, user);
@@ -182,9 +184,9 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
  * every barcode of oldCode (or item.code) not in `list` is dropped, every one
  * in `list` is put on item.code. `list` holds barcodes, or
  * { barcode, brand, pack, uom, supplier, kg, origin } rows. A barcode on ANOTHER code throws
- * (err.conflicts = [{ barcode, code, product }]) unless move.
+ * (err.conflicts = [{ barcode, code, product }]) — nothing is saved then.
  */
-export async function setCodeBarcodes(oldCode, item, list, user = "", { move = false } = {}) {
+export async function setCodeBarcodes(oldCode, item, list, user = "") {
   const to = String(item.code || "").trim();
   const from = String(oldCode || to).trim();
   const attrsOf = {}; // key → { brand, pack, uom }, or null (a bare barcode keeps what it had)
@@ -197,7 +199,7 @@ export async function setCodeBarcodes(oldCode, item, list, user = "", { move = f
   const conflicts = keys
     .filter((k) => map[k]?.code && ![to, from].includes(String(map[k].code).trim()))
     .map((k) => ({ barcode: k, code: map[k].code, product: map[k].product || "" }));
-  if (conflicts.length && !move) {
+  if (conflicts.length) {
     const e = new Error(conflicts.map((c) => `${showBarcode(c.barcode)} → ${c.code}${c.product ? ` · ${c.product}` : ""}`).join(", "));
     e.conflicts = conflicts;
     throw e;
@@ -230,11 +232,14 @@ export async function recodeBarcodes(oldCode, item, user = "") {
   return changed ? writeMap(map, user) : map;
 }
 
-/** Links one barcode to one of our products, for the whole company.
+/** Links one barcode to one of our products, for the whole company. A barcode
+    already on ANOTHER product throws (err.conflict) — unless replace: the
+    person said the old link was wrong ("Change the link" on the cooler screen).
     A re-link keeps the brand / packaging / supplier the barcode already had (they are printed on it). */
-export async function linkBarcode(gtin, item, user = "", attrs = null) {
+export async function linkBarcode(gtin, item, user = "", attrs = null, { replace = false } = {}) {
   const g = /^\d{8,14}$/.test(String(gtin)) ? toGtin14(gtin) : String(gtin); // one of our own codes stays as it is
   const map = await readRecord();
+  if (map[g]?.code && map[g].code !== String(item.code || "").trim() && !replace) throw conflictError(g, map[g]);
   // what it already had wins; attrs (e.g. copied from the piece of a carton) fill the gaps
   const had = barcodeAttrs(map[g]);
   const add = barcodeAttrs(attrs);

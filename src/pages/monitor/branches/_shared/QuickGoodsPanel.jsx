@@ -56,6 +56,7 @@ const TX = {
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
     levelLinked: (g) => `📦 Same item as the known barcode ${g} (another packaging level) — linked to it.`,
     fixedKg: (k) => `fixed weight ${k} kg per pack`, eachKg: (k) => `each ${k} kg`,
+    taken: (p) => `⛔ Not linked — this barcode is already on ${p}. One barcode is never on two products; use "Change the link" if that one is wrong.`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — where the brand owner registered, not where it was made`, gs1Level: (n) => `📦 packaging level ${n} (box / carton)`,
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
     fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one piece / carton)`, noExpCode: "The barcode has no expiry date — type it from the label.",
@@ -85,6 +86,7 @@ const TX = {
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
     levelLinked: (g) => `📦 نفس صنف الباركود المعروف ${g} (مستوى تغليف تاني) — انربط فيه.`,
     fixedKg: (k) => `وزن ثابت ${k} كغ للعبوة`, eachKg: (k) => `الواحد ${k} كغ`,
+    taken: (p) => `⛔ ما انربط — هالباركود مربوط أصلاً بـ ${p}. الباركود الواحد ما بينحط على منتجين؛ إذا الربط غلط استعمل "غيّر الربط".`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — مكان تسجيل صاحب الماركة، مش بلد التصنيع`, gs1Level: (n) => `📦 مستوى تغليف ${n} (بوكس / كرتونة)`,
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
     fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (قطعة / كرتونة وحدة)`, noExpCode: "الباركود ما فيه تاريخ انتهاء — اكتبه من الليبل.",
@@ -179,6 +181,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [scanOpen, setScanOpen] = useState(false);
   const [codeMap, setCodeMap] = useState(null);
   const [linkGtin, setLinkGtin] = useState(""); // unknown barcode → the next product chosen is linked to it
+  const [relinking, setRelinking] = useState(false); // linkGtin came from "Change the link" — the only time a link is replaced
   const [worldName, setWorldName] = useState("");
   const [scanNote, setScanNote] = useState("");
   const [known, setKnown] = useState(null); // { gtin, label } — the scanned barcode was already linked
@@ -316,7 +319,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
     setPackKg(0); autoQty.current = "";
-    setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote(""); setKnown(null);
+    setBatch(""); setGtin(""); setLinkGtin(""); setRelinking(false); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
   // the learned barcode list — loaded when products start coming in
@@ -409,7 +412,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
      product chosen next replaces the link; "remove" deletes it for every phone. */
   const relink = () => {
     if (!known) return;
-    setLinkGtin(known.gtin); setKnown(null); setPick(null);
+    setLinkGtin(known.gtin); setRelinking(true); setKnown(null); setPick(null);
     setScanNote(s.relink);
   };
   const removeLink = async () => {
@@ -429,11 +432,14 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const learn = async (it) => {
     const g = linkGtin;
     if (prodDate && !expDate) expiryFromShelf(it, prodDate);
-    setLinkGtin(""); setWorldName("");
+    const replace = relinking;
+    setLinkGtin(""); setRelinking(false); setWorldName("");
     try {
-      setCodeMap(await linkBarcode(g, it, userName(), suggestAttrs(g)));
+      setCodeMap(await linkBarcode(g, it, userName(), suggestAttrs(g), { replace }));
       setScanNote((n) => [s.bcLinked, n].filter(Boolean).join(" — "));
-    } catch {
+    } catch (e) {
+      // another phone linked it meanwhile: never two products on one barcode
+      if (e?.conflict) { setPick(null); setScanNote(s.taken(e.conflict.product || e.conflict.code)); fetchBarcodeMap().then(setCodeMap); return; }
       setScanNote((n) => [s.linkFail, n].filter(Boolean).join(" — "));
     }
   };
