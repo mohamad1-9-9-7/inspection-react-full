@@ -18,7 +18,7 @@
 // Uses the .cq classes of QuickTempPage (rendered inside it).
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { applyStockMove, fetchUnitStock, loadCatalog, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
+import { applyStockMove, fetchUnitStock, loadCatalog, PCS_UNITS, pcsText, pcsUnitLabel, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
 import { getCurrentUser } from "../../../../utils/perms";
 import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
 import { useShelfLife } from "./shelfLife";
@@ -43,7 +43,7 @@ const TX = {
     pickBranch: "— Choose the branch —", needKeeper: "Type the storekeeper's name.", needDest: "Choose where the products are going.",
     needBranch: "Choose the branch.", to: "to", keeperShort: "storekeeper",
     supplier: "Supplier", supplierPh: "Supplier name", prodDate: "Production date", expDate: "Expiry date",
-    pcs: "Number of pieces (if known)", pcsOut: "Pieces taken out (if known)", pcsShort: "pcs", expShort: "exp",
+    pcs: "Number of pieces (if known)", pcsOut: "Pieces taken out (if known)", pcsUnit: "Each one is a…", expShort: "exp",
     needSupplier: "Type the supplier name.", needProd: "Choose the production date.", needExp: "Choose the expiry date.",
     badDates: "The expiry date must be after the production date.", autoExp: (d) => `Shelf life ${d} days — the other date was filled.`,
     expired: "This product is already expired — it must not go into the cooler.",
@@ -84,7 +84,7 @@ const TX = {
     linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
     wrongLink: "منتج غلط؟ غيّر الربط", removeLink: "احذف الربط", relink: "اختار المنتج الصح من تحت — الباركود رح ينربط فيه.",
     removed: "🗑 انحذف الربط — صار الباركود جديد على كل التلفونات.", removeAsk: (g, p) => `بدك تحذف الربط بين الباركود ${g} و ${p}؟`, unlinkFail: "ما قدرنا نحذف الربط (ما في نت).",
-    pcs: "عدد الحبات (إذا متوفر)", pcsOut: "عدد الحبات الخارجة (إذا متوفر)", pcsShort: "حبة", expShort: "ينتهي",
+    pcs: "العدد (إذا متوفر)", pcsOut: "العدد الخارج (إذا متوفر)", pcsUnit: "الواحد عبارة عن…", expShort: "ينتهي",
     needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
     badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
     expired: "هذا المنتج منتهي الصلاحية — ممنوع يدخل المبرد.",
@@ -128,7 +128,7 @@ const addDays = (iso, n) => {
 const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.split("-").reverse().join("/") : iso || "");
 const todayUae = () => new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10);
 const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate, it.batch].map((v) => v || "").join("|");
-const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", batch: it.batch || "", pcs: it.pcs || 0, have: it.qty });
+const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", batch: it.batch || "", pcs: it.pcs || 0, pcsUnit: it.pcsUnit || "", have: it.qty });
 
 const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
 const destText = (m, s, ar) => {
@@ -161,6 +161,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [prodDate, setProdDate] = useState("");
   const [expDate, setExpDate] = useState("");
   const [pcs, setPcs] = useState("");
+  const [pcsUnit, setPcsUnit] = useState("piece");
   const [shelfNote, setShelfNote] = useState("");
   // barcode: batch from the carton, the scanner layer, the learned map, a new barcode waiting for its product
   const [batch, setBatch] = useState("");
@@ -288,7 +289,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     : null;
 
   const resetLot = () => {
-    setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setShelfNote(""); setFefoOk(false);
+    setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
     setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
@@ -397,6 +398,8 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     const who = keeper.trim();
     if (!who) return setMsg({ kind: "bad", text: s.needKeeper });
     const extra = { keeper: who, pcs: Number(pcs) > 0 ? Number(pcs) : 0 };
+    // out of a lot that has a count: the same unit as that lot
+    if (extra.pcs) extra.pcsUnit = mode === "out" && pick.pcs ? pick.pcsUnit || "piece" : pcsUnit;
     if (mode === "out") {
       if (!destType) return setMsg({ kind: "bad", text: s.needDest });
       if (destType === "branch" && !toBranch) return setMsg({ kind: "bad", text: s.needBranch });
@@ -441,7 +444,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (it.supplier) parts.push(it.supplier);
     if (it.batch) parts.push(`${s.fBatch} ${it.batch}`);
     if (it.prodDate || it.expDate) parts.push(`${dmy(it.prodDate) || "?"} → ${s.expShort} ${dmy(it.expDate) || "?"}`);
-    if (it.pcs) parts.push(`${fmt(it.pcs)} ${s.pcsShort}`);
+    if (it.pcs) parts.push(pcsText(it.pcs, it.pcsUnit, ar));
     return parts.length ? <div className="sm" style={{ textAlign: "start", marginTop: 2 }}>{parts.join(" · ")}</div> : null;
   };
 
@@ -512,8 +515,19 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
             <span className="lbl">{isOut ? s.pcsOut : s.pcs}</span>
             <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} inputMode="numeric" value={pcs}
-              placeholder={isOut && pick.pcs ? `${fmt(pick.pcs)} ${s.pcsShort}` : "0"}
+              placeholder={isOut && pick.pcs ? pcsText(pick.pcs, pick.pcsUnit, ar) : "0"}
               onChange={(e) => setPcs(e.target.value.replace(/[^0-9]/g, ""))} />
+            {!(isOut && pick.pcs) && (
+              <>
+                <span className="lbl">{s.pcsUnit}</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {PCS_UNITS.map((u) => (
+                    <button key={u.k} type="button" className={`chip ${pcsUnit === u.k ? "on" : ""}`} style={{ textAlign: "center", flex: "1 0 22%" }}
+                      onClick={() => setPcsUnit(u.k)}>{pcsUnitLabel(u.k, 1, ar)}</button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {!isOut && (
               <>
@@ -664,7 +678,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
             <div key={`${m.at}-${i}`} className="sm" style={{ padding: "3px 0" }}>
               {m.pending ? "⏳ " : ""}<b style={{ color: m.dir === "out" ? "#b45309" : "#047857" }}>{m.dir === "out" ? "−" : "+"}{fmt(m.qty)}</b>{" "}
               <span dir="ltr">{m.product || m.code}</span>
-              {m.pcs ? ` (${fmt(m.pcs)} ${s.pcsShort})` : ""}
+              {m.pcs ? ` (${pcsText(m.pcs, m.pcsUnit, ar)})` : ""}
               {m.dir === "in" && m.supplier ? ` · ${m.supplier}` : ""}
               {m.expDate ? ` · ${s.expShort} ${dmy(m.expDate)}` : ""}
               {m.dir === "out" && m.destType ? ` ${destText(m, s, ar)}` : ""} · {hhmm(m.at)}

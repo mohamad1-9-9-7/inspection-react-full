@@ -35,6 +35,25 @@ const toNum = (v) => {
    simply have none of them. */
 const LOT_FIELDS = ["supplier", "prodDate", "expDate", "batch"];
 
+/* What one counted "piece" is — a box, a plate, a tray… Empty = a single
+   piece. The server keeps the same list (PCS_UNITS in reportRoutes.cjs). */
+export const PCS_UNITS = [
+  { k: "piece", en: ["piece", "pieces"], ar: "حبة" },
+  { k: "box", en: ["box", "boxes"], ar: "بوكس" },
+  { k: "carton", en: ["carton", "cartons"], ar: "كرتونة" },
+  { k: "plate", en: ["plate", "plates"], ar: "صحن" },
+  { k: "tray", en: ["tray", "trays"], ar: "صينية" },
+  { k: "bag", en: ["bag", "bags"], ar: "كيس" },
+  { k: "pack", en: ["pack", "packs"], ar: "باكيت" },
+  { k: "head", en: ["head", "heads"], ar: "رأس" },
+];
+/** Unit name for a count: "12 boxes" / "12 بوكس" (no unit = pieces). */
+export const pcsUnitLabel = (unit, n, ar) => {
+  const u = PCS_UNITS.find((x) => x.k === unit) || PCS_UNITS[0];
+  return ar ? u.ar : u.en[Number(n) === 1 ? 0 : 1];
+};
+export const pcsText = (n, unit, ar) => `${Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 3 })} ${pcsUnitLabel(unit, n, ar)}`;
+
 export function normalizeItem(raw) {
   const it = {
     code: String(raw?.code ?? "").trim(),
@@ -46,7 +65,10 @@ export function normalizeItem(raw) {
     const v = String(raw?.[k] ?? "").trim();
     if (v) it[k] = v;
   });
-  if (raw?.pcs !== "" && raw?.pcs != null && toNum(raw.pcs) > 0) it.pcs = toNum(raw.pcs);
+  if (raw?.pcs !== "" && raw?.pcs != null && toNum(raw.pcs) > 0) {
+    it.pcs = toNum(raw.pcs);
+    if (PCS_UNITS.some((u) => u.k === raw.pcsUnit)) it.pcsUnit = raw.pcsUnit;
+  }
   const gtin = String(raw?.gtin ?? "").replace(/[^0-9]/g, "");
   if (gtin.length === 14) it.gtin = gtin; // the carton barcode, information only
   return it;
@@ -140,13 +162,16 @@ function applyLocal(room, move) {
       else {
         const r = { ...items[at], qty: left };
         if (r.pcs && move.pcs > 0) r.pcs = Math.max(0, r.pcs - move.pcs);
-        if (!r.pcs) delete r.pcs;
+        if (!r.pcs) { delete r.pcs; delete r.pcsUnit; }
         items[at] = r;
       }
     }
   } else if (at >= 0) {
     const r = { ...items[at], qty: round(items[at].qty + lot.qty) };
-    if (move.pcs > 0) r.pcs = (r.pcs || 0) + move.pcs;
+    if (move.pcs > 0) {
+      if (move.pcsUnit && (!r.pcs || !r.pcsUnit)) r.pcsUnit = move.pcsUnit;
+      r.pcs = (r.pcs || 0) + move.pcs;
+    }
     items[at] = r;
   } else {
     items.unshift(lot);
@@ -157,7 +182,7 @@ function applyLocal(room, move) {
 
 /**
  * One product in (dir "in") or out (dir "out") of a room/unit.
- * move = { dir, code, product, uom, qty, pcs?, supplier?, prodDate?, expDate?,
+ * move = { dir, code, product, uom, qty, pcs?, pcsUnit?, supplier?, prodDate?, expDate?,
  *          keeper, destType?, destination? }; `current` = the room as shown.
  * Returns { queued, room }. Throws err.code TOO_MUCH / NOT_HERE (409) and
  * the server's message for a refused move.

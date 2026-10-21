@@ -12,7 +12,7 @@
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { kindOf, verdict } from "./coldRoomsConfig";
-import { totalQty } from "./coldRoomsStock";
+import { pcsText, totalQty } from "./coldRoomsStock";
 
 const TXS = {
   en: {
@@ -179,7 +179,7 @@ export default function StockPanel({ index, room, live, stock, ar }) {
                         <td dir="ltr" style={{ fontWeight: 700 }}>{it.product}</td>
                         <td dir="ltr">{it.uom}</td>
                         <td className="num" style={{ fontWeight: 800 }}>{num(it.qty)}</td>
-                        <td className="num">{it.pcs ? num(it.pcs) : "—"}</td>
+                        <td className="num">{it.pcs ? pcsText(it.pcs, it.pcsUnit, ar) : "—"}</td>
                         <td dir="ltr">{it.supplier || "—"}</td>
                         <td dir="ltr">{it.batch || "—"}</td>
                         <td dir="ltr">{dmy(it.prodDate) || "—"}</td>
@@ -216,7 +216,7 @@ export default function StockPanel({ index, room, live, stock, ar }) {
                                         {m.dir === "out" ? `− ${s.out}` : `+ ${s.in}`}
                                       </td>
                                       <td className="num" style={{ fontWeight: 800 }}>{num(m.qty)} {m.uom || ""}</td>
-                                      <td className="num">{m.pcs ? num(m.pcs) : "—"}</td>
+                                      <td className="num">{m.pcs ? pcsText(m.pcs, m.pcsUnit, ar) : "—"}</td>
                                       <td>{m.dir === "out" ? (m.destType === "customer" ? s.customer : m.destination || "—") : "—"}</td>
                                       <td>{m.keeper || m.by || "—"}</td>
                                     </tr>
