@@ -10,8 +10,10 @@
 // initial = { code, name, barcodes: [], shelfDays: "", images: [],
 //             storage: { mode, min, max } | null, allergens: [], active: true }
 // Two tabs: Product (everything else) and Barcodes. barcodes: strings or
-// { barcode, brand, pack, uom, supplier, kg } — each barcode says which brand,
-// packaging, unit and supplier it is, and its fixed weight (kg) if it has one (a box, a piece and another supplier
+// { barcode, brand, pack, uom, supplier, kg, origin } — each barcode says which brand,
+// packaging, unit, origin and supplier it is, and its fixed weight (kg) if it
+// has one. Origin fills itself from the GS1 prefix (789 → Brazil) while it is
+// empty or still the automatic one. (a box, a piece and another supplier
 // each have their own); onSave gets those rows. initial.tab = "barcodes" opens
 // on that tab.
 // brandOptions / uomOptions / supplierOptions feed the suggestions; defaultUom = the product's unit.
@@ -28,11 +30,11 @@ import { deleteImage, thumbUrl, uploadImage } from "../../utils/imageUpload";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
-import { gs1Info } from "../../utils/gs1Barcode";
+import { GS1_COUNTRIES, gs1Country, gs1Info, splitGtin } from "../../utils/gs1Barcode";
 import { showBarcode, suggestAttrs } from "../../utils/barcodeMap";
 
-const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "", kg: "" };
-const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim() || String(b.kg).trim());
+const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "", kg: "", origin: "" };
+const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim() || String(b.kg).trim() || b.origin);
 const bcRow = (x) => (typeof x === "string" ? { ...BC, barcode: x } : { ...BC, ...x, barcode: String(x?.barcode || "") });
 const BLANK = { code: "", name: "", barcodes: [BC], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
 
@@ -42,7 +44,7 @@ const CSS = `
 .pfm { position:fixed; inset:0; z-index:10500; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px;
   font-family: system-ui,-apple-system,"Segoe UI",Cairo,sans-serif; color:#0f172a; font-size:${z(16)}; line-height:1.45; }
 .pfm * { box-sizing:border-box; }
-.pfm-box { background:#fff; border-radius:20px; width:min(1080px,100%); max-height:94vh; display:flex; flex-direction:column; overflow:hidden;
+.pfm-box { background:#fff; border-radius:20px; width:min(1320px,100%); max-height:96vh; display:flex; flex-direction:column; overflow:hidden;
   box-shadow:0 30px 70px rgba(2,6,23,.35); direction:ltr; }
 .pfm-head { padding:18px 24px; background:linear-gradient(135deg,#0ea5e9,#0d9488); color:#fff; display:flex; align-items:center; gap:12px; }
 .pfm-head .ic { font-size:${z(26)}; }
@@ -69,8 +71,13 @@ const CSS = `
 .pfm .bc-row { display:flex; gap:10px; align-items:center; }
 .pfm .bc-gs1 { margin:6px 0 0; padding-inline-start:40px; color:#0f766e; font-size:${z(13)}; font-weight:700; }
 .pfm .bc-gs1 .warn { color:#b45309; }
+.pfm .bc-split { display:inline-flex; align-items:stretch; gap:4px; margin-inline-end:8px; vertical-align:middle; font-family:ui-monospace,Consolas,monospace; }
+.pfm .bc-split span { border-radius:7px; padding:1px 8px; font-weight:800; letter-spacing:.04em; }
+.pfm .bc-split .lv { background:#fef3c7; color:#92400e; }
+.pfm .bc-split .pf { background:#ccfbf1; color:#115e59; }
+.pfm .bc-split .rs { background:#e2e8f0; color:#0f172a; }
 @media (max-width:760px) { .pfm .bc-gs1 { padding-inline-start:0; } }
-.pfm .bc-att { display:grid; grid-template-columns: 1fr 1fr .7fr .8fr 1.3fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
+.pfm .bc-att { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:8px; padding-inline-start:40px; }
 @media (max-width:760px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } }
 .pfm .bc-att label { display:block; font-weight:800; font-size:${z(13)}; color:#64748b; margin-bottom:3px; }
 .pfm .bc-att input.i, .pfm .bc-att select.i { min-height:44px; padding:9px 11px; font-size:${z(15)}; }
@@ -179,7 +186,12 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     barcodes: p.barcodes.map((b, j) => {
       if (j !== i) return b;
       const next = { ...b, [k]: v };
-      if (k === "barcode" && !b.pack && suggestAttrs(v).pack) next.pack = suggestAttrs(v).pack;
+      if (k === "barcode") {
+        const sug = suggestAttrs(v);
+        if (!b.pack && sug.pack) next.pack = sug.pack;
+        // origin follows the prefix while nobody chose another one
+        if (!b.origin || b.origin === gs1Country(b.barcode)) next.origin = sug.origin || "";
+      }
       return next;
     }),
   }));
@@ -190,6 +202,16 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     const info = gs1Info(b.barcode);
     if (!info) return null;
     const parts = [];
+    const cut = splitGtin(b.barcode);
+    if (cut) {
+      parts.push(
+        <span key="cut" className="bc-split" title="level · origin prefix · company + item + check">
+          {cut.level && <span className="lv">{cut.level}</span>}
+          <span className="pf">{cut.prefix}</span>
+          <span className="rs">{cut.rest}</span>
+        </span>
+      );
+    }
     if (info.prefix >= "200" && info.prefix <= "299") parts.push(<span key="in" className="warn">⚠️ {info.en}</span>);
     else parts.push(<span key="c">🌍 GS1 {info.en || "prefix"} ({info.prefix}) — where the brand owner registered, not where it was made</span>);
     if (info.level >= 1 && info.level <= 8) parts.push(<span key="l"> · 📦 packaging level {info.level} (box / carton)</span>);
@@ -262,10 +284,10 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     if (!name) return toInfo("Product name is required.");
     if (!code) return toInfo("Code is required.");
     const bcs = f.barcodes
-      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim(), supplier: b.supplier.trim(), kg: String(b.kg ?? "").trim().replace(",", ".") }))
+      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim(), supplier: b.supplier.trim(), kg: String(b.kg ?? "").trim().replace(",", "."), origin: b.origin }))
       .filter((b) => b.barcode);
     if (f.barcodes.some((b) => !b.barcode.trim() && hasAttrs(b))) {
-      return toBc("A barcode box is empty but has a brand / packaging / unit / supplier / weight — type the barcode or remove that row.");
+      return toBc("A barcode box is empty but has a brand / packaging / unit / weight / origin / supplier — type the barcode or remove that row.");
     }
     const seen = new Set();
     for (const { barcode: b } of bcs) {
@@ -495,6 +517,15 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                     <input id={`pfm-bk-${i}`} className="i" inputMode="decimal" value={b.kg}
                       onChange={(e) => setBc(i, "kg", e.target.value.replace(/[^0-9.,]/g, ""))} placeholder="varies"
                       title="One pack of this barcode always weighs this much (e.g. a 10 kg carton). Empty = the weight varies." />
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bo-${i}`}>Origin</label>
+                    <select id={`pfm-bo-${i}`} className="i" value={b.origin} onChange={(e) => setBc(i, "origin", e.target.value)}
+                      title="Filled from the barcode's GS1 prefix — change it when the product comes from elsewhere.">
+                      <option value="">—</option>
+                      {b.origin && !GS1_COUNTRIES.some((c) => c.en === b.origin) && <option value={b.origin}>{b.origin}</option>}
+                      {GS1_COUNTRIES.map((c) => <option key={c.en} value={c.en}>{c.en}{c.en === gs1Country(b.barcode) ? "  (from barcode)" : ""}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label htmlFor={`pfm-bs-${i}`}>Supplier</label>

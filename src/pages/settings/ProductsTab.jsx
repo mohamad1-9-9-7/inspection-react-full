@@ -33,6 +33,7 @@ import {
 } from "../../utils/barcodeMap";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 import { fetchSuppliers } from "../complaints/complaintsCore";
+import { splitGtin } from "../../utils/gs1Barcode";
 import { getCurrentUser } from "../../utils/perms";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shelfLife";
@@ -202,6 +203,9 @@ const CSS = `
 #root .pc.pc .code { font-weight:800; color:var(--ink); background:#f5f9fd; border:1px solid var(--line); border-radius:8px; padding:3px 8px; }
 #root .pc.pc .bcs { display:flex; flex-wrap:wrap; gap:4px; }
 #root .pc.pc .bc { background:#f0f9ff; color:#075985; border:1px solid #d6ecfb; border-radius:7px; padding:2px 7px; font-weight:700; font-size:${fs(12)}; }
+#root .pc.pc .bc i { font-style:normal; border-radius:5px; padding:0 4px; margin-inline-end:4px; }
+#root .pc.pc .bc i.pf { background:#ccfbf1; color:#115e59; }
+#root .pc.pc .bc i.lv { background:#fef3c7; color:#92400e; }
 #root .pc.pc .bc small { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:700; color:#0f766e; font-size:${fs(11)}; }
 #root .pc.pc .none { color:var(--mute); font-weight:700; }
 #root .pc.pc .sl { display:inline-flex; align-items:baseline; gap:6px; }
@@ -324,7 +328,7 @@ export default function ProductsTab({ navActions = null }) {
   const attrsText = useCallback((b) => {
     const a = barcodeAttrs(bcMap[b]);
     const pack = PCS_UNITS.find((u) => u.k === a.pack);
-    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom, a.kg && `⚖ ${a.kg} kg`, a.supplier && `🚚 ${a.supplier}`].filter(Boolean).join(" · ");
+    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom, a.kg && `⚖ ${a.kg} kg`, a.origin && `🌍 ${a.origin}`, a.supplier && `🚚 ${a.supplier}`].filter(Boolean).join(" · ");
   }, [bcMap]);
   const brands = useMemo(() => [...new Set(Object.values(bcMap).map((v) => barcodeAttrs(v).brand).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b)), [bcMap]);
@@ -528,7 +532,7 @@ export default function ProductsTab({ navActions = null }) {
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit / fixed weight / supplier", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit / fixed weight / origin / supplier", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
@@ -606,8 +610,8 @@ export default function ProductsTab({ navActions = null }) {
     const warn = [];
 
     // 1) barcodes — may throw err.conflicts back to the window
-    // a barcode's brand / packaging / unit / weight / supplier changing counts as a change too
-    const sig = (b, a) => [b, a.brand, a.pack, a.uom, a.supplier, a.kg].join("~");
+    // a barcode's brand / packaging / unit / weight / origin / supplier changing counts as a change too
+    const sig = (b, a) => [b, a.brand, a.pack, a.uom, a.supplier, a.kg, a.origin].join("~");
     const hadBc = editing ? barcodesOf(editing).map((b) => sig(b, barcodeAttrs(bcMap[b]))).join("|") : "";
     const wantBc = data.barcodes.map((b) => sig(normBarcode(b.barcode), barcodeAttrs(b))).join("|");
     if (wantBc !== hadBc || (editing && code !== oldCode)) {
@@ -950,7 +954,13 @@ export default function ProductsTab({ navActions = null }) {
                       <div className="bcs">
                         {bcs.slice(0, 3).map((b) => {
                           const att = attrsText(b);
-                          return <span key={b} className="bc mono" title={att || undefined}>{showBarcode(b)}{att && <small> · {att}</small>}</span>;
+                          const cut = splitGtin(showBarcode(b)); // origin prefix apart from the rest: 789 · 1164087661
+                          return (
+                            <span key={b} className="bc mono" title={att || undefined}>
+                              {cut ? <>{cut.level && <i className="lv">{cut.level}</i>}<i className="pf">{cut.prefix}</i>{cut.rest}</> : showBarcode(b)}
+                              {att && <small> · {att}</small>}
+                            </span>
+                          );
                         })}
                         {bcs.length > 3 && <span className="bc">+{bcs.length - 3}</span>}
                       </div>

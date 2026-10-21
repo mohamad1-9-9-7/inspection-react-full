@@ -136,12 +136,12 @@ export const gtinItem = (g14) => (/^\d{14}$/.test(String(g14 || "")) ? String(g1
    Emirati company may sell Brazilian meat under 629…). A hint only.
    [from, to, English, Arabic] — 3-digit ranges. */
 const GS1_PREFIXES = [
-  [0, 139, "USA / Canada", "أمريكا / كندا"], [200, 299, "In-store number (not a world barcode)", "رقم داخلي للمحل (مش باركود عالمي)"],
+  [0, 139, "USA", "أمريكا"], [200, 299, "In-store number (not a world barcode)", "رقم داخلي للمحل (مش باركود عالمي)"],
   [300, 379, "France", "فرنسا"], [380, 380, "Bulgaria", "بلغاريا"], [383, 383, "Slovenia", "سلوفينيا"], [385, 385, "Croatia", "كرواتيا"],
   [400, 440, "Germany", "ألمانيا"], [450, 459, "Japan", "اليابان"], [460, 469, "Russia", "روسيا"], [471, 471, "Taiwan", "تايوان"],
   [476, 476, "Azerbaijan", "أذربيجان"], [480, 480, "Philippines", "الفلبين"], [487, 487, "Kazakhstan", "كازاخستان"], [489, 489, "Hong Kong", "هونغ كونغ"],
   [490, 499, "Japan", "اليابان"], [500, 509, "United Kingdom", "بريطانيا"], [520, 521, "Greece", "اليونان"], [528, 528, "Lebanon", "لبنان"],
-  [529, 529, "Cyprus", "قبرص"], [539, 539, "Ireland", "إيرلندا"], [540, 549, "Belgium / Luxembourg", "بلجيكا / لوكسمبورغ"], [560, 560, "Portugal", "البرتغال"],
+  [529, 529, "Cyprus", "قبرص"], [539, 539, "Ireland", "إيرلندا"], [540, 549, "Belgium", "بلجيكا"], [560, 560, "Portugal", "البرتغال"],
   [569, 569, "Iceland", "آيسلندا"], [570, 579, "Denmark", "الدنمارك"], [590, 590, "Poland", "بولندا"], [594, 594, "Romania", "رومانيا"],
   [599, 599, "Hungary", "هنغاريا"], [600, 601, "South Africa", "جنوب أفريقيا"], [608, 608, "Bahrain", "البحرين"], [609, 609, "Mauritius", "موريشيوس"],
   [611, 611, "Morocco", "المغرب"], [613, 613, "Algeria", "الجزائر"], [616, 616, "Kenya", "كينيا"], [619, 619, "Tunisia", "تونس"],
@@ -173,4 +173,36 @@ export function gs1Info(text) {
   const n = Number(prefix);
   const hit = GS1_PREFIXES.find(([lo, hi]) => n >= lo && n <= hi);
   return { level: packLevel(g), item: gtinItem(g), prefix, en: hit ? hit[2] : "", ar: hit ? hit[3] : "" };
+}
+
+/** Every country in the GS1 list once (English, Arabic) — the Origin dropdown. */
+export const GS1_COUNTRIES = (() => {
+  const seen = new Map();
+  GS1_PREFIXES.forEach(([lo, , en, ar]) => {
+    if ((lo >= 200 && lo <= 299) || lo >= 977) return; // in-store numbers / books — not a country
+    en.split(" / ").forEach((name, i) => {
+      if (!seen.has(name)) seen.set(name, { en: name, ar: ar.split(" / ")[i] || ar });
+    });
+  });
+  return [...seen.values()].sort((a, b) => a.en.localeCompare(b.en));
+})();
+
+/** The country a world barcode's prefix points to ("" = none / not a country). */
+export function gs1Country(text) {
+  const info = gs1Info(text);
+  if (!info || !info.en || GS1_COUNTRIES.every((c) => c.en !== info.en)) return "";
+  return info.en;
+}
+
+/**
+ * A world barcode cut into what its digits mean, for showing it apart:
+ *   7891164087661  → { level: "",  prefix: "789", rest: "1164087661" }
+ *   17891164087668 → { level: "1", prefix: "789", rest: "1164087661" }
+ * null = not a GTIN-13 / GTIN-14.
+ */
+export function splitGtin(text) {
+  const d = String(text || "").replace(/\s/g, "");
+  if (!/^\d{13,14}$/.test(d) || !isValidGtin(d)) return null;
+  const g = d.length === 14 ? d : `0${d}`;
+  return { level: d.length === 14 ? g[0] : "", prefix: g.slice(1, 4), rest: g.slice(4) };
 }

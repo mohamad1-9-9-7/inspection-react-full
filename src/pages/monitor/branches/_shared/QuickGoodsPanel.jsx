@@ -361,7 +361,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       const pack = packLevel(found.key) >= 1 ? "carton" : packLevel(found.from) >= 1 ? "piece" : "";
       hit = { ...hit, pack, kg: 0 }; // the piece's weight is not the carton's
       levelNote = s.levelLinked(showBarcode(found.from));
-      linkBarcode(found.key, { code: hit.code, product: hit.product, uom: hit.uom }, userName(), { brand: hit.brand, supplier: hit.supplier, pack })
+      linkBarcode(found.key, { code: hit.code, product: hit.product, uom: hit.uom }, userName(), { brand: hit.brand, supplier: hit.supplier, origin: hit.origin, pack })
         .then(setCodeMap)
         .catch(() => {});
     }

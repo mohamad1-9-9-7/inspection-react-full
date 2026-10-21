@@ -10,7 +10,9 @@
 //
 // One config record for the company:
 //   type = barcode_map , payload.reportDate = "map"
-//   payload.map = { "07891515408688": { code, product, uom, brand, pack, supplier, kg, by, at } }
+//   payload.map = { "07891515408688": { code, product, uom, brand, pack, supplier, kg, origin, by, at } }
+// origin = a country (English, gs1Barcode.GS1_COUNTRIES); the Products Catalog
+// suggests it from the GS1 prefix, the person may change it.
 // kg = the fixed net weight of one pack of that barcode (a 10 kg carton) —
 // for packs that always weigh the same; a GS1 weight (310n) on the label wins.
 // Each barcode carries what it stands for: the BRAND printed on it, its
@@ -35,7 +37,7 @@
 // a hint for the person linking it, never the link itself.
 
 import API_BASE from "../config/api";
-import { gs1Info, gtinItem, isValidGtin, packLevel, toGtin14 } from "./gs1Barcode";
+import { gs1Country, gs1Info, gtinItem, isValidGtin, packLevel, toGtin14 } from "./gs1Barcode";
 
 export const BARCODE_TYPE = "barcode_map";
 const KEY = "map";
@@ -96,11 +98,16 @@ export function findBarcode(map, text) {
   return other ? { ...out, hit: m[other], via: "level", from: other } : out;
 }
 
-/** The packaging a world barcode itself tells: a GTIN-14 with level 1–8 is a carton ({} = it doesn't say). */
+/** What a world barcode itself tells: its origin from the GS1 prefix, and a
+    GTIN-14 with level 1–8 is a carton ({} = it doesn't say). */
 export function suggestAttrs(text) {
   const d = String(text || "").replace(/\s/g, "");
+  const out = {};
+  const origin = gs1Country(d);
+  if (origin) out.origin = origin;
   const info = d.length === 14 ? gs1Info(d) : null;
-  return info && info.level >= 1 && info.level <= 8 ? { pack: "carton" } : {};
+  if (info && info.level >= 1 && info.level <= 8) out.pack = "carton";
+  return out;
 }
 
 /** { code: [barcode keys…] } — every product's barcodes. */
@@ -118,9 +125,9 @@ const clean = (v) => String(v || "").trim();
 /* a fixed weight as text: "10", "0.5" ("" = none / not a positive number) */
 const kgText = (v) => { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) && n > 0 ? String(Math.round(n * 1000) / 1000) : ""; };
 
-/** What a barcode stands for — { brand, pack, uom, supplier, kg } (empty = not said; kg as text). */
-export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom), supplier: clean(v?.supplier), kg: kgText(v?.kg) });
-const sameAttrs = (a, b) => ["brand", "pack", "uom", "supplier", "kg"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
+/** What a barcode stands for — { brand, pack, uom, supplier, kg, origin } (empty = not said; kg as text). */
+export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom), supplier: clean(v?.supplier), kg: kgText(v?.kg), origin: clean(v?.origin) });
+const sameAttrs = (a, b) => ["brand", "pack", "uom", "supplier", "kg", "origin"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
 
 const entry = (item, user, attrs = null) => {
   const a = barcodeAttrs(attrs || item);
@@ -129,6 +136,7 @@ const entry = (item, user, attrs = null) => {
   if (a.pack) out.pack = a.pack;
   if (a.supplier) out.supplier = a.supplier;
   if (a.kg) out.kg = Number(a.kg);
+  if (a.origin) out.origin = a.origin;
   return out;
 };
 
@@ -173,7 +181,7 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
  * A product's whole barcode list in one save (the Add / Edit product window):
  * every barcode of oldCode (or item.code) not in `list` is dropped, every one
  * in `list` is put on item.code. `list` holds barcodes, or
- * { barcode, brand, pack, uom, supplier, kg } rows. A barcode on ANOTHER code throws
+ * { barcode, brand, pack, uom, supplier, kg, origin } rows. A barcode on ANOTHER code throws
  * (err.conflicts = [{ barcode, code, product }]) unless move.
  */
 export async function setCodeBarcodes(oldCode, item, list, user = "", { move = false } = {}) {
@@ -231,7 +239,7 @@ export async function linkBarcode(gtin, item, user = "", attrs = null) {
   const had = barcodeAttrs(map[g]);
   const add = barcodeAttrs(attrs);
   const was = Object.fromEntries(Object.keys(had).map((k) => [k, had[k] || add[k]]));
-  map[g] = entry(item, user, { brand: was.brand, pack: was.pack, uom: was.uom || item.uom, supplier: was.supplier });
+  map[g] = entry(item, user, { ...was, uom: was.uom || item.uom });
   return writeMap(map, user);
 }
 
