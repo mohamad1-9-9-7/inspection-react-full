@@ -10,7 +10,9 @@
 //
 // One config record for the company:
 //   type = barcode_map , payload.reportDate = "map"
-//   payload.map = { "07891515408688": { code, product, uom, brand, pack, supplier, by, at } }
+//   payload.map = { "07891515408688": { code, product, uom, brand, pack, supplier, kg, by, at } }
+// kg = the fixed net weight of one pack of that barcode (a 10 kg carton) —
+// for packs that always weigh the same; a GS1 weight (310n) on the label wins.
 // Each barcode carries what it stands for: the BRAND printed on it, its
 // PACKAGING (pack = a PCS_UNITS key — piece / box / carton…), its unit of
 // measure (uom) and the SUPPLIER whose code it is. One product sold under two
@@ -113,9 +115,12 @@ export function barcodesByCode(map) {
 
 const clean = (v) => String(v || "").trim();
 
-/** What a barcode stands for — { brand, pack, uom, supplier } (empty = not said). */
-export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom), supplier: clean(v?.supplier) });
-const sameAttrs = (a, b) => ["brand", "pack", "uom", "supplier"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
+/* a fixed weight as text: "10", "0.5" ("" = none / not a positive number) */
+const kgText = (v) => { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) && n > 0 ? String(Math.round(n * 1000) / 1000) : ""; };
+
+/** What a barcode stands for — { brand, pack, uom, supplier, kg } (empty = not said; kg as text). */
+export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom), supplier: clean(v?.supplier), kg: kgText(v?.kg) });
+const sameAttrs = (a, b) => ["brand", "pack", "uom", "supplier", "kg"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
 
 const entry = (item, user, attrs = null) => {
   const a = barcodeAttrs(attrs || item);
@@ -123,6 +128,7 @@ const entry = (item, user, attrs = null) => {
   if (a.brand) out.brand = a.brand;
   if (a.pack) out.pack = a.pack;
   if (a.supplier) out.supplier = a.supplier;
+  if (a.kg) out.kg = Number(a.kg);
   return out;
 };
 
@@ -167,7 +173,7 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
  * A product's whole barcode list in one save (the Add / Edit product window):
  * every barcode of oldCode (or item.code) not in `list` is dropped, every one
  * in `list` is put on item.code. `list` holds barcodes, or
- * { barcode, brand, pack, uom, supplier } rows. A barcode on ANOTHER code throws
+ * { barcode, brand, pack, uom, supplier, kg } rows. A barcode on ANOTHER code throws
  * (err.conflicts = [{ barcode, code, product }]) unless move.
  */
 export async function setCodeBarcodes(oldCode, item, list, user = "", { move = false } = {}) {

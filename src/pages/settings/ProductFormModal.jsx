@@ -10,8 +10,8 @@
 // initial = { code, name, barcodes: [], shelfDays: "", images: [],
 //             storage: { mode, min, max } | null, allergens: [], active: true }
 // Two tabs: Product (everything else) and Barcodes. barcodes: strings or
-// { barcode, brand, pack, uom, supplier } — each barcode says which brand,
-// packaging, unit and supplier it is (a box, a piece and another supplier
+// { barcode, brand, pack, uom, supplier, kg } — each barcode says which brand,
+// packaging, unit and supplier it is, and its fixed weight (kg) if it has one (a box, a piece and another supplier
 // each have their own); onSave gets those rows. initial.tab = "barcodes" opens
 // on that tab.
 // brandOptions / uomOptions / supplierOptions feed the suggestions; defaultUom = the product's unit.
@@ -31,8 +31,8 @@ import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 import { gs1Info } from "../../utils/gs1Barcode";
 import { showBarcode, suggestAttrs } from "../../utils/barcodeMap";
 
-const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "" };
-const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim());
+const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "", kg: "" };
+const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim() || String(b.kg).trim());
 const bcRow = (x) => (typeof x === "string" ? { ...BC, barcode: x } : { ...BC, ...x, barcode: String(x?.barcode || "") });
 const BLANK = { code: "", name: "", barcodes: [BC], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
 
@@ -70,7 +70,7 @@ const CSS = `
 .pfm .bc-gs1 { margin:6px 0 0; padding-inline-start:40px; color:#0f766e; font-size:${z(13)}; font-weight:700; }
 .pfm .bc-gs1 .warn { color:#b45309; }
 @media (max-width:760px) { .pfm .bc-gs1 { padding-inline-start:0; } }
-.pfm .bc-att { display:grid; grid-template-columns: 1fr 1fr .7fr 1.3fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
+.pfm .bc-att { display:grid; grid-template-columns: 1fr 1fr .7fr .8fr 1.3fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
 @media (max-width:760px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } }
 .pfm .bc-att label { display:block; font-weight:800; font-size:${z(13)}; color:#64748b; margin-bottom:3px; }
 .pfm .bc-att input.i, .pfm .bc-att select.i { min-height:44px; padding:9px 11px; font-size:${z(15)}; }
@@ -262,10 +262,10 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     if (!name) return toInfo("Product name is required.");
     if (!code) return toInfo("Code is required.");
     const bcs = f.barcodes
-      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim(), supplier: b.supplier.trim() }))
+      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim(), supplier: b.supplier.trim(), kg: String(b.kg ?? "").trim().replace(",", ".") }))
       .filter((b) => b.barcode);
     if (f.barcodes.some((b) => !b.barcode.trim() && hasAttrs(b))) {
-      return toBc("A barcode box is empty but has a brand / packaging / unit / supplier — type the barcode or remove that row.");
+      return toBc("A barcode box is empty but has a brand / packaging / unit / supplier / weight — type the barcode or remove that row.");
     }
     const seen = new Set();
     for (const { barcode: b } of bcs) {
@@ -273,6 +273,8 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       if (seen.has(k)) return toBc(`Barcode ${b} is written twice.`);
       seen.add(k);
     }
+    const badKg = bcs.find((b) => b.kg !== "" && !(Number(b.kg) > 0 && Number(b.kg) <= 5000));
+    if (badKg) return toBc(`Barcode ${badKg.barcode}: fixed weight is kg, more than 0 and up to 5000 — or empty.`);
     const sd = f.shelfDays.trim();
     if (sd !== "") {
       const n = Number(sd);
@@ -487,6 +489,12 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                     <label htmlFor={`pfm-bu-${i}`}>Unit</label>
                     <input id={`pfm-bu-${i}`} className="i" list="pfm-uoms" value={b.uom} onChange={(e) => setBc(i, "uom", e.target.value.toUpperCase())}
                       placeholder={defaultUom || "KG / PCS"} />
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bk-${i}`}>Fixed weight (kg)</label>
+                    <input id={`pfm-bk-${i}`} className="i" inputMode="decimal" value={b.kg}
+                      onChange={(e) => setBc(i, "kg", e.target.value.replace(/[^0-9.,]/g, ""))} placeholder="varies"
+                      title="One pack of this barcode always weighs this much (e.g. a 10 kg carton). Empty = the weight varies." />
                   </div>
                   <div>
                     <label htmlFor={`pfm-bs-${i}`}>Supplier</label>

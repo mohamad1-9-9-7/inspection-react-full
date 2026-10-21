@@ -17,7 +17,7 @@
 //
 // Uses the .cq classes of QuickTempPage (rendered inside it).
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { applyStockMove, fetchUnitStock, loadCatalog, PCS_UNITS, pcsText, pcsUnitLabel, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
 import { getCurrentUser } from "../../../../utils/perms";
 import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
@@ -55,6 +55,7 @@ const TX = {
     newBarcode: (g) => `🆕 New barcode ${g} — choose our product below ONCE; every phone will know it after that.`,
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
     levelLinked: (g) => `📦 Same item as the known barcode ${g} (another packaging level) — linked to it.`,
+    fixedKg: (k) => `fixed weight ${k} kg per pack`, eachKg: (k) => `each ${k} kg`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — where the brand owner registered, not where it was made`, gs1Level: (n) => `📦 packaging level ${n} (box / carton)`,
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
     fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one piece / carton)`, noExpCode: "The barcode has no expiry date — type it from the label.",
@@ -83,6 +84,7 @@ const TX = {
     newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
     levelLinked: (g) => `📦 نفس صنف الباركود المعروف ${g} (مستوى تغليف تاني) — انربط فيه.`,
+    fixedKg: (k) => `وزن ثابت ${k} كغ للعبوة`, eachKg: (k) => `الواحد ${k} كغ`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — مكان تسجيل صاحب الماركة، مش بلد التصنيع`, gs1Level: (n) => `📦 مستوى تغليف ${n} (بوكس / كرتونة)`,
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
     fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (قطعة / كرتونة وحدة)`, noExpCode: "الباركود ما فيه تاريخ انتهاء — اكتبه من الليبل.",
@@ -167,6 +169,9 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [expDate, setExpDate] = useState("");
   const [pcs, setPcs] = useState("");
   const [pcsUnit, setPcsUnit] = useState("piece");
+  // a barcode with a fixed weight (Products Catalog): quantity = count × weight while the quantity is still the automatic one
+  const [packKg, setPackKg] = useState(0);
+  const autoQty = useRef("");
   const [shelfNote, setShelfNote] = useState("");
   // barcode: batch from the carton, the scanner layer, the learned map, a new barcode waiting for its product
   const [batch, setBatch] = useState("");
@@ -310,6 +315,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
+    setPackKg(0); autoQty.current = "";
     setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
@@ -353,7 +359,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
          (a carton whose piece is known, or back): link this one too, with the
          brand / supplier of the known one and its own packaging */
       const pack = packLevel(found.key) >= 1 ? "carton" : packLevel(found.from) >= 1 ? "piece" : "";
-      hit = { ...hit, pack };
+      hit = { ...hit, pack, kg: 0 }; // the piece's weight is not the carton's
       levelNote = s.levelLinked(showBarcode(found.from));
       linkBarcode(found.key, { code: hit.code, product: hit.product, uom: hit.uom }, userName(), { brand: hit.brand, supplier: hit.supplier, pack })
         .then(setCodeMap)
@@ -369,7 +375,11 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       const pack = PCS_UNITS.find((u) => u.k === hit.pack);
       if (pack) setPcsUnit(pack.k);
       if (hit.supplier) setSupplier((v) => v || hit.supplier);
-      const what = [hit.brand, pack && pcsUnitLabel(pack.k, 1, ar), hit.uom].filter(Boolean).join(" · ");
+      // a fixed weight fills one pack (a GS1 weight read from this label already won above)
+      const kg = Number(hit.kg) > 0 && !(r.weightKg > 0) ? Number(hit.kg) : 0;
+      setPackKg(kg);
+      if (kg && !qty) { autoQty.current = String(kg); setQty(String(kg)); setPcs("1"); }
+      const what = [hit.brand, pack && pcsUnitLabel(pack.k, 1, ar), hit.uom, kg && s.fixedKg(kg)].filter(Boolean).join(" · ");
       setScanNote([s.known(it.product || it.code) + (what ? ` (${what})` : ""), levelNote, note].filter(Boolean).join(" — "));
     } else {
       setPick(null); setKnown(null);
@@ -427,7 +437,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       setScanNote((n) => [s.linkFail, n].filter(Boolean).join(" — "));
     }
   };
-  const choose = (it) => { if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPick(mode === "out"
+  const choose = (it) => { if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPackKg(0); setPick(mode === "out"
     ? lotOf(it)
     : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 }); };
 
@@ -554,10 +564,18 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                 onClick={() => { setQty(String(pick.have)); if (pick.pcs) setPcs(String(pick.pcs)); }}>{s.all}</button>}
             </div>
 
-            <span className="lbl">{isOut ? s.pcsOut : s.pcs}</span>
+            <span className="lbl">{isOut ? s.pcsOut : s.pcs}{!isOut && packKg > 0 ? ` · ${s.eachKg(packKg)}` : ""}</span>
             <input className="btn" style={{ width: "100%", cursor: "text", fontWeight: 600 }} inputMode="numeric" value={pcs}
               placeholder={isOut && pick.pcs ? pcsText(pick.pcs, pick.pcsUnit, ar) : "0"}
-              onChange={(e) => setPcs(e.target.value.replace(/[^0-9]/g, ""))} />
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^0-9]/g, "");
+                setPcs(v);
+                // fixed-weight packs: the quantity follows the count until someone types a quantity of their own
+                if (!isOut && packKg > 0 && (qty === autoQty.current || qty === "")) {
+                  const q = v ? String(Math.round(Number(v) * packKg * 1000) / 1000) : "";
+                  autoQty.current = q; setQty(q);
+                }
+              }} />
             {!(isOut && pick.pcs) && (
               <>
                 <span className="lbl">{s.pcsUnit}</span>

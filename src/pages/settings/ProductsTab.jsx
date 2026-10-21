@@ -324,7 +324,7 @@ export default function ProductsTab({ navActions = null }) {
   const attrsText = useCallback((b) => {
     const a = barcodeAttrs(bcMap[b]);
     const pack = PCS_UNITS.find((u) => u.k === a.pack);
-    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom, a.supplier && `🚚 ${a.supplier}`].filter(Boolean).join(" · ");
+    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom, a.kg && `⚖ ${a.kg} kg`, a.supplier && `🚚 ${a.supplier}`].filter(Boolean).join(" · ");
   }, [bcMap]);
   const brands = useMemo(() => [...new Set(Object.values(bcMap).map((v) => barcodeAttrs(v).brand).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b)), [bcMap]);
@@ -528,7 +528,7 @@ export default function ProductsTab({ navActions = null }) {
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit / supplier", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit / fixed weight / supplier", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
@@ -606,8 +606,8 @@ export default function ProductsTab({ navActions = null }) {
     const warn = [];
 
     // 1) barcodes — may throw err.conflicts back to the window
-    // a barcode's brand / packaging / unit / supplier changing counts as a change too
-    const sig = (b, a) => [b, a.brand, a.pack, a.uom, a.supplier].join("~");
+    // a barcode's brand / packaging / unit / weight / supplier changing counts as a change too
+    const sig = (b, a) => [b, a.brand, a.pack, a.uom, a.supplier, a.kg].join("~");
     const hadBc = editing ? barcodesOf(editing).map((b) => sig(b, barcodeAttrs(bcMap[b]))).join("|") : "";
     const wantBc = data.barcodes.map((b) => sig(normBarcode(b.barcode), barcodeAttrs(b))).join("|");
     if (wantBc !== hadBc || (editing && code !== oldCode)) {
