@@ -24,8 +24,8 @@ import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
 import { useShelfLife } from "./shelfLife";
 import { fetchSuppliers } from "../../../complaints/complaintsCore";
 import BarcodeScanner from "../../../../components/BarcodeScanner";
-import { parseBarcode } from "../../../../utils/gs1Barcode";
-import { fetchBarcodeMap, linkBarcode, normBarcode, offHint, unlinkBarcode } from "../../../../utils/barcodeMap";
+import { gs1Info, packLevel, parseBarcode } from "../../../../utils/gs1Barcode";
+import { fetchBarcodeMap, findBarcode, linkBarcode, normBarcode, offHint, showBarcode, suggestAttrs, unlinkBarcode } from "../../../../utils/barcodeMap";
 import useWedgeScanner from "../../../../utils/useWedgeScanner";
 import SupplierPicker from "./SupplierPicker";
 
@@ -54,6 +54,8 @@ const TX = {
     wedgeHint: "🔫 A handheld barcode reader works here directly — just scan.",
     newBarcode: (g) => `🆕 New barcode ${g} — choose our product below ONCE; every phone will know it after that.`,
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
+    levelLinked: (g) => `📦 Same item as the known barcode ${g} (another packaging level) — linked to it.`,
+    gs1: (c, p) => `🌍 GS1 ${c} (${p}) — where the brand owner registered, not where it was made`, gs1Level: (n) => `📦 packaging level ${n} (box / carton)`,
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
     fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one piece / carton)`, noExpCode: "The barcode has no expiry date — type it from the label.",
     linkFail: "The barcode could not be linked (no connection) — the product is chosen for this time only.",
@@ -80,6 +82,8 @@ const TX = {
     wedgeHint: "🔫 قارئ الباركود اليدوي بيشتغل هون مباشرة — بس امسح.",
     newBarcode: (g) => `🆕 باركود جديد ${g} — اختار منتجنا من تحت مرة وحدة بس؛ بعدها كل التلفونات بتعرفه.`,
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
+    levelLinked: (g) => `📦 نفس صنف الباركود المعروف ${g} (مستوى تغليف تاني) — انربط فيه.`,
+    gs1: (c, p) => `🌍 GS1 ${c} (${p}) — مكان تسجيل صاحب الماركة، مش بلد التصنيع`, gs1Level: (n) => `📦 مستوى تغليف ${n} (بوكس / كرتونة)`,
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
     fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (قطعة / كرتونة وحدة)`, noExpCode: "الباركود ما فيه تاريخ انتهاء — اكتبه من الليبل.",
     linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
@@ -341,7 +345,20 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     setGtin(r.gtin);
     const map = codeMap || (await fetchBarcodeMap());
     if (!codeMap) setCodeMap(map);
-    const hit = map[r.gtin];
+    const found = findBarcode(map, r.gtin);
+    let hit = found.hit;
+    let levelNote = "";
+    if (found.via === "level") {
+      /* not linked itself, but the same item at another packaging level is
+         (a carton whose piece is known, or back): link this one too, with the
+         brand / supplier of the known one and its own packaging */
+      const pack = packLevel(found.key) >= 1 ? "carton" : packLevel(found.from) >= 1 ? "piece" : "";
+      hit = { ...hit, pack };
+      levelNote = s.levelLinked(showBarcode(found.from));
+      linkBarcode(found.key, { code: hit.code, product: hit.product, uom: hit.uom }, userName(), { brand: hit.brand, supplier: hit.supplier, pack })
+        .then(setCodeMap)
+        .catch(() => {});
+    }
     if (hit && hit.code) {
       const cat = catalog.find((c) => c.code === hit.code);
       const it = { code: hit.code, product: cat?.product || hit.product, uom: cat?.uom || hit.uom };
@@ -353,11 +370,14 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       if (pack) setPcsUnit(pack.k);
       if (hit.supplier) setSupplier((v) => v || hit.supplier);
       const what = [hit.brand, pack && pcsUnitLabel(pack.k, 1, ar), hit.uom].filter(Boolean).join(" · ");
-      setScanNote([s.known(it.product || it.code) + (what ? ` (${what})` : ""), note].filter(Boolean).join(" — "));
+      setScanNote([s.known(it.product || it.code) + (what ? ` (${what})` : ""), levelNote, note].filter(Boolean).join(" — "));
     } else {
       setPick(null); setKnown(null);
       setLinkGtin(r.gtin);
-      setScanNote(note);
+      // a new world barcode: what its digits say (GS1 office, packaging level) helps pick the product
+      const info = gs1Info(r.gtin);
+      const facts = info ? [info.en && s.gs1(ar ? info.ar : info.en, info.prefix), info.level >= 1 && info.level <= 8 && s.gs1Level(info.level)] : [];
+      setScanNote([...facts, note].filter(Boolean).join(" — "));
       setWorldName("");
       offHint(r.gtin).then((n) => setWorldName(n));
     }
@@ -401,7 +421,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (prodDate && !expDate) expiryFromShelf(it, prodDate);
     setLinkGtin(""); setWorldName("");
     try {
-      setCodeMap(await linkBarcode(g, it, userName()));
+      setCodeMap(await linkBarcode(g, it, userName(), suggestAttrs(g)));
       setScanNote((n) => [s.bcLinked, n].filter(Boolean).join(" — "));
     } catch {
       setScanNote((n) => [s.linkFail, n].filter(Boolean).join(" — "));

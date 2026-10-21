@@ -28,6 +28,8 @@ import { deleteImage, thumbUrl, uploadImage } from "../../utils/imageUpload";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
+import { gs1Info } from "../../utils/gs1Barcode";
+import { showBarcode, suggestAttrs } from "../../utils/barcodeMap";
 
 const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "" };
 const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim());
@@ -65,6 +67,9 @@ const CSS = `
 .pfm .sec-s { color:#64748b; font-size:${z(14)}; font-weight:600; margin-bottom:12px; }
 .pfm .bc-card { border:1px solid #e2e8f0; border-radius:12px; padding:10px; margin-bottom:10px; background:#f8fbff; }
 .pfm .bc-row { display:flex; gap:10px; align-items:center; }
+.pfm .bc-gs1 { margin:6px 0 0; padding-inline-start:40px; color:#0f766e; font-size:${z(13)}; font-weight:700; }
+.pfm .bc-gs1 .warn { color:#b45309; }
+@media (max-width:760px) { .pfm .bc-gs1 { padding-inline-start:0; } }
 .pfm .bc-att { display:grid; grid-template-columns: 1fr 1fr .7fr 1.3fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
 @media (max-width:760px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } }
 .pfm .bc-att label { display:block; font-weight:800; font-size:${z(13)}; color:#64748b; margin-bottom:3px; }
@@ -160,7 +165,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     setTimeout(() => setF((p) => {
       const list = p.barcodes.filter((b) => b.barcode.trim());
       if (list.some((b) => b.barcode.replace(/\s+/g, "").toUpperCase() === text.replace(/\s+/g, "").toUpperCase())) return p;
-      return { ...p, barcodes: [...list, { ...BC, barcode: text }] };
+      return { ...p, barcodes: [...list, { ...BC, ...suggestAttrs(text), barcode: text }] };
     }), 0);
     return true;
   }, open && !busy);
@@ -168,7 +173,31 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
   if (!open) return null;
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const setBc = (i, k, v) => setF((p) => ({ ...p, barcodes: p.barcodes.map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
+  // a world barcode that says its packaging level (GTIN-14, level 1–8 = carton) fills an empty Packaging
+  const setBc = (i, k, v) => setF((p) => ({
+    ...p,
+    barcodes: p.barcodes.map((b, j) => {
+      if (j !== i) return b;
+      const next = { ...b, [k]: v };
+      if (k === "barcode" && !b.pack && suggestAttrs(v).pack) next.pack = suggestAttrs(v).pack;
+      return next;
+    }),
+  }));
+  /* One line on what the world barcode says: the GS1 office of the brand
+     owner, the packaging level, and the other barcode of this product that is
+     the same item at another level. */
+  const gs1Line = (b, i) => {
+    const info = gs1Info(b.barcode);
+    if (!info) return null;
+    const parts = [];
+    if (info.prefix >= "200" && info.prefix <= "299") parts.push(<span key="in" className="warn">⚠️ {info.en}</span>);
+    else parts.push(<span key="c">🌍 GS1 {info.en || "prefix"} ({info.prefix}) — where the brand owner registered, not where it was made</span>);
+    if (info.level >= 1 && info.level <= 8) parts.push(<span key="l"> · 📦 packaging level {info.level} (box / carton)</span>);
+    if (info.level === 9) parts.push(<span key="l"> · variable-measure item</span>);
+    const twin = f.barcodes.findIndex((o, j) => j !== i && gs1Info(o.barcode)?.item === info.item && gs1Info(o.barcode)?.level !== info.level);
+    if (twin >= 0) parts.push(<span key="t"> · same item as barcode {twin + 1} ({showBarcode(f.barcodes[twin].barcode)})</span>);
+    return <div className="bc-gs1">{parts}</div>;
+  };
   // a new barcode starts with the brand and supplier of the one above (same product, usually the same)
   const addBc = () => {
     setF((p) => {
@@ -426,7 +455,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
             <div className="sec-t">🏷 Barcodes of code {f.code.trim() || "—"}</div>
             <div className="sec-s">One code, as many barcodes as it has — each barcode belongs to this code only.</div>
             <div className="bc-why">
-              <div><b>📦 Box / carton</b>Its own barcode — packaging Box or Carton.</div>
+              <div><b>📦 Box / carton</b>Its own barcode. A 14-digit carton code (level 1–8) fills Packaging by itself.</div>
               <div><b>🔹 Piece</b>Its own barcode — packaging Piece.</div>
               <div><b>🚚 Another supplier</b>Its own barcode — write the supplier.</div>
             </div>
@@ -441,6 +470,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                   <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
                     disabled={f.barcodes.length === 1 && !b.barcode && !hasAttrs(b)}>🗑</button>
                 </div>
+                {gs1Line(b, i)}
                 <div className="bc-att">
                   <div>
                     <label htmlFor={`pfm-bb-${i}`}>Brand</label>

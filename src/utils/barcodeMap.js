@@ -24,13 +24,16 @@
 // refuse a barcode already linked to another code (unless told to move it).
 // Keys: a real GTIN is stored as 14 digits; any other code (an internal
 // Code-128 label…) as typed, upper-case, without spaces.
+// findBarcode(map, text) also knows a carton by its piece (and back): a GTIN
+// with another packaging-level digit but the same item digits is the same
+// product (gs1Barcode.packLevel / gtinItem).
 // localStorage holds a copy for a fast / offline lookup (cache only).
 //
 // offHint(gtin): the product's name from Open Food Facts when it is listed —
 // a hint for the person linking it, never the link itself.
 
 import API_BASE from "../config/api";
-import { isValidGtin, toGtin14 } from "./gs1Barcode";
+import { gs1Info, gtinItem, isValidGtin, packLevel, toGtin14 } from "./gs1Barcode";
 
 export const BARCODE_TYPE = "barcode_map";
 const KEY = "map";
@@ -72,6 +75,31 @@ export function normBarcode(raw) {
 
 /** A key as people read it (a GTIN without its padding zero). */
 export const showBarcode = (key) => String(key || "").replace(/^0(?=\d{13}$)/, "");
+
+/**
+ * What a scanned / typed barcode finds in the map:
+ *   { key, hit, via: "exact" | "level" | "", from }
+ * via "level" = this barcode isn't linked, but the same item at another
+ * packaging level is (a carton whose piece is known, or back); from = that key.
+ */
+export function findBarcode(map, text) {
+  const m = map || {};
+  const key = normBarcode(text);
+  const out = { key, hit: null, via: "", from: "" };
+  if (!key) return out;
+  if (m[key]?.code) return { ...out, hit: m[key], via: "exact" };
+  const item = gtinItem(key);
+  if (!item || packLevel(key) > 8 || /^0{6}/.test(key)) return out;
+  const other = Object.keys(m).find((k) => k !== key && gtinItem(k) === item && packLevel(k) <= 8 && m[k]?.code);
+  return other ? { ...out, hit: m[other], via: "level", from: other } : out;
+}
+
+/** The packaging a world barcode itself tells: a GTIN-14 with level 1–8 is a carton ({} = it doesn't say). */
+export function suggestAttrs(text) {
+  const d = String(text || "").replace(/\s/g, "");
+  const info = d.length === 14 ? gs1Info(d) : null;
+  return info && info.level >= 1 && info.level <= 8 ? { pack: "carton" } : {};
+}
 
 /** { code: [barcode keys…] } — every product's barcodes. */
 export function barcodesByCode(map) {
@@ -190,10 +218,13 @@ export async function recodeBarcodes(oldCode, item, user = "") {
 
 /** Links one barcode to one of our products, for the whole company.
     A re-link keeps the brand / packaging / supplier the barcode already had (they are printed on it). */
-export async function linkBarcode(gtin, item, user = "") {
-  const g = toGtin14(gtin);
+export async function linkBarcode(gtin, item, user = "", attrs = null) {
+  const g = /^\d{8,14}$/.test(String(gtin)) ? toGtin14(gtin) : String(gtin); // one of our own codes stays as it is
   const map = await readRecord();
-  const was = barcodeAttrs(map[g]);
+  // what it already had wins; attrs (e.g. copied from the piece of a carton) fill the gaps
+  const had = barcodeAttrs(map[g]);
+  const add = barcodeAttrs(attrs);
+  const was = Object.fromEntries(Object.keys(had).map((k) => [k, had[k] || add[k]]));
   map[g] = entry(item, user, { brand: was.brand, pack: was.pack, uom: was.uom || item.uom, supplier: was.supplier });
   return writeMap(map, user);
 }

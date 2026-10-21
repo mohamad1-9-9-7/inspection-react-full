@@ -122,3 +122,55 @@ export function parseBarcode(text) {
   return res;
 }
 
+/* 📦 Packaging level of a GTIN-14: its first digit (the "indicator").
+   0 = the item itself (a piece, or a box sold as one), 1–8 = a higher level
+   of the same item (inner box, carton, pallet), 9 = variable measure.
+   The 12 digits after it are the item — the same in every level — so a
+   carton (1 0629…) and its piece (0 0629…) are the same product. */
+export const packLevel = (g14) => (/^\d{14}$/.test(String(g14 || "")) ? Number(String(g14)[0]) : -1);
+export const gtinItem = (g14) => (/^\d{14}$/.test(String(g14 || "")) ? String(g14).slice(1, 13) : "");
+
+/* 🌍 GS1 prefix: the first 3 digits of the GTIN-13 (after the level digit of
+   a GTIN-14) say which GS1 member office gave the COMPANY its number — where
+   the brand owner registered, NOT where the product was made or packed (an
+   Emirati company may sell Brazilian meat under 629…). A hint only.
+   [from, to, English, Arabic] — 3-digit ranges. */
+const GS1_PREFIXES = [
+  [0, 139, "USA / Canada", "أمريكا / كندا"], [200, 299, "In-store number (not a world barcode)", "رقم داخلي للمحل (مش باركود عالمي)"],
+  [300, 379, "France", "فرنسا"], [380, 380, "Bulgaria", "بلغاريا"], [383, 383, "Slovenia", "سلوفينيا"], [385, 385, "Croatia", "كرواتيا"],
+  [400, 440, "Germany", "ألمانيا"], [450, 459, "Japan", "اليابان"], [460, 469, "Russia", "روسيا"], [471, 471, "Taiwan", "تايوان"],
+  [476, 476, "Azerbaijan", "أذربيجان"], [480, 480, "Philippines", "الفلبين"], [487, 487, "Kazakhstan", "كازاخستان"], [489, 489, "Hong Kong", "هونغ كونغ"],
+  [490, 499, "Japan", "اليابان"], [500, 509, "United Kingdom", "بريطانيا"], [520, 521, "Greece", "اليونان"], [528, 528, "Lebanon", "لبنان"],
+  [529, 529, "Cyprus", "قبرص"], [539, 539, "Ireland", "إيرلندا"], [540, 549, "Belgium / Luxembourg", "بلجيكا / لوكسمبورغ"], [560, 560, "Portugal", "البرتغال"],
+  [569, 569, "Iceland", "آيسلندا"], [570, 579, "Denmark", "الدنمارك"], [590, 590, "Poland", "بولندا"], [594, 594, "Romania", "رومانيا"],
+  [599, 599, "Hungary", "هنغاريا"], [600, 601, "South Africa", "جنوب أفريقيا"], [608, 608, "Bahrain", "البحرين"], [609, 609, "Mauritius", "موريشيوس"],
+  [611, 611, "Morocco", "المغرب"], [613, 613, "Algeria", "الجزائر"], [616, 616, "Kenya", "كينيا"], [619, 619, "Tunisia", "تونس"],
+  [621, 621, "Syria", "سوريا"], [622, 622, "Egypt", "مصر"], [625, 625, "Jordan", "الأردن"], [626, 626, "Iran", "إيران"],
+  [627, 627, "Kuwait", "الكويت"], [628, 628, "Saudi Arabia", "السعودية"], [629, 629, "United Arab Emirates", "الإمارات"], [640, 649, "Finland", "فنلندا"],
+  [690, 699, "China", "الصين"], [700, 709, "Norway", "النرويج"], [729, 729, "Israel", "إسرائيل"], [730, 739, "Sweden", "السويد"],
+  [750, 750, "Mexico", "المكسيك"], [754, 755, "Canada", "كندا"], [760, 769, "Switzerland", "سويسرا"], [770, 771, "Colombia", "كولومبيا"],
+  [773, 773, "Uruguay", "الأوروغواي"], [775, 775, "Peru", "البيرو"], [779, 779, "Argentina", "الأرجنتين"], [780, 780, "Chile", "تشيلي"],
+  [784, 784, "Paraguay", "الباراغواي"], [789, 790, "Brazil", "البرازيل"], [800, 839, "Italy", "إيطاليا"], [840, 849, "Spain", "إسبانيا"],
+  [858, 858, "Slovakia", "سلوفاكيا"], [859, 859, "Czech Republic", "التشيك"], [860, 860, "Serbia", "صربيا"], [868, 869, "Türkiye", "تركيا"],
+  [870, 879, "Netherlands", "هولندا"], [880, 880, "South Korea", "كوريا الجنوبية"], [885, 885, "Thailand", "تايلاند"], [888, 888, "Singapore", "سنغافورة"],
+  [890, 890, "India", "الهند"], [893, 893, "Vietnam", "فيتنام"], [896, 896, "Pakistan", "باكستان"], [899, 899, "Indonesia", "إندونيسيا"],
+  [900, 919, "Austria", "النمسا"], [930, 939, "Australia", "أستراليا"], [940, 949, "New Zealand", "نيوزيلندا"], [955, 955, "Malaysia", "ماليزيا"],
+  [977, 979, "Magazine / book number", "رقم مجلة / كتاب"],
+];
+
+/**
+ * A barcode's GS1 facts: { level, item, prefix, en, ar } | null.
+ * level = packaging level digit (GTIN-14; 0 for EAN-13 / UPC), en / ar = the
+ * GS1 office ("" when the prefix isn't in the list). Short EAN-8 codes are
+ * left out (their prefixes are a different table).
+ */
+export function gs1Info(text) {
+  const d = String(text || "").replace(/\s/g, "");
+  if (!/^\d{12,14}$/.test(d) || !isValidGtin(d)) return null;
+  const g = toGtin14(d);
+  if (/^0{6}/.test(g)) return null; // an EAN-8 padded to 14
+  const prefix = g.slice(1, 4);
+  const n = Number(prefix);
+  const hit = GS1_PREFIXES.find(([lo, hi]) => n >= lo && n <= hi);
+  return { level: packLevel(g), item: gtinItem(g), prefix, en: hit ? hit[2] : "", ar: hit ? hit[3] : "" };
+}
