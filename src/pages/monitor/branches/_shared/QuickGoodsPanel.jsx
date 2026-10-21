@@ -348,7 +348,11 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       setLinkGtin(""); setWorldName(""); setKnown({ gtin: r.gtin, label: it.product || it.code });
       setPick({ ...it, have: haveOf(it.code, it.product)?.qty || 0 });
       if (r.prodDate && !r.expDate) expiryFromShelf(it, r.prodDate);
-      setScanNote([s.known(it.product || it.code), note].filter(Boolean).join(" — "));
+      // the barcode says its brand and packaging (Products Catalog): the count's unit follows it
+      const pack = PCS_UNITS.find((u) => u.k === hit.pack);
+      if (pack) setPcsUnit(pack.k);
+      const what = [hit.brand, pack && pcsUnitLabel(pack.k, 1, ar), hit.uom].filter(Boolean).join(" · ");
+      setScanNote([s.known(it.product || it.code) + (what ? ` (${what})` : ""), note].filter(Boolean).join(" — "));
     } else {
       setPick(null); setKnown(null);
       setLinkGtin(r.gtin);

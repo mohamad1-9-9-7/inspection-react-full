@@ -29,8 +29,9 @@ import {
 } from "../monitor/branches/_shared/ProductPicker";
 import { ConfirmModal } from "./_shared/SettingsUIKit";
 import {
-  barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, setCodeBarcodes, showBarcode,
+  barcodeAttrs, barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, setCodeBarcodes, showBarcode,
 } from "../../utils/barcodeMap";
+import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 import { getCurrentUser } from "../../utils/perms";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shelfLife";
@@ -200,6 +201,7 @@ const CSS = `
 #root .pc.pc .code { font-weight:800; color:var(--ink); background:#f5f9fd; border:1px solid var(--line); border-radius:8px; padding:3px 8px; }
 #root .pc.pc .bcs { display:flex; flex-wrap:wrap; gap:4px; }
 #root .pc.pc .bc { background:#f0f9ff; color:#075985; border:1px solid #d6ecfb; border-radius:7px; padding:2px 7px; font-weight:700; font-size:${fs(12)}; }
+#root .pc.pc .bc small { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:700; color:#0f766e; font-size:${fs(11)}; }
 #root .pc.pc .none { color:var(--mute); font-weight:700; }
 #root .pc.pc .sl { display:inline-flex; align-items:baseline; gap:6px; }
 #root .pc.pc .sl b { font-weight:900; font-size:${fs(15)}; }
@@ -317,6 +319,14 @@ export default function ProductsTab({ navActions = null }) {
   useEffect(() => { fetchProductMedia().then((m) => setMedia(m || {})); }, []);
   const byCode = useMemo(() => barcodesByCode(bcMap), [bcMap]);
   const barcodesOf = useCallback((row) => (row?.code ? byCode[String(row.code).trim()] || [] : []), [byCode]);
+  // what one barcode stands for: "Al Ain · Carton · KG" ("" = nothing said)
+  const attrsText = useCallback((b) => {
+    const a = barcodeAttrs(bcMap[b]);
+    const pack = PCS_UNITS.find((u) => u.k === a.pack);
+    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom].filter(Boolean).join(" · ");
+  }, [bcMap]);
+  const brands = useMemo(() => [...new Set(Object.values(bcMap).map((v) => barcodeAttrs(v).brand).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b)), [bcMap]);
   const shelfOf = useCallback((r) => shelf.resolve({ code: r.code, name: r.name }), [shelf]);
   const lastChangeOf = useCallback((r) => {
     let best = changeOf(media, r.code);
@@ -426,7 +436,8 @@ export default function ProductsTab({ navActions = null }) {
     if (s || ns) {
       list = list.filter((r) => (ns && normalizeCode(r.code).includes(ns)) || (s && r.name.toLowerCase().includes(s))
         || (s && r.category.toLowerCase().includes(s))
-        || (bq.length >= 4 && barcodesOf(r).some((b) => b.includes(bq))));
+        || (bq.length >= 4 && barcodesOf(r).some((b) => b.includes(bq)))
+        || (s && barcodesOf(r).some((b) => barcodeAttrs(bcMap[b]).brand.toLowerCase().includes(s))));
     }
     if (fCat !== "*") list = list.filter((r) => (r.category || "") === fCat);
     if (fBc === "with") list = list.filter((r) => nbc(r) > 0);
@@ -461,7 +472,7 @@ export default function ProductsTab({ navActions = null }) {
     else if (sort === "uom") list = [...list].sort((a, b) => (a.uom || "~").localeCompare(b.uom || "~") || a.name.localeCompare(b.name));
     else if (sort === "changed") list = [...list].sort((a, b) => String(lastChangeOf(b)?.at || "").localeCompare(String(lastChangeOf(a)?.at || "")) || a.name.localeCompare(b.name));
     return list;
-  }, [rows, q, barcodesOf, shelfOf, lastChangeOf, media, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType, sort]);
+  }, [rows, q, bcMap, barcodesOf, shelfOf, lastChangeOf, media, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType, sort]);
 
   useEffect(() => { setLimit(PAGE); }, [q, fCat, fBc, fSrc, fSl, fImg, fOrig, fUom, fStg, fAlg, fAct, fType, sort]);
 
@@ -490,7 +501,7 @@ export default function ProductsTab({ navActions = null }) {
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
@@ -500,6 +511,7 @@ export default function ProductsTab({ navActions = null }) {
         cell(ptypeOf(media, r.code) ? (ptypeOf(media, r.code).group === "raw" ? "Raw" : "Final") : ""), cell(ptypeOf(media, r.code)?.label || ""),
         cell(r.category), cell(r.uom), cell(r.origin),
         bcs.length ? `"=""${bcs.join(" | ")}"""` : cell(""), cell(bcs.length),
+        cell(barcodesOf(r).filter(attrsText).map((b) => `${showBarcode(b)}: ${attrsText(b)}`).join(" | ")),
         cell(sl ? sl.days : ""), cell(sl ? SHELF_SRC[sl.source] : ""),
         cell(storageOf(media, r.code) ? STORAGE[storageOf(media, r.code).mode].label : ""), cell(tempText(storageOf(media, r.code))),
         cell(allergensOf(media, r.code).map((a) => allergenOf(a).label).join(", ")),
@@ -526,12 +538,13 @@ export default function ProductsTab({ navActions = null }) {
   const openAdd = (initial = {}) => setPf({ row: null, initial: { barcodes: pendingBc, ...initial } });
   const startEdit = (row) => {
     const own = ownShelf(row.code);
-    const have = barcodesOf(row).map(showBarcode);
+    const mine = barcodesOf(row);
+    const have = mine.map(showBarcode);
     setPf({
       row,
       initial: {
         code: row.code, name: row.name,
-        barcodes: [...have, ...pendingBc.filter((b) => !have.includes(b))],
+        barcodes: [...mine.map((b) => ({ barcode: showBarcode(b), ...barcodeAttrs(bcMap[b]) })), ...pendingBc.filter((b) => !have.includes(b))],
         shelfDays: own ? own.days : "",
         images: imagesOf(media, row.code),
         ptype: ptypeOf(media, row.code)?.id || "",
@@ -565,8 +578,10 @@ export default function ProductsTab({ navActions = null }) {
     const warn = [];
 
     // 1) barcodes — may throw err.conflicts back to the window
-    const hadBc = editing ? barcodesOf(editing).join("|") : "";
-    const wantBc = data.barcodes.map(normBarcode).join("|");
+    // a barcode's brand / packaging / unit changing counts as a change too
+    const sig = (b, a) => [b, a.brand, a.pack, a.uom].join("~");
+    const hadBc = editing ? barcodesOf(editing).map((b) => sig(b, barcodeAttrs(bcMap[b]))).join("|") : "";
+    const wantBc = data.barcodes.map((b) => sig(normBarcode(b.barcode), barcodeAttrs(b))).join("|");
     if (wantBc !== hadBc || (editing && code !== oldCode)) {
       setBcMap(await setCodeBarcodes(oldCode || code, { code, product: name }, data.barcodes, user, { move }));
     }
@@ -610,7 +625,7 @@ export default function ProductsTab({ navActions = null }) {
       try { setMedia(await setProductExtras(code, extras, user, oldCode)); } catch { warn.push("photos / storage / allergens"); }
     }
 
-    if (scanHit && !scanHit.code && data.barcodes.map(normBarcode).includes(scanHit.barcode)) setScanHit(null);
+    if (scanHit && !scanHit.code && data.barcodes.map((b) => normBarcode(b.barcode)).includes(scanHit.barcode)) setScanHit(null);
     if (warn.length) flash(`Saved, but not the ${warn.join(" and ")} — open it again and retry.`, true);
     else if (!synced) flash("Saved on this device only — the server could not be reached.", true);
     else flash(editing ? "✅ Product updated" : "✅ Product added");
@@ -905,7 +920,10 @@ export default function ProductsTab({ navActions = null }) {
                     ) : <span className="none">—</span>,
                     barcodes: bcs.length ? (
                       <div className="bcs">
-                        {bcs.slice(0, 3).map((b) => <span key={b} className="bc mono">{showBarcode(b)}</span>)}
+                        {bcs.slice(0, 3).map((b) => {
+                          const att = attrsText(b);
+                          return <span key={b} className="bc mono" title={att || undefined}>{showBarcode(b)}{att && <small> · {att}</small>}</span>;
+                        })}
                         {bcs.length > 3 && <span className="bc">+{bcs.length - 3}</span>}
                       </div>
                     ) : <span className="none">— none</span>,
@@ -980,6 +998,9 @@ export default function ProductsTab({ navActions = null }) {
         initial={pf?.initial}
         codeLocked={!!pf?.row && pf.row.source !== "custom"}
         shelfHint={shelfHint}
+        brandOptions={brands}
+        uomOptions={[...new Set(["KG", "PCS", ...uoms.map(([c]) => c).filter(Boolean)])]}
+        defaultUom={pf?.row?.uom || ""}
         onSave={saveProduct}
         onClose={() => setPf(null)}
       />

@@ -9,6 +9,9 @@
 //
 // initial = { code, name, barcodes: [], shelfDays: "", images: [],
 //             storage: { mode, min, max } | null, allergens: [], active: true }
+// barcodes: strings or { barcode, brand, pack, uom } — each barcode says which
+// brand, packaging and unit it is; onSave gets the { barcode, brand, pack, uom } rows.
+// brandOptions / uomOptions feed the suggestions; defaultUom = the product's unit.
 // onSave throws an Error; err.conflicts (barcodes on another code) shows a
 // "move them here" choice that calls onSave again with move = true.
 //
@@ -21,8 +24,11 @@ import { createPortal } from "react-dom";
 import { deleteImage, thumbUrl, uploadImage } from "../../utils/imageUpload";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
+import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 
-const BLANK = { code: "", name: "", barcodes: [""], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
+const BC = { barcode: "", brand: "", pack: "", uom: "" };
+const bcRow = (x) => (typeof x === "string" ? { ...BC, barcode: x } : { ...BC, ...x, barcode: String(x?.barcode || "") });
+const BLANK = { code: "", name: "", barcodes: [BC], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
 
 /* Sizes follow the Aa text-size control (--app-fs on <html>), like the rest of the app. */
 const z = (px) => `calc(${px}px * var(--app-fs, 1))`;
@@ -53,7 +59,14 @@ const CSS = `
 .pfm .sec { border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#fff; }
 .pfm .sec-t { font-weight:900; font-size:${z(17)}; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
 .pfm .sec-s { color:#64748b; font-size:${z(14)}; font-weight:600; margin-bottom:12px; }
-.pfm .bc-row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+.pfm .bc-card { border:1px solid #e2e8f0; border-radius:12px; padding:10px; margin-bottom:10px; background:#f8fbff; }
+.pfm .bc-row { display:flex; gap:10px; align-items:center; }
+.pfm .bc-att { display:grid; grid-template-columns: 1.3fr 1fr .8fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
+@media (max-width:560px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } .pfm .bc-att > :first-child { grid-column:1 / -1; } }
+.pfm .bc-att label { display:block; font-weight:800; font-size:${z(13)}; color:#64748b; margin-bottom:3px; }
+.pfm .bc-att input.i, .pfm .bc-att select.i { min-height:44px; padding:9px 11px; font-size:${z(15)}; }
+.pfm select.i { width:100%; border:1.5px solid #cbd5e1; border-radius:12px; font-family:inherit; background:#fff; color:#0f172a; }
+.pfm select.i:focus { outline:none; border-color:#0ea5e9; box-shadow:0 0 0 4px rgba(14,165,233,.18); }
 .pfm .bc-n { width:30px; height:30px; border-radius:50%; background:#e0f2fe; color:#075985; display:grid; place-items:center; font-weight:900; font-size:${z(14)}; flex-shrink:0; }
 .pfm .btn { border:1.5px solid #cbd5e1; background:#fff; color:#0f172a; border-radius:12px; padding:11px 18px; font-weight:800; font-size:${z(16)}; cursor:pointer; font-family:inherit; min-height:46px; }
 .pfm .btn:hover { background:#f0f7fe; }
@@ -95,7 +108,7 @@ const CSS = `
 .pfm-foot .btn { min-width:140px; }
 `;
 
-export default function ProductFormModal({ open, mode = "add", initial, codeLocked = false, shelfHint = "", onSave, onClose }) {
+export default function ProductFormModal({ open, mode = "add", initial, codeLocked = false, shelfHint = "", brandOptions = [], uomOptions = [], defaultUom = "", onSave, onClose }) {
   const [f, setF] = useState(BLANK);
   const [err, setErr] = useState(null); // { text, conflicts? }
   const [busy, setBusy] = useState(false);
@@ -110,7 +123,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     setF({
       code: i.code || "",
       name: i.name || "",
-      barcodes: i.barcodes && i.barcodes.length ? [...i.barcodes] : [""],
+      barcodes: i.barcodes && i.barcodes.length ? i.barcodes.map(bcRow) : [BC],
       shelfDays: i.shelfDays === 0 || i.shelfDays ? String(i.shelfDays) : "",
       images: [...(i.images || [])],
       mode: i.storage?.mode || "",
@@ -129,9 +142,9 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
   useWedgeScanner((text) => {
     if (document.activeElement?.closest?.("[data-scan-input]")) return false;
     setTimeout(() => setF((p) => {
-      const list = p.barcodes.filter((b) => b.trim());
-      if (list.some((b) => b.replace(/\s+/g, "").toUpperCase() === text.replace(/\s+/g, "").toUpperCase())) return p;
-      return { ...p, barcodes: [...list, text] };
+      const list = p.barcodes.filter((b) => b.barcode.trim());
+      if (list.some((b) => b.barcode.replace(/\s+/g, "").toUpperCase() === text.replace(/\s+/g, "").toUpperCase())) return p;
+      return { ...p, barcodes: [...list, { ...BC, barcode: text }] };
     }), 0);
     return true;
   }, open && !busy);
@@ -139,14 +152,15 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
   if (!open) return null;
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const setBc = (i, v) => setF((p) => ({ ...p, barcodes: p.barcodes.map((b, j) => (j === i ? v : b)) }));
+  const setBc = (i, k, v) => setF((p) => ({ ...p, barcodes: p.barcodes.map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
+  // a new barcode starts with the brand of the one above (same product, usually same brand)
   const addBc = () => {
-    setF((p) => ({ ...p, barcodes: [...p.barcodes, ""] }));
+    setF((p) => ({ ...p, barcodes: [...p.barcodes, { ...BC, brand: p.barcodes[p.barcodes.length - 1]?.brand || "" }] }));
     setTimeout(() => { const all = document.querySelectorAll(".pfm .bc-row input"); all[all.length - 1]?.focus(); }, 0);
   };
   const delBc = (i) => setF((p) => {
     const next = p.barcodes.filter((_, j) => j !== i);
-    return { ...p, barcodes: next.length ? next : [""] };
+    return { ...p, barcodes: next.length ? next : [BC] };
   });
 
   const pickImages = async (files) => {
@@ -197,9 +211,14 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
     const code = f.code.trim();
     if (!name) return setErr({ text: "Product name is required." });
     if (!code) return setErr({ text: "Code is required." });
-    const bcs = f.barcodes.map((b) => b.trim()).filter(Boolean);
+    const bcs = f.barcodes
+      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim() }))
+      .filter((b) => b.barcode);
+    if (f.barcodes.some((b) => !b.barcode.trim() && (b.brand.trim() || b.pack || b.uom.trim()))) {
+      return setErr({ text: "A barcode box is empty but has a brand / packaging / unit — type the barcode or remove that row." });
+    }
     const seen = new Set();
-    for (const b of bcs) {
+    for (const { barcode: b } of bcs) {
       const k = b.replace(/\s+/g, "").toUpperCase();
       if (seen.has(k)) return setErr({ text: `Barcode ${b} is written twice.` });
       seen.add(k);
@@ -287,18 +306,40 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
 
           <div className="sec">
             <div className="sec-t">🏷 Barcodes</div>
-            <div className="sec-s">One product, many barcodes — each barcode belongs to this code only.</div>
+            <div className="sec-s">One product, many barcodes — one for each brand, packaging and unit. Each barcode belongs to this code only.</div>
             {f.barcodes.map((b, i) => (
               // eslint-disable-next-line react/no-array-index-key
-              <div className="bc-row" key={i}>
-                <span className="bc-n">{i + 1}</span>
-                <input className="i mono" data-scan-input="" value={b} onChange={(e) => setBc(i, e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (b.trim() && i === f.barcodes.length - 1) addBc(); } }}
-                  placeholder={`Barcode ${i + 1} — scan or type`} />
-                <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
-                  disabled={f.barcodes.length === 1 && !b}>🗑</button>
+              <div className="bc-card" key={i}>
+                <div className="bc-row">
+                  <span className="bc-n">{i + 1}</span>
+                  <input className="i mono" data-scan-input="" value={b.barcode} onChange={(e) => setBc(i, "barcode", e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (b.barcode.trim() && i === f.barcodes.length - 1) addBc(); } }}
+                    placeholder={`Barcode ${i + 1} — scan or type`} />
+                  <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
+                    disabled={f.barcodes.length === 1 && !b.barcode && !b.brand && !b.pack && !b.uom}>🗑</button>
+                </div>
+                <div className="bc-att">
+                  <div>
+                    <label htmlFor={`pfm-bb-${i}`}>Brand</label>
+                    <input id={`pfm-bb-${i}`} className="i" list="pfm-brands" value={b.brand} onChange={(e) => setBc(i, "brand", e.target.value)} placeholder="e.g. Al Ain" />
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bp-${i}`}>Packaging</label>
+                    <select id={`pfm-bp-${i}`} className="i" value={b.pack} onChange={(e) => setBc(i, "pack", e.target.value)}>
+                      <option value="">—</option>
+                      {PCS_UNITS.map((u) => <option key={u.k} value={u.k}>{u.en[0][0].toUpperCase() + u.en[0].slice(1)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bu-${i}`}>Unit</label>
+                    <input id={`pfm-bu-${i}`} className="i" list="pfm-uoms" value={b.uom} onChange={(e) => setBc(i, "uom", e.target.value.toUpperCase())}
+                      placeholder={defaultUom || "KG / PCS"} />
+                  </div>
+                </div>
               </div>
             ))}
+            <datalist id="pfm-brands">{brandOptions.map((x) => <option key={x} value={x} />)}</datalist>
+            <datalist id="pfm-uoms">{uomOptions.map((x) => <option key={x} value={x} />)}</datalist>
             <button type="button" className="btn" onClick={addBc}>➕ Another barcode</button>
             <div className="hint">🔫 With the handheld reader: click a box and scan — Enter opens the next box.</div>
           </div>
