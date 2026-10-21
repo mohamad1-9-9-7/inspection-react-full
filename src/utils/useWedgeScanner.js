@@ -32,6 +32,8 @@ const SYM = {
 };
 
 function charOf(e) {
+  // Chrome autofill / password managers fire keydown with no key at all
+  if (typeof e.key !== "string") return "";
   if (e.ctrlKey && (e.key === "]" || e.code === "BracketRight")) return GS;
   if (e.key === GS) return GS;
   if (e.ctrlKey || e.altKey || e.metaKey) return "";
