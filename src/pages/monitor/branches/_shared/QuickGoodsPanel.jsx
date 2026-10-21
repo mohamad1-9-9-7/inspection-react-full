@@ -15,10 +15,18 @@
 // Each move is applied to the list as it is on the server at that moment and
 // logged (room.moves) with the account behind it.
 //
+// The products offered are the Products Catalog's (items.json + added /
+// edited products, stopped ones left out). Food-safety checks on the spot:
+// lots past or near their expiry are flagged, and a product whose storage
+// temperature (Products Catalog) does not fit this unit (unitDef) needs a
+// confirmation before it goes in.
+//
 // Uses the .cq classes of QuickTempPage (rendered inside it).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { applyStockMove, fetchUnitStock, loadCatalog, PCS_UNITS, pcsText, pcsUnitLabel, stockKeyForUnit, totalQty } from "../../../coldrooms/coldRoomsStock";
+import { applyStockMove, fetchUnitStock, PCS_UNITS, pcsText, pcsUnitLabel, stockKeyForUnit } from "../../../coldrooms/coldRoomsStock";
+import { normalizeCode, useProductCatalog } from "./ProductPicker";
+import { cachedProductMedia, fetchProductMedia, MEDIA_EVENT, STORAGE, storageOf } from "../../../../utils/productMedia";
 import { getCurrentUser } from "../../../../utils/perms";
 import { INSPECTION_BRANCHES } from "../../../inspection/inspectionBranches";
 import { useShelfLife } from "./shelfLife";
@@ -65,6 +73,16 @@ const TX = {
     removed: "🗑 Link removed — the barcode is new again on every phone.", removeAsk: (g, p) => `Remove the link between barcode ${g} and ${p}?`, unlinkFail: "Could not remove the link (no connection).",
     queued: "📴 No connection — the move is kept on this phone and will be sent automatically.",
     offline: "📴 No connection — showing the list as last seen on this phone.",
+    stopped: "⛔ This product is stopped in the Products Catalog — it can't go in.",
+    expiredBadge: "⛔ Expired", soonBadge: (d) => (d === 0 ? "⚠️ Expires today" : `⚠️ Expires in ${d} d`),
+    expiredAlert: (n) => `⛔ ${n} expired lot${n > 1 ? "s" : ""} still inside — take ${n > 1 ? "them" : "it"} out now.`,
+    soonAlert: (n, d) => `⚠️ ${n} lot${n > 1 ? "s" : ""} expire${n > 1 ? "" : "s"} within ${d} days — use ${n > 1 ? "them" : "it"} first.`,
+    storage: (l) => `Storage: ${l}`, unitRuns: (l) => `This unit: ${l}`,
+    tooWarm: (p, c) => `⛔ This product must be kept ${p}, but this unit runs at ${c} — too warm for it.`,
+    tooCold: (p, c) => `⚠️ This product is kept ${p}, but this unit runs at ${c} — too cold, it will freeze.`,
+    widerRange: (p, c) => `ℹ️ The product needs ${p}; this unit is allowed ${c}. Keep the unit at the product's range.`,
+    tempOk: "I checked — put it in this unit anyway", needTempOk: "Confirm the storage-temperature warning first.",
+    wrongUnit: "🌡 wrong unit", noUom: "no unit",
   },
   ar: {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -101,6 +119,16 @@ const TX = {
     fefoOk: "بعرف — طلّع هالدفعة على كل حال", needFefo: "أكّد التنبيه عن الدفعة الأقدم أول.",
     queued: "📴 ما في إنترنت — الحركة محفوظة على التلفون وبتنبعت لحالها أول ما يرجع النت.",
     offline: "📴 ما في إنترنت — عم نعرض القائمة متل آخر مرة انشافت على هالتلفون.",
+    stopped: "⛔ هالمنتج موقوف بكتالوج المنتجات — ما بينفع يدخل.",
+    expiredBadge: "⛔ منتهي", soonBadge: (d) => (d === 0 ? "⚠️ بينتهي اليوم" : `⚠️ بينتهي بعد ${d} يوم`),
+    expiredAlert: (n) => `⛔ ${n} دفعة منتهية الصلاحية لسا جوّا — طلّعها هلأ.`,
+    soonAlert: (n, d) => `⚠️ ${n} دفعة بتنتهي خلال ${d} أيام — استعملها أول.`,
+    storage: (l) => `التخزين: ${l}`, unitRuns: (l) => `هالوحدة: ${l}`,
+    tooWarm: (p, c) => `⛔ هالمنتج لازم ينحفظ ${p}، بس هالوحدة على ${c} — أدفى من المسموح إله.`,
+    tooCold: (p, c) => `⚠️ هالمنتج بينحفظ ${p}، بس هالوحدة على ${c} — أبرد من اللازم، رح يتجمّد.`,
+    widerRange: (p, c) => `ℹ️ المنتج بدّه ${p}؛ وهالوحدة مسموحلها ${c}. خلّي الوحدة ضمن حدود المنتج.`,
+    tempOk: "تأكدت — دخّله على هالوحدة على كل حال", needTempOk: "أكّد تنبيه حرارة التخزين أول.",
+    wrongUnit: "🌡 وحدة غلط", noUom: "بدون وحدة",
   },
 };
 
@@ -139,6 +167,56 @@ const todayUae = () => new Date(Date.now() + 4 * 3600000).toISOString().slice(0,
 const lotKey = (it) => [it.code, it.product, it.supplier, it.prodDate, it.expDate, it.batch].map((v) => v || "").join("|");
 const lotOf = (it) => ({ code: it.code, product: it.product, uom: it.uom, supplier: it.supplier || "", prodDate: it.prodDate || "", expDate: it.expDate || "", batch: it.batch || "", pcs: it.pcs || 0, pcsUnit: it.pcsUnit || "", have: it.qty });
 
+/* ── expiry: days left (UAE date) — negative = expired */
+const NEAR_DAYS = 3;
+const daysLeft = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return null;
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${todayUae()}T00:00:00Z`)) / 864e5);
+};
+
+/* ── quantities of mixed units are never added together: 50 KG · 20 PCS */
+const totalsByUom = (items) => {
+  const m = new Map();
+  (items || []).forEach((it) => {
+    const u = String(it.uom || "").trim().toUpperCase();
+    m.set(u, (m.get(u) || 0) + (Number(it.qty) || 0));
+  });
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+};
+
+/* ── storage temperature (Products Catalog) vs this unit. Classes: 0 frozen,
+   1 chilled, 2 warmer (ambient / production room). A unit warmer than the
+   product's class is a hard warning; a chilled product in a freezer too
+   (it freezes); an ambient product may go anywhere. Same class but the unit
+   allowed warmer than the product = a note only. */
+const num = (v) => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+const STORAGE_AR = { chilled: "مبرّد", frozen: "مجمّد", ambient: "حرارة الغرفة" };
+const rangeText = (min, max) => {
+  const lo = num(min); const hi = num(max);
+  if (lo !== null && hi !== null) return `${lo} – ${hi} °C`;
+  if (hi !== null) return `≤ ${hi} °C`;
+  return lo !== null ? `≥ ${lo} °C` : "";
+};
+const storageText = (st, ar) => `${STORAGE[st.mode].icon} ${ar ? STORAGE_AR[st.mode] : STORAGE[st.mode].label} ${rangeText(st.min, st.max)}`.trim();
+const unitClass = (def) => {
+  if (def?.type === "frozen") return 0;
+  if (def?.type === "chilled") return 1;
+  const hi = num(def?.max);
+  if (hi === null) return null;
+  return hi <= 0 ? 0 : hi <= 8 ? 1 : 2;
+};
+const PRODUCT_CLASS = { frozen: 0, chilled: 1, ambient: 2 };
+function storageClash(st, def) {
+  if (!st || !def) return "";
+  const p = PRODUCT_CLASS[st.mode];
+  const u = unitClass(def);
+  if (p === undefined || u === null) return "";
+  if (u > p) return "warm";
+  if (p === 1 && u === 0) return "cold";
+  if (u === p && num(st.max) !== null && num(def.max) !== null && num(def.max) > num(st.max)) return "wider";
+  return "";
+}
+
 const branchLabel = (b, ar) => (ar ? b.labelAr : b.labelEn) || b.code;
 const destText = (m, s, ar) => {
   if (m.destType === "customer") return s.toCustomer;
@@ -149,7 +227,7 @@ const destText = (m, s, ar) => {
   return "";
 };
 
-export default function QuickGoodsPanel({ branch, unit, lang }) {
+export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) {
   const s = TX[lang === "ar" ? "ar" : "en"];
   const [target, setTarget] = useState(null); // { key, room, name }
   const [stock, setStock] = useState(null); // { items, moves }
@@ -161,7 +239,23 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   const [qty, setQty] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [catalog, setCatalog] = useState([]);
+  // the Products Catalog (stopped products left out) + its storage temperatures
+  const { allItems, pickItems } = useProductCatalog();
+  const catalog = useMemo(() => pickItems.map((it) => ({ code: String(it.item_code || "").trim(), product: it.description, uom: it.uom || "" })), [pickItems]);
+  const stoppedSet = useMemo(() => {
+    const live = new Set(pickItems.map((it) => normalizeCode(it.item_code)));
+    return new Set(allItems.map((it) => normalizeCode(it.item_code)).filter((c) => c && !live.has(c)));
+  }, [allItems, pickItems]);
+  const isStopped = useCallback((code) => !!code && stoppedSet.has(normalizeCode(code)), [stoppedSet]);
+  const [media, setMedia] = useState(() => cachedProductMedia());
+  useEffect(() => {
+    fetchProductMedia().then((m) => setMedia(m || {})).catch(() => {});
+    const on = () => setMedia(cachedProductMedia());
+    window.addEventListener(MEDIA_EVENT, on);
+    return () => window.removeEventListener(MEDIA_EVENT, on);
+  }, []);
+  const clashOf = useCallback((code) => (code ? storageClash(storageOf(media, code), unitDef) : ""), [media, unitDef]);
+  const [tempOk, setTempOk] = useState(false);
   const [keeper, setKeeper] = useState(() => lastKeeper() || userName());
   const [destType, setDestType] = useState(""); // customer | branch
   const [toBranch, setToBranch] = useState("");
@@ -255,11 +349,6 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (mode !== "in" || catalog.length) return;
-    loadCatalog().then((map) => setCatalog([...map.entries()].map(([code, v]) => ({ code, product: v.product, uom: v.uom }))));
-  }, [mode, catalog.length]);
-
   const items = useMemo(() => stock?.items || [], [stock]);
   // all lots of a product added up
   const haveOf = useCallback((code, product) => {
@@ -275,7 +364,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
   // Goods in: what is already inside first, then the catalogue.
   const shownIn = useMemo(() => {
     if (mode !== "in") return [];
-    const inside = items.filter(matches).slice(0, 8);
+    const inside = items.filter((it) => matches(it) && !isStopped(it.code)).slice(0, 8);
     if (needle.length < 2) return inside;
     const seen = new Set(inside.map((it) => it.code));
     const fromCat = catalog
@@ -283,7 +372,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       .slice(0, 25);
     return [...inside, ...fromCat];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, items, catalog, needle]);
+  }, [mode, items, catalog, needle, isStopped]);
 
   const supplierList = useMemo(() => {
     const seen = new Map();
@@ -318,7 +407,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
-    setPackKg(0); autoQty.current = "";
+    setPackKg(0); autoQty.current = ""; setTempOk(false);
     setBatch(""); setGtin(""); setLinkGtin(""); setRelinking(false); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
@@ -367,6 +456,11 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       linkBarcode(found.key, { code: hit.code, product: hit.product, uom: hit.uom }, userName(), { brand: hit.brand, supplier: hit.supplier, origin: hit.origin, pack })
         .then(setCodeMap)
         .catch(() => {});
+    }
+    if (hit && hit.code && isStopped(hit.code)) {
+      setPick(null); setKnown(null); setLinkGtin("");
+      setScanNote(""); setMsg({ kind: "bad", text: `${s.stopped} (${hit.product || hit.code})` });
+      return;
     }
     if (hit && hit.code) {
       const cat = catalog.find((c) => c.code === hit.code);
@@ -443,7 +537,8 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       setScanNote((n) => [s.linkFail, n].filter(Boolean).join(" — "));
     }
   };
-  const choose = (it) => { if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPackKg(0); setPick(mode === "out"
+  const choose = (it) => { if (mode === "in" && isStopped(it.code)) { setMsg({ kind: "bad", text: s.stopped }); return; }
+    if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPackKg(0); setTempOk(false); setPick(mode === "out"
     ? lotOf(it)
     : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 }); };
 
@@ -467,6 +562,8 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
       extra.supplier = pick.supplier; extra.prodDate = pick.prodDate; extra.expDate = pick.expDate;
       if (pick.batch) extra.batch = pick.batch;
     } else {
+      if (isStopped(pick.code)) return setMsg({ kind: "bad", text: s.stopped });
+      if (["warm", "cold"].includes(clashOf(pick.code)) && !tempOk) return setMsg({ kind: "bad", text: s.needTempOk });
       if (!supplier.trim()) return setMsg({ kind: "bad", text: s.needSupplier });
       if (!prodDate) return setMsg({ kind: "bad", text: s.needProd });
       if (!expDate) return setMsg({ kind: "bad", text: s.needExp });
@@ -502,7 +599,23 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
     if (it.batch) parts.push(`${s.fBatch} ${it.batch}`);
     if (it.prodDate || it.expDate) parts.push(`${dmy(it.prodDate) || "?"} → ${s.expShort} ${dmy(it.expDate) || "?"}`);
     if (it.pcs) parts.push(pcsText(it.pcs, it.pcsUnit, ar));
-    return parts.length ? <div className="sm" style={{ textAlign: "start", marginTop: 2 }}>{parts.join(" · ")}</div> : null;
+    const left = it.qty !== undefined ? daysLeft(it.expDate) : null; // lots inside only
+    const clash = it.qty !== undefined ? clashOf(it.code) : "";
+    const badges = (
+      <>
+        {left !== null && left < 0 && <span className="pill bad" style={{ marginInlineEnd: 6 }}>{s.expiredBadge}</span>}
+        {left !== null && left >= 0 && left <= NEAR_DAYS && <span className="pill warn" style={{ marginInlineEnd: 6 }}>{s.soonBadge(left)}</span>}
+        {(clash === "warm" || clash === "cold") && <span className="pill bad" style={{ marginInlineEnd: 6 }}>{s.wrongUnit}</span>}
+      </>
+    );
+    const hasBadge = (left !== null && left <= NEAR_DAYS) || clash === "warm" || clash === "cold";
+    if (!parts.length && !hasBadge) return null;
+    return (
+      <div className="sm" style={{ textAlign: "start", marginTop: 2 }}>
+        {hasBadge && <div style={{ margin: "3px 0" }}>{badges}</div>}
+        {parts.join(" · ")}
+      </div>
+    );
   };
 
   const row = (it, onClick, extra = null) => (
@@ -558,9 +671,26 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
                 <div className="sm" dir="ltr" style={{ textAlign: "start" }}>{pick.code}{pick.uom ? ` · ${pick.uom}` : ""}</div>
                 {isOut && lotLine(pick)}
                 {(isOut || pick.have > 0) && <div className="sm" style={{ marginTop: 4, fontWeight: 800 }}>{s.available(fmt(pick.have), pick.uom || "")}</div>}
+                {!isOut && storageOf(media, pick.code) && <div className="sm" style={{ marginTop: 4 }}>{s.storage(storageText(storageOf(media, pick.code), ar))}</div>}
               </div>
               <button type="button" className="btn" onClick={() => setPick(null)} disabled={saving}>{s.change}</button>
             </div>
+            {!isOut && (() => {
+              const st = storageOf(media, pick.code);
+              const clash = clashOf(pick.code);
+              if (!clash) return null;
+              const p = storageText(st, ar);
+              const c = rangeText(unitDef?.min, unitDef?.max);
+              if (clash === "wider") return <div className="alert warn" style={{ marginTop: 10, marginBottom: 0 }}>{s.widerRange(p, c)}</div>;
+              return (
+                <div className="alert bad" style={{ marginTop: 10, marginBottom: 0 }}>
+                  <div>{clash === "warm" ? s.tooWarm(p, c) : s.tooCold(p, c)}</div>
+                  <label className="chk">
+                    <input type="checkbox" checked={tempOk} onChange={(e) => setTempOk(e.target.checked)} /> {s.tempOk}
+                  </label>
+                </div>
+              );
+            })()}
             <span className="lbl">{s.qty}{pick.uom ? ` (${pick.uom})` : ""}</span>
             <div className="temp">
               <input inputMode="decimal" autoFocus autoComplete="off" value={qty} placeholder="0" aria-label={s.qty}
@@ -693,11 +823,22 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
 
   /* ── what is inside */
   const moves = (stock?.moves || []).slice(-8).reverse();
+  const expiredLots = items.filter((it) => { const d = daysLeft(it.expDate); return d !== null && d < 0; });
+  const soonLots = items.filter((it) => { const d = daysLeft(it.expDate); return d !== null && d >= 0 && d <= NEAR_DAYS; });
+  const wrongLots = items.filter((it) => ["warm", "cold"].includes(clashOf(it.code)));
+  const totals = totalsByUom(items).map(([u, n]) => `${fmt(n)} ${u || s.noUom}`).join(" · ");
   return (
     <div>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
       {err && <div className="alert bad">{err}</div>}
       {stock?.offline && <div className="alert warn">{s.offline}</div>}
+      {expiredLots.length > 0 && <div className="alert bad">{s.expiredAlert(expiredLots.length)}</div>}
+      {soonLots.length > 0 && <div className="alert warn">{s.soonAlert(soonLots.length, NEAR_DAYS)}</div>}
+      {wrongLots.length > 0 && unitDef && (
+        <div className="alert bad">
+          {s.unitRuns(rangeText(unitDef.min, unitDef.max))} — {s.wrongUnit}: {[...new Set(wrongLots.map((it) => it.product || it.code))].join(" · ")}
+        </div>
+      )}
 
       <div className="acts" style={{ marginBottom: 10 }}>
         <button type="button" className="btn pri full" onClick={() => start("in")} disabled={loading || !target}>{s.in}</button>
@@ -709,7 +850,7 @@ export default function QuickGoodsPanel({ branch, unit, lang }) {
         <div className="row">
           <div>
             <div className="t2">📦 {s.inside}</div>
-            <div className="sm">{items.length} {s.products} · {s.total}: {fmt(totalQty(items))}</div>
+            <div className="sm">{items.length} {s.products}{items.length ? ` · ${s.total}: ${totals}` : ""}</div>
             {target?.room != null && <div className="sm" style={{ marginTop: 2 }}>🧊 {s.linked(target.name)}</div>}
           </div>
           <button type="button" className="btn" onClick={load} disabled={loading}>{s.refresh}</button>

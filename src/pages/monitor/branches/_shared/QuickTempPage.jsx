@@ -614,7 +614,7 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
       )}
 
       {storesGoods && view === "goods" ? (
-        <QuickGoodsPanel branch={A.calib?.branch || A.label} unit={unit} lang={lang} />
+        <QuickGoodsPanel branch={A.calib?.branch || A.label} unit={unit} unitDef={def} lang={lang} />
       ) : (<>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
 
