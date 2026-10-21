@@ -9,9 +9,12 @@
 //
 // initial = { code, name, barcodes: [], shelfDays: "", images: [],
 //             storage: { mode, min, max } | null, allergens: [], active: true }
-// barcodes: strings or { barcode, brand, pack, uom } — each barcode says which
-// brand, packaging and unit it is; onSave gets the { barcode, brand, pack, uom } rows.
-// brandOptions / uomOptions feed the suggestions; defaultUom = the product's unit.
+// Two tabs: Product (everything else) and Barcodes. barcodes: strings or
+// { barcode, brand, pack, uom, supplier } — each barcode says which brand,
+// packaging, unit and supplier it is (a box, a piece and another supplier
+// each have their own); onSave gets those rows. initial.tab = "barcodes" opens
+// on that tab.
+// brandOptions / uomOptions / supplierOptions feed the suggestions; defaultUom = the product's unit.
 // onSave throws an Error; err.conflicts (barcodes on another code) shows a
 // "move them here" choice that calls onSave again with move = true.
 //
@@ -26,7 +29,8 @@ import useWedgeScanner from "../../utils/useWedgeScanner";
 import { ALLERGENS, PRODUCT_TYPES, STORAGE, TYPE_GROUPS, typeOfId } from "../../utils/productMedia";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
 
-const BC = { barcode: "", brand: "", pack: "", uom: "" };
+const BC = { barcode: "", brand: "", pack: "", uom: "", supplier: "" };
+const hasAttrs = (b) => !!(b.brand.trim() || b.pack || b.uom.trim() || b.supplier.trim());
 const bcRow = (x) => (typeof x === "string" ? { ...BC, barcode: x } : { ...BC, ...x, barcode: String(x?.barcode || "") });
 const BLANK = { code: "", name: "", barcodes: [BC], shelfDays: "", images: [], mode: "", tMin: "", tMax: "", allergens: [], active: true, ptype: "", tgroup: "" };
 
@@ -61,8 +65,8 @@ const CSS = `
 .pfm .sec-s { color:#64748b; font-size:${z(14)}; font-weight:600; margin-bottom:12px; }
 .pfm .bc-card { border:1px solid #e2e8f0; border-radius:12px; padding:10px; margin-bottom:10px; background:#f8fbff; }
 .pfm .bc-row { display:flex; gap:10px; align-items:center; }
-.pfm .bc-att { display:grid; grid-template-columns: 1.3fr 1fr .8fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
-@media (max-width:560px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } .pfm .bc-att > :first-child { grid-column:1 / -1; } }
+.pfm .bc-att { display:grid; grid-template-columns: 1fr 1fr .7fr 1.3fr; gap:8px; margin-top:8px; padding-inline-start:40px; }
+@media (max-width:760px) { .pfm .bc-att { grid-template-columns:1fr 1fr; padding-inline-start:0; } }
 .pfm .bc-att label { display:block; font-weight:800; font-size:${z(13)}; color:#64748b; margin-bottom:3px; }
 .pfm .bc-att input.i, .pfm .bc-att select.i { min-height:44px; padding:9px 11px; font-size:${z(15)}; }
 .pfm select.i { width:100%; border:1.5px solid #cbd5e1; border-radius:12px; font-family:inherit; background:#fff; color:#0f172a; }
@@ -104,12 +108,22 @@ const CSS = `
 .pfm .sw.on i::after { left:28px; }
 .pfm .sw b { font-size:${z(17)}; font-weight:900; }
 .pfm .err { color:#b91c1c; font-weight:800; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; padding:12px 16px; font-size:${z(15)}; }
+.pfm-tabs { display:flex; gap:6px; padding:10px 24px 0; background:#fff; border-bottom:1px solid #e2e8f0; }
+.pfm-tab { border:0; background:none; font-family:inherit; font-weight:800; font-size:${z(16)}; color:#64748b; padding:12px 18px; cursor:pointer;
+  border-bottom:3px solid transparent; margin-bottom:-1px; display:flex; align-items:center; gap:8px; }
+.pfm-tab:hover { color:#0f172a; }
+.pfm-tab.on { color:#0369a1; border-bottom-color:#0ea5e9; }
+.pfm-tab .n { background:#e0f2fe; color:#075985; border-radius:99px; padding:1px 9px; font-size:${z(13)}; font-weight:900; }
+.pfm .bc-why { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px; margin-bottom:14px; }
+.pfm .bc-why div { background:#f0f9ff; border:1px solid #d6ecfb; border-radius:12px; padding:10px 12px; font-size:${z(14)}; color:#0c4a6e; font-weight:600; }
+.pfm .bc-why b { display:block; font-weight:900; font-size:${z(15)}; }
 .pfm-foot { padding:16px 24px; border-top:1px solid #e2e8f0; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; background:#fff; }
 .pfm-foot .btn { min-width:140px; }
 `;
 
-export default function ProductFormModal({ open, mode = "add", initial, codeLocked = false, shelfHint = "", brandOptions = [], uomOptions = [], defaultUom = "", onSave, onClose }) {
+export default function ProductFormModal({ open, mode = "add", initial, codeLocked = false, shelfHint = "", brandOptions = [], uomOptions = [], supplierOptions = [], defaultUom = "", onSave, onClose }) {
   const [f, setF] = useState(BLANK);
+  const [tab, setTab] = useState("info"); // "info" | "barcodes"
   const [err, setErr] = useState(null); // { text, conflicts? }
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -135,12 +149,14 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       tgroup: typeOfId(i.ptype)?.group || "",
     });
     setErr(null); setBusy(false); fresh.current = [];
-    setTimeout(() => firstRef.current?.focus(), 30);
+    setTab(i.tab === "barcodes" ? "barcodes" : "info");
+    if (i.tab !== "barcodes") setTimeout(() => firstRef.current?.focus(), 30);
   }, [open, initial]);
 
   // a handheld reader scanned while the window is open (not in a box): it goes into the barcode list
   useWedgeScanner((text) => {
     if (document.activeElement?.closest?.("[data-scan-input]")) return false;
+    setTab("barcodes");
     setTimeout(() => setF((p) => {
       const list = p.barcodes.filter((b) => b.barcode.trim());
       if (list.some((b) => b.barcode.replace(/\s+/g, "").toUpperCase() === text.replace(/\s+/g, "").toUpperCase())) return p;
@@ -153,9 +169,12 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setBc = (i, k, v) => setF((p) => ({ ...p, barcodes: p.barcodes.map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
-  // a new barcode starts with the brand of the one above (same product, usually same brand)
+  // a new barcode starts with the brand and supplier of the one above (same product, usually the same)
   const addBc = () => {
-    setF((p) => ({ ...p, barcodes: [...p.barcodes, { ...BC, brand: p.barcodes[p.barcodes.length - 1]?.brand || "" }] }));
+    setF((p) => {
+      const last = p.barcodes[p.barcodes.length - 1] || BC;
+      return { ...p, barcodes: [...p.barcodes, { ...BC, brand: last.brand, supplier: last.supplier }] };
+    });
     setTimeout(() => { const all = document.querySelectorAll(".pfm .bc-row input"); all[all.length - 1]?.focus(); }, 0);
   };
   const delBc = (i) => setF((p) => {
@@ -209,18 +228,20 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
   const save = async (move = false) => {
     const name = f.name.trim();
     const code = f.code.trim();
-    if (!name) return setErr({ text: "Product name is required." });
-    if (!code) return setErr({ text: "Code is required." });
+    const toInfo = (text) => { setTab("info"); return setErr({ text }); };
+    const toBc = (text) => { setTab("barcodes"); return setErr({ text }); };
+    if (!name) return toInfo("Product name is required.");
+    if (!code) return toInfo("Code is required.");
     const bcs = f.barcodes
-      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim() }))
+      .map((b) => ({ barcode: b.barcode.trim(), brand: b.brand.trim(), pack: b.pack, uom: b.uom.trim(), supplier: b.supplier.trim() }))
       .filter((b) => b.barcode);
-    if (f.barcodes.some((b) => !b.barcode.trim() && (b.brand.trim() || b.pack || b.uom.trim()))) {
-      return setErr({ text: "A barcode box is empty but has a brand / packaging / unit — type the barcode or remove that row." });
+    if (f.barcodes.some((b) => !b.barcode.trim() && hasAttrs(b))) {
+      return toBc("A barcode box is empty but has a brand / packaging / unit / supplier — type the barcode or remove that row.");
     }
     const seen = new Set();
     for (const { barcode: b } of bcs) {
       const k = b.replace(/\s+/g, "").toUpperCase();
-      if (seen.has(k)) return setErr({ text: `Barcode ${b} is written twice.` });
+      if (seen.has(k)) return toBc(`Barcode ${b} is written twice.`);
       seen.add(k);
     }
     const sd = f.shelfDays.trim();
@@ -246,6 +267,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
       fresh.current = [];
       onClose?.();
     } catch (e) {
+      if (e?.conflicts) setTab("barcodes");
       setErr({ text: e?.message || "Save failed — check the connection.", conflicts: e?.conflicts });
     } finally {
       setBusy(false);
@@ -265,6 +287,15 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
           <button type="button" className="pfm-x" onClick={cancel} aria-label="Close">✕</button>
         </div>
 
+        <div className="pfm-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={tab === "info"} className={`pfm-tab ${tab === "info" ? "on" : ""}`} onClick={() => setTab("info")}>
+            📋 Product
+          </button>
+          <button type="button" role="tab" aria-selected={tab === "barcodes"} className={`pfm-tab ${tab === "barcodes" ? "on" : ""}`} onClick={() => setTab("barcodes")}>
+            🏷 Barcodes <span className="n">{f.barcodes.filter((b) => b.barcode.trim()).length}</span>
+          </button>
+        </div>
+
         <div className="pfm-body">
           <div className="pfm-grid">
             <div>
@@ -281,6 +312,7 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
             </div>
           </div>
 
+          {tab === "info" && (
           <div className="pfm-cols">
           <div className="col">
           <div className="sec">
@@ -302,46 +334,6 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="sec">
-            <div className="sec-t">🏷 Barcodes</div>
-            <div className="sec-s">One product, many barcodes — one for each brand, packaging and unit. Each barcode belongs to this code only.</div>
-            {f.barcodes.map((b, i) => (
-              // eslint-disable-next-line react/no-array-index-key
-              <div className="bc-card" key={i}>
-                <div className="bc-row">
-                  <span className="bc-n">{i + 1}</span>
-                  <input className="i mono" data-scan-input="" value={b.barcode} onChange={(e) => setBc(i, "barcode", e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (b.barcode.trim() && i === f.barcodes.length - 1) addBc(); } }}
-                    placeholder={`Barcode ${i + 1} — scan or type`} />
-                  <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
-                    disabled={f.barcodes.length === 1 && !b.barcode && !b.brand && !b.pack && !b.uom}>🗑</button>
-                </div>
-                <div className="bc-att">
-                  <div>
-                    <label htmlFor={`pfm-bb-${i}`}>Brand</label>
-                    <input id={`pfm-bb-${i}`} className="i" list="pfm-brands" value={b.brand} onChange={(e) => setBc(i, "brand", e.target.value)} placeholder="e.g. Al Ain" />
-                  </div>
-                  <div>
-                    <label htmlFor={`pfm-bp-${i}`}>Packaging</label>
-                    <select id={`pfm-bp-${i}`} className="i" value={b.pack} onChange={(e) => setBc(i, "pack", e.target.value)}>
-                      <option value="">—</option>
-                      {PCS_UNITS.map((u) => <option key={u.k} value={u.k}>{u.en[0][0].toUpperCase() + u.en[0].slice(1)}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor={`pfm-bu-${i}`}>Unit</label>
-                    <input id={`pfm-bu-${i}`} className="i" list="pfm-uoms" value={b.uom} onChange={(e) => setBc(i, "uom", e.target.value.toUpperCase())}
-                      placeholder={defaultUom || "KG / PCS"} />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <datalist id="pfm-brands">{brandOptions.map((x) => <option key={x} value={x} />)}</datalist>
-            <datalist id="pfm-uoms">{uomOptions.map((x) => <option key={x} value={x} />)}</datalist>
-            <button type="button" className="btn" onClick={addBc}>➕ Another barcode</button>
-            <div className="hint">🔫 With the handheld reader: click a box and scan — Enter opens the next box.</div>
           </div>
 
           <div>
@@ -427,6 +419,59 @@ export default function ProductFormModal({ open, mode = "add", initial, codeLock
 
           </div>
           </div>
+          )}
+
+          {tab === "barcodes" && (
+          <div className="sec">
+            <div className="sec-t">🏷 Barcodes of code {f.code.trim() || "—"}</div>
+            <div className="sec-s">One code, as many barcodes as it has — each barcode belongs to this code only.</div>
+            <div className="bc-why">
+              <div><b>📦 Box / carton</b>Its own barcode — packaging Box or Carton.</div>
+              <div><b>🔹 Piece</b>Its own barcode — packaging Piece.</div>
+              <div><b>🚚 Another supplier</b>Its own barcode — write the supplier.</div>
+            </div>
+            {f.barcodes.map((b, i) => (
+              // eslint-disable-next-line react/no-array-index-key
+              <div className="bc-card" key={i}>
+                <div className="bc-row">
+                  <span className="bc-n">{i + 1}</span>
+                  <input className="i mono" data-scan-input="" value={b.barcode} onChange={(e) => setBc(i, "barcode", e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (b.barcode.trim() && i === f.barcodes.length - 1) addBc(); } }}
+                    placeholder={`Barcode ${i + 1} — scan or type`} />
+                  <button type="button" className="btn dan icon" onClick={() => delBc(i)} title="Remove this barcode"
+                    disabled={f.barcodes.length === 1 && !b.barcode && !hasAttrs(b)}>🗑</button>
+                </div>
+                <div className="bc-att">
+                  <div>
+                    <label htmlFor={`pfm-bb-${i}`}>Brand</label>
+                    <input id={`pfm-bb-${i}`} className="i" list="pfm-brands" value={b.brand} onChange={(e) => setBc(i, "brand", e.target.value)} placeholder="e.g. Al Ain" />
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bp-${i}`}>Packaging</label>
+                    <select id={`pfm-bp-${i}`} className="i" value={b.pack} onChange={(e) => setBc(i, "pack", e.target.value)}>
+                      <option value="">—</option>
+                      {PCS_UNITS.map((u) => <option key={u.k} value={u.k}>{u.en[0][0].toUpperCase() + u.en[0].slice(1)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bu-${i}`}>Unit</label>
+                    <input id={`pfm-bu-${i}`} className="i" list="pfm-uoms" value={b.uom} onChange={(e) => setBc(i, "uom", e.target.value.toUpperCase())}
+                      placeholder={defaultUom || "KG / PCS"} />
+                  </div>
+                  <div>
+                    <label htmlFor={`pfm-bs-${i}`}>Supplier</label>
+                    <input id={`pfm-bs-${i}`} className="i" list="pfm-suppliers" value={b.supplier} onChange={(e) => setBc(i, "supplier", e.target.value)} placeholder="Any supplier" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <datalist id="pfm-brands">{brandOptions.map((x) => <option key={x} value={x} />)}</datalist>
+            <datalist id="pfm-uoms">{uomOptions.map((x) => <option key={x} value={x} />)}</datalist>
+            <datalist id="pfm-suppliers">{supplierOptions.map((x) => <option key={x} value={x} />)}</datalist>
+            <button type="button" className="btn" onClick={addBc}>➕ Another barcode</button>
+            <div className="hint">🔫 With the handheld reader: click a box and scan — Enter opens the next box.</div>
+          </div>
+          )}
 
           {err && (
             <div className="err">

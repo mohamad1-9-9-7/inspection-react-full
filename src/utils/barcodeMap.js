@@ -10,11 +10,12 @@
 //
 // One config record for the company:
 //   type = barcode_map , payload.reportDate = "map"
-//   payload.map = { "07891515408688": { code, product, uom, brand, pack, by, at } }
+//   payload.map = { "07891515408688": { code, product, uom, brand, pack, supplier, by, at } }
 // Each barcode carries what it stands for: the BRAND printed on it, its
-// PACKAGING (pack = a PCS_UNITS key — piece / box / carton…) and its unit of
-// measure (uom). One product sold under two brands, or as a piece and as a
-// carton, has one barcode for each.
+// PACKAGING (pack = a PCS_UNITS key — piece / box / carton…), its unit of
+// measure (uom) and the SUPPLIER whose code it is. One product sold under two
+// brands, as a piece and as a box, or bought from two suppliers, has one
+// barcode for each.
 // Saving re-reads the record and adds/replaces only its own barcode;
 // unlinkBarcode removes a wrong link (the barcode is "new" again).
 // One barcode → ONE product code (the map key guarantees it); one product
@@ -84,15 +85,16 @@ export function barcodesByCode(map) {
 
 const clean = (v) => String(v || "").trim();
 
-/** What a barcode stands for — { brand, pack, uom } (empty = not said). */
-export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom) });
-const sameAttrs = (a, b) => ["brand", "pack", "uom"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
+/** What a barcode stands for — { brand, pack, uom, supplier } (empty = not said). */
+export const barcodeAttrs = (v) => ({ brand: clean(v?.brand), pack: clean(v?.pack), uom: clean(v?.uom), supplier: clean(v?.supplier) });
+const sameAttrs = (a, b) => ["brand", "pack", "uom", "supplier"].every((k) => barcodeAttrs(a)[k] === barcodeAttrs(b)[k]);
 
 const entry = (item, user, attrs = null) => {
   const a = barcodeAttrs(attrs || item);
   const out = { code: clean(item.code), product: clean(item.product), uom: a.uom, by: user || "", at: new Date().toISOString() };
   if (a.brand) out.brand = a.brand;
   if (a.pack) out.pack = a.pack;
+  if (a.supplier) out.supplier = a.supplier;
   return out;
 };
 
@@ -137,7 +139,7 @@ export async function replaceBarcode(oldRaw, newRaw, item, user = "", { move = f
  * A product's whole barcode list in one save (the Add / Edit product window):
  * every barcode of oldCode (or item.code) not in `list` is dropped, every one
  * in `list` is put on item.code. `list` holds barcodes, or
- * { barcode, brand, pack, uom } rows. A barcode on ANOTHER code throws
+ * { barcode, brand, pack, uom, supplier } rows. A barcode on ANOTHER code throws
  * (err.conflicts = [{ barcode, code, product }]) unless move.
  */
 export async function setCodeBarcodes(oldCode, item, list, user = "", { move = false } = {}) {
@@ -187,12 +189,12 @@ export async function recodeBarcodes(oldCode, item, user = "") {
 }
 
 /** Links one barcode to one of our products, for the whole company.
-    A re-link keeps the brand / packaging the barcode already had (they are printed on it). */
+    A re-link keeps the brand / packaging / supplier the barcode already had (they are printed on it). */
 export async function linkBarcode(gtin, item, user = "") {
   const g = toGtin14(gtin);
   const map = await readRecord();
   const was = barcodeAttrs(map[g]);
-  map[g] = entry(item, user, { brand: was.brand, pack: was.pack, uom: was.uom || item.uom });
+  map[g] = entry(item, user, { brand: was.brand, pack: was.pack, uom: was.uom || item.uom, supplier: was.supplier });
   return writeMap(map, user);
 }
 

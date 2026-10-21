@@ -32,6 +32,7 @@ import {
   barcodeAttrs, barcodesByCode, fetchBarcodeMap, normBarcode, recodeBarcodes, setCodeBarcodes, showBarcode,
 } from "../../utils/barcodeMap";
 import { PCS_UNITS } from "../coldrooms/coldRoomsStock";
+import { fetchSuppliers } from "../complaints/complaintsCore";
 import { getCurrentUser } from "../../utils/perms";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shelfLife";
@@ -319,14 +320,40 @@ export default function ProductsTab({ navActions = null }) {
   useEffect(() => { fetchProductMedia().then((m) => setMedia(m || {})); }, []);
   const byCode = useMemo(() => barcodesByCode(bcMap), [bcMap]);
   const barcodesOf = useCallback((row) => (row?.code ? byCode[String(row.code).trim()] || [] : []), [byCode]);
-  // what one barcode stands for: "Al Ain · Carton · KG" ("" = nothing said)
+  // what one barcode stands for: "Al Ain · Carton · KG · 🚚 Supplier" ("" = nothing said)
   const attrsText = useCallback((b) => {
     const a = barcodeAttrs(bcMap[b]);
     const pack = PCS_UNITS.find((u) => u.k === a.pack);
-    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom].filter(Boolean).join(" · ");
+    return [a.brand, pack && pack.en[0][0].toUpperCase() + pack.en[0].slice(1), a.uom, a.supplier && `🚚 ${a.supplier}`].filter(Boolean).join(" · ");
   }, [bcMap]);
   const brands = useMemo(() => [...new Set(Object.values(bcMap).map((v) => barcodeAttrs(v).brand).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b)), [bcMap]);
+  /* Supplier suggestions for the barcodes tab: the company's suppliers (heavy —
+     loaded when the product window first opens, kept on this device for a day
+     as a convenience copy) plus the suppliers already written on barcodes. */
+  const [supList, setSupList] = useState(null);
+  useEffect(() => {
+    if (!pf || supList) return;
+    const KEY = "cooler_goods_suppliers_v1";
+    try {
+      const c = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (c && Date.now() - c.at < 864e5 && Array.isArray(c.list)) { setSupList(c.list); return; }
+    } catch { /* no copy */ }
+    fetchSuppliers()
+      .then((list) => {
+        setSupList(list);
+        try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), list })); } catch { /* cache only */ }
+      })
+      .catch(() => setSupList([]));
+  }, [pf, supList]);
+  const suppliers = useMemo(() => {
+    const seen = new Map();
+    [...Object.values(bcMap).map((v) => barcodeAttrs(v).supplier), ...(supList || [])].forEach((n) => {
+      const k = String(n || "").trim().toLowerCase();
+      if (k && !seen.has(k)) seen.set(k, String(n).trim());
+    });
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, "ar"));
+  }, [bcMap, supList]);
   const shelfOf = useCallback((r) => shelf.resolve({ code: r.code, name: r.name }), [shelf]);
   const lastChangeOf = useCallback((r) => {
     let best = changeOf(media, r.code);
@@ -437,7 +464,7 @@ export default function ProductsTab({ navActions = null }) {
       list = list.filter((r) => (ns && normalizeCode(r.code).includes(ns)) || (s && r.name.toLowerCase().includes(s))
         || (s && r.category.toLowerCase().includes(s))
         || (bq.length >= 4 && barcodesOf(r).some((b) => b.includes(bq)))
-        || (s && barcodesOf(r).some((b) => barcodeAttrs(bcMap[b]).brand.toLowerCase().includes(s))));
+        || (s && barcodesOf(r).some((b) => { const a = barcodeAttrs(bcMap[b]); return a.brand.toLowerCase().includes(s) || a.supplier.toLowerCase().includes(s); })));
     }
     if (fCat !== "*") list = list.filter((r) => (r.category || "") === fCat);
     if (fBc === "with") list = list.filter((r) => nbc(r) > 0);
@@ -501,7 +528,7 @@ export default function ProductsTab({ navActions = null }) {
   /* Excel-friendly CSV of what is on screen (all matching rows) */
   const exportCsv = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
+    const lines = [["Code", "Product Name", "Type group", "Product type", "Category", "UOM", "Origin", "Barcodes", "Barcode count", "Barcode brand / packaging / unit / supplier", "Shelf life (days)", "Shelf life from", "Storage", "Storage °C", "Allergens", "Status", "Last change", "Changed by", "Photos", "Source"].map(cell).join(",")];
     filtered.forEach((r) => {
       const bcs = barcodesOf(r).map(showBarcode);
       const sl = shelfOf(r);
@@ -535,7 +562,7 @@ export default function ProductsTab({ navActions = null }) {
   const ownShelf = (code) => shelf.config.rules.find((x) => x.scope === "code" && normalizeCode(x.match) === normalizeCode(code));
   // a scanned barcode that belongs to nobody rides into the next window opened
   const pendingBc = scanHit && !scanHit.code ? [showBarcode(scanHit.barcode)] : [];
-  const openAdd = (initial = {}) => setPf({ row: null, initial: { barcodes: pendingBc, ...initial } });
+  const openAdd = (initial = {}) => setPf({ row: null, initial: { barcodes: pendingBc, tab: pendingBc.length ? "barcodes" : "info", ...initial } });
   const startEdit = (row) => {
     const own = ownShelf(row.code);
     const mine = barcodesOf(row);
@@ -544,6 +571,7 @@ export default function ProductsTab({ navActions = null }) {
       row,
       initial: {
         code: row.code, name: row.name,
+        tab: pendingBc.length && !have.includes(pendingBc[0]) ? "barcodes" : "info",
         barcodes: [...mine.map((b) => ({ barcode: showBarcode(b), ...barcodeAttrs(bcMap[b]) })), ...pendingBc.filter((b) => !have.includes(b))],
         shelfDays: own ? own.days : "",
         images: imagesOf(media, row.code),
@@ -578,8 +606,8 @@ export default function ProductsTab({ navActions = null }) {
     const warn = [];
 
     // 1) barcodes — may throw err.conflicts back to the window
-    // a barcode's brand / packaging / unit changing counts as a change too
-    const sig = (b, a) => [b, a.brand, a.pack, a.uom].join("~");
+    // a barcode's brand / packaging / unit / supplier changing counts as a change too
+    const sig = (b, a) => [b, a.brand, a.pack, a.uom, a.supplier].join("~");
     const hadBc = editing ? barcodesOf(editing).map((b) => sig(b, barcodeAttrs(bcMap[b]))).join("|") : "";
     const wantBc = data.barcodes.map((b) => sig(normBarcode(b.barcode), barcodeAttrs(b))).join("|");
     if (wantBc !== hadBc || (editing && code !== oldCode)) {
@@ -768,7 +796,7 @@ export default function ProductsTab({ navActions = null }) {
       <div className="tools">
         <div className="search">
           <span>🔍</span>
-          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, code, barcode or category  ( / )" />
+          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, code, barcode, brand, supplier or category  ( / )" />
         </div>
         <select className={`s ${fCat !== "*" ? "on" : ""}`} value={fCat} onChange={(e) => setFCat(e.target.value)} title="Category">
           <option value="*">All categories</option>
@@ -999,6 +1027,7 @@ export default function ProductsTab({ navActions = null }) {
         codeLocked={!!pf?.row && pf.row.source !== "custom"}
         shelfHint={shelfHint}
         brandOptions={brands}
+        supplierOptions={suppliers}
         uomOptions={[...new Set(["KG", "PCS", ...uoms.map(([c]) => c).filter(Boolean)])]}
         defaultUom={pf?.row?.uom || ""}
         onSave={saveProduct}
