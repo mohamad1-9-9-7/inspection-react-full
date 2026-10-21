@@ -33,7 +33,7 @@ import { useShelfLife } from "./shelfLife";
 import { fetchSuppliers } from "../../../complaints/complaintsCore";
 import BarcodeScanner from "../../../../components/BarcodeScanner";
 import { gs1Info, packLevel, parseBarcode } from "../../../../utils/gs1Barcode";
-import { fetchBarcodeMap, findBarcode, linkBarcode, normBarcode, offHint, showBarcode, suggestAttrs, unlinkBarcode } from "../../../../utils/barcodeMap";
+import { fetchBarcodeMap, findBarcode, linkBarcode, normBarcode, offHint, showBarcode, suggestAttrs } from "../../../../utils/barcodeMap";
 import useWedgeScanner from "../../../../utils/useWedgeScanner";
 import SupplierPicker from "./SupplierPicker";
 
@@ -64,13 +64,11 @@ const TX = {
     worldName: (n) => `Name in the world database: ${n}`, bcLinked: "🔗 Barcode linked to our product.",
     levelLinked: (g) => `📦 Same item as the known barcode ${g} (another packaging level) — linked to it.`,
     fixedKg: (k) => `fixed weight ${k} kg per pack`, eachKg: (k) => `each ${k} kg`,
-    taken: (p) => `⛔ Not linked — this barcode is already on ${p}. One barcode is never on two products; use "Change the link" if that one is wrong.`,
+    taken: (p) => `⛔ Not linked — this barcode is already on ${p}. One barcode is never on two products; if that link is wrong, fix it in the Products Catalog.`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — where the brand owner registered, not where it was made`, gs1Level: (n) => `📦 packaging level ${n} (box / carton)`,
     known: (p) => `✅ Barcode known: ${p}`, filled: (f) => `Filled from the barcode: ${f}`,
     fProd: "production", fExp: "expiry", fBatch: "batch", fWeight: (w) => `weight ${w} kg (one piece / carton)`, noExpCode: "The barcode has no expiry date — type it from the label.",
     linkFail: "The barcode could not be linked (no connection) — the product is chosen for this time only.",
-    wrongLink: "Wrong product? Change the link", removeLink: "Remove the link", relink: "Choose the right product below — the barcode will be linked to it.",
-    removed: "🗑 Link removed — the barcode is new again on every phone.", removeAsk: (g, p) => `Remove the link between barcode ${g} and ${p}?`, unlinkFail: "Could not remove the link (no connection).",
     queued: "📴 No connection — the move is kept on this phone and will be sent automatically.",
     offline: "📴 No connection — showing the list as last seen on this phone.",
     stopped: "⛔ This product is stopped in the Products Catalog — it can't go in.",
@@ -84,6 +82,8 @@ const TX = {
     tempOk: "I checked — put it in this unit anyway", needTempOk: "Confirm the storage-temperature warning first.",
     wrongUnit: "🌡 wrong unit", noUom: "no unit",
     lockedBc: "🔒 From the barcode — change it in the Products Catalog (Barcodes tab).",
+    lockedProd: "🔒 The only supplier on this product's barcodes — change it in the Products Catalog (Barcodes tab).",
+    pickSupplier: "This product's barcodes name these suppliers — choose one (others are added in the Products Catalog):",
   },
   ar: {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -105,13 +105,11 @@ const TX = {
     worldName: (n) => `الاسم بالقاعدة العالمية: ${n}`, bcLinked: "🔗 انربط الباركود بمنتجنا.",
     levelLinked: (g) => `📦 نفس صنف الباركود المعروف ${g} (مستوى تغليف تاني) — انربط فيه.`,
     fixedKg: (k) => `وزن ثابت ${k} كغ للعبوة`, eachKg: (k) => `الواحد ${k} كغ`,
-    taken: (p) => `⛔ ما انربط — هالباركود مربوط أصلاً بـ ${p}. الباركود الواحد ما بينحط على منتجين؛ إذا الربط غلط استعمل "غيّر الربط".`,
+    taken: (p) => `⛔ ما انربط — هالباركود مربوط أصلاً بـ ${p}. الباركود الواحد ما بينحط على منتجين؛ إذا الربط غلط بيتصلّح من كتالوج المنتجات.`,
     gs1: (c, p) => `🌍 GS1 ${c} (${p}) — مكان تسجيل صاحب الماركة، مش بلد التصنيع`, gs1Level: (n) => `📦 مستوى تغليف ${n} (بوكس / كرتونة)`,
     known: (p) => `✅ باركود معروف: ${p}`, filled: (f) => `تعبّى من الباركود: ${f}`,
     fProd: "الإنتاج", fExp: "الانتهاء", fBatch: "الدفعة", fWeight: (w) => `الوزن ${w} كغ (قطعة / كرتونة وحدة)`, noExpCode: "الباركود ما فيه تاريخ انتهاء — اكتبه من الليبل.",
     linkFail: "ما قدرنا نربط الباركود (ما في نت) — المنتج اختير لهالمرة بس.",
-    wrongLink: "منتج غلط؟ غيّر الربط", removeLink: "احذف الربط", relink: "اختار المنتج الصح من تحت — الباركود رح ينربط فيه.",
-    removed: "🗑 انحذف الربط — صار الباركود جديد على كل التلفونات.", removeAsk: (g, p) => `بدك تحذف الربط بين الباركود ${g} و ${p}؟`, unlinkFail: "ما قدرنا نحذف الربط (ما في نت).",
     pcs: "العدد (إذا متوفر)", pcsOut: "العدد الخارج (إذا متوفر)", pcsUnit: "الواحد عبارة عن…", expShort: "ينتهي",
     needSupplier: "اكتب اسم المورد.", needProd: "اختر تاريخ الإنتاج.", needExp: "اختر تاريخ الانتهاء.",
     badDates: "تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج.", autoExp: (d) => `مدة الصلاحية ${d} يوم — تعبّى التاريخ التاني تلقائياً.`,
@@ -131,6 +129,8 @@ const TX = {
     tempOk: "تأكدت — دخّله على هالوحدة على كل حال", needTempOk: "أكّد تنبيه حرارة التخزين أول.",
     wrongUnit: "🌡 وحدة غلط", noUom: "بدون وحدة",
     lockedBc: "🔒 من الباركود — بيتغيّر من كتالوج المنتجات (تبويب الباركودات).",
+    lockedProd: "🔒 المورد الوحيد المسجّل على باركودات هالمنتج — بيتغيّر من كتالوج المنتجات (تبويب الباركودات).",
+    pickSupplier: "باركودات هالمنتج مسجّل عليها هالموردين — اختار واحد (غيرهم بينضافوا من كتالوج المنتجات):",
   },
 };
 
@@ -280,10 +280,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
   const [scanOpen, setScanOpen] = useState(false);
   const [codeMap, setCodeMap] = useState(null);
   const [linkGtin, setLinkGtin] = useState(""); // unknown barcode → the next product chosen is linked to it
-  const [relinking, setRelinking] = useState(false); // linkGtin came from "Change the link" — the only time a link is replaced
   const [worldName, setWorldName] = useState("");
   const [scanNote, setScanNote] = useState("");
-  const [known, setKnown] = useState(null); // { gtin, label } — the scanned barcode was already linked
   const [suppliers, setSuppliers] = useState(null);
   const [fefoOk, setFefoOk] = useState(false);
   const shelf = useShelfLife();
@@ -396,6 +394,26 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     });
     return out;
   }, [stock]);
+  /* The suppliers written on this product's barcodes (Products Catalog). One
+     → it is locked in; several → only those can be picked; none → typed. */
+  const productSuppliers = useMemo(() => {
+    if (mode !== "in" || !pick?.code || !codeMap) return [];
+    const seen = new Map();
+    Object.values(codeMap).forEach((v) => {
+      const sup = String(v?.supplier || "").trim();
+      if (sup && String(v?.code || "").trim() === pick.code && !seen.has(sup.toLowerCase())) seen.set(sup.toLowerCase(), sup);
+    });
+    return [...seen.values()];
+  }, [mode, pick, codeMap]);
+  const [supNote, setSupNote] = useState("");
+  useEffect(() => {
+    if (lock.supplier) return; // the scanned barcode already decided it
+    if (productSuppliers.length === 1) {
+      setSupplier(productSuppliers[0]); setLock((l) => ({ ...l, supplier: true })); setSupNote("prod");
+    } else if (productSuppliers.length > 1) {
+      setSupplier((v) => (productSuppliers.includes(v) ? v : ""));
+    }
+  }, [productSuppliers, lock.supplier]);
   const lastSupplier = useMemo(() => {
     if (mode !== "in" || !pick) return "";
     const m = (stock?.moves || []).slice().reverse().find((x) => x?.dir === "in" && x.supplier
@@ -412,8 +430,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
 
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
-    setPackKg(0); autoQty.current = ""; setTempOk(false); setLock({ pack: false, supplier: false });
-    setBatch(""); setGtin(""); setLinkGtin(""); setRelinking(false); setWorldName(""); setScanNote(""); setKnown(null);
+    setPackKg(0); autoQty.current = ""; setTempOk(false); setLock({ pack: false, supplier: false }); setSupNote("");
+    setBatch(""); setGtin(""); setLinkGtin(""); setWorldName(""); setScanNote("");
   };
 
   // the learned barcode list — loaded when products start coming in
@@ -463,21 +481,21 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
         .catch(() => {});
     }
     if (hit && hit.code && isStopped(hit.code)) {
-      setPick(null); setKnown(null); setLinkGtin("");
+      setPick(null); setLinkGtin("");
       setScanNote(""); setMsg({ kind: "bad", text: `${s.stopped} (${hit.product || hit.code})` });
       return;
     }
     if (hit && hit.code) {
       const cat = catalog.find((c) => c.code === hit.code);
       const it = { code: hit.code, product: cat?.product || hit.product, uom: cat?.uom || hit.uom };
-      setLinkGtin(""); setWorldName(""); setKnown({ gtin: r.gtin, label: it.product || it.code });
+      setLinkGtin(""); setWorldName("");
       setPick({ ...it, have: haveOf(it.code, it.product)?.qty || 0 });
       if (r.prodDate && !r.expDate) expiryFromShelf(it, r.prodDate);
       // the barcode says its brand, packaging and supplier (Products Catalog): the count's unit and the supplier follow it
       const pack = PCS_UNITS.find((u) => u.k === hit.pack);
       if (pack) setPcsUnit(pack.k);
       if (hit.supplier) setSupplier(hit.supplier);
-      setLock({ pack: !!pack, supplier: !!hit.supplier });
+      setLock({ pack: !!pack, supplier: !!hit.supplier }); setSupNote(hit.supplier ? "bc" : "");
       // a fixed weight fills one pack (a GS1 weight read from this label already won above)
       const kg = Number(hit.kg) > 0 && !(r.weightKg > 0) ? Number(hit.kg) : 0;
       setPackKg(kg);
@@ -485,7 +503,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
       const what = [hit.brand, pack && pcsUnitLabel(pack.k, 1, ar), hit.uom, kg && s.fixedKg(kg)].filter(Boolean).join(" · ");
       setScanNote([s.known(it.product || it.code) + (what ? ` (${what})` : ""), levelNote, note].filter(Boolean).join(" — "));
     } else {
-      setPick(null); setKnown(null);
+      setPick(null);
       setLinkGtin(r.gtin);
       // a new world barcode: what its digits say (GS1 office, packaging level) helps pick the product
       const info = gs1Info(r.gtin);
@@ -504,38 +522,19 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
   }, !scanOpen && !saving && mode !== "out" && !!target && !loading);
   const start = (m, it = null) => {
     setMode(m); setQ(""); setQty(""); setMsg(null); resetLot();
+    if (m === "in") setCodeMap(null);
     setPick(it ? lotOf(it) : null); // from the list = goods out of that lot
     if (m) window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  // goods out: that exact lot; goods in: the product (the lot is typed)
-  /* A wrong link: "change" puts the barcode back in learning mode — the
-     product chosen next replaces the link; "remove" deletes it for every phone. */
-  const relink = () => {
-    if (!known) return;
-    setLinkGtin(known.gtin); setRelinking(true); setKnown(null); setPick(null); setLock({ pack: false, supplier: false });
-    setScanNote(s.relink);
-  };
-  const removeLink = async () => {
-    if (!known) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(s.removeAsk(known.gtin.replace(/^0/, ""), known.label))) return;
-    try {
-      setCodeMap(await unlinkBarcode(known.gtin, userName()));
-      setKnown(null); setPick(null); setGtin(""); setLock({ pack: false, supplier: false });
-      setScanNote(s.removed);
-    } catch {
-      setMsg({ kind: "bad", text: s.unlinkFail });
-    }
-  };
-
+  /* A wrong barcode link is fixed in the Products Catalog only — this screen
+     never changes or removes one (user, 21 Oct 2026). */
   // a new barcode waiting: the product chosen now is learned for it (company-wide)
   const learn = async (it) => {
     const g = linkGtin;
     if (prodDate && !expDate) expiryFromShelf(it, prodDate);
-    const replace = relinking;
-    setLinkGtin(""); setRelinking(false); setWorldName("");
+    setLinkGtin(""); setWorldName("");
     try {
-      setCodeMap(await linkBarcode(g, it, userName(), suggestAttrs(g), { replace }));
+      setCodeMap(await linkBarcode(g, it, userName(), suggestAttrs(g)));
       setScanNote((n) => [s.bcLinked, n].filter(Boolean).join(" — "));
     } catch (e) {
       // another phone linked it meanwhile: never two products on one barcode
@@ -659,12 +658,6 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
         {!isOut && scanNote && (
           <div className="alert ok">
             <div>{scanNote}</div>
-            {known ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                <button type="button" className="btn" onClick={relink} disabled={saving}>✏️ {s.wrongLink}</button>
-                <button type="button" className="btn" onClick={removeLink} disabled={saving} style={{ color: "#b91c1c" }}>🗑 {s.removeLink}</button>
-              </div>
-            ) : null}
           </div>
         )}
         <BarcodeScanner open={scanOpen} lang={lang} onResult={onScan} onClose={() => setScanOpen(false)} />
@@ -740,8 +733,20 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
             {!isOut && (
               <>
                 <span className="lbl">{s.supplier}</span>
-                <SupplierPicker value={supplier} onChange={setSupplier} list={supplierList}
-                  recent={recentSuppliers} last={lastSupplier} lang={lang} locked={lock.supplier} lockNote={s.lockedBc} />
+                {!lock.supplier && productSuppliers.length > 1 ? (
+                  <div>
+                    <div className="sm" style={{ marginBottom: 6 }}>{s.pickSupplier}</div>
+                    <div className="chips">
+                      {productSuppliers.map((n) => (
+                        <button key={n} type="button" className={`chip ${supplier === n ? "on" : ""}`} dir="auto" onClick={() => setSupplier(n)}>🏭 {n}</button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <SupplierPicker value={supplier} onChange={setSupplier} list={supplierList}
+                    recent={recentSuppliers} last={lastSupplier} lang={lang} locked={lock.supplier}
+                    lockNote={supNote === "prod" ? s.lockedProd : s.lockedBc} />
+                )}
                 <div className="acts" style={{ marginTop: 0 }}>
                   <div>
                     <span className="lbl">{s.prodDate}</span>
