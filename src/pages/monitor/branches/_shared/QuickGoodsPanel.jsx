@@ -42,7 +42,7 @@ const TX = {
     inside: "Products inside", products: "products", total: "total qty", linked: (n) => `Same list as cold room “${n}” on the 3D screen`,
     in: "➕ Products in", out: "➖ Products out", search: "Search code or product…", empty: "Nothing recorded inside this unit yet.",
     pickIn: "Which product goes in?", pickOut: "Which product comes out?", typeMore: "Type at least 2 letters or the code.",
-    newItem: (q) => `➕ Add “${q}” as a new product`, here: "inside", qty: "Quantity", available: (q, u) => `Available: ${q} ${u}`,
+    noMatch: "No product matches. New products are added in the Products Catalog.", here: "inside", qty: "Quantity", available: (q, u) => `Available: ${q} ${u}`,
     all: "All", saveIn: "Save — products in", saveOut: "Save — products out", saving: "Saving…", cancel: "Cancel", change: "Change",
     needQty: "Type the quantity first.", tooMuch: "More than what is inside.", notHere: "This product is no longer inside — refresh.",
     savedIn: (q, p) => `✅ ${q} × ${p} added.`, savedOut: (q, p) => `✅ ${q} × ${p} taken out.`, moves: "Last moves",
@@ -91,7 +91,7 @@ const TX = {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
     in: "➕ إدخال منتجات", out: "➖ إخراج منتجات", search: "ابحث بالكود أو اسم المنتج…", empty: "لا توجد منتجات مسجّلة داخل هذه الوحدة بعد.",
     pickIn: "أي منتج سيدخل؟", pickOut: "أي منتج سيخرج؟", typeMore: "اكتب حرفين على الأقل أو الكود.",
-    newItem: (q) => `➕ إضافة «${q}» كمنتج جديد`, here: "موجود", qty: "الكمية", available: (q, u) => `المتوفر: ${q} ${u}`,
+    noMatch: "ما في منتج بهالاسم. المنتجات الجديدة بتنضاف من كتالوج المنتجات.", here: "موجود", qty: "الكمية", available: (q, u) => `المتوفر: ${q} ${u}`,
     all: "الكل", saveIn: "حفظ — إدخال", saveOut: "حفظ — إخراج", saving: "جاري الحفظ…", cancel: "إلغاء", change: "تغيير",
     needQty: "اكتب الكمية أولاً.", tooMuch: "أكثر من الموجود داخل الوحدة.", notHere: "هذا المنتج لم يعد موجوداً — حدّث الصفحة.",
     savedIn: (q, p) => `✅ تمت إضافة ${q} × ${p}.`, savedOut: (q, p) => `✅ تم إخراج ${q} × ${p}.`, moves: "آخر الحركات",
@@ -835,14 +835,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
                     ? <div className="pill ok" style={{ whiteSpace: "nowrap" }}>{s.here} · {fmt(have.qty)}</div> : null);
                 })}
                 {needle.length < 2 && <div className="sm" style={{ padding: "4px 2px" }}>{s.typeMore}</div>}
-                {needle.length >= 2 && !shownIn.some((it) => it.code.toLowerCase() === needle || it.product.toLowerCase() === needle) && (
-                  <button type="button" className="btn" style={{ width: "100%", justifyContent: "center" }}
-                    onClick={() => setPick(/^[\w-]+$/.test(q.trim()) && /\d/.test(q)
-                      ? { code: q.trim(), product: "", uom: "", have: 0 }
-                      : { code: "", product: q.trim(), uom: "", have: 0 })}>
-                    {s.newItem(q.trim())}
-                  </button>
-                )}
+                {/* only catalog products go in — a new one is added in the Products Catalog (user, 21 Oct 2026) */}
+                {needle.length >= 2 && !shownIn.length && <div className="alert warn">{s.noMatch}</div>}
               </>
             )}
           </>
