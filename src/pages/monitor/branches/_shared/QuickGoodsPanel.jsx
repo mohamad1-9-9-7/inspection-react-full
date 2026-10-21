@@ -83,6 +83,7 @@ const TX = {
     widerRange: (p, c) => `ℹ️ The product needs ${p}; this unit is allowed ${c}. Keep the unit at the product's range.`,
     tempOk: "I checked — put it in this unit anyway", needTempOk: "Confirm the storage-temperature warning first.",
     wrongUnit: "🌡 wrong unit", noUom: "no unit",
+    lockedBc: "🔒 From the barcode — change it in the Products Catalog (Barcodes tab).",
   },
   ar: {
     inside: "المنتجات الموجودة", products: "منتج", total: "إجمالي الكمية", linked: (n) => `نفس قائمة الغرفة «${n}» في شاشة الغرف ثلاثية الأبعاد`,
@@ -129,6 +130,7 @@ const TX = {
     widerRange: (p, c) => `ℹ️ المنتج بدّه ${p}؛ وهالوحدة مسموحلها ${c}. خلّي الوحدة ضمن حدود المنتج.`,
     tempOk: "تأكدت — دخّله على هالوحدة على كل حال", needTempOk: "أكّد تنبيه حرارة التخزين أول.",
     wrongUnit: "🌡 وحدة غلط", noUom: "بدون وحدة",
+    lockedBc: "🔒 من الباركود — بيتغيّر من كتالوج المنتجات (تبويب الباركودات).",
   },
 };
 
@@ -256,6 +258,9 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
   }, []);
   const clashOf = useCallback((code) => (code ? storageClash(storageOf(media, code), unitDef) : ""), [media, unitDef]);
   const [tempOk, setTempOk] = useState(false);
+  /* Packaging / supplier that the scanned barcode carries (Products Catalog)
+     are locked on this screen: the barcode decides them, not the storekeeper. */
+  const [lock, setLock] = useState({ pack: false, supplier: false });
   const [keeper, setKeeper] = useState(() => lastKeeper() || userName());
   const [destType, setDestType] = useState(""); // customer | branch
   const [toBranch, setToBranch] = useState("");
@@ -407,7 +412,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
 
   const resetLot = () => {
     setSupplier(""); setProdDate(""); setExpDate(""); setPcs(""); setPcsUnit("piece"); setShelfNote(""); setFefoOk(false);
-    setPackKg(0); autoQty.current = ""; setTempOk(false);
+    setPackKg(0); autoQty.current = ""; setTempOk(false); setLock({ pack: false, supplier: false });
     setBatch(""); setGtin(""); setLinkGtin(""); setRelinking(false); setWorldName(""); setScanNote(""); setKnown(null);
   };
 
@@ -471,7 +476,8 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
       // the barcode says its brand, packaging and supplier (Products Catalog): the count's unit and the supplier follow it
       const pack = PCS_UNITS.find((u) => u.k === hit.pack);
       if (pack) setPcsUnit(pack.k);
-      if (hit.supplier) setSupplier((v) => v || hit.supplier);
+      if (hit.supplier) setSupplier(hit.supplier);
+      setLock({ pack: !!pack, supplier: !!hit.supplier });
       // a fixed weight fills one pack (a GS1 weight read from this label already won above)
       const kg = Number(hit.kg) > 0 && !(r.weightKg > 0) ? Number(hit.kg) : 0;
       setPackKg(kg);
@@ -506,7 +512,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
      product chosen next replaces the link; "remove" deletes it for every phone. */
   const relink = () => {
     if (!known) return;
-    setLinkGtin(known.gtin); setRelinking(true); setKnown(null); setPick(null);
+    setLinkGtin(known.gtin); setRelinking(true); setKnown(null); setPick(null); setLock({ pack: false, supplier: false });
     setScanNote(s.relink);
   };
   const removeLink = async () => {
@@ -515,7 +521,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     if (!window.confirm(s.removeAsk(known.gtin.replace(/^0/, ""), known.label))) return;
     try {
       setCodeMap(await unlinkBarcode(known.gtin, userName()));
-      setKnown(null); setPick(null); setGtin("");
+      setKnown(null); setPick(null); setGtin(""); setLock({ pack: false, supplier: false });
       setScanNote(s.removed);
     } catch {
       setMsg({ kind: "bad", text: s.unlinkFail });
@@ -538,7 +544,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     }
   };
   const choose = (it) => { if (mode === "in" && isStopped(it.code)) { setMsg({ kind: "bad", text: s.stopped }); return; }
-    if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPackKg(0); setTempOk(false); setPick(mode === "out"
+    if (mode === "in" && linkGtin) learn(it); setFefoOk(false); setPackKg(0); setTempOk(false); setLock({ pack: false, supplier: false }); setPick(mode === "out"
     ? lotOf(it)
     : { code: it.code, product: it.product, uom: it.uom, have: haveOf(it.code, it.product)?.qty || 0 }); };
 
@@ -673,7 +679,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
                 {(isOut || pick.have > 0) && <div className="sm" style={{ marginTop: 4, fontWeight: 800 }}>{s.available(fmt(pick.have), pick.uom || "")}</div>}
                 {!isOut && storageOf(media, pick.code) && <div className="sm" style={{ marginTop: 4 }}>{s.storage(storageText(storageOf(media, pick.code), ar))}</div>}
               </div>
-              <button type="button" className="btn" onClick={() => setPick(null)} disabled={saving}>{s.change}</button>
+              <button type="button" className="btn" onClick={() => { setPick(null); setLock({ pack: false, supplier: false }); }} disabled={saving}>{s.change}</button>
             </div>
             {!isOut && (() => {
               const st = storageOf(media, pick.code);
@@ -715,12 +721,19 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
             {!(isOut && pick.pcs) && (
               <>
                 <span className="lbl">{s.pcsUnit}</span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {PCS_UNITS.map((u) => (
-                    <button key={u.k} type="button" className={`chip ${pcsUnit === u.k ? "on" : ""}`} style={{ textAlign: "center", flex: "1 0 22%" }}
-                      onClick={() => setPcsUnit(u.k)}>{pcsUnitLabel(u.k, 1, ar)}</button>
-                  ))}
-                </div>
+                {lock.pack && !isOut ? (
+                  <div>
+                    <span className="chip on" style={{ display: "inline-block", cursor: "default" }}>🔒 {pcsUnitLabel(pcsUnit, 1, ar)}</span>
+                    <div className="sm" style={{ marginTop: 4 }}>{s.lockedBc}</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {PCS_UNITS.map((u) => (
+                      <button key={u.k} type="button" className={`chip ${pcsUnit === u.k ? "on" : ""}`} style={{ textAlign: "center", flex: "1 0 22%" }}
+                        onClick={() => setPcsUnit(u.k)}>{pcsUnitLabel(u.k, 1, ar)}</button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -728,7 +741,7 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
               <>
                 <span className="lbl">{s.supplier}</span>
                 <SupplierPicker value={supplier} onChange={setSupplier} list={supplierList}
-                  recent={recentSuppliers} last={lastSupplier} lang={lang} />
+                  recent={recentSuppliers} last={lastSupplier} lang={lang} locked={lock.supplier} lockNote={s.lockedBc} />
                 <div className="acts" style={{ marginTop: 0 }}>
                   <div>
                     <span className="lbl">{s.prodDate}</span>

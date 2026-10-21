@@ -34,7 +34,7 @@ function Hl({ text, q }) {
   return <>{t.slice(0, i)}<mark style={{ background: "#fde68a", color: "inherit", padding: 0, borderRadius: 3 }}>{t.slice(i, i + needle.length)}</mark>{t.slice(i + needle.length)}</>;
 }
 
-export default function SupplierPicker({ value, onChange, list, recent = [], last = "", lang }) {
+export default function SupplierPicker({ value, onChange, list, recent = [], last = "", lang, locked = false, lockNote = "" }) {
   const s = TX[lang === "ar" ? "ar" : "en"];
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState(""); // the name picked → shown as a card while it is the value
@@ -58,6 +58,19 @@ export default function SupplierPicker({ value, onChange, list, recent = [], las
 
   const choose = (name) => { onChange(name); setOpen(false); setChosen(name); };
   const chips = [last, ...recent].filter((x, i, a) => x && a.findIndex((y) => normName(y) === normName(x)) === i).slice(0, 6);
+
+  // locked = the supplier comes from the barcode (Products Catalog): shown, not changeable here
+  if (locked && value) {
+    return (
+      <div className="card" style={{ margin: 0, padding: "10px 12px", borderColor: "#cbd5e1", background: "#f1f5f9" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }} aria-hidden>🔒</span>
+          <div className="t2" dir="auto" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{value}</div>
+        </div>
+        {lockNote && <div className="sm" style={{ marginTop: 4 }}>{lockNote}</div>}
+      </div>
+    );
+  }
 
   if (chosen && chosen === value) {
     return (
