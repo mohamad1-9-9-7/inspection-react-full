@@ -97,8 +97,8 @@ export function makeFtrCleanBuilder(branchLabel) {
     }
 
     addFooter(ws, {
-      checkedBy:  p?.footer?.checkedBy || "",
-      verifiedBy: p?.footer?.verifiedBy || "",
+      checkedBy:  p?.footer?.checkedBy || p.checkedBy || "",
+      verifiedBy: p?.footer?.verifiedBy || p.verifiedBy || "",
     }, NC);
     return ws;
   };

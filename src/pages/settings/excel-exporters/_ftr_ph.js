@@ -79,8 +79,8 @@ export function makeFtrPhBuilder(branchLabel) {
           entry?.name || entry?.employeeName || "",
           ...HYGIENE_COLUMNS.map((c) => entry?.[c] || ""),
           entry?.fitForFoodHandling || "",
-          entry?.reasonCommunicableDisease || "",
-          entry?.reasonOpenWound || "",
+          entry?.reasonCommunicableDisease || entry?.["Communicable Disease"] || "",
+          entry?.reasonOpenWound || entry?.["Open wounds/sores & cut"] || "",
           entry?.reasonOther || "",
           entry?.remarks || "",
         ];

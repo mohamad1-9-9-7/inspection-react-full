@@ -63,8 +63,8 @@ export function makeFtrOilBuilder(branchLabel) {
         const bg = i % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
         const values = [
           formatDMY(e.date),
-          e.evaluationResults || e.results || "",
-          e.correctiveAction || "",
+          e.evaluationResults || e.results || e.result || "",
+          e.correctiveAction || e.action || "",
           e.checkedBy || "",
           e.verifiedBy || "",
         ];

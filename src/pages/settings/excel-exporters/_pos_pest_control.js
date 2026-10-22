@@ -79,7 +79,7 @@ export function makePosPestBuilder(branchLabel) {
     pair("Technician", p.technician,            "Inspector",  p.inspector);
 
     section("Service Company");
-    pair("Company Name", company.name,    "Service Report No.", company.serviceReportNo);
+    pair("Company Name", company.name || p.serviceProvider, "Service Report No.", company.serviceReportNo);
     pair("Contact",      company.contact, "Phone",              company.phone);
     if (company.address) wide("Address", company.address);
 
@@ -131,7 +131,20 @@ export function makePosPestBuilder(branchLabel) {
       });
     }
 
-    addFooter(ws, { checkedBy: p.technician || "", verifiedBy: p.inspector || "" }, NC);
+    // POS 15 records sightings (location + photo) instead of bait stations.
+    const sightings = rowsOf(p.sightings);
+    if (sightings.length) {
+      section(`Sightings (${sightings.length})`);
+      sightings.forEach((s, i) => {
+        const photo = s?.photoUrl || s?.photoBase64 || "";
+        wide(`Sighting ${i + 1}`, [s?.location, /^https?:/.test(photo) ? photo : ""].filter(Boolean).join("\n"));
+      });
+    }
+
+    addFooter(ws, {
+      checkedBy:  p.technician || p.checkedBy || "",
+      verifiedBy: p.inspector || p.verifiedBy || "",
+    }, NC);
     return ws;
   };
 }

@@ -20,9 +20,13 @@ const COLS = [
   { key: "supplier",         label: "Supplier",         width: 18 },
   { key: "productionDate",   label: "Production Date",  width: 14, get: (r) => r.productionDate ?? r.origProdDate },
   { key: "expiryDate",       label: "Expiry Date",      width: 14, get: (r) => r.expiryDate ?? r.origExpDate },
+  { key: "openedDate",       label: "Opened Date",      width: 14 },
+  { key: "bestBeforeDate",   label: "Best Before",      width: 14, get: (r) => r.bestBefore },
+  { key: "rawWeight",        label: "Raw Weight (kg)",  width: 12 },
   { key: "finalProduct",     label: "Final Product",    width: 28, get: (r) => codedName(r.finalCode, r.finalProduct ?? r.finalName) },
   { key: "finalProdDate",    label: "Final Prod. Date", width: 14 },
   { key: "finalExpDate",     label: "Final Exp. Date",  width: 14 },
+  { key: "finalWeight",      label: "Final Weight (kg)", width: 12 },
   { key: "storageLocation",  label: "Storage Location", width: 16 },
   { key: "disposalReason",   label: "Disposal Reason",  width: 18 },
   { key: "checkedBy",        label: "Checked by",       width: 14 },
@@ -95,8 +99,8 @@ export function makePosTraceabilityBuilder(branchLabel) {
     }
 
     addFooter(ws, {
-      checkedBy:  p?.footer?.checkedBy || "",
-      verifiedBy: p?.footer?.verifiedBy || "",
+      checkedBy:  p?.footer?.checkedBy || p.checkedBy || "",
+      verifiedBy: p?.footer?.verifiedBy || p.verifiedBy || "",
     }, NC);
     return ws;
   };
