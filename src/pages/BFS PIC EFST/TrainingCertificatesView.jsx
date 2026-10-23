@@ -4,6 +4,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { uploadImage } from "../../utils/imageUpload";
+import {
+  COMPANY_DIRECTORY,
+  normalizeEmpNo,
+  searchCompany,
+} from "../monitor/branches/_shared/staffRegistry";
+
+// دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
+const DIRECTORY_BY_NO = new Map(
+  COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d])
+);
 
 /* ========= API ========= */
 
@@ -257,6 +267,8 @@ export default function TrainingCertificatesView() {
   const [editUploading, setEditUploading] = useState(""); // slot قيد الرفع
   const [editOriginal, setEditOriginal] = useState(null); // نسخة قبل التعديل
   const [dragSlot, setDragSlot] = useState(""); // بطاقة الصورة تحت السحب
+  // قائمة اقتراحات الموظفين: تحت أي حقل (employeeNo | name) + العنصر المحدد
+  const [empSuggest, setEmpSuggest] = useState({ field: "", idx: 0 });
   const [editDraft, setEditDraft] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingRid, setDeletingRid] = useState(null);
@@ -667,6 +679,7 @@ export default function TrainingCertificatesView() {
     setEditDraft(null);
     setEditOriginal(null);
     setDragSlot("");
+    setEmpSuggest({ field: "", idx: 0 });
   }
 
   // الحقول التي تغيّرت عن القيم الأصلية (لإبرازها + عدّاد التغييرات)
@@ -707,7 +720,8 @@ export default function TrainingCertificatesView() {
     const onKey = (e) => {
       if (e.key === "Escape" && !previewImage) {
         e.preventDefault();
-        requestCloseEdit();
+        if (empSuggest.field) setEmpSuggest({ field: "", idx: 0 });
+        else requestCloseEdit();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (editChanged.size && !editDateError && !editUploading && !savingEdit) saveEdit();
@@ -717,9 +731,30 @@ export default function TrainingCertificatesView() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // اختيار موظف من الدليل: الرقم + الاسم + الفرع + الوظيفة معاً
+  function pickEmployee(d) {
+    setEditDraft((prev) => ({
+      ...(prev || {}),
+      employeeNo: d.empNo,
+      name: d.name,
+      branch: d.branch || prev?.branch || "",
+      job: d.job || prev?.job || "",
+    }));
+    setEmpSuggest({ field: "", idx: 0 });
+  }
+
   function updateEditField(key, value) {
     setEditDraft((prev) => {
       const next = { ...(prev || {}), [key]: value };
+      // رقم وظيفي مطابق تماماً لموظف في الدليل → يعبّي الاسم والفرع والوظيفة
+      if (key === "employeeNo") {
+        const d = DIRECTORY_BY_NO.get(normalizeEmpNo(value));
+        if (d) {
+          next.name = d.name;
+          next.branch = d.branch || next.branch;
+          next.job = d.job || next.job;
+        }
+      }
       // BFS / PIC / EFST: الانتهاء يُحسب تلقائياً مثل صفحة الإدخال
       if (key === "courseType" || key === "issueDate") {
         const years = COURSE_DURATION_YEARS[next.courseType];
@@ -2220,6 +2255,166 @@ export default function TrainingCertificatesView() {
           ...extra,
         });
 
+        // الموظف المطابق للرقم الحالي في دليل الشركة
+        const dirMatch = DIRECTORY_BY_NO.get(normalizeEmpNo(editDraft.employeeNo)) || null;
+        const dirNameMismatch =
+          !!dirMatch &&
+          String(dirMatch.name).trim().toLowerCase() !==
+            String(editDraft.name || "").trim().toLowerCase();
+
+        // حقل بحث (رقم أو اسم) مع قائمة اقتراحات من الدليل
+        const empLookupField = (k, label) => {
+          const open = empSuggest.field === k;
+          const matches = open ? searchCompany(editDraft[k], { limit: 8 }) : [];
+          const activeIdx = Math.min(empSuggest.idx, Math.max(0, matches.length - 1));
+          const onKeyDown = (e) => {
+            if (!open || !matches.length) return;
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const step = e.key === "ArrowDown" ? 1 : -1;
+              setEmpSuggest({
+                field: k,
+                idx: (activeIdx + step + matches.length) % matches.length,
+              });
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              pickEmployee(matches[activeIdx]);
+            }
+          };
+          return field(
+            k,
+            label,
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                value={editDraft[k] || ""}
+                autoComplete="off"
+                placeholder={k === "employeeNo" ? "Number or name…" : "Search by name…"}
+                onChange={(e) => {
+                  updateEditField(k, e.target.value);
+                  setEmpSuggest({ field: k, idx: 0 });
+                }}
+                onFocus={() => setEmpSuggest({ field: k, idx: 0 })}
+                onBlur={() =>
+                  // تأخير بسيط حتى يصل النقر على الاقتراح قبل الإغلاق
+                  setTimeout(
+                    () => setEmpSuggest((s) => (s.field === k ? { field: "", idx: 0 } : s)),
+                    150
+                  )
+                }
+                onKeyDown={onKeyDown}
+                style={inputStyleFor(k, { paddingLeft: 30 })}
+              />
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: dirMatch ? "#15803d" : "#94a3b8",
+                  fontSize: 13,
+                  pointerEvents: "none",
+                }}
+              >
+                {dirMatch ? "✓" : "⌕"}
+              </span>
+              {open && String(editDraft[k] || "").trim() && (
+                <div
+                  role="listbox"
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 4px)",
+                    left: 0,
+                    right: 0,
+                    minWidth: 260,
+                    zIndex: 5,
+                    background: "#fff",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 12,
+                    boxShadow: "0 14px 34px rgba(15,23,42,0.18)",
+                    overflow: "hidden",
+                    maxHeight: 280,
+                    overflowY: "auto",
+                  }}
+                >
+                  {matches.length === 0 ? (
+                    <div style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8" }}>
+                      No employee matches “{editDraft[k]}”.
+                    </div>
+                  ) : (
+                    matches.map((d, i) => (
+                      <button
+                        key={d.empNo}
+                        type="button"
+                        role="option"
+                        aria-selected={i === activeIdx}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setEmpSuggest({ field: k, idx: i })}
+                        onClick={() => pickEmployee(d)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "none",
+                          borderBottom: "1px solid #f1f5f9",
+                          background: i === activeIdx ? "#f0f9ff" : "#fff",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span
+                          style={{
+                            minWidth: 44,
+                            padding: "2px 6px",
+                            borderRadius: 6,
+                            background: "#e0f2fe",
+                            color: "#0369a1",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            textAlign: "center",
+                          }}
+                        >
+                          {d.empNo}
+                        </span>
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#0f172a",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {d.name}
+                          </span>
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 11,
+                              color: "#64748b",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {[d.branch, d.job].filter(Boolean).join(" · ") || "—"}
+                          </span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        };
+
         return (
           <div
             onClick={requestCloseEdit}
@@ -2373,9 +2568,9 @@ export default function TrainingCertificatesView() {
                   <div style={editCardStyle}>
                     <div style={editSectionTitle}>👤 Employee</div>
                     <div style={editGrid}>
+                      {empLookupField("employeeNo", "Employee No")}
+                      {empLookupField("name", "Name")}
                       {[
-                        ["employeeNo", "Employee No"],
-                        ["name", "Name"],
                         ["nationality", "Nationality"],
                         ["branch", "Branch"],
                         ["job", "Job"],
@@ -2390,6 +2585,37 @@ export default function TrainingCertificatesView() {
                             style={inputStyleFor(k)}
                           />
                         )
+                      )}
+                    </div>
+
+                    {/* ربط الرقم الوظيفي بدليل الموظفين */}
+                    <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700 }}>
+                      {!String(editDraft.employeeNo || "").trim() ? (
+                        <span style={{ color: "#94a3b8" }}>
+                          Type an employee number or a name to search the staff directory.
+                        </span>
+                      ) : dirMatch ? (
+                        dirNameMismatch ? (
+                          <span style={{ color: "#b45309" }}>
+                            ⚠ #{dirMatch.empNo} is {dirMatch.name} in the staff directory.{" "}
+                            <button
+                              type="button"
+                              onClick={() => pickEmployee(dirMatch)}
+                              style={linkBtnStyle}
+                            >
+                              Use directory details
+                            </button>
+                          </span>
+                        ) : (
+                          <span style={{ color: "#15803d" }}>
+                            ✓ Linked to the staff directory — {dirMatch.name}
+                            {dirMatch.branch ? ` · ${dirMatch.branch}` : ""}
+                          </span>
+                        )
+                      ) : (
+                        <span style={{ color: "#b45309" }}>
+                          ⚠ #{editDraft.employeeNo} is not in the staff directory.
+                        </span>
                       )}
                     </div>
                   </div>
@@ -2847,6 +3073,16 @@ const spinnerStyle = {
   border: "3px solid #bae6fd",
   borderTopColor: "#0369a1",
   animation: "tcSpin .8s linear infinite",
+};
+
+const linkBtnStyle = {
+  border: "none",
+  padding: 0,
+  background: "transparent",
+  color: "#0369a1",
+  fontWeight: 800,
+  textDecoration: "underline",
+  cursor: "pointer",
 };
 
 const kbdStyle = {
