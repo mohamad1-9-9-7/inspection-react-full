@@ -452,6 +452,7 @@ export const BRANCHES = [
       ["shelf_life_config",         "Shelf Life Rules (config)"],
       ["account_groups",            "Account Groups (config)"],
       ["admin_notification_config", "Notification Settings (config)"],
+      ["alert_rules_config",        "Alert Rules & Recipients (config)"],
       ["settings_audit_log",        "Settings Change Log"],
     ],
   },

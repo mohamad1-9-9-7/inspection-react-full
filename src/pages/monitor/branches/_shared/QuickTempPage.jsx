@@ -555,6 +555,10 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
         photoUrl,
         recheckDue,
         replace: !isRecheck && !!existing && replace,
+        // for the server alert (utils/alertEngine.cjs): what the unit is called and its limits
+        unitLabel: def.label,
+        min: def.min,
+        max: def.max,
       }, data);
       if (out) notifyOutOfRange({ location: def.label, value, min: def.min, max: def.max });
       const parts = [queued ? t.queued : t.saved];

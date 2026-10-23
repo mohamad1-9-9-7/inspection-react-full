@@ -6,6 +6,7 @@ import GlobalDatePicker from "./components/GlobalDatePicker";
 import ScannedLinkOpener from "./components/ScannedLinkOpener";
 import ThemeToggle from "./components/ThemeToggle";
 import AccessibilityMenu from "./components/AccessibilityMenu";
+import AlertsBell from "./components/AlertsBell";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import RouteTitle from "./components/RouteTitle";
 import GlobalTimePicker from "./components/GlobalTimePicker";
@@ -61,6 +62,7 @@ const ColdRooms3D = lazy(() => import("./pages/coldrooms/ColdRooms3D"));
 // كتالوج المنتجات — نفس أداة الإعدادات، بمدخل تاني من المخزون
 const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalogPage"));
 const LabelPrintPage = lazy(() => import("./pages/labels/LabelPrintPage"));
+const AlertsPage = lazy(() => import("./pages/alerts/AlertsPage"));
 
 // 🏭 وحدة التصنيع — قائمة المواد (BOM)
 const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
@@ -902,6 +904,7 @@ export default function App() {
       <ThemeToggle />
       <AccessibilityMenu />
       <LanguageSwitcher />
+      <AlertsBell />
       <RouteTitle />
       <Routes>
         {/* الجذر */}
@@ -974,6 +977,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ButcherSupervisor />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔔 التنبيهات — يكتشفها السيرفر (utils/alertEngine.cjs)؛ كل حساب يرى فروعه */}
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute>
+              <AlertsPage />
             </ProtectedRoute>
           }
         />
