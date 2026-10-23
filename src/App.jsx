@@ -60,6 +60,7 @@ const ProductTracePage = lazy(() => import("./pages/traceability/ProductTracePag
 const ColdRooms3D = lazy(() => import("./pages/coldrooms/ColdRooms3D"));
 // كتالوج المنتجات — نفس أداة الإعدادات، بمدخل تاني من المخزون
 const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalogPage"));
+const LabelPrintPage = lazy(() => import("./pages/labels/LabelPrintPage"));
 
 // 🏭 وحدة التصنيع — قائمة المواد (BOM)
 const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
@@ -1024,6 +1025,16 @@ export default function App() {
           element={
             <InventoryRoute section="settings" item="settings.products">
               <ProductsCatalogPage />
+            </InventoryRoute>
+          }
+        />
+
+        {/* 🏷️ ملصقات المنتجات — تاريخ الانتهاء من الصلاحية + كود GS1 (قسم مستقل) */}
+        <Route
+          path="/inventory/labels"
+          element={
+            <InventoryRoute section="labels">
+              <LabelPrintPage />
             </InventoryRoute>
           }
         />

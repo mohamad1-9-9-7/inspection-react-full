@@ -424,6 +424,13 @@ export const BRANCHES = [
     id: "PRODUCTS", card: "inventory", label: "Products Catalog", emoji: "🏷️", accent: "#0d9488",
     types: [
       ["products_list", "Products Catalog (config)"],
+      ["product_media", "Product photos, storage & allergens (config)"],
+    ],
+  },
+  {
+    id: "LABELS", card: "inventory", label: "Product Labels", emoji: "🖨️", accent: "#0369a1",
+    types: [
+      ["label_print_log", "Label Print Log"],
     ],
   },
 

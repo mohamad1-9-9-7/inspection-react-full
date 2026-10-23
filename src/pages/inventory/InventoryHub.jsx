@@ -66,6 +66,18 @@ const MODULES = [
     enSub: "Add / edit products & barcodes for dropdowns",
     grad: "linear-gradient(135deg,#14b8a6,#0d9488)",
   },
+  {
+    // ملصقات المنتجات — قسم "labels" لحاله (نفس اللي بيحرس /inventory/labels)
+    id: "labels",
+    to: "/inventory/labels",
+    icon: "🖨️",
+    kind: "tool",
+    ar: "ملصقات المنتجات",
+    en: "Product Labels",
+    arSub: "ملصق فيه الإنتاج والانتهاء والدفعة وكود GS1 — الانتهاء محسوب من الصلاحية",
+    enSub: "Production, expiry, lot and a GS1 code — expiry from the shelf life",
+    grad: "linear-gradient(135deg,#0ea5e9,#0369a1)",
+  },
 ];
 
 const CSS = `

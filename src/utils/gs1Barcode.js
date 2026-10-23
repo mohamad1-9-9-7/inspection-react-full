@@ -2,7 +2,7 @@
 //
 // 🏷️ What a scanned barcode says, in our words.
 //
-//   parseBarcode(text) → { gtin, prodDate, expDate, batch, weightKg, gs1, raw }
+//   parseBarcode(text) → { gtin, prodDate, expDate, batch, weightKg, itemCode, gs1, raw }
 //
 // Two kinds show up on a carton (e.g. a BRF chicken carton):
 //   • a plain product barcode (EAN-13 / EAN-8 / UPC-A / ITF-14): only WHICH
@@ -100,7 +100,7 @@ export function parseGs1(text) {
  */
 export function parseBarcode(text) {
   const raw = String(text || "").trim();
-  const res = { gtin: "", prodDate: "", expDate: "", batch: "", weightKg: 0, gs1: false, raw };
+  const res = { gtin: "", prodDate: "", expDate: "", batch: "", weightKg: 0, itemCode: "", gs1: false, raw };
   if (!raw) return res;
 
   const digits = raw.replace(/\s/g, "");
@@ -110,13 +110,15 @@ export function parseBarcode(text) {
   }
 
   const ai = parseGs1(raw);
-  if (!ai || !(ai["01"] || ai["02"] || ai["17"] || ai["10"])) return res;
+  if (!ai || !(ai["01"] || ai["02"] || ai["17"] || ai["10"] || ai["240"])) return res;
   res.gs1 = true;
   const g = ai["01"] || ai["02"] || "";
   if (/^\d{14}$/.test(g)) res.gtin = g;
   res.prodDate = gs1Date(ai["11"], false) || gs1Date(ai["13"], false);
   res.expDate = gs1Date(ai["17"], true) || gs1Date(ai["15"], true) || gs1Date(ai["16"], true);
   res.batch = String(ai["10"] || "").trim();
+  // (240) = our own item code — the labels printed at /inventory/labels carry no GTIN
+  res.itemCode = String(ai["240"] || "").trim();
   const w = Object.keys(ai).find((k) => /^310\d$/.test(k));
   if (w && /^\d{6}$/.test(ai[w])) res.weightKg = Number(ai[w]) / 10 ** Number(w[3]);
   return res;

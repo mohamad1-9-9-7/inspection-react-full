@@ -302,8 +302,8 @@ const ALL_ROLES = [
   {
     // كرت واحد بيجمع الجزار والتصنيع — الظهور إذا كان عنده صلاحية أي وحدة منهم
     id: "inventory", label: "Inventory", route: "/inventory", icon: "📦",
-    anyOf: ["butcher", "mrp", "workforce"],
-    keywords: ["butcher", "manufacturing", "bom", "stock", "workforce", "مخزون", "جزار", "تصنيع", "قوى عاملة"],
+    anyOf: ["butcher", "mrp", "workforce", "labels"],
+    keywords: ["butcher", "manufacturing", "bom", "stock", "workforce", "label", "مخزون", "جزار", "تصنيع", "قوى عاملة", "ملصق"],
     grad: "linear-gradient(135deg,#0891b2,#0e7490)",
     glow: "rgba(8,145,178,.45)",
   },

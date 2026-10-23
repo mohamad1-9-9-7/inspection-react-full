@@ -468,6 +468,17 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
     if (r.batch) { setBatch(r.batch); filled.push(`${s.fBatch} ${r.batch}`); }
     if (r.weightKg > 0 && !qty) { setQty(String(r.weightKg)); filled.push(s.fWeight(r.weightKg)); }
     const note = filled.length ? s.filled(filled.join(" · ")) : "";
+    /* one of our own labels (/inventory/labels): no GTIN, the item code
+       itself rides in GS1 (240) — the product is known without any link */
+    if (!r.gtin && r.itemCode) {
+      const cat = catalog.find((c) => c.code === r.itemCode);
+      if (!cat) { setScanNote(note); setMsg({ kind: "bad", text: s.notProduct }); return; }
+      if (isStopped(cat.code)) { setScanNote(""); setMsg({ kind: "bad", text: `${s.stopped} (${cat.product || cat.code})` }); return; }
+      setLinkGtin(""); setWorldName("");
+      setPick({ ...cat, have: haveOf(cat.code, cat.product)?.qty || 0 });
+      setScanNote([s.known(cat.product || cat.code), note].filter(Boolean).join(" — "));
+      return;
+    }
     if (!r.gtin) { setScanNote(note); return; }
     setGtin(r.gtin);
     const map = codeMap || (await fetchBarcodeMap());
