@@ -232,12 +232,12 @@ function RulesEditor({ t, isAr }) {
       )}
       <div className="alp-s" style={{ color: "#475569", lineHeight: 1.7 }}>
         {t({
-          en: "The system checks at 08:00 (yesterday's logs, expiries, CAPA) and 13:00 (no temperature reading yet today), UAE time. A temperature out of range is raised the moment the phone reading is saved.",
-          ar: "يفحص النظام الساعة 08:00 (تقارير أمس، الانتهاء، CAPA) و13:00 (لا قراءة حرارة اليوم بعد) بتوقيت الإمارات. الحرارة خارج الحد تُنبَّه لحظة حفظ القراءة من الجوال.",
+          en: "The system checks at 08:00 (yesterday's logs, expiries, CAPA) and 13:00 (no temperature reading yet today), UAE time. A temperature out of range is raised the moment it is saved — from the phone or the sheet.",
+          ar: "يفحص النظام الساعة 08:00 (تقارير أمس، الانتهاء، CAPA) و13:00 (لا قراءة حرارة اليوم بعد) بتوقيت الإمارات. الحرارة خارج الحد تُنبَّه لحظة حفظها — من الجوال أو من الشيت.",
         })}
       </div>
 
-      <RuleBlock k="temperature" rule={rules.temperature} onChange={(patch) => set("temperature", patch)} t={t} when={t({ en: "Instantly, when a phone (QR) reading is out of range. A recheck back in range closes it.", ar: "فوراً عند قراءة جوال (QR) خارج الحد. إعادة القياس داخل الحد تغلقه." })} />
+      <RuleBlock k="temperature" rule={rules.temperature} onChange={(patch) => set("temperature", patch)} t={t} when={t({ en: "Instantly — a phone (QR) reading or a sheet saved from the computer (today / yesterday) out of range. A recheck or a correction back in range closes it.", ar: "فوراً — قراءة جوال (QR) أو شيت محفوظ من الكمبيوتر (اليوم / أمس) خارج الحد. إعادة القياس أو التصحيح داخل الحد يغلقه." })} />
 
       <RuleBlock k="missedReports" rule={rules.missedReports} onChange={(patch) => set("missedReports", patch)} t={t} when={t({ en: "08:00 — logs not filed for yesterday (phone readings alone do not file a day)", ar: "08:00 — تقارير أمس غير المعبّأة (قراءات الجوال وحدها لا تكفي)" })}>
         <div style={{ display: "grid", gap: 6 }}>
