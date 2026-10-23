@@ -70,6 +70,9 @@ function getId(r) {
 }
 
 // أنواع الكورس
+// نفس مدد صفحة الإدخال (TrainingCertificatesUpload)
+const COURSE_DURATION_YEARS = { BFS: 2, PIC: 5, EFST: 5 };
+
 const COURSE_OPTIONS = [
   { value: "", label: "-- Select Course Type --" },
   { value: "BFS", label: "Basic Food Safety (BFS)" },
@@ -237,6 +240,7 @@ export default function TrainingCertificatesView() {
 
   // حالات التعديل/الحذف
   const [editingRid, setEditingRid] = useState(null);
+  const [editUploading, setEditUploading] = useState(""); // slot قيد الرفع
   const [editDraft, setEditDraft] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingRid, setDeletingRid] = useState(null);
@@ -301,6 +305,8 @@ export default function TrainingCertificatesView() {
         savedAt,
         hasImage: !!imageData,
         imageData,
+        // EFST: imageUrl القديم = شهادة البلدية، والثانية = شهادة المعهد
+        instituteImage: p.instituteImageUrl || "",
         // علامة "ترك الشركة" - السجل محفوظ ومخفي من العرض الافتراضي
         leftCompany: p.leftCompany === true,
         status,
@@ -638,6 +644,8 @@ export default function TrainingCertificatesView() {
       imageData: origPayload.imageUrl || origPayload.imageData || row.imageData || "",
       imageName: origPayload.imageName || "",
       imageType: origPayload.imageType || "",
+      instituteImage: origPayload.instituteImageUrl || "",
+      instituteImageName: origPayload.instituteImageName || "",
     });
     setEditingRid(row._rid);
     setMsg("");
@@ -649,11 +657,24 @@ export default function TrainingCertificatesView() {
   }
 
   function updateEditField(key, value) {
-    setEditDraft((prev) => ({ ...(prev || {}), [key]: value }));
+    setEditDraft((prev) => {
+      const next = { ...(prev || {}), [key]: value };
+      // BFS / PIC / EFST: الانتهاء يُحسب تلقائياً مثل صفحة الإدخال
+      if (key === "courseType" || key === "issueDate") {
+        const years = COURSE_DURATION_YEARS[next.courseType];
+        if (years && /^\d{4}-\d{2}-\d{2}$/.test(next.issueDate || "")) {
+          const [y, m, d] = next.issueDate.split("-").map(Number);
+          next.expiryDate = new Date(Date.UTC(y + years, m - 1, d))
+            .toISOString()
+            .slice(0, 10);
+        }
+      }
+      return next;
+    });
   }
 
-  // اختيار صورة جديدة أثناء التعديل
-  async function handleEditImageSelect(e) {
+  // اختيار صورة جديدة أثناء التعديل (slot "institute" = صورة المعهد لـ EFST)
+  async function handleEditImageSelect(e, slot = "main") {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -663,22 +684,25 @@ export default function TrainingCertificatesView() {
       return;
     }
 
+    setEditUploading(slot);
     try {
       const compressed = await uploadImage(file, TYPE);
       setEditDraft((prev) => ({
         ...(prev || {}),
-        imageData: compressed,
-        imageName: file.name,
-        imageType: "image/jpeg",
+        ...(slot === "institute"
+          ? { instituteImage: compressed, instituteImageName: file.name }
+          : { imageData: compressed, imageName: file.name, imageType: "image/jpeg" }),
       }));
     } catch (err) {
       console.error("edit image compress error:", err);
       alert("Image processing failed. Try another image.");
+    } finally {
+      setEditUploading("");
     }
   }
 
   // حذف الصورة في وضع التعديل
-  function handleRemoveEditImage() {
+  function handleRemoveEditImage(slot = "main") {
     if (
       !window.confirm(
         "Remove the certificate image for this record?\nحذف صورة الشهادة من هذا السجل؟"
@@ -688,10 +712,210 @@ export default function TrainingCertificatesView() {
 
     setEditDraft((prev) => ({
       ...(prev || {}),
-      imageData: "",
-      imageName: "",
-      imageType: "",
+      ...(slot === "institute"
+        ? { instituteImage: "", instituteImageName: "" }
+        : { imageData: "", imageName: "", imageType: "" }),
     }));
+  }
+
+  const isEfst = (t) => String(t || "").trim().toUpperCase() === "EFST";
+
+  const thumbCaptionStyle = {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#475569",
+    lineHeight: 1.1,
+  };
+
+  // صورة مصغّرة في الجدول؛ مع caption (EFST) تظهر خانة فارغة منقّطة إذا الصورة ناقصة
+  function renderViewThumb(src, caption) {
+    if (!src && !caption) {
+      return <span style={{ fontSize: 11, color: "#9ca3af" }}>No image</span>;
+    }
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 3,
+        }}
+      >
+        {src ? (
+          <button
+            type="button"
+            title={caption || "Certificate"}
+            onClick={() => setPreviewImage(src)}
+            style={{
+              border: "none",
+              background: "transparent",
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            <img
+              src={src}
+              alt={caption || "Certificate"}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                objectFit: "cover",
+                border: "1px solid #d1d5db",
+                boxShadow: "0 2px 6px rgba(15,23,42,0.25)",
+              }}
+            />
+          </button>
+        ) : (
+          <span
+            title={`${caption} certificate missing`}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              border: "1px dashed #f59e0b",
+              background: "#fffbeb",
+              color: "#b45309",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 14,
+              fontWeight: 800,
+            }}
+          >
+            !
+          </span>
+        )}
+        {caption && <span style={thumbCaptionStyle}>{caption}</span>}
+      </div>
+    );
+  }
+
+  // بطاقة صورة داخل نافذة التعديل (Upload / Replace / Remove)
+  function renderEditImageSlot(slot, src, caption, required) {
+    const uploading = editUploading === slot;
+    const missing = required && !src;
+    return (
+      <div
+        key={slot}
+        style={{
+          flex: "1 1 220px",
+          minWidth: 0,
+          border: `1px solid ${missing ? "#fcd34d" : "#e2e8f0"}`,
+          borderRadius: 12,
+          background: missing ? "#fffbeb" : "#f8fafc",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>
+            {caption}
+          </span>
+          {required && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: "2px 8px",
+                borderRadius: 999,
+                color: src ? "#166534" : "#b45309",
+                background: src ? "#dcfce7" : "#fef3c7",
+              }}
+            >
+              {src ? "Attached" : "Missing"}
+            </span>
+          )}
+        </div>
+
+        <div
+          style={{
+            height: 130,
+            borderRadius: 10,
+            border: src ? "1px solid #e2e8f0" : "1px dashed #cbd5e1",
+            background: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {uploading ? (
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#0369a1" }}>
+              ⏳ Uploading…
+            </span>
+          ) : src ? (
+            <button
+              type="button"
+              title="Open full size"
+              onClick={() => setPreviewImage(src)}
+              style={{
+                border: "none",
+                padding: 0,
+                background: "transparent",
+                cursor: "zoom-in",
+                width: "100%",
+                height: "100%",
+              }}
+            >
+              <img
+                src={src}
+                alt={caption}
+                style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              />
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>No image</span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 6 }}>
+          <label
+            style={{
+              ...editBtnStyle,
+              flex: 1,
+              justifyContent: "center",
+              border: "1px solid #7dd3fc",
+              background: "#f0f9ff",
+              color: "#0369a1",
+              opacity: uploading ? 0.6 : 1,
+              pointerEvents: uploading ? "none" : "auto",
+            }}
+          >
+            {src ? "Replace" : "Upload"}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleEditImageSelect(e, slot)}
+              style={{ display: "none" }}
+            />
+          </label>
+          {src && !uploading && (
+            <button
+              type="button"
+              onClick={() => handleRemoveEditImage(slot)}
+              style={{
+                ...editBtnStyle,
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                color: "#b91c1c",
+              }}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   // حفظ التعديل (PUT مع fallback POST + حذف القديم عند POST)
@@ -730,6 +954,14 @@ export default function TrainingCertificatesView() {
       imageType: editDraft.imageData
         ? editDraft.imageType || "image/jpeg"
         : undefined,
+      instituteImageUrl:
+        editDraft.courseType === "EFST"
+          ? editDraft.instituteImage || undefined
+          : undefined,
+      instituteImageName:
+        editDraft.courseType === "EFST" && editDraft.instituteImage
+          ? editDraft.instituteImageName || "institute.jpg"
+          : undefined,
     };
 
     try {
@@ -1543,9 +1775,6 @@ export default function TrainingCertificatesView() {
                   )}
 
                   {rows.map((r, idx) => {
-                    const isEditing =
-                      editingRid && r._rid === editingRid;
-
                     const stripeBg =
                       idx % 2 === 0 ? "#f9fafb" : "#f3f4f6";
                     const rowBg =
@@ -1577,101 +1806,21 @@ export default function TrainingCertificatesView() {
 
                         {/* Employee No */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editDraft?.employeeNo || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "employeeNo",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.employeeNo
-                          )}
+                          {r.employeeNo}
                         </td>
 
                         {/* Name */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editDraft?.name || ""}
-                              onChange={(e) =>
-                                updateEditField("name", e.target.value)
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.name
-                          )}
+                          {r.name}
                         </td>
 
                         {/* Nationality */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editDraft?.nationality || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "nationality",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.nationality
-                          )}
+                          {r.nationality}
                         </td>
 
                         {/* Branch */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editDraft?.branch || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "branch",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
                             <div
                               style={{
                                 display: "flex",
@@ -1699,116 +1848,26 @@ export default function TrainingCertificatesView() {
                                 </span>
                               )}
                             </div>
-                          )}
                         </td>
 
                         {/* Job */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editDraft?.job || ""}
-                              onChange={(e) =>
-                                updateEditField("job", e.target.value)
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.job
-                          )}
+                          {r.job}
                         </td>
 
                         {/* Course Type */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <select
-                              value={editDraft?.courseType || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "courseType",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            >
-                              {COURSE_OPTIONS.map((o) => (
-                                <option
-                                  key={o.value}
-                                  value={o.value}
-                                >
-                                  {o.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            r.courseType
-                          )}
+                          {r.courseType}
                         </td>
 
                         {/* Issue Date */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="date"
-                              value={editDraft?.issueDate || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "issueDate",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.issueDate
-                          )}
+                          {r.issueDate}
                         </td>
 
                         {/* Expiry Date */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <input
-                              type="date"
-                              value={editDraft?.expiryDate || ""}
-                              onChange={(e) =>
-                                updateEditField(
-                                  "expiryDate",
-                                  e.target.value
-                                )
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border:
-                                  "1px solid rgba(148,163,184,0.9)",
-                                fontSize: 12,
-                              }}
-                            />
-                          ) : (
-                            r.expiryDate || "—"
-                          )}
+                          {r.expiryDate || "—"}
                         </td>
 
                         {/* Days Left */}
@@ -1873,139 +1932,13 @@ export default function TrainingCertificatesView() {
 
                         {/* Image */}
                         <td style={tdStyle}>
-                          {isEditing ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 6,
-                                alignItems: "flex-start",
-                              }}
-                            >
-                              {editDraft?.imageData ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPreviewImage(editDraft.imageData)
-                                  }
-                                  style={{
-                                    border: "none",
-                                    padding: 0,
-                                    background: "transparent",
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  <img
-                                    src={editDraft.imageData}
-                                    alt="Certificate"
-                                    style={{
-                                      width: 40,
-                                      height: 40,
-                                      borderRadius: 8,
-                                      objectFit: "cover",
-                                      border: "1px solid #d1d5db",
-                                      boxShadow:
-                                        "0 2px 6px rgba(15,23,42,0.25)",
-                                    }}
-                                  />
-                                </button>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    color: "#9ca3af",
-                                  }}
-                                >
-                                  No image
-                                </span>
-                              )}
-
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: 4,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <label
-                                  style={{
-                                    padding: "3px 8px",
-                                    borderRadius: 999,
-                                    border: "none",
-                                    background:
-                                      "linear-gradient(135deg,#0ea5e9,#0369a1)",
-                                    color: "#f9fafb",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  Change
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleEditImageSelect}
-                                    style={{ display: "none" }}
-                                  />
-                                </label>
-
-                                {editDraft?.imageData && (
-                                  <button
-                                    type="button"
-                                    onClick={handleRemoveEditImage}
-                                    style={{
-                                      padding: "3px 8px",
-                                      borderRadius: 999,
-                                      border: "none",
-                                      background:
-                                        "linear-gradient(135deg,#ef4444,#b91c1c)",
-                                      color: "#f9fafb",
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    Remove
-                                  </button>
-                                )}
-                              </div>
+                          {isEfst(r.courseType) ? (
+                            <div style={{ display: "flex", gap: 6 }}>
+                              {renderViewThumb(r.instituteImage, "Institute")}
+                              {renderViewThumb(r.imageData, "Municipality")}
                             </div>
-                          ) : r.hasImage ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setPreviewImage(r.imageData)
-                              }
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                padding: 0,
-                                cursor: "pointer",
-                              }}
-                            >
-                              <img
-                                src={r.imageData}
-                                alt="Certificate"
-                                style={{
-                                  width: 36,
-                                  height: 36,
-                                  borderRadius: 8,
-                                  objectFit: "cover",
-                                  border: "1px solid #d1d5db",
-                                  boxShadow:
-                                    "0 2px 6px rgba(15,23,42,0.25)",
-                                }}
-                              />
-                            </button>
                           ) : (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "#9ca3af",
-                              }}
-                            >
-                              No image
-                            </span>
+                            renderViewThumb(r.imageData, "")
                           )}
                         </td>
 
@@ -2020,52 +1953,6 @@ export default function TrainingCertificatesView() {
                             >
                               —
                             </span>
-                          ) : isEditing ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 6,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <button
-                                type="button"
-                                onClick={saveEdit}
-                                disabled={savingEdit}
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: "none",
-                                  background:
-                                    "linear-gradient(135deg,#22c55e,#16a34a,#15803d)",
-                                  color: "#fff",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor: savingEdit
-                                    ? "default"
-                                    : "pointer",
-                                }}
-                              >
-                                {savingEdit ? "Saving…" : "Save"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEdit}
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: "none",
-                                  background:
-                                    "linear-gradient(135deg,#e5e7eb,#d1d5db)",
-                                  color: "#111827",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
                           ) : (
                             <div
                               style={{
@@ -2077,18 +1964,35 @@ export default function TrainingCertificatesView() {
                               <button
                                 type="button"
                                 onClick={() => startEdit(r)}
+                                title="Edit certificate"
                                 style={{
-                                  padding: "4px 10px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  padding: "4px 11px",
                                   borderRadius: 999,
-                                  border: "none",
-                                  background:
-                                    "linear-gradient(135deg,#0ea5e9,#0369a1)",
-                                  color: "#f9fafb",
+                                  border: "1px solid #7dd3fc",
+                                  background: "#f0f9ff",
+                                  color: "#0369a1",
                                   fontSize: 11,
                                   fontWeight: 700,
                                   cursor: "pointer",
                                 }}
                               >
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.4"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
                                 Edit
                               </button>
                               <button
@@ -2149,6 +2053,211 @@ export default function TrainingCertificatesView() {
           </div>
         </div>
       </div>
+
+      {/* Edit Certificate Dialog */}
+      {editingRid && editDraft && (
+        <div
+          onClick={() => !savingEdit && cancelEdit()}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9000,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(720px, 100%)",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              background: "#fff",
+              borderRadius: 18,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.45)",
+              overflow: "hidden",
+              direction: "ltr",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: "1px solid #e2e8f0",
+                background: "linear-gradient(135deg,#f0f9ff,#ffffff)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                  Edit Certificate
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  {editDraft.name || "—"} · {editDraft.employeeNo || "—"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={savingEdit}
+                aria-label="Close"
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 999,
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: 16,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 20, overflowY: "auto" }}>
+              <div style={editSectionTitle}>Employee</div>
+              <div style={editGrid}>
+                {[
+                  ["employeeNo", "Employee No"],
+                  ["name", "Name"],
+                  ["nationality", "Nationality"],
+                  ["branch", "Branch"],
+                  ["job", "Job"],
+                ].map(([k, label]) => (
+                  <label key={k} style={editLabelStyle}>
+                    {label}
+                    <input
+                      type="text"
+                      value={editDraft[k] || ""}
+                      onChange={(e) => updateEditField(k, e.target.value)}
+                      style={editInputStyle}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ ...editSectionTitle, marginTop: 18 }}>Certificate</div>
+              <div style={editGrid}>
+                <label style={editLabelStyle}>
+                  Course Type
+                  <select
+                    value={editDraft.courseType || ""}
+                    onChange={(e) => updateEditField("courseType", e.target.value)}
+                    style={editInputStyle}
+                  >
+                    {!COURSE_OPTIONS.some((o) => o.value === editDraft.courseType) &&
+                      editDraft.courseType && (
+                        <option value={editDraft.courseType}>
+                          {editDraft.courseType}
+                        </option>
+                      )}
+                    {COURSE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={editLabelStyle}>
+                  Issue Date
+                  <input
+                    type="date"
+                    value={editDraft.issueDate || ""}
+                    onChange={(e) => updateEditField("issueDate", e.target.value)}
+                    style={editInputStyle}
+                  />
+                </label>
+                <label style={editLabelStyle}>
+                  Expiry Date
+                  <input
+                    type="date"
+                    value={editDraft.expiryDate || ""}
+                    onChange={(e) => updateEditField("expiryDate", e.target.value)}
+                    style={editInputStyle}
+                  />
+                </label>
+              </div>
+
+              <div style={{ ...editSectionTitle, marginTop: 18 }}>
+                {isEfst(editDraft.courseType) ? "Certificate Images" : "Certificate Image"}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {isEfst(editDraft.courseType) ? (
+                  <>
+                    {renderEditImageSlot(
+                      "institute",
+                      editDraft.instituteImage,
+                      "Institute Certificate",
+                      true
+                    )}
+                    {renderEditImageSlot(
+                      "main",
+                      editDraft.imageData,
+                      "Municipality Certificate",
+                      true
+                    )}
+                  </>
+                ) : (
+                  renderEditImageSlot("main", editDraft.imageData, "Certificate", false)
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: "14px 20px",
+                borderTop: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={savingEdit}
+                style={{
+                  ...editBtnStyle,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#334155",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={savingEdit || !!editUploading}
+                style={{
+                  ...editBtnStyle,
+                  border: "1px solid #0369a1",
+                  background: "#0369a1",
+                  color: "#fff",
+                  opacity: savingEdit || editUploading ? 0.65 : 1,
+                  cursor: savingEdit || editUploading ? "default" : "pointer",
+                }}
+              >
+                {savingEdit ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image Preview Overlay */}
       {previewImage && (
@@ -2221,6 +2330,52 @@ const thStyle = {
   fontWeight: 700,
   fontSize: 11,
   whiteSpace: "nowrap",
+};
+
+const editBtnStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "7px 14px",
+  borderRadius: 10,
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const editInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  fontSize: 13,
+  color: "#0f172a",
+};
+
+const editSectionTitle = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#0369a1",
+  marginBottom: 10,
+};
+
+const editGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 12,
+};
+
+const editLabelStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#475569",
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
 };
 
 const tdStyle = {

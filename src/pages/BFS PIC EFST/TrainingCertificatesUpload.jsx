@@ -419,6 +419,18 @@ function computeExpiry(courseType, issueDateStr) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/* خانات الصور: الشهادة العادية تستعمل "main" فقط؛ EFST لها صورتان إلزاميتان
+   (شهادة البلدية = نفس imageUrl القديم — كل صور EFST القديمة بلدية،
+    وشهادة المعهد = instituteImageUrl) */
+const IMAGE_SLOTS = {
+  main: { url: "imageUrl", name: "imageName" },
+  institute: { url: "instituteImageUrl", name: "instituteImageName" },
+};
+const EFST_IMAGE_SLOTS = [
+  { slot: "institute", label: "Institute Certificate" },
+  { slot: "main", label: "Municipality Certificate" },
+];
+
 /* إنشاء شهادة فارغة */
 function makeEmptyCert() {
   return {
@@ -428,6 +440,8 @@ function makeEmptyCert() {
     expiryDate: "",
     imageUrl: "",       // Cloudinary URL (لا base64)
     imageName: "",
+    instituteImageUrl: "",   // EFST فقط
+    instituteImageName: "",
   };
 }
 
@@ -525,7 +539,13 @@ export default function TrainingCertificatesBFS() {
     }
 
     // منع الحفظ إذا صورة لسه بتُرفع
-    if (certs.some((c) => c.imageUrl === "__uploading__")) {
+    if (
+      certs.some(
+        (c) =>
+          c.imageUrl === "__uploading__" ||
+          c.instituteImageUrl === "__uploading__"
+      )
+    ) {
       setMsg({ type: "error", text: "Please wait — image upload still in progress." });
       return;
     }
@@ -541,6 +561,18 @@ export default function TrainingCertificatesBFS() {
         type: "error",
         text:
           "Please add at least one certificate with course type and issue date.",
+      });
+      return;
+    }
+
+    // EFST: شهادة المعهد + شهادة البلدية لازم الاثنتين
+    const efstMissing = activeCerts.find(
+      (c) => c.courseType === "EFST" && (!c.imageUrl || !c.instituteImageUrl)
+    );
+    if (efstMissing) {
+      setMsg({
+        type: "error",
+        text: "EFST needs both images: the Institute certificate and the Municipality certificate.",
       });
       return;
     }
@@ -564,6 +596,12 @@ export default function TrainingCertificatesBFS() {
           expiryDate: cert.expiryDate || undefined,
           imageUrl: cert.imageUrl || undefined,          // Cloudinary URL فقط
           imageName: cert.imageName || undefined,
+          ...(cert.courseType === "EFST"
+            ? {
+                instituteImageUrl: cert.instituteImageUrl || undefined,
+                instituteImageName: cert.instituteImageName || undefined,
+              }
+            : {}),
           savedAt: new Date().toISOString(),
         };
 
@@ -625,7 +663,16 @@ export default function TrainingCertificatesBFS() {
     }
   }
 
-  async function handleCertImageSelect(index, e) {
+  function setCertImage(index, slot, url, name) {
+    const keys = IMAGE_SLOTS[slot];
+    setCerts((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [keys.url]: url, [keys.name]: name };
+      return next;
+    });
+  }
+
+  async function handleCertImageSelect(index, e, slot = "main") {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -636,39 +683,119 @@ export default function TrainingCertificatesBFS() {
     }
 
     // أظهر حالة "جاري الرفع"
-    setCerts((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], imageUrl: "__uploading__", imageName: file.name };
-      return next;
-    });
+    setCertImage(index, slot, "__uploading__", file.name);
     setMsg({ type: "", text: "" });
 
     try {
       const compressed = await compressToFile(file);
       const url = await uploadImageToServer(compressed, "training_certificate");
-      setCerts((prev) => {
-        const next = [...prev];
-        next[index] = { ...next[index], imageUrl: url, imageName: file.name };
-        return next;
-      });
+      setCertImage(index, slot, url, file.name);
     } catch {
-      setCerts((prev) => {
-        const next = [...prev];
-        next[index] = { ...next[index], imageUrl: "", imageName: "" };
-        return next;
-      });
+      setCertImage(index, slot, "", "");
       setMsg({ type: "error", text: "Image upload to Cloudinary failed. Try again." });
     } finally {
       e.target.value = "";
     }
   }
 
-  function removeCertImage(index) {
-    setCerts((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], imageUrl: "", imageName: "" };
-      return next;
-    });
+  function removeCertImage(index, slot = "main") {
+    setCertImage(index, slot, "", "");
+  }
+
+  // خانة صورة واحدة (نفس الشكل الأصلي) — EFST تعرض خانتين جنب بعض
+  function renderImageSlot(cert, index, slot, label) {
+    const imgUrl = cert[IMAGE_SLOTS[slot].url];
+    return (
+      <div key={slot} style={{ flex: "1 1 260px", minWidth: 0 }}>
+        <label
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontWeight: 600,
+            color: "#0f172a",
+            fontSize: 13,
+          }}
+        >
+          {label}
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleCertImageSelect(index, e, slot)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: 8,
+                border: "1px dashed rgba(148,163,184,0.9)",
+                borderRadius: 10,
+                background: "linear-gradient(135deg,#f9fafb,#f1f5f9,#e5e7eb)",
+                fontSize: 12,
+              }}
+            />
+          </div>
+        </label>
+
+        {imgUrl === "__uploading__" && (
+          <div style={{ marginTop: 8, fontSize: 12, color: "#0369a1", fontWeight: 600 }}>
+            ⏳ Uploading to Cloudinary…
+          </div>
+        )}
+
+        {imgUrl && imgUrl !== "__uploading__" && (
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: 8,
+              borderRadius: 12,
+              background:
+                "linear-gradient(135deg,rgba(15,23,42,0.03),rgba(8,47,73,0.03))",
+              border: "1px solid rgba(148,163,184,0.4)",
+            }}
+          >
+            <img
+              src={imgUrl}
+              alt={`${label} ${index + 1}`}
+              style={{
+                height: 90,
+                maxWidth: "50%",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                objectFit: "cover",
+                boxShadow: "0 8px 20px rgba(15,23,42,0.28)",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => removeCertImage(index, slot)}
+                style={{
+                  padding: "8px 14px",
+                  background: "linear-gradient(135deg,#ef4444,#b91c1c)",
+                  color: "#fff",
+                  border: 0,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                Remove Image
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1049,100 +1176,20 @@ export default function TrainingCertificatesBFS() {
                   )}
                 </div>
 
-                {/* Image per certificate */}
-                <div style={{ marginTop: 10 }}>
-                  <label
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                      fontWeight: 600,
-                      color: "#0f172a",
-                      fontSize: 13,
-                    }}
-                  >
-                    Certificate Image (Optional)
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                      }}
-                    >
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) =>
-                          handleCertImageSelect(index, e)
-                        }
-                        style={{
-                          flex: 1,
-                          padding: 8,
-                          border:
-                            "1px dashed rgba(148,163,184,0.9)",
-                          borderRadius: 10,
-                          background:
-                            "linear-gradient(135deg,#f9fafb,#f1f5f9,#e5e7eb)",
-                          fontSize: 12,
-                        }}
-                      />
-                    </div>
-                  </label>
-
-                  {cert.imageUrl === "__uploading__" && (
-                    <div style={{ marginTop: 8, fontSize: 12, color: "#0369a1", fontWeight: 600 }}>
-                      ⏳ Uploading to Cloudinary…
-                    </div>
-                  )}
-
-                  {cert.imageUrl && cert.imageUrl !== "__uploading__" && (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: 8,
-                        borderRadius: 12,
-                        background:
-                          "linear-gradient(135deg,rgba(15,23,42,0.03),rgba(8,47,73,0.03))",
-                        border:
-                          "1px solid rgba(148,163,184,0.4)",
-                      }}
-                    >
-                      <img
-                        src={cert.imageUrl}
-                        alt={`Certificate ${index + 1}`}
-                        style={{
-                          height: 90,
-                          borderRadius: 10,
-                          border: "1px solid #e5e7eb",
-                          objectFit: "cover",
-                          boxShadow:
-                            "0 8px 20px rgba(15,23,42,0.28)",
-                        }}
-                      />
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => removeCertImage(index)}
-                          style={{
-                            padding: "8px 14px",
-                            background:
-                              "linear-gradient(135deg,#ef4444,#b91c1c)",
-                            color: "#fff",
-                            border: 0,
-                            borderRadius: 999,
-                            cursor: "pointer",
-                            fontSize: 12,
-                            fontWeight: 700,
-                          }}
-                        >
-                          Remove Image
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                {/* Image per certificate — EFST: Institute + Municipality */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "flex",
+                    gap: 14,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {cert.courseType === "EFST"
+                    ? EFST_IMAGE_SLOTS.map(({ slot, label }) =>
+                        renderImageSlot(cert, index, slot, `${label} *`)
+                      )
+                    : renderImageSlot(cert, index, "main", "Certificate Image (Optional)")}
                 </div>
               </div>
             ))}
