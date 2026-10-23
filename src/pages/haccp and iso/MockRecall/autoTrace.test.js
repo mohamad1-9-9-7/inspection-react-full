@@ -1,7 +1,9 @@
+import { traceShipment, drillFill } from "./autoTrace";
+
+// jest hoists these above the imports; the real modules read import.meta
 jest.mock("../../../config/api", () => ({ __esModule: true, default: "http://test", API_BASE: "http://test" }));
 jest.mock("../../monitor/branches/_shared/ProductPicker", () => ({ normalizeCode: (s) => String(s || "").trim().toUpperCase() }));
 jest.mock("../../monitor/branches/_shared/CodedProductField", () => ({ normalizeName: (s) => String(s || "").trim().toLowerCase() }));
-import { traceShipment, drillFill } from "./autoTrace";
 
 const full = {
   shipments: [

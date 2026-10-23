@@ -1,7 +1,9 @@
-jest.mock("../../config/api", () => ({ __esModule: true, default: "http://test", API_BASE: "http://test" }));
 import { gs1Text, labelHtml, sizeOf, code128ModuleMm, printDocument } from "./labelsApi";
 import { gs1Raw } from "../../utils/code128";
 import { parseBarcode } from "../../utils/gs1Barcode";
+
+// jest hoists these above the imports; the real modules read import.meta
+jest.mock("../../config/api", () => ({ __esModule: true, default: "http://test", API_BASE: "http://test" }));
 
 const data = { company: "Al Mawashi", product: "Lamb Leg", code: "30024", prodDate: "2026-10-23", expDate: "2026-10-30", lot: "261023", weightKg: 1.25, branch: "QCS", storage: "Keep chilled 0 to 4 °C", allergens: ["Milk"] };
 
