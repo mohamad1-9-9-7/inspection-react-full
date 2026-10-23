@@ -1,7 +1,10 @@
 // src/pages/settings/BackupTab.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
-import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
+import { ConfirmModal } from "./_shared/SettingsUIKit";
+import {
+  DEV, DevStyles, Terminal, Prompt, DevButton, DevChip, DevCheck, LogLine, AsciiProgress, devInput,
+} from "./_shared/devConsole";
 import { logSettingsAudit } from "../../utils/settingsAudit";
 import { BRANCHES } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
@@ -545,169 +548,97 @@ export default function BackupTab() {
     }
   }
 
-  /* ===== UI styles ===== */
-  const card = ui.card;
-  const btnPrimary = {
-    background: "linear-gradient(180deg,#1e3a5f,#2d5a8e)",
-    color: "#fff",
-    border: "none",
-    padding: "11px 20px",
-    borderRadius: 10,
-    cursor: busy ? "not-allowed" : "pointer",
-    fontWeight: 800,
-    fontSize: "0.92rem",
-    opacity: busy ? 0.6 : 1,
-  };
-  const btnSecondary = {
-    background: "#f3f4f6",
-    color: "#374151",
-    border: "1px solid #d1d5db",
-    padding: "8px 14px",
-    borderRadius: 8,
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "0.85rem",
-  };
-  const btnDanger = {
-    ...btnPrimary,
-    background: "linear-gradient(180deg,#b91c1c,#dc2626)",
-  };
-  const presetBtn = {
-    background: "#eff6ff",
-    color: "#1e40af",
-    border: "1px solid #bfdbfe",
-    padding: "8px 14px",
-    borderRadius: 999,
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "0.85rem",
-  };
-
+  /* ===== UI ===== */
   const allTypesOn = selectedTypes.size === allTypes.length;
   const noTypesOn = selectedTypes.size === 0;
+  const localKeyCount = Object.values(localPreview).reduce((s, arr) => s + arr.length, 0);
+  const msgKind = msg.kind === "ok" ? "ok" : msg.kind === "err" ? "err" : "info";
+  const sectionNote = { color: DEV.muted, marginBottom: 10 };
 
   return (
-    <div style={ui.page}>
-      <PageHeader
-        eyebrow="Backup"
-        title="Backup & Restore"
-        subtitle="Choose exactly what to export: server reports, local drafts, browser settings, and date-limited backups."
-      />
+    <div className="devc" dir="rtl" style={{ background: DEV.bg, color: DEV.text, borderRadius: 14, padding: 18, minHeight: "100%" }}>
+      <DevStyles />
+
+      {/* ========== Hero: status in a terminal ========== */}
+      <Terminal file="inspectpro@backup:~" right={new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" })} accent={DEV.green}>
+        <div className="devc-h1" style={{ fontWeight: 800, color: "#fff", marginBottom: 4 }}>
+          Backup &amp; Restore<span className="devc-cursor" />
+        </div>
+        <div style={{ color: DEV.muted, marginBottom: 12 }}>
+          نسخ احتياطي واسترجاع — اختر بالضبط شو بدك تنسخ: الأنواع، الفترة، والبيانات المحلية.
+        </div>
+        <Prompt cmd="backup status" />
+        <div dir="ltr" style={{ display: "flex", gap: 18, flexWrap: "wrap", paddingInlineStart: 18, lineHeight: 1.9 }}>
+          <code><span style={{ color: DEV.purple }}>catalog</span>  = <span style={{ color: DEV.orange }}>{allTypes.length - unlisted.length}</span> types</code>
+          <code><span style={{ color: DEV.purple }}>unlisted</span> = <span style={{ color: unlisted.length ? DEV.yellow : DEV.orange }}>{unlisted.length}</span></code>
+          <code><span style={{ color: DEV.purple }}>selected</span> = <span style={{ color: DEV.green }}>{selectedTypes.size}</span>/{allTypes.length}</code>
+          <code><span style={{ color: DEV.purple }}>local</span>    = <span style={{ color: DEV.orange }}>{localKeyCount}</span> keys</code>
+          <code><span style={{ color: DEV.purple }}>range</span>    = <span style={{ color: DEV.cyan }}>{dateFrom || "∞"} → {dateTo || "now"}</span></code>
+        </div>
+        {windowWarning && <div style={{ marginTop: 10 }}><LogLine kind="warn">{windowWarning}</LogLine></div>}
+      </Terminal>
+
       <NeonBackupCard />
-      {windowWarning && (
-        <div
-          style={{
-            ...card,
-            background: "#fef2f2",
-            borderColor: "#fca5a5",
-            color: "#991b1b",
-            fontWeight: 700,
-            lineHeight: 1.7,
-            fontSize: "0.9rem",
-          }}
-        >
-          {windowWarning}
-        </div>
-      )}
 
-      {/* مقدمة */}
-      <div style={{ ...card, background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderColor: "#bfdbfe" }}>
-        <div style={{ fontWeight: 800, color: "#1e3a5f", marginBottom: 6 }}>
-          💾 النسخ الاحتياطي والاسترجاع المتقدّم
-        </div>
-        <div style={{ color: "#374151", lineHeight: 1.6, fontSize: "0.9rem" }}>
-          اختر بدقة شو بدّك تنسخ: نوع التقارير، الفروع، الفترة الزمنية، أو حتى نوع البيانات المحلية.
-        </div>
-      </div>
-
-      {/* ========== Quick Presets ========== */}
-      <div style={card}>
-        <div style={{ fontWeight: 800, marginBottom: 10, color: "#0b1f4d" }}>⚡ خيارات سريعة</div>
+      {/* ========== Quick presets ========== */}
+      <Terminal file="presets.sh" title="خيارات سريعة">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button onClick={() => applyPreset("full")} tone="secondary">📦 نسخة كاملة</Button>
-          <Button onClick={() => applyPreset("server-only")} tone="secondary">🗄️ تقارير السيرفر فقط</Button>
-          <Button onClick={() => applyPreset("drafts-only")} tone="secondary">📝 المسودّات فقط</Button>
-          <Button onClick={() => applyPreset("last-30")} tone="secondary">📅 آخر 30 يوم</Button>
-          <Button onClick={() => applyPreset("last-90")} tone="secondary">📅 آخر 90 يوم</Button>
-          <Button onClick={() => applyPreset("this-year")} tone="secondary">📅 السنة الحالية</Button>
+          <DevChip flag="--full" onClick={() => applyPreset("full")}>نسخة كاملة</DevChip>
+          <DevChip flag="--server-only" onClick={() => applyPreset("server-only")}>تقارير السيرفر فقط</DevChip>
+          <DevChip flag="--drafts-only" onClick={() => applyPreset("drafts-only")}>المسودّات فقط</DevChip>
+          <DevChip flag="--since=30d" onClick={() => applyPreset("last-30")}>آخر 30 يوم</DevChip>
+          <DevChip flag="--since=90d" onClick={() => applyPreset("last-90")}>آخر 90 يوم</DevChip>
+          <DevChip flag="--year" onClick={() => applyPreset("this-year")}>السنة الحالية</DevChip>
         </div>
-      </div>
+      </Terminal>
 
-      {/* ========== المصادر ========== */}
-      <div style={card}>
-        <div style={{ fontWeight: 800, marginBottom: 10, color: "#0b1f4d" }}>📂 المصادر المُضمَّنة</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={includeServerReports}
-            onChange={(e) => setIncludeServerReports(e.target.checked)}
-            style={{ width: 18, height: 18 }}
-          />
-          <div>
-            <div style={{ fontWeight: 700 }}>🗄️ تقارير السيرفر</div>
-            <div style={{ fontSize: "0.83rem", color: "#6b7280" }}>كل التقارير المخزّنة على السيرفر (حسب الأنواع المختارة)</div>
-          </div>
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={includeLocalData}
-            onChange={(e) => setIncludeLocalData(e.target.checked)}
-            style={{ width: 18, height: 18 }}
-          />
-          <div>
-            <div style={{ fontWeight: 700 }}>💻 بيانات المتصفح المحلية</div>
-            <div style={{ fontSize: "0.83rem", color: "#6b7280" }}>المسودّات، الإعدادات، إلخ.</div>
-          </div>
-        </label>
-      </div>
-
-      {/* ========== فلتر التاريخ ========== */}
-      {includeServerReports && (
-        <div style={card}>
-          <div style={{ fontWeight: 800, marginBottom: 10, color: "#0b1f4d" }}>📅 الفترة الزمنية (اختياري)</div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>من:</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
-              />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>إلى:</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
-              />
-            </label>
-            {(dateFrom || dateTo) && (
-              <Button onClick={() => { setDateFrom(""); setDateTo(""); }} tone="secondary">
-                مسح
-              </Button>
-            )}
-          </div>
-          <div style={{ fontSize: "0.83rem", color: "#6b7280", marginTop: 8 }}>
-            يطبَّق الفلتر على حقل <code>reportDate</code> أو <code>date</code> داخل التقرير. التقارير بدون تاريخ تُستثنى عند تحديد فترة.
-          </div>
-        </div>
-      )}
-
-      {/* ========== اختيار أنواع التقارير ========== */}
-      {includeServerReports && (
-        <div style={card}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontWeight: 800, color: "#0b1f4d" }}>
-              📋 أنواع التقارير ({selectedTypes.size}/{allTypes.length})
+      {/* ========== Sources + date range ========== */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+        <Terminal file="sources.json" title="المصادر المُضمَّنة" style={{ marginBottom: 0 }}>
+          <DevCheck checked={includeServerReports} onChange={(e) => setIncludeServerReports(e.target.checked)} style={{ padding: "6px 4px" }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>تقارير السيرفر <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>reports</code></div>
+              <div className="devc-sm" style={{ color: DEV.muted }}>كل التقارير المخزّنة على السيرفر (حسب الأنواع المختارة)</div>
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <Button onClick={() => selectAllTypes(true)} disabled={allTypesOn} tone="secondary">تحديد الكل</Button>
-              <Button onClick={() => selectAllTypes(false)} disabled={noTypesOn} tone="secondary">إلغاء الكل</Button>
+          </DevCheck>
+          <DevCheck checked={includeLocalData} onChange={(e) => setIncludeLocalData(e.target.checked)} style={{ padding: "6px 4px" }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>بيانات المتصفح المحلية <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>localStorage</code></div>
+              <div className="devc-sm" style={{ color: DEV.muted }}>المسودّات، الإعدادات، إلخ.</div>
             </div>
+          </DevCheck>
+        </Terminal>
+
+        {includeServerReports && (
+          <Terminal file="range.cfg" title="الفترة الزمنية (اختياري)" style={{ marginBottom: 0 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <code dir="ltr" style={{ color: DEV.purple }}>from</code>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={devInput} />
+              <code dir="ltr" style={{ color: DEV.purple }}>to</code>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={devInput} />
+              {(dateFrom || dateTo) && (
+                <DevButton onClick={() => { setDateFrom(""); setDateTo(""); }}>✕ مسح</DevButton>
+              )}
+            </div>
+            <div className="devc-sm" style={{ color: DEV.muted, marginTop: 10 }}>
+              <span dir="ltr" style={{ color: DEV.line }}>{"// "}</span>
+              يطبَّق على <code style={{ color: DEV.orange }}>reportDate</code> أو <code style={{ color: DEV.orange }}>date</code> داخل التقرير. التقارير بدون تاريخ تُستثنى عند تحديد فترة.
+            </div>
+          </Terminal>
+        )}
+      </div>
+      <div style={{ height: 16 }} />
+
+      {/* ========== Report types ========== */}
+      {includeServerReports && (
+        <Terminal
+          file="report-types/"
+          title="أنواع التقارير"
+          right={<code dir="ltr">{selectedTypes.size}/{allTypes.length} selected</code>}
+        >
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <DevButton onClick={() => selectAllTypes(true)} disabled={allTypesOn}>[x] تحديد الكل</DevButton>
+            <DevButton onClick={() => selectAllTypes(false)} disabled={noTypesOn}>[ ] إلغاء الكل</DevButton>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 10 }}>
@@ -715,187 +646,129 @@ export default function BackupTab() {
               const onCount = types.filter((t) => selectedTypes.has(t)).length;
               const allOn = onCount === types.length;
               const noneOn = onCount === 0;
+              const isOther = group.includes("unlisted");
               return (
                 <div
                   key={group}
                   style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
+                    border: `1px solid ${isOther ? DEV.yellow : DEV.line}`,
+                    borderRadius: 8,
                     padding: "10px 12px",
-                    background: noneOn ? "#fafafa" : "#fff",
+                    background: noneOn ? "transparent" : "rgba(63,185,80,.04)",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 800, color: "#0b1f4d" }}>
-                      <input
-                        type="checkbox"
-                        checked={allOn}
-                        ref={(el) => { if (el) el.indeterminate = !allOn && !noneOn; }}
-                        onChange={() => toggleGroup(group, !allOn)}
-                        style={{ width: 16, height: 16 }}
-                      />
-                      {group}
-                    </label>
-                    <span style={{ fontSize: "0.78rem", color: "#6b7280" }}>{onCount}/{types.length}</span>
+                    <DevCheck checked={allOn} indeterminate={!allOn && !noneOn} onChange={() => toggleGroup(group, !allOn)}>
+                      <span style={{ fontWeight: 800, color: isOther ? DEV.yellow : "#fff" }}>{group}/</span>
+                    </DevCheck>
+                    <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>{onCount}/{types.length}</code>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginInlineStart: 22 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1, borderInlineStart: `1px dashed ${DEV.line}`, marginInlineStart: 10, paddingInlineStart: 8 }}>
                     {types.map((t) => (
-                      <label
-                        key={t}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 6,
-                          fontSize: "0.82rem", color: "#374151",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedTypes.has(t)}
-                          onChange={() => toggleType(t)}
-                          style={{ width: 14, height: 14 }}
-                        />
-                        <span style={{ fontSize: "0.82rem" }}>{typeLabels[t] || t}</span>
-                        <code style={{ fontSize: "0.68rem", color: "#9ca3af" }}>{t}</code>
+                      <DevCheck key={t} checked={selectedTypes.has(t)} onChange={() => toggleType(t)}>
+                        <span className="devc-sm" style={{ color: DEV.text }}>{typeLabels[t] || t}</span>
+                        <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>{t}</code>
                         {estimate?.counts?.[t] !== undefined && (
-                          <span style={{ marginInlineStart: "auto", color: "#16a34a", fontWeight: 700 }}>
+                          <code dir="ltr" className="devc-xs" style={{ marginInlineStart: "auto", color: estimate.counts[t] ? DEV.green : DEV.muted, fontWeight: 700 }}>
                             {estimate.counts[t]}
-                          </span>
+                          </code>
                         )}
-                      </label>
+                      </DevCheck>
                     ))}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </Terminal>
       )}
 
-      {/* ========== اختيار البيانات المحلية ========== */}
+      {/* ========== Local data ========== */}
       {includeLocalData && (
-        <div style={card}>
-          <div style={{ fontWeight: 800, marginBottom: 10, color: "#0b1f4d" }}>
-            💻 فئات البيانات المحلية ({selectedLocalCats.size}/{LOCAL_CATEGORIES.length})
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
+        <Terminal file="localStorage/" title="فئات البيانات المحلية" right={<code dir="ltr">{selectedLocalCats.size}/{LOCAL_CATEGORIES.length}</code>}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
             {LOCAL_CATEGORIES.map((c) => {
               const items = localPreview[c.id] || [];
               const totalSize = items.reduce((acc, x) => acc + (x.size || 0), 0);
               const on = selectedLocalCats.has(c.id);
               return (
-                <label
+                <DevCheck
                   key={c.id}
-                  style={{
-                    display: "flex", alignItems: "flex-start", gap: 10,
-                    padding: "10px 12px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    background: on ? "#fff" : "#fafafa",
-                    cursor: "pointer",
-                  }}
+                  checked={on}
+                  onChange={() => toggleLocalCat(c.id)}
+                  style={{ border: `1px solid ${on ? DEV.green : DEV.line}`, borderRadius: 8, padding: "10px 12px", alignItems: "flex-start" }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => toggleLocalCat(c.id)}
-                    style={{ width: 16, height: 16, marginTop: 3 }}
-                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: "#0b1f4d" }}>{c.label}</div>
-                    <div style={{ fontSize: "0.82rem", color: "#6b7280", marginTop: 2 }}>
-                      {items.length} مفتاح · {fmtBytes(totalSize)}
-                    </div>
+                    <div style={{ fontWeight: 700 }}>{c.label}</div>
+                    <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>{items.length} keys · {fmtBytes(totalSize)}</code>
                   </div>
-                </label>
+                </DevCheck>
               );
             })}
           </div>
-        </div>
+        </Terminal>
       )}
 
-      {/* ========== أزرار التصدير ========== */}
-      <div style={card}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Button onClick={handleEstimate} disabled={busy} tone="secondary">
-            🔍 تقدير الحجم قبل التصدير
-          </Button>
-          <Button onClick={handleExport} disabled={busy} tone="primary">
-            {busy && progress.total > 0
-              ? `⏳ ${progress.current}/${progress.total}`
-              : "⬇️ تحميل النسخة الاحتياطية"}
-          </Button>
+      {/* ========== Export ========== */}
+      <Terminal file="export.run" title="التصدير" accent={DEV.green}>
+        <Prompt cmd={`backup export --types=${selectedTypes.size}${dateFrom ? ` --from=${dateFrom}` : ""}${dateTo ? ` --to=${dateTo}` : ""}${includeLocalData ? " --local" : ""}`} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <DevButton onClick={handleEstimate} disabled={busy}>🔍 تقدير الحجم</DevButton>
+          <DevButton tone="run" onClick={handleExport} disabled={busy}>
+            {busy && progress.total > 0 ? `⏳ ${progress.current}/${progress.total}` : "▶ تحميل النسخة الاحتياطية"}
+          </DevButton>
         </div>
-        {busy && progress.label && (
-          <div style={{ marginTop: 10, fontSize: "0.83rem", color: "#6b7280" }}>
-            النوع الحالي: <code>{progress.label}</code>
+        {busy && progress.total > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <AsciiProgress current={progress.current} total={progress.total} />
+            {progress.label && <div className="devc-sm" style={{ color: DEV.muted, marginTop: 4 }}>› <code dir="ltr">{progress.label}</code></div>}
           </div>
         )}
         {estimate && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: "10px 12px",
-              background: "#f0fdf4",
-              border: "1px solid #86efac",
-              borderRadius: 8,
-              fontSize: "0.9rem",
-              color: "#065f46",
-            }}
-          >
-            📊 <strong>التقدير:</strong> {estimate.totalReports} تقرير من السيرفر · {estimate.localKeysCount} مفتاح محلي
+          <div style={{ marginTop: 12 }}>
+            <LogLine kind="ok">
+              التقدير: <code style={{ color: DEV.green }}>{estimate.totalReports}</code> تقرير من السيرفر ·{" "}
+              <code style={{ color: DEV.orange }}>{estimate.localKeysCount}</code> مفتاح محلي
+            </LogLine>
           </div>
         )}
-      </div>
+      </Terminal>
 
-      {/* ========== الاسترجاع ========== */}
-      <div style={card}>
-        <div style={{ fontWeight: 800, fontSize: "1.05rem", marginBottom: 8, color: "#0b1f4d" }}>
-          ♻️ استرجاع من ملف
-        </div>
-        <div style={{ color: "#6b7280", marginBottom: 12, fontSize: "0.9rem" }}>
-          اختر ملف JSON الذي تم تنزيله سابقًا. سيتم عرض ملخّص قبل التأكيد.
-        </div>
+      {/* ========== Restore ========== */}
+      <Terminal file="restore.sh" title="استرجاع من ملف" accent={DEV.orange}>
+        <div style={sectionNote}>اختر ملف JSON الذي تم تنزيله سابقًا. سيتم عرض ملخّص قبل التأكيد.</div>
 
-        <label style={{ ...btnSecondary, display: "inline-block" }}>
-          📂 اختيار ملف...
+        <label className="devc-btn" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 6, border: `1px dashed ${DEV.orange}`, color: DEV.orange, cursor: "pointer", fontWeight: 700 }}>
+          📂 اختيار ملف… <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>*.json</code>
           <input type="file" accept="application/json,.json" onChange={handleFilePick} style={{ display: "none" }} />
         </label>
 
         {restorePreview && (
-          <div
-            style={{
-              marginTop: 14,
-              border: "1px solid #d1d5db",
-              borderRadius: 10,
-              padding: "12px 14px",
-              background: "#f9fafb",
-              fontSize: "0.9rem",
-              lineHeight: 1.8,
-            }}
-          >
-            <div style={{ fontWeight: 800, marginBottom: 8, color: "#0b1f4d" }}>📋 ملخّص الملف:</div>
-            <div>📄 <strong>الملف:</strong> {restorePreview.file} ({fmtBytes(restorePreview.size)})</div>
-            <div>🏷️ <strong>الإصدار:</strong> {restorePreview.version}</div>
-            <div>🕒 <strong>تاريخ الإنشاء:</strong> {restorePreview.exportedAt}</div>
-            <div>👤 <strong>أُنشئ بواسطة:</strong> {restorePreview.exportedBy}</div>
-            <div>💾 <strong>عناصر محلية:</strong> {restorePreview.localCount}</div>
-            {restorePreview.protectedLocalCount > 0 && (
-              <div style={{ color: "#92400e" }}>
-                🔒 <strong>مفاتيح محمية لن يتم استبدالها:</strong> {restorePreview.protectedLocalCount}
-              </div>
-            )}
-            <div>🗄️ <strong>تقارير السيرفر:</strong> {restorePreview.reportsCount}</div>
-            {restorePreview.scope && (
-              <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#6b7280" }}>
-                <strong>نطاق النسخة:</strong>{" "}
-                {restorePreview.scope.includeServerReports && `${restorePreview.scope.selectedTypes?.length || 0} نوع تقرير`}
-                {restorePreview.scope.dateFrom && ` · من ${restorePreview.scope.dateFrom}`}
-                {restorePreview.scope.dateTo && ` إلى ${restorePreview.scope.dateTo}`}
-              </div>
-            )}
+          <div style={{ marginTop: 14, border: `1px solid ${DEV.line}`, borderRadius: 8, padding: "12px 14px", background: DEV.bg }}>
+            <Prompt cmd={`cat ${restorePreview.file}`}>({fmtBytes(restorePreview.size)})</Prompt>
+            <div dir="ltr" style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "2px 14px", paddingInlineStart: 18, margin: "6px 0 10px" }}>
+              {[
+                ["version", restorePreview.version],
+                ["exportedAt", restorePreview.exportedAt],
+                ["exportedBy", restorePreview.exportedBy],
+                ["localKeys", restorePreview.localCount],
+                ["serverReports", restorePreview.reportsCount],
+                ...(restorePreview.protectedLocalCount > 0 ? [["protectedKeys", `${restorePreview.protectedLocalCount} (won't be replaced)`]] : []),
+                ...(restorePreview.scope ? [["scope", [
+                  restorePreview.scope.includeServerReports && `${restorePreview.scope.selectedTypes?.length || 0} types`,
+                  restorePreview.scope.dateFrom && `from ${restorePreview.scope.dateFrom}`,
+                  restorePreview.scope.dateTo && `to ${restorePreview.scope.dateTo}`,
+                ].filter(Boolean).join(" · ") || "—"]] : []),
+              ].map(([k, v]) => (
+                <React.Fragment key={k}>
+                  <code style={{ color: DEV.purple }}>{k}:</code>
+                  <code style={{ color: DEV.text }}>{String(v ?? "—")}</code>
+                </React.Fragment>
+              ))}
+            </div>
 
-            <label style={{ display: "block", marginTop: 12 }}>
-              <span style={{ display: "block", fontWeight: 800, color: "#0b1f4d", marginBottom: 6 }}>
+            <label style={{ display: "block", marginTop: 8 }}>
+              <span style={{ display: "block", fontWeight: 700, color: DEV.yellow, marginBottom: 6 }}>
                 Restore reason / سبب الاسترجاع *
               </span>
               <textarea
@@ -903,54 +776,41 @@ export default function BackupTab() {
                 onChange={(e) => setRestoreReason(e.target.value)}
                 rows={2}
                 placeholder="Example: Recover settings after accidental change"
-                style={{
-                  width: "100%",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                }}
+                style={{ ...devInput, width: "100%", resize: "vertical", boxSizing: "border-box" }}
               />
             </label>
 
-            <label
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                marginTop: 12, padding: "8px 12px",
-                background: "#fef3c7", border: "1px solid #fcd34d",
-                borderRadius: 8, cursor: "pointer",
-              }}
+            <DevCheck
+              checked={restoreServerToo}
+              onChange={(e) => setRestoreServerToo(e.target.checked)}
+              style={{ marginTop: 10, padding: "8px 12px", border: `1px solid ${DEV.yellow}`, borderRadius: 8 }}
             >
-              <input
-                type="checkbox"
-                checked={restoreServerToo}
-                onChange={(e) => setRestoreServerToo(e.target.checked)}
-              />
-              <span style={{ fontWeight: 700, color: "#92400e" }}>
-                ⚠️ رفع تقارير السيرفر أيضًا (قد يسبّب تكرار)
-              </span>
-            </label>
+              <span style={{ fontWeight: 700, color: DEV.yellow }}>⚠️ رفع تقارير السيرفر أيضًا (قد يسبّب تكرار)</span>
+            </DevCheck>
 
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button onClick={handleRestore} disabled={busy || restoreReason.trim().length < 8} tone="danger">
+              <DevButton tone="danger" onClick={handleRestore} disabled={busy || restoreReason.trim().length < 8}>
                 {busy ? "⏳ جارٍ الاسترجاع..." : "♻️ تأكيد الاسترجاع"}
-              </Button>
-              <Button onClick={() => setRestorePreview(null)} disabled={busy} tone="secondary">
-                إلغاء
-              </Button>
+              </DevButton>
+              <DevButton onClick={() => setRestorePreview(null)} disabled={busy}>إلغاء</DevButton>
             </div>
             {busy && progress.total > 0 && (
-              <div style={{ marginTop: 10, fontSize: "0.83rem", color: "#6b7280" }}>
-                {progress.current}/{progress.total} — <code>{progress.label}</code>
+              <div style={{ marginTop: 10 }}>
+                <AsciiProgress current={progress.current} total={progress.total} />
+                {progress.label && <div className="devc-sm" style={{ color: DEV.muted }}>› <code dir="ltr">{progress.label}</code></div>}
               </div>
             )}
           </div>
         )}
-      </div>
+      </Terminal>
 
-      {/* رسالة */}
-      <StatusMessage message={msg.text ? msg : null} />
+      {/* ========== Log ========== */}
+      {msg.text && (
+        <Terminal file="output.log" accent={msgKind === "err" ? DEV.red : msgKind === "ok" ? DEV.green : DEV.cyan}>
+          <LogLine kind={msgKind}>{msg.text}</LogLine>
+        </Terminal>
+      )}
+
       <ConfirmModal
         open={confirmRestore}
         title="تأكيد الاسترجاع"

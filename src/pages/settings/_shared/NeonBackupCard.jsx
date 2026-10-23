@@ -9,7 +9,7 @@
 
 import React, { useState } from "react";
 import API_BASE from "../../../config/api";
-import { Button } from "./SettingsUIKit";
+import { DEV, Terminal, Prompt, DevButton, LogLine } from "./devConsole";
 
 function currentUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}") || {}; } catch { return {}; }
@@ -53,29 +53,21 @@ export default function NeonBackupCard() {
   }
 
   return (
-    <div
-      style={{
-        background: "linear-gradient(135deg,#ecfdf5,#f0fdfa)",
-        border: "1px solid #99f6e4",
-        borderRadius: 16,
-        padding: 18,
-        marginBottom: 16,
-      }}
-    >
-      <div style={{ fontWeight: 800, color: "#134e4a", marginBottom: 6 }}>
-        🗄️ نسخة احتياطية كاملة لقاعدة البيانات (Neon)
-      </div>
-      <div style={{ color: "#115e59", lineHeight: 1.8, fontSize: "0.9rem", marginBottom: 12 }}>
+    <Terminal file="db-dump.sh" title="نسخة كاملة لقاعدة البيانات (Neon)" accent={DEV.purple} right={<code dir="ltr">super-admin</code>}>
+      <Prompt cmd="pg dump --all-tables --all-companies | gzip > neon-full.sql.gz" />
+      <div style={{ color: DEV.muted, lineHeight: 1.8, margin: "8px 0 12px" }}>
         كل الجداول لكل الشركات — التقارير، الحسابات، الكتالوج، سجل التعديلات، الفواتير والاشتراكات —
-        بملف <b>.sql.gz</b> واحد بيرجع بالكامل على قاعدة فاضية. الملف فيه بيانات حساسة (كلمات سر مشفّرة)،
-        خزّنه بمكان آمن.
+        بملف <code style={{ color: DEV.orange }}>.sql.gz</code> واحد بيرجع بالكامل على قاعدة فاضية.
+        <span style={{ color: DEV.yellow }}> الملف فيه بيانات حساسة (كلمات سر مشفّرة)، خزّنه بمكان آمن.</span>
       </div>
-      <Button tone="primary" onClick={download} disabled={busy}>
-        {busy ? "⏳ جاري النسخ…" : "⬇️ تحميل نسخة Neon كاملة"}
-      </Button>
+      <DevButton tone="info" onClick={download} disabled={busy}>
+        {busy ? "⏳ جاري النسخ…" : "⬇ تحميل نسخة Neon كاملة"}
+      </DevButton>
       {msg && (
-        <div style={{ marginTop: 10, fontWeight: 700, color: msg.ok ? "#065f46" : "#b91c1c" }}>{msg.text}</div>
+        <div style={{ marginTop: 10 }}>
+          <LogLine kind={busy ? "info" : msg.ok ? "ok" : "err"}>{msg.text.replace(/^[⏳✅❌]\s*/, "")}</LogLine>
+        </div>
       )}
-    </div>
+    </Terminal>
   );
 }
