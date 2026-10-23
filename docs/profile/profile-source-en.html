@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>INSPECT PRO — Company Profile</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { size: 297mm 210mm; margin: 0; }
+  :root{
+    --navy:#0B1E3F; --navy2:#13305F; --teal:#0EA5A4; --teal2:#14C3C1; --sky:#EAF6F6; --ink:#1B2A41;
+    --mute:#5B6B82; --line:#D9E4EE; --paper:#F6FAFC; --amber:#F59E0B; --red:#E5484D; --green:#16A34A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{background:#fff}
+  body{font-family:"Tajawal","Segoe UI",Tahoma,sans-serif;color:var(--ink);font-size:13pt;line-height:1.6}
+  .en{font-family:"Montserrat","Segoe UI",sans-serif;direction:ltr;unicode-bidi:isolate}
+  .page{width:297mm;height:210mm;position:relative;overflow:hidden;page-break-after:always;background:var(--paper)}
+  .page:last-child{page-break-after:auto}
+  .pad{position:absolute;inset:0;padding:16mm 18mm 18mm}
+
+  /* shared decorations */
+  .wave{position:absolute;left:0;bottom:0;width:100%;height:22mm;display:block}
+  .pno{position:absolute;bottom:4mm;left:18mm;font:700 10pt Montserrat,sans-serif;color:#fff;z-index:3}
+  .brandfoot{position:absolute;bottom:2.2mm;right:16mm;height:6.5mm;z-index:3}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--teal);font-weight:800;font-size:12pt;letter-spacing:.3px}
+  .eyebrow::before{content:"";width:26px;height:3px;border-radius:2px;background:var(--teal)}
+  h1.title{font-size:30pt;font-weight:900;color:var(--navy);line-height:1.25;margin:4px 0 6px}
+  h1.title b{color:var(--teal)}
+  .lead{color:var(--mute);font-size:13.5pt;max-width:200mm}
+  .ring{position:absolute;border-radius:50%;border:2px solid rgba(14,165,164,.18)}
+
+  /* cover */
+  .cover{background:var(--navy);color:#fff}
+  .cover .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:12mm 12mm}
+  .cover .glow{position:absolute;width:190mm;height:190mm;left:-40mm;top:10mm;border-radius:50%;background:radial-gradient(circle,rgba(14,165,164,.35),rgba(14,165,164,0) 65%)}
+  img[src*="logo-dark"]{mix-blend-mode:lighten}
+  .cover .logo{position:absolute;top:22mm;right:20mm;width:120mm}
+  .cover .hero{position:absolute;right:20mm;top:68mm;width:150mm}
+  .cover .hero h1{font-size:38pt;font-weight:900;line-height:1.25}
+  .cover .hero h1 b{color:var(--teal2)}
+  .cover .hero p{margin-top:10px;color:#B9C8DC;font-size:15pt}
+  .cover .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .chip{padding:5px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);font-size:11pt;color:#DDE8F5;background:rgba(255,255,255,.06)}
+  .cover .bigmark{position:absolute;left:22mm;top:40mm;width:120mm;opacity:.95}
+  .cover .bottom{position:absolute;bottom:0;left:0;right:0;height:16mm;background:var(--teal);display:flex;align-items:center;justify-content:space-between;padding:0 20mm;font:700 11pt Montserrat,sans-serif;color:#fff;letter-spacing:2px}
+
+  /* contents */
+  .toc{display:grid;grid-template-columns:1fr 1fr;gap:6mm 14mm;margin-top:10mm}
+  .toc div{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:14.5pt;font-weight:700;color:var(--navy)}
+  .toc span{font:800 15pt Montserrat,sans-serif;color:var(--teal);width:34px}
+  .toc em{margin-right:auto;font-style:normal;font:600 11pt Montserrat;color:var(--mute)}
+
+  /* cards */
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;position:relative;box-shadow:0 6px 18px rgba(11,30,63,.06)}
+  .ico{width:44px;height:44px;border-radius:12px;background:var(--sky);display:grid;place-items:center;color:var(--teal);flex:none}
+  .ico svg{width:24px;height:24px}
+  .card h3{font-size:14.5pt;font-weight:800;color:var(--navy);line-height:1.35}
+  .card h3 small{display:block;font:600 9pt Montserrat,sans-serif;color:var(--teal);letter-spacing:.4px;margin-top:2px}
+  .card p,.card li{font-size:11.5pt;color:var(--mute);line-height:1.6}
+  .card ul{list-style:none;margin-top:6px}
+  .card li{position:relative;padding-right:14px}
+  .card li::before{content:"";position:absolute;right:0;top:.72em;width:6px;height:6px;border-radius:50%;background:var(--teal)}
+  .num{position:absolute;top:-10px;left:14px;font:800 11pt Montserrat;color:#fff;background:var(--navy);border-radius:8px;padding:2px 9px}
+
+  .split{display:grid;grid-template-columns:1.05fr .95fr;gap:12mm;height:100%;align-items:center}
+  .panel-navy{background:var(--navy);color:#fff;border-radius:18px;padding:16mm 13mm;position:relative;overflow:hidden}
+  .panel-navy h2{font-size:22pt;font-weight:900;line-height:1.35}
+  .panel-navy p{color:#C4D2E4;margin-top:8px}
+  .quote{font-size:18pt;font-weight:800;color:var(--navy);line-height:1.6;border-right:5px solid var(--teal);padding-right:16px;margin-top:10px}
+
+  .stat{display:flex;gap:10px;margin-top:12px}
+  .stat div{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:center}
+  .stat b{display:block;font:800 20pt Montserrat;color:var(--teal);line-height:1.2}
+  .stat span{font-size:10.5pt;color:var(--mute)}
+
+  .row{display:flex;gap:12px;align-items:flex-start}
+
+  /* phone mockups */
+  .phone{width:62mm;height:128mm;border-radius:30px;background:#0A0F1C;padding:7px;box-shadow:0 22px 50px rgba(0,0,0,.35);position:relative}
+  .screen{color:var(--ink);width:100%;height:100%;border-radius:24px;background:#F4F8FB;overflow:hidden;position:relative;font-size:9pt;line-height:1.45}
+  .notch{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:26mm;height:5mm;border-radius:10px;background:#0A0F1C;z-index:2}
+  .sbar{height:9mm;background:var(--navy)}
+  .shead{background:var(--navy);color:#fff;padding:0 10px 10px}
+  .shead b{font-size:11pt;display:block}
+  .shead span{color:#9FB3CC;font-size:8.5pt}
+  .sbody{padding:8px}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .kpi{background:#fff;border-radius:10px;padding:6px 8px;border:1px solid #E3EBF3}
+  .kpi b{font:800 14pt Montserrat;display:block;line-height:1.2}
+  .kpi span{color:var(--mute);font-size:8pt}
+  .sect{font-weight:800;color:var(--navy);margin:8px 0 5px;font-size:9.5pt}
+  .item{background:#fff;border:1px solid #E3EBF3;border-radius:10px;padding:6px 8px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .item i{font-style:normal;color:var(--mute);font-size:7.5pt;display:block}
+  .tag{font-size:7.5pt;font-weight:800;border-radius:6px;padding:1px 6px;white-space:nowrap}
+  .t-ok{background:#DCFCE7;color:#15803D}.t-due{background:#FEF3C7;color:#B45309}.t-bad{background:#FEE2E2;color:#B91C1C}
+  .tabbar{position:absolute;bottom:0;left:0;right:0;height:11mm;background:#fff;border-top:1px solid #E3EBF3;display:flex;justify-content:space-around;align-items:center;color:var(--mute);font-size:7.5pt}
+  .tabbar .on{color:var(--teal);font-weight:800}
+  .fab{width:9mm;height:9mm;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font:800 14pt Montserrat;margin-top:-6mm;box-shadow:0 6px 14px rgba(14,165,164,.45)}
+  .field{background:#fff;border:1px solid #E3EBF3;border-radius:9px;padding:5px 8px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+  .field b{font:800 12pt Montserrat}
+  .btn{background:var(--teal);color:#fff;text-align:center;border-radius:10px;padding:7px;font-weight:800;margin-top:6px}
+
+  /* pricing */
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin-top:8mm}
+  .plan{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px 16px;position:relative}
+  .plan.hot{border:2px solid var(--teal);box-shadow:0 14px 34px rgba(14,165,164,.18)}
+  .plan .pill{position:absolute;top:-12px;right:16px;background:var(--teal);color:#fff;font-size:10pt;font-weight:800;padding:2px 12px;border-radius:999px}
+  .plan h3{font:800 16pt Montserrat;color:var(--navy)}
+  .plan .sub{color:var(--mute);font-size:11pt}
+  .price{margin:8px 0 4px;display:flex;align-items:baseline;gap:6px}
+  .price b{font:800 28pt Montserrat;color:var(--navy);line-height:1}
+  .price span{color:var(--mute);font-size:11pt}
+  .annual{font-size:11pt;color:var(--teal);font-weight:800}
+  .plan ul{list-style:none;margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  .plan li{font-size:11.5pt;color:var(--ink);padding:3px 22px 3px 0;position:relative}
+  .plan li::before{content:"✓";position:absolute;right:0;color:var(--teal);font-weight:900}
+
+  .std{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .std .badge{width:58px;height:58px;border-radius:50%;border:3px solid var(--teal);display:grid;place-items:center;font:800 9pt Montserrat;color:var(--navy);text-align:center;line-height:1.15;flex:none}
+  .std h4{font-size:13.5pt;color:var(--navy);font-weight:800}
+  .std p{font-size:11pt;color:var(--mute)}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin-top:6mm}
+  .step{background:#fff;border-radius:14px;border:1px solid var(--line);padding:14px 16px;position:relative}
+  .step .n{font:800 30pt Montserrat;color:var(--teal);opacity:.9;line-height:1}
+  .step h4{font-size:14pt;color:var(--navy);font-weight:800;margin-top:4px}
+  .step p{font-size:11.5pt;color:var(--mute)}
+
+  .sector{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+  .sector .ico{margin:0 auto 6px;width:52px;height:52px;border-radius:50%}
+  .sector b{display:block;color:var(--navy);font-size:12.5pt}
+  .sector span{font-size:10pt;color:var(--mute)}
+
+  .contact{background:var(--navy);color:#fff}
+  .contact .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:12mm 12mm}
+  .cline{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:14pt}
+  .cline .en{white-space:nowrap;font-size:12.5pt}
+  .cline .ico{background:rgba(14,165,164,.18);color:var(--teal2)}
+</style>
+<style>
+  /* LTR / English overrides */
+  body{font-family:"Inter","Segoe UI",Arial,sans-serif;font-size:12pt}
+  h1.title,.cover .hero h1,.panel-navy h2,.card h3,.step h4,.std h4,.sector b,.toc div,.quote{font-family:"Montserrat","Segoe UI",sans-serif;letter-spacing:-.2px}
+  h1.title{font-size:27pt;font-weight:800}
+  .cover .hero{width:158mm}
+  .cover .bigmark{width:98mm;right:14mm;top:50mm}
+  .cover .hero h1{font-size:28pt;font-weight:800}
+  .plan.hot{padding-top:20px}
+  .modules .card ul{margin-top:4px}
+  .pno{left:auto;right:18mm}
+  .brandfoot{right:auto;left:16mm}
+  .cover .glow{left:auto;right:-40mm}
+  .cover .logo{right:auto;left:20mm}
+  .cover .hero{right:auto;left:20mm}
+  .cover .bigmark{left:auto;right:22mm}
+  .toc em{margin-right:0;margin-left:auto}
+  .card li{padding-right:0;padding-left:14px}
+  .card li::before{right:auto;left:0;top:.62em}
+  .num{left:auto;right:14px}
+  .quote{border-right:0;padding-right:0;border-left:5px solid var(--teal);padding-left:16px;font-size:16pt}
+  .plan .pill{right:auto;left:16px}
+  .plan li{padding:3px 0 3px 22px}
+  .plan li::before{right:auto;left:0}
+  .card p,.card li{font-size:10.5pt}
+  .card h3{font-size:13pt}
+  .eyebrow{font-size:10.5pt;text-transform:uppercase;letter-spacing:1.2px}
+</style>
+</head>
+<body>
+
+<!-- 1 COVER -->
+<section class="page cover">
+  <div class="grid"></div><div class="glow"></div>
+  <img class="logo" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+  <svg class="bigmark" viewBox="0 0 124 124"><g transform="translate(4,4)"><path d="M88 52 A36 36 0 1 1 52 16" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/><path d="M52 16 A36 36 0 0 1 88 52" fill="none" stroke="#0EA5A4" stroke-width="9" stroke-linecap="round"/><path d="M80 80 L104 104" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/><path d="M33 53 L47 67 L73 39" fill="none" stroke="#0EA5A4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+  <div class="hero">
+    <div class="eyebrow" style="color:#7FE3E1">Company Profile</div>
+    <h1>Every branch, every record,<br><b>always inspection-ready.</b></h1>
+    <p>One platform for food safety, quality and compliance — from the branch floor to head office.</p>
+    <div class="chips"><span class="chip">HACCP</span><span class="chip">ISO 22000</span><span class="chip">GMP / GHP</span><span class="chip">ISO 45001</span><span class="chip">English · عربي</span></div>
+  </div>
+  <div class="bottom"><span>inspectpro-ae.netlify.app</span><span>FOOD SAFETY · QUALITY · COMPLIANCE</span></div>
+</section>
+
+<!-- 2 CONTENTS -->
+<section class="page">
+  <div class="ring" style="width:140mm;height:140mm;right:-50mm;top:-40mm"></div>
+  <div class="pad">
+    <div class="eyebrow">Contents</div>
+    <h1 class="title">What you will find <b>in this profile</b></h1>
+    <div class="toc">
+      <div><span>01</span>Introduction<em>03</em></div>
+      <div><span>07</span>Sectors &amp; implementation<em>08</em></div>
+      <div><span>02</span>About us<em>04</em></div>
+      <div><span>08</span>Standards &amp; data protection<em>09</em></div>
+      <div><span>03</span>Vision, mission &amp; values<em>05</em></div>
+      <div><span>09</span>Why INSPECT PRO?<em>10</em></div>
+      <div><span>04</span>Core platform modules<em>06</em></div>
+      <div><span>10</span>The platform on mobile<em>11</em></div>
+      <div><span>05</span>Competitive advantages<em>07</em></div>
+      <div><span>11</span>Plans &amp; pricing<em>12</em></div>
+      <div><span>06</span>From paper to one screen<em>07</em></div>
+      <div><span>12</span>Contact &amp; book a demo<em>13</em></div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">02</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 3 INTRO -->
+<section class="page">
+  <div class="pad">
+    <div class="split">
+      <div>
+        <div class="eyebrow">Introduction</div>
+        <h1 class="title">Paper records <b>are no longer enough</b></h1>
+        <p class="quote">In today's food market it is not enough to be safe — you have to prove it, on any day, to any inspector.</p>
+        <p class="lead" style="margin-top:14px">Paper files and scattered spreadsheets mean missing records, temperature readings nobody sees in time, and days of searching before every inspection. HACCP, ISO 22000 and regulators all call for one digital system that is traceable and audit-ready at any moment.</p>
+        <p class="lead" style="margin-top:10px"><b style="color:var(--navy)">INSPECT PRO</b> gives you one live platform your team fills on the phone and management follows the same day — so any record is in the inspector's hands in minutes, not days.</p>
+      </div>
+      <div class="panel-navy">
+        <div class="ring" style="width:110mm;height:110mm;right:-40mm;bottom:-50mm;border-color:rgba(14,165,164,.35)"></div>
+        <h2>From piles of files<br>to one live screen</h2>
+        <p>What changes from day one:</p>
+        <div style="margin-top:12px;display:grid;gap:9px">
+          <div class="row"><div class="ico" style="background:rgba(14,165,164,.2);color:#7FE3E1" data-i="clock"></div><div><b>Minutes, not days</b><p style="margin:0;font-size:10.5pt">Any record, any branch, any date — one search.</p></div></div>
+          <div class="row"><div class="ico" style="background:rgba(14,165,164,.2);color:#7FE3E1" data-i="therm"></div><div><b>Wrong readings stand out instantly</b><p style="margin:0;font-size:10.5pt">Every unit has its limits; anything outside them is flagged as it is typed.</p></div></div>
+          <div class="row"><div class="ico" style="background:rgba(14,165,164,.2);color:#7FE3E1" data-i="branch"></div><div><b>Every branch on one screen</b><p style="margin:0;font-size:10.5pt">Who logged today, who is late, and what is still open.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">03</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 4 ABOUT -->
+<section class="page">
+  <div class="pad">
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+        <div class="eyebrow">About us</div>
+        <h1 class="title">Built by food-safety people,<br><b>for food-safety teams</b></h1>
+        <p class="lead">INSPECT PRO is a UAE-based company that builds digital systems for food safety, quality and compliance.</p>
+        <p class="lead" style="margin-top:10px">The platform was born inside the daily work of a multi-branch meat company — real chillers, real receiving checks, real municipality inspections. Every screen was shaped by the people who fill the records and the QA teams who face the inspector; that is why it is fast on a phone at the branch and complete enough for management and auditors.</p>
+        <div class="chips" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <span class="chip" style="color:var(--navy);border-color:var(--line);background:#fff">📍 Based in the UAE</span>
+          <span class="chip" style="color:var(--navy);border-color:var(--line);background:#fff">English &amp; Arabic</span>
+          <span class="chip" style="color:var(--navy);border-color:var(--line);background:#fff">Cloud — no server</span>
+        </div>
+      </div>
+      <div>
+        <p style="font-weight:800;color:var(--navy);font-size:13pt;margin-bottom:8px;font-family:Montserrat">With INSPECT PRO, food businesses can:</p>
+        <div style="display:grid;gap:9px">
+          <div class="card row"><div class="ico" data-i="phone"></div><div><h3>Digitise daily records</h3><p>Turn paper HACCP forms into phone checklists — in the same layout.</p></div></div>
+          <div class="card row"><div class="ico" data-i="link"></div><div><h3>Trace products from supplier to branch</h3><p>The item code links shipment, receiving, storage and branches in one search.</p></div></div>
+          <div class="card row"><div class="ico" data-i="check"></div><div><h3>Close non-conformities with evidence</h3><p>Every case has a reference number, an owner and documented proof before it closes.</p></div></div>
+          <div class="card row"><div class="ico" data-i="shield"></div><div><h3>Stay inspection-ready every day</h3><p>Complete records and clear indicators for every branch, on any day.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">04</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 5 VISION / MISSION / VALUES -->
+<section class="page">
+  <div class="pad">
+    <div class="eyebrow">Vision · Mission · Values</div>
+    <h1 class="title">What <b>drives us</b></h1>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:6mm">
+      <div class="panel-navy" style="padding:9mm 10mm">
+        <div class="row"><div class="ico" style="background:rgba(14,165,164,.2);color:#7FE3E1" data-i="eye"></div><h2 style="font-size:17pt">Our vision</h2></div>
+        <p style="font-size:12pt;color:#DCE6F3">To be the region's leading digital platform for food safety and quality — where compliance is a daily habit in every branch, not an event before the inspector's visit.</p>
+      </div>
+      <div class="panel-navy" style="padding:9mm 10mm;background:var(--teal)">
+        <div class="row"><div class="ico" style="background:rgba(255,255,255,.2);color:#fff" data-i="target"></div><h2 style="font-size:17pt">Our mission</h2></div>
+        <p style="font-size:12pt;color:#F0FFFE">To help food businesses run food safety and quality with confidence and efficiency, through an easy cloud platform that speaks the branch's language and meets international standards and local requirements.</p>
+      </div>
+    </div>
+    <p style="font-weight:800;color:var(--navy);font-size:14pt;margin:8mm 0 4mm;font-family:Montserrat">Our core values</p>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5mm">
+      <div class="card"><div class="ico" data-i="clip"></div><h3 style="margin-top:8px">Inspection first</h3><p>Every record is built to be shown to an inspector within minutes.</p></div>
+      <div class="card"><div class="ico" data-i="pin"></div><h3 style="margin-top:8px">From the branch floor</h3><p>Designed with branch staff and QA teams, not around a template.</p></div>
+      <div class="card"><div class="ico" data-i="file"></div><h3 style="margin-top:8px">Your forms, your layout</h3><p>Your forms stay as they are — they just become digital.</p></div>
+      <div class="card"><div class="ico" data-i="db"></div><h3 style="margin-top:8px">Your data is yours</h3><p>Export your records to Excel or PDF at any time.</p></div>
+      <div class="card"><div class="ico" data-i="hand"></div><h3 style="margin-top:8px">A partner, not a vendor</h3><p>We set up the system with you and train your team until it works.</p></div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">05</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 6 MODULES -->
+<section class="page">
+  <div class="pad" style="padding-top:9mm">
+    <div style="text-align:center">
+      <div class="eyebrow">Our core solutions</div>
+      <h1 class="title" style="font-size:23pt">One platform covering the <b>full food-safety &amp; quality cycle</b></h1>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5mm 6mm;margin-top:5mm">
+      <div class="card"><span class="num">01</span><div class="row"><div class="ico" data-i="therm"></div><h3>HACCP daily logs<small>HACCP &amp; DAILY LOGS</small></h3></div><ul><li>Receiving, temperature, cleaning and cooking checks on the phone.</li><li>Per-unit limits flag out-of-range readings at once.</li></ul></div>
+      <div class="card"><span class="num">02</span><div class="row"><div class="ico" data-i="link"></div><h3>Traceability<small>TRACEABILITY</small></h3></div><ul><li>Supplier → receiving → branch in one search.</li><li>Production and expiry dates calculated automatically.</li></ul></div>
+      <div class="card"><span class="num">03</span><div class="row"><div class="ico" data-i="check"></div><h3>Non-conformities &amp; actions<small>NCR &amp; CAPA</small></h3></div><ul><li>Reference number, owner and due date for every case.</li><li>No case closes without documented evidence.</li></ul></div>
+      <div class="card"><span class="num">04</span><div class="row"><div class="ico" data-i="clip"></div><h3>Internal audits with evidence<small>INTERNAL AUDITS</small></h3></div><ul><li>Audit on the phone with customisable checklists.</li><li>Each finding sends the branch a link to upload proof.</li></ul></div>
+      <div class="card"><span class="num">05</span><div class="row"><div class="ico" data-i="truck"></div><h3>Supplier approval<small>SUPPLIER APPROVAL</small></h3></div><ul><li>Suppliers self-assess through a secure link.</li><li>Their result shows on every receiving record.</li></ul></div>
+      <div class="card"><span class="num">06</span><div class="row"><div class="ico" data-i="cap"></div><h3>Training &amp; health cards<small>TRAINING &amp; OHC</small></h3></div><ul><li>QR-code training quizzes and certificates.</li><li>Alerts before health cards expire.</li></ul></div>
+      <div class="card"><span class="num">07</span><div class="row"><div class="ico" data-i="ret"></div><h3>Returns &amp; complaints<small>RETURNS &amp; COMPLAINTS</small></h3></div><ul><li>Branch returns, customer returns and condemnations.</li><li>Quality complaints e-mailed to branches and suppliers.</li></ul></div>
+      <div class="card"><span class="num">08</span><div class="row"><div class="ico" data-i="hard"></div><h3>Health &amp; safety<small>HSE · ISO 45001</small></h3></div><ul><li>Risk register, work permits and incidents.</li><li>Fire equipment, evacuation drills and PPE.</li></ul></div>
+      <div class="card"><span class="num">09</span><div class="row"><div class="ico" data-i="chart"></div><h3>KPIs &amp; reporting<small>KPIs &amp; ANALYTICS</small></h3></div><ul><li>Compliance per branch and period comparison.</li><li>PDF and Excel reports ready for management and inspectors.</li></ul></div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">06</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 7 FEATURES + BEFORE/AFTER -->
+<section class="page">
+  <div class="pad">
+    <div class="eyebrow">Competitive advantages</div>
+    <h1 class="title">Why it actually works <b>at the branch</b></h1>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5mm;margin-top:5mm">
+      <div class="card"><div class="ico" data-i="phone"></div><h3 style="margin-top:8px">Built for the phone</h3><p>Staff fill a record at the branch in seconds — large text, clear buttons.</p></div>
+      <div class="card"><div class="ico" data-i="globe"></div><h3 style="margin-top:8px">English &amp; Arabic</h3><p>Every user works in their own language, every screen in the right direction.</p></div>
+      <div class="card"><div class="ico" data-i="wifi"></div><h3 style="margin-top:8px">Works offline</h3><p>Records are kept on the device and sent automatically when the network returns.</p></div>
+      <div class="card"><div class="ico" data-i="users"></div><h3 style="margin-top:8px">Unlimited users</h3><p>Precise permissions per account: view, add, edit, delete — per branch.</p></div>
+      <div class="card"><div class="ico" data-i="file"></div><h3 style="margin-top:8px">Your forms as they are</h3><p>Paper forms become digital, and reports print in the same design.</p></div>
+      <div class="card"><div class="ico" data-i="db"></div><h3 style="margin-top:8px">Full backup</h3><p>Export every record to Excel and PDF, matching the original layout.</p></div>
+      <div class="card"><div class="ico" data-i="cloud"></div><h3 style="margin-top:8px">Fully cloud-based</h3><p>No server, no IT team — opens in any browser on any device.</p></div>
+      <div class="card"><div class="ico" data-i="layers"></div><h3 style="margin-top:8px">A version per sector</h3><p>Meat, sweets, restaurants, factories, retail, warehouses.</p></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-top:6mm">
+      <div class="card" style="background:#FFF6F6;border-color:#F7D4D4"><h3 style="color:#B91C1C">Before — paper &amp; spreadsheets</h3><ul><li>Files in every branch; gaps surface only at inspection.</li><li>A wrong temperature stays in the logbook with no action.</li><li>Days of collecting and searching before every audit.</li></ul></div>
+      <div class="card" style="background:#F1FBFB;border-color:#BDEBEA"><h3 style="color:var(--teal)">After — INSPECT PRO</h3><ul><li>Every branch live on one screen.</li><li>Out-of-limit readings are flagged and open a corrective action.</li><li>Any record ready for the inspector in minutes.</li></ul></div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">07</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 8 SECTORS + HOW -->
+<section class="page">
+  <div class="pad">
+    <div class="eyebrow">Target sectors</div>
+    <h1 class="title">Designed for every <b>food business</b></h1>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4mm;margin-top:5mm">
+      <div class="sector"><div class="ico" data-i="knife"></div><b>Meat</b><span>Butcheries &amp; abattoirs</span></div>
+      <div class="sector"><div class="ico" data-i="cake"></div><b>Sweets</b><span>&amp; bakeries</span></div>
+      <div class="sector"><div class="ico" data-i="cup"></div><b>Restaurants</b><span>&amp; cafés</span></div>
+      <div class="sector"><div class="ico" data-i="pot"></div><b>Central kitchens</b><span>&amp; catering</span></div>
+      <div class="sector"><div class="ico" data-i="factory"></div><b>Food factories</b><span>&amp; manufacturing</span></div>
+      <div class="sector"><div class="ico" data-i="cart"></div><b>Retail</b><span>&amp; supermarkets</span></div>
+      <div class="sector"><div class="ico" data-i="snow"></div><b>Distribution</b><span>&amp; cold stores</span></div>
+    </div>
+    <div class="eyebrow" style="margin-top:9mm">Implementation</div>
+    <h1 class="title" style="font-size:23pt">Three steps <b>to go live</b></h1>
+    <div class="steps">
+      <div class="step"><div class="n">01</div><h4>A short demo on your branches</h4><p>We show the platform on your business type and your own records — 30 minutes, no commitment.</p></div>
+      <div class="step"><div class="n">02</div><h4>We set it up with you</h4><p>Your branches, forms, users and permissions — plus on-site training for your team.</p></div>
+      <div class="step"><div class="n">03</div><h4>Your team logs, you follow live</h4><p>Staff fill checks on their phones; QA and management follow every branch from one dashboard.</p></div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">08</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 9 STANDARDS + SECURITY -->
+<section class="page">
+  <div class="pad">
+    <div class="eyebrow">International &amp; local compliance</div>
+    <h1 class="title">Built on the standards <b>inspectors ask for</b></h1>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:6mm">
+      <div style="display:grid;gap:5mm">
+        <div class="std"><div class="badge">HACCP</div><div><h4>Hazard Analysis &amp; Critical Control Points</h4><p>CCP records, critical limits, corrective actions and verification.</p></div></div>
+        <div class="std"><div class="badge">ISO<br>22000</div><div><h4>Food Safety Management System</h4><p>Internal audits, non-conformities, suppliers, traceability, document control.</p></div></div>
+        <div class="std"><div class="badge">GMP<br>GHP</div><div><h4>Good Manufacturing &amp; Hygiene Practices</h4><p>Cleaning, pest control, personal hygiene, calibration and maintenance.</p></div></div>
+        <div class="std"><div class="badge">ISO<br>45001</div><div><h4>Occupational Health &amp; Safety</h4><p>Risk register, work permits, incidents, evacuation and fire equipment.</p></div></div>
+      </div>
+      <div class="panel-navy" style="padding:11mm 11mm">
+        <div class="row"><div class="ico" style="background:rgba(14,165,164,.2);color:#7FE3E1" data-i="lock"></div><h2 style="font-size:18pt">Protecting your data</h2></div>
+        <div style="display:grid;gap:10px;margin-top:12px;font-size:11.5pt;color:#DCE6F3">
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>Fully encrypted connection (HTTPS) between device and server.</span></div>
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>Each company's data fully isolated at database level.</span></div>
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>Named accounts with precise permissions per branch and section.</span></div>
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>A reference number for every record, and a log of who changed what.</span></div>
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>Supplier and branch links that expire and can be revoked.</span></div>
+          <div class="row"><b style="color:#7FE3E1">✓</b><span>A full backup you can download at any time.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">09</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 10 WHY -->
+<section class="page">
+  <div class="pad">
+    <div class="split" style="grid-template-columns:.9fr 1.1fr">
+      <div class="panel-navy" style="height:150mm;display:flex;flex-direction:column;justify-content:center">
+        <div class="ring" style="width:120mm;height:120mm;left:-50mm;top:-50mm;border-color:rgba(14,165,164,.35)"></div>
+        <div class="eyebrow" style="color:#7FE3E1">Why</div>
+        <h2 style="font-size:32pt;font-family:Montserrat">INSPECT <span style="color:var(--teal2)">PRO</span>?</h2>
+        <p style="font-size:13pt">We are not just software. We bring together a working platform, hands-on food-safety experience and local support that understands UAE regulatory requirements.</p>
+      </div>
+      <div style="display:grid;gap:6mm">
+        <div class="card row"><div class="ico" data-i="star"></div><div><h3>Proven on real branches</h3><p>Used every day by a multi-branch company — every feature came from a real problem at the branch.</p></div></div>
+        <div class="card row"><div class="ico" data-i="hand"></div><div><h3>A team that knows food safety</h3><p>Built by people working in QA and food safety, who know what inspectors and auditors ask for.</p></div></div>
+        <div class="card row"><div class="ico" data-i="tag"></div><div><h3>Clear prices and a free trial</h3><p>A published price per branch, and an instant free trial before any commitment.</p></div></div>
+        <div class="card row"><div class="ico" data-i="pin"></div><div><h3>Fast local support</h3><p>Support in English and Arabic by phone and WhatsApp, with on-site training.</p></div></div>
+      </div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">10</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 11 MOBILE -->
+<section class="page" style="background:linear-gradient(225deg,#0B1E3F 0%,#13305F 60%,#0E6F7A 100%);color:#fff">
+  <div class="cover"><div class="grid"></div></div>
+  <div class="pad">
+    <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:10mm;height:100%;align-items:center">
+      <div>
+        <div class="eyebrow" style="color:#7FE3E1">The platform on mobile</div>
+        <h1 class="title" style="color:#fff">The branch logs it,<br><b style="color:var(--teal2)">management sees it now</b></h1>
+        <p style="color:#C4D2E4;font-size:12.5pt">The same platform on phone and computer — nothing to install.</p>
+        <div style="display:grid;gap:8px;margin-top:12px;font-size:11.5pt;color:#E3ECF7">
+          <div>✓ A daily dashboard: who logged, who is late, what is open.</div>
+          <div>✓ Temperature entry checked against limits as you type.</div>
+          <div>✓ Evidence photos straight from the camera.</div>
+          <div>✓ Saves offline and sends automatically later.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:9mm;justify-content:center;align-items:center">
+        <div class="phone"><div class="screen">
+          <div class="notch"></div><div class="sbar"></div>
+          <div class="shead"><b>Good morning, QA team</b><span>Dashboard · Today</span></div>
+          <div class="sbody">
+            <div class="kpis">
+              <div class="kpi"><b style="color:var(--teal)">12/14</b><span>Branches logged</span></div>
+              <div class="kpi"><b style="color:var(--amber)">3</b><span>Open cases</span></div>
+              <div class="kpi"><b style="color:var(--green)">96%</b><span>Readiness</span></div>
+              <div class="kpi"><b style="color:var(--red)">2</b><span>Health cards expiring</span></div>
+            </div>
+            <div class="sect">Today's records</div>
+            <div class="item"><div>Receiving check<i>Branch 01</i></div><span class="tag t-ok">Done</span></div>
+            <div class="item"><div>Cleaning checklist<i>Branch 02</i></div><span class="tag t-due">4:00 PM</span></div>
+            <div class="item"><div>NCR-0012<i>Closed with evidence</i></div><span class="tag t-ok">Closed</span></div>
+          </div>
+          <div class="tabbar"><span class="on">Home</span><span>Records</span><div class="fab">+</div><span>Cases</span><span>More</span></div>
+        </div></div>
+        <div class="phone" style="transform:translateY(8mm)"><div class="screen">
+          <div class="notch"></div><div class="sbar"></div>
+          <div class="shead"><b>Chiller temperatures</b><span>Branch 01 · Limit 0–5 °C</span></div>
+          <div class="sbody">
+            <div class="field"><span>Chiller 01</span><b style="color:var(--green)">2.1°</b></div>
+            <div class="field"><span>Chiller 02</span><b style="color:var(--green)">3.4°</b></div>
+            <div class="field" style="border-color:#F7B4B4;background:#FFF5F5"><span>Chiller 03</span><b style="color:var(--red)">7.8°</b></div>
+            <div style="background:#FFF7E6;border:1px solid #FCD9A0;border-radius:9px;padding:6px 8px;color:#92400E;font-size:8.5pt">⚠ Out of limit — choose a corrective action</div>
+            <div class="field"><span>Action</span><span style="font-weight:800;color:var(--navy)">Move product + repair</span></div>
+            <div class="field"><span>📷 Evidence photo</span><span class="tag t-ok">Attached</span></div>
+            <div class="btn">Save record</div>
+          </div>
+          <div class="tabbar"><span>Home</span><span class="on">Records</span><div class="fab">+</div><span>Cases</span><span>More</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+  <span class="pno">11</span>
+</section>
+
+<!-- 12 PRICING -->
+<section class="page">
+  <div class="pad" style="padding-top:13mm">
+    <div style="text-align:center">
+      <div class="eyebrow">Flexible options for every business</div>
+      <h1 class="title" style="font-size:25pt">A clear price <b>per branch</b></h1>
+      <p class="lead" style="margin:0 auto">Pick the plan that fits your budget. Every plan: unlimited users · English &amp; Arabic · a free trial before you start.</p>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <h3>Essential</h3><div class="sub">Economy</div>
+        <div class="price"><b>350</b><span>AED / branch / month</span></div>
+        <div class="annual">AED 300 billed annually</div>
+        <ul><li>All daily food-safety logs for your business type</li><li>Limits checked as you type, corrective actions</li><li>Health cards and training certificates, with expiry alerts</li><li>Excel &amp; PDF exports, works offline</li></ul>
+      </div>
+      <div class="plan hot">
+        <span class="pill">Most popular</span>
+        <h3>Professional</h3><div class="sub">Balanced</div>
+        <div class="price"><b>490</b><span>AED / branch / month</span></div>
+        <div class="annual">AED 420 billed annually</div>
+        <ul><li>Everything in Essential</li><li>Every branch live on one screen</li><li>Traceability, suppliers, CAPA and training</li><li>Your own forms set up for you</li><li>On-site team training · priority support</li></ul>
+      </div>
+      <div class="plan">
+        <h3>Enterprise</h3><div class="sub">Complete quality system</div>
+        <div class="price"><b>690</b><span>AED / branch / month</span></div>
+        <div class="annual">AED 590 billed annually</div>
+        <ul><li>Everything in Professional</li><li>Production &amp; yield, audits and HSE</li><li>A system built around your operation</li><li>Dedicated onboarding and account manager</li></ul>
+      </div>
+    </div>
+    <p style="text-align:center;color:var(--mute);font-size:9.5pt;margin-top:6mm">Professional &amp; Enterprise: −10% from 5 branches, −15% from 10 branches · Setup fee AED 1,000 one-off, free on annual billing · Over 20 branches: custom quote · Prices exclude VAT where it applies.</p>
+  </div>
+  <svg class="wave" viewBox="0 0 1000 80" preserveAspectRatio="none"><path d="M0 26 C550 60 750 10 1000 36 L1000 80 L0 80Z" fill="#0EA5A4"/><path d="M0 38 C400 62 700 28 1000 46 L1000 80 L0 80Z" fill="#0B1E3F"/></svg>
+  <span class="pno">12</span><img class="brandfoot" src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" alt="">
+</section>
+
+<!-- 13 CONTACT -->
+<section class="page contact">
+  <div class="grid"></div>
+  <div class="ring" style="width:200mm;height:200mm;right:-70mm;bottom:-90mm;border-color:rgba(14,165,164,.35)"></div>
+  <div class="ring" style="width:140mm;height:140mm;right:-40mm;bottom:-60mm;border-color:rgba(14,165,164,.25)"></div>
+  <div class="pad">
+    <img src="file:///D:/inspection-react-full/public/brand/inspect-pro/logo-dark.png" style="width:105mm" alt="">
+    <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:12mm;margin-top:14mm">
+      <div>
+        <div class="eyebrow" style="color:#7FE3E1">Book a demo</div>
+        <h1 class="title" style="color:#fff;font-size:28pt">Instead of preparing for inspections,<br><b style="color:var(--teal2)">be ready for them every day.</b></h1>
+        <p style="color:#C4D2E4;font-size:13pt;margin-top:8px">A live 30-minute demo on your business type, your branches and your own forms — no commitment. Or start your free trial now.</p>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:18px;padding:9mm 10mm">
+        <div class="cline"><div class="ico" data-i="globe"></div><span class="en">inspectpro-ae.netlify.app</span></div>
+        <div class="cline"><div class="ico" data-i="play"></div><div><span class="en">inspectpro-ae.netlify.app/demo</span><div style="font-size:10pt;color:#9FB3CC">Instant free trial</div></div></div>
+        <div class="cline"><div class="ico" data-i="pin"></div><span>United Arab Emirates</span></div>
+        <div class="cline"><div class="ico" data-i="chat"></div><div><span class="en">+971 58 544 6473</span><div style="font-size:10pt;color:#9FB3CC">Call &amp; WhatsApp · English &amp; Arabic</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cover"><div class="bottom"><span class="en">© 2026 INSPECT PRO</span><span>FOOD SAFETY · QUALITY · COMPLIANCE</span></div></div>
+</section>
+<script>
+const P = {
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  therm:'<path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 9v7"/>',
+  branch:'<rect x="3" y="10" width="7" height="10" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/><path d="M6 14h1M17 8h1M17 12h1M17 16h1"/>',
+  phone:'<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  check:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9"/>',
+  shield:'<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  clip:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
+  pin:'<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  file:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h5"/>',
+  db:'<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>',
+  hand:'<path d="M7 11l3-3 2 1 3-3 5 5-6 6-3-1-3 3-4-4z"/><path d="M3 15l3 3"/>',
+  truck:'<path d="M2 6h11v10H2zM13 10h4l4 3v3h-8"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  cap:'<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5M22 9v5"/>',
+  ret:'<path d="M9 14l-5-5 5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  hard:'<path d="M3 17h18M5 17v-3a7 7 0 0 1 14 0v3"/><path d="M10 7.5V5h4v2.5"/>',
+  chart:'<path d="M3 21h18"/><rect x="5" y="12" width="3" height="7"/><rect x="10.5" y="8" width="3" height="11"/><rect x="16" y="4" width="3" height="15"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
+  wifi:'<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.4.2 4 1.9 4.5 4.5"/>',
+  cloud:'<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.5A3.8 3.8 0 0 1 17.5 18z"/>',
+  layers:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  knife:'<path d="M4 20l9-9M13 11l6-6c1.5 1.5 1.5 4 0 5.5L15 14z"/>',
+  cake:'<path d="M4 20h16v-7H4z"/><path d="M4 16c2 1.5 4 1.5 6 0s4-1.5 6 0 3 1.2 4 .5M12 13V9M12 6.5V6"/>',
+  cup:'<path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v2M12 3v2"/>',
+  pot:'<path d="M3 10h18M5 10v7a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-7M9 6.5c0-1 .8-2 3-2s3 1 3 2"/>',
+  factory:'<path d="M3 21V10l5 3V10l5 3V5h4l1 16z"/><path d="M7 17h1M11 17h1"/>',
+  cart:'<path d="M3 4h2l2.4 11h10.6l2-8H6.3"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+  snow:'<path d="M12 2v20M3.3 7l17.4 10M20.7 7L3.3 17"/><path d="M9.5 4L12 6l2.5-2M9.5 20L12 18l2.5 2"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/>',
+  star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
+  play:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/>',
+  chat:'<path d="M4 18.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8z"/><path d="M8 9h8M8 12.5h5"/>'
+};
+document.querySelectorAll('[data-i]').forEach(el=>{
+  el.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(P[el.dataset.i]||'')+'</svg>';
+});
+const m=location.search.match(/p=([0-9]+)/);if(m){document.querySelectorAll(".page").forEach((p,i)=>{if(i+1!=+m[1])p.style.display="none"});}
+</script>
+</body>
+</html>

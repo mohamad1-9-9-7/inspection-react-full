@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1080px; }
+  body {
+    font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+    background: linear-gradient(160deg, #f4f9fd 0%, #e6f4f6 100%);
+    color: #0b1d3f;
+    padding: 70px 72px;
+    display: flex; flex-direction: column;
+  }
+  .logo { height: 78px; align-self: center; direction: ltr; }
+  h1 { font-size: 58px; font-weight: 800; text-align: center; line-height: 1.35; margin-top: 46px; }
+  h1 span { color: #10a5a5; }
+  .sub { text-align: center; font-size: 28px; color: #4a5b78; margin-top: 10px; font-weight: 500; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 50px; }
+  .tile {
+    background: #fff; border-radius: 28px; padding: 30px 30px;
+    box-shadow: 0 8px 26px rgba(11,29,63,.08);
+    display: flex; align-items: center; gap: 20px;
+  }
+  .ic { font-size: 52px; flex: none; }
+  .tile b { display: block; font-size: 30px; font-weight: 800; }
+  .tile small { display: block; font-size: 22px; color: #5a6a85; font-weight: 500; margin-top: 2px; }
+  .cta {
+    margin-top: auto; background: #0b1d3f; color: #fff; border-radius: 28px;
+    padding: 28px 36px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .cta b { font-size: 34px; font-weight: 800; }
+  .cta b span { color: #3fd3c9; }
+  .cta .url { direction: ltr; font-size: 26px; color: #cfe3ff; font-weight: 700; }
+</style>
+</head>
+<body>
+  <img class="logo" src="../../../public/brand/inspect-pro/logo-light.png" alt="">
+  <h1>سلامة الغذاء في كل فروع <span>اللفاح</span><br>من شاشة وحدة</h1>
+  <div class="sub">بدون ورق · بدون ملفات ضايعة · جاهزين لأي تفتيش</div>
+
+  <div class="grid">
+    <div class="tile"><div class="ic">📋</div><div><b>تقارير يومية رقمية</b><small>الفرع يعبّي من الجوال بدقيقة</small></div></div>
+    <div class="tile"><div class="ic">🌡️</div><div><b>حرارة الثلاجات</b><small>مسح QR وتنبيه فوري لأي خلل</small></div></div>
+    <div class="tile"><div class="ic">📊</div><div><b>متابعة كل الفروع</b><small>مين التزم ومين قصّر — لحظياً</small></div></div>
+    <div class="tile"><div class="ic">🛡️</div><div><b>جاهزية للتفتيش</b><small>HACCP · ISO 22000 · البلدية</small></div></div>
+  </div>
+
+  <div class="cta">
+    <b>جرّب مجاناً <span>شهر كامل</span></b>
+    <div class="url">inspectpro-ae.netlify.app/demo</div>
+  </div>
+</body>
+</html>
