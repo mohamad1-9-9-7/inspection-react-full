@@ -73,6 +73,20 @@ function getId(r) {
 // نفس مدد صفحة الإدخال (TrainingCertificatesUpload)
 const COURSE_DURATION_YEARS = { BFS: 2, PIC: 5, EFST: 5 };
 
+// الحقول التي تتابعها نافذة التعديل لمعرفة ما تغيّر
+const EDIT_TRACKED_KEYS = [
+  "employeeNo",
+  "name",
+  "nationality",
+  "branch",
+  "job",
+  "courseType",
+  "issueDate",
+  "expiryDate",
+  "imageData",
+  "instituteImage",
+];
+
 const COURSE_OPTIONS = [
   { value: "", label: "-- Select Course Type --" },
   { value: "BFS", label: "Basic Food Safety (BFS)" },
@@ -241,6 +255,8 @@ export default function TrainingCertificatesView() {
   // حالات التعديل/الحذف
   const [editingRid, setEditingRid] = useState(null);
   const [editUploading, setEditUploading] = useState(""); // slot قيد الرفع
+  const [editOriginal, setEditOriginal] = useState(null); // نسخة قبل التعديل
+  const [dragSlot, setDragSlot] = useState(""); // بطاقة الصورة تحت السحب
   const [editDraft, setEditDraft] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingRid, setDeletingRid] = useState(null);
@@ -623,16 +639,9 @@ export default function TrainingCertificatesView() {
       alert("⚠️ Missing record id. Cannot edit this row.");
       return;
     }
-    if (
-      !window.confirm(
-        "Enable edit mode for this certificate?\nهل تريد تعديل هذه الشهادة؟"
-      )
-    )
-      return;
-
     const origPayload = row._record?.payload || row._record || {};
 
-    setEditDraft({
+    const draft = {
       employeeNo: row.employeeNo || "",
       name: row.name || "",
       nationality: row.nationality || "",
@@ -646,7 +655,9 @@ export default function TrainingCertificatesView() {
       imageType: origPayload.imageType || "",
       instituteImage: origPayload.instituteImageUrl || "",
       instituteImageName: origPayload.instituteImageName || "",
-    });
+    };
+    setEditDraft(draft);
+    setEditOriginal(draft);
     setEditingRid(row._rid);
     setMsg("");
   }
@@ -654,7 +665,57 @@ export default function TrainingCertificatesView() {
   function cancelEdit() {
     setEditingRid(null);
     setEditDraft(null);
+    setEditOriginal(null);
+    setDragSlot("");
   }
+
+  // الحقول التي تغيّرت عن القيم الأصلية (لإبرازها + عدّاد التغييرات)
+  const editChanged = useMemo(() => {
+    if (!editDraft || !editOriginal) return new Set();
+    return new Set(
+      EDIT_TRACKED_KEYS.filter(
+        (k) => String(editDraft[k] || "") !== String(editOriginal[k] || "")
+      )
+    );
+  }, [editDraft, editOriginal]);
+
+  const editDateError =
+    editDraft?.issueDate &&
+    editDraft?.expiryDate &&
+    editDraft.expiryDate < editDraft.issueDate
+      ? "Expiry date is before the issue date."
+      : "";
+
+  // إغلاق النافذة — يسأل فقط لو في تغييرات غير محفوظة
+  function requestCloseEdit() {
+    if (savingEdit) return;
+    if (
+      editChanged.size &&
+      !window.confirm("Discard unsaved changes?\nتجاهل التعديلات غير المحفوظة؟")
+    )
+      return;
+    cancelEdit();
+  }
+
+  function resetEdit() {
+    if (editOriginal) setEditDraft(editOriginal);
+  }
+
+  // Esc = إغلاق، Ctrl/Cmd + S = حفظ
+  useEffect(() => {
+    if (!editingRid) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape" && !previewImage) {
+        e.preventDefault();
+        requestCloseEdit();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (editChanged.size && !editDateError && !editUploading && !savingEdit) saveEdit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   function updateEditField(key, value) {
     setEditDraft((prev) => {
@@ -674,9 +735,14 @@ export default function TrainingCertificatesView() {
   }
 
   // اختيار صورة جديدة أثناء التعديل (slot "institute" = صورة المعهد لـ EFST)
-  async function handleEditImageSelect(e, slot = "main") {
+  function handleEditImageSelect(e, slot = "main") {
     const file = e.target.files?.[0];
     e.target.value = "";
+    handleEditImageFile(file, slot);
+  }
+
+  // مشترك بين اختيار الملف والسحب والإفلات
+  async function handleEditImageFile(file, slot) {
     if (!file) return;
 
     if (!/^image\//.test(file.type)) {
@@ -702,14 +768,8 @@ export default function TrainingCertificatesView() {
   }
 
   // حذف الصورة في وضع التعديل
+  // بدون تأكيد: Reset يرجّع الصورة، ولا شيء يُحفظ قبل Save
   function handleRemoveEditImage(slot = "main") {
-    if (
-      !window.confirm(
-        "Remove the certificate image for this record?\nحذف صورة الشهادة من هذا السجل؟"
-      )
-    )
-      return;
-
     setEditDraft((prev) => ({
       ...(prev || {}),
       ...(slot === "institute"
@@ -791,23 +851,45 @@ export default function TrainingCertificatesView() {
     );
   }
 
-  // بطاقة صورة داخل نافذة التعديل (Upload / Replace / Remove)
-  function renderEditImageSlot(slot, src, caption, required) {
+  // بطاقة صورة داخل نافذة التعديل — رفع / استبدال / حذف + سحب وإفلات
+  function renderEditImageSlot(slot, caption, required) {
+    const srcKey = slot === "institute" ? "instituteImage" : "imageData";
+    const nameKey = slot === "institute" ? "instituteImageName" : "imageName";
+    const src = editDraft?.[srcKey] || "";
+    const fileName = editDraft?.[nameKey] || "";
     const uploading = editUploading === slot;
     const missing = required && !src;
+    const changed = editChanged.has(srcKey);
+    const dragging = dragSlot === slot;
+
+    const onDrop = (e) => {
+      e.preventDefault();
+      setDragSlot("");
+      handleEditImageFile(e.dataTransfer.files?.[0], slot);
+    };
+
     return (
       <div
         key={slot}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (dragSlot !== slot) setDragSlot(slot);
+        }}
+        onDragLeave={() => setDragSlot("")}
+        onDrop={onDrop}
         style={{
           flex: "1 1 220px",
           minWidth: 0,
-          border: `1px solid ${missing ? "#fcd34d" : "#e2e8f0"}`,
-          borderRadius: 12,
-          background: missing ? "#fffbeb" : "#f8fafc",
+          border: `${dragging ? 2 : 1}px ${dragging ? "dashed" : "solid"} ${
+            dragging ? "#0284c7" : missing ? "#fcd34d" : changed ? "#fbbf24" : "#e2e8f0"
+          }`,
+          borderRadius: 14,
+          background: dragging ? "#e0f2fe" : missing ? "#fffbeb" : "#f8fafc",
           padding: 12,
           display: "flex",
           flexDirection: "column",
           gap: 10,
+          transition: "background .15s, border-color .15s",
         }}
       >
         <div
@@ -820,6 +902,7 @@ export default function TrainingCertificatesView() {
         >
           <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>
             {caption}
+            {changed && <span style={changedDotStyle} title="Changed" />}
           </span>
           {required && (
             <span
@@ -832,14 +915,15 @@ export default function TrainingCertificatesView() {
                 background: src ? "#dcfce7" : "#fef3c7",
               }}
             >
-              {src ? "Attached" : "Missing"}
+              {src ? "Attached" : "Required"}
             </span>
           )}
         </div>
 
         <div
           style={{
-            height: 130,
+            position: "relative",
+            height: 150,
             borderRadius: 10,
             border: src ? "1px solid #e2e8f0" : "1px dashed #cbd5e1",
             background: "#fff",
@@ -850,9 +934,12 @@ export default function TrainingCertificatesView() {
           }}
         >
           {uploading ? (
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#0369a1" }}>
-              ⏳ Uploading…
-            </span>
+            <div style={{ textAlign: "center", color: "#0369a1" }}>
+              <div style={spinnerStyle} />
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 8 }}>
+                Uploading…
+              </div>
+            </div>
           ) : src ? (
             <button
               type="button"
@@ -874,9 +961,30 @@ export default function TrainingCertificatesView() {
               />
             </button>
           ) : (
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>No image</span>
+            <div style={{ textAlign: "center", color: "#94a3b8", padding: 8 }}>
+              <div style={{ fontSize: 22 }}>⬆</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {dragging ? "Drop the image here" : "Drag an image here"}
+              </div>
+              <div style={{ fontSize: 11 }}>or use Upload below</div>
+            </div>
           )}
         </div>
+
+        {fileName && src && (
+          <div
+            title={fileName}
+            style={{
+              fontSize: 11,
+              color: "#64748b",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            📎 {fileName}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 6 }}>
           <label
@@ -900,6 +1008,23 @@ export default function TrainingCertificatesView() {
             />
           </label>
           {src && !uploading && (
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in a new tab"
+              style={{
+                ...editBtnStyle,
+                textDecoration: "none",
+                border: "1px solid #cbd5e1",
+                background: "#fff",
+                color: "#334155",
+              }}
+            >
+              ↗
+            </a>
+          )}
+          {src && !uploading && (
             <button
               type="button"
               onClick={() => handleRemoveEditImage(slot)}
@@ -921,13 +1046,6 @@ export default function TrainingCertificatesView() {
   // حفظ التعديل (PUT مع fallback POST + حذف القديم عند POST)
   async function saveEdit() {
     if (!editingRid || !editDraft) return;
-
-    if (
-      !window.confirm(
-        "Save changes for this certificate?\nهل تريد حفظ التعديلات على هذه الشهادة؟"
-      )
-    )
-      return;
 
     const rid = editingRid;
     const rec = raw.find((r) => getId(r) === rid);
@@ -1031,8 +1149,7 @@ export default function TrainingCertificatesView() {
           ? "✅ Certificate updated successfully."
           : "✅ Certificate updated successfully (new record, old one removed)."
       );
-      setEditingRid(null);
-      setEditDraft(null);
+      cancelEdit();
     } catch (err) {
       console.error("saveEdit error:", err);
       setMsg(
@@ -2055,209 +2172,542 @@ export default function TrainingCertificatesView() {
       </div>
 
       {/* Edit Certificate Dialog */}
-      {editingRid && editDraft && (
-        <div
-          onClick={() => !savingEdit && cancelEdit()}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9000,
-          }}
-        >
+      {editingRid && editDraft && (() => {
+        const st = getCertStatus(editDraft.expiryDate);
+        const years = COURSE_DURATION_YEARS[String(editDraft.courseType || "").toUpperCase()];
+        const initials =
+          String(editDraft.name || "?")
+            .trim()
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase() || "?";
+        // نسبة المدة المنقضية من الإصدار حتى الانتهاء (للشريط الزمني)
+        const issueD = parseDateOnly(editDraft.issueDate);
+        const expD = parseDateOnly(editDraft.expiryDate);
+        let elapsedPct = null;
+        if (issueD && expD && expD > issueD) {
+          elapsedPct = Math.min(
+            100,
+            Math.max(0, ((Date.now() - issueD) / (expD - issueD)) * 100)
+          );
+        }
+        const otherCerts = allRows.filter(
+          (x) =>
+            x._rid !== editingRid &&
+            String(x.employeeNo || "").trim() &&
+            String(x.employeeNo).trim() === String(editOriginal?.employeeNo || "").trim()
+        );
+        const canSave =
+          editChanged.size > 0 && !editDateError && !editUploading && !savingEdit;
+        const saveError = msg && !String(msg).startsWith("✅") ? msg : "";
+
+        const field = (k, label, input) => (
+          <label key={k} style={editLabelStyle}>
+            <span>
+              {label}
+              {editChanged.has(k) && <span style={changedDotStyle} title="Changed" />}
+            </span>
+            {input}
+          </label>
+        );
+        const inputStyleFor = (k, extra) => ({
+          ...editInputStyle,
+          ...(editChanged.has(k)
+            ? { borderColor: "#fbbf24", background: "#fffbeb" }
+            : null),
+          ...extra,
+        });
+
+        return (
           <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
+            onClick={requestCloseEdit}
             style={{
-              width: "min(720px, 100%)",
-              maxHeight: "92vh",
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15,23,42,0.55)",
+              backdropFilter: "blur(3px)",
               display: "flex",
-              flexDirection: "column",
-              background: "#fff",
-              borderRadius: 18,
-              boxShadow: "0 24px 70px rgba(15,23,42,0.45)",
-              overflow: "hidden",
-              direction: "ltr",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+              zIndex: 9000,
             }}
           >
-            {/* Header */}
+            <style>{"@keyframes tcSpin{to{transform:rotate(360deg)}}"}</style>
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Edit certificate"
+              onClick={(e) => e.stopPropagation()}
               style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid #e2e8f0",
-                background: "linear-gradient(135deg,#f0f9ff,#ffffff)",
+                width: "min(980px, 100%)",
+                maxHeight: "94vh",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
+                flexDirection: "column",
+                background: "#fff",
+                borderRadius: 20,
+                boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+                overflow: "hidden",
+                direction: "ltr",
               }}
             >
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
-                  Edit Certificate
-                </div>
-                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                  {editDraft.name || "—"} · {editDraft.employeeNo || "—"}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={cancelEdit}
-                disabled={savingEdit}
-                aria-label="Close"
+              {/* Header */}
+              <div
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 999,
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  color: "#475569",
-                  fontSize: 16,
-                  cursor: "pointer",
+                  padding: "16px 20px",
+                  borderBottom: "1px solid #e2e8f0",
+                  background: "linear-gradient(135deg,#e0f2fe,#f8fafc 60%)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
                 }}
               >
-                ✕
-              </button>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: 20, overflowY: "auto" }}>
-              <div style={editSectionTitle}>Employee</div>
-              <div style={editGrid}>
-                {[
-                  ["employeeNo", "Employee No"],
-                  ["name", "Name"],
-                  ["nationality", "Nationality"],
-                  ["branch", "Branch"],
-                  ["job", "Job"],
-                ].map(([k, label]) => (
-                  <label key={k} style={editLabelStyle}>
-                    {label}
-                    <input
-                      type="text"
-                      value={editDraft[k] || ""}
-                      onChange={(e) => updateEditField(k, e.target.value)}
-                      style={editInputStyle}
-                    />
-                  </label>
-                ))}
-              </div>
-
-              <div style={{ ...editSectionTitle, marginTop: 18 }}>Certificate</div>
-              <div style={editGrid}>
-                <label style={editLabelStyle}>
-                  Course Type
-                  <select
-                    value={editDraft.courseType || ""}
-                    onChange={(e) => updateEditField("courseType", e.target.value)}
-                    style={editInputStyle}
+                <div
+                  style={{
+                    width: 46,
+                    height: 46,
+                    flex: "0 0 46px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg,#0ea5e9,#0369a1)",
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 16,
+                    boxShadow: "0 6px 16px rgba(3,105,161,0.35)",
+                  }}
+                >
+                  {initials}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: "#0f172a",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
                   >
-                    {!COURSE_OPTIONS.some((o) => o.value === editDraft.courseType) &&
-                      editDraft.courseType && (
-                        <option value={editDraft.courseType}>
-                          {editDraft.courseType}
-                        </option>
+                    {editDraft.name || "Unnamed employee"}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                      marginTop: 5,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={headerChipStyle}>#{editDraft.employeeNo || "—"}</span>
+                    {editDraft.branch && (
+                      <span style={headerChipStyle}>{editDraft.branch}</span>
+                    )}
+                    {editDraft.courseType && (
+                      <span
+                        style={{
+                          ...headerChipStyle,
+                          background: "#0369a1",
+                          color: "#fff",
+                          borderColor: "#0369a1",
+                        }}
+                      >
+                        {editDraft.courseType}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        ...headerChipStyle,
+                        background: st.bg,
+                        color: "#fff",
+                        border: "none",
+                      }}
+                    >
+                      {st.label}
+                      {st.days !== null &&
+                        (st.days < 0
+                          ? ` · ${Math.abs(st.days)}d ago`
+                          : ` · ${st.days}d left`)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestCloseEdit}
+                  disabled={savingEdit}
+                  aria-label="Close"
+                  title="Close (Esc)"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    flex: "0 0 34px",
+                    borderRadius: 999,
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    color: "#475569",
+                    fontSize: 16,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Body */}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  overflowY: "auto",
+                  flex: 1,
+                  minHeight: 0,
+                }}
+              >
+                {/* Main column */}
+                <div style={{ flex: "999 1 520px", minWidth: 0, padding: 20 }}>
+                  <div style={editCardStyle}>
+                    <div style={editSectionTitle}>👤 Employee</div>
+                    <div style={editGrid}>
+                      {[
+                        ["employeeNo", "Employee No"],
+                        ["name", "Name"],
+                        ["nationality", "Nationality"],
+                        ["branch", "Branch"],
+                        ["job", "Job"],
+                      ].map(([k, label]) =>
+                        field(
+                          k,
+                          label,
+                          <input
+                            type="text"
+                            value={editDraft[k] || ""}
+                            onChange={(e) => updateEditField(k, e.target.value)}
+                            style={inputStyleFor(k)}
+                          />
+                        )
                       )}
-                    {COURSE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={editLabelStyle}>
-                  Issue Date
-                  <input
-                    type="date"
-                    value={editDraft.issueDate || ""}
-                    onChange={(e) => updateEditField("issueDate", e.target.value)}
-                    style={editInputStyle}
-                  />
-                </label>
-                <label style={editLabelStyle}>
-                  Expiry Date
-                  <input
-                    type="date"
-                    value={editDraft.expiryDate || ""}
-                    onChange={(e) => updateEditField("expiryDate", e.target.value)}
-                    style={editInputStyle}
-                  />
-                </label>
+                    </div>
+                  </div>
+
+                  <div style={editCardStyle}>
+                    <div style={editSectionTitle}>🎓 Certificate</div>
+                    <div style={editGrid}>
+                      {field(
+                        "courseType",
+                        "Course Type",
+                        <select
+                          value={editDraft.courseType || ""}
+                          onChange={(e) => updateEditField("courseType", e.target.value)}
+                          style={inputStyleFor("courseType")}
+                        >
+                          {!COURSE_OPTIONS.some((o) => o.value === editDraft.courseType) &&
+                            editDraft.courseType && (
+                              <option value={editDraft.courseType}>
+                                {editDraft.courseType}
+                              </option>
+                            )}
+                          {COURSE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {field(
+                        "issueDate",
+                        "Issue Date",
+                        <input
+                          type="date"
+                          value={editDraft.issueDate || ""}
+                          onChange={(e) => updateEditField("issueDate", e.target.value)}
+                          style={inputStyleFor("issueDate")}
+                        />
+                      )}
+                      {field(
+                        "expiryDate",
+                        "Expiry Date",
+                        <input
+                          type="date"
+                          value={editDraft.expiryDate || ""}
+                          onChange={(e) => updateEditField("expiryDate", e.target.value)}
+                          style={inputStyleFor(
+                            "expiryDate",
+                            editDateError ? { borderColor: "#ef4444", background: "#fef2f2" } : null
+                          )}
+                        />
+                      )}
+                    </div>
+
+                    {/* Validity timeline */}
+                    <div style={{ marginTop: 14 }}>
+                      {editDateError ? (
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>
+                          ⚠ {editDateError}
+                        </div>
+                      ) : elapsedPct !== null ? (
+                        <>
+                          <div
+                            style={{
+                              position: "relative",
+                              height: 8,
+                              borderRadius: 999,
+                              background: "#e2e8f0",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${elapsedPct}%`,
+                                height: "100%",
+                                borderRadius: 999,
+                                background: st.bg,
+                                transition: "width .3s",
+                              }}
+                            />
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 11,
+                              color: "#64748b",
+                              marginTop: 6,
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span>Issued {editDraft.issueDate}</span>
+                            <span style={{ fontWeight: 700, color: "#334155" }}>
+                              {Math.round(elapsedPct)}% of validity used
+                            </span>
+                            <span>Expires {editDraft.expiryDate}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {editDraft.expiryDate
+                            ? "Set an issue date to see the validity timeline."
+                            : "No expiry date — this certificate does not expire."}
+                        </div>
+                      )}
+                      {years && (
+                        <div style={{ fontSize: 11, color: "#0369a1", marginTop: 6 }}>
+                          ⓘ {String(editDraft.courseType).toUpperCase()} is valid for {years} years
+                          — the expiry date is calculated from the issue date.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ ...editCardStyle, marginBottom: 0 }}>
+                    <div style={editSectionTitle}>
+                      🖼 {isEfst(editDraft.courseType) ? "Certificate Images" : "Certificate Image"}
+                    </div>
+                    {isEfst(editDraft.courseType) && (
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: -4, marginBottom: 10 }}>
+                        EFST needs both: the Institute certificate and the Municipality certificate.
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {isEfst(editDraft.courseType) ? (
+                        <>
+                          {renderEditImageSlot("institute", "Institute Certificate", true)}
+                          {renderEditImageSlot("main", "Municipality Certificate", true)}
+                        </>
+                      ) : (
+                        renderEditImageSlot("main", "Certificate", false)
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Side column: the employee's other certificates */}
+                <div
+                  style={{
+                    flex: "1 1 250px",
+                    minWidth: 0,
+                    padding: 20,
+                    background: "#f8fafc",
+                    borderLeft: "1px solid #e2e8f0",
+                  }}
+                >
+                  <div style={editSectionTitle}>
+                    📋 Other certificates ({otherCerts.length})
+                  </div>
+                  {otherCerts.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                      No other certificates for this employee.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {otherCerts.map((x) => (
+                        <div
+                          key={x._rid || x.idx}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #e2e8f0",
+                            borderLeft: `4px solid ${
+                              x.status.key === "expired"
+                                ? "#b91c1c"
+                                : x.status.key === "valid"
+                                ? "#15803d"
+                                : x.status.key === "no_expiry"
+                                ? "#9ca3af"
+                                : "#c2410c"
+                            }`,
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 6,
+                              alignItems: "center",
+                            }}
+                          >
+                            <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>
+                              {x.courseType || "—"}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                color: "#fff",
+                                background: x.status.bg,
+                                padding: "1px 7px",
+                                borderRadius: 999,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {x.status.label}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>
+                            {x.issueDate || "—"} → {x.expiryDate || "no expiry"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      marginTop: 18,
+                      fontSize: 11,
+                      color: "#94a3b8",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    <div>
+                      <kbd style={kbdStyle}>Ctrl</kbd> + <kbd style={kbdStyle}>S</kbd> save
+                    </div>
+                    <div>
+                      <kbd style={kbdStyle}>Esc</kbd> close
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ ...editSectionTitle, marginTop: 18 }}>
-                {isEfst(editDraft.courseType) ? "Certificate Images" : "Certificate Image"}
-              </div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {isEfst(editDraft.courseType) ? (
-                  <>
-                    {renderEditImageSlot(
-                      "institute",
-                      editDraft.instituteImage,
-                      "Institute Certificate",
-                      true
-                    )}
-                    {renderEditImageSlot(
-                      "main",
-                      editDraft.imageData,
-                      "Municipality Certificate",
-                      true
-                    )}
-                  </>
-                ) : (
-                  renderEditImageSlot("main", editDraft.imageData, "Certificate", false)
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div
-              style={{
-                padding: "14px 20px",
-                borderTop: "1px solid #e2e8f0",
-                background: "#f8fafc",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 10,
-              }}
-            >
-              <button
-                type="button"
-                onClick={cancelEdit}
-                disabled={savingEdit}
+              {/* Footer */}
+              <div
                 style={{
-                  ...editBtnStyle,
-                  border: "1px solid #cbd5e1",
+                  padding: "12px 20px",
+                  borderTop: "1px solid #e2e8f0",
                   background: "#fff",
-                  color: "#334155",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
                 }}
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveEdit}
-                disabled={savingEdit || !!editUploading}
-                style={{
-                  ...editBtnStyle,
-                  border: "1px solid #0369a1",
-                  background: "#0369a1",
-                  color: "#fff",
-                  opacity: savingEdit || editUploading ? 0.65 : 1,
-                  cursor: savingEdit || editUploading ? "default" : "pointer",
-                }}
-              >
-                {savingEdit ? "Saving…" : "Save Changes"}
-              </button>
+                <div style={{ flex: 1, minWidth: 160, fontSize: 12 }}>
+                  {saveError ? (
+                    <span style={{ color: "#b91c1c", fontWeight: 700 }}>⚠ {saveError}</span>
+                  ) : editChanged.size ? (
+                    <span style={{ color: "#b45309", fontWeight: 700 }}>
+                      <span style={{ ...changedDotStyle, marginLeft: 0, marginRight: 6 }} />
+                      {editChanged.size} unsaved change{editChanged.size > 1 ? "s" : ""}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#94a3b8" }}>No changes yet</span>
+                  )}
+                </div>
+                {editChanged.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetEdit}
+                    disabled={savingEdit}
+                    title="Undo all changes"
+                    style={{
+                      ...editBtnStyle,
+                      border: "1px solid transparent",
+                      background: "transparent",
+                      color: "#475569",
+                    }}
+                  >
+                    ↺ Reset
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={requestCloseEdit}
+                  disabled={savingEdit}
+                  style={{
+                    ...editBtnStyle,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    color: "#334155",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={!canSave}
+                  title="Save (Ctrl + S)"
+                  style={{
+                    ...editBtnStyle,
+                    border: `1px solid ${canSave ? "#0369a1" : "#94a3b8"}`,
+                    background: canSave
+                      ? "linear-gradient(135deg,#0ea5e9,#0369a1)"
+                      : "#94a3b8",
+                    color: "#fff",
+                    cursor: canSave ? "pointer" : "default",
+                    boxShadow: canSave ? "0 6px 16px rgba(3,105,161,0.3)" : "none",
+                  }}
+                >
+                  {savingEdit ? (
+                    <>
+                      <span
+                        style={{
+                          ...spinnerStyle,
+                          width: 12,
+                          height: 12,
+                          borderWidth: 2,
+                          borderColor: "rgba(255,255,255,.4)",
+                          borderTopColor: "#fff",
+                          margin: 0,
+                        }}
+                      />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Image Preview Overlay */}
       {previewImage && (
@@ -2352,6 +2802,64 @@ const editInputStyle = {
   background: "#fff",
   fontSize: 13,
   color: "#0f172a",
+};
+
+const editCardStyle = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 14,
+  padding: 16,
+  marginBottom: 14,
+  background: "#fff",
+  boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+};
+
+const headerChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 9px",
+  borderRadius: 999,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#334155",
+  fontSize: 11,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
+// نقطة "تم التعديل" بجانب الحقل
+const changedDotStyle = {
+  display: "inline-block",
+  width: 7,
+  height: 7,
+  borderRadius: 999,
+  background: "#f59e0b",
+  marginLeft: 6,
+  verticalAlign: "middle",
+};
+
+// الحركة معرّفة في <style> داخل نافذة التعديل (tcSpin)
+const spinnerStyle = {
+  display: "inline-block",
+  width: 22,
+  height: 22,
+  margin: "0 auto",
+  borderRadius: 999,
+  border: "3px solid #bae6fd",
+  borderTopColor: "#0369a1",
+  animation: "tcSpin .8s linear infinite",
+};
+
+const kbdStyle = {
+  display: "inline-block",
+  padding: "0 5px",
+  borderRadius: 5,
+  border: "1px solid #cbd5e1",
+  borderBottomWidth: 2,
+  background: "#fff",
+  color: "#475569",
+  fontFamily: "inherit",
+  fontSize: 10,
+  fontWeight: 700,
 };
 
 const editSectionTitle = {
