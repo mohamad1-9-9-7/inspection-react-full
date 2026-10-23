@@ -55,6 +55,8 @@ import {
   receivedByBranchOf,
   returnsOf,
 } from "./shipmentTrace";
+import { fetchLabelJobs, summarizeLabelJobs } from "../labels/labelLog";
+import { labelLink, canPrintLabels } from "../labels/labelLink";
 
 /* ===== Palette (Soft Sky) ===== */
 const C = {
@@ -322,6 +324,8 @@ export default function ProductTracePage() {
   const [showOther, setShowOther] = useState(false);
   const [openBranch, setOpenBranch] = useState(""); // which branch's own rows are unfolded
   const [tracedFor, setTracedFor] = useState(null);
+  const [labelJobs, setLabelJobs] = useState(null); // label_print_log jobs of this code (null = not read)
+  const [labelsErr, setLabelsErr] = useState("");
   const [error, setError] = useState("");
   const abortRef = useRef(null);
 
@@ -387,6 +391,12 @@ export default function ProductTracePage() {
       });
       setDownstream(down);
 
+      // the labels printed for this code — read last, a failure only hides that one step
+      setLabelJobs(null); setLabelsErr("");
+      fetchLabelJobs({ code, from, to, signal: ac.signal })
+        .then(setLabelJobs)
+        .catch((e) => { if (e?.name !== "AbortError") setLabelsErr(String(e?.message || e)); });
+
       const next = new URLSearchParams(params);
       if (code) next.set("code", code);
       else next.delete("code");
@@ -429,6 +439,11 @@ export default function ProductTracePage() {
 
   /* ── ⑥ returns ── */
   const returns = useMemo(() => returnsOf(split), [split]);
+
+  const labels = useMemo(
+    () => (anchor && labelJobs ? summarizeLabelJobs(labelJobs, { from: ymd(anchor.date), until }) : null),
+    [anchor, labelJobs, until]
+  );
 
   const conditionIssues = useMemo(
     () => (split ? split.conditions.kept.filter((c) => isConditionIssue(c.status)) : []),
@@ -1172,6 +1187,57 @@ export default function ProductTracePage() {
                       + {returns.after.length} مرتجع بعد نهاية النافذة ({fmtDMY(until)}) — وسّع النافذة لعرضها.
                     </div>
                   ) : null}
+                </Step>
+
+                <Step
+                  n="⑦" icon="🏷️" ar="الملصقات المطبوعة" title="Labels printed for this product" color="#0369a1"
+                  chips={
+                    <>
+                      {labels ? <span className="tx-chip" style={S.chip("#e0f2fe", "#075985")}>{labels.copies} ملصق · {labels.count} طباعة</span> : null}
+                      {labels?.lots.length ? <span className="tx-chip" style={S.chip("#f1f5f9", C.body)}>{labels.lots.length} دفعة</span> : null}
+                      {canPrintLabels() ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(labelLink({ code: tracedFor?.code, prod: anchor.prodDate, exp: anchor.expiryDate, site: "QCS" }), "_blank", "noopener")}
+                          style={{ ...S.btn("#0369a1"), padding: "5px 12px" }}
+                        >
+                          🏷️ ملصق لهذه الشحنة
+                        </button>
+                      ) : null}
+                    </>
+                  }
+                >
+                  {labelsErr ? (
+                    <div className="tx-meta" style={{ color: "#991b1b", fontWeight: 800 }}>تعذّرت قراءة سجل الملصقات: {labelsErr}</div>
+                  ) : !labels ? (
+                    <Empty text="جاري قراءة سجل الملصقات…" />
+                  ) : !labels.count ? (
+                    <Empty text={`لم يُطبع أي ملصق لهذا الكود من ${fmtDMY(anchor.date)} حتى ${fmtDMY(until) || "اليوم"}.`} />
+                  ) : (
+                    <div className="tx-wrapx">
+                      <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
+                        <thead>
+                          <tr>
+                            <th style={S.th}>اليوم</th><th style={S.th}>الدفعة</th><th style={S.th}>الإنتاج</th><th style={S.th}>الانتهاء</th>
+                            <th style={{ ...S.th, textAlign: "end" }}>النسخ</th><th style={S.th}>الموقع</th><th style={S.th}>بواسطة</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {labels.jobs.map((j) => (
+                            <tr key={j.id}>
+                              <td style={{ ...S.td, whiteSpace: "nowrap", fontWeight: 800 }}>{fmtDMY(j.day)}</td>
+                              <td style={S.td}>{j.lot || "—"}</td>
+                              <td style={{ ...S.td, whiteSpace: "nowrap" }}>{fmtDMY(j.prodDate) || "—"}</td>
+                              <td style={{ ...S.td, whiteSpace: "nowrap" }}>{fmtDMY(j.expDate) || "—"}</td>
+                              <td style={{ ...S.td, textAlign: "end" }}>{j.copies}{j.reprint ? " ↻" : ""}</td>
+                              <td style={S.td}>{j.branch || "—"}</td>
+                              <td style={{ ...S.td, color: C.muted }}>{j.by || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </Step>
 
                 {/* ── printable record ── */}

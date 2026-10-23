@@ -159,6 +159,7 @@ export default function AutoTracePanel({ lang, initialCode = "", initialShipment
             <Tile label={L("To our branches", "لفروعنا")} value={kg(res.sentOur)} />
             <Tile label={L("To customers", "للعملاء")} value={kg(res.sentCustomers)} sub={res.customers.lines ? L(`${res.customers.names} customer(s)`, `${res.customers.names} عميل`) : ""} />
             <Tile label={L("Returns", "المرتجعات")} value={kg(res.returnsQty)} sub={`${res.returnsCount}`} />
+            <Tile label={L("Labels printed", "ملصقات مطبوعة")} value={String(res.labels?.copies || 0)} sub={res.labels?.lots.length ? L(`${res.labels.lots.length} lot(s) · ${res.labels.sites.join(", ")}`, `${res.labels.lots.length} دفعة · ${res.labels.sites.join("، ")}`) : ""} />
             <Tile label={L("Traced", "المتتبَّع")} value={res.pct == null ? "—" : `${res.pct.toFixed(1)}%`} tone={res.pct != null && res.pct >= 99 ? "ok" : "warn"} sub={res.unaccounted > 0 ? L(`${kg(res.unaccounted)} not found`, `${kg(res.unaccounted)} غير موجود`) : ""} />
           </div>
 

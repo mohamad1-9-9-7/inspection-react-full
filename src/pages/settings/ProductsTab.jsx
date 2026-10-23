@@ -39,6 +39,7 @@ import useWedgeScanner from "../../utils/useWedgeScanner";
 import { resolveShelfLife, useShelfLife } from "../monitor/branches/_shared/shelfLife";
 import ShelfLifeModal from "../monitor/branches/_shared/ShelfLifeModal";
 import ProductFormModal from "./ProductFormModal";
+import { labelLink, canPrintLabels } from "../labels/labelLink";
 import {
   ALLERGENS, allergenOf, allergensOf, changeOf, fetchProductMedia, imagesOf, isActive, PRODUCT_TYPES, ptypeOf, setProductExtras, STORAGE, storageOf,
 } from "../../utils/productMedia";
@@ -270,6 +271,7 @@ const CSS = `
 `;
 
 export default function ProductsTab({ navActions = null }) {
+  const labelsOk = canPrintLabels(); // the 🏷️ on each row opens /inventory/labels for that product
   const [base, setBase] = useState([]);
   const [custom, setCustom] = useState(() => loadCustomItems());
   const [loading, setLoading] = useState(true);
@@ -998,6 +1000,10 @@ export default function ProductsTab({ navActions = null }) {
                       <td>
                         <div className="acts">
                           <button type="button" className="ib" title="Edit" aria-label="Edit" onClick={(e) => { e.stopPropagation(); startEdit(row); }}>✏️</button>
+                          {labelsOk && String(row.code || "").trim() && (
+                            <button type="button" className="ib" title="Print a label" aria-label="Print a label"
+                              onClick={(e) => { e.stopPropagation(); window.open(labelLink({ code: String(row.code).trim() }), "_blank", "noopener"); }}>🏷️</button>
+                          )}
                           {row.source !== "base" && (
                             <button type="button" className="ib dan" aria-label={row.source === "edited" ? "Revert" : "Remove"}
                               title={row.source === "edited" ? "Back to the master value" : "Remove product"}

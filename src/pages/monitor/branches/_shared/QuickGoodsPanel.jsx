@@ -36,6 +36,7 @@ import { gs1Info, packLevel, parseBarcode } from "../../../../utils/gs1Barcode";
 import { fetchBarcodeMap, findBarcode, linkBarcode, normBarcode, offHint, showBarcode, suggestAttrs } from "../../../../utils/barcodeMap";
 import useWedgeScanner from "../../../../utils/useWedgeScanner";
 import SupplierPicker from "./SupplierPicker";
+import { labelLink, canPrintLabels } from "../../../labels/labelLink";
 
 const TX = {
   en: {
@@ -45,6 +46,7 @@ const TX = {
     noMatch: "No product matches. New products are added in the Products Catalog.", here: "inside", qty: "Quantity", available: (q, u) => `Available: ${q} ${u}`,
     all: "All", saveIn: "Save — products in", saveOut: "Save — products out", saving: "Saving…", cancel: "Cancel", change: "Change",
     needQty: "Type the quantity first.", tooMuch: "More than what is inside.", notHere: "This product is no longer inside — refresh.",
+    labelThis: "🏷️ Print a label for this lot",
     savedIn: (q, p) => `✅ ${q} × ${p} added.`, savedOut: (q, p) => `✅ ${q} × ${p} taken out.`, moves: "Last moves",
     refresh: "↻ Refresh", tapOut: "Tap a product to take it out.", loadErr: "Could not load the products list.",
     keeper: "Storekeeper name", keeperPh: "Who is handing the products out", goesTo: "Where is it going?",
@@ -94,6 +96,7 @@ const TX = {
     noMatch: "ما في منتج بهالاسم. المنتجات الجديدة بتنضاف من كتالوج المنتجات.", here: "موجود", qty: "الكمية", available: (q, u) => `المتوفر: ${q} ${u}`,
     all: "الكل", saveIn: "حفظ — إدخال", saveOut: "حفظ — إخراج", saving: "جاري الحفظ…", cancel: "إلغاء", change: "تغيير",
     needQty: "اكتب الكمية أولاً.", tooMuch: "أكثر من الموجود داخل الوحدة.", notHere: "هذا المنتج لم يعد موجوداً — حدّث الصفحة.",
+    labelThis: "🏷️ اطبع ملصقاً لهذه الدفعة",
     savedIn: (q, p) => `✅ تمت إضافة ${q} × ${p}.`, savedOut: (q, p) => `✅ تم إخراج ${q} × ${p}.`, moves: "آخر الحركات",
     refresh: "↻ تحديث", tapOut: "اضغط على منتج لإخراجه.", loadErr: "تعذّر تحميل قائمة المنتجات.",
     keeper: "اسم أمين المخزن (الستور كيبر)", keeperPh: "مين عم يسلّم المنتجات", goesTo: "لوين رايحة المنتجات؟",
@@ -236,6 +239,7 @@ const destText = (m, s, ar) => {
 export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) {
   const s = TX[lang === "ar" ? "ar" : "en"];
   const [target, setTarget] = useState(null); // { key, room, name }
+  const [lastIn, setLastIn] = useState(null); // the lot just taken in → a label for it (labelLink)
   const [stock, setStock] = useState(null); // { items, moves }
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
@@ -604,6 +608,9 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
       rememberKeeper(who);
       setStock(room);
       const done = mode === "out" ? s.savedOut(fmt(n), pick.product || pick.code) : s.savedIn(fmt(n), pick.product || pick.code);
+      setLastIn(mode === "in" && canPrintLabels()
+        ? labelLink({ code: pick.code, prod: extra.prodDate, exp: extra.expDate, lot: extra.batch, site: branch })
+        : null);
       setMode(null); setPick(null); setQty(""); setQ(""); setDestType(""); setToBranch(""); resetLot();
       setMsg(queued ? { kind: "warn", text: `${done} ${s.queued}` } : { kind: "ok", text: done });
       try { navigator.vibrate?.(60); } catch {}
@@ -865,6 +872,9 @@ export default function QuickGoodsPanel({ branch, unit, unitDef = null, lang }) 
   return (
     <div>
       {msg && <div className={`alert ${msg.kind}`}>{msg.text}</div>}
+      {msg && msg.kind !== "bad" && lastIn && (
+        <button type="button" className="btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => window.open(lastIn, "_blank", "noopener")}>{s.labelThis}</button>
+      )}
       {err && <div className="alert bad">{err}</div>}
       {stock?.offline && <div className="alert warn">{s.offline}</div>}
       {expiredLots.length > 0 && <div className="alert bad">{s.expiredAlert(expiredLots.length)}</div>}

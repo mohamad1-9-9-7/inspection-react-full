@@ -15,6 +15,7 @@ import { traceArrivals, traceDownstream, mergeTrace } from "../../traceability/p
 import {
   ymd, nextShipmentDateOf, windowUntil, splitAll, distributionOf, receivedByBranchOf, returnsOf,
 } from "../../traceability/shipmentTrace";
+import { fetchLabelJobs, summarizeLabelJobs } from "../../labels/labelLog";
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || "")) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "");
@@ -25,6 +26,14 @@ export async function readProductTrace({ code, name, from, to, signal, onProgres
   const arrivals = await traceArrivals({ ...who, onProgress: (d, t) => onProgress?.("arrivals", d, t) });
   const downstream = await traceDownstream({ ...who, onProgress: (d, t) => onProgress?.("downstream", d, t) });
   const full = mergeTrace(arrivals, downstream);
+  // the labels printed for this code (/inventory/labels) — which lots and sites were labelled
+  try {
+    full.labels = await fetchLabelJobs({ code, from, to, signal });
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
+    full.labels = [];
+    full.failed = [...(full.failed || []), "label_print_log"];
+  }
   full.shipments.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   return full;
 }
@@ -63,6 +72,7 @@ export function traceShipment(full, shipmentId, { graceDays = 0 } = {}) {
     returnsBefore: returns.before.length,
     unaccounted: r2(inKg - sent),
     pct: inKg > 0 ? Math.min(100, (sent / inKg) * 100) : null,
+    labels: summarizeLabelJobs(full.labels, { from: ymd(anchor.date), until }),
     failed: full.failed || [],
   };
 }
@@ -150,6 +160,7 @@ export function drillFill(prev, res, { code, name, endTime }) {
         returnsQty: res.returnsQty,
         unaccounted: res.unaccounted,
         branches: res.branches.map(({ id, qty, logged }) => ({ id, qty, logged })),
+        labels: res.labels ? { count: res.labels.count, copies: res.labels.copies, lots: res.labels.lots, sites: res.labels.sites } : null,
         tracedAt: new Date().toISOString(),
       },
     },

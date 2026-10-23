@@ -11,7 +11,7 @@
 // the printer, so the app's forced font sizes never reach it.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { useProductCatalog } from "../monitor/branches/_shared/ProductPicker";
 import { useShelfLife } from "../monitor/branches/_shared/shelfLife";
@@ -63,6 +63,7 @@ const CSS = `
 
 export default function LabelPrintPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { t, dir, lang, toggle, isAr } = useSettingsLang();
   const { pickItems, allItems, loading: catLoading } = useProductCatalog();
   const { resolve: resolveShelf } = useShelfLife();
@@ -89,6 +90,7 @@ export default function LabelPrintPage() {
   const [jobsErr, setJobsErr] = useState("");
   const [printing, setPrinting] = useState(false);
   const codeMapRef = useRef(null);
+  const linkRef = useRef(true); // the ?code=… link is applied once
 
   const size = sizeOf(sizeId);
   const company = getActiveCompanyName();
@@ -125,6 +127,25 @@ export default function LabelPrintPage() {
     setExpManual(false);
     setMsg(null);
   };
+
+  /* opened from another screen (labelLink): product, dates, lot, weight and site come filled */
+  useEffect(() => {
+    if (!linkRef.current || !allItems.length) return;
+    linkRef.current = false;
+    const code = params.get("code");
+    if (!code) return;
+    const it = allItems.find((x) => String(x.item_code || "").trim() === code);
+    if (!it) { setMsg({ kind: "bad", text: t({ en: `No catalog product for "${code}"`, ar: `لا يوجد منتج بالكتالوج لـ «${code}»` }) }); return; }
+    choose(it);
+    const prod = params.get("prod");
+    const exp = params.get("exp");
+    const lotP = params.get("lot");
+    if (isISO(prod)) setProdDate(prod);
+    if (isISO(exp)) { setExpDate(exp); setExpManual(true); }
+    if (lotP) { setLot(cleanLot(lotP)); setLotManual(true); }
+    if (Number(params.get("kg")) > 0) setWeight(params.get("kg"));
+    if (params.get("site")) setSite(params.get("site"));
+  }, [allItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* a scan: our own label (item code in GS1 240), a linked world barcode, or a typed code */
   const onScan = async (text) => {

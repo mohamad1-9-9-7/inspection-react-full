@@ -21,7 +21,9 @@ import API_BASE from "../../config/api";
 import { encodeCode128, gs1Tokens, gs1Raw, code128Svg } from "../../utils/code128";
 import { qrSvg } from "../../utils/qrSvg";
 
-export const LOG_TYPE = "label_print_log";
+import { LOG_TYPE } from "./labelLog";
+
+export { LOG_TYPE };
 
 /* Label stock. `sheet` = A4 paper with a grid of stickers instead of a roll. */
 export const SIZES = [
