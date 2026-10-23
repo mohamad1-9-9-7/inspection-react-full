@@ -51,7 +51,15 @@ export const CARDS = [
   ...KIT_INDUSTRY_IDS.map((id, i) => ({ id, label: categoryOf(id).label, emoji: categoryOf(id).icon, order: 17 + i })),
 ];
 
-const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]));
+/* Not a dashboard tile: the backups' safety-net folder for types that have data
+   on the server but no row in this file (see _shared/unlistedTypes.js). It owns
+   no catalog branch, so activeCards() never lists it. */
+export const UNLISTED_CARD_ID = "unlisted";
+
+const CARD_BY_ID = new Map([
+  ...CARDS.map((c) => [c.id, c]),
+  [UNLISTED_CARD_ID, { id: UNLISTED_CARD_ID, label: "Other (unlisted types)", emoji: "🗃️", order: 99 }],
+]);
 
 /** Card descriptor for an id — never null, so callers do not have to branch. */
 export function cardById(id) {
@@ -237,7 +245,9 @@ export const BRANCHES = [
     types: [
       ["qcs_raw_material",      "Raw Material Inspection (Shipments)"],
       ["qcs_supplier",          "Suppliers Master List"],
-      ["qcs_shipment_types_v1", "Shipment Types (config)"],
+      ["qcs_shipment_type",     "Shipment Types (lookup)"],
+      ["qcs_brand",             "Brands (lookup)"],
+      ["qcs_origin",            "Origins (lookup)"],
     ],
   },
 
@@ -257,6 +267,7 @@ export const BRANCHES = [
       ["returns_changes",           "Branch Returns - Change Log",  "Branch Returns"],
       ["meat_daily",                "Meat Daily Inspection",        "Branch Returns"],
       ["qa_complaint",              "Quality Complaints Log",       "Branch Returns"],
+      ["qa_complaint_config",       "Quality Complaints Settings (config)", "Branch Returns"],
       ["returns_customers",         "Customer Returns",             "Customer Returns"],
       ["returns_customers_changes", "Customer Returns - Change Log", "Customer Returns"],
       ["inventory_daily_grouped",   "Inventory Daily (Grouped)",    "Inventory & ENOC"],
@@ -335,6 +346,7 @@ export const BRANCHES = [
       ["product_details",                 "Product Details & Specifications",   "Product & Kitchen"],
       ["kitchen_menu_nutrition_item",     "Kitchen Menu Calories & Nutrition",  "Product & Kitchen"],
       ["licenses_contracts",              "Licenses & Contracts",               "Licenses & Legal"],
+      ["branch_certificates",             "Branch Certificates (SGS ISO/HACCP)", "Licenses & Legal"],
       ["legal_register",                  "Legal Register",                     "Licenses & Legal"],
       ["municipality_inspection",         "Dubai Municipality Inspection",      "Licenses & Legal"],
       ["qcs_supplier",                    "Approved Suppliers List",            "Suppliers"],

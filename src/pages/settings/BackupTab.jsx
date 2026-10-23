@@ -5,6 +5,7 @@ import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/S
 import { logSettingsAudit } from "../../utils/settingsAudit";
 import { BRANCHES } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
+import { fetchUnlistedTypes } from "./_shared/unlistedTypes";
 
 
 /* ============================================================
@@ -134,6 +135,32 @@ function daysAgoISO(n) {
 export default function BackupTab() {
   /* --- خيارات الاختيار --- */
   const [selectedTypes, setSelectedTypes] = useState(() => new Set(ALL_TYPES));
+
+  /* شبكة أمان: أي نوع إله بيانات على السيرفر ومش مسجّل بالكتالوج بينضاف
+     كمجموعة «Other (unlisted types)» ومحدّد افتراضياً — فالنسخة بتغطي
+     القاعدة كلها حتى لو حدا نسي يضيف النوع لـ reportTypeCatalog.js. */
+  const [unlisted, setUnlisted] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    fetchUnlistedTypes().then((list) => {
+      if (!alive || !list.length) return;
+      setUnlisted(list);
+      setSelectedTypes((prev) => new Set([...prev, ...list.map((u) => u.type)]));
+    });
+    return () => { alive = false; };
+  }, []);
+  const reportGroups = useMemo(
+    () => (unlisted.length
+      ? { ...REPORT_GROUPS, "🗃️ Other (unlisted types)": unlisted.map((u) => u.type) }
+      : REPORT_GROUPS),
+    [unlisted]
+  );
+  const allTypes = useMemo(() => [...new Set(Object.values(reportGroups).flat())], [reportGroups]);
+  const typeLabels = useMemo(() => {
+    const out = { ...TYPE_LABELS };
+    unlisted.forEach((u) => { out[u.type] = u.label; });
+    return out;
+  }, [unlisted]);
   const [selectedLocalCats, setSelectedLocalCats] = useState(() => new Set(defaultLocalCategories()));
   const [includeServerReports, setIncludeServerReports] = useState(true);
   const [includeLocalData, setIncludeLocalData] = useState(true);
@@ -183,12 +210,12 @@ export default function BackupTab() {
   function toggleGroup(group, on) {
     setSelectedTypes((prev) => {
       const next = new Set(prev);
-      REPORT_GROUPS[group].forEach((t) => (on ? next.add(t) : next.delete(t)));
+      reportGroups[group].forEach((t) => (on ? next.add(t) : next.delete(t)));
       return next;
     });
   }
   function selectAllTypes(on) {
-    setSelectedTypes(on ? new Set(ALL_TYPES) : new Set());
+    setSelectedTypes(on ? new Set(allTypes) : new Set());
   }
   function toggleLocalCat(cat) {
     setSelectedLocalCats((prev) => {
@@ -203,7 +230,7 @@ export default function BackupTab() {
     if (id === "full") {
       setIncludeServerReports(true);
       setIncludeLocalData(true);
-      setSelectedTypes(new Set(ALL_TYPES));
+      setSelectedTypes(new Set(allTypes));
       setSelectedLocalCats(new Set(defaultLocalCategories()));
       setDateFrom(""); setDateTo("");
     } else if (id === "drafts-only") {
@@ -213,7 +240,7 @@ export default function BackupTab() {
     } else if (id === "server-only") {
       setIncludeServerReports(true);
       setIncludeLocalData(false);
-      setSelectedTypes(new Set(ALL_TYPES));
+      setSelectedTypes(new Set(allTypes));
     } else if (id === "last-30") {
       setIncludeServerReports(true);
       setIncludeLocalData(true);
@@ -358,7 +385,7 @@ export default function BackupTab() {
       let suffix = "full";
       if (!includeServerReports) suffix = "local-only";
       else if (!includeLocalData) suffix = "server-only";
-      else if (selectedTypes.size < ALL_TYPES.length) suffix = "partial";
+      else if (selectedTypes.size < allTypes.length) suffix = "partial";
       if (dateFrom || dateTo) suffix += "-dated";
 
       downloadJSON(`inspection-backup-${suffix}-${ts}.json`, backup);
@@ -555,7 +582,7 @@ export default function BackupTab() {
     fontSize: "0.85rem",
   };
 
-  const allTypesOn = selectedTypes.size === ALL_TYPES.length;
+  const allTypesOn = selectedTypes.size === allTypes.length;
   const noTypesOn = selectedTypes.size === 0;
 
   return (
@@ -673,7 +700,7 @@ export default function BackupTab() {
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontWeight: 800, color: "#0b1f4d" }}>
-              📋 أنواع التقارير ({selectedTypes.size}/{ALL_TYPES.length})
+              📋 أنواع التقارير ({selectedTypes.size}/{allTypes.length})
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <Button onClick={() => selectAllTypes(true)} disabled={allTypesOn} tone="secondary">تحديد الكل</Button>
@@ -682,7 +709,7 @@ export default function BackupTab() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 10 }}>
-            {Object.entries(REPORT_GROUPS).map(([group, types]) => {
+            {Object.entries(reportGroups).map(([group, types]) => {
               const onCount = types.filter((t) => selectedTypes.has(t)).length;
               const allOn = onCount === types.length;
               const noneOn = onCount === 0;
@@ -725,7 +752,7 @@ export default function BackupTab() {
                           onChange={() => toggleType(t)}
                           style={{ width: 14, height: 14 }}
                         />
-                        <span style={{ fontSize: "0.82rem" }}>{TYPE_LABELS[t] || t}</span>
+                        <span style={{ fontSize: "0.82rem" }}>{typeLabels[t] || t}</span>
                         <code style={{ fontSize: "0.68rem", color: "#9ca3af" }}>{t}</code>
                         {estimate?.counts?.[t] !== undefined && (
                           <span style={{ marginInlineStart: "auto", color: "#16a34a", fontWeight: 700 }}>

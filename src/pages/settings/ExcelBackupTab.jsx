@@ -2,7 +2,7 @@
 // 📊 Excel Backup — each report becomes one Excel sheet matching its view design.
 //    Branches and individual report types are independently selectable.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { getExporter, exporterKindFor } from "./excel-exporters";
 import {
@@ -10,12 +10,13 @@ import {
 } from "./excel-exporters/_lib";
 import { pickTemplateRecord, makeBlankRecord, makeBlankRecordList } from "./excel-exporters/_blank_form";
 import {
-  ALL_BRANCHES, BRANCHES, activeCards, branchesOfCard, groupsOfBranch,
+  ALL_BRANCHES, BRANCHES, activeCards, branchesOfCard, groupsOfBranch, cardById, UNLISTED_CARD_ID,
 } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
 import {
   buildWorkList, folderFor, manifestCsv, readmeText, blankReadmeText,
 } from "./_shared/backupTree";
+import { fetchUnlistedTypes, unlistedBranch } from "./_shared/unlistedTypes";
 
 /* ═══════════════════════════════════════════════════════════════
    DATE FILTER
@@ -256,6 +257,36 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
   const [msg, setMsg] = useState({ kind: "", text: "" });
   const [query, setQuery] = useState("");
 
+  /* Safety net: types with data on the server that the catalog does not list
+     get their own "Other (unlisted types)" folder, ticked by default, so the
+     backup still covers them when someone forgets to add a slug to the catalog. */
+  const [extraBranch, setExtraBranch] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetchUnlistedTypes().then((list) => {
+      const branch = unlistedBranch(list);
+      if (!alive || !branch) return;
+      setExtraBranch(branch);
+      setPicked((prev) => {
+        const next = new Set(prev);
+        branch.types.forEach(([k]) => next.add(`${branch.id}::${k}`));
+        return next;
+      });
+      setExpandedBranches((prev) => new Set([...prev, branch.id]));
+    });
+    return () => { alive = false; };
+  }, []);
+  const treeBranches = useMemo(
+    () => (extraBranch ? [...scopeBranches, extraBranch] : scopeBranches),
+    [scopeBranches, extraBranch]
+  );
+  const treeCards = useMemo(
+    () => (extraBranch ? [...scopeCards, cardById(UNLISTED_CARD_ID)] : scopeCards),
+    [scopeCards, extraBranch]
+  );
+  const branchesFor = (cardId) =>
+    (cardId === UNLISTED_CARD_ID ? (extraBranch ? [extraBranch] : []) : branchesOfCard(cardId));
+
   /* Date filter: mode all | day | range | months */
   const [filter, setFilter] = useState({
     mode: "all",
@@ -278,8 +309,8 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
 
   /* ─── Derived: counts & filter ─── */
   const totalTypes = useMemo(
-    () => scopeBranches.reduce((s, b) => s + b.types.length, 0),
-    [scopeBranches]
+    () => treeBranches.reduce((s, b) => s + b.types.length, 0),
+    [treeBranches]
   );
   const pickedCount = picked.size;
   const filterQ = query.trim().toLowerCase();
@@ -289,11 +320,11 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
      ناقصة واسمها كاملة. منحسبها من الأنواع المختارة فعلياً. */
   const windowWarning = useMemo(() => {
     const types = [];
-    scopeBranches.forEach((b) => b.types.forEach(([k]) => {
+    treeBranches.forEach((b) => b.types.forEach(([k]) => {
       if (picked.has(`${b.id}::${k}`)) types.push(k);
     }));
     return visibilityWarningText(types);
-  }, [picked, scopeBranches]);
+  }, [picked, treeBranches]);
 
   function isPicked(branchId, typeKey) {
     return picked.has(`${branchId}::${typeKey}`);
@@ -337,7 +368,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
   function selectAll(on) {
     if (on) {
       const all = new Set();
-      scopeBranches.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
+      treeBranches.forEach((b) => b.types.forEach(([k]) => all.add(`${b.id}::${k}`)));
       setPicked(all);
     } else {
       setPicked(new Set());
@@ -383,8 +414,9 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       const zip     = new JSZip();
 
       /* One work item per selected placement, already carrying the folder path
-         it belongs in. Order follows the catalog, which follows the screens. */
-      const work = buildWorkList(picked);
+         it belongs in. Order follows the catalog, which follows the screens;
+         the unlisted-types folder comes last. */
+      const work = buildWorkList(picked, extraBranch ? [extraBranch] : []);
 
       let step = 0;
       let filesCreated = 0;
@@ -701,7 +733,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           <button onClick={() => selectAll(true)}  style={S.btnGhost}>تحديد الكل</button>
           <button onClick={() => selectAll(false)} style={S.btnGhost}>إلغاء الكل</button>
           <button
-            onClick={() => setExpandedBranches(new Set(scopeBranches.map((b) => b.id)))}
+            onClick={() => setExpandedBranches(new Set(treeBranches.map((b) => b.id)))}
             style={S.btnGhost}
           >
             توسيع
@@ -818,8 +850,8 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       {/* ═══ Card → branch → group tree ═══
            نفس شجرة المجلدات اللي بتطلع بالـZIP، فاللي بيختار من هون بيعرف
            سلفاً وين رح يلاقي الملف. */}
-      {scopeCards.map((card) => {
-        const branches = branchesOfCard(card.id);
+      {treeCards.map((card) => {
+        const branches = branchesFor(card.id);
         const cardTotal  = branches.reduce((s, b) => s + b.types.length, 0);
         const cardPicked = branches.reduce((s, b) => s + branchPickedCount(b), 0);
 

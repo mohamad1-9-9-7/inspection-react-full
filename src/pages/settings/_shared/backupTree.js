@@ -39,13 +39,14 @@ const pad2 = (n) => String(n).padStart(2, "0");
  * type so the duplicate costs no extra request.
  *
  * @param {Set<string>} picked  "branchId::typeKey" keys
+ * @param {object[]} [extraBranches]  branches outside the catalog (the unlisted-types safety net)
  * @returns {Array<{branch, card, typeKey, typeLabel, segments: string[], fileBase: string, path: string}>}
  */
-export function buildWorkList(picked) {
+export function buildWorkList(picked, extraBranches = []) {
   const work = [];
   // Only picked keys produce work, and a kit type can only be picked on a kit
   // company's own backup screen — so Al Mawashi's runs are unchanged.
-  for (const branch of ALL_BRANCHES) {
+  for (const branch of [...ALL_BRANCHES, ...extraBranches]) {
     for (const [typeKey, typeLabel] of branch.types) {
       if (!picked.has(`${branch.id}::${typeKey}`)) continue;
       const segments = folderSegmentsFor(branch, typeKey).map(safeSegment);
