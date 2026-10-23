@@ -12,6 +12,8 @@ import { useMockRecallConfig } from "./useMockRecallConfig";
 import AttachmentsSection from "./AttachmentsSection";
 import LinkedReportPopup from "./LinkedReportPopup";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import AutoTracePanel from "./AutoTracePanel";
+import { drillFill } from "./autoTrace";
 
 const TYPE = "mock_recall_drill";
 
@@ -510,6 +512,15 @@ export default function MockRecallInput() {
     return { durMin, pct, passQty, passTime, overall };
   }, [form.timing, form.product.qtyProduced, form.results.qtyTraced, passPctTh, maxDurMin]);
 
+  /* ====== 🧬 automatic trace → fill the drill (still editable, still signed by QA) ====== */
+  function applyAutoTrace(res, product) {
+    setForm((prev) => drillFill(prev, res, { code: product?.code || "", name: product?.name || "", endTime: nowHHMM() }));
+    openModal(lang === "ar"
+      ? "✅ تم ملء التمرين من التتبّع التلقائي — راجع الجداول ثم وقّع واحفظ."
+      : "✅ Drill filled from the automatic trace — review the tables, then sign and save.", "success");
+    setTimeout(closeModal, 2400);
+  }
+
   /* ====== save ====== */
   async function handleSave() {
     if (!form.product.name.trim()) return alert("⚠️ " + t("productName"));
@@ -702,6 +713,18 @@ export default function MockRecallInput() {
             bad={kpis.overall === false}
           />
         </div>
+
+        {/* ===== Section: 🧬 التتبّع التلقائي ===== */}
+        {!editId && (
+          <Section title={lang === "ar" ? "🧬 التتبّع التلقائي" : "🧬 Automatic trace"}>
+            <AutoTracePanel
+              lang={lang}
+              initialCode={searchParams.get("traceCode") || ""}
+              initialShipment={searchParams.get("shipment") || ""}
+              onApply={applyAutoTrace}
+            />
+          </Section>
+        )}
 
         {/* ===== Section: 🔗 ربط بتقارير موجودة ===== */}
         <Section title={t("linkedReports")}>
