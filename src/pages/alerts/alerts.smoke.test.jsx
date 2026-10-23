@@ -41,23 +41,25 @@ afterEach(() => {
   host.remove();
 });
 
-const flush = () => act(() => new Promise((r) => setTimeout(r, 0)));
+// not Testing Library's render: React's own root (a named helper keeps the lint rule from confusing the two)
+const draw = (el) => root.render(el);
+const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
 test("the alerts page lists open alerts and opens the rules tab", async () => {
-  await act(async () => root.render(<MemoryRouter><AlertsPage /></MemoryRouter>));
+  await act(async () => { draw(<MemoryRouter><AlertsPage /></MemoryRouter>); });
   await flush();
   expect(host.textContent).toContain("9°C out of range");
   expect(host.textContent).toContain("Probe B");
   const rulesTab = [...host.querySelectorAll("button")].find((b) => /Rules|القواعد/.test(b.textContent));
   expect(rulesTab).toBeTruthy();
-  await act(async () => rulesTab.click());
+  await act(async () => { rulesTab.click(); });
   await flush();
   expect(host.textContent).toContain("pos10_temperature");
   expect(host.querySelector('input[dir="ltr"]').defaultValue).toBe("qa@x.ae");
 });
 
 test("the bell shows the open count", async () => {
-  await act(async () => root.render(<MemoryRouter initialEntries={["/named-dashboard"]}><AlertsBell /></MemoryRouter>));
+  await act(async () => { draw(<MemoryRouter initialEntries={["/named-dashboard"]}><AlertsBell /></MemoryRouter>); });
   await flush();
   const badge = host.querySelector(".abl-badge");
   expect(badge && badge.textContent).toBe("2");
