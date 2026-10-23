@@ -6,6 +6,7 @@ import { logSettingsAudit } from "../../utils/settingsAudit";
 import { BRANCHES } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
 import { fetchUnlistedTypes } from "./_shared/unlistedTypes";
+import NeonBackupCard from "./_shared/NeonBackupCard";
 
 
 /* ============================================================
@@ -592,6 +593,7 @@ export default function BackupTab() {
         title="Backup & Restore"
         subtitle="Choose exactly what to export: server reports, local drafts, browser settings, and date-limited backups."
       />
+      <NeonBackupCard />
       {windowWarning && (
         <div
           style={{
