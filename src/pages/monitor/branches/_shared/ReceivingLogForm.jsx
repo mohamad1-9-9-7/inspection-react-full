@@ -155,6 +155,9 @@ const STYLES = `
   @media (min-width: 900px) {
     .rl-table .rl-sticky { position:sticky; z-index:2; background:#fff; }
     .rl-table thead .rl-sticky { background:#0f172a; z-index:3; }
+    /* every sticky cell shares one z-index, so the rows below paint over an
+       open product list — lift the cell being typed in above its neighbours */
+    .rl-table tbody .rl-sticky:focus-within { z-index:5; }
     .rl-table tbody tr:nth-child(even) .rl-sticky { background:#fafbfc; }
     .rl-table tbody tr:hover .rl-sticky { background:#eff6ff; }
     .rl-table .rl-sticky-last { box-shadow: 6px 0 8px -6px rgba(15,23,42,.25); }
