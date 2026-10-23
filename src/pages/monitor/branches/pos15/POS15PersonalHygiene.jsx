@@ -78,6 +78,15 @@ export default function POS15PersonalHygiene() {
     });
   }, [roster, staffLoading]);
 
+  const addRow = () =>
+    setEntries((prev) => [
+      ...prev,
+      Object.fromEntries(Object.keys(prev[0] || { empNo: "", name: "", remarks: "" }).map((k) => [k, ""])),
+    ]);
+
+  const removeRow = (rowIndex) =>
+    setEntries((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== rowIndex) : prev));
+
   const handleChange = (rowIndex, field, value) => {
     setEntries((prev) =>
       prev.map((row, i) => {
@@ -100,12 +109,18 @@ export default function POS15PersonalHygiene() {
       alert("⚠️ Checked By and Verified By are required");
       return;
     }
+    // Only rows carrying an employee number are saved.
+    const activeEntries = entries.filter((r) => String(r.empNo || "").trim());
+    if (!activeEntries.length) {
+      alert("⚠️ Enter at least one Employee No");
+      return;
+    }
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
         branch, // ✅ POS 15 (أو من الـ URL)
         reportDate: date,
-        entries,
+        entries: activeEntries,
         checkedBy,
         verifiedBy,
         savedAt: Date.now(),
@@ -214,6 +229,7 @@ export default function POS15PersonalHygiene() {
               </th>
             ))}
             <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+            <th style={{ ...thStyle, width: "60px" }}></th>
           </tr>
         </thead>
         <tbody>
@@ -277,10 +293,49 @@ export default function POS15PersonalHygiene() {
                   style={{ ...inputStyle, width: "100%" }}
                 />
               </td>
+              <td style={tdStyle}>
+                <button
+                  type="button"
+                  title="Remove row"
+                  onClick={() => removeRow(i)}
+                  disabled={entries.length <= 1}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #ef4444",
+                    color: "#ef4444",
+                    background: "#fff",
+                    cursor: entries.length <= 1 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  ✖
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={addRow}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: "1px solid #2980b9",
+            color: "#2980b9",
+            background: "#fff",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          ➕ Add Row
+        </button>
+        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+          Only rows with an Employee No are saved.
+        </span>
+      </div>
 
       {/* Remarks footer */}
       <div style={{ marginTop: "1rem", fontWeight: "600" }}>
