@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../../utils/reportOutbox";
 import { getReportRowByDate, payloadOf } from "../../_shared/reportApi";
-import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue } from "../../_shared/branchTempDay";
+import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue, isSheetFiled } from "../../_shared/branchTempDay";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
@@ -101,11 +101,17 @@ export default function TemperatureMonitoringLogInput() {
   // The saved record of the date on screen — its values are the server's, not
   // typed work, so they stay out of the draft and out of the next date.
   const savedRef = useRef(null);
+  // The day's record holds phone readings only — not filed until the sheet is saved.
+  const [phoneOnly, setPhoneOnly] = useState(false);
   const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: editingDay });
+  const dateNote = phoneOnly
+    ? { text: "📱 Phone readings only — this day is NOT filed until you save the sheet", tone: "warn" }
+    : dateStatus.note;
 
   useEffect(() => {
     let stop = false;
     setEditingDay(false);
+    setPhoneOnly(false);
     seenRef.current = new Set();
     // A new date starts from what the user typed, never from the previous
     // day's saved readings (they used to make an empty day look filled in).
@@ -132,6 +138,7 @@ export default function TemperatureMonitoringLogInput() {
         setCheckedBy((prev) => prev || p.checkedBy || "");
         setVerifiedBy((prev) => prev || p.verifiedBy || "");
         setEditingDay(true);
+        setPhoneOnly(!isSheetFiled(p));
       })
       .catch(() => {});
     return () => { stop = true; };
@@ -234,6 +241,7 @@ export default function TemperatureMonitoringLogInput() {
       savedRef.current = { ...payload, entries: Array.isArray(r.rows) ? r.rows : payload.entries };
       if (Array.isArray(r.rows)) setRows(r.rows.map((x) => ({ ...emptyRow(), ...x })));
       setEditingDay(true);
+      setPhoneOnly(false);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert(r.queued ? queuedMessage("ar") : r.updated ? "✅ تم الحفظ — تم تحديث تقرير هذا اليوم." : "✅ تم الحفظ بنجاح!");
       dateStatus.refresh();
@@ -251,7 +259,7 @@ export default function TemperatureMonitoringLogInput() {
           { label: "Form Ref", value: FORM_REF },
           { label: "Branch", value: BRANCH },
           { label: "Classification", value: "Official" },
-          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateNote },
           { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
         ]}
       />

@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../utils/reportOutbox";
-import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue, stripSavedList } from "../_shared/branchTempDay";
+import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue, stripSavedList, isSheetFiled } from "../_shared/branchTempDay";
 import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 import { CALIB_LOGS } from "../../../haccp and iso/Calibration/calibrationLink";
@@ -107,6 +107,8 @@ export default function POS11TemperatureInput() {
      that already has one is OPENED and saved as an update (_shared/branchTempDay). */
   const seenRef = useRef(new Set());
   const [editingDay, setEditingDay] = useState(false);
+  // The day's record holds phone readings only — not filed until the sheet is saved.
+  const [phoneOnly, setPhoneOnly] = useState(false);
   // The saved record of the date on screen — its values are the server's, not
   // typed work, so they stay out of the draft and out of the next date.
   const savedRef = useRef(null);
@@ -191,6 +193,7 @@ export default function POS11TemperatureInput() {
         if (!abort) {
           setDateTaken(false);
           setEditingDay(exists);
+          setPhoneOnly(exists && !isSheetFiled(arr[0]?.payload));
           if (exists) {
             const p = arr[0]?.payload || {};
             seenRef.current = quickIdsOf(p);
@@ -252,6 +255,7 @@ export default function POS11TemperatureInput() {
       savedRef.current = { ...payload, coolers: Array.isArray(r.rows) ? r.rows : payload.coolers };
       if (Array.isArray(r.rows)) setCoolers(r.rows);
       setEditingDay(true);
+      setPhoneOnly(false);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setOpMsg(r.queued ? queuedMessage("en") : r.updated ? "✅ Saved — the day's report was updated." : "✅ Saved successfully!");
     } catch (e) {
@@ -308,7 +312,8 @@ export default function POS11TemperatureInput() {
         {reportDate && (
           <>
             {dateBusy && <span style={{ color: "#6b7280", fontWeight: 600 }}>Checking…</span>}
-            {!dateBusy && editingDay && !dateError && <span style={{ color: "#1d4ed8", fontWeight: 700 }}>📝 This day's report is open — saving updates it</span>}
+            {!dateBusy && editingDay && phoneOnly && !dateError && <span style={{ color: "#b45309", fontWeight: 700 }}>📱 Phone readings only — this day is NOT filed until you save the sheet</span>}
+            {!dateBusy && editingDay && !phoneOnly && !dateError && <span style={{ color: "#1d4ed8", fontWeight: 700 }}>📝 This day's report is open — saving updates it</span>}
             {!dateBusy && !editingDay && !dateError && <span style={{ color: "#065f46", fontWeight: 700 }}>✅ New report for this day</span>}
             {dateError && <span style={{ color: "#b45309", fontWeight: 700 }}>{dateError}</span>}
           </>

@@ -87,6 +87,13 @@ export function loadDay(shape, localRows, server) {
   return { rows: out, typed };
 }
 
+/** True once the SHEET was saved for the day. The first phone reading creates
+    the day's record, so the record existing proves nothing — a sheet save
+    stamps payload.savedAt, a phone reading never does. A record without
+    quickReadings predates the QR entry and was always a sheet save. Same rule
+    as the server's KPI count (routes/reports.cjs, kpi-days). */
+export const isSheetFiled = (p) => !Array.isArray(p?.quickReadings) || !!p?.savedAt;
+
 /* ── keeping the saved day out of the sheet's own work ──────────────────
    Once a date's saved record is opened, its readings sit on the sheet beside
    what the user typed — but they are the SERVER's. Switching the date carried
