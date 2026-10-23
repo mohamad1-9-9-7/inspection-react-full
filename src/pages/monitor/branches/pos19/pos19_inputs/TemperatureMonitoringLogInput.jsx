@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../../utils/reportOutbox";
 import { getReportRowByDate, payloadOf } from "../../_shared/reportApi";
-import { loadDay, quickIdsOf, saveBranchDay } from "../../_shared/branchTempDay";
+import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue } from "../../_shared/branchTempDay";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
@@ -13,7 +13,7 @@ import { CALIB_LOGS } from "../../../../haccp and iso/Calibration/calibrationLin
 const CALIB_BRANCH = "Motor City";
 
 /* ===== Draft (localStorage) ===== */
-const DRAFT_KEY = "pos19_temperature_monitoring_draft_v1";
+const DRAFT_KEY = "pos19_temperature_monitoring_draft_v2";
 const loadDraft = () => {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
@@ -98,18 +98,32 @@ export default function TemperatureMonitoringLogInput() {
      being refused (_shared/branchTempDay). */
   const [editingDay, setEditingDay] = useState(false);
   const seenRef = useRef(new Set());
+  // The saved record of the date on screen — its values are the server's, not
+  // typed work, so they stay out of the draft and out of the next date.
+  const savedRef = useRef(null);
   const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: editingDay });
 
   useEffect(() => {
     let stop = false;
     setEditingDay(false);
     seenRef.current = new Set();
+    // A new date starts from what the user typed, never from the previous
+    // day's saved readings (they used to make an empty day look filled in).
+    const prevDay = savedRef.current;
+    savedRef.current = null;
+    if (prevDay) {
+      setRows((prev) => stripSavedRows("pos19", prev, prevDay));
+      setSection((prev) => stripSavedValue(prev, prevDay.section));
+      setCheckedBy((prev) => stripSavedValue(prev, prevDay.checkedBy));
+      setVerifiedBy((prev) => stripSavedValue(prev, prevDay.verifiedBy));
+    }
     if (!reportDate) return undefined;
     getReportRowByDate(TYPE, reportDate)
       .then((row) => {
         if (stop || !row) return;
         const p = payloadOf(row) || {};
         seenRef.current = quickIdsOf(p);
+        savedRef.current = p;
         setRows((prev) => {
           const { rows: next } = loadDay("pos19", prev.filter((r) => String(r.equipment || "").trim()), p);
           return next.length ? next.map((r) => ({ ...emptyRow(), ...r })) : prev;
@@ -128,7 +142,16 @@ export default function TemperatureMonitoringLogInput() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ reportDate, section, rows, verifiedBy, checkedBy, revDate, revNo, ts: Date.now() })
+        JSON.stringify({
+          reportDate,
+          section: stripSavedValue(section, savedRef.current?.section),
+          rows: stripSavedRows("pos19", rows, savedRef.current),
+          verifiedBy: stripSavedValue(verifiedBy, savedRef.current?.verifiedBy),
+          checkedBy: stripSavedValue(checkedBy, savedRef.current?.checkedBy),
+          revDate,
+          revNo,
+          ts: Date.now(),
+        })
       );
     } catch {}
   }, [reportDate, section, rows, verifiedBy, checkedBy, revDate, revNo]);
@@ -208,6 +231,7 @@ export default function TemperatureMonitoringLogInput() {
         seenIds: seenRef.current, label: `POS 19 Temperature Monitoring ${reportDate}`,
       });
       seenRef.current = r.seenIds;
+      savedRef.current = { ...payload, entries: Array.isArray(r.rows) ? r.rows : payload.entries };
       if (Array.isArray(r.rows)) setRows(r.rows.map((x) => ({ ...emptyRow(), ...x })));
       setEditingDay(true);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}

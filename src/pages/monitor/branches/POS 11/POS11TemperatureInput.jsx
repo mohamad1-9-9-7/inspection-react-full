@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../utils/reportOutbox";
-import { loadDay, quickIdsOf, saveBranchDay } from "../_shared/branchTempDay";
+import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue, stripSavedList } from "../_shared/branchTempDay";
 import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 import { CALIB_LOGS } from "../../../haccp and iso/Calibration/calibrationLink";
@@ -13,7 +13,7 @@ const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 /* ===== Draft (localStorage) ===== */
-const DRAFT_KEY = "pos11_temperature_draft_v1";
+const DRAFT_KEY = "pos11_temperature_draft_v2";
 const loadDraft = () => {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
@@ -107,13 +107,23 @@ export default function POS11TemperatureInput() {
      that already has one is OPENED and saved as an update (_shared/branchTempDay). */
   const seenRef = useRef(new Set());
   const [editingDay, setEditingDay] = useState(false);
+  // The saved record of the date on screen — its values are the server's, not
+  // typed work, so they stay out of the draft and out of the next date.
+  const savedRef = useRef(null);
 
   /* ✅ Auto-save draft */
   useEffect(() => {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ coolers, productVerifications, reportDate, checkedBy, verifiedBy, ts: Date.now() })
+        JSON.stringify({
+          coolers: stripSavedRows("grid", coolers, savedRef.current),
+          productVerifications: stripSavedList(productVerifications, savedRef.current?.productVerifications),
+          reportDate,
+          checkedBy: stripSavedValue(checkedBy, savedRef.current?.checkedBy),
+          verifiedBy: stripSavedValue(verifiedBy, savedRef.current?.verifiedBy),
+          ts: Date.now(),
+        })
       );
     } catch {}
   }, [coolers, productVerifications, reportDate, checkedBy, verifiedBy]);
@@ -148,6 +158,16 @@ export default function POS11TemperatureInput() {
   /* ===================== Duplicate-day prevention ===================== */
   useEffect(() => {
     let abort = false;
+    // A new date starts from what the user typed, never from the previous
+    // day's saved readings (they used to make an empty day look filled in).
+    const prevDay = savedRef.current;
+    savedRef.current = null;
+    if (prevDay) {
+      setCoolers((prev) => stripSavedRows("grid", prev, prevDay));
+      setProductVerifications((prev) => stripSavedList(prev, prevDay.productVerifications));
+      setCheckedBy((prev) => stripSavedValue(prev, prevDay.checkedBy));
+      setVerifiedBy((prev) => stripSavedValue(prev, prevDay.verifiedBy));
+    }
     async function checkDuplicate() {
       const d = toISODate(reportDate);
       setDateError("");
@@ -174,6 +194,7 @@ export default function POS11TemperatureInput() {
           if (exists) {
             const p = arr[0]?.payload || {};
             seenRef.current = quickIdsOf(p);
+            savedRef.current = p;
             setCoolers((prev) => {
               const { rows } = loadDay("grid", prev, p);
               return rows.length ? rows : prev;
@@ -228,6 +249,7 @@ export default function POS11TemperatureInput() {
         seenIds: seenRef.current, label: `POS 11 Temperature ${d}`,
       });
       seenRef.current = r.seenIds;
+      savedRef.current = { ...payload, coolers: Array.isArray(r.rows) ? r.rows : payload.coolers };
       if (Array.isArray(r.rows)) setCoolers(r.rows);
       setEditingDay(true);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}

@@ -87,6 +87,47 @@ export function loadDay(shape, localRows, server) {
   return { rows: out, typed };
 }
 
+/* ── keeping the saved day out of the sheet's own work ──────────────────
+   Once a date's saved record is opened, its readings sit on the sheet beside
+   what the user typed — but they are the SERVER's. Switching the date carried
+   them onto the next day (an empty day looked already filled in, and a save
+   wrote them under the wrong date), and the localStorage draft kept them, so
+   they came back on the next visit. These drop every value still equal to the
+   saved one. The rows stay (unit names; POS 19 type and target) — only the
+   readings go. */
+const same = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
+const POS19_READING_KEYS = ["am", "pm", "ev"]
+  .flatMap((k) => [`${k}_temp`, `${k}_time`])
+  .concat(["correctiveAction", "checkedBy"]);
+
+export function stripSavedRows(shape, rows, saved) {
+  const savedRows = (shape === "grid" ? saved?.coolers : saved?.entries) || [];
+  if (!savedRows.length) return rows;
+  const nameKey = shape === "grid" ? "name" : "equipment";
+  return (rows || []).map((r) => {
+    const s = savedRows.find((x) => sameName(x?.[nameKey], r?.[nameKey]));
+    if (!s) return r;
+    if (shape === "grid") {
+      const temps = {};
+      Object.entries(r.temps || {}).forEach(([k, v]) => { if (!same(v, s.temps?.[k])) temps[k] = v; });
+      return { ...r, temps, remarks: same(r.remarks, s.remarks) ? "" : r.remarks };
+    }
+    const out = { ...r };
+    POS19_READING_KEYS.forEach((k) => { if (same(r[k], s[k])) out[k] = ""; });
+    return out;
+  });
+}
+
+/** A top-level value (checkedBy, section…) the saved record supplied → "". */
+export const stripSavedValue = (value, savedValue) => (filled(savedValue) && same(value, savedValue) ? "" : value);
+
+/** List entries (product matching rows) identical to a saved one are dropped. */
+export function stripSavedList(list, savedList) {
+  const saved = (Array.isArray(savedList) ? savedList : []).map((x) => JSON.stringify(x));
+  if (!saved.length) return list;
+  return (list || []).filter((x) => !saved.includes(JSON.stringify(x)));
+}
+
 /**
  * Saves the sheet for its date: updates the day's record when one exists
  * (phone readings it has not seen merged in first), creates it otherwise.
