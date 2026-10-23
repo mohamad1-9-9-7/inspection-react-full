@@ -15,7 +15,20 @@ const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || "")) ? `${iso.slic
 const kg = (n) => `${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US")} kg`;
 const RANGES = [3, 6, 12, 24];
 
-export default function AutoTracePanel({ lang, initialCode = "", initialShipment = "", onApply }) {
+/* minutes since the drill started (HH:MM, today), across midnight */
+function minutesSince(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ""));
+  if (!m) return null;
+  const now = new Date();
+  let d = now.getHours() * 60 + now.getMinutes() - (Number(m[1]) * 60 + Number(m[2]));
+  if (d < 0) d += 24 * 60;
+  return d;
+}
+const hm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+
+const FLOW_COLORS = ["#7c3aed", "#2563eb", "#0891b2", "#0d9488", "#16a34a", "#ca8a04", "#db2777", "#475569"];
+
+export default function AutoTracePanel({ lang, initialCode = "", initialShipment = "", onApply, startTime = "", maxMinutes = 240, stopped = false }) {
   const ar = lang === "ar";
   const L = (en, a) => (ar ? a : en);
   const { pickItems, allItems } = useProductCatalog();
@@ -34,6 +47,15 @@ export default function AutoTracePanel({ lang, initialCode = "", initialShipment
   const autoRef = useRef({ code: initialCode, shipment: initialShipment });
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  /* the drill clock — the limit comes from the Mock Recall settings */
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (stopped) return undefined;
+    const id = setInterval(() => tick((n) => n + 1), 20000);
+    return () => clearInterval(id);
+  }, [stopped]);
+  const spent = stopped ? null : minutesSince(startTime);
 
   const matches = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -88,6 +110,15 @@ export default function AutoTracePanel({ lang, initialCode = "", initialShipment
 
   return (
     <div style={S.box}>
+      {spent != null && (
+        <div style={S.clock}>
+          <span style={{ fontWeight: 900 }}>⏱ {hm(spent)}</span>
+          <div style={S.clockBar}>
+            <div style={{ ...S.clockFill, width: `${Math.min(100, (spent / maxMinutes) * 100)}%`, background: spent > maxMinutes ? "#dc2626" : spent > maxMinutes * 0.75 ? "#d97706" : "#16a34a" }} />
+          </div>
+          <span style={S.muted}>{L(`limit ${hm(maxMinutes)} · started ${startTime}`, `الحد ${hm(maxMinutes)} · البداية ${startTime}`)}</span>
+        </div>
+      )}
       <div style={S.lead}>
         {L(
           "Pick the product and the shipment — the system follows it through dispatch, every branch's receiving log and the returns (same rules as Product Traceability), then fills the drill below. You still check, correct and sign.",
@@ -162,6 +193,30 @@ export default function AutoTracePanel({ lang, initialCode = "", initialShipment
             <Tile label={L("Labels printed", "ملصقات مطبوعة")} value={String(res.labels?.copies || 0)} sub={res.labels?.lots.length ? L(`${res.labels.lots.length} lot(s) · ${res.labels.sites.join(", ")}`, `${res.labels.lots.length} دفعة · ${res.labels.sites.join("، ")}`) : ""} />
             <Tile label={L("Traced", "المتتبَّع")} value={res.pct == null ? "—" : `${res.pct.toFixed(1)}%`} tone={res.pct != null && res.pct >= 99 ? "ok" : "warn"} sub={res.unaccounted > 0 ? L(`${kg(res.unaccounted)} not found`, `${kg(res.unaccounted)} غير موجود`) : ""} />
           </div>
+
+          {res.inKg > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={S.h}>{L("Where the shipment went", "وين راحت الشحنة")}</div>
+              <div style={S.flow}>
+                {[
+                  ...res.branches.map((b, i) => ({ key: b.id, label: b.label, qty: b.qty, color: FLOW_COLORS[i % FLOW_COLORS.length] })),
+                  res.sentCustomers > 0 && { key: "cust", label: L("Customers", "العملاء"), qty: res.sentCustomers, color: "#94a3b8" },
+                  res.unaccounted > 0 && { key: "gap", label: L("Not found", "غير موجود"), qty: res.unaccounted, color: "repeating-linear-gradient(45deg,#fecaca 0 6px,#fee2e2 6px 12px)" },
+                ].filter(Boolean).map((seg) => (
+                  <div key={seg.key} title={`${seg.label}: ${kg(seg.qty)}`} style={{ ...S.seg, flexGrow: seg.qty, background: seg.color }}>
+                    {seg.qty / Math.max(res.inKg, res.sent) > 0.09 ? seg.label : ""}
+                  </div>
+                ))}
+              </div>
+              <div style={S.legend}>
+                {res.branches.map((b, i) => (
+                  <span key={b.id}><i style={{ ...S.dot, background: FLOW_COLORS[i % FLOW_COLORS.length] }} />{b.label} {kg(b.qty)}</span>
+                ))}
+                {res.sentCustomers > 0 && <span><i style={{ ...S.dot, background: "#94a3b8" }} />{L("Customers", "العملاء")} {kg(res.sentCustomers)}</span>}
+                {res.unaccounted > 0 && <span><i style={{ ...S.dot, background: "#fca5a5" }} />{L("Not found", "غير موجود")} {kg(res.unaccounted)}</span>}
+              </div>
+            </div>
+          )}
 
           <div style={S.muted}>
             {L("Window", "النافذة")}: {dmy(res.anchor.date)} → {res.until ? dmy(res.until) : L("open (no expiry on the shipment)", "مفتوحة (لا يوجد تاريخ انتهاء على الشحنة)")}
@@ -238,6 +293,13 @@ const S = {
   cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 8 },
   card: { textAlign: "start", padding: "10px 12px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 3 },
   cardOn: { border: "2px solid #7c3aed", background: "#faf5ff", boxShadow: "0 4px 14px rgba(124,58,237,.18)" },
+  clock: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "8px 12px", marginBottom: 10 },
+  clockBar: { flex: "1 1 160px", height: 8, borderRadius: 999, background: "#f1f5f9", overflow: "hidden" },
+  clockFill: { height: "100%", borderRadius: 999, transition: "width .6s ease" },
+  flow: { display: "flex", height: 34, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", background: "#fff" },
+  seg: { flexBasis: 0, minWidth: 4, display: "grid", placeItems: "center", color: "#fff", fontWeight: 800, fontSize: "0.78rem", whiteSpace: "nowrap", overflow: "hidden", textShadow: "0 1px 2px rgba(0,0,0,.25)" },
+  legend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 6, color: "#475569", fontSize: "0.82rem", fontWeight: 600 },
+  dot: { display: "inline-block", width: 10, height: 10, borderRadius: 3, marginInlineEnd: 5, verticalAlign: "middle" },
   tiles: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 },
   tile: { flex: "1 1 150px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" },
   table: { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 10 },

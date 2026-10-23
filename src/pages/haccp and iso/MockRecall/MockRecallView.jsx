@@ -10,6 +10,7 @@ import { useLang, LangToggle, getDrillShortLabel } from "./i18n";
 import AttachmentsSection from "./AttachmentsSection";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import MockRecallTrendReportModal from "./MockRecallTrendReport";
+import AutoTraceSummary from "./AutoTraceSummary";
 
 const TYPE = "mock_recall_drill";
 
@@ -391,8 +392,15 @@ export default function MockRecallView() {
 
                 {isExpanded && (
                   <div style={S.cardBody}>
+                    {/* 🧬 التتبّع التلقائي — الأرقام كما كانت وقت التمرين */}
+                    <AutoTraceSummary
+                      trace={p.linked?.autoTrace}
+                      lang={lang}
+                      onOpenTrace={(code) => navigate(`/product-trace?code=${encodeURIComponent(code)}`)}
+                    />
+
                     {/* 🔗 التقارير المرتبطة */}
-                    {p.linked && Object.values(p.linked).some(Boolean) && (
+                    {p.linked && Object.entries(p.linked).some(([k, v]) => k !== "autoTrace" && v) && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={S.subTitle}>{t("linkedSourceTitle")}</div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>

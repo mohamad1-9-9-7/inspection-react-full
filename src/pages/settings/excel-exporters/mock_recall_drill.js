@@ -170,6 +170,22 @@ export default async function build(wb, record, ctx) {
     "— No forward-trace rows —"
   );
 
+  // the automatic-trace card of the view (AutoTraceSummary) — same items, same order
+  const at = p.linked?.autoTrace;
+  if (at) {
+    const kgT = (n) => `${Math.round((Number(n) || 0) * 100) / 100} kg`;
+    const sent = (Number(at.sentOur) || 0) + (Number(at.sentCustomers) || 0);
+    section(`Automatic Trace — ${display(at.product)} [${display(at.code)}]`);
+    kv2("Shipment", `${formatDMY(at.shipmentDate)} · ${at.supplier || "—"} · ${at.invoiceNo || "—"}`, "Received", kgT(at.inKg));
+    kv2("To our branches", kgT(at.sentOur), "To customers", kgT(at.sentCustomers));
+    kv2("Returns", kgT(at.returnsQty), "Not found", at.unaccounted > 0 ? kgT(at.unaccounted) : "✓");
+    kv2("Labels printed", at.labels ? `${at.labels.copies} · ${(at.labels.lots || []).length} lot(s)` : "—", "Window until", at.windowUntil ? formatDMY(at.windowUntil) : "open");
+    kv2("Traced", at.inKg > 0 ? `${Math.min(100, (sent / at.inKg) * 100).toFixed(1)}%` : "—", "Traced at", at.tracedAt ? new Date(at.tracedAt).toLocaleString() : "—");
+    if (Array.isArray(at.branches) && at.branches.length) {
+      wide("Branches (sent → logged)", at.branches.map((b) => `${b.id}: ${kgT(b.qty)} → ${kgT(b.logged)}`).join("\n"));
+    }
+  }
+
   section("Timing & Results");
   kv2("Start Time", timing.startTime, "End Time", timing.endTime);
   kv2("Duration", computeDuration(timing.startTime, timing.endTime), "Qty Traced", results.qtyTraced);

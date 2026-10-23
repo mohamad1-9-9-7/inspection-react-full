@@ -28,3 +28,14 @@ test("an A4 sheet holds 24 labels per page", () => {
   expect((doc.match(/class="sheet"/g) || []).length).toBe(2);
   expect((doc.match(/class="cell"/g) || []).length).toBe(30);
 });
+
+test("the use-by template leads with the weekday; the halal badge and extra line show when asked", () => {
+  const html = labelHtml({ ...data, note: "منتج إماراتي" }, sizeOf("75x50"), { template: "useby", show: { halal: true } });
+  expect(html).toContain("USE BY");
+  expect(html).toContain(">FRI<");
+  expect(html).toContain("HALAL");
+  expect(html).toContain("منتج إماراتي");
+  const small = labelHtml(data, sizeOf("50x30"), { template: "compact" });
+  expect(small).toContain("t-compact");
+  expect(small).not.toContain("Keep chilled");
+});

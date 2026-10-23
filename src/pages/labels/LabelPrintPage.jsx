@@ -24,7 +24,7 @@ import BarcodeScanner from "../../components/BarcodeScanner";
 import useWedgeScanner from "../../utils/useWedgeScanner";
 import { OUR_BRANCHES } from "../traceability/productTraceApi";
 import {
-  SIZES, sizeOf, MIN_MODULE_MM, todayISO, isISO, dmy, addDays, defaultLot, cleanLot,
+  SIZES, TEMPLATES, sizeOf, MIN_MODULE_MM, todayISO, isISO, dmy, addDays, defaultLot, cleanLot,
   gs1Text, code128ModuleMm, labelHtml, LABEL_CSS, printDocument, printHtml,
   fetchPrintJobs, logPrintJob,
 } from "./labelsApi";
@@ -39,7 +39,7 @@ const userName = () => {
 };
 
 const SITES = ["QCS", ...OUR_BRANCHES.map((b) => b.id)];
-const SHOW_KEYS = ["company", "weight", "branch", "storage", "allergens", "packer"];
+const SHOW_KEYS = ["company", "halal", "weight", "branch", "storage", "allergens", "packer"];
 
 function storageText(st) {
   if (!st) return "";
@@ -81,8 +81,10 @@ export default function LabelPrintPage() {
   const [packedBy, setPackedBy] = useState(userName());
   const [sizeId, setSizeId] = useState(prefs0.sizeId || "60x40");
   const [symbol, setSymbol] = useState(prefs0.symbol || "qr");
+  const [template, setTemplate] = useState(prefs0.template || "standard");
+  const [note, setNote] = useState(prefs0.note || ""); // a free extra line (e.g. "Product of UAE", Arabic name)
   const [copies, setCopies] = useState("1");
-  const [show, setShow] = useState(() => ({ company: true, weight: true, branch: true, storage: true, allergens: true, packer: false, ...(prefs0.show || {}) }));
+  const [show, setShow] = useState(() => ({ company: true, weight: true, branch: true, storage: true, allergens: true, packer: false, halal: false, ...(prefs0.show || {}) }));
   const [media, setMedia] = useState(cachedProductMedia);
   const [scanOpen, setScanOpen] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -96,7 +98,7 @@ export default function LabelPrintPage() {
   const company = getActiveCompanyName();
 
   useEffect(() => { fetchProductMedia().then(setMedia); }, []);
-  useEffect(() => { writePrefs({ sizeId, symbol, show, site }); }, [sizeId, symbol, show, site]);
+  useEffect(() => { writePrefs({ sizeId, symbol, template, note, show, site }); }, [sizeId, symbol, template, note, show, site]);
 
   const loadJobs = () => {
     fetchPrintJobs().then((j) => { setJobs(j); setJobsErr(""); }).catch((e) => setJobsErr(String(e?.message || e)));
@@ -184,13 +186,14 @@ export default function LabelPrintPage() {
     storage: product ? storageText(storageOf(media, product.code)) : "",
     allergens: product ? allergensOf(media, product.code).map((a) => allergenOf(a).label) : [],
     packedBy,
+    note: note.trim(),
   };
 
   const gs1 = gs1Text(data);
   const moduleMm = code128ModuleMm(gs1, size);
   const barsOk = moduleMm >= MIN_MODULE_MM;
   const sym = symbol === "code128" && !barsOk ? "qr" : symbol;
-  const one = labelHtml(data, size, { symbol: sym, show });
+  const one = labelHtml(data, size, { symbol: sym, template, show });
 
   /* the preview scales the real mm label into a fixed box */
   const PX_PER_MM = 3.78;
@@ -211,14 +214,15 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
     const d = override?.data || data;
     const sz = override ? sizeOf(override.sizeId) : size;
     const n = override?.copies || Number(copies) || 1;
-    const html = printDocument(override ? labelHtml(d, sz, { symbol: override.symbol, show: override.show || show }) : one, sz, n);
+    const html = printDocument(override ? labelHtml(d, sz, { symbol: override.symbol, template: override.template || "standard", show: override.show || show }) : one, sz, n);
     printHtml(html);
     setPrinting(true);
     try {
       await logPrintJob({
         code: d.code, product: d.product, prodDate: d.prodDate, expDate: d.expDate, lot: cleanLot(d.lot),
         weightKg: d.weightKg || 0, branch: d.branch, packedBy: d.packedBy, copies: n,
-        sizeId: sz.id, symbol: override?.symbol || sym, show: override?.show || show, reprint: !!override,
+        sizeId: sz.id, symbol: override?.symbol || sym, template: override?.template || template, note: d.note || "",
+        show: override?.show || show, reprint: !!override,
       }, userName());
       setMsg({ kind: "ok", text: t({ en: `Sent ${n} label(s) to the printer and logged`, ar: `أُرسل ${n} ملصق للطابعة وسُجّل` }) });
       loadJobs();
@@ -233,10 +237,10 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
     const it = allItems.find((x) => String(x.item_code || "").trim() === j.code);
     const code = j.code || "";
     doPrint({
-      sizeId: j.sizeId, symbol: j.symbol, show: j.show, copies: j.copies,
+      sizeId: j.sizeId, symbol: j.symbol, template: j.template, show: j.show, copies: j.copies,
       data: {
         company, product: it?.description || j.product, code, prodDate: j.prodDate, expDate: j.expDate, lot: j.lot,
-        weightKg: j.weightKg, branch: j.branch, packedBy: j.packedBy,
+        weightKg: j.weightKg, branch: j.branch, packedBy: j.packedBy, note: j.note || "",
         storage: storageText(storageOf(media, code)),
         allergens: allergensOf(media, code).map((a) => allergenOf(a).label),
       },
@@ -245,6 +249,7 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
 
   const showLabel = {
     company: { en: "Company name", ar: "اسم الشركة" },
+    halal: { en: "Halal badge", ar: "شارة حلال" },
     weight: { en: "Net weight", ar: "الوزن الصافي" },
     branch: { en: "Site", ar: "الموقع" },
     storage: { en: "Storage", ar: "التخزين" },
@@ -317,6 +322,14 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
             <div style={S.row2}>
               <Field label={t({ en: "Production date", ar: "تاريخ الإنتاج" })}>
                 <input type="date" style={S.input} value={prodDate} onChange={(e) => setProdDate(e.target.value)} />
+                <div style={S.chips}>
+                  {[[0, { en: "Today", ar: "اليوم" }], [-1, { en: "Yesterday", ar: "أمس" }]].map(([d, l]) => {
+                    const v = addDays(todayISO(), d);
+                    return (
+                      <button key={d} type="button" style={{ ...S.chip, ...(prodDate === v ? S.chipOn : null) }} onClick={() => setProdDate(v)}>{t(l)}</button>
+                    );
+                  })}
+                </div>
               </Field>
               <Field
                 label={t({ en: "Expiry date", ar: "تاريخ الانتهاء" })}
@@ -345,6 +358,19 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
             </div>
 
             <div className="lbp-h" style={{ ...S.h, marginTop: 18 }}>3 · {t({ en: "Label", ar: "الملصق" })}</div>
+            <div style={S.tpls}>
+              {TEMPLATES.map((tp) => (
+                <button key={tp.id} type="button" onClick={() => setTemplate(tp.id)} style={{ ...S.tpl, ...(template === tp.id ? S.tplOn : null) }}>
+                  <span style={{ fontSize: 22 }}>{tp.id === "useby" ? "⏰" : tp.id === "compact" ? "▫️" : "🏷️"}</span>
+                  <span style={{ fontWeight: 800 }}>{isAr ? tp.ar : tp.en}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Field label={t({ en: "Extra line — optional (any language)", ar: "سطر إضافي — اختياري (أي لغة)" })}>
+                <input style={S.input} dir="auto" maxLength={80} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t({ en: "e.g. Product of UAE · keep away from raw meat", ar: "مثال: منتج إماراتي · يُحفظ بعيداً عن اللحوم النيئة" })} />
+              </Field>
+            </div>
             <div style={S.row2}>
               <Field label={t({ en: "Label size", ar: "مقاس الملصق" })}>
                 <select style={S.input} value={sizeId} onChange={(e) => setSizeId(e.target.value)}>
@@ -360,7 +386,11 @@ html,body{height:100%}body{display:grid;place-items:center;background:#eef3f8}
                 </select>
               </Field>
               <Field label={t({ en: "Copies", ar: "عدد النسخ" })}>
-                <input style={S.input} type="number" min="1" max="500" value={copies} onChange={(e) => setCopies(e.target.value)} />
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" style={S.step} onClick={() => setCopies((c) => String(Math.max(1, (Number(c) || 1) - 1)))}>−</button>
+                  <input style={{ ...S.input, textAlign: "center" }} type="number" min="1" max="500" value={copies} onChange={(e) => setCopies(e.target.value)} />
+                  <button type="button" style={S.step} onClick={() => setCopies((c) => String(Math.min(500, (Number(c) || 0) + 1)))}>+</button>
+                </div>
               </Field>
             </div>
             <div style={S.toggles}>
@@ -467,6 +497,13 @@ const S = {
   picked: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, background: "#ecfdf5", border: "1px solid #a7f3d0" },
   list: { marginTop: 8, maxHeight: 280, overflowY: "auto", border: "1px solid #e3edf7", borderRadius: 14 },
   pick: { display: "flex", gap: 10, width: "100%", padding: "9px 12px", border: 0, borderBottom: "1px solid #f0f5fa", background: "#fff", cursor: "pointer", color: "#0f2740", fontFamily: FONT },
+  chips: { display: "flex", gap: 6, marginTop: 6 },
+  chip: { padding: "4px 10px", borderRadius: 999, border: "1px solid #cfdeec", background: "#fff", color: "#35536e", fontWeight: 800, cursor: "pointer", fontFamily: FONT },
+  chipOn: { background: "#e0f2fe", borderColor: "#7dd3fc", color: "#075985" },
+  tpls: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 8, marginBottom: 12 },
+  tpl: { display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 14, border: "1px solid #cfdeec", background: "#fbfdff", color: "#0f2740", cursor: "pointer", textAlign: "start", fontFamily: FONT },
+  tplOn: { border: "2px solid #0d9488", background: "#f0fdfa", boxShadow: "0 4px 14px rgba(13,148,136,.18)" },
+  step: { width: 44, flex: "none", borderRadius: 12, border: "1px solid #cfdeec", background: "#fff", fontWeight: 900, cursor: "pointer", color: "#0f2740" },
   toggles: { display: "flex", flexWrap: "wrap", gap: "8px 16px", marginTop: 12 },
   toggle: { display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#35536e", cursor: "pointer" },
   preview: { width: "100%", height: 320, border: "1px solid #e3edf7", borderRadius: 14, background: "#eef3f8" },

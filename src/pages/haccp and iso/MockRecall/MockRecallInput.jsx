@@ -722,6 +722,9 @@ export default function MockRecallInput() {
               initialCode={searchParams.get("traceCode") || ""}
               initialShipment={searchParams.get("shipment") || ""}
               onApply={applyAutoTrace}
+              startTime={form.timing.startTime}
+              maxMinutes={maxDurMin}
+              stopped={!!form.timing.endTime}
             />
           </Section>
         )}
