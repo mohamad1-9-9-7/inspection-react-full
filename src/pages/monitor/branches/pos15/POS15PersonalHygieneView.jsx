@@ -266,6 +266,7 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
             <thead>
               <tr style={theadRow}>
                 <th style={{ ...thCell, width: 70 }}>S.No</th>
+                <th style={{ ...thCell, minWidth: 100 }}>Employee No</th>
                 <th style={{ ...thCell, minWidth: 180 }}>Employee Name</th>
                 {COLUMNS.map((c, i) => (<th key={i} style={{ ...thCell, minWidth: 140 }}>{c}</th>))}
                 <th style={{ ...thCell, minWidth: 260 }}>Remarks and Corrective Actions</th>
@@ -274,11 +275,12 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
             <tbody>
               {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length + 3} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>No entries</td>
+                  <td colSpan={COLUMNS.length + 4} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>No entries</td>
                 </tr>
               ) : entries.map((row, i) => (
                 <tr key={i} style={zebra(i)}>
                   <td style={tdCell}>{i + 1}</td>
+                  <td style={tdCell}>{row.empNo || ""}</td>
                   <td style={{ ...tdCell, textAlign: "left" }}>{row.name || ""}</td>
                   {COLUMNS.map((c, k) => (<td key={k} style={tdCell}>{row[c] || ""}</td>))}
                   <td style={{ ...tdCell, textAlign: "left" }}>{row.remarks || ""}</td>

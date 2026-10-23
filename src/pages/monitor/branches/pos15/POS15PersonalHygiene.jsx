@@ -2,9 +2,24 @@
 // Personal Hygiene input — POS 15
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 15)
 
-import React, { useState } from "react";
+//
+// Employee No. is the key (same as QCS): typing it looks the person up in
+// Settings → Staff Directory, then in the company directory, and fills the
+// name. The name cell is read-only.
+
+import React, { useEffect, useRef, useState } from "react";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { useSearchParams } from "react-router-dom";
+import {
+  COMPANY_DIRECTORY,
+  normalizeEmpNo,
+  useStaffDirectory,
+} from "../_shared/staffRegistry";
+
+/** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
+const PH_FORM_KEY = "pos15_personal_hygiene";
+
+const COMPANY_BY_NO = new Map(COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d]));
 
 
 const columns = [
@@ -24,6 +39,7 @@ export default function POS15PersonalHygiene() {
   const [date, setDate] = useState("");
   const [entries, setEntries] = useState(
     Array.from({ length: 9 }, () => ({
+      empNo: "",
       name: "",
       Nails: "",
       Hair: "",
@@ -38,10 +54,41 @@ export default function POS15PersonalHygiene() {
   const [verifiedBy, setVerifiedBy] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
+  const { roster, loading: staffLoading, byNo } = useStaffDirectory(PH_FORM_KEY);
+
+  const findEmployee = (empNo) => {
+    const key = normalizeEmpNo(empNo);
+    if (!key) return null;
+    return byNo.get(key) || COMPANY_BY_NO.get(key) || null;
+  };
+
+  // Pre-fill the sheet once with the people assigned to this form, as long as
+  // nobody has typed into it yet.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading) return;
+    seededRef.current = true;
+    if (!roster.length) return;
+    setEntries((prev) => {
+      if (prev.some((r) => String(r.empNo || r.name || "").trim())) return prev;
+      const blank = prev[0];
+      const rows = roster.map((s) => ({ ...blank, empNo: s.empNo, name: s.name }));
+      while (rows.length < prev.length) rows.push({ ...blank });
+      return rows;
+    });
+  }, [roster, staffLoading]);
+
   const handleChange = (rowIndex, field, value) => {
-    const updated = [...entries];
-    updated[rowIndex][field] = value;
-    setEntries(updated);
+    setEntries((prev) =>
+      prev.map((row, i) => {
+        if (i !== rowIndex) return row;
+        if (field === "empNo") {
+          const match = findEmployee(value);
+          return { ...row, empNo: value, name: match ? match.name : "" };
+        }
+        return { ...row, [field]: value };
+      })
+    );
   };
 
   const handleSave = async () => {
@@ -159,7 +206,8 @@ export default function POS15PersonalHygiene() {
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
+            <th style={{ ...thStyle, width: "110px" }}>Employee No</th>
+            <th style={{ ...thStyle, width: "170px" }}>Employee Name</th>
             {columns.map((col, i) => (
               <th key={i} style={{ ...thStyle, width: "120px" }}>
                 {col}
@@ -175,12 +223,34 @@ export default function POS15PersonalHygiene() {
               <td style={tdStyle}>
                 <input
                   type="text"
-                  value={entry.name}
-                  onChange={(e) => handleChange(i, "name", e.target.value)}
+                  inputMode="numeric"
+                  placeholder="No."
+                  value={entry.empNo || ""}
+                  onChange={(e) => handleChange(i, "empNo", e.target.value)}
                   style={{
                     ...inputStyle,
-                    width: "100%",
-                    maxWidth: "140px",
+                    borderColor:
+                      String(entry.empNo || "").trim() && !entry.name ? "#f59e0b" : "#aaa",
+                  }}
+                  title={
+                    String(entry.empNo || "").trim() && !entry.name
+                      ? "Employee number not found"
+                      : ""
+                  }
+                />
+              </td>
+              <td style={tdStyle}>
+                <input
+                  type="text"
+                  readOnly
+                  tabIndex={-1}
+                  value={entry.name}
+                  placeholder="Filled from Employee No"
+                  style={{
+                    ...inputStyle,
+                    background: "#f1f5f9",
+                    color: "#0f172a",
+                    cursor: "not-allowed",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                   }}
