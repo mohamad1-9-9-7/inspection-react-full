@@ -170,6 +170,7 @@ export default function BackupTab() {
   const [includeLocalData, setIncludeLocalData] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [typeQuery, setTypeQuery] = useState("");
 
   /* --- استرجاع --- */
   const [restorePreview, setRestorePreview] = useState(null);
@@ -636,45 +637,71 @@ export default function BackupTab() {
           title="أنواع التقارير"
           right={<code dir="ltr">{selectedTypes.size}/{allTypes.length} selected</code>}
         >
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
             <DevButton onClick={() => selectAllTypes(true)} disabled={allTypesOn}>[x] تحديد الكل</DevButton>
             <DevButton onClick={() => selectAllTypes(false)} disabled={noTypesOn}>[ ] إلغاء الكل</DevButton>
+            <div style={{ position: "relative", flex: "1 1 240px", maxWidth: 360, marginInlineStart: "auto" }}>
+              <span dir="ltr" style={{ position: "absolute", insetInlineStart: 10, top: "50%", transform: "translateY(-50%)", color: DEV.green, pointerEvents: "none" }}>❯</span>
+              <input
+                value={typeQuery}
+                onChange={(e) => setTypeQuery(e.target.value)}
+                placeholder="بحث عن نوع تقرير…"
+                style={{ ...devInput, width: "100%", boxSizing: "border-box", paddingInlineStart: 28 }}
+              />
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 10 }}>
-            {Object.entries(reportGroups).map(([group, types]) => {
-              const onCount = types.filter((t) => selectedTypes.has(t)).length;
-              const allOn = onCount === types.length;
+          {/* CSS columns pack the uneven group cards like a masonry wall. */}
+          <div style={{ columnWidth: 300, columnGap: 12 }}>
+            {Object.entries(reportGroups).map(([group, allGroupTypes]) => {
+              const q = typeQuery.trim().toLowerCase();
+              const types = q
+                ? allGroupTypes.filter((t) => `${typeLabels[t] || ""} ${t} ${group}`.toLowerCase().includes(q))
+                : allGroupTypes;
+              if (!types.length) return null;
+              const onCount = allGroupTypes.filter((t) => selectedTypes.has(t)).length;
+              const allOn = onCount === allGroupTypes.length;
               const noneOn = onCount === 0;
               const isOther = group.includes("unlisted");
               return (
                 <div
                   key={group}
                   style={{
-                    border: `1px solid ${isOther ? DEV.yellow : DEV.line}`,
+                    breakInside: "avoid",
+                    display: "inline-block",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    marginBottom: 12,
+                    border: `1px solid ${isOther ? DEV.yellow : noneOn ? DEV.line : "rgba(63,185,80,.35)"}`,
                     borderRadius: 8,
-                    padding: "10px 12px",
-                    background: noneOn ? "transparent" : "rgba(63,185,80,.04)",
+                    background: DEV.bg,
+                    overflow: "hidden",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <DevCheck checked={allOn} indeterminate={!allOn && !noneOn} onChange={() => toggleGroup(group, !allOn)}>
-                      <span style={{ fontWeight: 800, color: isOther ? DEV.yellow : "#fff" }}>{group}/</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: DEV.bar, borderBottom: `1px solid ${DEV.line}` }}>
+                    <DevCheck checked={allOn} indeterminate={!allOn && !noneOn} onChange={() => toggleGroup(group, !allOn)} style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 800, color: isOther ? DEV.yellow : "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group}</span>
                     </DevCheck>
-                    <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>{onCount}/{types.length}</code>
+                    <code dir="ltr" className="devc-xs" style={{ color: noneOn ? DEV.muted : DEV.green, flexShrink: 0 }}>{onCount}/{allGroupTypes.length}</code>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1, borderInlineStart: `1px dashed ${DEV.line}`, marginInlineStart: 10, paddingInlineStart: 8 }}>
-                    {types.map((t) => (
-                      <DevCheck key={t} checked={selectedTypes.has(t)} onChange={() => toggleType(t)}>
-                        <span className="devc-sm" style={{ color: DEV.text }}>{typeLabels[t] || t}</span>
-                        <code dir="ltr" className="devc-xs" style={{ color: DEV.muted }}>{t}</code>
-                        {estimate?.counts?.[t] !== undefined && (
-                          <code dir="ltr" className="devc-xs" style={{ marginInlineStart: "auto", color: estimate.counts[t] ? DEV.green : DEV.muted, fontWeight: 700 }}>
-                            {estimate.counts[t]}
-                          </code>
-                        )}
-                      </DevCheck>
-                    ))}
+                  <div style={{ padding: "4px 4px 6px" }}>
+                    {types.map((t) => {
+                      const label = typeLabels[t] || t;
+                      const n = estimate?.counts?.[t];
+                      return (
+                        <DevCheck key={t} checked={selectedTypes.has(t)} onChange={() => toggleType(t)} style={{ alignItems: "flex-start", padding: "4px 6px" }}>
+                          <div style={{ flex: 1, minWidth: 0 }} title={`${label} — ${t}`}>
+                            <div dir="auto" className="devc-sm" style={{ color: DEV.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.5 }}>{label}</div>
+                            {label !== t && (
+                              <code dir="ltr" className="devc-xs" style={{ display: "block", color: DEV.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "start" }}>{t}</code>
+                            )}
+                          </div>
+                          {n !== undefined && (
+                            <code dir="ltr" className="devc-xs" style={{ flexShrink: 0, color: n ? DEV.green : DEV.muted, fontWeight: 700 }}>{n}</code>
+                          )}
+                        </DevCheck>
+                      );
+                    })}
                   </div>
                 </div>
               );
