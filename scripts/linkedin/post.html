@@ -1,0 +1,343 @@
+<!doctype html>
+<!--
+  LinkedIn post images (portrait 1080×1350). Open with ?n=1..10 to see one.
+  Rendered to docs/linkedin/post-NN.jpg by scripts/linkedin/render.js.
+  Brand rules: food safety, not AI; navy #0B1E3F / teal #0EA5A4;
+  tagline FOOD SAFETY · QUALITY · COMPLIANCE.
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=block" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --navy: #0B1E3F; --deep: #071328; --teal: #0EA5A4; --mint: #5eead4; --red: #f87171; --amber: #fbbf24; --line: rgba(255,255,255,.12); }
+  html, body { width: 1080px; height: 1350px; overflow: hidden; }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(700px circle at 0% 0%, rgba(14,165,164,.32), transparent 60%),
+      radial-gradient(700px circle at 100% 100%, rgba(56,189,248,.18), transparent 60%),
+      linear-gradient(160deg, #071328 0%, #0B1E3F 55%, #0b2f4a 100%);
+  }
+  body.light { color: var(--navy); background: radial-gradient(700px circle at 100% 0%, rgba(14,165,164,.14), transparent 60%), #F4F7FB; }
+  .grid { position: absolute; inset: 0; opacity: .6;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 48px 48px; }
+  body.light .grid { background-image: linear-gradient(rgba(11,30,63,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(11,30,63,.045) 1px, transparent 1px); }
+  .frame { position: absolute; inset: 0; padding: 64px 72px 0; display: flex; flex-direction: column; }
+
+  header { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand svg { width: 54px; height: 54px; }
+  .brand b { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+  .brand b span { color: var(--mint); }
+  body.light .brand b span { color: var(--teal); }
+  .pill { font-size: 17px; font-weight: 700; letter-spacing: .08em; padding: 9px 16px; border-radius: 99px; border: 1.5px solid rgba(94,234,212,.45); color: var(--mint); text-transform: uppercase; }
+  body.light .pill { color: var(--teal); border-color: rgba(14,165,164,.4); }
+
+  main { flex: 1; display: flex; flex-direction: column; padding-top: 56px; }
+  .kicker { font-size: 20px; font-weight: 800; letter-spacing: .14em; color: var(--mint); text-transform: uppercase; }
+  body.light .kicker { color: var(--teal); }
+  h1 { margin-top: 18px; font-size: 76px; line-height: 1.04; font-weight: 800; letter-spacing: -.035em; }
+  h1 em { font-style: normal; color: var(--mint); }
+  body.light h1 em { color: var(--teal); }
+  .sub { margin-top: 22px; font-size: 27px; line-height: 1.45; color: rgba(255,255,255,.72); font-weight: 500; max-width: 880px; }
+  body.light .sub { color: #475569; }
+
+  footer { flex: none; height: 112px; margin: 0 -72px; padding: 0 72px; display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid var(--line); background: rgba(0,0,0,.18); font-weight: 700; }
+  body.light footer { background: var(--navy); color: #fff; border: 0; }
+  footer .tag { font-size: 18px; letter-spacing: .16em; color: rgba(255,255,255,.75); }
+  footer .url { font-size: 21px; color: var(--mint); }
+
+  .card { background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 28px; }
+  body.light .card { background: #fff; border: 1px solid #E2E8F0; box-shadow: 0 10px 30px rgba(11,30,63,.06); }
+  .ic { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; font-size: 34px; background: rgba(94,234,212,.14); color: var(--mint); flex: none; }
+  body.light .ic { background: rgba(14,165,164,.1); color: var(--teal); }
+  .chips { display: flex; gap: 14px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; padding: 13px 20px; border-radius: 99px; background: rgba(255,255,255,.08); border: 1px solid var(--line); }
+  .chip i { color: var(--mint); font-size: 26px; }
+  .ok { color: #4ade80; } .bad { color: var(--red); } .warn { color: var(--amber); }
+
+  /* phone mockup */
+  .phone { width: 380px; height: 760px; border-radius: 56px; background: #0a0f1c; border: 3px solid rgba(255,255,255,.18); padding: 16px; flex: none; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  .screen { width: 100%; height: 100%; border-radius: 42px; background: #F4F7FB; color: var(--navy); overflow: hidden; display: flex; flex-direction: column; }
+  .notch { width: 120px; height: 28px; border-radius: 99px; background: #0a0f1c; margin: 10px auto 0; flex: none; }
+  .appbar { padding: 18px 24px 14px; display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 20px; }
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div class="frame">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 124 124"><g transform="translate(4,4)"><path d="M88 52 A36 36 0 1 1 52 16" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" id="ring"/><path d="M52 16 A36 36 0 0 1 88 52" fill="none" stroke="#0EA5A4" stroke-width="11" stroke-linecap="round"/><path d="M80 80 L104 104" stroke="currentColor" stroke-width="14" stroke-linecap="round"/><path d="M33 53 L47 67 L73 39" fill="none" stroke="#0EA5A4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+      <b>INSPECT <span>PRO</span></b>
+    </div>
+    <div class="pill" id="pill"></div>
+  </header>
+  <main id="main"></main>
+  <footer><span class="tag">FOOD SAFETY · QUALITY · COMPLIANCE</span><span class="url">inspectpro-ae.netlify.app</span></footer>
+</div>
+
+<script>
+const n = Number(new URLSearchParams(location.search).get("n") || 1);
+
+// Deterministic QR-looking pattern (decorative only).
+function qr(size, cell) {
+  let s = 7, out = "";
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const finder = (x, y) => (x < 7 && y < 7) || (x >= size - 7 && y < 7) || (x < 7 && y >= size - 7);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let on;
+    if (finder(x, y)) {
+      const fx = x >= size - 7 ? x - (size - 7) : x, fy = y >= size - 7 ? y - (size - 7) : y;
+      on = fx === 0 || fx === 6 || fy === 0 || fy === 6 || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4);
+    } else on = rnd() > 0.52;
+    if (on) out += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}"/>`;
+  }
+  return `<svg viewBox="0 0 ${size * cell} ${size * cell}" width="${size * cell}" height="${size * cell}" fill="#0B1E3F">${out}</svg>`;
+}
+
+const POSTS = {
+  1: { pill: "HACCP · ISO 22000", html: `
+    <div class="kicker">Introducing INSPECT PRO</div>
+    <h1>Every record.<br>Every branch.<br><em>One system.</em></h1>
+    <p class="sub">The food safety records your inspector asks for — complete, on time, and ready in one click.</p>
+    <div style="margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      ${[["temperature","Temperature logs","QR entry from any phone"],["truck-delivery","Receiving checks","Every delivery, every branch"],["route","Traceability","Mock recall in minutes"],["clipboard-check","Supplier approval","Online self-assessment"],["zoom-check","Audits · NCR · CAPA","Findings closed with evidence"],["certificate","Training & hygiene","Signed, dated, searchable"]]
+        .map(([i,t,s]) => `<div class="card" style="display:flex;gap:20px;align-items:center;padding:34px 26px">
+          <div class="ic"><i class="ti ti-${i}"></i></div>
+          <div><div style="font-size:27px;font-weight:800">${t}</div><div style="font-size:20px;color:rgba(255,255,255,.62);margin-top:4px;font-weight:500">${s}</div></div></div>`).join("")}
+    </div>
+    <div class="chips" style="margin-top:34px">
+      <span class="chip"><i class="ti ti-language"></i>Arabic + English</span>
+      <span class="chip"><i class="ti ti-wifi-off"></i>Works offline</span>
+      <span class="chip"><i class="ti ti-history"></i>Full audit trail</span>
+    </div>` },
+
+  2: { pill: "Inspection day", html: `
+    <div class="kicker">9:00 AM — the inspector walks in</div>
+    <h1 style="font-size:70px">“Show me 30 days of <em>cooler records.</em>”</h1>
+    <div style="margin-top:56px;display:grid;grid-template-columns:1fr 1fr;gap:24px;height:600px">
+      <div class="card" style="padding:34px;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.07);display:flex;flex-direction:column">
+        <div style="font-size:20px;font-weight:800;letter-spacing:.12em;color:var(--red)">SCENARIO A</div>
+        <div style="font-size:36px;font-weight:800;margin-top:6px">Paper folders</div>
+        <div style="margin-top:30px;display:flex;flex-direction:column;gap:22px;font-size:25px;font-weight:600">
+          <div style="display:flex;gap:12px"><i class="ti ti-x bad" style="margin-top:4px"></i>2 pages missing</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-x bad" style="margin-top:4px"></i>Same pen, same hand, all week</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-x bad" style="margin-top:4px"></i>9°C written — no action taken</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-x bad" style="margin-top:4px"></i>Weekend shifts blank</div>
+        </div>
+        <div style="margin-top:auto;padding-top:26px;border-top:1px solid rgba(248,113,113,.3);display:flex;align-items:baseline;gap:12px">
+          <i class="ti ti-clock bad" style="font-size:34px"></i><span style="font-size:58px;font-weight:800" class="bad">45 min</span><span style="font-size:22px;opacity:.7">searching</span></div>
+      </div>
+      <div class="card" style="padding:34px;border-color:rgba(94,234,212,.5);background:rgba(14,165,164,.12);display:flex;flex-direction:column">
+        <div style="font-size:20px;font-weight:800;letter-spacing:.12em;color:var(--mint)">SCENARIO B</div>
+        <div style="font-size:36px;font-weight:800;margin-top:6px">INSPECT PRO</div>
+        <div style="margin-top:30px;display:flex;flex-direction:column;gap:22px;font-size:25px;font-weight:600">
+          <div style="display:flex;gap:12px"><i class="ti ti-check ok" style="margin-top:4px"></i>30 days, every reading</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-check ok" style="margin-top:4px"></i>Who recorded it, and when</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-check ok" style="margin-top:4px"></i>Corrective action attached</div>
+          <div style="display:flex;gap:12px"><i class="ti ti-check ok" style="margin-top:4px"></i>Missed checks flagged</div>
+        </div>
+        <div style="margin-top:auto;padding-top:26px;border-top:1px solid rgba(94,234,212,.3);display:flex;align-items:baseline;gap:12px">
+          <i class="ti ti-clock" style="font-size:34px;color:var(--mint)"></i><span style="font-size:58px;font-weight:800;color:var(--mint)">30 sec</span><span style="font-size:22px;opacity:.7">one screen</span></div>
+      </div>
+    </div>
+    <p class="sub" style="margin:44px 0 0;text-align:center;max-width:none;font-weight:800;font-size:34px;color:#fff">Same branch. Same staff. <span style="color:var(--mint)">Different inspection.</span></p>` },
+
+  3: { pill: "Temperature logs", html: `
+    <div class="kicker">Cold chain, made simple</div>
+    <h1>Scan. Enter.<br><em>Done in 10 seconds.</em></h1>
+    <div style="margin-top:46px;display:flex;gap:44px;align-items:flex-start">
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="appbar"><span><i class="ti ti-snowflake" style="color:#0EA5A4"></i> Chiller 3</span><span style="font-size:15px;color:#64748b">Butchery · 08:02</span></div>
+        <div style="margin:6px 22px;padding:30px 20px;background:#fff;border-radius:26px;text-align:center;border:1px solid #E2E8F0">
+          <div style="font-size:16px;font-weight:700;color:#64748b;letter-spacing:.1em">READING</div>
+          <div style="font-size:92px;font-weight:800;letter-spacing:-.04em;line-height:1.1">2.8<span style="font-size:46px">°C</span></div>
+          <div style="display:inline-flex;gap:8px;align-items:center;margin-top:8px;padding:8px 16px;border-radius:99px;background:#dcfce7;color:#15803d;font-weight:800;font-size:18px"><i class="ti ti-circle-check"></i> In range 0–4°C</div>
+        </div>
+        <div style="margin:14px 22px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          ${["1","2","3","4","5","6","7","8","9","−","0","."].map(k=>`<div style="height:62px;border-radius:16px;background:#fff;border:1px solid #E2E8F0;display:grid;place-items:center;font-size:26px;font-weight:700">${k}</div>`).join("")}
+        </div>
+        <div style="margin:16px 22px 0;height:66px;border-radius:18px;background:#0EA5A4;color:#fff;display:grid;place-items:center;font-size:23px;font-weight:800">Save reading</div>
+      </div></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:22px">
+        <div class="card" style="padding:26px;display:flex;gap:22px;align-items:center">
+          <div style="background:#fff;padding:10px;border-radius:14px;flex:none">${qr(21, 5)}</div>
+          <div style="font-size:24px;font-weight:700;line-height:1.35">A QR sticker on every chiller and freezer</div>
+        </div>
+        ${[["1","Scan with any phone","No app to install"],["2","Enter the reading","Name & time saved"],["3","It lands in the daily sheet","Monthly PDF in one click"]]
+          .map(([k,t,s])=>`<div style="display:flex;gap:20px;align-items:center">
+            <div style="width:58px;height:58px;border-radius:50%;background:var(--teal);display:grid;place-items:center;font-size:27px;font-weight:800;flex:none">${k}</div>
+            <div><div style="font-size:27px;font-weight:800">${t}</div><div style="font-size:20px;color:rgba(255,255,255,.62);font-weight:500">${s}</div></div></div>`).join("")}
+        <div class="card" style="padding:24px 26px;border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.1)">
+          <div style="display:flex;gap:12px;align-items:center;font-size:20px;font-weight:800;color:var(--red)"><i class="ti ti-bell-ringing" style="font-size:28px"></i> ALERT · 08:04</div>
+          <div style="font-size:24px;font-weight:700;margin-top:8px">Freezer 2 at −12°C</div>
+          <div style="font-size:20px;color:rgba(255,255,255,.65);margin-top:4px">Supervisor notified instantly</div>
+        </div>
+      </div>
+    </div>` },
+
+  4: { light: true, pill: "Save this", html: `
+    <div class="kicker">Internal audit checklist</div>
+    <h1 style="font-size:70px">5 findings auditors<br>write <em>again and again</em></h1>
+    <div style="margin-top:44px;display:flex;flex-direction:column;gap:18px">
+      ${[["temperature-off","Gaps in temperature records","Weekends and night shifts go blank. Fix the check times and the owner."],
+         ["clipboard-x","No corrective action recorded","“9°C” is not enough. What did you do about it?"],
+         ["ruler-measure","Thermometer calibration expired","A reading from an unchecked probe can’t be trusted."],
+         ["file-alert","Supplier approvals out of date","Approved once in 2023 isn’t approved. Re-evaluate yearly."],
+         ["user-x","Training & hygiene with no proof","It happened — but there’s no signed record."]]
+        .map(([i,t,s],k)=>`<div class="card" style="display:flex;gap:24px;align-items:center;padding:24px 30px">
+          <div style="font-size:54px;font-weight:800;color:#0EA5A4;width:48px;text-align:center;flex:none">${k+1}</div>
+          <div class="ic"><i class="ti ti-${i}"></i></div>
+          <div><div style="font-size:28px;font-weight:800">${t}</div><div style="font-size:21px;color:#64748b;margin-top:4px;font-weight:500;line-height:1.35">${s}</div></div></div>`).join("")}
+    </div>
+    <div style="margin-top:30px;display:flex;align-items:center;gap:14px;font-size:25px;font-weight:700;color:#0B1E3F">
+      <i class="ti ti-bookmark" style="font-size:32px;color:#0EA5A4"></i> None are about the food. All of them are about records.</div>` },
+
+  5: { pill: "Traceability", html: `
+    <div class="kicker">Mock recall</div>
+    <h1>Batch 2417 is recalled.<br><em>Where did it go?</em></h1>
+    <div style="margin-top:50px;display:flex;flex-direction:column;align-items:center">
+      <div class="card" style="padding:24px 34px;display:flex;gap:22px;align-items:center;border-color:rgba(251,191,36,.55);background:rgba(251,191,36,.08)">
+        <div class="ic" style="background:rgba(251,191,36,.16);color:var(--amber)"><i class="ti ti-package"></i></div>
+        <div><div style="font-size:19px;font-weight:800;letter-spacing:.1em;color:var(--amber)">SHIPMENT · BATCH 2417</div>
+        <div style="font-size:28px;font-weight:800;margin-top:2px">Chilled lamb · 480 kg · received 14 Oct</div></div>
+      </div>
+      <svg width="760" height="70" viewBox="0 0 760 70" fill="none" stroke="rgba(94,234,212,.6)" stroke-width="3"><path d="M380 0 V30 M120 30 H640 M120 30 V70 M380 30 V70 M640 30 V70"/></svg>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px;width:100%">
+        ${[["Branch A","160 kg"],["Branch B","200 kg"],["Branch C","120 kg"]].map(([b,k])=>`<div class="card" style="padding:24px;text-align:center">
+          <i class="ti ti-building-store" style="font-size:36px;color:var(--mint)"></i>
+          <div style="font-size:26px;font-weight:800;margin-top:6px">${b}</div><div style="font-size:34px;font-weight:800;color:var(--mint)">${k}</div></div>`).join("")}
+      </div>
+      <div class="card" style="margin-top:22px;width:100%;padding:28px 30px">
+        <div style="display:flex;height:30px;border-radius:99px;overflow:hidden">
+          <div style="width:62%;background:#0EA5A4"></div><div style="width:30%;background:#38bdf8"></div><div style="width:5%;background:var(--amber)"></div><div style="width:3%;background:var(--red)"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:16px;font-size:22px;font-weight:700">
+          <span><b style="color:#0EA5A4">●</b> Sold 62%</span><span><b style="color:#38bdf8">●</b> In stock 30%</span><span><b style="color:var(--amber)">●</b> Returned 5%</span><span><b style="color:var(--red)">●</b> Disposed 3%</span></div>
+      </div>
+    </div>
+    <div style="margin-top:34px;display:grid;grid-template-columns:1fr 1fr;gap:22px">
+      <div style="text-align:center"><div style="font-size:21px;font-weight:700;opacity:.65">On paper</div><div style="font-size:60px;font-weight:800" class="bad">Hours</div></div>
+      <div style="text-align:center"><div style="font-size:21px;font-weight:700;opacity:.65">INSPECT PRO</div><div style="font-size:60px;font-weight:800;color:var(--mint)">Minutes</div></div>
+    </div>
+    <div style="margin-top:22px;text-align:center;font-size:24px;font-weight:600;opacity:.7">Full trace filled automatically from one shipment — ready to export.</div>` },
+
+  6: { pill: "Supplier control", html: `
+    <div class="kicker">Before you accept the delivery</div>
+    <h1>Is this supplier<br><em>still approved?</em></h1>
+    <div class="card" style="margin-top:50px;padding:38px 40px">
+      <div style="display:flex;gap:34px;align-items:center">
+        <div style="position:relative;width:190px;height:190px;flex:none">
+          <svg viewBox="0 0 100 100" width="190" height="190"><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="9"/><circle cx="50" cy="50" r="42" fill="none" stroke="#0EA5A4" stroke-width="9" stroke-linecap="round" stroke-dasharray="${2*Math.PI*42*0.92} 999" transform="rotate(-90 50 50)"/></svg>
+          <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center"><div><div style="font-size:58px;font-weight:800;line-height:1">92</div><div style="font-size:18px;opacity:.6;font-weight:700">/ 100</div></div></div>
+        </div>
+        <div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:.1em;opacity:.6">SUPPLIER</div>
+          <div style="font-size:40px;font-weight:800;margin-top:2px">Fresh Valley Trading</div>
+          <div style="display:inline-flex;gap:10px;align-items:center;margin-top:14px;padding:10px 20px;border-radius:99px;background:rgba(74,222,128,.15);color:#4ade80;font-size:23px;font-weight:800"><i class="ti ti-rosette-discount-check"></i> APPROVED · pass mark 80</div>
+        </div>
+      </div>
+      <div style="margin-top:34px;padding-top:30px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:20px;font-size:25px;font-weight:600">
+        <div><i class="ti ti-circle-check ok"></i> HACCP certificate — valid to Mar 2027</div>
+        <div><i class="ti ti-circle-check ok"></i> Halal certificate uploaded</div>
+        <div><i class="ti ti-circle-check ok"></i> Self-assessment completed online</div>
+        <div><i class="ti ti-alert-triangle warn"></i> Trade licence expires in 21 days — <span class="warn">reminder sent</span></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:24px;padding:24px 30px;display:flex;align-items:center;justify-content:space-between;background:rgba(14,165,164,.12);border-color:rgba(94,234,212,.4)">
+      <div style="font-size:22px;font-weight:700;opacity:.8"><i class="ti ti-truck-delivery"></i> Receiving form</div>
+      <div style="font-size:24px;font-weight:800">Fresh Valley Trading <i class="ti ti-circle-check-filled ok"></i></div>
+    </div>
+    <div class="chips" style="margin-top:28px">
+      <span class="chip"><i class="ti ti-forms"></i>Online questionnaire</span>
+      <span class="chip"><i class="ti ti-bell"></i>Auto reminders</span>
+      <span class="chip"><i class="ti ti-chart-donut"></i>Scored</span>
+    </div>` },
+
+  7: { pill: "Audit · NCR · CAPA", html: `
+    <div class="kicker">Close the loop</div>
+    <h1>An open finding is<br><em>just a list of problems.</em></h1>
+    <div style="margin-top:30px;position:relative;width:936px;height:700px">
+      <svg width="936" height="700" viewBox="0 0 936 700" style="position:absolute;inset:0"><circle cx="468" cy="360" r="255" fill="none" stroke="rgba(94,234,212,.35)" stroke-width="4" stroke-dasharray="14 12"/></svg>
+      <div style="position:absolute;left:318px;top:210px;width:300px;height:300px;border-radius:50%;background:rgba(14,165,164,.16);border:2px solid rgba(94,234,212,.5);display:grid;place-items:center;text-align:center;padding:30px">
+        <div><div style="font-size:24px;font-weight:700;opacity:.7">Closed means</div><div style="font-size:42px;font-weight:800;color:var(--mint);line-height:1.1;margin-top:6px">verified,<br>not “fixed”</div></div></div>
+      ${[["zoom-check","Audit","Photos on site",468,105],["alert-octagon","Finding","Sent to branch",711,280],["file-alert","NCR","Root cause",618,566],["tool","CAPA","Evidence uploaded",318,566],["shield-check","Verified","QA closes it",225,280]]
+        .map(([i,t,s,x,y])=>`<div class="card" style="position:absolute;left:${x-115}px;top:${y-70}px;width:230px;padding:20px;text-align:center;background:#0e2547">
+          <i class="ti ti-${i}" style="font-size:38px;color:var(--mint)"></i>
+          <div style="font-size:27px;font-weight:800;margin-top:4px">${t}</div><div style="font-size:19px;opacity:.62;font-weight:600">${s}</div></div>`).join("")}
+    </div>
+    <div class="chips" style="justify-content:center;margin-top:6px">
+      <span class="chip"><i class="ti ti-link"></i>Each branch sees only its findings</span>
+      <span class="chip"><i class="ti ti-repeat"></i>Repeat issues spotted</span>
+    </div>` },
+
+  8: { pill: "Built for branch staff", html: `
+    <div class="kicker">Adoption first</div>
+    <h1>If the team won’t use it,<br><em>it doesn’t work.</em></h1>
+    <div style="margin-top:46px;display:flex;gap:44px;align-items:flex-start">
+      <div class="phone" style="height:740px"><div class="screen" dir="rtl" style="font-family:'IBM Plex Sans Arabic',sans-serif">
+        <div class="notch"></div>
+        <div class="appbar" style="font-size:22px"><span>سجل الحرارة اليومي</span>
+          <span style="display:flex;border-radius:99px;overflow:hidden;border:1.5px solid #0EA5A4;font-size:15px"><b style="background:#0EA5A4;color:#fff;padding:4px 12px">ع</b><b style="padding:4px 10px;color:#0EA5A4;font-family:'Plus Jakarta Sans'">EN</b></span></div>
+        <div style="margin:0 20px;padding:12px 16px;border-radius:16px;background:#fef3c7;color:#92400e;font-weight:700;font-size:17px;display:flex;gap:8px;align-items:center"><i class="ti ti-wifi-off"></i> بدون اتصال — سيتم إرسال ٣ سجلات لاحقاً</div>
+        ${[["ثلاجة اللحوم","2.4°","#15803d"],["ثلاجة الدجاج","3.1°","#15803d"],["فريزر ١","−19°","#15803d"],["ثلاجة العرض","5.2°","#b91c1c"],["غرفة التبريد","1.9°","#15803d"]].map(([a,b,c])=>`<div style="margin:12px 20px 0;padding:18px 20px;background:#fff;border-radius:18px;border:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:21px;font-weight:700">${a}</span><span style="font-size:28px;font-weight:800;color:${c};font-family:'Plus Jakarta Sans'" dir="ltr">${b}C</span></div>`).join("")}
+        <div style="margin:16px 20px 0;height:64px;border-radius:18px;background:#0EA5A4;color:#fff;display:grid;place-items:center;font-size:23px;font-weight:700">حفظ</div>
+      </div></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:20px">
+        ${[["language","Arabic or English","Each user picks their language"],["wifi-off","Works offline","Cold room, no signal? Saves anyway"],["devices","Any phone or PC","Nothing to install"],["text-size","Adjustable text size","Easy to read for everyone"],["lock","Only their branch","Each person sees their forms"]]
+          .map(([i,t,s])=>`<div style="display:flex;gap:20px;align-items:center"><div class="ic"><i class="ti ti-${i}"></i></div>
+            <div><div style="font-size:27px;font-weight:800">${t}</div><div style="font-size:20px;color:rgba(255,255,255,.62);font-weight:500">${s}</div></div></div>`).join("")}
+        <div class="card" style="margin-top:14px;padding:28px;background:rgba(14,165,164,.14);border-color:rgba(94,234,212,.45)">
+          <i class="ti ti-quote" style="font-size:34px;color:var(--mint)"></i>
+          <div style="font-size:27px;font-weight:800;line-height:1.3;margin-top:6px">Records filled on time —<br>not at the end of the week.</div></div>
+      </div>
+    </div>` },
+
+  9: { pill: "Who it’s for", html: `
+    <div class="kicker">Made for the food industry</div>
+    <h1>One system.<br><em>Every food business.</em></h1>
+    <div style="margin-top:50px;display:flex;flex-direction:column;gap:18px">
+      ${[["meat","Butcheries & meat processing","Receiving · Cutting records · Cold chain"],["tools-kitchen-2","Restaurants & central kitchens","Cooking · Cooling · Hygiene · Menu labels"],["shopping-cart","Retail & supermarkets","Chillers · Returns · Expiry · Complaints"],["building-factory-2","Food factories","Production checks · Labels · Suppliers"],["building-warehouse","Warehouses & cold stores","Temperatures · Goods in/out · Rotation"]]
+        .map(([i,t,s])=>`<div class="card" style="display:flex;gap:26px;align-items:center;padding:22px 30px">
+          <div class="ic" style="width:78px;height:78px;font-size:42px"><i class="ti ti-${i}"></i></div>
+          <div><div style="font-size:31px;font-weight:800">${t}</div><div style="font-size:22px;color:rgba(255,255,255,.62);margin-top:4px;font-weight:600">${s}</div></div></div>`).join("")}
+    </div>
+    <div style="margin-top:34px;text-align:center;font-size:30px;font-weight:800">1 branch or 20 — <span style="color:var(--mint)">one dashboard.</span></div>` },
+
+  10: { pill: "Free trial", html: `
+    <div class="kicker">No sales call · No setup fee</div>
+    <div style="display:flex;align-items:flex-end;gap:26px;margin-top:10px">
+      <div style="font-size:210px;font-weight:800;line-height:.9;letter-spacing:-.06em;color:var(--mint)">3</div>
+      <div style="padding-bottom:22px"><div style="font-size:84px;font-weight:800;line-height:1;letter-spacing:-.03em">days free</div>
+      <div style="font-size:30px;font-weight:600;opacity:.75;margin-top:10px">with your own company</div></div>
+    </div>
+    <div style="margin-top:38px;display:flex;flex-direction:column;gap:16px">
+      ${[["Day 1","Open your account","Add your branches and team"],["Day 2","Fill real records","Temperatures, receiving, hygiene"],["Day 3","See the dashboard","Your compliance at a glance"]]
+        .map(([d,t,s])=>`<div class="card" style="display:flex;gap:28px;align-items:center;padding:20px 30px">
+          <div style="width:104px;height:104px;border-radius:24px;background:var(--teal);display:grid;place-items:center;font-size:30px;font-weight:800;flex:none;text-align:center;line-height:1.1">${d.replace(" ","<br>")}</div>
+          <div><div style="font-size:34px;font-weight:800">${t}</div><div style="font-size:23px;color:rgba(255,255,255,.62);margin-top:4px;font-weight:600">${s}</div></div></div>`).join("")}
+    </div>
+    <div class="chips" style="margin-top:34px">
+      <span class="chip"><i class="ti ti-credit-card-off"></i>No card</span>
+      <span class="chip"><i class="ti ti-download-off"></i>No installation</span>
+      <span class="chip"><i class="ti ti-trash"></i>Trial data erased after</span>
+    </div>
+    <div style="margin-top:auto;margin-bottom:40px;padding:26px 34px;border-radius:24px;background:var(--teal);display:flex;justify-content:space-between;align-items:center;font-size:30px;font-weight:800">
+      <span>Start your free trial</span><span style="display:flex;gap:12px;align-items:center">Link in comments <i class="ti ti-arrow-down" style="font-size:34px"></i></span></div>` },
+};
+
+const p = POSTS[n] || POSTS[1];
+if (p.light) document.body.classList.add("light");
+document.querySelector(".brand").style.color = p.light ? "#0B1E3F" : "#fff";
+document.getElementById("pill").textContent = p.pill;
+document.getElementById("main").innerHTML = p.html;
+</script>
+</body>
+</html>
