@@ -298,6 +298,33 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
             return (
               <Section key={`t${i}`} bg="#ecfeff" tone="#155e75"
                 title={`📷 Driver trip${trips.length > 1 ? ` #${i + 1}` : ""} · ${tr.status === "closed" ? "🏁 Ended" : "🟢 On the road"}`}>
+                {/* the route at a glance: start branch → end point */}
+                <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div style={pointBox("#1d4ed8", "#eff6ff")}>
+                    <div style={pointTag("#1d4ed8")}>🚩 Start</div>
+                    <b>{tr.origin || "—"}</b>
+                    <div style={{ color: "#475569" }}>{[tr.loading?.time, tr.reportDate].filter(Boolean).join(" · ") || "—"}</div>
+                  </div>
+                  <div style={{ alignSelf: "center", fontWeight: 900, color: "#94a3b8" }}>
+                    → {(tr.destinations || []).length} stop{(tr.destinations || []).length === 1 ? "" : "s"} →
+                  </div>
+                  <div style={pointBox(tr.end ? "#0f172a" : "#94a3b8", tr.end ? "#f1f5f9" : "#f8fafc")}>
+                    <div style={pointTag(tr.end ? "#0f172a" : "#94a3b8")}>🏁 End point</div>
+                    {tr.end ? (
+                      <>
+                        <b>{tr.end.name}</b>
+                        <div style={{ color: "#475569" }}>
+                          {[tr.end.arrival?.time, tr.end.arrival?.date].filter(Boolean).join(" · ") || "—"}
+                          {tr.end.arrival?.temp !== "" && tr.end.arrival?.temp != null ? ` · ${tr.end.arrival.temp}°C` : ""}
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ color: "#64748b", fontWeight: 700 }}>
+                        {tr.status === "closed" ? "Ended before end points existed" : "Not ended yet"}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                   {kv("Driver", `${tr.driverName || "—"}${tr.driverEmpNo ? ` (${tr.driverEmpNo})` : ""}`)}
                   {kv("Loading start", t0)}
@@ -384,7 +411,11 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
     document.body
   );
 }
-const td ={ padding: "7px 8px", borderBottom: "1px solid #f1f5f9", textAlign: "left", verticalAlign: "top" };
+const pointBox = (c, bg) => ({
+  border: `1.5px solid ${c}55`, background: bg, borderRadius: 12, padding: "8px 12px", minWidth: 190, display: "grid", gap: 2,
+});
+const pointTag = (c) => ({ color: c, fontWeight: 900, fontSize: ".8em", letterSpacing: ".04em" });
+const td = { padding: "7px 8px", borderBottom: "1px solid #f1f5f9", textAlign: "left", verticalAlign: "top" };
 
 /* ───────────── the cards ───────────── */
 /* Bigger type. Under #root every element is forced to 14px !important
@@ -459,6 +490,15 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
                 </span>
               </div>
               <div style={{ color: "#334155", fontWeight: 700, minHeight: 20 }}>👤 {drivers.join(" · ") || "—"}</div>
+              {trips.map((r, j) => {
+                const tr = r.__tripRaw || {};
+                if (!tr.origin && !tr.end) return null;
+                return (
+                  <div key={j} style={{ color: "#334155", fontWeight: 700, overflowWrap: "anywhere" }}>
+                    🚩 {tr.origin || "—"} → 🏁 {tr.end?.name || (tr.status === "closed" ? "—" : "on the road")}
+                  </div>
+                );
+              })}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {checks.length > 0 && <span style={badge("#eef2ff", "#3730a3", "#c7d2fe")}>🧾 {checks.length}</span>}
                 {trips.length > 0 && <span style={badge("#ecfeff", "#155e75", "#a5f3fc")}>📷 {trips.length} trip{trips.length > 1 ? "s" : ""}</span>}
