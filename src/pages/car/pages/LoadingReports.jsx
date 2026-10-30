@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import VehicleDayCards from "./VehicleDayCards";
 import { listTrips } from "../driverTripApi";
 import { mapsLink } from "../carConstants";
-import { thumbUrl } from "../../../utils/imageUpload";
 
 /* ===================== API base (CRA + Vite safe) ===================== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -438,6 +439,7 @@ function tripToRecord(tr) {
       ...(tr.loading?.location ? [{ label: "Loading", loc: tr.loading.location }] : []),
       ...stops.filter((d) => d.arrival?.location).map((d) => ({ label: d.name, loc: d.arrival.location })),
     ],
+    __tripRaw: tr, // the vehicle popup shows the whole trip
   };
 }
 
@@ -446,23 +448,25 @@ function PhotoViewer({ photos, index, onIndex, onClose }) {
   const n = photos.length;
   const go = (d) => onIndex((index + d + n) % n);
   useEffect(() => {
+    // capture phase + stop: Esc closes the photo only, not the vehicle popup under it
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { e.stopImmediatePropagation(); onClose(); }
       else if (e.key === "ArrowRight") onIndex((index + 1) % n);
       else if (e.key === "ArrowLeft") onIndex((index - 1 + n) % n);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [index, n, onIndex, onClose]);
   const p = photos[index];
   const nav = {
     position: "absolute", top: "50%", transform: "translateY(-50%)", width: 48, height: 48, borderRadius: 999,
     border: "none", background: "rgba(255,255,255,.9)", fontSize: 22, fontWeight: 900, cursor: "pointer",
   };
-  return (
+  // into <body>, above the vehicle popup (the page wrapper is its own z-index:1 layer)
+  return createPortal(
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(2,6,23,.82)", display: "grid", placeItems: "center", padding: 20 }}
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(2,6,23,.82)", display: "grid", placeItems: "center", padding: 20, fontFamily: "Inter, system-ui, Arial", fontSize: 14 }}
     >
       <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "92vw", maxHeight: "88vh", textAlign: "center" }}>
         <img src={p.src} alt={p.label} style={{ maxWidth: "92vw", maxHeight: "78vh", borderRadius: 12, display: "block", margin: "0 auto" }} />
@@ -478,7 +482,8 @@ function PhotoViewer({ photos, index, onIndex, onClose }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1302,109 +1307,22 @@ export default function LoadingReports() {
                     </div>
                   </div>
 
-                  {/* Vehicles table (now includes NEW columns) */}
+                  {/* One card per truck — a click opens everything about it for the day */}
                   <div className="panel" style={{ overflow: "hidden", marginBottom: 16 }}>
                     <div style={{ background: "#dbeafe", padding: "10px 12px", fontWeight: 700, color: "#0f172a", borderBottom: "1px solid #b6c8e3" }}>
-                      Daily Vehicles List ({selectedVehicles.length} vehicles)
+                      🚚 Vehicles of the day ({new Set(selectedVehicles.map((v) => String(v.vehicleNo || "").toLowerCase().replace(/[\s\-_/]+/g, ""))).size}) — click a truck for its details
                     </div>
-                    <div className="panel-body" style={{ padding: 0, overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1600 }}>
-                        <thead>
-                          <tr>
-                            <th>Vehicle No</th>
-                            <th>Driver</th>
-                            <th>Time Start</th>
-                            <th>Time End</th>
-                            <th>Temp Check (°C)</th>
-                            <th>Duration (min)</th>
-                            {VI_PARAMS.map(p => (
-                              <th key={p.id}>{p.en}</th>
-                            ))}
-                            <th>Destination</th>
-                            <th>Photos</th>
-                            <th>Location</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedVehicles.map((v) => (
-                            <tr key={`${v.__docId}-${v.__rowIndex}`}>
-                              <td>
-                                {v.vehicleNo || "—"}
-                                {v.__trip && <div title="Scanned by the driver" style={{ fontSize: ".8em", color: "#0369a1", fontWeight: 800 }}>📷 driver</div>}
-                              </td>
-                              <td>{v.driverName || "—"}</td>
-                              <td>{v.timeStart || "—"}</td>
-                              <td>{v.timeEnd || "—"}</td>
-                              <td>{v.tempCheck || "—"}</td>
-                              <td>{formatMinutes(durationOf(v))}</td>
-
-                              {VI_PARAMS.map(p => {
-                                const n = normYesNo(v[p.id]);
-                                return (
-                                  <td key={p.id}>
-                                    <span
-                                      style={{
-                                        color: n === "yes" ? "#16a34a" : n === "no" ? "#dc2626" : "#6b7280",
-                                        fontWeight: 800
-                                      }}
-                                    >
-                                      {yesNoLabel(v[p.id])}
-                                    </span>
-                                  </td>
-                                );
-                              })}
-
-                              <td>{v.destination || "—"}</td>
-                              <td>
-                                {v.__photos?.length ? (
-                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center", minWidth: 120 }}>
-                                    {v.__photos.map((p, i) => (
-                                      <button
-                                        key={p.src + i}
-                                        type="button"
-                                        title={p.label}
-                                        onClick={() => setViewer({ photos: v.__photos, index: i })}
-                                        style={{ padding: 0, border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "zoom-in" }}
-                                      >
-                                        <img
-                                          src={String(p.src).startsWith("http") ? thumbUrl(p.src, 120) : p.src}
-                                          alt={p.label}
-                                          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 5, display: "block" }}
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : "—"}
-                              </td>
-                              <td>
-                                {v.__locs?.length ? (
-                                  <div style={{ display: "grid", gap: 3, minWidth: 130 }}>
-                                    {v.__locs.map((l, i) => (
-                                      <a
-                                        key={i}
-                                        href={mapsLink(l.loc)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        title={`${l.loc.lat}, ${l.loc.lng}${l.loc.accuracy ? ` (±${l.loc.accuracy} m)` : ""}`}
-                                        style={{ color: "#0369a1", fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}
-                                      >
-                                        📍 {l.label}
-                                      </a>
-                                    ))}
-                                  </div>
-                                ) : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                          {selectedVehicles.length === 0 && (
-                            <tr>
-                              <td colSpan={9 + VI_PARAMS.length} style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No vehicles for this day.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                    <div className="panel-body" style={{ padding: 0 }}>
+                      <VehicleDayCards
+                        vehicles={selectedVehicles}
+                        viParams={VI_PARAMS}
+                        normYesNo={normYesNo}
+                        durationOf={durationOf}
+                        onPhoto={(photos, index) => setViewer({ photos, index })}
+                      />
                     </div>
-                  </div>                </>
+                  </div>
+                </>
               ) : (
                 <div style={{ textAlign: "center", color: "#6b7280", padding: "4rem 0" }}>
                   <p>Please select a day from the list on the left.</p>
