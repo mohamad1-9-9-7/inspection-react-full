@@ -1,7 +1,7 @@
 // src/pages/car/pages/VehicleDayCards.jsx
 // The day on /car/loading-reports as one card per truck. A click opens a
 // popup with everything recorded for that truck on the day: the outbound
-// checklist row(s), the driver trips (destinations, arrivals, returns,
+// checklist row(s), the driver trips (destinations, arrivals, transfer notes,
 // photos, locations) and the expiry date of the truck's approval.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -313,7 +313,7 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
                     <thead>
                       <tr>
-                        {["Destination", "Arrival", "Temp", "Location", "Returns"].map((h) => (
+                        {["Destination", "Arrival", "Temp", "Location", "Transfer note"].map((h) => (
                           <th key={h} style={{ textAlign: "left", padding: "7px 8px", background: "#f1f5f9", fontWeight: 900, position: "static", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                         ))}
                       </tr>
@@ -328,11 +328,15 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                           </td>
                           <td style={td}><Loc loc={d.arrival?.location} label="map" /></td>
                           <td style={td}>
-                            {d.returns?.length
-                              ? d.returns.map((r) => (
-                                  <div key={r.id}>{r.code ? `${r.code} · ` : ""}{r.name} — <b>{r.qty} {r.uom}</b> ({reasonLabel(r.reason)})</div>
-                                ))
+                            {d.arrival?.transferPhotos?.length
+                              ? <Thumbs photos={d.arrival.transferPhotos.map((src) => ({ src, label: `Transfer note · ${d.name}` }))} onPhoto={onPhoto} />
                               : <span style={{ color: "#94a3b8" }}>—</span>}
+                            {/* trips saved before the transfer-note photo carried a returns list */}
+                            {d.returns?.length > 0 && d.returns.map((r) => (
+                              <div key={r.id} style={{ marginTop: 4, color: "#9a3412" }}>
+                                ↩️ {r.code ? `${r.code} · ` : ""}{r.name} — <b>{r.qty} {r.uom}</b> ({reasonLabel(r.reason)})
+                              </div>
+                            ))}
                           </td>
                         </tr>
                       ))}
@@ -421,7 +425,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
             const v = normYesNo(r[p.id]);
             return v && v !== (p.id === "pestActivites" || p.id === "badOdour" ? "no" : "yes");
           }).length, 0);
-          const returns = trips.reduce((n, r) => n + (r.__tripRaw?.destinations || []).reduce((s, d) => s + (d.returns?.length || 0), 0), 0);
+          const notes = trips.reduce((n, r) => n + (r.__tripRaw?.destinations || []).filter((d) => d.arrival?.transferPhotos?.length).length, 0);
           const exp = cardsOf(c.plate);
           const anyExpired = exp.current.some((x) => { const d = daysLeft(x.expiryDate); return d != null && d < 0; });
           const color = anyExpired ? "#dc2626" : anyHigh || deviations ? "#d97706" : "#0284c7";
@@ -444,7 +448,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
                 {trips.length > 0 && <span style={badge("#ecfeff", "#155e75", "#a5f3fc")}>📷 {trips.length} trip{trips.length > 1 ? "s" : ""}</span>}
                 {temps.length > 0 && <span style={badge(anyHigh ? "#fef3c7" : "#f0f9ff", anyHigh ? "#92400e" : "#0369a1", anyHigh ? "#fcd34d" : "#bae6fd")}>🌡 {temps.join(" / ")}°C</span>}
                 {deviations > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>⚠ {deviations}</span>}
-                {returns > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>↩️ {returns}</span>}
+                {notes > 0 && <span title="Transfer notes photographed" style={badge("#fff7ed", "#9a3412", "#fdba74")}>📄 {notes}</span>}
               </div>
               <ExpiryBadges cards={exp} />
             </button>

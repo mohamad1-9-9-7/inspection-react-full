@@ -294,7 +294,7 @@ export const BRANCHES = [
     types: [
       ["car_approvals",           "Car Approvals",        "Forms"],
       ["cars_loading_inspection", "Loading Inspection",   "Forms"],
-      ["cars_driver_trip",        "Driver Trips & Returns", "Forms"],
+      ["cars_driver_trip",        "Driver Trips",         "Forms"],
       ["truck_daily_cleaning",    "Truck Daily Cleaning", "Forms"],
       ["cars_loading_lookup_driver_names",          "Driver Names (lookup)",    "Lookups"],
       ["cars_loading_lookup_vehicle_numbers",       "Vehicle Numbers (lookup)", "Lookups"],

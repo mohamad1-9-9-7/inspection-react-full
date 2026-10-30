@@ -730,7 +730,7 @@ export default function LoadingReports() {
   const handleDeleteTrip = async (tr) => {
     if (!tr?.id) return;
     const who = `${tr.vehicleNo || ""}${tr.driverName ? ` · ${tr.driverName}` : ""}${tr.loading?.time ? ` · ${tr.loading.time}` : ""}`;
-    if (!window.confirm(`Delete this driver trip (${who})?\nIts arrivals, photos and returns go with it. This cannot be undone.`)) return;
+    if (!window.confirm(`Delete this driver trip (${who})?\nIts arrivals, photos and transfer notes go with it. This cannot be undone.`)) return;
     try {
       await deleteReportById(tr.id);
       await fetchAll();

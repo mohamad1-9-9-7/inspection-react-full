@@ -6,10 +6,10 @@
 //   2. Loading: time, truck temperature, photos of the thermometer, one or more
 //      destinations, and "📍 my location".
 //   3. At every destination: arrival time + temperature + photo + location,
-//      and the products the branch hands back (returns).
+//      and a photo of the signed transfer note (it replaced the returns list).
 //
 // One record per trip (DRIVER_TRIP_TYPE). The loading reports page shows the
-// trips beside the outbound checklist; /car/driver-returns lists the returns.
+// trips beside the outbound checklist.
 // Opening the same truck again the same day resumes its open trip.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,16 +19,13 @@ import { uploadImage, thumbUrl } from "../../../utils/imageUpload";
 import { keepPhotoOrUpload } from "../../../utils/offlineOutbox";
 import { queuedMessage } from "../../../utils/reportOutbox";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
-import { parseBarcode } from "../../../utils/gs1Barcode";
-import { fetchBarcodeMap, findBarcode } from "../../../utils/barcodeMap";
 import { listReports, payloadOf } from "../../monitor/branches/_shared/reportApi";
-import { loadCatalog } from "../../coldrooms/coldRoomsStock";
 import {
   COMPANY_DIRECTORY, lookupByEmpNo, normalizeEmpNo, useStaffDirectory,
 } from "../../monitor/branches/_shared/staffRegistry";
 import {
   DESTINATIONS, DRIVER_PATH, LOOKUP_VEHICLES_TYPE,
-  RETURN_REASONS, mapsLink, vehicleFromScan,
+  mapsLink, vehicleFromScan,
 } from "../carConstants";
 import {
   currentUserName, listTrips, locateMe, normPlate, nowHHMM, saveTrip, todayISO, uid,
@@ -49,12 +46,10 @@ const T = {
     empNo: "الرقم الوظيفي للسائق", noEmp: "رقم غير موجود بقائمة الموظفين",
     need: "أكمل: ", nDriver: "رقم وظيفي صحيح", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
     stops: "الوجهات", arrived: "وصل", pending: "لم يصل بعد", arrival: "الوصول", saveStop: "💾 حفظ الوصول",
-    returns: "المرتجعات من الفرع", addReturn: "+ إضافة منتج مرتجع", code: "كود المنتج", product: "اسم المنتج",
-    qty: "الكمية", uom: "الوحدة", reason: "السبب", remark: "ملاحظة", scanItem: "📷", noReturns: "لا يوجد مرتجعات",
+    transferNote: "صورة ورقة التحويل", addTransfer: "📸 صوّر ورقة التحويل",
     remove: "حذف", addStop: "+ إضافة وجهة", endTrip: "🏁 إنهاء الرحلة", ended: "الرحلة منتهية",
     reopen: "إعادة فتح", newTrip: "+ رحلة جديدة", otherTrips: "رحلات اليوم لهذه السيارة", open: "مفتوحة",
-    highTemp: "⚠ الحرارة أعلى من 5°C", notProduct: "الباركود غير معروف — اكتب الكود أو الاسم يدوياً",
-    retNeed: "كل منتج مرتجع يحتاج اسم وكمية", loadErr: "تعذّر تحميل البيانات من السيرفر",
+    highTemp: "⚠ الحرارة أعلى من 5°C", loadErr: "تعذّر تحميل البيانات من السيرفر",
     unknownVeh: "السيارة غير موجودة في القائمة — تأكد من الرقم", tripOf: "رحلة",
   },
   en: {
@@ -71,20 +66,16 @@ const T = {
     empNo: "Driver employee no.", noEmp: "Not in the employee list",
     need: "Complete: ", nDriver: "a valid employee no.", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
     stops: "Destinations", arrived: "Arrived", pending: "Not arrived yet", arrival: "Arrival", saveStop: "💾 Save arrival",
-    returns: "Returns from the branch", addReturn: "+ Add returned product", code: "Item code", product: "Product",
-    qty: "Qty", uom: "Unit", reason: "Reason", remark: "Remark", scanItem: "📷", noReturns: "No returns",
+    transferNote: "Transfer note photo", addTransfer: "📸 Photo of the transfer note",
     remove: "Remove", addStop: "+ Add destination", endTrip: "🏁 End trip", ended: "Trip ended",
     reopen: "Reopen", newTrip: "+ New trip", otherTrips: "Today's trips for this vehicle", open: "open",
-    highTemp: "⚠ Above 5°C", notProduct: "Unknown barcode — type the code or name",
-    retNeed: "Every returned product needs a name and a quantity", loadErr: "Could not load from the server",
+    highTemp: "⚠ Above 5°C", loadErr: "Could not load from the server",
     unknownVeh: "This vehicle is not in the list — check the number", tripOf: "Trip",
   },
 };
 
-const UOMS = ["KG", "PCS", "CTN", "BOX", "PKT"];
 
-const newReturn = () => ({ id: uid(), code: "", name: "", qty: "", uom: "KG", reason: "expired", remark: "" });
-const newStop = (name) => ({ id: uid(), name, arrival: null, returns: [] });
+const newStop = (name) => ({ id: uid(), name, arrival: null });
 
 const isHigh = (t) => t !== "" && t != null && !isNaN(Number(t)) && Number(t) > 5;
 
@@ -253,93 +244,17 @@ function LoadingEndEditor({ start, value, busy, t, onSave, onError }) {
   );
 }
 
-/* ───────────────────────── returns ───────────────────────── */
-
-function ReturnsEditor({ rows, onChange, t, lang, resolveScan }) {
-  const [scanFor, setScanFor] = useState(null);
-  const [note, setNote] = useState("");
-  const set = (i, k, v) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
-
-  const onScan = async (text) => {
-    const i = scanFor;
-    setScanFor(null);
-    const hit = await resolveScan(text);
-    if (!hit) { setNote(t.notProduct); return; }
-    setNote("");
-    onChange(rows.map((r, j) => (j === i ? { ...r, code: hit.code, name: hit.name || r.name, uom: hit.uom || r.uom, ...(hit.qty ? { qty: String(hit.qty) } : {}) } : r)));
-  };
-
-  const onCodeBlur = async (i) => {
-    const r = rows[i];
-    if (!r.code || r.name) return;
-    const hit = await resolveScan(r.code);
-    if (hit) onChange(rows.map((x, j) => (j === i ? { ...x, name: hit.name, uom: hit.uom || x.uom } : x)));
-  };
-
-  return (
-    <div style={st.returnsBox}>
-      <div style={{ ...st.label, fontSize: 14, color: "#9a3412" }}>↩️ {t.returns}</div>
-      {rows.length === 0 && <div style={{ color: "#64748b", marginBottom: 8 }}>{t.noReturns}</div>}
-      {rows.map((r, i) => (
-        <div key={r.id} style={st.returnRow}>
-          <div style={st.grid2}>
-            <Field label={t.code}>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input value={r.code} onChange={(e) => set(i, "code", e.target.value)} onBlur={() => onCodeBlur(i)} style={st.input} />
-                <button type="button" onClick={() => setScanFor(i)} style={{ ...st.btn("ghost"), padding: "0 12px" }}>{t.scanItem}</button>
-              </div>
-            </Field>
-            <Field label={t.product}>
-              <input value={r.name} onChange={(e) => set(i, "name", e.target.value)} style={st.input} />
-            </Field>
-          </div>
-          <div style={st.grid3}>
-            <Field label={t.qty}>
-              <input type="number" inputMode="decimal" step="0.01" value={r.qty} onChange={(e) => set(i, "qty", e.target.value)} onWheel={(e) => e.currentTarget.blur()} style={st.input} />
-            </Field>
-            <Field label={t.uom}>
-              <select value={r.uom} onChange={(e) => set(i, "uom", e.target.value)} style={st.input}>
-                {[...new Set([r.uom, ...UOMS].filter(Boolean))].map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </Field>
-            <Field label={t.reason}>
-              <select value={r.reason} onChange={(e) => set(i, "reason", e.target.value)} style={st.input}>
-                {RETURN_REASONS.map((x) => <option key={x.id} value={x.id}>{x[lang] || x.en}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-            <div style={{ flex: 1 }}>
-              <Field label={t.remark}>
-                <input value={r.remark} onChange={(e) => set(i, "remark", e.target.value)} style={st.input} />
-              </Field>
-            </div>
-            <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} style={st.btn("danger")}>
-              {t.remove}
-            </button>
-          </div>
-        </div>
-      ))}
-      {note && <div style={{ color: "#b91c1c", fontWeight: 700, margin: "6px 0" }}>{note}</div>}
-      <button type="button" onClick={() => onChange([...rows, newReturn()])} style={{ ...st.btn("warn"), width: "100%" }}>
-        {t.addReturn}
-      </button>
-      <BarcodeScanner open={scanFor != null} lang={lang} onResult={onScan} onClose={() => setScanFor(null)} />
-    </div>
-  );
-}
-
 /* ───────────────────────── one destination ───────────────────────── */
 
-function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled }) {
+function StopCard({ stop, open, onToggle, onSave, t, disabled }) {
   const [draft, setDraft] = useState(() => ({
     time: stop.arrival?.time || "",
     date: stop.arrival?.date || "",
     temp: stop.arrival?.temp ?? "",
     photos: stop.arrival?.photos || [],
+    transferPhotos: stop.arrival?.transferPhotos || [],
     location: stop.arrival?.location || null,
     note: stop.arrival?.note || "",
-    returns: stop.returns || [],
   }));
   const [err, setErr] = useState("");
   const done = !!stop.arrival;
@@ -349,13 +264,15 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
     if (!draft.time) miss.push(t.nStamp);
     if (draft.temp === "" || draft.temp == null) miss.push(t.nTemp);
     if (miss.length) { setErr(t.need + miss.join("، ")); return; }
-    const returns = draft.returns.filter((r) => r.code || r.name || r.qty);
-    if (returns.some((r) => !(r.name || r.code) || !(Number(r.qty) > 0))) { setErr(t.retNeed); return; }
     setErr("");
+    // returns were replaced by a photo of the transfer note; a stop saved
+    // before that keeps its old `returns` untouched (…stop)
     onSave({
       ...stop,
-      arrival: { time: draft.time, date: draft.date, temp: draft.temp, photos: draft.photos, location: draft.location, note: draft.note, savedAt: Date.now() },
-      returns,
+      arrival: {
+        time: draft.time, date: draft.date, temp: draft.temp, photos: draft.photos,
+        transferPhotos: draft.transferPhotos, location: draft.location, note: draft.note, savedAt: Date.now(),
+      },
     });
   };
 
@@ -366,7 +283,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
         <span style={{ flex: 1, fontWeight: 900, textAlign: "start" }}>{stop.name}</span>
         <span style={{ fontWeight: 800, color: done ? "#166534" : "#64748b" }}>
           {done ? `${t.arrived} ${stop.arrival.time} · ${stop.arrival.temp}°C` : t.pending}
-          {stop.returns?.length ? ` · ↩️ ${stop.returns.length}` : ""}
+          {stop.arrival?.transferPhotos?.length ? " · 📄" : ""}
         </span>
         <span style={{ fontWeight: 900 }}>{open ? "▴" : "▾"}</span>
       </button>
@@ -391,13 +308,14 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
             <span className="dt-label" style={st.label}>{t.photos}</span>
             <PhotoStrip photos={draft.photos} onChange={(photos) => setDraft({ ...draft, photos })} t={t} />
           </div>
-          <ReturnsEditor
-            rows={draft.returns}
-            onChange={(returns) => setDraft({ ...draft, returns })}
-            t={t}
-            lang={lang}
-            resolveScan={resolveScan}
-          />
+          <div style={st.transferBox}>
+            <span className="dt-label" style={{ ...st.label, color: "#9a3412" }}>📄 {t.transferNote}</span>
+            <PhotoStrip
+              photos={draft.transferPhotos}
+              onChange={(transferPhotos) => setDraft({ ...draft, transferPhotos })}
+              t={{ ...t, addPhoto: t.addTransfer }}
+            />
+          </div>
           <div style={st.block}>
             <Field label={t.notes}>
               <input value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} style={st.input} />
@@ -500,22 +418,6 @@ export default function DriverTrip() {
     if (vehicles.length && !vehicles.some((x) => normPlate(x) === normPlate(v))) flash("warn", t.unknownVeh, 5000);
     goVehicle(v);
   };
-
-  /* product lookup for returns: our labels (item code in GS1 240), catalogue
-     barcodes (barcode_map), or a typed item code */
-  const resolveScan = useCallback(async (text) => {
-    const cat = await loadCatalog();
-    const byCode = (code) => {
-      const c = cat.get(String(code || "").trim());
-      return c ? { code: String(code).trim(), name: c.product, uom: c.uom } : null;
-    };
-    const r = parseBarcode(text);
-    if (r.itemCode) return { ...(byCode(r.itemCode) || { code: r.itemCode, name: "" }), qty: r.weightKg || "" };
-    const map = await fetchBarcodeMap();
-    const hit = findBarcode(map, r.gtin || text).hit;
-    if (hit?.code) return { ...(byCode(hit.code) || { code: hit.code, name: hit.product || "" }), qty: r.weightKg || "" };
-    return byCode(text);
-  }, []);
 
   /* ── persist the whole trip ── */
   const persist = async (next, okText = t.saved) => {
@@ -826,8 +728,6 @@ export default function DriverTrip() {
                   onToggle={() => setOpenStop(openStop === d.id ? null : d.id)}
                   onSave={saveStop}
                   t={t}
-                  lang={lang}
-                  resolveScan={resolveScan}
                   disabled={busy || trip.status === "closed"}
                 />
               ))}
@@ -1008,7 +908,7 @@ const st = {
     width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 900,
     background: done ? "#16a34a" : "#e2e8f0", color: done ? "#fff" : "#64748b", flexShrink: 0,
   }),
-  returnsBox: { background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: 10, marginBottom: 12 },
+  transferBox: { background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 16, padding: 12, marginBottom: 16 },
   returnRow: { background: "#fff", border: "1px solid #fde2c4", borderRadius: 10, padding: 10, marginBottom: 8 },
   err: { color: "#b91c1c", fontWeight: 800, margin: "6px 0 10px" },
   msg: (kind) => ({

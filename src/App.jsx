@@ -212,7 +212,6 @@ const CarsCleaningReports   = lazy(() => import("./pages/car/pages/CleaningRepor
 const CarsFleetKPI          = lazy(() => import("./pages/car/pages/FleetKPI"));
 const CarsDriverTrip        = lazy(() => import("./pages/car/pages/DriverTrip"));
 const CarsDriverQr          = lazy(() => import("./pages/car/pages/DriverQrStickers"));
-const CarsDriverReturns     = lazy(() => import("./pages/car/pages/DriverReturns"));
 
 // ✅✅✅ 🆕 موافقات السيارات (Input + View)
 const CarApprovalsInput = lazy(() => import("./pages/car/pages/Approvals"));
@@ -2520,7 +2519,6 @@ export default function App() {
         <Route path="/car/driver" element={<ProtectedRoute><CarsDriverTrip /></ProtectedRoute>} />
         <Route path="/car/driver/:vehicle" element={<ProtectedRoute><CarsDriverTrip /></ProtectedRoute>} />
         <Route path="/car/driver-qr" element={<ProtectedRoute><CarsDriverQr /></ProtectedRoute>} />
-        <Route path="/car/driver-returns" element={<ProtectedRoute><CarsDriverReturns /></ProtectedRoute>} />
 
         {/* ✅✅✅ مسارات موافقات السيارات */}
         <Route

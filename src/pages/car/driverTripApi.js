@@ -72,28 +72,6 @@ export async function saveTrip(trip) {
   return { id: id || (r.report ? reportId(r.report) : null), queued: r.queued };
 }
 
-/** One row per returned product, with the trip and stop it came from. */
-export function flattenReturns(trips) {
-  const out = [];
-  (trips || []).forEach((t) => {
-    (t.destinations || []).forEach((d) => {
-      (d.returns || []).forEach((it) => {
-        out.push({
-          ...it,
-          tripId: t.id,
-          reportDate: t.reportDate,
-          vehicleNo: t.vehicleNo,
-          driverName: t.driverName,
-          branch: d.name,
-          arrivalTime: d.arrival?.time || "",
-          location: d.arrival?.location || null,
-        });
-      });
-    });
-  });
-  return out;
-}
-
 /** Location once, with a readable error. */
 export function locateMe() {
   return new Promise((resolve, reject) => {

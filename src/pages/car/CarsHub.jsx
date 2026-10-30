@@ -67,16 +67,6 @@ const sections = [
         bg: "linear-gradient(135deg,#e9d5ff,#faf5ff)",
       },
       {
-        id: "driver-returns",
-        icon: "↩️",
-        title: { ar: "مرتجعات من السائقين", en: "Returns from Drivers" },
-        subtitle: { ar: "المنتجات المرتجعة من الفروع مع السائق", en: "Products drivers brought back from branches" },
-        route: "/car/driver-returns",
-        color: "#ea580c",
-        bg: "linear-gradient(135deg,#ffedd5,#fff7ed)",
-        badge: { ar: "جديد", en: "NEW" },
-      },
-      {
         id: "cleaning-reports",
         icon: "🧾",
         title: { ar: "تقارير التنظيف", en: "Cleaning Reports" },

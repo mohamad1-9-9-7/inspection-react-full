@@ -21,11 +21,13 @@ export const LOOKUP_VEHICLES_TYPE = "cars_loading_lookup_vehicle_numbers";
 export const LOOKUP_DRIVERS_TYPE = "cars_loading_lookup_driver_names";
 
 /* One record per trip: the driver scans the truck's sticker, records the
-   loading temperature, then an arrival (temperature, photos, location and any
-   returns taken back) at every destination. Read by /car/loading-reports and
-   /car/driver-returns. */
+   loading temperature, then an arrival (temperature, photos, location and a
+   photo of the transfer note) at every destination. Read by
+   /car/loading-reports. */
 export const DRIVER_TRIP_TYPE = "cars_driver_trip";
 
+/* Only for trips saved before the transfer-note photo replaced the returns
+   list — their stops still carry `returns`, shown in the vehicle popup. */
 export const RETURN_REASONS = [
   { id: "expired", ar: "منتهي الصلاحية", en: "Expired" },
   { id: "near_expiry", ar: "قريب الانتهاء", en: "Near expiry" },
