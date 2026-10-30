@@ -1334,7 +1334,7 @@ export default function LoadingReports() {
                   {/* One card per truck — a click opens everything about it for the day */}
                   <div className="panel" style={{ overflow: "hidden", marginBottom: 16 }}>
                     <div style={{ background: "#dbeafe", padding: "10px 12px", fontWeight: 700, color: "#0f172a", borderBottom: "1px solid #b6c8e3" }}>
-                      🚚 Vehicles of the day ({new Set(selectedVehicles.map((v) => String(v.vehicleNo || "").toLowerCase().replace(/[\s\-_/]+/g, ""))).size}) — click a truck for its details
+                      🚚 Vehicles of the day — click a truck for its details
                     </div>
                     <div className="panel-body" style={{ padding: 0 }}>
                       <VehicleDayCards

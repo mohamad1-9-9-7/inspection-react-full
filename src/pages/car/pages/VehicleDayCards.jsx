@@ -4,7 +4,7 @@
 // checklist row(s), the driver trips (destinations, arrivals, returns,
 // photos, locations) and the expiry date of the truck's approval.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { thumbUrl } from "../../../utils/imageUpload";
 import { listReports, payloadOf } from "../../monitor/branches/_shared/reportApi";
@@ -35,40 +35,68 @@ const fmtDate = (s) => {
   return d ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(d) : s || "—";
 };
 
-/** plate → [DM card] from the approvals register (/car/approvals-view:
-    one record, items[]), the card in force (latest expiry) first. */
+/* Plates are written two ways: the approvals register carries the plate
+   code ("14298-E") while the drivers and the checklist often type only the
+   number ("14298"). Same plate = same key; or the same number when one side
+   has no letter code. Two different codes ("14298-E" / "14298-D") never match. */
+const plateDigits = (s) => String(s ?? "").replace(/\D/g, "");
+const plateLetters = (s) => String(s ?? "").replace(/[^a-z]/gi, "").toLowerCase();
+function samePlate(a, b) {
+  if (plateKey(a) && plateKey(a) === plateKey(b)) return true;
+  const da = plateDigits(a);
+  return !!da && da === plateDigits(b) && (!plateLetters(a) || !plateLetters(b));
+}
+
+/* One permit = one emirate + food type (a truck can hold Dubai and Abu Dhabi,
+   or chiller and frozen, at once). The latest expiry of each is the one in
+   force; older entries of the same permit are its history. */
+const permitKey = (c) => `${String(c.emirate || "").trim().toLowerCase()}|${String(c.foodType || "").trim().toLowerCase()}`;
+
+/** Every DM card in the approvals register (/car/approvals-view: one record, items[]). */
 function useApprovals() {
-  const [map, setMap] = useState(() => new Map());
+  const [all, setAll] = useState([]);
   useEffect(() => {
     let alive = true;
     listReports(APPROVALS_TYPE)
       .then((rows) => {
         if (!alive) return;
-        const m = new Map();
+        const out = [];
         const seen = new Set();
         rows.forEach((r) => {
           const p = payloadOf(r);
           const items = p?.items || p?.payload?.items || [];
           (Array.isArray(items) ? items : []).forEach((it) => {
-            const k = plateKey(it?.vehicleNo);
-            if (!k) return;
-            const dup = `${k}|${it.tradeLicense}|${it.issueDate}|${it.expiryDate}`;
+            if (!plateKey(it?.vehicleNo)) return;
+            const dup = `${plateKey(it.vehicleNo)}|${it.tradeLicense}|${it.issueDate}|${it.expiryDate}|${permitKey(it)}`;
             if (seen.has(dup)) return;
             seen.add(dup);
             const imageUrls = Array.isArray(it.imageUrls)
               ? it.imageUrls.filter(Boolean)
               : it.imageUrl ? [it.imageUrl] : [];
-            if (!m.has(k)) m.set(k, []);
-            m.get(k).push({ ...it, imageUrls });
+            out.push({ ...it, imageUrls });
           });
         });
-        m.forEach((list) => list.sort((a, b) => (parseDate(b.expiryDate) || 0) - (parseDate(a.expiryDate) || 0)));
-        setMap(m);
+        setAll(out);
       })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
-  return map;
+
+  /* plate → { current: [one per permit], previous: [...] }, latest expiry first */
+  return useCallback((plate) => {
+    const mine = all
+      .filter((c) => samePlate(c.vehicleNo, plate))
+      .sort((a, b) => (parseDate(b.expiryDate) || 0) - (parseDate(a.expiryDate) || 0));
+    const seenPermit = new Set();
+    const current = [];
+    const previous = [];
+    mine.forEach((c) => {
+      const k = permitKey(c);
+      if (seenPermit.has(k)) previous.push(c);
+      else { seenPermit.add(k); current.push(c); }
+    });
+    return { current, previous };
+  }, [all]);
 }
 
 function expiryTone(days) {
@@ -78,30 +106,43 @@ function expiryTone(days) {
   return { bg: "#dcfce7", fg: "#166534", bd: "#86efac", text: `${days} d left` };
 }
 
-function ExpiryBadge({ cards }) {
-  if (!cards?.length) {
+const permitName = (c) => [c.emirate, c.foodType].filter(Boolean).join(" · ") || "DM card";
+
+/* One badge per permit in force. */
+function ExpiryBadges({ cards }) {
+  if (!cards?.current?.length) {
     return <span className="vdc-badge" style={badge("#f1f5f9", "#64748b", "#cbd5e1")}>No DM card on file</span>;
   }
-  const tone = expiryTone(daysLeft(cards[0].expiryDate));
   return (
-    <span className="vdc-badge" style={badge(tone.bg, tone.fg, tone.bd)}>
-      🪪 DM card expires {fmtDate(cards[0].expiryDate)}{tone.text ? ` · ${tone.text}` : ""}
-    </span>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {cards.current.map((c, i) => {
+        const tone = expiryTone(daysLeft(c.expiryDate));
+        return (
+          <span key={i} className="vdc-badge" style={badge(tone.bg, tone.fg, tone.bd)}>
+            🪪 {cards.current.length > 1 ? `${permitName(c)}: ` : "DM card "}expires {fmtDate(c.expiryDate)}{tone.text ? ` · ${tone.text}` : ""}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
 /* Everything /car/approvals-view keeps about the truck's DM card(s). */
 function DmCards({ cards, onPhoto }) {
-  if (!cards?.length) {
+  const list = [
+    ...(cards?.current || []).map((c) => ({ c, old: false })),
+    ...(cards?.previous || []).map((c) => ({ c, old: true })),
+  ];
+  if (!list.length) {
     return <div style={{ color: "#64748b", fontWeight: 700 }}>No DM card on file for this vehicle — add it in Approvals.</div>;
   }
-  return cards.map((c, i) => {
+  return list.map(({ c, old }, i) => {
     const tone = expiryTone(daysLeft(c.expiryDate));
     return (
-      <div key={i} style={{ border: `1.5px solid ${tone.bd}`, borderRadius: 12, padding: 12, marginBottom: 10, background: i ? "#fff" : tone.bg + "66" }}>
-        {cards.length > 1 && (
-          <div style={{ fontWeight: 900, color: "#475569", marginBottom: 8 }}>{i === 0 ? "Current card" : "Previous card"}</div>
-        )}
+      <div key={i} style={{ border: `1.5px solid ${old ? "#e2e8f0" : tone.bd}`, borderRadius: 12, padding: 12, marginBottom: 10, background: old ? "#f8fafc" : tone.bg + "66", opacity: old ? 0.85 : 1 }}>
+        <div style={{ fontWeight: 900, color: "#475569", marginBottom: 8 }}>
+          {old ? "Previous · " : "In force · "}{permitName(c)} · plate {c.vehicleNo}
+        </div>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 8 }}>
           {kv("Company", c.company)}
           {kv("Emirate", c.emirate)}
@@ -200,7 +241,7 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
         <div style={{ position: "sticky", top: 0, zIndex: 2, background: "linear-gradient(135deg,#e0f2fe,#eef2ff)", padding: "14px 16px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderBottom: "1px solid #e2e8f0" }}>
           <TruckIcon color="#0284c7" />
           <span style={{ fontWeight: 1000, fontSize: "1.6em", border: "2px solid #0f172a", borderRadius: 8, padding: "2px 12px", background: "#fefce8" }}>{car.plate}</span>
-          <ExpiryBadge cards={cards} />
+          <ExpiryBadges cards={cards} />
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", fontWeight: 900, cursor: "pointer" }}>✕ Close</button>
         </div>
@@ -332,17 +373,24 @@ const CSS = `
 `;
 
 export default function VehicleDayCards({ vehicles, viParams, normYesNo, durationOf, onPhoto, onDeleteTrip }) {
-  const approvals = useApprovals();
-  const [open, setOpen] = useState(null); // plate key
+  const cardsOf = useApprovals();
+  const [open, setOpen] = useState(null); // car key
 
+  /* one card per truck: "14298" and "14298-E" are the same truck (samePlate);
+     the card shows the fuller spelling */
   const cars = useMemo(() => {
-    const m = new Map();
+    const list = [];
     (vehicles || []).forEach((v) => {
-      const k = plateKey(v.vehicleNo) || `?${v.__docId}`;
-      if (!m.has(k)) m.set(k, { key: k, plate: v.vehicleNo || "—", rows: [] });
-      m.get(k).rows.push(v);
+      const plate = String(v.vehicleNo || "").trim();
+      const car = plate ? list.find((c) => samePlate(c.plate, plate)) : null;
+      if (car) {
+        if (plateLetters(plate) && !plateLetters(car.plate)) car.plate = plate;
+        car.rows.push(v);
+      } else {
+        list.push({ key: plateKey(plate) || `?${v.__docId}`, plate: plate || "—", rows: [v] });
+      }
     });
-    return [...m.values()].sort((a, b) => String(a.plate).localeCompare(String(b.plate), undefined, { numeric: true }));
+    return list.sort((a, b) => String(a.plate).localeCompare(String(b.plate), undefined, { numeric: true }));
   }, [vehicles]);
 
   const current = cars.find((c) => c.key === open) || null;
@@ -365,9 +413,9 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
             return v && v !== (p.id === "pestActivites" || p.id === "badOdour" ? "no" : "yes");
           }).length, 0);
           const returns = trips.reduce((n, r) => n + (r.__tripRaw?.destinations || []).reduce((s, d) => s + (d.returns?.length || 0), 0), 0);
-          const exp = approvals.get(c.key);
-          const days = exp?.length ? daysLeft(exp[0].expiryDate) : null;
-          const color = days != null && days < 0 ? "#dc2626" : anyHigh || deviations ? "#d97706" : "#0284c7";
+          const exp = cardsOf(c.plate);
+          const anyExpired = exp.current.some((x) => { const d = daysLeft(x.expiryDate); return d != null && d < 0; });
+          const color = anyExpired ? "#dc2626" : anyHigh || deviations ? "#d97706" : "#0284c7";
           const drivers = [...new Set(c.rows.map((r) => r.__tripRaw?.driverName || r.driverName).filter(Boolean))];
           return (
             <button key={c.key} type="button" onClick={() => setOpen(c.key)} style={{
@@ -389,7 +437,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
                 {deviations > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>⚠ {deviations}</span>}
                 {returns > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>↩️ {returns}</span>}
               </div>
-              <ExpiryBadge cards={exp} />
+              <ExpiryBadges cards={exp} />
             </button>
           );
         })}
@@ -398,7 +446,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
       {current && (
         <VehicleModal
           car={current}
-          cards={approvals.get(current.key)}
+          cards={cardsOf(current.plate)}
           viParams={viParams}
           normYesNo={normYesNo}
           durationOf={durationOf}
