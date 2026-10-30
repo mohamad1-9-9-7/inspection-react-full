@@ -135,7 +135,7 @@ function PhotoStrip({ photos, onChange, t }) {
 function LocationButton({ value, onChange, onStamp, t }) {
   const [state, setState] = useState("");
   const go = async () => {
-    if (onStamp) onStamp(nowHHMM());
+    if (onStamp) onStamp(nowHHMM(), todayISO());
     setState("busy");
     try {
       onChange(await locateMe());
@@ -160,8 +160,8 @@ function LocationButton({ value, onChange, onStamp, t }) {
   );
 }
 
-/* A time the driver cannot type: it comes from the 📍 button (UAE time). */
-function StampedTime({ value, t }) {
+/* A time / date the driver cannot type: it comes from the 📍 button (UAE). */
+function StampedTime({ value, t, icon = "🕐" }) {
   return (
     <div
       style={{
@@ -170,7 +170,7 @@ function StampedTime({ value, t }) {
         fontWeight: value ? 900 : 700, color: value ? "#166534" : "#64748b",
       }}
     >
-      {value ? `🕐 ${value} (UAE)` : t.stampHint}
+      {value ? `${icon} ${value} (UAE)` : t.stampHint}
     </div>
   );
 }
@@ -307,6 +307,7 @@ function ReturnsEditor({ rows, onChange, t, lang, resolveScan }) {
 function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled }) {
   const [draft, setDraft] = useState(() => ({
     time: stop.arrival?.time || "",
+    date: stop.arrival?.date || "",
     temp: stop.arrival?.temp ?? "",
     photos: stop.arrival?.photos || [],
     location: stop.arrival?.location || null,
@@ -326,7 +327,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
     setErr("");
     onSave({
       ...stop,
-      arrival: { time: draft.time, temp: draft.temp, photos: draft.photos, location: draft.location, note: draft.note, savedAt: Date.now() },
+      arrival: { time: draft.time, date: draft.date, temp: draft.temp, photos: draft.photos, location: draft.location, note: draft.note, savedAt: Date.now() },
       returns,
     });
   };
@@ -347,7 +348,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
         <div style={{ padding: "4px 12px 12px" }}>
           <div style={st.grid2}>
             <Field label={`${t.arrival} — ${t.time}`}>
-              <StampedTime value={draft.time} t={t} />
+              <StampedTime value={draft.time ? `${draft.time}${draft.date ? ` · ${draft.date}` : ""}` : ""} t={t} />
             </Field>
             <Field label={t.temp}>
               <TempInput value={draft.temp} onChange={(v) => setDraft({ ...draft, temp: v })} t={t} />
@@ -360,7 +361,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
           <div style={st.block}>
             <LocationButton
               value={draft.location}
-              onStamp={(time) => setDraft((d) => ({ ...d, time }))}
+              onStamp={(time, date) => setDraft((d) => ({ ...d, time, date }))}
               onChange={(location) => setDraft((d) => ({ ...d, location }))}
               t={t}
             />
@@ -520,7 +521,7 @@ export default function DriverTrip() {
   const startForm = () => {
     setForm({
       driverEmpNo: trips[0]?.driverEmpNo || "",
-      reportDate: todayISO(),
+      reportDate: "", // stamped by 📍 my location (UAE date)
       time: "", // stamped by 📍 my location
       endTime: "",
       temp: "",
@@ -672,7 +673,7 @@ export default function DriverTrip() {
                 })()}
               </Field>
               <Field label={t.date}>
-                <input type="date" value={form.reportDate} onChange={(e) => setForm({ ...form, reportDate: e.target.value })} style={st.input} />
+                <StampedTime value={form.reportDate} t={t} icon="📅" />
               </Field>
               <Field label={t.startLoad}>
                 <StampedTime value={form.time} t={t} />
@@ -715,7 +716,7 @@ export default function DriverTrip() {
             <div style={st.block}>
               <LocationButton
                 value={form.location}
-                onStamp={(time) => setForm((f) => ({ ...f, time }))}
+                onStamp={(time, reportDate) => setForm((f) => ({ ...f, time, reportDate }))}
                 onChange={(location) => setForm((f) => ({ ...f, location }))}
                 t={t}
               />
