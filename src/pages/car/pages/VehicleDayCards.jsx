@@ -114,12 +114,13 @@ function ExpiryBadges({ cards }) {
     return <span className="vdc-badge" style={badge("#f1f5f9", "#64748b", "#cbd5e1")}>No DM card on file</span>;
   }
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
       {cards.current.map((c, i) => {
         const tone = expiryTone(daysLeft(c.expiryDate));
         return (
-          <span key={i} className="vdc-badge" style={badge(tone.bg, tone.fg, tone.bd)}>
-            🪪 {cards.current.length > 1 ? `${permitName(c)}: ` : "DM card "}expires {fmtDate(c.expiryDate)}{tone.text ? ` · ${tone.text}` : ""}
+          <span key={i} className="vdc-badge vdc-permit" style={{ ...badge(tone.bg, tone.fg, tone.bd), ...wrapBadge }}>
+            <span>🪪 {cards.current.length > 1 ? permitName(c) : "DM card"}</span>
+            <span>expires {fmtDate(c.expiryDate)}{tone.text ? ` · ${tone.text}` : ""}</span>
           </span>
         );
       })}
@@ -166,6 +167,12 @@ const badge = (bg, fg, bd) => ({
   display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999,
   background: bg, color: fg, border: `1px solid ${bd}`, fontWeight: 800, whiteSpace: "nowrap",
 });
+/* a permit badge: two lines (permit / expiry) that wrap inside the card */
+const wrapBadge = {
+  display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
+  whiteSpace: "normal", borderRadius: 10, padding: "5px 10px", maxWidth: "100%", boxSizing: "border-box",
+  overflowWrap: "anywhere",
+};
 
 /* ───────────── truck picture (no image files: inline SVG) ───────────── */
 function TruckIcon({ color }) {
@@ -367,6 +374,8 @@ const CSS = `
 #root .vdc, #root .vdc * { font-size: calc(16px * var(--app-fs, 1)) !important; }
 #root .vdc .vdc-plate { font-size: calc(20px * var(--app-fs, 1)) !important; }
 #root .vdc .vdc-badge, #root .vdc .vdc-badge * { font-size: calc(14px * var(--app-fs, 1)) !important; }
+#root .vdc > button { min-width: 0; overflow: hidden; }
+#root .vdc .vdc-permit { width: 100%; }
 .vdm { font-size: calc(18px * var(--app-fs, 1)); font-weight: 700; }
 .vdm .vdc-badge { font-size: calc(16px * var(--app-fs, 1)); }
 .vdm img { max-width: none; }
@@ -402,7 +411,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
   return (
     <>
       <style>{CSS}</style>
-      <div className="vdc" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12, padding: 12 }}>
+      <div className="vdc" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(290px,1fr))", gap: 12, padding: 12, alignItems: "start" }}>
         {cars.map((c) => {
           const trips = c.rows.filter((r) => r.__trip);
           const checks = c.rows.filter((r) => !r.__trip);
