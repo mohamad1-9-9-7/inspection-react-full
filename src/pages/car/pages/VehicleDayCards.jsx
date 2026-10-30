@@ -128,39 +128,31 @@ function ExpiryBadges({ cards }) {
   );
 }
 
-/* Everything /car/approvals-view keeps about the truck's DM card(s). */
-function DmCards({ cards, onPhoto }) {
-  const list = [
-    ...(cards?.current || []).map((c) => ({ c, old: false })),
-    ...(cards?.previous || []).map((c) => ({ c, old: true })),
-  ];
+/* The truck's DM card(s): expiry date and days left only (asked for that
+   way — the rest lives on /car/approvals-view). One box per permit in force;
+   the permit name shows only when the truck holds more than one. */
+function DmCards({ cards }) {
+  const list = cards?.current || [];
   if (!list.length) {
     return <div style={{ color: "#64748b", fontWeight: 700 }}>No DM card on file for this vehicle — add it in Approvals.</div>;
   }
-  return list.map(({ c, old }, i) => {
-    const tone = expiryTone(daysLeft(c.expiryDate));
-    return (
-      <div key={i} style={{ border: `1.5px solid ${old ? "#e2e8f0" : tone.bd}`, borderRadius: 12, padding: 12, marginBottom: 10, background: old ? "#f8fafc" : tone.bg + "66", opacity: old ? 0.85 : 1 }}>
-        <div style={{ fontWeight: 900, color: "#475569", marginBottom: 8 }}>
-          {old ? "Previous · " : "In force · "}{permitName(c)} · plate {c.vehicleNo}
-        </div>
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 8 }}>
-          {kv("Company", c.company)}
-          {kv("Emirate", c.emirate)}
-          {kv("Trade license", c.tradeLicense)}
-          {kv("Permit type", c.permitType)}
-          {kv("Food type", c.foodType)}
-          {kv("Issue date", fmtDate(c.issueDate))}
-          {kv("Expiry date", fmtDate(c.expiryDate), tone.fg)}
-          {kv("Days left", tone.text || "—", tone.fg)}
-        </div>
-        {c.remarks && <div style={{ color: "#475569", marginBottom: 8 }}>📝 {c.remarks}</div>}
-        {c.imageUrls.length > 0 && (
-          <Thumbs photos={c.imageUrls.map((src) => ({ src, label: `DM card ${c.vehicleNo || ""}` }))} onPhoto={onPhoto} />
-        )}
-      </div>
-    );
-  });
+  return (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      {list.map((c, i) => {
+        const d = daysLeft(c.expiryDate);
+        const tone = expiryTone(d);
+        return (
+          <div key={i} style={{ border: `1.5px solid ${tone.bd}`, borderRadius: 12, padding: "10px 14px", background: tone.bg, minWidth: 220 }}>
+            {list.length > 1 && <div style={{ fontWeight: 900, color: "#475569", marginBottom: 6 }}>{permitName(c)}</div>}
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              {kv("Expiry date", fmtDate(c.expiryDate), tone.fg)}
+              {kv("Days left", d == null ? "—" : d < 0 ? `Expired ${-d} d ago` : `${d} days`, tone.fg)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const badge = (bg, fg, bd) => ({
@@ -255,7 +247,7 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
 
         <div style={{ padding: 16 }}>
           <Section title="🪪 DM card (Approvals)" bg="#f0fdf4" tone="#166534">
-            <DmCards cards={cards} onPhoto={onPhoto} />
+            <DmCards cards={cards} />
           </Section>
 
           {checklist.map((r, i) => {
