@@ -41,7 +41,7 @@ export default function DriverTripsPanel({ trips }) {
   return (
     <div className="panel" style={{ overflow: "hidden", marginBottom: 16 }}>
       <div style={{ background: "#e0f2fe", padding: "10px 12px", fontWeight: 800, color: "#0c4a6e", borderBottom: "1px solid #bae6fd" }}>
-        📷 Driver Trips ({trips.length}) — scanned by the drivers
+        📷 Driver trip details ({trips.length}) — photos, locations and returns
       </div>
       <div className="panel-body" style={{ display: "grid", gap: 12 }}>
         {trips.map((tr) => {

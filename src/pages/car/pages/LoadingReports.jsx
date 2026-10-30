@@ -354,6 +354,13 @@ const parseTimeToMinutes = (t) => {
   return hh * 60 + mm;
 };
 
+/* minutes between start and end, or null when either is missing */
+const durationOf = (v) => {
+  const s = parseTimeToMinutes(v.timeStart);
+  const e = parseTimeToMinutes(v.timeEnd);
+  return s == null || e == null ? null : e - s;
+};
+
 const formatMinutes = (mins) => {
   if (mins == null || isNaN(mins)) return "—";
   const m = Math.max(0, Math.round(mins));
@@ -392,6 +399,37 @@ function computeDayKPIs(vehicles) {
   const yesRate = totalChecks ? (yesChecks / totalChecks) * 100 : null;
 
   return { count, avgTemp, avgDuration, yesRate };
+}
+
+/* ====================== Driver trip → table row ======================
+   A trip scanned on the driver's phone (DriverTrip.jsx) fills the same
+   vehicles table as the outbound checklist: loading time = Time Start,
+   loading temperature = Temp Check, and every destination with its arrival
+   time / temperature. Time End stays empty (an arrival is not the end of
+   loading — it would turn the loading-duration KPI into trip length). The
+   eleven checks are not asked of the driver, so they stay "—" and do not
+   count in the yes rate. */
+function tripToRecord(tr) {
+  const stops = Array.isArray(tr.destinations) ? tr.destinations : [];
+  return {
+    __docId: `trip:${tr.id || tr._outboxId}`,
+    __rowIndex: 0,
+    __trip: true,
+    date: tr.reportDate || "",
+    header: null,
+    inspectedBy: "",
+    verifiedBy: "",
+    vehicleNo: tr.vehicleNo || "",
+    driverName: tr.driverName || "",
+    timeStart: tr.loading?.time || "",
+    timeEnd: "",
+    tempCheck: tr.loading?.temp ?? "",
+    destination: stops
+      .map((d) => (d.arrival
+        ? `${d.name} (arr ${d.arrival.time || "—"}, ${d.arrival.temp ?? "—"}°C)`
+        : `${d.name} (not arrived)`))
+      .join(" · "),
+  };
 }
 
 /* ====================== Toast ====================== */
@@ -494,8 +532,8 @@ export default function LoadingReports() {
           ...rr,
         };
       });
-    });
-  }, [docs]);
+    }).concat(trips.map(tripToRecord));
+  }, [docs, trips]);
 
   const todaysCount = useMemo(
     () => records.filter((r) => parseToISO(r.date)?.iso === todayISO).length,
@@ -535,19 +573,6 @@ export default function LoadingReports() {
       months.get(p.m).add(key);
     });
 
-    // a day with driver trips but no checklist still gets its place in the tree
-    trips.forEach((tr) => {
-      const p = parseToISO(tr.reportDate);
-      if (!p) return;
-      const key = `iso:${p.iso}`;
-      if (!dayIndex.has(key)) dayIndex.set(key, []);
-      flat.add(key);
-      if (!years.has(p.y)) years.set(p.y, new Map());
-      const months = years.get(p.y);
-      if (!months.has(p.m)) months.set(p.m, new Set());
-      months.get(p.m).add(key);
-    });
-
     const sortedYears = [...years.keys()].sort((a, b) => b.localeCompare(a));
     const hierarchy = sortedYears.map((y) => {
       const months = years.get(y);
@@ -571,7 +596,7 @@ export default function LoadingReports() {
     });
 
     return { hierarchy, dayIndex, flatDays };
-  }, [records, trips]);
+  }, [records]);
 
   const tripsByDay = useMemo(() => {
     const m = new Map();
@@ -601,7 +626,7 @@ export default function LoadingReports() {
 
   /* ===== Day header (show ONCE per day) ===== */
   const dayHeader = useMemo(() => {
-    const first = selectedVehicles[0];
+    const first = selectedVehicles.find((v) => !v.__trip);
     return {
       header: first?.header || null,
       inspectedBy: first?.inspectedBy || "",
@@ -624,7 +649,8 @@ export default function LoadingReports() {
     if (!window.confirm(`Delete all server records for: ${label}?`)) return;
 
     const vehicles = dayIndex.get(key) || [];
-    const toDeleteIds = [...new Set(vehicles.map(v => v.__docId).filter(Boolean))];
+    // driver trips are not part of the checklist record — the day delete leaves them
+    const toDeleteIds = [...new Set(vehicles.filter(v => !v.__trip).map(v => v.__docId).filter(Boolean))];
     if (!toDeleteIds.length) return;
 
     try {
@@ -751,9 +777,7 @@ export default function LoadingReports() {
     const viHeaders = VI_PARAMS.map((p) => `<th>${esc(p.en)}</th>`).join("");
     const rowsHtml = (selectedVehicles || [])
       .map((v) => {
-        const dur = formatMinutes(
-          (parseTimeToMinutes(v.timeEnd) ?? 0) - (parseTimeToMinutes(v.timeStart) ?? 0)
-        );
+        const dur = formatMinutes(durationOf(v));
         const checks = VI_PARAMS.map((p) => `<td>${yesNo(v[p.id])}</td>`).join("");
         return `
           <tr>
@@ -1250,12 +1274,15 @@ export default function LoadingReports() {
                         <tbody>
                           {selectedVehicles.map((v) => (
                             <tr key={`${v.__docId}-${v.__rowIndex}`}>
-                              <td>{v.vehicleNo || "—"}</td>
+                              <td>
+                                {v.vehicleNo || "—"}
+                                {v.__trip && <div title="Scanned by the driver" style={{ fontSize: ".8em", color: "#0369a1", fontWeight: 800 }}>📷 driver</div>}
+                              </td>
                               <td>{v.driverName || "—"}</td>
                               <td>{v.timeStart || "—"}</td>
                               <td>{v.timeEnd || "—"}</td>
                               <td>{v.tempCheck || "—"}</td>
-                              <td>{formatMinutes((parseTimeToMinutes(v.timeEnd) ?? 0) - (parseTimeToMinutes(v.timeStart) ?? 0))}</td>
+                              <td>{formatMinutes(durationOf(v))}</td>
 
                               {VI_PARAMS.map(p => {
                                 const n = normYesNo(v[p.id]);
