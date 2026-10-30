@@ -22,6 +22,16 @@ const sections = [
         bg: "linear-gradient(135deg,#dbeafe,#eff6ff)",
       },
       {
+        id: "driver-trip",
+        icon: "📷",
+        title: { ar: "رحلة السائق", en: "Driver Trip" },
+        subtitle: { ar: "مسح باركود السيارة · الحرارة · الوجهات · المرتجعات", en: "Scan truck · temperatures · destinations · returns" },
+        route: "/car/driver",
+        color: "#0284c7",
+        bg: "linear-gradient(135deg,#e0f2fe,#f0f9ff)",
+        badge: { ar: "جديد", en: "NEW" },
+      },
+      {
         id: "cleaning",
         icon: "🧼",
         title: { ar: "تنظيف السيارات", en: "Truck Cleaning" },
@@ -55,6 +65,16 @@ const sections = [
         route: "/car/loading-reports",
         color: "#7c3aed",
         bg: "linear-gradient(135deg,#e9d5ff,#faf5ff)",
+      },
+      {
+        id: "driver-returns",
+        icon: "↩️",
+        title: { ar: "مرتجعات من السائقين", en: "Returns from Drivers" },
+        subtitle: { ar: "المنتجات المرتجعة من الفروع مع السائق", en: "Products drivers brought back from branches" },
+        route: "/car/driver-returns",
+        color: "#ea580c",
+        bg: "linear-gradient(135deg,#ffedd5,#fff7ed)",
+        badge: { ar: "جديد", en: "NEW" },
       },
       {
         id: "cleaning-reports",

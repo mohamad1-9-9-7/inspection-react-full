@@ -210,6 +210,9 @@ const CarsCleaningPage      = lazy(() => import("./pages/car/pages/CleaningPage"
 const CarsLoadingReports    = lazy(() => import("./pages/car/pages/LoadingReportsPage"));
 const CarsCleaningReports   = lazy(() => import("./pages/car/pages/CleaningReportsPage"));
 const CarsFleetKPI          = lazy(() => import("./pages/car/pages/FleetKPI"));
+const CarsDriverTrip        = lazy(() => import("./pages/car/pages/DriverTrip"));
+const CarsDriverQr          = lazy(() => import("./pages/car/pages/DriverQrStickers"));
+const CarsDriverReturns     = lazy(() => import("./pages/car/pages/DriverReturns"));
 
 // ✅✅✅ 🆕 موافقات السيارات (Input + View)
 const CarApprovalsInput = lazy(() => import("./pages/car/pages/Approvals"));
@@ -627,7 +630,7 @@ function ProtectedRoute({ children, allowExpired = false }) {
   }
   if (!isAuthed) {
     // A QR sticker scanned while signed out: come back to it after the sign-in.
-    if (pathname.startsWith("/monitor/qcs/coolers/quick") || pathname.startsWith("/monitor/branch-temp/")) {
+    if (pathname.startsWith("/monitor/qcs/coolers/quick") || pathname.startsWith("/monitor/branch-temp/") || pathname.startsWith("/car/driver/")) {
       try { sessionStorage.setItem("afterLoginPath", pathname); } catch {}
     }
     return <Navigate to="/" replace />;
@@ -2513,6 +2516,11 @@ export default function App() {
         <Route path="/car/loading-reports" element={<ProtectedRoute><CarsLoadingReports /></ProtectedRoute>} />
         <Route path="/car/cleaning-reports" element={<ProtectedRoute><CarsCleaningReports /></ProtectedRoute>} />
         <Route path="/car/fleet-kpi" element={<ProtectedRoute><CarsFleetKPI /></ProtectedRoute>} />
+        {/* 📱 Driver: scan the truck QR → temperatures, destinations, returns */}
+        <Route path="/car/driver" element={<ProtectedRoute><CarsDriverTrip /></ProtectedRoute>} />
+        <Route path="/car/driver/:vehicle" element={<ProtectedRoute><CarsDriverTrip /></ProtectedRoute>} />
+        <Route path="/car/driver-qr" element={<ProtectedRoute><CarsDriverQr /></ProtectedRoute>} />
+        <Route path="/car/driver-returns" element={<ProtectedRoute><CarsDriverReturns /></ProtectedRoute>} />
 
         {/* ✅✅✅ مسارات موافقات السيارات */}
         <Route

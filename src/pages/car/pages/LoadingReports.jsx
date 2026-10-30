@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { listTrips } from "../driverTripApi";
+import DriverTripsPanel from "./DriverTripsPanel";
 
 /* ===================== API base (CRA + Vite safe) ===================== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -425,6 +427,7 @@ function useToasts() {
 /* ====================== Page ====================== */
 export default function LoadingReports() {
   const [docs, setDocs] = useState([]);
+  const [trips, setTrips] = useState([]); // driver trips (DriverTrip.jsx), shown per day
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -440,8 +443,12 @@ export default function LoadingReports() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const rows = await listReportsByType(LOADING_TYPE);
+      const [rows, tripRows] = await Promise.all([
+        listReportsByType(LOADING_TYPE),
+        listTrips().catch((e) => { console.warn("Driver trips load failed:", e); return []; }),
+      ]);
       setDocs(Array.isArray(rows) ? rows : []);
+      setTrips(tripRows);
       ok("Loaded from server");
     } catch (e) {
       console.error(e);
@@ -528,6 +535,19 @@ export default function LoadingReports() {
       months.get(p.m).add(key);
     });
 
+    // a day with driver trips but no checklist still gets its place in the tree
+    trips.forEach((tr) => {
+      const p = parseToISO(tr.reportDate);
+      if (!p) return;
+      const key = `iso:${p.iso}`;
+      if (!dayIndex.has(key)) dayIndex.set(key, []);
+      flat.add(key);
+      if (!years.has(p.y)) years.set(p.y, new Map());
+      const months = years.get(p.y);
+      if (!months.has(p.m)) months.set(p.m, new Set());
+      months.get(p.m).add(key);
+    });
+
     const sortedYears = [...years.keys()].sort((a, b) => b.localeCompare(a));
     const hierarchy = sortedYears.map((y) => {
       const months = years.get(y);
@@ -551,7 +571,20 @@ export default function LoadingReports() {
     });
 
     return { hierarchy, dayIndex, flatDays };
-  }, [records]);
+  }, [records, trips]);
+
+  const tripsByDay = useMemo(() => {
+    const m = new Map();
+    trips.forEach((tr) => {
+      const p = parseToISO(tr.reportDate);
+      if (!p) return;
+      const key = `iso:${p.iso}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(tr);
+    });
+    return m;
+  }, [trips]);
+  const selectedTrips = selectedDayKey ? tripsByDay.get(selectedDayKey) || [] : [];
 
   // Fallback selection
   useEffect(() => {
@@ -965,6 +998,7 @@ export default function LoadingReports() {
                                 <div>📆 {labelTxt}</div>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                   <b>{(dayIndex.get(k) || []).length}</b> <small>record(s)</small>
+                                  {tripsByDay.get(k)?.length > 0 && <small title="Driver trips">📷 {tripsByDay.get(k).length}</small>}
                                   <button
                                     title="Delete day (server)"
                                     style={deleteBtn}
@@ -1010,6 +1044,7 @@ export default function LoadingReports() {
             <div>📆 {labelTxt}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <b>{(dayIndex.get(k) || []).length}</b> <small>record(s)</small>
+                                  {tripsByDay.get(k)?.length > 0 && <small title="Driver trips">📷 {tripsByDay.get(k).length}</small>}
               <button
                 title="Delete day (server)"
                 style={deleteBtn}
@@ -1250,6 +1285,9 @@ export default function LoadingReports() {
                       </table>
                     </div>
                   </div>
+
+                  {/* Driver trips of the day (scanned on the phone) */}
+                  <DriverTripsPanel trips={selectedTrips} />
                 </>
               ) : (
                 <div style={{ textAlign: "center", color: "#6b7280", padding: "4rem 0" }}>

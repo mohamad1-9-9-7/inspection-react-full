@@ -11,7 +11,7 @@
 import { useNavigate } from "react-router-dom";
 import useWedgeScanner from "../utils/useWedgeScanner";
 
-const UNIT_PATHS = ["/monitor/qcs/coolers/quick", "/monitor/branch-temp/"];
+const UNIT_PATHS = ["/monitor/qcs/coolers/quick", "/monitor/branch-temp/", "/car/driver/"];
 
 export function unitPathOf(text) {
   let u;

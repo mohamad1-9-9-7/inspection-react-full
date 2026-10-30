@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
 import { BlankFormPrintButton } from "../../monitor/branches/_shared/blankFormPrint";
+import { DESTINATIONS, LOOKUP_VEHICLES_TYPE, LOOKUP_DRIVERS_TYPE } from "../carConstants";
 
 /**
  * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
@@ -32,9 +33,7 @@ const API_BASE = String(API_BASE_RAW).replace(/\/$/, "");
 
 const TYPE = "cars_loading_inspection";
 
-// Lookup types (saved on server permanently)
-const LOOKUP_VEHICLES_TYPE = "cars_loading_lookup_vehicle_numbers";
-const LOOKUP_DRIVERS_TYPE = "cars_loading_lookup_driver_names";
+// Lookup types (saved on server permanently) + destinations: ../carConstants
 
 async function saveToServer(payload) {
   const res = await fetch(`${API_BASE}/api/reports`, {
@@ -78,24 +77,6 @@ async function saveLookupValue(type, value) {
   if (!res.ok) throw new Error("Server " + res.status + ": " + (await res.text()));
   return res.json().catch(() => ({ ok: true }));
 }
-
-/* =========================
-   DESTINATION (الوجهة) - required dropdown
-========================= */
-const DESTINATIONS = [
-  "ABU DHABI BUTCHERY",
-  "AL AIN BUTCHERY",
-  "AL BARSHA BUTCHERY",
-  "JUBAIL MARKET BUTCHERY",
-  "THE MARKET",
-  "DUBAI",
-  "SHARJAH",
-  "AJMAN",
-  "RAS AL KHAIMAH",
-  "FUJAIRAH",
-  "UMM AL QUWAIN",
-  "HOME DELIVERY",
-];
 
 /* =========================
    YES/NO fields (table)
