@@ -700,12 +700,21 @@ export default function LoadingReports() {
   const handleDeleteByDayKey = async (key) => {
     const isISO = key.startsWith("iso:");
     const label = isISO ? displayDate(key.slice(4)) : key.slice(4);
-    if (!window.confirm(`Delete all server records for: ${label}?`)) return;
 
+    // the day = its checklist sheet(s) AND the driver trips filed on it
     const vehicles = dayIndex.get(key) || [];
-    // driver trips are not part of the checklist record — the day delete leaves them
-    const toDeleteIds = [...new Set(vehicles.filter(v => !v.__trip).map(v => v.__docId).filter(Boolean))];
-    if (!toDeleteIds.length) return;
+    const sheetIds = [...new Set(vehicles.filter(v => !v.__trip).map(v => v.__docId).filter(Boolean))];
+    const tripIds = [...new Set(vehicles.filter(v => v.__trip).map(v => v.__tripRaw?.id).filter(Boolean))];
+    const toDeleteIds = [...sheetIds, ...tripIds];
+    if (!toDeleteIds.length) {
+      info("Nothing saved on the server for this day yet");
+      return;
+    }
+    const what = [
+      sheetIds.length ? `${sheetIds.length} checklist sheet(s)` : "",
+      tripIds.length ? `${tripIds.length} driver trip(s)` : "",
+    ].filter(Boolean).join(" + ");
+    if (!window.confirm(`Delete ${what} for: ${label}?\nThis cannot be undone.`)) return;
 
     try {
       for (const id of toDeleteIds) {
@@ -717,6 +726,21 @@ export default function LoadingReports() {
     } catch (e) {
       console.error(e);
       err("Failed to delete from server");
+    }
+  };
+
+  /* ===== Delete one driver trip (from the vehicle popup) ===== */
+  const handleDeleteTrip = async (tr) => {
+    if (!tr?.id) return;
+    const who = `${tr.vehicleNo || ""}${tr.driverName ? ` · ${tr.driverName}` : ""}${tr.loading?.time ? ` · ${tr.loading.time}` : ""}`;
+    if (!window.confirm(`Delete this driver trip (${who})?\nIts arrivals, photos and returns go with it. This cannot be undone.`)) return;
+    try {
+      await deleteReportById(tr.id);
+      await fetchAll();
+      ok("Trip deleted");
+    } catch (e) {
+      console.error(e);
+      err("Failed to delete the trip");
     }
   };
 
@@ -1319,6 +1343,7 @@ export default function LoadingReports() {
                         normYesNo={normYesNo}
                         durationOf={durationOf}
                         onPhoto={(photos, index) => setViewer({ photos, index })}
+                        onDeleteTrip={handleDeleteTrip}
                       />
                     </div>
                   </div>

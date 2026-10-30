@@ -35,8 +35,9 @@ const fmtDate = (s) => {
   return d ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(d) : s || "—";
 };
 
-/** plate → [expiryDate] from the approvals register (one record, items[]). */
-function useApprovalExpiries() {
+/** plate → [DM card] from the approvals register (/car/approvals-view:
+    one record, items[]), the card in force (latest expiry) first. */
+function useApprovals() {
   const [map, setMap] = useState(() => new Map());
   useEffect(() => {
     let alive = true;
@@ -44,19 +45,24 @@ function useApprovalExpiries() {
       .then((rows) => {
         if (!alive) return;
         const m = new Map();
+        const seen = new Set();
         rows.forEach((r) => {
           const p = payloadOf(r);
           const items = p?.items || p?.payload?.items || [];
           (Array.isArray(items) ? items : []).forEach((it) => {
             const k = plateKey(it?.vehicleNo);
-            const exp = String(it?.expiryDate || "").trim();
-            if (!k || !exp) return;
+            if (!k) return;
+            const dup = `${k}|${it.tradeLicense}|${it.issueDate}|${it.expiryDate}`;
+            if (seen.has(dup)) return;
+            seen.add(dup);
+            const imageUrls = Array.isArray(it.imageUrls)
+              ? it.imageUrls.filter(Boolean)
+              : it.imageUrl ? [it.imageUrl] : [];
             if (!m.has(k)) m.set(k, []);
-            if (!m.get(k).includes(exp)) m.get(k).push(exp);
+            m.get(k).push({ ...it, imageUrls });
           });
         });
-        // latest expiry first — that is the approval in force
-        m.forEach((list) => list.sort((a, b) => (parseDate(b) || 0) - (parseDate(a) || 0)));
+        m.forEach((list) => list.sort((a, b) => (parseDate(b.expiryDate) || 0) - (parseDate(a.expiryDate) || 0)));
         setMap(m);
       })
       .catch(() => {});
@@ -72,17 +78,47 @@ function expiryTone(days) {
   return { bg: "#dcfce7", fg: "#166534", bd: "#86efac", text: `${days} d left` };
 }
 
-function ExpiryBadge({ list, big = false }) {
-  if (!list?.length) {
-    return <span style={{ ...badge("#f1f5f9", "#64748b", "#cbd5e1"), fontSize: big ? 14 : undefined }}>No approval on file</span>;
+function ExpiryBadge({ cards }) {
+  if (!cards?.length) {
+    return <span className="vdc-badge" style={badge("#f1f5f9", "#64748b", "#cbd5e1")}>No DM card on file</span>;
   }
-  const d = daysLeft(list[0]);
-  const tone = expiryTone(d);
+  const tone = expiryTone(daysLeft(cards[0].expiryDate));
   return (
-    <span style={{ ...badge(tone.bg, tone.fg, tone.bd), fontSize: big ? 14 : undefined }}>
-      🪪 Approval expires {fmtDate(list[0])}{tone.text ? ` · ${tone.text}` : ""}
+    <span className="vdc-badge" style={badge(tone.bg, tone.fg, tone.bd)}>
+      🪪 DM card expires {fmtDate(cards[0].expiryDate)}{tone.text ? ` · ${tone.text}` : ""}
     </span>
   );
+}
+
+/* Everything /car/approvals-view keeps about the truck's DM card(s). */
+function DmCards({ cards, onPhoto }) {
+  if (!cards?.length) {
+    return <div style={{ color: "#64748b", fontWeight: 700 }}>No DM card on file for this vehicle — add it in Approvals.</div>;
+  }
+  return cards.map((c, i) => {
+    const tone = expiryTone(daysLeft(c.expiryDate));
+    return (
+      <div key={i} style={{ border: `1.5px solid ${tone.bd}`, borderRadius: 12, padding: 12, marginBottom: 10, background: i ? "#fff" : tone.bg + "66" }}>
+        {cards.length > 1 && (
+          <div style={{ fontWeight: 900, color: "#475569", marginBottom: 8 }}>{i === 0 ? "Current card" : "Previous card"}</div>
+        )}
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 8 }}>
+          {kv("Company", c.company)}
+          {kv("Emirate", c.emirate)}
+          {kv("Trade license", c.tradeLicense)}
+          {kv("Permit type", c.permitType)}
+          {kv("Food type", c.foodType)}
+          {kv("Issue date", fmtDate(c.issueDate))}
+          {kv("Expiry date", fmtDate(c.expiryDate), tone.fg)}
+          {kv("Days left", tone.text || "—", tone.fg)}
+        </div>
+        {c.remarks && <div style={{ color: "#475569", marginBottom: 8 }}>📝 {c.remarks}</div>}
+        {c.imageUrls.length > 0 && (
+          <Thumbs photos={c.imageUrls.map((src) => ({ src, label: `DM card ${c.vehicleNo || ""}` }))} onPhoto={onPhoto} />
+        )}
+      </div>
+    );
+  });
 }
 
 const badge = (bg, fg, bd) => ({
@@ -127,8 +163,8 @@ function Thumbs({ photos, onPhoto }) {
       {photos.map((p, i) => (
         <button key={p.src + i} type="button" title={p.label} onClick={() => onPhoto(photos, i)}
           style={{ padding: 0, border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", cursor: "zoom-in" }}>
-          <img src={String(p.src).startsWith("http") ? thumbUrl(p.src, 160) : p.src} alt={p.label}
-            style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 7, display: "block" }} />
+          <img src={String(p.src).startsWith("http") ? thumbUrl(p.src, 260) : p.src} alt={p.label}
+            style={{ width: 128, height: 128, objectFit: "cover", borderRadius: 7, display: "block" }} />
         </button>
       ))}
     </div>
@@ -143,7 +179,7 @@ const Loc = ({ loc, label }) =>
     </a>
   ) : <span style={{ color: "#94a3b8" }}>—</span>;
 
-function VehicleModal({ car, expiries, viParams, normYesNo, durationOf, onPhoto, onClose }) {
+function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, onDeleteTrip, onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -156,20 +192,24 @@ function VehicleModal({ car, expiries, viParams, normYesNo, durationOf, onPhoto,
   /* into <body>: the reports page's .panel has backdrop-filter, which would
      make a fixed layer inside it fill only the panel instead of the screen */
   return createPortal(
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9000, fontFamily: "Inter, ui-sans-serif, system-ui, Arial", color: "#0f172a", fontSize: 14, background: "rgba(2,6,23,.55)", display: "grid", placeItems: "center", padding: 14 }}>
+    <div className="vdm" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9000, fontFamily: "Inter, ui-sans-serif, system-ui, Arial", color: "#0f172a", background: "rgba(2,6,23,.55)", display: "grid", placeItems: "center", padding: 14 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: "min(980px, 100%)", maxHeight: "90vh", overflow: "auto", background: "#fff", borderRadius: 18,
+        width: "min(1960px, 98vw)", maxHeight: "96vh", overflow: "auto", background: "#fff", borderRadius: 18,
         boxShadow: "0 30px 60px rgba(2,6,23,.35)", textAlign: "left",
       }}>
         <div style={{ position: "sticky", top: 0, zIndex: 2, background: "linear-gradient(135deg,#e0f2fe,#eef2ff)", padding: "14px 16px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderBottom: "1px solid #e2e8f0" }}>
           <TruckIcon color="#0284c7" />
-          <span style={{ fontWeight: 1000, fontSize: 20, border: "2px solid #0f172a", borderRadius: 8, padding: "2px 12px", background: "#fefce8" }}>{car.plate}</span>
-          <ExpiryBadge list={expiries} big />
+          <span style={{ fontWeight: 1000, fontSize: "1.6em", border: "2px solid #0f172a", borderRadius: 8, padding: "2px 12px", background: "#fefce8" }}>{car.plate}</span>
+          <ExpiryBadge cards={cards} />
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", fontWeight: 900, cursor: "pointer" }}>✕ Close</button>
         </div>
 
         <div style={{ padding: 16 }}>
+          <Section title="🪪 DM card (Approvals)" bg="#f0fdf4" tone="#166534">
+            <DmCards cards={cards} onPhoto={onPhoto} />
+          </Section>
+
           {checklist.map((r, i) => {
             const dur = durationOf(r);
             return (
@@ -255,6 +295,18 @@ function VehicleModal({ car, expiries, viParams, normYesNo, durationOf, onPhoto,
                 <div style={{ color: "#64748b", fontWeight: 700, fontSize: ".85em", marginBottom: 6 }}>Photos</div>
                 <Thumbs photos={photos} onPhoto={onPhoto} />
                 {tr.notes && <div style={{ marginTop: 8, color: "#475569" }}>📝 {tr.notes}</div>}
+                {onDeleteTrip && tr.id && (
+                  <div style={{ marginTop: 12, textAlign: "right" }}>
+                    <button
+                      type="button"
+                      data-delete-action="true"
+                      onClick={() => onDeleteTrip(tr)}
+                      style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", fontWeight: 900, cursor: "pointer" }}
+                    >
+                      🗑 Delete this trip
+                    </button>
+                  </div>
+                )}
               </Section>
             );
           })}
@@ -267,8 +319,20 @@ function VehicleModal({ car, expiries, viParams, normYesNo, durationOf, onPhoto,
 const td ={ padding: "7px 8px", borderBottom: "1px solid #f1f5f9", textAlign: "left", verticalAlign: "top" };
 
 /* ───────────── the cards ───────────── */
-export default function VehicleDayCards({ vehicles, viParams, normYesNo, durationOf, onPhoto }) {
-  const approvals = useApprovalExpiries();
+/* Bigger type. Under #root every element is forced to 14px !important
+   (globals.css); a more specific selector wins, and --app-fs keeps the
+   user's text-size slider working. The popup sits in <body>, outside it. */
+const CSS = `
+#root .vdc, #root .vdc * { font-size: calc(16px * var(--app-fs, 1)) !important; }
+#root .vdc .vdc-plate { font-size: calc(20px * var(--app-fs, 1)) !important; }
+#root .vdc .vdc-badge, #root .vdc .vdc-badge * { font-size: calc(14px * var(--app-fs, 1)) !important; }
+.vdm { font-size: calc(18px * var(--app-fs, 1)); font-weight: 700; }
+.vdm .vdc-badge { font-size: calc(16px * var(--app-fs, 1)); }
+.vdm img { max-width: none; }
+`;
+
+export default function VehicleDayCards({ vehicles, viParams, normYesNo, durationOf, onPhoto, onDeleteTrip }) {
+  const approvals = useApprovals();
   const [open, setOpen] = useState(null); // plate key
 
   const cars = useMemo(() => {
@@ -289,7 +353,8 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 12, padding: 12 }}>
+      <style>{CSS}</style>
+      <div className="vdc" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12, padding: 12 }}>
         {cars.map((c) => {
           const trips = c.rows.filter((r) => r.__trip);
           const checks = c.rows.filter((r) => !r.__trip);
@@ -301,7 +366,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
           }).length, 0);
           const returns = trips.reduce((n, r) => n + (r.__tripRaw?.destinations || []).reduce((s, d) => s + (d.returns?.length || 0), 0), 0);
           const exp = approvals.get(c.key);
-          const days = exp?.length ? daysLeft(exp[0]) : null;
+          const days = exp?.length ? daysLeft(exp[0].expiryDate) : null;
           const color = days != null && days < 0 ? "#dc2626" : anyHigh || deviations ? "#d97706" : "#0284c7";
           const drivers = [...new Set(c.rows.map((r) => r.__tripRaw?.driverName || r.driverName).filter(Boolean))];
           return (
@@ -312,7 +377,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <TruckIcon color={color} />
-                <span style={{ fontWeight: 1000, fontSize: 17, border: "2px solid #0f172a", borderRadius: 7, padding: "1px 10px", background: "#fefce8", color: "#0f172a" }}>
+                <span className="vdc-plate" style={{ fontWeight: 1000, border: "2px solid #0f172a", borderRadius: 7, padding: "1px 10px", background: "#fefce8", color: "#0f172a" }}>
                   {c.plate}
                 </span>
               </div>
@@ -324,7 +389,7 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
                 {deviations > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>⚠ {deviations}</span>}
                 {returns > 0 && <span style={badge("#fff7ed", "#9a3412", "#fdba74")}>↩️ {returns}</span>}
               </div>
-              <ExpiryBadge list={exp} />
+              <ExpiryBadge cards={exp} />
             </button>
           );
         })}
@@ -333,11 +398,12 @@ export default function VehicleDayCards({ vehicles, viParams, normYesNo, duratio
       {current && (
         <VehicleModal
           car={current}
-          expiries={approvals.get(current.key)}
+          cards={approvals.get(current.key)}
           viParams={viParams}
           normYesNo={normYesNo}
           durationOf={durationOf}
           onPhoto={onPhoto}
+          onDeleteTrip={onDeleteTrip}
           onClose={() => setOpen(null)}
         />
       )}
