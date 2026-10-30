@@ -36,6 +36,7 @@ import {
 
 const T = {
   ar: {
+    step1: "السيارة", step2: "التحميل", step3: "التوصيل",
     title: "رحلة السائق", sub: "امسح باركود السيارة وسجّل الحرارة عند التحميل وعند كل وصول",
     scanTruck: "📷 امسح باركود السيارة", orPick: "أو اختر رقم السيارة", go: "متابعة", vehicle: "السيارة",
     change: "تغيير السيارة", stickers: "🏷️ ملصقات QR للسيارات", back: "رجوع",
@@ -57,6 +58,7 @@ const T = {
     unknownVeh: "السيارة غير موجودة في القائمة — تأكد من الرقم", tripOf: "رحلة",
   },
   en: {
+    step1: "Truck", step2: "Loading", step3: "Delivery",
     title: "Driver Trip", sub: "Scan the truck, record the temperature at loading and at every arrival",
     scanTruck: "📷 Scan truck barcode", orPick: "or pick the vehicle", go: "Continue", vehicle: "Vehicle",
     change: "Change vehicle", stickers: "🏷️ Truck QR stickers", back: "Back",
@@ -203,7 +205,7 @@ function StampedTime({ value, t, icon = "🕐" }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: "block", minWidth: 0 }}>
-      <span style={st.label}>{label}</span>
+      <span className="dt-label" style={st.label}>{label}</span>
       {children}
     </label>
   );
@@ -386,7 +388,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
             </Field>
           </div>
           <div style={st.block}>
-            <span style={st.label}>{t.photos}</span>
+            <span className="dt-label" style={st.label}>{t.photos}</span>
             <PhotoStrip photos={draft.photos} onChange={(photos) => setDraft({ ...draft, photos })} t={t} />
           </div>
           <ReturnsEditor
@@ -402,7 +404,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
             </Field>
           </div>
           {err && <div style={st.err}>{err}</div>}
-          <button type="button" onClick={save} disabled={disabled} style={{ ...st.btn("primary"), width: "100%", padding: 14 }}>
+          <button type="button" className="dt-big" onClick={save} disabled={disabled} style={{ ...st.btn("primary"), width: "100%", minHeight: 56 }}>
             {t.saveStop}
           </button>
         </div>
@@ -608,26 +610,44 @@ export default function DriverTrip() {
     [trip]
   );
 
+  const step = !vehicle ? 0 : trip && !form ? 2 : 1;
+
   /* ───────── render ───────── */
   return (
-    <main dir={dir} style={st.shell}>
+    <main dir={dir} className="dt" style={st.shell}>
+      <style>{DT_CSS}</style>
       <div style={st.wrap}>
         <header style={st.header}>
-          <div style={st.brandIcon}>🚚</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 1000, fontSize: 17 }}>{t.title}</div>
-            <div style={{ color: "#64748b", fontWeight: 700, fontSize: 12 }}>{t.sub}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={st.brandIcon}>🚚</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="dt-title">{t.title}</div>
+              <div className="dt-sub" style={{ color: "#bfdbfe", fontWeight: 600 }}>{t.sub}</div>
+            </div>
+            {!hideSectionLangToggle() && (
+              <button type="button" style={st.headBtn} onClick={() => {
+                const n = lang === "ar" ? "en" : "ar";
+                setLang(n);
+                try { localStorage.setItem("cars_hub_lang", n); } catch {}
+              }}>
+                {lang === "ar" ? "EN" : "ع"}
+              </button>
+            )}
+            <button type="button" style={st.headBtn} onClick={() => navigate("/cars")}>{t.back}</button>
           </div>
-          {!hideSectionLangToggle() && (
-            <button type="button" style={st.btn("ghost")} onClick={() => {
-              const n = lang === "ar" ? "en" : "ar";
-              setLang(n);
-              try { localStorage.setItem("cars_hub_lang", n); } catch {}
-            }}>
-              {lang === "ar" ? "EN" : "ع"}
-            </button>
-          )}
-          <button type="button" style={st.btn("ghost")} onClick={() => navigate("/cars")}>{t.back}</button>
+
+          {/* where the driver is: truck → loading → delivery */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
+            {[t.step1, t.step2, t.step3].map((label, i) => (
+              <React.Fragment key={label}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                  <span style={st.stepDot(i < step, i === step)}>{i < step ? "✓" : i + 1}</span>
+                  <span className="dt-sub" style={{ fontWeight: 800, color: i <= step ? "#fff" : "#93c5fd", whiteSpace: "nowrap" }}>{label}</span>
+                </div>
+                {i < 2 && <span style={{ flex: 1, height: 3, borderRadius: 3, background: i < step ? "#4ade80" : "rgba(255,255,255,.22)" }} />}
+              </React.Fragment>
+            ))}
+          </div>
         </header>
 
         {msg && <div style={st.msg(msg.kind)}>{msg.text}</div>}
@@ -635,7 +655,7 @@ export default function DriverTrip() {
         {/* ── 1. no vehicle yet ── */}
         {!vehicle && (
           <section style={st.card}>
-            <button type="button" onClick={() => setScanOpen(true)} style={st.bigScan}>
+            <button type="button" onClick={() => setScanOpen(true)} className="dt-big" style={st.bigScan}>
               {t.scanTruck}
             </button>
             <div style={{ textAlign: "center", color: "#64748b", fontWeight: 800, margin: "14px 0 8px" }}>{t.orPick}</div>
@@ -655,7 +675,7 @@ export default function DriverTrip() {
         {/* ── vehicle strip ── */}
         {vehicle && (
           <section style={{ ...st.card, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={st.plate}>{vehicle}</span>
+            <span className="dt-plate" style={st.plate}>{vehicle}</span>
             {trip && <span style={st.pill(trip.status === "closed" ? "#64748b" : "#16a34a")}>{trip.status === "closed" ? t.ended : t.open}</span>}
             <div style={{ flex: 1 }} />
             <button type="button" onClick={() => setScanOpen(true)} style={st.btn("ghost")}>📷</button>
@@ -668,7 +688,7 @@ export default function DriverTrip() {
         {/* ── 2. loading form ── */}
         {vehicle && form && (
           <section style={st.card}>
-            <div style={st.band}>🧊 {t.loading}</div>
+            <div className="dt-band" style={st.band}><span style={st.bandIcon("#0ea5e9")}>🧊</span>{t.loading}</div>
             <LocationButton
               value={form.location}
               onStamp={(time, reportDate) => setForm((f) => ({ ...f, time, reportDate }))}
@@ -688,16 +708,19 @@ export default function DriverTrip() {
                 {(() => {
                   const emp = employeeOf(form.driverEmpNo);
                   const typed = !!normalizeEmpNo(form.driverEmpNo);
+                  /* a box, not an <input>: a long name wraps instead of being cut */
                   return (
-                    <input
-                      readOnly
-                      tabIndex={-1}
-                      value={emp ? emp.name : typed ? t.noEmp : ""}
+                    <div
+                      aria-readonly="true"
                       style={{
-                        ...st.input, background: "#f1f5f9", fontWeight: 800, cursor: "not-allowed",
-                        color: emp ? "#0f172a" : "#b91c1c",
+                        ...st.input, height: "auto", display: "flex", alignItems: "center", gap: 8,
+                        whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.35, cursor: "not-allowed",
+                        background: emp ? "#f0fdf4" : "#f1f5f9", borderColor: emp ? "#86efac" : typed ? "#fecaca" : "#cbd5e1",
+                        fontWeight: 800, color: emp ? "#14532d" : "#b91c1c",
                       }}
-                    />
+                    >
+                      {emp ? <>🔒 {emp.name}</> : typed ? t.noEmp : <span style={{ color: "#94a3b8", fontWeight: 600 }}>—</span>}
+                    </div>
                   );
                 })()}
               </Field>
@@ -719,12 +742,12 @@ export default function DriverTrip() {
             </div>
 
             <div style={st.block}>
-              <span style={st.label}>{t.photos}</span>
+              <span className="dt-label" style={st.label}>{t.photos}</span>
               <PhotoStrip photos={form.photos} onChange={(photos) => setForm({ ...form, photos })} t={t} />
             </div>
 
             <div style={st.block}>
-              <span style={st.label}>{t.dests}</span>
+              <span className="dt-label" style={st.label}>{t.dests}</span>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {DESTINATIONS.map((d) => {
                   const on = form.dests.includes(d);
@@ -748,9 +771,12 @@ export default function DriverTrip() {
               </Field>
             </div>
 
-            <button type="button" disabled={busy} onClick={submitForm} style={{ ...st.btn("primary"), width: "100%", padding: 15, fontSize: 16 }}>
-              {busy ? t.saving : t.startTrip}
-            </button>
+            {/* stays in reach however long the form gets */}
+            <div style={st.saveBar}>
+              <button type="button" className="dt-big" disabled={busy} onClick={submitForm} style={{ ...st.btn("primary"), width: "100%", minHeight: 60 }}>
+                {busy ? t.saving : t.startTrip}
+              </button>
+            </div>
           </section>
         )}
 
@@ -758,7 +784,7 @@ export default function DriverTrip() {
         {vehicle && trip && !form && (
           <>
             <section style={st.card}>
-              <div style={st.band}>🧊 {t.loading}</div>
+              <div className="dt-band" style={st.band}><span style={st.bandIcon("#0ea5e9")}>🧊</span>{t.loading}</div>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontWeight: 800 }}>
                 <span>👤 {trip.driverEmpNo ? `${trip.driverEmpNo} · ` : ""}{trip.driverName}</span>
                 <span>📅 {trip.reportDate}</span>
@@ -791,7 +817,7 @@ export default function DriverTrip() {
             </section>
 
             <section style={st.card}>
-              <div style={st.band}>📍 {t.stops}</div>
+              <div className="dt-band" style={st.band}><span style={st.bandIcon("#16a34a")}>📍</span>{t.stops}</div>
               {trip.destinations.map((d) => (
                 <StopCard
                   key={d.id + (d.arrival?.savedAt || "")}
@@ -857,71 +883,112 @@ export default function DriverTrip() {
   );
 }
 
-/* ───────────────────────── styles (Soft Sky) ───────────────────────── */
+/* ───────────────────────── styles ─────────────────────────
+   Type scale: everything under #root is forced to 14px !important
+   (globals.css); these more specific rules win and keep following the
+   Aa text-size slider (--app-fs). */
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const DT_CSS = `
+#root .dt, #root .dt * { font-size: ${fs(16)}; }
+#root .dt .dt-title { font-size: ${fs(21)}; font-weight: 900; color: #fff; letter-spacing: -.01em; }
+#root .dt .dt-sub { font-size: ${fs(13)}; }
+#root .dt .dt-band, #root .dt .dt-band * { font-size: ${fs(17)}; }
+#root .dt .dt-label { font-size: ${fs(13)}; }
+#root .dt .dt-plate { font-size: ${fs(24)}; }
+#root .dt .dt-big, #root .dt .dt-big * { font-size: ${fs(19)}; }
+.dt input:focus, .dt select:focus {
+  outline: none; border-color: #2563eb !important; box-shadow: 0 0 0 4px rgba(37,99,235,.14);
+}
+.dt button { transition: transform .08s ease, filter .15s ease, box-shadow .15s ease; }
+.dt button:active:not(:disabled) { transform: scale(.98); }
+.dt button:disabled { opacity: .55; cursor: not-allowed; }
+`;
+
 const st = {
   shell: {
     minHeight: "100vh",
-    background: "linear-gradient(180deg,#f0f9ff 0%,#eef2ff 100%)",
+    background: "radial-gradient(120% 60% at 50% 0%, #e0ecff 0%, #f4f7fb 55%, #f4f7fb 100%)",
     fontFamily: 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
     color: "#0f172a",
-    padding: "12px 12px 40px",
+    padding: "12px 12px 48px",
   },
-  wrap: { maxWidth: 760, margin: "0 auto" },
+  wrap: { maxWidth: 720, margin: "0 auto" },
   header: {
-    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 12,
-    background: "rgba(255,255,255,.9)", border: "1px solid #e2e8f0", borderRadius: 16,
-    boxShadow: "0 10px 26px rgba(2,132,199,.08)",
+    padding: "16px 16px 14px", marginBottom: 14, borderRadius: 22, color: "#fff",
+    background: "linear-gradient(135deg,#0b1f3a 0%,#1e3a8a 60%,#2563eb 100%)",
+    boxShadow: "0 18px 36px rgba(30,58,138,.28)",
   },
+  headBtn: {
+    minHeight: 40, padding: "6px 12px", borderRadius: 11, cursor: "pointer", fontWeight: 900, fontFamily: "inherit",
+    background: "rgba(255,255,255,.12)", color: "#fff", border: "1px solid rgba(255,255,255,.28)",
+  },
+  stepDot: (done, now) => ({
+    width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 900, flexShrink: 0,
+    background: done ? "#22c55e" : now ? "#fff" : "rgba(255,255,255,.14)",
+    color: done ? "#fff" : now ? "#1e3a8a" : "#93c5fd",
+    boxShadow: now ? "0 0 0 4px rgba(255,255,255,.22)" : "none",
+  }),
   brandIcon: {
-    width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", fontSize: 22,
-    background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "#fff", flexShrink: 0,
+    width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", fontSize: 24,
+    background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", flexShrink: 0,
   },
   card: {
-    background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 14, marginBottom: 12,
-    boxShadow: "0 8px 22px rgba(2,132,199,.07)",
+    background: "#fff", border: "1px solid #e6ebf2", borderRadius: 20, padding: 16, marginBottom: 14,
+    boxShadow: "0 1px 2px rgba(15,23,42,.04), 0 12px 28px rgba(15,23,42,.06)",
   },
   band: {
-    fontWeight: 1000, color: "#0c4a6e", background: "#e0f2fe", borderRadius: 10,
-    padding: "8px 12px", marginBottom: 12,
+    display: "flex", alignItems: "center", gap: 10, fontWeight: 900, color: "#0f172a",
+    padding: "0 2px 12px", marginBottom: 14, borderBottom: "1px solid #eef2f7",
   },
-  label: { display: "block", fontWeight: 800, color: "#0c4a6e", marginBottom: 5, fontSize: 12 },
+  bandIcon: (c) => ({
+    width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", flexShrink: 0,
+    background: `${c}18`, border: `1px solid ${c}40`,
+  }),
+  label: { display: "block", fontWeight: 800, color: "#475569", marginBottom: 6, letterSpacing: ".01em" },
   input: {
-    width: "100%", minHeight: 46, padding: "10px 12px", border: "1.5px solid #cbd5e1", borderRadius: 12,
-    background: "#fff", color: "#0f172a", boxSizing: "border-box", fontFamily: "inherit", fontSize: 16,
+    width: "100%", minHeight: 52, padding: "11px 14px", border: "1.5px solid #d6dee8", borderRadius: 14,
+    background: "#fbfcfe", color: "#0f172a", boxSizing: "border-box", fontFamily: "inherit",
   },
   inputWarn: { borderColor: "#f59e0b", background: "#fffbeb" },
-  grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10, marginBottom: 10 },
+  grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12, marginBottom: 14 },
   grid3: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 8, marginBottom: 8 },
-  block: { marginBottom: 12 },
+  block: { marginBottom: 16 },
   bigScan: {
-    width: "100%", padding: "26px 14px", borderRadius: 18, border: "none", cursor: "pointer",
-    background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "#fff", fontWeight: 1000, fontSize: 20,
-    boxShadow: "0 16px 30px rgba(37,99,235,.28)", fontFamily: "inherit",
+    width: "100%", padding: "30px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+    background: "linear-gradient(135deg,#2563eb,#1e3a8a)", color: "#fff", fontWeight: 1000,
+    boxShadow: "0 18px 34px rgba(37,99,235,.30)", fontFamily: "inherit",
   },
   plate: {
-    fontWeight: 1000, fontSize: 18, letterSpacing: ".5px", padding: "6px 14px", borderRadius: 10,
-    background: "#fefce8", border: "2px solid #0f172a",
+    fontWeight: 1000, letterSpacing: ".06em", padding: "4px 16px", borderRadius: 10,
+    background: "linear-gradient(180deg,#fffbea,#fef3c7)", border: "2.5px solid #0f172a",
+    boxShadow: "inset 0 -2px 0 rgba(15,23,42,.08)",
   },
-  pill: (c) => ({ padding: "4px 10px", borderRadius: 999, background: `${c}18`, color: c, fontWeight: 900, border: `1px solid ${c}55` }),
+  pill: (c) => ({ padding: "5px 12px", borderRadius: 999, background: `${c}14`, color: c, fontWeight: 900, border: `1px solid ${c}44` }),
   chip: (on) => ({
-    padding: "10px 14px", borderRadius: 999, cursor: "pointer", fontWeight: 800, fontFamily: "inherit",
-    border: on ? "1.5px solid #0284c7" : "1.5px solid #cbd5e1",
-    background: on ? "linear-gradient(180deg,#0ea5e9,#0284c7)" : "#fff",
+    padding: "11px 16px", borderRadius: 14, cursor: "pointer", fontWeight: 800, fontFamily: "inherit",
+    border: on ? "1.5px solid #2563eb" : "1.5px solid #d6dee8",
+    background: on ? "linear-gradient(180deg,#3b82f6,#2563eb)" : "#fff",
     color: on ? "#fff" : "#334155",
+    boxShadow: on ? "0 6px 14px rgba(37,99,235,.25)" : "none",
   }),
   btn: (kind) => {
     const k = {
-      primary: { background: "linear-gradient(180deg,#22c55e,#16a34a)", color: "#fff", border: "1px solid #16a34a" },
-      ghost: { background: "#fff", color: "#0f172a", border: "1.5px solid #cbd5e1" },
+      primary: { background: "linear-gradient(180deg,#22c55e,#15803d)", color: "#fff", border: "1px solid #15803d", boxShadow: "0 10px 22px rgba(21,128,61,.25)" },
+      ghost: { background: "#fff", color: "#0f172a", border: "1.5px solid #d6dee8" },
       okGhost: { background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac" },
       warn: { background: "#fff7ed", color: "#9a3412", border: "1.5px dashed #fdba74" },
       danger: { background: "#fef2f2", color: "#b91c1c", border: "1.5px solid #fecaca" },
-      dark: { background: "#0f172a", color: "#fff", border: "1px solid #0f172a" },
+      dark: { background: "linear-gradient(180deg,#1e293b,#0f172a)", color: "#fff", border: "1px solid #0f172a" },
     }[kind] || {};
     return {
-      minHeight: 44, padding: "8px 14px", borderRadius: 12, cursor: "pointer", fontWeight: 900,
+      minHeight: 48, padding: "8px 16px", borderRadius: 14, cursor: "pointer", fontWeight: 900,
       fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, ...k,
     };
+  },
+  saveBar: {
+    position: "sticky", bottom: 10, zIndex: 20, marginTop: 6, padding: 8, borderRadius: 20,
+    background: "rgba(255,255,255,.88)", backdropFilter: "blur(8px)", border: "1px solid #e6ebf2",
+    boxShadow: "0 -8px 24px rgba(15,23,42,.08)",
   },
   thumb: { width: 72, height: 72, objectFit: "cover", borderRadius: 10, border: "1px solid #e2e8f0", display: "block" },
   thumbX: {
