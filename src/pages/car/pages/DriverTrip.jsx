@@ -252,8 +252,9 @@ function LoadingEndEditor({ start, value, busy, t, onSave, onError }) {
 
 /* ───────────────────────── one destination ───────────────────────── */
 
-/* Also the trip's END point: same fields, its own save label (saveLabel). */
-function StopCard({ stop, open, onToggle, onSave, t, disabled, saveLabel }) {
+/* Also the trip's END point: same fields minus the transfer note
+   (noTransfer), its own save label (saveLabel). */
+function StopCard({ stop, open, onToggle, onSave, t, disabled, saveLabel, noTransfer = false }) {
   const [draft, setDraft] = useState(() => ({
     time: stop.arrival?.time || "",
     date: stop.arrival?.date || "",
@@ -315,14 +316,16 @@ function StopCard({ stop, open, onToggle, onSave, t, disabled, saveLabel }) {
             <span className="dt-label" style={st.label}>{t.photos}</span>
             <PhotoStrip photos={draft.photos} onChange={(photos) => setDraft({ ...draft, photos })} t={t} />
           </div>
-          <div style={st.transferBox}>
-            <span className="dt-label" style={{ ...st.label, color: "#9a3412" }}>📄 {t.transferNote}</span>
-            <PhotoStrip
-              photos={draft.transferPhotos}
-              onChange={(transferPhotos) => setDraft({ ...draft, transferPhotos })}
-              t={{ ...t, addPhoto: t.addTransfer }}
-            />
-          </div>
+          {!noTransfer && (
+            <div style={st.transferBox}>
+              <span className="dt-label" style={{ ...st.label, color: "#9a3412" }}>📄 {t.transferNote}</span>
+              <PhotoStrip
+                photos={draft.transferPhotos}
+                onChange={(transferPhotos) => setDraft({ ...draft, transferPhotos })}
+                t={{ ...t, addPhoto: t.addTransfer }}
+              />
+            </div>
+          )}
           <div style={st.block}>
             <Field label={t.notes}>
               <input value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} style={st.input} />
@@ -811,6 +814,7 @@ export default function DriverTrip() {
                     onSave={saveEnd}
                     t={t}
                     saveLabel={t.saveEnd}
+                    noTransfer
                     disabled={busy || trip.status === "closed"}
                   />
                 )}
