@@ -40,6 +40,7 @@ const T = {
     scanTruck: "📷 امسح باركود السيارة", orPick: "أو اختر رقم السيارة", go: "متابعة", vehicle: "السيارة",
     change: "تغيير السيارة", stickers: "🏷️ ملصقات QR للسيارات", back: "رجوع",
     loading: "التحميل", driver: "اسم السائق", date: "التاريخ", time: "الوقت", temp: "حرارة السيارة °C",
+    stampHint: "يُسجَّل تلقائياً عند الضغط على 📍 تحديد موقعي", nStamp: "اضغط 📍 تحديد موقعي لتسجيل الوقت",
     startLoad: "بداية التحميل", endLoad: "انتهاء التحميل", setEnd: "حفظ وقت الانتهاء", endBefore: "وقت الانتهاء قبل وقت البداية",
     photos: "صور الحرارة", addPhoto: "📸 صورة", uploading: "عم يرفع…", dests: "إلى أين؟ (يمكن اختيار أكثر من وجهة)",
     myLoc: "📍 تحديد موقعي", locating: "عم يحدد الموقع…", locOk: "✅ تم تحديد الموقع", locFail: "تعذّر تحديد الموقع — اسمح للموقع من إعدادات المتصفح",
@@ -60,6 +61,7 @@ const T = {
     scanTruck: "📷 Scan truck barcode", orPick: "or pick the vehicle", go: "Continue", vehicle: "Vehicle",
     change: "Change vehicle", stickers: "🏷️ Truck QR stickers", back: "Back",
     loading: "Loading", driver: "Driver name", date: "Date", time: "Time", temp: "Truck temp °C",
+    stampHint: "Set automatically by 📍 My location", nStamp: "press 📍 My location to record the time",
     startLoad: "Loading start", endLoad: "Loading end", setEnd: "Save end time", endBefore: "End time is before the start time",
     photos: "Temperature photos", addPhoto: "📸 Photo", uploading: "Uploading…", dests: "Where to? (one or more)",
     myLoc: "📍 My location", locating: "Locating…", locOk: "✅ Location set", locFail: "Could not get the location — allow it in the browser settings",
@@ -128,9 +130,12 @@ function PhotoStrip({ photos, onChange, t }) {
   );
 }
 
-function LocationButton({ value, onChange, t }) {
+/* Pressing it stamps the time (UAE) at that moment — loading start or arrival —
+   even when the phone refuses the location, so the time never waits on GPS. */
+function LocationButton({ value, onChange, onStamp, t }) {
   const [state, setState] = useState("");
   const go = async () => {
+    if (onStamp) onStamp(nowHHMM());
     setState("busy");
     try {
       onChange(await locateMe());
@@ -151,6 +156,21 @@ function LocationButton({ value, onChange, t }) {
         </a>
       )}
       {state === "fail" && <span style={{ color: "#b91c1c", fontWeight: 700 }}>{t.locFail}</span>}
+    </div>
+  );
+}
+
+/* A time the driver cannot type: it comes from the 📍 button (UAE time). */
+function StampedTime({ value, t }) {
+  return (
+    <div
+      style={{
+        ...st.input, display: "flex", alignItems: "center", gap: 8, cursor: "not-allowed",
+        background: value ? "#f0fdf4" : "#f8fafc", borderColor: value ? "#86efac" : "#cbd5e1",
+        fontWeight: value ? 900 : 700, color: value ? "#166534" : "#64748b",
+      }}
+    >
+      {value ? `🕐 ${value} (UAE)` : t.stampHint}
     </div>
   );
 }
@@ -286,7 +306,7 @@ function ReturnsEditor({ rows, onChange, t, lang, resolveScan }) {
 
 function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled }) {
   const [draft, setDraft] = useState(() => ({
-    time: stop.arrival?.time || nowHHMM(),
+    time: stop.arrival?.time || "",
     temp: stop.arrival?.temp ?? "",
     photos: stop.arrival?.photos || [],
     location: stop.arrival?.location || null,
@@ -298,7 +318,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
 
   const save = () => {
     const miss = [];
-    if (!draft.time) miss.push(t.nTime);
+    if (!draft.time) miss.push(t.nStamp);
     if (draft.temp === "" || draft.temp == null) miss.push(t.nTemp);
     if (miss.length) { setErr(t.need + miss.join("، ")); return; }
     const returns = draft.returns.filter((r) => r.code || r.name || r.qty);
@@ -327,7 +347,7 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
         <div style={{ padding: "4px 12px 12px" }}>
           <div style={st.grid2}>
             <Field label={`${t.arrival} — ${t.time}`}>
-              <input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} style={st.input} />
+              <StampedTime value={draft.time} t={t} />
             </Field>
             <Field label={t.temp}>
               <TempInput value={draft.temp} onChange={(v) => setDraft({ ...draft, temp: v })} t={t} />
@@ -338,7 +358,12 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
             <PhotoStrip photos={draft.photos} onChange={(photos) => setDraft({ ...draft, photos })} t={t} />
           </div>
           <div style={st.block}>
-            <LocationButton value={draft.location} onChange={(location) => setDraft({ ...draft, location })} t={t} />
+            <LocationButton
+              value={draft.location}
+              onStamp={(time) => setDraft((d) => ({ ...d, time }))}
+              onChange={(location) => setDraft((d) => ({ ...d, location }))}
+              t={t}
+            />
           </div>
           <ReturnsEditor
             rows={draft.returns}
@@ -496,7 +521,7 @@ export default function DriverTrip() {
     setForm({
       driverEmpNo: trips[0]?.driverEmpNo || "",
       reportDate: todayISO(),
-      time: nowHHMM(),
+      time: "", // stamped by 📍 my location
       endTime: "",
       temp: "",
       photos: [],
@@ -515,7 +540,7 @@ export default function DriverTrip() {
     const miss = [];
     const emp = employeeOf(form.driverEmpNo);
     if (!emp) miss.push(t.nDriver);
-    if (!form.time) miss.push(t.nTime);
+    if (!form.time) miss.push(t.nStamp);
     if (form.temp === "") miss.push(t.nTemp);
     if (!form.dests.length) miss.push(t.nDest);
     if (miss.length) { flash("bad", t.need + miss.join("، "), 5000); return; }
@@ -650,7 +675,7 @@ export default function DriverTrip() {
                 <input type="date" value={form.reportDate} onChange={(e) => setForm({ ...form, reportDate: e.target.value })} style={st.input} />
               </Field>
               <Field label={t.startLoad}>
-                <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} style={st.input} />
+                <StampedTime value={form.time} t={t} />
               </Field>
               <Field label={t.endLoad}>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -688,7 +713,12 @@ export default function DriverTrip() {
             </div>
 
             <div style={st.block}>
-              <LocationButton value={form.location} onChange={(location) => setForm({ ...form, location })} t={t} />
+              <LocationButton
+                value={form.location}
+                onStamp={(time) => setForm((f) => ({ ...f, time }))}
+                onChange={(location) => setForm((f) => ({ ...f, location }))}
+                t={t}
+              />
             </div>
 
             <div style={st.block}>

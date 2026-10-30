@@ -5,14 +5,23 @@ import { listReports, payloadOf, reportId, REPORTS_MAX_LIMIT } from "../monitor/
 import { saveReport } from "../../utils/reportOutbox";
 import { DRIVER_TRIP_TYPE } from "./carConstants";
 
-const pad = (n) => String(n).padStart(2, "0");
+/* Trip times are UAE time (Asia/Dubai, UTC+4, no DST) whatever zone the
+   phone is set to, so a trip reads the same on every device. */
+const UAE_TZ = "Asia/Dubai";
+const uaeParts = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: UAE_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date());
+  return Object.fromEntries(parts.map((p) => [p.type, p.value]));
+};
 export const todayISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const p = uaeParts();
+  return `${p.year}-${p.month}-${p.day}`;
 };
 export const nowHHMM = () => {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const p = uaeParts();
+  return `${p.hour}:${p.minute}`;
 };
 export const uid = () =>
   (typeof crypto !== "undefined" && crypto.randomUUID)
