@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { listTrips } from "../driverTripApi";
-import DriverTripsPanel from "./DriverTripsPanel";
 
 /* ===================== API base (CRA + Vite safe) ===================== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -609,8 +608,6 @@ export default function LoadingReports() {
     });
     return m;
   }, [trips]);
-  const selectedTrips = selectedDayKey ? tripsByDay.get(selectedDayKey) || [] : [];
-
   // Fallback selection
   useEffect(() => {
     if (selectedDayKey && dayIndex.has(selectedDayKey)) return;
@@ -1311,11 +1308,7 @@ export default function LoadingReports() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
-
-                  {/* Driver trips of the day (scanned on the phone) */}
-                  <DriverTripsPanel trips={selectedTrips} />
-                </>
+                  </div>                </>
               ) : (
                 <div style={{ textAlign: "center", color: "#6b7280", padding: "4rem 0" }}>
                   <p>Please select a day from the list on the left.</p>
