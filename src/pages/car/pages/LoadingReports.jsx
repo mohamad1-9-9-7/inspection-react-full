@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { listTrips } from "../driverTripApi";
+import { mapsLink } from "../carConstants";
+import { thumbUrl } from "../../../utils/imageUpload";
 
 /* ===================== API base (CRA + Vite safe) ===================== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -427,7 +429,57 @@ function tripToRecord(tr) {
         ? `${d.name} (arr ${d.arrival.time || "—"}, ${d.arrival.temp ?? "—"}°C)`
         : `${d.name} (not arrived)`))
       .join(" · "),
+    // every photo and location the driver took, labelled by where it was taken
+    __photos: [
+      ...(tr.loading?.photos || []).map((src) => ({ src, label: "Loading" })),
+      ...stops.flatMap((d) => (d.arrival?.photos || []).map((src) => ({ src, label: d.name }))),
+    ],
+    __locs: [
+      ...(tr.loading?.location ? [{ label: "Loading", loc: tr.loading.location }] : []),
+      ...stops.filter((d) => d.arrival?.location).map((d) => ({ label: d.name, loc: d.arrival.location })),
+    ],
   };
+}
+
+/* ====================== Full-size photo viewer ====================== */
+function PhotoViewer({ photos, index, onIndex, onClose }) {
+  const n = photos.length;
+  const go = (d) => onIndex((index + d + n) % n);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") onIndex((index + 1) % n);
+      else if (e.key === "ArrowLeft") onIndex((index - 1 + n) % n);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, n, onIndex, onClose]);
+  const p = photos[index];
+  const nav = {
+    position: "absolute", top: "50%", transform: "translateY(-50%)", width: 48, height: 48, borderRadius: 999,
+    border: "none", background: "rgba(255,255,255,.9)", fontSize: 22, fontWeight: 900, cursor: "pointer",
+  };
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(2,6,23,.82)", display: "grid", placeItems: "center", padding: 20 }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "92vw", maxHeight: "88vh", textAlign: "center" }}>
+        <img src={p.src} alt={p.label} style={{ maxWidth: "92vw", maxHeight: "78vh", borderRadius: 12, display: "block", margin: "0 auto" }} />
+        <div style={{ color: "#fff", fontWeight: 800, marginTop: 10, display: "flex", gap: 12, justifyContent: "center", alignItems: "center" }}>
+          <span>{p.label} · {index + 1} / {n}</span>
+          <a href={p.src} target="_blank" rel="noreferrer" style={{ color: "#7dd3fc" }}>Open original ↗</a>
+          <button type="button" onClick={onClose} style={{ padding: "4px 12px", borderRadius: 8, border: "none", fontWeight: 800, cursor: "pointer" }}>✕ Close</button>
+        </div>
+        {n > 1 && (
+          <>
+            <button type="button" onClick={() => go(-1)} style={{ ...nav, left: -10 }}>‹</button>
+            <button type="button" onClick={() => go(1)} style={{ ...nav, right: -10 }}>›</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ====================== Toast ====================== */
@@ -464,6 +516,7 @@ function useToasts() {
 export default function LoadingReports() {
   const [docs, setDocs] = useState([]);
   const [trips, setTrips] = useState([]); // driver trips (DriverTrip.jsx), shown per day
+  const [viewer, setViewer] = useState(null); // { photos: [{src,label}], index } — full-size photo
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -785,6 +838,7 @@ export default function LoadingReports() {
             <td>${esc(dur)}</td>
             ${checks}
             <td>${esc(v.destination)}</td>
+            <td>${(v.__locs || []).map((l) => `<a href="${esc(mapsLink(l.loc))}">${esc(l.label)}</a>`).join("<br/>") || "—"}</td>
           </tr>`;
       })
       .join("");
@@ -840,10 +894,11 @@ export default function LoadingReports() {
         <th>Duration (min)</th>
         ${viHeaders}
         <th>Destination</th>
+        <th>Location</th>
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml || `<tr><td colspan="${7 + VI_PARAMS.length}">No vehicles for this day.</td></tr>`}
+      ${rowsHtml || `<tr><td colspan="${8 + VI_PARAMS.length}">No vehicles for this day.</td></tr>`}
     </tbody>
   </table>
 
@@ -1086,6 +1141,7 @@ export default function LoadingReports() {
     <div className="lr-app" style={pageWrap}>
       <ThemeStyles />
       <Toasts />
+      {viewer && <PhotoViewer {...viewer} onIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
 
       <h3 style={titleStyle}>
         📄 Loading Time Reports
@@ -1265,6 +1321,8 @@ export default function LoadingReports() {
                               <th key={p.id}>{p.en}</th>
                             ))}
                             <th>Destination</th>
+                            <th>Photos</th>
+                            <th>Location</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1297,11 +1355,50 @@ export default function LoadingReports() {
                               })}
 
                               <td>{v.destination || "—"}</td>
+                              <td>
+                                {v.__photos?.length ? (
+                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center", minWidth: 120 }}>
+                                    {v.__photos.map((p, i) => (
+                                      <button
+                                        key={p.src + i}
+                                        type="button"
+                                        title={p.label}
+                                        onClick={() => setViewer({ photos: v.__photos, index: i })}
+                                        style={{ padding: 0, border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "zoom-in" }}
+                                      >
+                                        <img
+                                          src={String(p.src).startsWith("http") ? thumbUrl(p.src, 120) : p.src}
+                                          alt={p.label}
+                                          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 5, display: "block" }}
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : "—"}
+                              </td>
+                              <td>
+                                {v.__locs?.length ? (
+                                  <div style={{ display: "grid", gap: 3, minWidth: 130 }}>
+                                    {v.__locs.map((l, i) => (
+                                      <a
+                                        key={i}
+                                        href={mapsLink(l.loc)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title={`${l.loc.lat}, ${l.loc.lng}${l.loc.accuracy ? ` (±${l.loc.accuracy} m)` : ""}`}
+                                        style={{ color: "#0369a1", fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}
+                                      >
+                                        📍 {l.label}
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : "—"}
+                              </td>
                             </tr>
                           ))}
                           {selectedVehicles.length === 0 && (
                             <tr>
-                              <td colSpan={7 + VI_PARAMS.length} style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No vehicles for this day.</td>
+                              <td colSpan={9 + VI_PARAMS.length} style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No vehicles for this day.</td>
                             </tr>
                           )}
                         </tbody>
