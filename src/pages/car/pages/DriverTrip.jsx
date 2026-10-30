@@ -45,6 +45,9 @@ const T = {
     notes: "ملاحظات", startTrip: "🚚 حفظ وبدء الرحلة", saving: "عم يحفظ…", saved: "✅ تم الحفظ",
     empNo: "الرقم الوظيفي للسائق", noEmp: "رقم غير موجود بقائمة الموظفين",
     need: "أكمل: ", nDriver: "رقم وظيفي صحيح", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
+    sep: "،", thanks: "شكراً لك", thanksSub: "انتهت الرحلة بنجاح — يعطيك العافية على شغلك اليوم",
+    daySummary: "ملخص شغلك اليوم", hoursWorked: "ساعات العمل", branchesVisited: "الفروع التي زرتها",
+    stopsDone: "نقاط التسليم", tripsToday: "رحلات اليوم", hShort: "س", mShort: "د",
     origin: "🚩 فرع الانطلاق", nOrigin: "فرع الانطلاق", pickBranch: "اختر الفرع…",
     endPoint: "🏁 نقطة انتهاء الرحلة", endBranch: "فرع انتهاء الرحلة", saveEnd: "🏁 حفظ وإنهاء الرحلة",
     nEndBranch: "فرع انتهاء الرحلة", cancel: "إلغاء", from: "من", to: "إلى",
@@ -68,6 +71,9 @@ const T = {
     notes: "Notes", startTrip: "🚚 Save & start trip", saving: "Saving…", saved: "✅ Saved",
     empNo: "Driver employee no.", noEmp: "Not in the employee list",
     need: "Complete: ", nDriver: "a valid employee no.", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
+    sep: ",", thanks: "Thank you", thanksSub: "Trip ended — thanks for your work today",
+    daySummary: "Your day", hoursWorked: "Hours worked", branchesVisited: "Branches visited",
+    stopsDone: "Deliveries", tripsToday: "Trips today", hShort: "h", mShort: "m",
     origin: "🚩 Start branch", nOrigin: "start branch", pickBranch: "Pick the branch…",
     endPoint: "🏁 Trip end point", endBranch: "End branch", saveEnd: "🏁 Save & end trip",
     nEndBranch: "end branch", cancel: "Cancel", from: "From", to: "To",
@@ -222,6 +228,90 @@ function TempInput({ value, onChange, t }) {
       />
       {isHigh(value) && <div style={{ color: "#b45309", fontWeight: 800, marginTop: 4 }}>{t.highTemp}</div>}
     </div>
+  );
+}
+
+/* ── the driver's day, shown once a trip is ended ──────────────────────────
+   Every trip of that employee number on that day, on any truck. Worked time =
+   loading start → end point of each trip (dates included, so a trip past
+   midnight counts right); a trip without an end point counts to its last
+   arrival. Visited = branches the driver actually arrived at. */
+const minutesOf = (date, time) => {
+  const m = String(time || "").match(/^(\d{1,2}):(\d{2})/);
+  const d = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m || !d) return null;
+  return Date.UTC(+d[1], +d[2] - 1, +d[3], +m[1], +m[2]) / 60000;
+};
+function tripMinutes(tr) {
+  const start = minutesOf(tr.reportDate, tr.loading?.time);
+  if (start == null) return 0;
+  const last = tr.end?.arrival
+    ? tr.end.arrival
+    : (tr.destinations || []).map((d) => d.arrival).filter((a) => a?.time).slice(-1)[0];
+  if (!last) return 0;
+  let end = minutesOf(last.date || tr.reportDate, last.time);
+  if (end == null) return 0;
+  if (end < start && !last.date) end += 24 * 60; // no date saved and past midnight
+  return Math.max(0, end - start);
+}
+
+function DaySummary({ trip, t }) {
+  const [dayTrips, setDayTrips] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const day = trip.reportDate || todayISO();
+    listTrips({ from: day, to: day })
+      .then((all) => {
+        if (!alive) return;
+        const mine = all.filter((x) => (trip.driverEmpNo
+          ? normalizeEmpNo(x.driverEmpNo) === normalizeEmpNo(trip.driverEmpNo)
+          : normPlate(x.driverName) === normPlate(trip.driverName)));
+        // the trip on screen may be newer than what the server listed
+        const others = mine.filter((x) => !(trip.id && x.id === trip.id) && !(trip._outboxId && x._outboxId === trip._outboxId));
+        setDayTrips([...others, trip]);
+      })
+      .catch(() => alive && setDayTrips([trip]));
+    return () => { alive = false; };
+  }, [trip]);
+
+  const list = dayTrips || [trip];
+  const minutes = list.reduce((s, x) => s + tripMinutes(x), 0);
+  const visited = [...new Set(list.flatMap((x) => [
+    ...(x.destinations || []).filter((d) => d.arrival).map((d) => d.name),
+    ...(x.end?.arrival ? [x.end.name] : []),
+  ]))];
+  const stops = list.reduce((s, x) => s + (x.destinations || []).filter((d) => d.arrival).length, 0);
+  const hh = Math.floor(minutes / 60), mm = minutes % 60;
+
+  return (
+    <section style={{ ...st.card, padding: 0, overflow: "hidden", border: "1.5px solid #86efac" }}>
+      <div style={{ padding: "22px 18px", textAlign: "center", color: "#fff", background: "linear-gradient(135deg,#16a34a,#15803d 60%,#166534)" }}>
+        <div className="dt-plate" style={{ fontWeight: 1000 }}>🙏 {t.thanks}{trip.driverName ? `${t.sep} ${trip.driverName}` : ""}</div>
+        <div className="dt-sub" style={{ marginTop: 6, fontWeight: 700, color: "#dcfce7" }}>{t.thanksSub}</div>
+      </div>
+      <div style={{ padding: 16 }}>
+        <div className="dt-label" style={{ ...st.label, marginBottom: 10 }}>{t.daySummary} · {trip.reportDate}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
+          {[
+            ["⏱", t.hoursWorked, minutes ? `${hh}${t.hShort} ${String(mm).padStart(2, "0")}${t.mShort}` : "—", "#2563eb"],
+            ["🏪", t.branchesVisited, visited.length, "#16a34a"],
+            ["📍", t.stopsDone, stops, "#0891b2"],
+            ["🚚", t.tripsToday, list.length, "#7c3aed"],
+          ].map(([icon, label, value, c]) => (
+            <div key={label} style={{ borderRadius: 16, padding: "12px 14px", background: `${c}0f`, border: `1px solid ${c}33` }}>
+              <div className="dt-label" style={{ color: c, fontWeight: 800 }}>{icon} {label}</div>
+              <div className="dt-plate" style={{ fontWeight: 1000, color: "#0f172a", marginTop: 4 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+        {visited.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+            {visited.map((b) => <span key={b} style={st.pill("#16a34a")}>✓ {b}</span>)}
+          </div>
+        )}
+        {dayTrips == null && <div style={{ color: "#64748b", marginTop: 8 }}>…</div>}
+      </div>
+    </section>
   );
 }
 
@@ -532,7 +622,7 @@ export default function DriverTrip() {
   const saveEnd = async (end) => {
     if (await persist({ ...trip, end, status: "closed", closedAt: Date.now() })) setEnding(false);
   };
-  const reopen = () => persist({ ...trip, status: "open" });
+  const closed = trip?.status === "closed";
 
   const remainingDests = useMemo(
     () => DESTINATIONS.filter((d) => !(trip?.destinations || []).some((x) => x.name === d)),
@@ -724,6 +814,8 @@ export default function DriverTrip() {
         {/* ── 3. the trip ── */}
         {vehicle && trip && !form && (
           <>
+            {/* ended: thank the driver and show the day; everything below is read-only */}
+            {closed && <DaySummary key={tripKey} trip={trip} t={t} />}
             <section style={st.card}>
               <div className="dt-band" style={st.band}><span style={st.bandIcon("#0ea5e9")}>🧊</span>{t.loading}</div>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontWeight: 800 }}>
@@ -764,11 +856,11 @@ export default function DriverTrip() {
                 <StopCard
                   key={d.id + (d.arrival?.savedAt || "")}
                   stop={d}
-                  open={openStop === d.id}
-                  onToggle={() => setOpenStop(openStop === d.id ? null : d.id)}
+                  open={!closed && openStop === d.id}
+                  onToggle={() => !closed && setOpenStop(openStop === d.id ? null : d.id)}
                   onSave={saveStop}
                   t={t}
-                  disabled={busy || trip.status === "closed"}
+                  disabled={busy || closed}
                 />
               ))}
 
@@ -809,7 +901,7 @@ export default function DriverTrip() {
                   <StopCard
                     key={endStop.id + (endStop.arrival?.savedAt || "")}
                     stop={endStop}
-                    open={trip.status !== "closed"}
+                    open={!closed}
                     onToggle={() => {}}
                     onSave={saveEnd}
                     t={t}
@@ -821,10 +913,9 @@ export default function DriverTrip() {
               </section>
             )}
 
+            {/* an ended trip is final: nothing to edit, only a new trip */}
             <section style={{ ...st.card, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {trip.status === "closed" ? (
-                <button type="button" disabled={busy} onClick={reopen} style={st.btn("ghost")}>{t.reopen}</button>
-              ) : ending ? (
+              {closed ? null : ending ? (
                 <button type="button" disabled={busy} onClick={() => setEnding(false)} style={st.btn("ghost")}>{t.cancel}</button>
               ) : (
                 <button
@@ -836,7 +927,9 @@ export default function DriverTrip() {
                   {t.endTrip}
                 </button>
               )}
-              <button type="button" disabled={busy} onClick={startForm} style={st.btn("ghost")}>{t.newTrip}</button>
+              <button type="button" disabled={busy} onClick={startForm} style={closed ? { ...st.btn("primary"), flex: 1 } : st.btn("ghost")}>
+                {t.newTrip}
+              </button>
             </section>
           </>
         )}
