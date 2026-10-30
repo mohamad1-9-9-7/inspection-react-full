@@ -289,8 +289,7 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
 
           {trips.map((tr, i) => {
             const photos = [
-              ...(tr.loading?.photos || []).map((src) => ({ src, label: "Loading" })),
-              ...(tr.destinations || []).flatMap((d) => (d.arrival?.photos || []).map((src) => ({ src, label: d.name }))),
+              ...(tr.loading?.photos || []).map((src) => ({ src, label: "Loading temperature" })),
             ];
             const t0 = tr.loading?.time, t1 = tr.loading?.endTime;
             const dur = durationOf({ timeStart: t0, timeEnd: t1 });
@@ -310,10 +309,10 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                 </div>
 
                 <div style={{ overflowX: "auto", marginBottom: 12 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
                     <thead>
                       <tr>
-                        {["Destination", "Arrival", "Temp", "Location", "Transfer note"].map((h) => (
+                        {["Destination", "Arrival", "Temp", "Temp photos", "Location", "Transfer note"].map((h) => (
                           <th key={h} style={{ textAlign: "left", padding: "7px 8px", background: "#f1f5f9", fontWeight: 900, position: "static", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                         ))}
                       </tr>
@@ -325,6 +324,11 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                           <td style={td}>{d.arrival?.time || <span style={{ color: "#94a3b8" }}>not arrived</span>}</td>
                           <td style={{ ...td, fontWeight: 900, color: high(d.arrival?.temp) ? "#b45309" : "#0369a1" }}>
                             {d.arrival?.temp === "" || d.arrival?.temp == null ? "—" : `${d.arrival.temp}°C${high(d.arrival.temp) ? " ⚠" : ""}`}
+                          </td>
+                          <td style={td}>
+                            {d.arrival?.photos?.length
+                              ? <Thumbs photos={d.arrival.photos.map((src) => ({ src, label: `Temperature · ${d.name}` }))} onPhoto={onPhoto} />
+                              : <span style={{ color: "#94a3b8" }}>—</span>}
                           </td>
                           <td style={td}><Loc loc={d.arrival?.location} label="map" /></td>
                           <td style={td}>
@@ -344,7 +348,7 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                   </table>
                 </div>
 
-                <div style={{ color: "#64748b", fontWeight: 700, fontSize: ".85em", marginBottom: 6 }}>Photos</div>
+                <div style={{ color: "#64748b", fontWeight: 700, fontSize: ".85em", marginBottom: 6 }}>Loading temperature photos</div>
                 <Thumbs photos={photos} onPhoto={onPhoto} />
                 {tr.notes && <div style={{ marginTop: 8, color: "#475569" }}>📝 {tr.notes}</div>}
                 {onDeleteTrip && tr.id && (
