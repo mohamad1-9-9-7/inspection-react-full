@@ -43,7 +43,7 @@ const T = {
     stampHint: "يُسجَّل تلقائياً عند الضغط على 📍 تحديد موقعي", nStamp: "اضغط 📍 تحديد موقعي لتسجيل الوقت",
     startLoad: "بداية التحميل", endLoad: "انتهاء التحميل", setEnd: "حفظ وقت الانتهاء", endBefore: "وقت الانتهاء قبل وقت البداية",
     photos: "صور الحرارة", addPhoto: "📸 صورة", uploading: "عم يرفع…", dests: "إلى أين؟ (يمكن اختيار أكثر من وجهة)",
-    myLoc: "📍 تحديد موقعي", locating: "عم يحدد الموقع…", locOk: "✅ تم تحديد الموقع", locFail: "تعذّر تحديد الموقع — اسمح للموقع من إعدادات المتصفح",
+    myLoc: "📍 تحديد موقعي", myLocAgain: "تم — اضغط لإعادة التحديد", myLocHint: "يسجّل الموقع والتاريخ والوقت تلقائياً", locating: "عم يحدد الموقع…", locOk: "✅ تم تحديد الموقع", locFail: "تعذّر تحديد الموقع — اسمح للموقع من إعدادات المتصفح",
     notes: "ملاحظات", startTrip: "🚚 حفظ وبدء الرحلة", saving: "عم يحفظ…", saved: "✅ تم الحفظ",
     empNo: "الرقم الوظيفي للسائق", noEmp: "رقم غير موجود بقائمة الموظفين",
     need: "أكمل: ", nDriver: "رقم وظيفي صحيح", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
@@ -64,7 +64,7 @@ const T = {
     stampHint: "Set automatically by 📍 My location", nStamp: "press 📍 My location to record the time",
     startLoad: "Loading start", endLoad: "Loading end", setEnd: "Save end time", endBefore: "End time is before the start time",
     photos: "Temperature photos", addPhoto: "📸 Photo", uploading: "Uploading…", dests: "Where to? (one or more)",
-    myLoc: "📍 My location", locating: "Locating…", locOk: "✅ Location set", locFail: "Could not get the location — allow it in the browser settings",
+    myLoc: "📍 My location", myLocAgain: "Done — press to update", myLocHint: "Records the location, date and time automatically", locating: "Locating…", locOk: "✅ Location set", locFail: "Could not get the location — allow it in the browser settings",
     notes: "Notes", startTrip: "🚚 Save & start trip", saving: "Saving…", saved: "✅ Saved",
     empNo: "Driver employee no.", noEmp: "Not in the employee list",
     need: "Complete: ", nDriver: "a valid employee no.", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
@@ -145,17 +145,42 @@ function LocationButton({ value, onChange, onStamp, t }) {
     }
   };
   const link = mapsLink(value);
+  const done = !!value;
+  /* the first thing on the form: a wide, coloured box — blue until pressed,
+     green once the location is in. Big type needs !important under #root. */
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <button type="button" onClick={go} disabled={state === "busy"} style={st.btn(value ? "okGhost" : "ghost")}>
-        {state === "busy" ? t.locating : t.myLoc}
+    <div
+      style={{
+        borderRadius: 16, padding: 10, marginBottom: 14,
+        background: done ? "linear-gradient(135deg,#dcfce7,#f0fdf4)" : "linear-gradient(135deg,#dbeafe,#e0f2fe)",
+        border: `2px solid ${done ? "#22c55e" : "#3b82f6"}`,
+      }}
+    >
+      <style>{`#root .loc-big, #root .loc-big * { font-size: calc(19px * var(--app-fs, 1)) !important; }`}</style>
+      <button
+        type="button"
+        className="loc-big"
+        onClick={go}
+        disabled={state === "busy"}
+        style={{
+          width: "100%", minHeight: 64, borderRadius: 13, border: "none", cursor: "pointer",
+          fontFamily: "inherit", fontWeight: 1000, color: "#fff", letterSpacing: ".01em",
+          background: done ? "linear-gradient(180deg,#22c55e,#16a34a)" : "linear-gradient(180deg,#3b82f6,#1d4ed8)",
+          boxShadow: done ? "0 10px 22px rgba(22,163,74,.30)" : "0 10px 22px rgba(29,78,216,.32)",
+          opacity: state === "busy" ? 0.75 : 1,
+        }}
+      >
+        {state === "busy" ? t.locating : done ? `✅ ${t.myLocAgain}` : t.myLoc}
       </button>
-      {value && (
-        <a href={link} target="_blank" rel="noreferrer" style={st.locLink}>
+      {done && (
+        <a href={link} target="_blank" rel="noreferrer" style={{ ...st.locLink, display: "block", textAlign: "center", marginTop: 8, color: "#166534" }}>
           {t.locOk} · {value.lat}, {value.lng}{value.accuracy ? ` (±${value.accuracy}m)` : ""}
         </a>
       )}
-      {state === "fail" && <span style={{ color: "#b91c1c", fontWeight: 700 }}>{t.locFail}</span>}
+      {!done && state !== "fail" && (
+        <div style={{ textAlign: "center", marginTop: 6, color: "#1e40af", fontWeight: 800 }}>{t.myLocHint}</div>
+      )}
+      {state === "fail" && <div style={{ textAlign: "center", marginTop: 8, color: "#b91c1c", fontWeight: 800 }}>{t.locFail}</div>}
     </div>
   );
 }
@@ -346,6 +371,12 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
 
       {open && (
         <div style={{ padding: "4px 12px 12px" }}>
+          <LocationButton
+            value={draft.location}
+            onStamp={(time, date) => setDraft((d) => ({ ...d, time, date }))}
+            onChange={(location) => setDraft((d) => ({ ...d, location }))}
+            t={t}
+          />
           <div style={st.grid2}>
             <Field label={`${t.arrival} — ${t.time}`}>
               <StampedTime value={draft.time ? `${draft.time}${draft.date ? ` · ${draft.date}` : ""}` : ""} t={t} />
@@ -357,14 +388,6 @@ function StopCard({ stop, open, onToggle, onSave, t, lang, resolveScan, disabled
           <div style={st.block}>
             <span style={st.label}>{t.photos}</span>
             <PhotoStrip photos={draft.photos} onChange={(photos) => setDraft({ ...draft, photos })} t={t} />
-          </div>
-          <div style={st.block}>
-            <LocationButton
-              value={draft.location}
-              onStamp={(time, date) => setDraft((d) => ({ ...d, time, date }))}
-              onChange={(location) => setDraft((d) => ({ ...d, location }))}
-              t={t}
-            />
           </div>
           <ReturnsEditor
             rows={draft.returns}
@@ -646,6 +669,12 @@ export default function DriverTrip() {
         {vehicle && form && (
           <section style={st.card}>
             <div style={st.band}>🧊 {t.loading}</div>
+            <LocationButton
+              value={form.location}
+              onStamp={(time, reportDate) => setForm((f) => ({ ...f, time, reportDate }))}
+              onChange={(location) => setForm((f) => ({ ...f, location }))}
+              t={t}
+            />
             <div style={st.grid2}>
               <Field label={t.empNo}>
                 <input
@@ -711,15 +740,6 @@ export default function DriverTrip() {
                   );
                 })}
               </div>
-            </div>
-
-            <div style={st.block}>
-              <LocationButton
-                value={form.location}
-                onStamp={(time, reportDate) => setForm((f) => ({ ...f, time, reportDate }))}
-                onChange={(location) => setForm((f) => ({ ...f, location }))}
-                t={t}
-              />
             </div>
 
             <div style={st.block}>
