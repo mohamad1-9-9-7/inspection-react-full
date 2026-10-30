@@ -408,7 +408,16 @@ function computeDayKPIs(vehicles) {
    its arrival time / temperature. The eleven checks are not asked of the
    driver, so they stay "—" and do not count in the yes rate. */
 function tripToRecord(tr) {
-  const stops = Array.isArray(tr.destinations) ? tr.destinations : [];
+  // the end point is recorded like a stop, so it rides along with them
+  const stops = [
+    ...(Array.isArray(tr.destinations) ? tr.destinations : []),
+    ...(tr.end ? [{ ...tr.end, name: `END ${tr.end.name}` }] : []),
+  ];
+  const stopText = stops
+    .map((d) => (d.arrival
+      ? `${d.name} (arr ${d.arrival.time || "—"}, ${d.arrival.temp ?? "—"}°C)`
+      : `${d.name} (not arrived)`))
+    .join(" · ");
   return {
     __docId: `trip:${tr.id || tr._outboxId}`,
     __rowIndex: 0,
@@ -422,18 +431,14 @@ function tripToRecord(tr) {
     timeStart: tr.loading?.time || "",
     timeEnd: tr.loading?.endTime || "",
     tempCheck: tr.loading?.temp ?? "",
-    destination: stops
-      .map((d) => (d.arrival
-        ? `${d.name} (arr ${d.arrival.time || "—"}, ${d.arrival.temp ?? "—"}°C)`
-        : `${d.name} (not arrived)`))
-      .join(" · "),
+    destination: tr.origin ? `FROM ${tr.origin} → ${stopText}` : stopText,
     // every photo and location the driver took, labelled by where it was taken
     __photos: [
       ...(tr.loading?.photos || []).map((src) => ({ src, label: "Loading" })),
       ...stops.flatMap((d) => (d.arrival?.photos || []).map((src) => ({ src, label: d.name }))),
     ],
     __locs: [
-      ...(tr.loading?.location ? [{ label: "Loading", loc: tr.loading.location }] : []),
+      ...(tr.loading?.location ? [{ label: tr.origin ? `Start · ${tr.origin}` : "Loading", loc: tr.loading.location }] : []),
       ...stops.filter((d) => d.arrival?.location).map((d) => ({ label: d.name, loc: d.arrival.location })),
     ],
     __tripRaw: tr, // the vehicle popup shows the whole trip

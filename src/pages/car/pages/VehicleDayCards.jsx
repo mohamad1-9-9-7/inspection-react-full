@@ -293,6 +293,16 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
             ];
             const t0 = tr.loading?.time, t1 = tr.loading?.endTime;
             const dur = durationOf({ timeStart: t0, timeEnd: t1 });
+            /* the route in order: start branch (the loading itself) → stops → end branch */
+            const route = [
+              ...(tr.origin ? [{
+                id: "start", kind: "start", name: tr.origin,
+                arrival: { time: tr.loading?.time, temp: tr.loading?.temp, photos: tr.loading?.photos, location: tr.loading?.location },
+              }] : []),
+              ...(tr.destinations || []).map((d) => ({ ...d, kind: "stop" })),
+              ...(tr.end ? [{ ...tr.end, kind: "end" }] : []),
+            ];
+            const tag = { start: ["🚩 START", "#1d4ed8"], end: ["🏁 END", "#0f172a"] };
             return (
               <Section key={`t${i}`} bg="#ecfeff" tone="#155e75"
                 title={`📷 Driver trip${trips.length > 1 ? ` #${i + 1}` : ""} · ${tr.status === "closed" ? "🏁 Ended" : "🟢 On the road"}`}>
@@ -312,15 +322,20 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
                     <thead>
                       <tr>
-                        {["Destination", "Arrival", "Temp", "Temp photos", "Location", "Transfer note"].map((h) => (
+                        {["Point", "Time", "Temp", "Temp photos", "Location", "Transfer note"].map((h) => (
                           <th key={h} style={{ textAlign: "left", padding: "7px 8px", background: "#f1f5f9", fontWeight: 900, position: "static", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {(tr.destinations || []).map((d) => (
-                        <tr key={d.id}>
-                          <td style={td}><b>{d.name}</b></td>
+                      {route.map((d) => (
+                        <tr key={`${d.kind}-${d.id}`} style={d.kind !== "stop" ? { background: d.kind === "start" ? "#eff6ff" : "#f1f5f9" } : undefined}>
+                          <td style={td}>
+                            {tag[d.kind] && (
+                              <div style={{ color: tag[d.kind][1], fontWeight: 900, fontSize: ".8em", letterSpacing: ".04em" }}>{tag[d.kind][0]}</div>
+                            )}
+                            <b>{d.name}</b>
+                          </td>
                           <td style={td}>{d.arrival?.time || <span style={{ color: "#94a3b8" }}>not arrived</span>}</td>
                           <td style={{ ...td, fontWeight: 900, color: high(d.arrival?.temp) ? "#b45309" : "#0369a1" }}>
                             {d.arrival?.temp === "" || d.arrival?.temp == null ? "—" : `${d.arrival.temp}°C${high(d.arrival.temp) ? " ⚠" : ""}`}
@@ -348,8 +363,13 @@ function VehicleModal({ car, cards, viParams, normYesNo, durationOf, onPhoto, on
                   </table>
                 </div>
 
-                <div style={{ color: "#64748b", fontWeight: 700, fontSize: ".85em", marginBottom: 6 }}>Loading temperature photos</div>
-                <Thumbs photos={photos} onPhoto={onPhoto} />
+                {/* trips saved before the start branch existed: their loading photos have no row above */}
+                {!tr.origin && (
+                  <>
+                    <div style={{ color: "#64748b", fontWeight: 700, fontSize: ".85em", marginBottom: 6 }}>Loading temperature photos</div>
+                    <Thumbs photos={photos} onPhoto={onPhoto} />
+                  </>
+                )}
                 {tr.notes && <div style={{ marginTop: 8, color: "#475569" }}>📝 {tr.notes}</div>}
                 {onDeleteTrip && tr.id && (
                   <div style={{ marginTop: 12, textAlign: "right" }}>

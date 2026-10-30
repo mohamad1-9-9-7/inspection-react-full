@@ -45,6 +45,9 @@ const T = {
     notes: "ملاحظات", startTrip: "🚚 حفظ وبدء الرحلة", saving: "عم يحفظ…", saved: "✅ تم الحفظ",
     empNo: "الرقم الوظيفي للسائق", noEmp: "رقم غير موجود بقائمة الموظفين",
     need: "أكمل: ", nDriver: "رقم وظيفي صحيح", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
+    origin: "🚩 فرع الانطلاق", nOrigin: "فرع الانطلاق", pickBranch: "اختر الفرع…",
+    endPoint: "🏁 نقطة انتهاء الرحلة", endBranch: "فرع انتهاء الرحلة", saveEnd: "🏁 حفظ وإنهاء الرحلة",
+    nEndBranch: "فرع انتهاء الرحلة", cancel: "إلغاء", from: "من", to: "إلى",
     stops: "الوجهات", arrived: "وصل", pending: "لم يصل بعد", arrival: "الوصول", saveStop: "💾 حفظ الوصول",
     transferNote: "صورة ورقة التحويل", addTransfer: "📸 صوّر ورقة التحويل",
     remove: "حذف", addStop: "+ إضافة وجهة", endTrip: "🏁 إنهاء الرحلة", ended: "الرحلة منتهية",
@@ -65,6 +68,9 @@ const T = {
     notes: "Notes", startTrip: "🚚 Save & start trip", saving: "Saving…", saved: "✅ Saved",
     empNo: "Driver employee no.", noEmp: "Not in the employee list",
     need: "Complete: ", nDriver: "a valid employee no.", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
+    origin: "🚩 Start branch", nOrigin: "start branch", pickBranch: "Pick the branch…",
+    endPoint: "🏁 Trip end point", endBranch: "End branch", saveEnd: "🏁 Save & end trip",
+    nEndBranch: "end branch", cancel: "Cancel", from: "From", to: "To",
     stops: "Destinations", arrived: "Arrived", pending: "Not arrived yet", arrival: "Arrival", saveStop: "💾 Save arrival",
     transferNote: "Transfer note photo", addTransfer: "📸 Photo of the transfer note",
     remove: "Remove", addStop: "+ Add destination", endTrip: "🏁 End trip", ended: "Trip ended",
@@ -246,7 +252,8 @@ function LoadingEndEditor({ start, value, busy, t, onSave, onError }) {
 
 /* ───────────────────────── one destination ───────────────────────── */
 
-function StopCard({ stop, open, onToggle, onSave, t, disabled }) {
+/* Also the trip's END point: same fields, its own save label (saveLabel). */
+function StopCard({ stop, open, onToggle, onSave, t, disabled, saveLabel }) {
   const [draft, setDraft] = useState(() => ({
     time: stop.arrival?.time || "",
     date: stop.arrival?.date || "",
@@ -323,7 +330,7 @@ function StopCard({ stop, open, onToggle, onSave, t, disabled }) {
           </div>
           {err && <div style={st.err}>{err}</div>}
           <button type="button" className="dt-big" onClick={save} disabled={disabled} style={{ ...st.btn("primary"), width: "100%", minHeight: 56 }}>
-            {t.saveStop}
+            {saveLabel || t.saveStop}
           </button>
         </div>
       )}
@@ -454,6 +461,7 @@ export default function DriverTrip() {
       temp: "",
       photos: [],
       location: null,
+      origin: trips[0]?.end?.name || "", // a truck usually starts where its last trip ended
       dests: [],
       notes: "",
     });
@@ -468,6 +476,7 @@ export default function DriverTrip() {
     const miss = [];
     const emp = employeeOf(form.driverEmpNo);
     if (!emp) miss.push(t.nDriver);
+    if (!form.origin) miss.push(t.nOrigin);
     if (!form.time) miss.push(t.nStamp);
     if (form.temp === "") miss.push(t.nTemp);
     if (!form.dests.length) miss.push(t.nDest);
@@ -479,6 +488,7 @@ export default function DriverTrip() {
       vehicleNo: vehicle,
       driverEmpNo: emp.empNo,
       driverName: emp.name,
+      origin: form.origin,
       loading: { time: form.time, endTime: form.endTime, temp: form.temp, photos: form.photos, location: form.location },
       destinations: form.dests.map(newStop),
       notes: form.notes,
@@ -505,7 +515,21 @@ export default function DriverTrip() {
     persist({ ...trip, destinations: [...trip.destinations, s] }).then((ok) => ok && setOpenStop(s.id));
   };
 
-  const setStatus = (status) => persist({ ...trip, status, ...(status === "closed" ? { closedAt: Date.now() } : {}) });
+  /* the trip ends AT a branch, recorded like any stop (📍 time/date/location,
+     temperature, photos); saving it closes the trip */
+  const [ending, setEnding] = useState(false);
+  const [endName, setEndName] = useState("");
+  const endChoice = endName || trip?.end?.name || "";
+  const endStop = trip?.end && trip.end.name === endChoice
+    ? trip.end
+    : { id: `end-${endChoice}`, name: endChoice, arrival: null };
+  // another trip on screen → its own end point, not the last one's choice
+  const tripKey = trip?.id || trip?._outboxId || "";
+  useEffect(() => { setEnding(false); setEndName(""); }, [tripKey]);
+  const saveEnd = async (end) => {
+    if (await persist({ ...trip, end, status: "closed", closedAt: Date.now() })) setEnding(false);
+  };
+  const reopen = () => persist({ ...trip, status: "open" });
 
   const remainingDests = useMemo(
     () => DESTINATIONS.filter((d) => !(trip?.destinations || []).some((x) => x.name === d)),
@@ -597,6 +621,18 @@ export default function DriverTrip() {
               onChange={(location) => setForm((f) => ({ ...f, location }))}
               t={t}
             />
+            <div style={st.block}>
+              <Field label={t.origin}>
+                <select
+                  value={form.origin}
+                  onChange={(e) => setForm({ ...form, origin: e.target.value })}
+                  style={{ ...st.input, fontWeight: 900, ...(form.origin ? { borderColor: "#86efac", background: "#f0fdf4" } : null) }}
+                >
+                  <option value="">{t.pickBranch}</option>
+                  {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </Field>
+            </div>
             <div style={st.grid2}>
               <Field label={t.empNo}>
                 <input
@@ -688,6 +724,7 @@ export default function DriverTrip() {
             <section style={st.card}>
               <div className="dt-band" style={st.band}><span style={st.bandIcon("#0ea5e9")}>🧊</span>{t.loading}</div>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontWeight: 800 }}>
+                {trip.origin && <span style={{ color: "#1d4ed8" }}>🚩 {t.from}: {trip.origin}</span>}
                 <span>👤 {trip.driverEmpNo ? `${trip.driverEmpNo} · ` : ""}{trip.driverName}</span>
                 <span>📅 {trip.reportDate}</span>
                 <span>🕐 {trip.loading?.time}{trip.loading?.endTime ? ` → ${trip.loading.endTime}` : ""}</span>
@@ -747,11 +784,53 @@ export default function DriverTrip() {
               )}
             </section>
 
+            {/* ── end point: a branch, recorded like a stop ── */}
+            {(ending || trip.end) && (
+              <section style={st.card}>
+                <div className="dt-band" style={st.band}><span style={st.bandIcon("#0f172a")}>🏁</span>{t.endPoint}</div>
+                {trip.status !== "closed" && (
+                  <div style={st.block}>
+                    <Field label={t.endBranch}>
+                      <select
+                        value={endChoice}
+                        onChange={(e) => { setEndName(e.target.value); setEnding(true); }}
+                        style={{ ...st.input, fontWeight: 900, ...(endChoice ? { borderColor: "#86efac", background: "#f0fdf4" } : null) }}
+                      >
+                        <option value="">{t.pickBranch}</option>
+                        {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {endChoice && (
+                  <StopCard
+                    key={endStop.id + (endStop.arrival?.savedAt || "")}
+                    stop={endStop}
+                    open={trip.status !== "closed"}
+                    onToggle={() => {}}
+                    onSave={saveEnd}
+                    t={t}
+                    saveLabel={t.saveEnd}
+                    disabled={busy || trip.status === "closed"}
+                  />
+                )}
+              </section>
+            )}
+
             <section style={{ ...st.card, display: "flex", gap: 8, flexWrap: "wrap" }}>
               {trip.status === "closed" ? (
-                <button type="button" disabled={busy} onClick={() => setStatus("open")} style={st.btn("ghost")}>{t.reopen}</button>
+                <button type="button" disabled={busy} onClick={reopen} style={st.btn("ghost")}>{t.reopen}</button>
+              ) : ending ? (
+                <button type="button" disabled={busy} onClick={() => setEnding(false)} style={st.btn("ghost")}>{t.cancel}</button>
               ) : (
-                <button type="button" disabled={busy} onClick={() => setStatus("closed")} style={st.btn("dark")}>{t.endTrip}</button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setEnding(true)}
+                  style={st.btn("dark")}
+                >
+                  {t.endTrip}
+                </button>
               )}
               <button type="button" disabled={busy} onClick={startForm} style={st.btn("ghost")}>{t.newTrip}</button>
             </section>

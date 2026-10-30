@@ -1,8 +1,9 @@
 // src/pages/car/carConstants.js
 // Shared by the loading checklist, the driver trip page and the reports.
 
-/* Destinations a truck leaves for (الوجهة). */
+/* Branches a truck leaves from, goes to and ends at (الوجهة). */
 export const DESTINATIONS = [
+  "QCS",
   "ABU DHABI BUTCHERY",
   "AL AIN BUTCHERY",
   "AL BARSHA BUTCHERY",
