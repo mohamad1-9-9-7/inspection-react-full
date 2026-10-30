@@ -38,18 +38,26 @@ export async function listTrips({ from, to } = {}) {
     ...(to ? { to } : {}),
   });
   return rows
-    .map((r) => ({ id: reportId(r), ...payloadOf(r) }))
+    .map((r) => {
+      const p = payloadOf(r);
+      return { id: reportId(r), ...p, reportDate: p.date || p.reportDate || "" };
+    })
     .sort((a, b) => String(b.reportDate || "").localeCompare(String(a.reportDate || "")) ||
       (b.createdAt || 0) - (a.createdAt || 0));
 }
 
-/** Create (no id) or overwrite (id) one trip. Returns { id, queued }. */
+/** Create (no id) or overwrite (id) one trip. Returns { id, queued }.
+    The day is stored as `date`, never `reportDate`: the server keeps a unique
+    index on (company, type, payload.reportDate), which allowed only ONE trip
+    per day — the second driver's save came back DUPLICATE_REPORT_FOR_DATE.
+    `date` is read by the server's business-date filter all the same. */
 export async function saveTrip(trip) {
-  const { id, ...payload } = trip;
+  const { id, reportDate, ...rest } = trip;
+  const payload = { ...rest, date: reportDate || rest.date || todayISO(), updatedAt: Date.now() };
   const body = {
     reporter: payload.driverName || currentUserName() || "driver",
     type: DRIVER_TRIP_TYPE,
-    payload: { ...payload, updatedAt: Date.now() },
+    payload,
   };
   const r = await saveReport({ body, id: id || null, label: `Trip ${payload.vehicleNo || ""}` });
   return { id: id || (r.report ? reportId(r.report) : null), queued: r.queued };

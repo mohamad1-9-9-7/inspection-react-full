@@ -24,7 +24,10 @@ import { fetchBarcodeMap, findBarcode } from "../../../utils/barcodeMap";
 import { listReports, payloadOf } from "../../monitor/branches/_shared/reportApi";
 import { loadCatalog } from "../../coldrooms/coldRoomsStock";
 import {
-  DESTINATIONS, DRIVER_PATH, LOOKUP_DRIVERS_TYPE, LOOKUP_VEHICLES_TYPE,
+  COMPANY_DIRECTORY, lookupByEmpNo, normalizeEmpNo, useStaffDirectory,
+} from "../../monitor/branches/_shared/staffRegistry";
+import {
+  DESTINATIONS, DRIVER_PATH, LOOKUP_VEHICLES_TYPE,
   RETURN_REASONS, mapsLink, vehicleFromScan,
 } from "../carConstants";
 import {
@@ -37,10 +40,12 @@ const T = {
     scanTruck: "📷 امسح باركود السيارة", orPick: "أو اختر رقم السيارة", go: "متابعة", vehicle: "السيارة",
     change: "تغيير السيارة", stickers: "🏷️ ملصقات QR للسيارات", back: "رجوع",
     loading: "التحميل", driver: "اسم السائق", date: "التاريخ", time: "الوقت", temp: "حرارة السيارة °C",
+    startLoad: "بداية التحميل", endLoad: "انتهاء التحميل", setEnd: "حفظ وقت الانتهاء", endBefore: "وقت الانتهاء قبل وقت البداية",
     photos: "صور الحرارة", addPhoto: "📸 صورة", uploading: "عم يرفع…", dests: "إلى أين؟ (يمكن اختيار أكثر من وجهة)",
     myLoc: "📍 تحديد موقعي", locating: "عم يحدد الموقع…", locOk: "✅ تم تحديد الموقع", locFail: "تعذّر تحديد الموقع — اسمح للموقع من إعدادات المتصفح",
     notes: "ملاحظات", startTrip: "🚚 حفظ وبدء الرحلة", saving: "عم يحفظ…", saved: "✅ تم الحفظ",
-    need: "أكمل: ", nDriver: "اسم السائق", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
+    empNo: "الرقم الوظيفي للسائق", noEmp: "رقم غير موجود بقائمة الموظفين",
+    need: "أكمل: ", nDriver: "رقم وظيفي صحيح", nTime: "الوقت", nTemp: "الحرارة", nDest: "وجهة واحدة على الأقل",
     stops: "الوجهات", arrived: "وصل", pending: "لم يصل بعد", arrival: "الوصول", saveStop: "💾 حفظ الوصول",
     returns: "المرتجعات من الفرع", addReturn: "+ إضافة منتج مرتجع", code: "كود المنتج", product: "اسم المنتج",
     qty: "الكمية", uom: "الوحدة", reason: "السبب", remark: "ملاحظة", scanItem: "📷", noReturns: "لا يوجد مرتجعات",
@@ -55,10 +60,12 @@ const T = {
     scanTruck: "📷 Scan truck barcode", orPick: "or pick the vehicle", go: "Continue", vehicle: "Vehicle",
     change: "Change vehicle", stickers: "🏷️ Truck QR stickers", back: "Back",
     loading: "Loading", driver: "Driver name", date: "Date", time: "Time", temp: "Truck temp °C",
+    startLoad: "Loading start", endLoad: "Loading end", setEnd: "Save end time", endBefore: "End time is before the start time",
     photos: "Temperature photos", addPhoto: "📸 Photo", uploading: "Uploading…", dests: "Where to? (one or more)",
     myLoc: "📍 My location", locating: "Locating…", locOk: "✅ Location set", locFail: "Could not get the location — allow it in the browser settings",
     notes: "Notes", startTrip: "🚚 Save & start trip", saving: "Saving…", saved: "✅ Saved",
-    need: "Complete: ", nDriver: "driver name", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
+    empNo: "Driver employee no.", noEmp: "Not in the employee list",
+    need: "Complete: ", nDriver: "a valid employee no.", nTime: "time", nTemp: "temperature", nDest: "at least one destination",
     stops: "Destinations", arrived: "Arrived", pending: "Not arrived yet", arrival: "Arrival", saveStop: "💾 Save arrival",
     returns: "Returns from the branch", addReturn: "+ Add returned product", code: "Item code", product: "Product",
     qty: "Qty", uom: "Unit", reason: "Reason", remark: "Remark", scanItem: "📷", noReturns: "No returns",
@@ -170,6 +177,31 @@ function TempInput({ value, onChange, t }) {
         style={{ ...st.input, ...(isHigh(value) ? st.inputWarn : null), fontWeight: 900 }}
       />
       {isHigh(value) && <div style={{ color: "#b45309", fontWeight: 800, marginTop: 4 }}>{t.highTemp}</div>}
+    </div>
+  );
+}
+
+/* Loading end: often known only after the trip was started, so it can be set
+   (or corrected) on the trip screen while the trip is open. */
+function LoadingEndEditor({ start, value, busy, t, onSave, onError }) {
+  const [v, setV] = useState(value || nowHHMM());
+  const dirty = v !== value;
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+      <div style={{ width: 170 }}>
+        <Field label={t.endLoad}>
+          <input type="time" value={v} onChange={(e) => setV(e.target.value)} style={st.input} />
+        </Field>
+      </div>
+      <button type="button" onClick={() => setV(nowHHMM())} style={st.btn("ghost")}>🕐</button>
+      <button
+        type="button"
+        disabled={busy || !v || !dirty}
+        onClick={() => (start && v < start ? onError(t.endBefore) : onSave(v))}
+        style={{ ...st.btn(dirty ? "primary" : "ghost"), opacity: busy || !v || !dirty ? 0.6 : 1 }}
+      >
+        {value && !dirty ? "✓ " : ""}{t.setEnd}
+      </button>
     </div>
   );
 }
@@ -344,7 +376,6 @@ export default function DriverTrip() {
   const dir = lang === "ar" ? "rtl" : "ltr";
 
   const [vehicles, setVehicles] = useState([]);
-  const [drivers, setDrivers] = useState([]);
   const [pickVeh, setPickVeh] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
 
@@ -361,18 +392,23 @@ export default function DriverTrip() {
     if (ms) setTimeout(() => setMsg((m) => (m && m.text === text ? null : m)), ms);
   };
 
-  /* lookups: plates + driver names, the same lists the loading checklist uses */
+  /* plates: the same list the loading checklist uses */
   useEffect(() => {
     let alive = true;
-    Promise.all([listReports(LOOKUP_VEHICLES_TYPE).catch(() => []), listReports(LOOKUP_DRIVERS_TYPE).catch(() => [])])
-      .then(([v, d]) => {
-        if (!alive) return;
-        const vals = (rows) => [...new Set(rows.map((r) => String(payloadOf(r)?.value || "").trim()).filter(Boolean))].sort();
-        setVehicles(vals(v));
-        setDrivers(vals(d));
-      });
+    listReports(LOOKUP_VEHICLES_TYPE).catch(() => []).then((v) => {
+      if (!alive) return;
+      setVehicles([...new Set(v.map((r) => String(payloadOf(r)?.value || "").trim()).filter(Boolean))].sort());
+    });
     return () => { alive = false; };
   }, []);
+
+  /* the driver is typed by employee number only; the name comes from the
+     Staff Directory (Settings), else the company employee register */
+  const { staff } = useStaffDirectory();
+  const employeeOf = useCallback((no) => {
+    if (!normalizeEmpNo(no)) return null;
+    return lookupByEmpNo(staff, no) || lookupByEmpNo(COMPANY_DIRECTORY, no);
+  }, [staff]);
 
   /* today's trips of this truck: resume the open one */
   const loadTrips = useCallback(async () => {
@@ -457,12 +493,11 @@ export default function DriverTrip() {
 
   /* ── new trip form ── */
   const startForm = () => {
-    const me = currentUserName();
-    const lastDriver = trips[0]?.driverName || "";
     setForm({
-      driverName: lastDriver || (drivers.some((d) => normPlate(d) === normPlate(me)) ? me : ""),
+      driverEmpNo: trips[0]?.driverEmpNo || "",
       reportDate: todayISO(),
       time: nowHHMM(),
+      endTime: "",
       temp: "",
       photos: [],
       location: null,
@@ -478,17 +513,20 @@ export default function DriverTrip() {
 
   const submitForm = async () => {
     const miss = [];
-    if (!form.driverName.trim()) miss.push(t.nDriver);
+    const emp = employeeOf(form.driverEmpNo);
+    if (!emp) miss.push(t.nDriver);
     if (!form.time) miss.push(t.nTime);
     if (form.temp === "") miss.push(t.nTemp);
     if (!form.dests.length) miss.push(t.nDest);
     if (miss.length) { flash("bad", t.need + miss.join("، "), 5000); return; }
+    if (form.endTime && form.endTime < form.time) { flash("bad", t.endBefore, 5000); return; }
     const next = {
       _outboxId: uid(),
       reportDate: form.reportDate,
       vehicleNo: vehicle,
-      driverName: form.driverName.trim(),
-      loading: { time: form.time, temp: form.temp, photos: form.photos, location: form.location },
+      driverEmpNo: emp.empNo,
+      driverName: emp.name,
+      loading: { time: form.time, endTime: form.endTime, temp: form.temp, photos: form.photos, location: form.location },
       destinations: form.dests.map(newStop),
       notes: form.notes,
       status: "open",
@@ -583,15 +621,42 @@ export default function DriverTrip() {
           <section style={st.card}>
             <div style={st.band}>🧊 {t.loading}</div>
             <div style={st.grid2}>
+              <Field label={t.empNo}>
+                <input
+                  inputMode="numeric"
+                  value={form.driverEmpNo}
+                  onChange={(e) => setForm({ ...form, driverEmpNo: e.target.value })}
+                  style={{ ...st.input, fontWeight: 900 }}
+                />
+              </Field>
               <Field label={t.driver}>
-                <input list="drv-list" value={form.driverName} onChange={(e) => setForm({ ...form, driverName: e.target.value })} style={st.input} />
-                <datalist id="drv-list">{drivers.map((d) => <option key={d} value={d} />)}</datalist>
+                {(() => {
+                  const emp = employeeOf(form.driverEmpNo);
+                  const typed = !!normalizeEmpNo(form.driverEmpNo);
+                  return (
+                    <input
+                      readOnly
+                      tabIndex={-1}
+                      value={emp ? emp.name : typed ? t.noEmp : ""}
+                      style={{
+                        ...st.input, background: "#f1f5f9", fontWeight: 800, cursor: "not-allowed",
+                        color: emp ? "#0f172a" : "#b91c1c",
+                      }}
+                    />
+                  );
+                })()}
               </Field>
               <Field label={t.date}>
                 <input type="date" value={form.reportDate} onChange={(e) => setForm({ ...form, reportDate: e.target.value })} style={st.input} />
               </Field>
-              <Field label={t.time}>
+              <Field label={t.startLoad}>
                 <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} style={st.input} />
+              </Field>
+              <Field label={t.endLoad}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} style={st.input} />
+                  <button type="button" onClick={() => setForm({ ...form, endTime: nowHHMM() })} style={{ ...st.btn("ghost"), padding: "0 10px" }}>🕐</button>
+                </div>
               </Field>
               <Field label={t.temp}>
                 <TempInput value={form.temp} onChange={(v) => setForm({ ...form, temp: v })} t={t} />
@@ -644,14 +709,25 @@ export default function DriverTrip() {
             <section style={st.card}>
               <div style={st.band}>🧊 {t.loading}</div>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontWeight: 800 }}>
-                <span>👤 {trip.driverName}</span>
+                <span>👤 {trip.driverEmpNo ? `${trip.driverEmpNo} · ` : ""}{trip.driverName}</span>
                 <span>📅 {trip.reportDate}</span>
-                <span>🕐 {trip.loading?.time}</span>
+                <span>🕐 {trip.loading?.time}{trip.loading?.endTime ? ` → ${trip.loading.endTime}` : ""}</span>
                 <span style={{ color: isHigh(trip.loading?.temp) ? "#b45309" : "#0369a1" }}>🌡 {trip.loading?.temp}°C</span>
                 {trip.loading?.location && (
                   <a href={mapsLink(trip.loading.location)} target="_blank" rel="noreferrer" style={st.locLink}>📍</a>
                 )}
               </div>
+              {trip.status !== "closed" && (
+                <LoadingEndEditor
+                  key={trip.id || trip._outboxId}
+                  start={trip.loading?.time}
+                  value={trip.loading?.endTime || ""}
+                  busy={busy}
+                  t={t}
+                  onError={(m) => flash("bad", m, 5000)}
+                  onSave={(endTime) => persist({ ...trip, loading: { ...(trip.loading || {}), endTime } })}
+                />
+              )}
               {trip.loading?.photos?.length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                   {trip.loading.photos.map((p) => (

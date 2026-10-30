@@ -402,12 +402,11 @@ function computeDayKPIs(vehicles) {
 
 /* ====================== Driver trip → table row ======================
    A trip scanned on the driver's phone (DriverTrip.jsx) fills the same
-   vehicles table as the outbound checklist: loading time = Time Start,
-   loading temperature = Temp Check, and every destination with its arrival
-   time / temperature. Time End stays empty (an arrival is not the end of
-   loading — it would turn the loading-duration KPI into trip length). The
-   eleven checks are not asked of the driver, so they stay "—" and do not
-   count in the yes rate. */
+   vehicles table as the outbound checklist: loading start / end = Time Start /
+   Time End (never an arrival — that would turn the loading-duration KPI into
+   trip length), loading temperature = Temp Check, and every destination with
+   its arrival time / temperature. The eleven checks are not asked of the
+   driver, so they stay "—" and do not count in the yes rate. */
 function tripToRecord(tr) {
   const stops = Array.isArray(tr.destinations) ? tr.destinations : [];
   return {
@@ -419,9 +418,9 @@ function tripToRecord(tr) {
     inspectedBy: "",
     verifiedBy: "",
     vehicleNo: tr.vehicleNo || "",
-    driverName: tr.driverName || "",
+    driverName: tr.driverEmpNo ? `${tr.driverName || ""} (${tr.driverEmpNo})` : tr.driverName || "",
     timeStart: tr.loading?.time || "",
-    timeEnd: "",
+    timeEnd: tr.loading?.endTime || "",
     tempCheck: tr.loading?.temp ?? "",
     destination: stops
       .map((d) => (d.arrival
