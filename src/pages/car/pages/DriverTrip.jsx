@@ -554,7 +554,7 @@ export default function DriverTrip() {
       temp: "",
       photos: [],
       location: null,
-      origin: trips[0]?.end?.name || "", // a truck usually starts where its last trip ended
+      origin: "QCS", // trucks load at QCS; the driver can pick another branch
       dests: [],
       notes: "",
     });
