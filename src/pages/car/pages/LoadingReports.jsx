@@ -149,128 +149,137 @@ const yesNoLabel = (v) => {
   return n === "yes" ? "YES" : n === "no" ? "NO" : "—";
 };
 
-/* ===================== Theme Styles ===================== */
+/* ===================== Theme Styles =====================
+   Soft Sky. Under #root every element is forced to 14px !important
+   (globals.css), so sizes here go through `#root .lr-app …` rules that win on
+   specificity and keep following the Aa text-size slider (--app-fs). */
+const FS = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
 function ThemeStyles() {
   return (
     <style>{`
       .lr-app {
-        --primary: #2563eb;
-        --accent: #7c3aed;
-        --text: #0f172a;
-        --panel-bg: rgba(255,255,255,0.72);
-        --panel-border: rgba(255,255,255,0.55);
-        --panel-shadow: 0 10px 30px rgba(2,6,23,0.08), 0 2px 10px rgba(2,6,23,0.06);
-        --ch: 16px;
-        --clip-chamfer: polygon(
-          var(--ch) 0,
-          calc(100% - var(--ch)) 0,
-          100% var(--ch),
-          100% calc(100% - var(--ch)),
-          calc(100% - var(--ch)) 100%,
-          var(--ch) 100%,
-          0 calc(100% - var(--ch)),
-          0 var(--ch)
-        );
-        color: var(--text);
+        --sky: #0284c7; --sky-2: #0ea5e9; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0;
+        color: var(--ink);
         -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
       }
       .lr-app::before {
-        content: "";
-        position: fixed;
-        inset: -20vmax;
-        z-index: 0;
-        pointer-events: none;
+        content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
         background:
-          radial-gradient(40vmax 40vmax at 12% 18%, rgba(124,58,237,.20), transparent 60%),
-          radial-gradient(45vmax 35vmax at 85% 12%, rgba(37,99,235,.20), transparent 60%),
-          radial-gradient(40vmax 35vmax at 20% 90%, rgba(16,185,129,.20), transparent 60%),
-          linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-        filter: saturate(1.05) blur(0.2px);
-        animation: auroraShift 14s ease-in-out infinite alternate;
+          radial-gradient(60vmax 40vmax at 0% 0%, rgba(14,165,233,.10), transparent 60%),
+          radial-gradient(50vmax 40vmax at 100% 0%, rgba(99,102,241,.08), transparent 60%),
+          linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
       }
-      @keyframes auroraShift {
-        0%   { transform: translate3d(0,0,0) scale(1); }
-        100% { transform: translate3d(2%, -2%, 0) scale(1.03); }
+      #root .lr-app .lr-h1 { font-size: ${FS(22)}; font-weight: 900; letter-spacing: -.01em; }
+      #root .lr-app .lr-sub { font-size: ${FS(13)}; color: var(--muted); font-weight: 600; }
+      #root .lr-app .lr-h2 { font-size: ${FS(19)}; font-weight: 900; }
+      #root .lr-app .lr-kpi-v, #root .lr-app .lr-kpi-v * { font-size: ${FS(26)}; font-weight: 900; line-height: 1.1; }
+      #root .lr-app .lr-kpi-t { font-size: ${FS(12)}; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+      #root .lr-app .lr-small, #root .lr-app .lr-small * { font-size: ${FS(12)}; }
+      #root .lr-app .lr-day-main { font-size: ${FS(15)}; font-weight: 800; }
+
+      .lr-card {
+        background: #fff; border: 1px solid var(--line); border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(2,132,199,.06);
       }
-      .panel {
-        position: relative;
-        clip-path: var(--clip-chamfer);
-        background: var(--panel-bg);
-        border: 1px solid var(--panel-border);
-        box-shadow: var(--panel-shadow);
-        overflow: clip;
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        transition: box-shadow .18s ease;
-      }
-      .panel:hover {
-        transform: none;
-        box-shadow: var(--panel-shadow);
-      }
-      .panel::before {
-        content: "";
-        position: absolute; inset: 0;
-        clip-path: var(--clip-chamfer);
-        padding: 1px;
-        background: linear-gradient(135deg, rgba(37,99,235,.55), rgba(124,58,237,.55), rgba(16,185,129,.55));
-        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-                mask-composite: exclude;
-        pointer-events: none;
-        opacity: .55;
-      }
+      .panel { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px rgba(2,132,199,.06); }
       .panel-body { padding: 12px; }
 
-      .lr-app table { width: 100%; border-collapse: separate; border-spacing: 0; }
-      .lr-app thead th {
-        background: linear-gradient(180deg, #eff6ff, #e7f0ff);
-        color: #0b1324;
-        border-bottom: 1px solid rgba(203,213,225,.9);
-        font-weight: 800;
-        padding: 10px 12px;
-        position: sticky; top: 0; z-index: 1;
+      .lr-top {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; margin-bottom: 16px;
+        background: rgba(255,255,255,.95);
       }
-      .lr-app tbody td {
-        background: rgba(255,255,255,0.8);
-        color: #0b1324;
-        border-top: 1px solid rgba(226,232,240,.7);
-        padding: 9px 8px;
-        text-align: center;
+      .lr-logo {
+        width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 24px;
+        background: linear-gradient(135deg, var(--sky-2), #2563eb); color: #fff; box-shadow: 0 10px 22px rgba(37,99,235,.28);
+        flex-shrink: 0;
       }
-      .lr-app tbody tr:first-child td { border-top: none; }
-      .lr-app table.detail-table th, .lr-app table.detail-table td {
-        border: 1px solid #e2e8f0;
-        padding: 8px 10px;
-        text-align: left;
+      .lr-btn {
+        display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 14px; border-radius: 11px;
+        border: 1px solid #cbd5e1; background: #fff; color: var(--ink); font-weight: 800; cursor: pointer; font-family: inherit;
+        transition: background .15s, border-color .15s;
       }
-      .lr-app table.detail-table thead th {
-        background: #f1f5f9;
-        font-weight: 700;
-        color: #1f2937;
-        padding: 10px 12px;
-      }
-      .lr-app table.detail-table tbody tr:hover td {
-        background: #f8fafc;
-      }
+      .lr-btn:hover:not(:disabled) { background: #f0f9ff; border-color: #7dd3fc; }
+      .lr-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .lr-btn.pri { background: linear-gradient(180deg, var(--sky-2), var(--sky)); border-color: var(--sky); color: #fff; }
+      .lr-btn.pri:hover:not(:disabled) { filter: brightness(1.06); background: linear-gradient(180deg, var(--sky-2), var(--sky)); }
+      .lr-today { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+        background: #fee2e2; color: #b91c1c; font-weight: 900; border: 1px solid #fecaca; }
+      .lr-today i { width: 8px; height: 8px; border-radius: 999px; background: #ef4444; display: inline-block;
+        animation: lrPulse 1.6s ease-in-out infinite; }
+      @keyframes lrPulse { 50% { opacity: .35; } }
+
+      .lr-split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+      @media (max-width: 980px) { .lr-split { grid-template-columns: 1fr; } }
+      .lr-side { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100vh - 140px); }
+      @media (max-width: 980px) { .lr-side { max-height: 50vh; } }
+      .lr-side-scroll { overflow: auto; padding: 6px 8px 10px; }
+      .lr-search { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 11px; border: 1px solid #cbd5e1;
+        background: #f8fafc; font-weight: 600; outline: none; font-family: inherit; }
+      .lr-search:focus { border-color: var(--sky-2); background: #fff; box-shadow: 0 0 0 3px rgba(14,165,233,.15); }
+
+      .lr-tree-y, .lr-tree-m { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        border: 0; background: transparent; cursor: pointer; font-family: inherit; color: var(--ink); text-align: left; }
+      .lr-tree-y { padding: 9px 10px; border-radius: 10px; font-weight: 900; }
+      .lr-tree-y:hover, .lr-tree-m:hover { background: #f0f9ff; }
+      .lr-tree-m { padding: 7px 10px 7px 18px; border-radius: 9px; font-weight: 800; color: #334155; }
+      .lr-tree-m.open { color: var(--sky); }
+      .lr-count { padding: 1px 8px; border-radius: 999px; background: #f1f5f9; color: var(--muted); font-weight: 800; }
+
+      .lr-day { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 10px; margin: 2px 0 2px 14px;
+        border-radius: 11px; cursor: pointer; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+      .lr-day:hover { background: #f8fafc; border-color: var(--line); }
+      .lr-day.on { background: linear-gradient(90deg, #e0f2fe, #f0f9ff); border-color: #7dd3fc; box-shadow: inset 3px 0 0 var(--sky); }
+      .lr-day-num { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0;
+        background: #fff; border: 1px solid var(--line); font-weight: 900; line-height: 1; }
+      .lr-day.on .lr-day-num { background: var(--sky); border-color: var(--sky); color: #fff; }
+      .lr-pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-weight: 800;
+        background: #eef2ff; color: #3730a3; }
+      .lr-pill.trip { background: #ecfeff; color: #155e75; }
+      .lr-del { margin-left: auto; border: 1px solid #fecaca; background: #fff5f5; color: #b91c1c; border-radius: 9px;
+        width: 30px; height: 30px; cursor: pointer; flex-shrink: 0; }
+      .lr-del:hover { background: #fee2e2; }
+
+      .lr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 16px; }
+      .lr-kpi { padding: 14px 16px 14px 18px; position: relative; overflow: hidden; display: grid; gap: 6px; align-content: start; }
+      .lr-kpi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--acc, var(--sky)); }
+      .lr-kpi-icon { position: absolute; right: 12px; top: 10px; opacity: .9; }
+
+      .lr-doc { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; }
+      .lr-chip { padding: 4px 10px; border-radius: 999px; background: #f1f5f9; border: 1px solid var(--line); font-weight: 700; color: #334155; }
+      .lr-doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; width: 100%;
+        margin-top: 8px; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
+      .lr-doc-grid b { display: block; color: var(--muted); font-weight: 700; }
+
+      .lr-sec-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+        font-weight: 900; color: #0c4a6e; background: linear-gradient(180deg, #f0f9ff, #fff); border-radius: 16px 16px 0 0; }
+
+      .lr-empty { text-align: center; color: var(--muted); padding: 56px 16px; }
 
       .lr-app *::-webkit-scrollbar { height: 10px; width: 10px; }
       .lr-app *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       .lr-app *::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      .toast-wrap {
-        position: fixed; right: 16px; top: 16px;
-        display: grid; gap: 8px; z-index: 9999;
-      }
-      .toast {
-        background: #0f172a; color: white; padding: 10px 12px; border-radius: 10px;
-        box-shadow: 0 10px 20px rgba(2,6,23,.2);
-        font-weight: 700; letter-spacing: .2px;
-      }
+      .toast-wrap { position: fixed; right: 16px; top: 16px; display: grid; gap: 8px; z-index: 9999; }
+      .toast { background: #0f172a; color: white; padding: 10px 14px; border-radius: 12px;
+        box-shadow: 0 10px 20px rgba(2,6,23,.2); font-weight: 700; letter-spacing: .2px; }
       .toast.ok { background: #16a34a; }
       .toast.err { background: #dc2626; }
       .toast.info { background: #2563eb; }
     `}</style>
+  );
+}
+
+function StatCard({ title, value, suffix = "", hint = "", icon = "", accent = "#0284c7" }) {
+  return (
+    <div className="lr-card lr-kpi" style={{ "--acc": accent }}>
+      {icon && <span className="lr-kpi-icon">{icon}</span>}
+      <div className="lr-kpi-t" style={{ color: accent }}>{title}</div>
+      <div className="lr-kpi-v">
+        {value}
+        {suffix && value !== "—" ? <span style={{ fontWeight: 800, color: "#64748b" }}>{suffix}</span> : null}
+      </div>
+      {hint && <div className="lr-small" style={{ color: "#64748b", fontWeight: 600 }}>{hint}</div>}
+    </div>
   );
 }
 
@@ -327,18 +336,6 @@ function Sparkline({ points = [], width = 240, height = 60, stroke = "#7d3c98" }
   );
 }
 
-function StatCard({ title, value, suffix = "", hint = "" }) {
-  return (
-    <div className="panel" style={{ padding: 14, borderRadius: 14, minWidth: 180, background: "rgba(255,255,255,0.85)" }}>
-      <div style={{ fontWeight: 800, color: "#7c3aed", marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: "1.8em", fontWeight: 900, color: "#0f172a" }}>
-        {value}
-        {suffix}
-      </div>
-      {hint && <div style={{ color: "#6b7280", fontSize: ".9em", marginTop: 4 }}>{hint}</div>}
-    </div>
-  );
-}
 
 /* ====================== KPIs helpers ====================== */
 const toNum = (x) => {
@@ -954,52 +951,28 @@ export default function LoadingReports() {
     }
   };
 
-  /* ===== Styles ===== */
+  /* ===== Styles (the rest lives in ThemeStyles) ===== */
   const pageWrap = {
     direction: "ltr",
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial",
-    background: "transparent",
     minHeight: "100vh",
-    padding: "1.5rem",
+    padding: "16px clamp(12px, 2vw, 24px) 32px",
     color: "#0f172a",
     position: "relative",
     zIndex: 1,
   };
-  const titleStyle = { textAlign: "center", color: "#0f172a", fontWeight: 800, marginBottom: "1rem", letterSpacing: ".2px" };
-  const badge = {
-    marginInlineStart: 12, fontSize: "0.75em", color: "#b91c1c",
-    background: "#fee2e2", borderRadius: 999, padding: "4px 10px",
-    fontWeight: "bold", boxShadow: "0 2px 6px #fee2e2", verticalAlign: "text-top",
-    display: "inline-flex", alignItems: "center", gap: 6,
-  };
-  const dot = { width: 8, height: 8, borderRadius: 999, background: "#ef4444", display: "inline-block" };
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const monthName = (m) => MONTHS[Number(m) - 1] || m;
 
-  const splitWrap = { display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 };
-  const sidebarBox = { minWidth: 300, maxWidth: 360, maxHeight: "70vh", overflow: "auto" };
-  const section = { marginBottom: 4 };
-  const headerRow = {
-    display: "flex", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer",
-    fontWeight: 800, color: "#0f172a", borderBottom: "1px solid #e5e7eb", background: "#eff6ff",
-  };
-  const subHeader = {
-    display: "flex", justifyContent: "space-between", padding: "8px 14px", cursor: "pointer",
-    color: "#0f172a", borderBottom: "1px dashed #e5e7eb", background: "#f0f9ff",
-  };
-  const dayRow = (active) => ({
-    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 10px",
-    cursor: "pointer", borderBottom: "1px dashed #e5e7eb", fontSize: "0.98em",
-    background: active ? "#e0f2fe" : "rgba(255,255,255,0.85)", borderLeft: active ? "5px solid #3b82f6" : "none",
-    color: "#0f172a",
-  });
-  const deleteBtn = { background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, padding: "2px 10px", cursor: "pointer" };
+  /* the year and month of the day on screen stay open in the tree */
+  useEffect(() => {
+    if (!selectedDayKey?.startsWith("iso:")) return;
+    const [y, m] = selectedDayKey.slice(4).split("-");
+    setOpenYears((p) => (p[y] ? p : { ...p, [y]: true }));
+    setOpenMonths((p) => (p[`${y}-${m}`] ? p : { ...p, [`${y}-${m}`]: true }));
+  }, [selectedDayKey]);
 
-  const searchBox = {
-    display: "flex", gap: 8, padding: "10px 10px 0 10px", alignItems: "center",
-  };
-  const inputStyle = {
-    flex: 1, padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", outline: "none",
-    fontWeight: 600, background: "rgba(255,255,255,.9)",
-  };
+  const [docOpen, setDocOpen] = useState(false);
 
   const safeDisplayDate = (maybeDate, opts) => {
     const p = parseToISO(maybeDate);
@@ -1052,78 +1025,70 @@ export default function LoadingReports() {
   const filteredFlat = useMemo(() => flatDays.filter(filterPredicate), [flatDays, filterPredicate]);
 
   /* ===== Sidebar pieces ===== */
+  const DayRow = ({ k }) => {
+    const isISO = k.startsWith("iso:");
+    const iso = isISO ? k.slice(4) : null;
+    const dt = iso ? new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) : null;
+    const records = (dayIndex.get(k) || []).length;
+    const trips = tripsByDay.get(k)?.length || 0;
+    const sheets = records - trips;
+    return (
+      <div className={`lr-day${selectedDayKey === k ? " on" : ""}`} onClick={() => setSelectedDayKey(k)}>
+        <div className="lr-day-num">{dt ? dt.getDate() : "?"}</div>
+        <div style={{ minWidth: 0, display: "grid", gap: 3 }}>
+          <div className="lr-day-main">
+            {dt ? new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(dt) : k.slice(4)}
+            {iso && relativeLabel(iso) && <span style={{ color: "#0284c7" }}>{relativeLabel(iso)}</span>}
+          </div>
+          <div className="lr-small" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {sheets > 0 && <span className="lr-pill" title="Checklist vehicles">🧾 {sheets}</span>}
+            {trips > 0 && <span className="lr-pill trip" title="Driver trips">📷 {trips}</span>}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="lr-del"
+          title="Delete this day (server)"
+          onClick={(e) => { e.stopPropagation(); handleDeleteByDayKey(k); }}
+          data-delete-action="true"
+        >
+          🗑
+        </button>
+      </div>
+    );
+  };
+
   const YearMonthTree = () => (
     <>
       {hierarchy.map(({ year, months }) => {
-        const yearDayKeys = months.flatMap(({ dayKeys }) => dayKeys.filter(filterPredicate));
-        const yearCount = yearDayKeys.length;
+        const yearCount = months.flatMap(({ dayKeys }) => dayKeys.filter(filterPredicate)).length;
         const yOpen = !!openYears[year];
         return (
-          <div key={year} style={section}>
-            <div
-              style={{ ...headerRow, background: yOpen ? "#e0f2fe" : "#eff6ff" }}
-              onClick={() => setOpenYears((p) => ({ ...p, [year]: !p[year] }))}
-            >
-              <span>📅 Year: {year}</span>
-              <span style={{ fontWeight: 700 }}>{yearCount} day(s) {yOpen ? "▼" : "►"}</span>
-            </div>
+          <div key={year} style={{ marginBottom: 4 }}>
+            <button type="button" className="lr-tree-y" onClick={() => setOpenYears((p) => ({ ...p, [year]: !p[year] }))}>
+              <span>{yOpen ? "▾" : "▸"} {year}</span>
+              <span className="lr-count lr-small">{yearCount} days</span>
+            </button>
 
-            {yOpen && (
-              <div style={{ padding: "6px 0" }}>
-                {months.map(({ month, dayKeys }) => {
-                  const key = `${year}-${month}`;
-                  const mOpen = !!openMonths[key];
-                  const filteredDays = dayKeys.filter(filterPredicate);
-                  return (
-                    <div key={key} style={{ margin: "4px 0 6px" }}>
-                      <div
-                        style={{ ...subHeader, background: mOpen ? "#97d7a4ff" : "rgba(255,255,255,0.85)" }}
-                        onClick={() => setOpenMonths((p) => ({ ...p, [key]: !p[key] }))}
-                      >
-                        <span>🗓 Month: {month}</span>
-                        <span>{filteredDays.length} day(s) {mOpen ? "▾" : "▸"}</span>
-                      </div>
-
-                      {mOpen && (
-                        <div>
-                          {filteredDays.map((k) => {
-                            const isISO = k.startsWith("iso:");
-                            const iso = isISO ? k.slice(4) : null;
-                            const labelTxt = isISO ? (
-                              <>
-                                {displayDate(iso)} <small style={{ color: "#150202ff" }}>{relativeLabel(iso)}</small>
-                              </>
-                            ) : (
-                              k.slice(4)
-                            );
-                            const active = selectedDayKey === k;
-                            return (
-                              <div key={k} style={dayRow(active)} onClick={() => setSelectedDayKey(k)}>
-                                <div>📆 {labelTxt}</div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  <b>{(dayIndex.get(k) || []).length}</b> <small>record(s)</small>
-                                  {tripsByDay.get(k)?.length > 0 && <small title="Driver trips">📷 {tripsByDay.get(k).length}</small>}
-                                  <button
-                                    title="Delete day (server)"
-                                    style={deleteBtn}
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteByDayKey(k); }}
-                                   data-delete-action="true">
-                                    🗑
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {filteredDays.length === 0 && (
-                            <div style={{ textAlign: "center", color: "#806b6bff", padding: 8 }}>No days in filter</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {yOpen && months.map(({ month, dayKeys }) => {
+              const key = `${year}-${month}`;
+              const mOpen = !!openMonths[key];
+              const days = dayKeys.filter(filterPredicate);
+              if (!days.length && search) return null;
+              return (
+                <div key={key}>
+                  <button
+                    type="button"
+                    className={`lr-tree-m${mOpen ? " open" : ""}`}
+                    onClick={() => setOpenMonths((p) => ({ ...p, [key]: !p[key] }))}
+                  >
+                    <span>{mOpen ? "▾" : "▸"} {monthName(month)}</span>
+                    <span className="lr-count lr-small">{days.length}</span>
+                  </button>
+                  {mOpen && days.map((k) => <DayRow key={k} k={k} />)}
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -1132,39 +1097,14 @@ export default function LoadingReports() {
 
   const FlatDayList = () => (
     <div>
-      {filteredFlat.map((k) => {
-        const isISO = k.startsWith("iso:");
-        const iso = isISO ? k.slice(4) : null;
-        const labelTxt = isISO ? (
-          <>
-            {displayDate(iso)} <small style={{ color: "#806b6dff" }}>{relativeLabel(iso)}</small>
-          </>
-        ) : (
-          k.slice(4)
-        );
-        const active = selectedDayKey === k;
-        return (
-          <div key={k} style={dayRow(active)} onClick={() => setSelectedDayKey(k)}>
-            <div>📆 {labelTxt}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <b>{(dayIndex.get(k) || []).length}</b> <small>record(s)</small>
-                                  {tripsByDay.get(k)?.length > 0 && <small title="Driver trips">📷 {tripsByDay.get(k).length}</small>}
-              <button
-                title="Delete day (server)"
-                style={deleteBtn}
-                onClick={(e) => { e.stopPropagation(); handleDeleteByDayKey(k); }}
-               data-delete-action="true">
-                🗑
-              </button>
-            </div>
-          </div>
-        );
-      })}
-      {filteredFlat.length === 0 && (
-        <div style={{ textAlign: "center", color: "#1358e0ff", padding: 16 }}>No days</div>
-      )}
+      {filteredFlat.map((k) => <DayRow key={k} k={k} />)}
+      {filteredFlat.length === 0 && <div className="lr-empty">No days</div>}
     </div>
   );
+
+  const uniqueTrucks = new Set(selectedVehicles.map((v) => String(v.vehicleNo || "").replace(/\D/g, "") || v.__docId)).size;
+  const selectedTripCount = selectedDayKey ? tripsByDay.get(selectedDayKey)?.length || 0 : 0;
+  const docHeader = dayHeader.header;
 
   return (
     <div className="lr-app" style={pageWrap}>
@@ -1172,189 +1112,155 @@ export default function LoadingReports() {
       <Toasts />
       {viewer && <PhotoViewer {...viewer} onIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
 
-      <h3 style={titleStyle}>
-        📄 Loading Time Reports
-        {todaysCount > 0 && (
-          <span style={badge}><span style={dot} /> {todaysCount} today</span>
-        )}
-      </h3>
+      {/* ── Header bar ── */}
+      <header className="lr-card lr-top">
+        <div className="lr-logo">🚚</div>
+        <div style={{ minWidth: 0 }}>
+          <div className="lr-h1" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            Loading Reports
+            {todaysCount > 0 && <span className="lr-today lr-small"><i /> {todaysCount} today</span>}
+          </div>
+          <div className="lr-sub">Outbound checklist and driver trips, day by day</div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="lr-btn" onClick={() => window.history.back()}>← Back</button>
+          <button
+            type="button"
+            className="lr-btn pri"
+            onClick={fetchAll}
+            disabled={loading || importing}
+            title={`API: ${REPORTS_URL}?type=${LOADING_TYPE}`}
+          >
+            {loading ? "Loading…" : "🔄 Refresh"}
+          </button>
+          <button type="button" className="lr-btn" onClick={handleExportPDF} disabled={!selectedDayKey || loading || importing} title="Export selected day to PDF (print window)">
+            🖨️ PDF
+          </button>
+          <button type="button" className="lr-btn" onClick={handleExportJSON} disabled={loading || importing} title="Export current type as JSON">
+            ⬇︎ Export
+          </button>
+          <button type="button" className="lr-btn" onClick={handlePickImport} disabled={loading || importing} title="Import JSON → save to server → refresh">
+            ⬆︎ Import
+          </button>
+          <input type="file" accept="application/json" ref={fileRef} onChange={handleImportFile} style={{ display: "none" }} />
+        </div>
+      </header>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <button
-          className="panel"
-          onClick={fetchAll}
-          style={{ padding: "8px 14px", fontWeight: 800, borderRadius: 12, background: "#fff" }}
-          disabled={loading || importing}
-          title={`API: ${REPORTS_URL}?type=${LOADING_TYPE}`}
-        >
-          {loading ? "… Loading" : "🔄 Refresh from Server"}
-        </button>
-
-        <button
-          className="panel"
-          onClick={handleExportJSON}
-          style={{ padding: "8px 14px", fontWeight: 800, borderRadius: 12, background: "white" }}
-          disabled={loading || importing}
-          title="Export current type as JSON"
-        >
-          ⬇︎ Export JSON
-        </button>
-
-        <button
-          className="panel"
-          onClick={handleExportPDF}
-          style={{ padding: "8px 14px", fontWeight: 800, borderRadius: 12, background: "white" }}
-          disabled={!selectedDayKey || loading || importing}
-          title="Export selected day to PDF (print window)"
-        >
-          🖨️ PDF
-        </button>
-
-        <button
-          className="panel"
-          onClick={handlePickImport}
-          style={{ padding: "8px 14px", fontWeight: 800, borderRadius: 12, background: "white" }}
-          disabled={loading || importing}
-          title="Import JSON → save to server → refresh"
-        >
-          ⬆︎ Import JSON
-        </button>
-        <input
-          type="file"
-          accept="application/json"
-          ref={fileRef}
-          onChange={handleImportFile}
-          style={{ display: "none" }}
-        />
-      </div>
-
-      {(loading) ? (
-        <p style={{ textAlign: "center", color: "#1353d3ff" }}>Loading…</p>
-      ) : (hierarchy.length === 0) ? (
-        <p style={{ textAlign: "center", color: "#6b7280" }}>No reports on server.</p>
+      {loading && hierarchy.length === 0 ? (
+        <div className="lr-card lr-empty">Loading…</div>
+      ) : hierarchy.length === 0 ? (
+        <div className="lr-card lr-empty">No reports on the server yet.</div>
       ) : (
-        <div style={splitWrap}>
-          {/* Sidebar (left) */}
-          <div className="panel" style={sidebarBox}>
-            <div style={searchBox}>
+        <div className="lr-split">
+          {/* ── Days ── */}
+          <aside className="lr-card lr-side">
+            <div style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>
               <input
-                placeholder='Search day… e.g. "2025", "June", or >=2'
+                className="lr-search"
+                placeholder='Search… "2026", "October", or >=2'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={inputStyle}
               />
             </div>
-            <div className="panel-body" style={{ padding: 0 }}>
+            <div className="lr-side-scroll">
               {groupMode === "day" ? <FlatDayList /> : <YearMonthTree />}
             </div>
-          </div>
+          </aside>
 
-          {/* Details (right) */}
-          <div className="panel" style={{ flex: 1, minHeight: 320 }}>
-            <div className="panel-body" style={{ padding: "22px 24px" }}>
-              {selectedDayKey ? (
-                <>
-                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15em", marginBottom: 8 }}>
-                    Day Details:{" "}
-                    {selectedIso ? (
-                      <>
-                        {displayDate(selectedIso)}{" "}
-                        <small style={{ color: "#6b7280" }}>{relativeLabel(selectedIso)}</small>
-                      </>
-                    ) : (
-                      selectedRaw
+          {/* ── The day ── */}
+          <main style={{ minWidth: 0 }}>
+            {selectedDayKey ? (
+              <>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", margin: "2px 2px 12px" }}>
+                  <div className="lr-h2">
+                    {selectedIso ? displayDate(selectedIso) : selectedRaw}
+                  </div>
+                  {selectedIso && relativeLabel(selectedIso) && (
+                    <span className="lr-pill trip lr-small">{relativeLabel(selectedIso).replace(/[()]/g, "").trim()}</span>
+                  )}
+                </div>
+
+                {/* KPIs */}
+                <div className="lr-kpis">
+                  <StatCard title="Trucks" icon="🚚" accent="#0284c7" value={uniqueTrucks} hint={`${dayKPIs.count ?? 0} record(s) this day`} />
+                  <StatCard title="Driver trips" icon="📷" accent="#0891b2" value={selectedTripCount} hint="Scanned on the phone" />
+                  <StatCard
+                    title="Avg temperature"
+                    icon="🌡"
+                    accent={dayKPIs.avgTemp != null && dayKPIs.avgTemp > 5 ? "#d97706" : "#2563eb"}
+                    value={dayKPIs.avgTemp != null ? dayKPIs.avgTemp.toFixed(1) : "—"}
+                    suffix=" °C"
+                    hint="At loading"
+                  />
+                  <StatCard
+                    title="Avg loading time"
+                    icon="⏱"
+                    accent="#7c3aed"
+                    value={formatMinutes(dayKPIs.avgDuration)}
+                    suffix=" min"
+                    hint="Time end − time start"
+                  />
+                  <div className="lr-card lr-kpi" style={{ "--acc": "#16a34a", justifyItems: "center" }}>
+                    <div className="lr-kpi-t" style={{ color: "#16a34a", justifySelf: "start" }}>Checks passed</div>
+                    <GaugeCircle value={dayKPIs.yesRate != null ? dayKPIs.yesRate : 0} size={86} stroke={9} color="#22c55e" />
+                  </div>
+                  <div className="lr-card lr-kpi" style={{ "--acc": "#6366f1" }}>
+                    <div className="lr-kpi-t" style={{ color: "#6366f1" }}>Last {sparkPoints.length || 0} days</div>
+                    <Sparkline points={sparkPoints} width={180} height={52} stroke="#6366f1" />
+                    <div className="lr-small" style={{ color: "#64748b", fontWeight: 600 }}>Records per day</div>
+                  </div>
+                </div>
+
+                {/* Document control — one strip, details on demand */}
+                {docHeader && (
+                  <div className="lr-card lr-doc lr-small">
+                    <span className="lr-chip">📄 {docHeader.documentTitle || "—"}</span>
+                    <span className="lr-chip">No. {docHeader.documentNo || "—"}</span>
+                    <span className="lr-chip">Rev {docHeader.revisionNo || "—"}</span>
+                    {dayHeader.inspectedBy && <span className="lr-chip">Inspected: {dayHeader.inspectedBy}</span>}
+                    {dayHeader.verifiedBy && <span className="lr-chip">Verified: {dayHeader.verifiedBy}</span>}
+                    <button type="button" className="lr-btn" style={{ minHeight: 30, padding: "4px 10px" }} onClick={() => setDocOpen((v) => !v)}>
+                      {docOpen ? "▴ Less" : "▾ Document control"}
+                    </button>
+                    {docOpen && (
+                      <div className="lr-doc-grid">
+                        {[
+                          ["Issue date", safeDisplayDate(docHeader.issueDate, { weekday: false })],
+                          ["Area", docHeader.area],
+                          ["Issued by", docHeader.issuedBy],
+                          ["Controlling officer", docHeader.controllingOfficer],
+                          ["Approved by", docHeader.approvedBy],
+                          ["Inspected by", dayHeader.inspectedBy],
+                          ["Verified by", dayHeader.verifiedBy],
+                        ].map(([k, v]) => (
+                          <div key={k}><b>{k}</b>{v || "—"}</div>
+                        ))}
+                      </div>
                     )}
                   </div>
+                )}
 
-                  {/* ===== Document Header (ONCE per day) ===== */}
-                  {dayHeader.header && (
-                    <div className="panel" style={{ marginBottom: 16, overflow: "hidden" }}>
-                      <div className="panel-body" style={{ background: "rgba(205, 210, 213, 0.8)" }}>
-                        <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
-                          Document Header
-                        </div>
-                        <table className="detail-table">
-                          <tbody>
-                            <tr>
-                              <th>Document Title</th><td>{dayHeader.header.documentTitle || "—"}</td>
-                              <th>Document No</th><td>{dayHeader.header.documentNo || "—"}</td>
-                            </tr>
-                            <tr>
-                              <th>Issue Date</th><td>{safeDisplayDate(dayHeader.header.issueDate, { weekday: false })}</td>
-                              <th>Revision No</th><td>{dayHeader.header.revisionNo || "—"}</td>
-                            </tr>
-                            <tr>
-                              <th>Area</th><td>{dayHeader.header.area || "—"}</td>
-                              <th>Issued By</th><td>{dayHeader.header.issuedBy || "—"}</td>
-                            </tr>
-                            <tr>
-                              <th>Controlling Officer</th><td>{dayHeader.header.controllingOfficer || "—"}</td>
-                              <th>Approved By</th><td>{dayHeader.header.approvedBy || "—"}</td>
-                            </tr>
-                            <tr>
-                              <th>Inspected By</th><td>{dayHeader.inspectedBy || "—"}</td>
-                              <th>Verified By</th><td>{dayHeader.verifiedBy || "—"}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* KPIs */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12, margin: "10px 0 16px" }}>
-                    <StatCard title="Vehicles" value={dayKPIs.count ?? 0} hint="Records for this day" />
-                    <StatCard
-                      title="Avg Temperature (°C)"
-                      value={dayKPIs.avgTemp != null ? dayKPIs.avgTemp.toFixed(1) : "—"}
-                      hint="Temp Check"
-                    />
-                    <StatCard
-                      title="Avg Loading Duration"
-                      value={formatMinutes(dayKPIs.avgDuration)}
-                      suffix=" min"
-                      hint="(Time End - Time Start)"
-                    />
-                    <div className="panel" style={{ padding: 12, display: "grid", placeItems: "center" }}>
-                      <GaugeCircle
-                        value={dayKPIs.yesRate != null ? dayKPIs.yesRate : 0}
-                        label="Yes rate (all checks)"
-                        color="#5dade2"
-                      />
-                    </div>
-                    <div className="panel" style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 800, color: "#6310f1ff", marginBottom: 6 }}>Last days history</div>
-                      <Sparkline points={sparkPoints} />
-                      <div style={{ color: "#6b7280", fontSize: ".88em", marginTop: 6 }}>
-                        Trend of records/day for the last {sparkPoints.length || 0} day(s).
-                      </div>
-                    </div>
+                {/* One card per truck — a click opens everything about it for the day */}
+                <section className="lr-card" style={{ marginBottom: 16 }}>
+                  <div className="lr-sec-h">
+                    🚚 Vehicles of the day
+                    <span className="lr-small" style={{ color: "#64748b", fontWeight: 700 }}>· click a truck for its details</span>
                   </div>
-
-                  {/* One card per truck — a click opens everything about it for the day */}
-                  <div className="panel" style={{ overflow: "hidden", marginBottom: 16 }}>
-                    <div style={{ background: "#dbeafe", padding: "10px 12px", fontWeight: 700, color: "#0f172a", borderBottom: "1px solid #b6c8e3" }}>
-                      🚚 Vehicles of the day — click a truck for its details
-                    </div>
-                    <div className="panel-body" style={{ padding: 0 }}>
-                      <VehicleDayCards
-                        vehicles={selectedVehicles}
-                        viParams={VI_PARAMS}
-                        normYesNo={normYesNo}
-                        durationOf={durationOf}
-                        onPhoto={(photos, index) => setViewer({ photos, index })}
-                        onDeleteTrip={handleDeleteTrip}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div style={{ textAlign: "center", color: "#6b7280", padding: "4rem 0" }}>
-                  <p>Please select a day from the list on the left.</p>
-                </div>
-              )}
-            </div>
-          </div>
+                  <VehicleDayCards
+                    vehicles={selectedVehicles}
+                    viParams={VI_PARAMS}
+                    normYesNo={normYesNo}
+                    durationOf={durationOf}
+                    onPhoto={(photos, index) => setViewer({ photos, index })}
+                    onDeleteTrip={handleDeleteTrip}
+                  />
+                </section>
+              </>
+            ) : (
+              <div className="lr-card lr-empty">Pick a day from the list.</div>
+            )}
+          </main>
         </div>
       )}
     </div>
