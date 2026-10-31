@@ -70,11 +70,15 @@ export default async function build(wb, record, ctx) {
   /* Al Mawashi backup: ctx.images (url → bytes) puts the picture itself in
      the row, clickable to the original; otherwise the row is the link. */
   const images_ = ctx?.images instanceof Map ? ctx.images : null;
+  /* Backup photo mode: how a non-embedded file is written (online link,
+     local copy, or no link), and whether pictures open the original. */
+  const photoLink = typeof ctx?.photoLink === "function" ? ctx.photoLink : (u) => ({ text: u, href: u });
+  const imageLinks = ctx?.imageLinks !== false;
   const photoRow = (label, url) => {
     const img = url && images_ ? images_.get(url) : null;
     if (!img) { linkRow(label, url); return; }
-    ws.getCell(r, 1).value = { text: label, hyperlink: url };
-    ws.getCell(r, 1).font = { ...lblFont, underline: true };
+    ws.getCell(r, 1).value = imageLinks ? { text: label, hyperlink: url } : label;
+    ws.getCell(r, 1).font = imageLinks ? { ...lblFont, underline: true } : lblFont;
     ws.getCell(r, 1).fill = lblFill;
     ws.getCell(r, 1).alignment = { ...left, vertical: "top" };
     ws.getCell(r, 1).border = BORDER_BLACK;
@@ -85,7 +89,7 @@ export default async function build(wb, record, ctx) {
       tl: { nativeCol: 1, nativeColOff: 6 * 9525, nativeRow: r - 1, nativeRowOff: 6 * 9525 },
       ext: { width: 320, height: 240 },
       editAs: "oneCell",
-      hyperlinks: { hyperlink: url, tooltip: "Open the original photo" },
+      ...(imageLinks ? { hyperlinks: { hyperlink: url, tooltip: "Open the original photo" } } : {}),
     });
     ws.getRow(r).height = 189; // 252px = 240 + padding
     r++;
@@ -96,7 +100,8 @@ export default async function build(wb, record, ctx) {
     ws.getCell(r, 1).alignment = left; ws.getCell(r, 1).border = BORDER_BLACK;
     ws.mergeCells(r, 2, r, NC);
     const v = ws.getCell(r, 2);
-    v.value = url ? { text: url, hyperlink: url } : "";
+    const lk = url ? photoLink(url) : null;
+    v.value = lk ? (lk.href ? { text: lk.text, hyperlink: lk.href } : lk.text) : "";
     v.font = { color: { argb: "2563EB" }, underline: true, size: 10 };
     v.alignment = left; v.border = BORDER_BLACK;
     ws.getRow(r).height = 18; r++;

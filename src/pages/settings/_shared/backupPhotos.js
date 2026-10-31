@@ -1,24 +1,48 @@
 // src/pages/settings/_shared/backupPhotos.js
 // 📷 الصور جوّا النسخة الاحتياطية (Al Mawashi).
 //
-// قبل: كل صورة رابط Cloudinary بس — لو انحذف الحساب أو انقطع النت، النسخة
-// بلا صور. هلق لكل ملف Excel فيه صور:
-//   • مجلد جنبه `<اسم الملف>_photos/` فيه الصور نفسها (حجم مضبوط 1600px).
-//   • ورقة «Photos» جوّا الملف: سطر لكل صورة — التاريخ، المرجع، مكان الصورة
-//     بالتقرير، صورة مصغّرة مضمّنة، ورابط للملف المحلي ورابط أونلاين.
-//   • كل خلية بالأوراق الأصلية فيها رابط صورة صارت تفتح النسخة المحلية.
+// أربع طرق (PHOTO_MODES) بيختار منها المستخدم:
+//   links       — رابط Cloudinary بالخلية بس. الأخف.
+//   embed_links — الصورة جوّا الإكسل، وبتفتح الأصلية لما تكبس عليها.
+//   embed_only  — الصورة جوّا الإكسل وكل روابط Cloudinary منشالة: ملف كامل
+//                 لحاله لمدقق خارجي، بيفتح بلا نت وبلا روابط للسيرفر.
+//   folder      — الصور ملفات بمجلد `<الملف>_photos/` جنب الإكسل، والخلية
+//                 بتفتح النسخة المحلية.
+// وثلاث جودات (PHOTO_QUALITY): صغيرة / متوسطة / أصلية.
 //
-// الصور بتنزل من Cloudinary مباشرة (بيسمح CORS)، أربعة بنفس الوقت، وبتحترم
-// زر الإلغاء. صورة ما نزلت ما بتوقّف النسخة — بيضل رابطها الأونلاين.
+// التقارير اللي إلها عمود صور (التدقيق الداخلي، البلدية) بتحط الصورة بالخلية
+// نفسها؛ الباقي بياخد ورقة «Photos» فيها الصور. الصور بتنزل من Cloudinary
+// مباشرة (بيسمح CORS)، أربعة بنفس الوقت، وبتحترم زر الإلغاء. صورة ما نزلت ما
+// بتوقّف النسخة.
 
 import { COLORS, BORDER_BLACK, fillSolid, center, left, sanitizeSheetName } from "../excel-exporters/_lib";
+
+export const PHOTO_MODES = [
+  { id: "links",       label: "روابط فقط",    icon: "🔗", hint: "الأخف والأسرع — للأرشيف اليومي" },
+  { id: "embed_links", label: "صور + روابط",  icon: "🖼️", hint: "الصورة بالملف وبتفتح الأصلية بكبسة" },
+  { id: "embed_only",  label: "صور فقط",      icon: "🛡️", hint: "بلا أي رابط — لمدقق خارجي، بيفتح بلا نت" },
+  { id: "folder",      label: "مجلد صور",     icon: "📁", hint: "الصور ملفات جنب الإكسل — أرشيف كامل" },
+];
+
+/* `mb` = rough average size of one photo at this quality, for the estimate. */
+export const PHOTO_QUALITY = [
+  { id: "small",    label: "صغيرة",  hint: "400px", transform: "c_limit,w_400,q_auto,f_jpg",  mb: 0.04 },
+  { id: "medium",   label: "متوسطة", hint: "800px", transform: "c_limit,w_800,q_auto,f_jpg",  mb: 0.12 },
+  { id: "original", label: "أصلية",  hint: "بحجمها", transform: "q_auto:best,f_jpg",           mb: 0.9 },
+];
+const THUMB = "c_fill,w_220,h_165,q_auto,f_jpg";
+const THUMB_MB = 0.012;
+
+export const photoModeById = (id) => PHOTO_MODES.find((m) => m.id === id) || PHOTO_MODES[0];
+export const photoQualityById = (id) => PHOTO_QUALITY.find((q) => q.id === id) || PHOTO_QUALITY[1];
 
 const URL_RE = /^https?:\/\/\S+$/i;
 const IMG_EXT = /\.(jpe?g|png|gif|webp|heic|heif|bmp)(\?|#|$)/i;
 const PDF_EXT = /\.pdf(\?|#|$)/i;
+const CLOUD_IMG = /res\.cloudinary\.com\/.+\/image\/upload\//i;
 
 /** الصورة/الملف المرفق اللي بيستاهل ينحفظ: Cloudinary أو امتداد صورة/PDF. */
-function isEvidenceUrl(u) {
+export function isEvidenceUrl(u) {
   if (!URL_RE.test(u)) return false;
   if (/res\.cloudinary\.com\//i.test(u)) return true;
   return IMG_EXT.test(u) || PDF_EXT.test(u);
@@ -27,9 +51,9 @@ function isPdf(u) {
   return PDF_EXT.test(u) || /\/raw\/upload\//i.test(u);
 }
 
-/** Cloudinary transformation بعد /upload/ — مثلاً حجم أصغر وصيغة jpg. */
+/** Cloudinary transformation بعد /upload/ — حجم وصيغة jpg. */
 function cloudinaryVariant(url, transform) {
-  if (!/res\.cloudinary\.com\/.+\/image\/upload\//i.test(url)) return url;
+  if (!CLOUD_IMG.test(url)) return url;
   return url.replace(/\/image\/upload\//i, `/image/upload/${transform}/`);
 }
 
@@ -59,6 +83,17 @@ export function collectPhotoUrls(record) {
   return out;
 }
 
+/**
+ * الحجم المتوقّع بالميغا لعدد صور بطريقة وجودة معيّنة.
+ * `sheetThumbs` = التقارير اللي صورها بورقة Photos (بتاخد مصغّرة كمان بوضع المجلد).
+ */
+export function estimatePhotoMB(count, mode, quality, { sheetThumbs = 0 } = {}) {
+  if (mode === "links" || !count) return 0;
+  const q = photoQualityById(quality);
+  const thumbs = mode === "folder" ? sheetThumbs * THUMB_MB : 0;
+  return count * q.mb + thumbs;
+}
+
 async function fetchBytes(url, signal) {
   try {
     const res = await fetch(url, { signal, cache: "force-cache", mode: "cors" });
@@ -85,13 +120,33 @@ async function pool(items, size, fn) {
 const safeName = (s) =>
   String(s || "").replace(/[\\/:*?"<>|\s]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
 
+/** Image bytes Excel can embed, at the chosen quality (null for PDF / webp…). */
+async function embeddable(url, quality, signal) {
+  if (isPdf(url)) return null;
+  if (CLOUD_IMG.test(url)) {
+    const bytes = await fetchBytes(cloudinaryVariant(url, photoQualityById(quality).transform), signal);
+    return bytes && bytes.length ? { buffer: bytes, extension: "jpeg" } : null;
+  }
+  let extension = "";
+  if (/\.png(\?|#|$)/i.test(url)) extension = "png";
+  else if (/\.jpe?g(\?|#|$)/i.test(url)) extension = "jpeg";
+  if (!extension) return null; // Excel cannot show webp / heic
+  const bytes = await fetchBytes(url, signal);
+  return bytes && bytes.length ? { buffer: bytes, extension } : null;
+}
+
 /**
- * نزّل صور مجموعة سجلات وحطّها بالـZIP.
+ * نزّل صور مجموعة سجلات.
+ *
+ * mode "folder": كل صورة بتنحفظ ملف بالـZIP (بالجودة المختارة) + مصغّرة للورقة.
+ * mode embed_*:  الصورة نفسها (بالجودة المختارة) بتنضمّن بورقة Photos — بلا ملفات.
  *
  * @param {object[]} records
  * @param {object} opts
- * @param {object} opts.zipFolder   مجلد JSZip اللي فيه ملف الـExcel
- * @param {string} opts.dirName     اسم مجلد الصور (بلا مسافات — روابط Excel النسبية)
+ * @param {string} opts.mode
+ * @param {string} opts.quality
+ * @param {object} [opts.zipFolder]  مجلد JSZip اللي فيه ملف الـExcel (mode folder)
+ * @param {string} [opts.dirName]    اسم مجلد الصور (بلا مسافات — روابط Excel النسبية)
  * @param {(rec)=>string} opts.dateOf
  * @param {(rec)=>string} opts.refOf
  * @param {AbortSignal} [opts.signal]
@@ -99,7 +154,7 @@ const safeName = (s) =>
  * @returns {Promise<{entries: object[], localByUrl: Map<string,string>, failed: number}>}
  */
 export async function downloadRecordPhotos(records, opts) {
-  const { zipFolder, dirName, dateOf, refOf, signal, onProgress } = opts;
+  const { mode, quality, zipFolder, dirName, dateOf, refOf, signal, onProgress } = opts;
   const jobs = [];
   records.forEach((rec) => {
     const date = dateOf(rec) || "no-date";
@@ -110,27 +165,36 @@ export async function downloadRecordPhotos(records, opts) {
   const localByUrl = new Map();
   if (!jobs.length) return { entries, localByUrl, failed: 0 };
 
-  const dir = zipFolder.folder(dirName);
+  const toFolder = mode === "folder" && zipFolder;
+  const dir = toFolder ? zipFolder.folder(dirName) : null;
   let done = 0;
   let failed = 0;
   await pool(jobs, 4, async (job) => {
     const pdf = isPdf(job.url);
-    const ext = pdf ? "pdf" : "jpg";
-    const fileName = `${safeName(job.date)}_${safeName(job.ref) || "rec"}_${String(job.n).padStart(2, "0")}.${ext}`;
-    const full = await fetchBytes(pdf ? job.url : cloudinaryVariant(job.url, "c_limit,w_1600,q_auto,f_jpg"), signal);
+    let fileName = "";
+    let local = "";
     let thumb = null;
-    if (full && !pdf) {
-      thumb = /res\.cloudinary\.com/i.test(job.url)
-        ? await fetchBytes(cloudinaryVariant(job.url, "c_fill,w_220,h_165,q_auto,f_jpg"), signal)
-        : null;
-    }
-    if (full) {
-      dir.file(fileName, full);
-      localByUrl.set(job.url, `${dirName}/${fileName}`);
+    if (toFolder) {
+      const ext = pdf ? "pdf" : "jpg";
+      const name = `${safeName(job.date)}_${safeName(job.ref) || "rec"}_${String(job.n).padStart(2, "0")}.${ext}`;
+      const full = await fetchBytes(pdf ? job.url : cloudinaryVariant(job.url, photoQualityById(quality).transform), signal);
+      if (full) {
+        dir.file(name, full);
+        fileName = name;
+        local = `${dirName}/${name}`;
+        localByUrl.set(job.url, local);
+        if (!pdf && CLOUD_IMG.test(job.url)) {
+          const t = await fetchBytes(cloudinaryVariant(job.url, THUMB), signal);
+          thumb = t ? { buffer: t, extension: "jpeg" } : null;
+        }
+      } else {
+        failed++;
+      }
     } else {
-      failed++;
+      thumb = await embeddable(job.url, quality, signal);
+      if (!thumb && !pdf) failed++;
     }
-    entries.push({ ...job, fileName: full ? fileName : "", local: full ? `${dirName}/${fileName}` : "", thumb, pdf });
+    entries.push({ ...job, fileName, local, thumb, pdf });
     done++;
     onProgress?.(done, jobs.length);
   });
@@ -142,24 +206,17 @@ export async function downloadRecordPhotos(records, opts) {
 }
 
 /**
- * صور للتضمين جوّا خلايا الإكسل: Cloudinary بيرجّعها jpg بعرض 600px (واضحة
- * لما تكبّر، وخفيفة). صورة مش من Cloudinary بتنضمّن بس إذا jpg/png (إكسل ما
- * بيقرأ webp/heic). PDF ما بينضمّن — بيضل رابط.
+ * صور للتضمين جوّا خلايا الإكسل (التقارير اللي إلها عمود صور)، بالجودة
+ * المختارة. صورة مش من Cloudinary بتنضمّن بس إذا jpg/png. PDF ما بينضمّن.
  * @returns {Promise<Map<string, {buffer: Uint8Array, extension: string}>>}
  */
-export async function fetchEmbeddableImages(urls, { signal, onProgress } = {}) {
+export async function fetchEmbeddableImages(urls, { quality = "medium", signal, onProgress } = {}) {
   const list = [...new Set(urls)].filter((u) => !isPdf(u));
   const out = new Map();
   let done = 0;
   await pool(list, 4, async (u) => {
-    const cloud = /res\.cloudinary\.com\/.+\/image\/upload\//i.test(u);
-    let extension = "jpeg";
-    if (!cloud) {
-      if (/\.png(\?|#|$)/i.test(u)) extension = "png";
-      else if (!/\.jpe?g(\?|#|$)/i.test(u)) { done++; onProgress?.(done, list.length); return; }
-    }
-    const bytes = await fetchBytes(cloud ? cloudinaryVariant(u, "c_limit,w_600,q_auto,f_jpg") : u, signal);
-    if (bytes && bytes.length) out.set(u, { buffer: bytes, extension });
+    const img = await embeddable(u, quality, signal);
+    if (img) out.set(u, img);
     done++;
     onProgress?.(done, list.length);
   });
@@ -167,25 +224,31 @@ export async function fetchEmbeddableImages(urls, { signal, onProgress } = {}) {
 }
 
 /**
- * ورقة «Photos»: سطر لكل صورة مع صورة مصغّرة مضمّنة ورابط للملف المحلي.
- * لازم تنضاف قبل `wb.xlsx.writeBuffer`.
+ * ورقة «Photos»: سطر لكل صورة مع الصورة مضمّنة.
+ * showLocal: عمود الملف المحلي (وضع المجلد). showOnline: عمود الرابط الأونلاين
+ * (مش بوضع «صور فقط»). لازم تنضاف قبل `wb.xlsx.writeBuffer`.
  */
-export function addPhotosSheet(wb, entries, title = "Photos") {
+export function addPhotosSheet(wb, entries, { showLocal = false, showOnline = true, title = "Photos" } = {}) {
   if (!entries.length) return;
-  const ws = wb.addWorksheet(sanitizeSheetName(title), { views: [{ state: "frozen", ySplit: 2, showGridLines: false }] });
-  ws.columns = [
-    { width: 6 }, { width: 13 }, { width: 18 }, { width: 30 }, { width: 32 }, { width: 34 }, { width: 14 },
+  const cols = [
+    ["#", 6], ["Date", 13], ["Ref / ID", 18], ["Where in the report", 30], ["Photo", 32],
+    ...(showLocal ? [["Local file", 34]] : []),
+    ...(showOnline ? [["Online", 14]] : []),
   ];
-  ws.mergeCells(1, 1, 1, 7);
+  const NC = cols.length;
+  const ws = wb.addWorksheet(sanitizeSheetName(title), { views: [{ state: "frozen", ySplit: 2, showGridLines: false }] });
+  ws.columns = cols.map(([, w]) => ({ width: w }));
+  ws.mergeCells(1, 1, 1, NC);
   const t = ws.getCell(1, 1);
-  t.value = `📷 ${entries.length} photo(s) — local copies sit in the folder next to this file`;
+  t.value = showLocal
+    ? `📷 ${entries.length} photo(s) — full copies sit in the folder next to this file`
+    : `📷 ${entries.length} photo(s)`;
   t.font = { bold: true, size: 12, color: { argb: COLORS.NAVY } };
   t.fill = fillSolid(COLORS.SKY_LIGHT);
   t.alignment = { ...left, indent: 1 };
   ws.getRow(1).height = 24;
 
-  const heads = ["#", "Date", "Ref / ID", "Where in the report", "Photo", "Local file", "Online"];
-  heads.forEach((h, i) => {
+  cols.forEach(([h], i) => {
     const c = ws.getCell(2, i + 1);
     c.value = h;
     c.font = { bold: true, color: { argb: COLORS.WHITE }, size: 10 };
@@ -195,38 +258,44 @@ export function addPhotosSheet(wb, entries, title = "Photos") {
   });
   ws.getRow(2).height = 24;
 
+  const localCol = showLocal ? 6 : 0;
+  const onlineCol = showOnline ? (showLocal ? 7 : 6) : 0;
   entries.forEach((e, i) => {
     const r = i + 3;
-    const vals = [i + 1, e.date, e.ref, e.field.replace(/\./g, " › "), "", "", ""];
-    vals.forEach((v, ci) => {
+    const vals = [i + 1, e.date, e.ref, e.field.replace(/\./g, " › ")];
+    for (let ci = 0; ci < NC; ci++) {
       const c = ws.getCell(r, ci + 1);
-      c.value = v;
+      c.value = ci < vals.length ? vals[ci] : "";
       c.border = BORDER_BLACK;
       c.alignment = ci === 3 ? { ...left, wrapText: true } : center;
       c.font = { size: 10 };
-    });
-    const local = ws.getCell(r, 6);
-    if (e.local) {
-      local.value = { text: e.fileName, hyperlink: e.local };
-      local.font = { size: 10, color: { argb: "1D4ED8" }, underline: true };
-    } else {
-      local.value = "⚠️ not downloaded";
-      local.font = { size: 10, color: { argb: COLORS.RED } };
     }
-    const online = ws.getCell(r, 7);
-    online.value = { text: "open", hyperlink: e.url };
-    online.font = { size: 10, color: { argb: "1D4ED8" }, underline: true };
+    if (localCol) {
+      const local = ws.getCell(r, localCol);
+      if (e.local) {
+        local.value = { text: e.fileName, hyperlink: e.local };
+        local.font = { size: 10, color: { argb: "1D4ED8" }, underline: true };
+      } else {
+        local.value = "⚠️ not downloaded";
+        local.font = { size: 10, color: { argb: COLORS.RED } };
+      }
+    }
+    if (onlineCol) {
+      const online = ws.getCell(r, onlineCol);
+      online.value = { text: "open", hyperlink: e.url };
+      online.font = { size: 10, color: { argb: "1D4ED8" }, underline: true };
+    }
 
     if (e.thumb) {
       try {
-        const id = wb.addImage({ buffer: e.thumb, extension: "jpeg" });
-        ws.addImage(id, { tl: { col: 4 + 0.08, row: r - 1 + 0.08 }, ext: { width: 160, height: 120 }, editAs: "oneCell" });
-        ws.getRow(r).height = 96;
+        const id = wb.addImage({ buffer: e.thumb.buffer || e.thumb, extension: e.thumb.extension || "jpeg" });
+        ws.addImage(id, { tl: { col: 4 + 0.08, row: r - 1 + 0.08 }, ext: { width: 200, height: 150 }, editAs: "oneCell" });
+        ws.getRow(r).height = 120;
       } catch {
         ws.getCell(r, 5).value = e.pdf ? "PDF" : "—";
       }
     } else {
-      ws.getCell(r, 5).value = e.pdf ? "📄 PDF" : "—";
+      ws.getCell(r, 5).value = e.pdf ? "📄 PDF" : "⚠️ not available";
       ws.getRow(r).height = 20;
     }
   });
@@ -234,7 +303,7 @@ export function addPhotosSheet(wb, entries, title = "Photos") {
 }
 
 /**
- * بعد التنزيل: كل خلية رابطها صورة نزلت بتصير تفتح النسخة المحلية (نسبي
+ * وضع المجلد: كل خلية رابطها صورة نزلت بتصير تفتح النسخة المحلية (نسبي
  * للملف)، والنص بيضل نفسه. منشغّلها بعد linkifySheet.
  */
 export function relinkToLocal(wb, localByUrl) {
@@ -247,6 +316,35 @@ export function relinkToLocal(wb, localByUrl) {
           const v = cell.value;
           const link = v && typeof v === "object" ? v.hyperlink : null;
           if (link && localByUrl.has(link)) cell.value = { ...v, hyperlink: localByUrl.get(link) };
+        });
+      });
+    } catch { /* cosmetics */ }
+  });
+}
+
+const EVIDENCE_IN_TEXT = /https?:\/\/res\.cloudinary\.com\/\S+/gi;
+
+/**
+ * وضع «صور فقط»: ولا رابط Cloudinary بيضل بالملف — لا خلية رابط ولا نص فيه
+ * رابط. مكانه 📷 (الصورة نفسها بالعمود أو بورقة Photos).
+ */
+export function stripEvidenceLinks(wb) {
+  wb.worksheets.forEach((ws) => {
+    try {
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          const v = cell.value;
+          if (v && typeof v === "object" && typeof v.hyperlink === "string") {
+            if (/res\.cloudinary\.com\//i.test(v.hyperlink)) {
+              const text = String(v.text || "").replace(EVIDENCE_IN_TEXT, "📷").trim();
+              cell.value = text || "📷";
+              cell.font = { ...(cell.font || {}), underline: false, color: { argb: COLORS.TEXT } };
+            }
+            return;
+          }
+          if (typeof v === "string" && /res\.cloudinary\.com\//i.test(v)) {
+            cell.value = v.replace(EVIDENCE_IN_TEXT, "📷");
+          }
         });
       });
     } catch { /* cosmetics */ }

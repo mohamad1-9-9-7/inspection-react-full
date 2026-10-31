@@ -82,6 +82,10 @@ export default async function build(wb, record, ctx = {}) {
   const table = rowsOf(p.table);
   const branch = auditBranchOf(record);
   const images = ctx.images instanceof Map ? ctx.images : null;
+  /* How a photo that is not embedded is written (backup photo mode): the
+     online link, the local copy in the _photos folder, or no link at all. */
+  const photoLink = typeof ctx.photoLink === "function" ? ctx.photoLink : (u) => ({ text: u, href: u });
+  const imageLinks = ctx.imageLinks !== false;
 
   const ws = wb.addWorksheet(ctx.sheetName || "Audit", { views: [{ showGridLines: false }] });
   pageSetupLandscape(ws);
@@ -197,7 +201,8 @@ export default async function build(wb, record, ctx = {}) {
          the cell text under the pictures. */
       const lines = [];
       if (!urls.length) lines.push("—");
-      missing.forEach((u, i) => lines.push(`${i + 1}. ${u}`));
+      const missingLinks = missing.map(photoLink);
+      missingLinks.forEach((lk, i) => lines.push(`${i + 1}. ${lk.text}`));
       if (note) lines.push(note);
 
       const colPx = col.width * PX_PER_CHAR;
@@ -206,8 +211,8 @@ export default async function build(wb, record, ctx = {}) {
       const textPx = lines.length ? textHeightPx(lines.join("\n"), col.width) : 0;
       c.value = lines.join("\n");
       c.alignment = { horizontal: "left", vertical: "bottom", wrapText: true };
-      if (missing.length && !placed.length && missing.length === 1) {
-        c.value = { text: lines.join("\n"), hyperlink: missing[0] };
+      if (missing.length && !placed.length && missing.length === 1 && missingLinks[0].href) {
+        c.value = { text: lines.join("\n"), hyperlink: missingLinks[0].href };
         c.font = { size: 10, color: { argb: "1D4ED8" }, underline: true };
       }
       heightPx = Math.max(heightPx, photoPx + textPx);
@@ -221,7 +226,7 @@ export default async function build(wb, record, ctx = {}) {
           tl: { nativeCol: ci, nativeColOff: x * EMU, nativeRow: r - 1, nativeRowOff: y * EMU },
           ext: { width: g.w, height: g.h },
           editAs: "oneCell",
-          hyperlinks: { hyperlink: u, tooltip: "Open the original photo" },
+          ...(imageLinks ? { hyperlinks: { hyperlink: u, tooltip: "Open the original photo" } } : {}),
         });
       });
     });

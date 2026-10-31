@@ -21,6 +21,7 @@ import { enhanceSheet } from "./excel-exporters/_postpass";
 import { addReturnsMonthSheets, buildReturnsYearSummary, returnsKindOf } from "./excel-exporters/returns_extras";
 import {
   collectPhotoUrls, downloadRecordPhotos, addPhotosSheet, relinkToLocal, fetchEmbeddableImages,
+  stripEvidenceLinks, estimatePhotoMB, PHOTO_MODES, PHOTO_QUALITY, photoModeById, photoQualityById,
 } from "./_shared/backupPhotos";
 import { auditBranchOf } from "./excel-exporters/internal_multi_audit";
 import {
@@ -159,6 +160,16 @@ const PER_REPORT_FILES = {
   internal_multi_audit: auditBranchOf,
   municipality_inspection: (r) => String(r?.payload?.branchName || r?.payload?.branch || "").trim(),
 };
+
+/* Photo scope "inspection" + the default custom selection. */
+const INSPECTION_PHOTO_TYPES = ["municipality_inspection", "internal_multi_audit", "supervisor_corrective_action", "inspection_annual_plan"];
+const PHOTO_PREFS_KEY = "xb_photo_prefs";
+function loadPhotoPrefs() {
+  try { return JSON.parse(localStorage.getItem(PHOTO_PREFS_KEY) || "{}") || {}; } catch { return {}; }
+}
+function savePhotoPrefs(prefs) {
+  try { localStorage.setItem(PHOTO_PREFS_KEY, JSON.stringify(prefs)); } catch { /* private mode */ }
+}
 
 const abortError = () => {
   const e = new Error("Aborted");
@@ -321,7 +332,9 @@ async function buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, reco
     if (count > 0) name = `${name.slice(0, 28)}(${count})`;
     name = sanitizeSheetName(name);
     try {
-      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name, blankForm, images: opts.images || null });
+      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name, blankForm,
+        images: opts.images || null, photoLink: opts.photoLink, imageLinks: opts.imageLinks,
+      });
     } catch (e) {
       console.error(`Exporter failed for ${typeKey} record ${i}:`, e);
       const ws = wb.addWorksheet(name, { views: [{ showGridLines: false }] });
@@ -415,7 +428,43 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
      old single-file layout). */
   const isMawashi = !cardIds;
   const [splitMonths, setSplitMonths] = useState(true);
-  const [withPhotos, setWithPhotos] = useState(false);
+  /* Photos: how (mode), how sharp (quality), which reports (scope). Kept in
+     this browser as a UI preference (the backup itself never depends on it). */
+  const savedPhotoPrefs = useMemo(loadPhotoPrefs, []);
+  const [photoMode, setPhotoMode] = useState(savedPhotoPrefs.mode || "embed_links");
+  const [photoQuality, setPhotoQuality] = useState(savedPhotoPrefs.quality || "medium");
+  const [photoScope, setPhotoScope] = useState(savedPhotoPrefs.scope || "inspection");
+  const [photoTypes, setPhotoTypes] = useState(() => new Set(savedPhotoPrefs.types || INSPECTION_PHOTO_TYPES));
+  const [askSize, setAskSize] = useState(savedPhotoPrefs.askSize !== false);
+  useEffect(() => {
+    savePhotoPrefs({ mode: photoMode, quality: photoQuality, scope: photoScope, types: [...photoTypes], askSize });
+  }, [photoMode, photoQuality, photoScope, photoTypes, askSize]);
+  /** Is this report in the photo scope? */
+  const photoInScope = (cardId, typeKey) => {
+    if (photoScope === "all") return true;
+    if (photoScope === "custom") return photoTypes.has(typeKey);
+    return cardId === "inspector";
+  };
+  function togglePhotoType(typeKey) {
+    setPhotoTypes((prev) => {
+      const next = new Set(prev);
+      next.has(typeKey) ? next.delete(typeKey) : next.add(typeKey);
+      return next;
+    });
+  }
+  /* The size question: handleGenerate awaits the user's answer. */
+  const [sizeAsk, setSizeAsk] = useState(null); // { count, mb, types }
+  const askResolveRef = useRef(null);
+  const askPhotoSize = (info) => new Promise((resolve) => {
+    askResolveRef.current = resolve;
+    setSizeAsk(info);
+  });
+  function answerPhotoSize(answer) {
+    const resolve = askResolveRef.current;
+    askResolveRef.current = null;
+    setSizeAsk(null);
+    resolve?.(answer);
+  }
   const [includeTables, setIncludeTables] = useState(true);
   const abortRef = useRef(null);
   const [backupLog, setBackupLog] = useState(null); // null = loading/unavailable
@@ -426,6 +475,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
     return () => { alive = false; };
   }, [isMawashi]);
   function cancelRun() {
+    if (askResolveRef.current) answerPhotoSize("cancel");
     abortRef.current?.abort();
     setMsg({ kind: "info", text: "⛔ جارٍ الإلغاء..." });
   }
@@ -577,13 +627,10 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       const cutTypes    = []; // types where even one day exceeded the cap
       const notes       = [];
 
-      for (const item of work) {
-        checkAbort();
-        const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
-        step++;
-        setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
-
-        const atStep = step;
+      /* Read one type (once — cached) and return its records for this
+         backup: date-filtered, oldest first. */
+      const loadType = async (item, atStep) => {
+        const { branch, typeKey, typeLabel } = item;
         let page = fetchCache.get(typeKey);
         if (!page) {
           page = await fetchAllOfType(typeKey, {
@@ -608,7 +655,43 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         }
         const fetched = page.rows;
         const filtered = filterOn ? fetched.filter((r) => matchesFilter(r, filter)) : fetched;
-        const records = isMawashi ? sortByDate(filtered) : filtered;
+        return isMawashi ? sortByDate(filtered) : filtered;
+      };
+
+      /* Photos: count them first and ask before downloading a big ZIP. The
+         reads are cached, so the main loop below does not fetch them again. */
+      let runMode = isMawashi ? photoMode : "links";
+      if (runMode !== "links" && askSize) {
+        const photoItems = work.filter((it) => photoInScope(it.card.id, it.typeKey));
+        const seenTypes = new Set();
+        let photoCount = 0;
+        let i = 0;
+        for (const it of photoItems) {
+          checkAbort();
+          i++;
+          if (seenTypes.has(it.typeKey)) continue;
+          seenTypes.add(it.typeKey);
+          setProgress({ current: i, total: photoItems.length, label: `📷 عدّ الصور — ${it.typeLabel}` });
+          const recs = await loadType(it, 0);
+          const urls = new Set(recs.flatMap((r) => collectPhotoUrls(r).map((x) => x.url)));
+          photoCount += urls.size;
+        }
+        if (photoCount > 0) {
+          const mb = estimatePhotoMB(photoCount, runMode, photoQuality, { sheetThumbs: photoCount });
+          const answer = await askPhotoSize({ count: photoCount, mb, types: seenTypes.size });
+          if (answer === "cancel") throw abortError();
+          if (answer === "links") runMode = "links";
+        }
+      }
+
+      for (const item of work) {
+        checkAbort();
+        const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
+        step++;
+        setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
+
+        const atStep = step;
+        const records = await loadType(item, atStep);
         /* Counted per TYPE, not per file: a type placed under two cards writes
            two files but is still one set of records, and adding it twice would
            inflate the summary the user reads. */
@@ -627,65 +710,90 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         }
 
         const retKind = isMawashi ? returnsKindOf(typeKey) : "";
-        /* تقارير التفتيش دايماً مع صورها؛ الباقي لما ينطلب. */
-        const wantPhotos = isMawashi && (card.id === "inspector" || withPhotos);
+        /* Photo mode for THIS type: the chosen mode when the type is in the
+           photo scope, plain links otherwise. */
+        const typeMode = isMawashi && photoInScope(card.id, typeKey) ? runMode : "links";
         const exporter = getExporter(typeKey);
 
-        /* Writes one workbook (+ its photos folder) and its INDEX line.
+        /* Writes one workbook (+ its photos) and its INDEX line.
            Awaited inside this same iteration, so the shared counters it bumps
-           are never raced. */
+           are never raced. `cellPhotos`: the exporter has its own photo column
+           (internal audit, municipality) and embeds pictures in the cell. */
         // eslint-disable-next-line no-loop-func
-        const writeOne = async (recs, segs, fileName, { monthLabel = "", embed = false } = {}) => {
+        const writeOne = async (recs, segs, fileName, { monthLabel = "", cellPhotos = false } = {}) => {
           checkAbort();
           const folder = folderFor(zip, segs, folderCache);
-          /* embed: the photos go INSIDE the sheet, in the exporter's photo
-             column — no side folder, no Photos sheet. */
-          let images = null;
-          if (embed) {
-            const urls = recs.flatMap((r) => collectPhotoUrls(r).map((x) => x.url));
-            if (urls.length) {
-              images = await fetchEmbeddableImages(urls, {
-                signal,
-                onProgress: (done, total) => setProgress({
-                  current: atStep, total: work.length, label: `📷 ${typeLabel} — ${monthLabel} — صور ${done}/${total}`,
-                }),
+          const urls = typeMode === "links"
+            ? []
+            : [...new Set(recs.flatMap((r) => collectPhotoUrls(r).map((x) => x.url)))];
+          const onPhoto = (done, total) => setProgress({
+            current: atStep, total: work.length,
+            label: `📷 ${typeLabel}${monthLabel ? ` — ${monthLabel}` : ""} — صور ${done}/${total}`,
+          });
+          const stem = fileName.replace(/\.xlsx$/i, "");
+          const dirName = `${stem.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").slice(0, 70)}_photos`;
+
+          let images = null;   // url → bytes, embedded by the exporter in its photo column
+          let photoRes = null; // downloaded photos for the Photos sheet / _photos folder
+          if (urls.length) {
+            if (typeMode === "folder") {
+              photoRes = await downloadRecordPhotos(recs, {
+                mode: "folder", quality: photoQuality, zipFolder: folder, dirName,
+                dateOf: recordDate, refOf: (r) => getRefNo(r, typeKey), signal, onProgress: onPhoto,
               });
+              photosSaved += photoRes.localByUrl.size;
+              photosFailed += photoRes.failed;
+            } else if (cellPhotos) {
+              images = await fetchEmbeddableImages(urls, { quality: photoQuality, signal, onProgress: onPhoto });
               photosSaved += images.size;
-              photosFailed += new Set(urls).size - images.size;
+              photosFailed += Math.max(0, urls.filter((u) => !/\.pdf(\?|#|$)|\/raw\/upload\//i.test(u)).length - images.size);
+            } else {
+              photoRes = await downloadRecordPhotos(recs, {
+                mode: typeMode, quality: photoQuality,
+                dateOf: recordDate, refOf: (r) => getRefNo(r, typeKey), signal, onProgress: onPhoto,
+              });
+              photosSaved += photoRes.entries.filter((e) => e.thumb).length;
+              photosFailed += photoRes.failed;
             }
           }
-          const photoCounts = wantPhotos && !embed ? recs.map((r) => collectPhotoUrls(r).length) : null;
-          const hasPhotos = !!photoCounts && photoCounts.some((n) => n > 0);
+
           let photoIndex = null;
-          if (hasPhotos && exporter.collection) {
+          if (photoRes && photoRes.entries.length && exporter.collection) {
             let row = 3; // the Photos sheet: title row, header row, then one line per photo
-            photoIndex = photoCounts.map((n) => { const at = { count: n, row }; row += n; return at; });
+            photoIndex = recs.map((r) => {
+              const n = collectPhotoUrls(r).length;
+              const at = { count: n, row };
+              row += n;
+              return at;
+            });
           }
+          /* How the exporter writes a photo it does not embed. */
+          let photoLink;
+          if (typeMode === "folder" && photoRes) {
+            photoLink = (u) => {
+              const local = photoRes.localByUrl.get(u);
+              return local ? { text: local.split("/").pop(), href: local } : { text: u, href: u };
+            };
+          } else if (typeMode === "embed_only") {
+            photoLink = (u) => ({ text: /\.pdf(\?|#|$)|\/raw\/upload\//i.test(u) ? "📄 PDF" : "⚠️ photo not available", href: null });
+          }
+
           const before = retKind
             ? (wb) => addReturnsMonthSheets(wb, recs, { kind: retKind, monthLabel: monthLabel || filterLabel(filter) })
             : null;
           const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, recs, {
             brand, tenantBrand, enhance: isMawashi, before, photoIndex, images,
+            photoLink, imageLinks: typeMode !== "embed_only",
           });
 
-          if (hasPhotos) {
-            const stem = fileName.replace(/\.xlsx$/i, "");
-            const dirName = `${stem.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").slice(0, 70)}_photos`;
-            const res = await downloadRecordPhotos(recs, {
-              zipFolder: folder,
-              dirName,
-              dateOf: recordDate,
-              refOf: (r) => getRefNo(r, typeKey),
-              signal,
-              onProgress: (done, total) => setProgress({
-                current: atStep, total: work.length, label: `📷 ${typeLabel} — صور ${done}/${total}`,
-              }),
+          if (photoRes && photoRes.entries.length) {
+            addPhotosSheet(wb, photoRes.entries, {
+              showLocal: typeMode === "folder",
+              showOnline: typeMode !== "embed_only",
             });
-            addPhotosSheet(wb, res.entries);
-            relinkToLocal(wb, res.localByUrl);
-            photosSaved += res.localByUrl.size;
-            photosFailed += res.failed;
+            if (typeMode === "folder") relinkToLocal(wb, photoRes.localByUrl);
           }
+          if (typeMode === "embed_only") stripEvidenceLinks(wb);
 
           const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
           const empty = recs.length === 0;
@@ -720,7 +828,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             const n = (used.get(name) || 0) + 1;
             used.set(name, n);
             if (n > 1) name += ` (${n})`;
-            await writeOne([rec], [...segments, fileBase, br], `${name}.xlsx`, { monthLabel: `${day} · ${br}`, embed: true });
+            await writeOne([rec], [...segments, fileBase, br], `${name}.xlsx`, { monthLabel: `${day} · ${br}`, cellPhotos: true });
           }
           continue;
         }
@@ -871,6 +979,8 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           types: counted.size,
           typesTotal: totalTypes,
           photos: photosSaved,
+          photoMode: runMode,
+          photoQuality,
           tables,
           sizeMB: Math.round((blob.size / 1048576) * 10) / 10,
           incomplete: cutTypes.length > 0 || !!windowWarning,
@@ -1105,7 +1215,11 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         <div className="xb-kpi">
           <div className="xb-kpi-lbl">الصور</div>
           <div className="xb-kpi-val xb-kpi-txt">
-            {isMawashi ? (withPhotos ? "كل التقارير المختارة" : "التفتيش فقط") : "روابط فقط"}
+            {!isMawashi || photoMode === "links"
+              ? "🔗 روابط فقط"
+              : `${photoModeById(photoMode).icon} ${photoModeById(photoMode).label} · ${
+                  photoScope === "all" ? "كل التقارير" : photoScope === "custom" ? `${photoTypes.size} تقرير` : "التفتيش"
+                } · ${photoQualityById(photoQuality).label}`}
           </div>
         </div>
         <div className="xb-kpi">
@@ -1244,6 +1358,16 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
                                         />
                                         <span className="xb-box" aria-hidden="true">{on ? "✓" : ""}</span>
                                         <span className="xb-type-lbl">{lbl}</span>
+                                        {isMawashi && photoMode !== "links" && photoScope === "custom" && (
+                                          <button
+                                            type="button"
+                                            className={`xb-cam ${photoTypes.has(k) ? "is-on" : ""}`}
+                                            title={photoTypes.has(k) ? "بلا صور" : "مع الصور"}
+                                            onClick={(e) => { e.preventDefault(); togglePhotoType(k); }}
+                                          >
+                                            📷
+                                          </button>
+                                        )}
                                       </label>
                                     );
                                   })}
@@ -1285,6 +1409,21 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
                 {progress.label && <div className="xb-progress-lbl">{progress.label}</div>}
                 <button type="button" className="xb-btn-cancel" onClick={cancelRun}>⛔ إلغاء</button>
               </>
+            )}
+            {sizeAsk && (
+              <div className="xb-ask">
+                <div className="xb-ask-title">📷 قبل التحميل</div>
+                <div className="xb-ask-body">
+                  في <b>{sizeAsk.count.toLocaleString()}</b> صورة بـ{sizeAsk.types} تقرير —
+                  الحجم المتوقّع حوالي <b>{sizeAsk.mb < 1 ? "أقل من 1" : Math.round(sizeAsk.mb).toLocaleString()} MB</b>
+                  {" "}({photoModeById(photoMode).label} · {photoQualityById(photoQuality).label}).
+                </div>
+                <div className="xb-ask-btns">
+                  <button type="button" className="xb-btn-primary xb-btn-sm" onClick={() => answerPhotoSize("go")}>كمّل مع الصور</button>
+                  <button type="button" className="xb-btn-soft xb-btn-sm" onClick={() => answerPhotoSize("links")}>روابط بس هالمرة</button>
+                  <button type="button" className="xb-btn-cancel xb-btn-sm" onClick={() => answerPhotoSize("cancel")}>إلغاء</button>
+                </div>
+              </div>
             )}
             {msg.text && <div className={`xb-msg is-${msg.kind || "info"}`}>{msg.text}</div>}
             {stats && !busy && (
@@ -1382,12 +1521,6 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
                   hint="التقرير ← سنة ← ملف لكل شهر (المرتجعات دايماً هيك)"
                 />
                 <Switch
-                  on={withPhotos}
-                  onChange={setWithPhotos}
-                  label="📷 صور كل التقارير"
-                  hint="التفتيش دايماً مع صوره · بيكبّر حجم الـZIP"
-                />
-                <Switch
                   on={includeTables}
                   onChange={setIncludeTables}
                   label="🗄️ جداول قاعدة البيانات"
@@ -1396,6 +1529,62 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
               </>
             )}
           </section>
+
+          {/* Photos */}
+          {isMawashi && (
+            <section className="xb-panel">
+              <div className="xb-panel-title">📷 الصور</div>
+              <div className="xb-modes">
+                {PHOTO_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`xb-mode ${photoMode === m.id ? "is-on" : ""}`}
+                    onClick={() => setPhotoMode(m.id)}
+                  >
+                    <span className="xb-mode-ico">{m.icon}</span>
+                    <span className="xb-mode-lbl">{m.label}</span>
+                    <span className="xb-mode-hint">{m.hint}</span>
+                  </button>
+                ))}
+              </div>
+
+              {photoMode !== "links" && (
+                <>
+                  <div className="xb-sub-lbl">الجودة</div>
+                  <div className="xb-seg xb-seg-3">
+                    {PHOTO_QUALITY.map((q) => (
+                      <button key={q.id} type="button" className={photoQuality === q.id ? "is-on" : ""} onClick={() => setPhotoQuality(q.id)}>
+                        {q.label} <span className="xb-seg-hint">{q.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="xb-sub-lbl">على أي تقارير</div>
+                  <div className="xb-seg xb-seg-3">
+                    {[["inspection", "التفتيش"], ["all", "كل المختار"], ["custom", "أنا بحدد"]].map(([id, lbl]) => (
+                      <button key={id} type="button" className={photoScope === id ? "is-on" : ""} onClick={() => setPhotoScope(id)}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="xb-hint">
+                    {photoScope === "custom"
+                      ? `اكبس 📷 جنب أي تقرير بالقائمة · مختار ${photoTypes.size}`
+                      : photoScope === "all"
+                        ? "كل التقارير المختارة بتطلع مع صورها"
+                        : "تقارير التفتيش مع صورها — الباقي روابط"}
+                  </div>
+                  <Switch
+                    on={askSize}
+                    onChange={setAskSize}
+                    label="اسألني عن الحجم قبل التحميل"
+                    hint="بيعدّ الصور وبيقلّك الحجم المتوقّع قبل ما يبلّش"
+                  />
+                </>
+              )}
+            </section>
+          )}
 
           {/* Blank forms */}
           <details className="xb-panel xb-details">
@@ -1638,6 +1827,28 @@ html:has(.xb), body:has(.xb), #root:has(.xb) { overflow-x: clip; }
 #root .xb.xb .xb-stats > div { background: var(--sky-50); border-radius: 10px; padding: 8px 10px; display: grid; }
 #root .xb.xb .xb-stats b { font-size: ${fs(18)}; font-weight: 900; color: #0f172a; }
 #root .xb.xb .xb-stats span { font-size: ${fs(12)}; color: var(--ink-3); font-weight: 700; }
+
+/* photo modes */
+#root .xb.xb .xb-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#root .xb.xb .xb-mode { display: grid; gap: 2px; text-align: start; border: 1px solid var(--line-2); background: #fff; border-radius: 12px;
+  padding: 10px; cursor: pointer; }
+#root .xb.xb .xb-mode:hover { border-color: var(--sky); background: var(--sky-50); }
+#root .xb.xb .xb-mode.is-on { border: 2px solid var(--sky); background: var(--sky-50); padding: 9px; }
+#root .xb.xb .xb-mode-ico { font-size: ${fs(20)}; line-height: 1; }
+#root .xb.xb .xb-mode-lbl { font-size: ${fs(14)}; font-weight: 900; color: var(--ink); }
+#root .xb.xb .xb-mode.is-on .xb-mode-lbl { color: var(--sky-d); }
+#root .xb.xb .xb-mode-hint { font-size: ${fs(11.5)}; color: var(--ink-3); line-height: 1.45; }
+#root .xb.xb .xb-sub-lbl { font-size: ${fs(12.5)}; font-weight: 800; color: var(--ink-2); margin: 12px 0 6px; }
+#root .xb.xb .xb-seg-3 { grid-template-columns: repeat(3, 1fr); }
+#root .xb.xb .xb-seg-hint { display: block; font-size: ${fs(11)}; color: var(--ink-3); font-weight: 600; }
+#root .xb.xb .xb-cam { margin-inline-start: auto; flex: none; border: 1px solid var(--line-2); background: #fff; border-radius: 8px;
+  width: 30px; height: 26px; cursor: pointer; font-size: ${fs(13)}; filter: grayscale(1); opacity: .45; }
+#root .xb.xb .xb-cam.is-on { filter: none; opacity: 1; border-color: var(--sky); background: var(--sky-50); }
+#root .xb.xb .xb-ask { margin-top: 12px; border: 1px solid #fde68a; background: var(--warn-bg); border-radius: 12px; padding: 12px; }
+#root .xb.xb .xb-ask-title { font-size: ${fs(14)}; font-weight: 900; color: var(--warn); }
+#root .xb.xb .xb-ask-body { font-size: ${fs(13)}; color: var(--ink); line-height: 1.7; margin: 6px 0 10px; }
+#root .xb.xb .xb-ask-btns { display: grid; gap: 6px; }
+#root .xb.xb .xb-btn-sm { margin-top: 0; padding: 9px 12px; font-size: ${fs(13.5)}; box-shadow: none; }
 
 /* details + log */
 #root .xb.xb .xb-details summary { cursor: pointer; list-style: none; margin-bottom: 0; }
