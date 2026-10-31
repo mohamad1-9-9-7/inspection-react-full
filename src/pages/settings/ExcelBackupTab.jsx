@@ -1475,7 +1475,7 @@ html:has(.xb), body:has(.xb), #root:has(.xb) { overflow-x: clip; }
   --ink: #1e293b; --ink-2: #475569; --ink-3: #64748b; --line: #e2e8f0; --line-2: #cbd5e1;
   --sky: #0ea5e9; --sky-d: #0369a1; --sky-50: #f0f9ff; --sky-100: #e0f2fe; --sky-200: #bae6fd;
   --ok: #15803d; --ok-bg: #f0fdf4; --warn: #92400e; --warn-bg: #fffbeb; --bad: #b91c1c; --bad-bg: #fef2f2;
-  color: var(--ink); max-width: 1440px; margin: 0 auto; padding: 4px 4px 40px;
+  color: var(--ink); width: 100%; max-width: none; margin: 0; padding: 4px 4px 40px;
   font-family: inherit;
 }
 #root .xb.xb * { box-sizing: border-box; }
@@ -1511,7 +1511,7 @@ html:has(.xb), body:has(.xb), #root:has(.xb) { overflow-x: clip; }
 #root .xb.xb .xb-banner.is-bad { background: var(--bad-bg); border: 1px solid #fecaca; color: var(--bad); }
 
 /* layout */
-#root .xb.xb .xb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+#root .xb.xb .xb-grid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 420px); gap: 16px; align-items: start; }
 #root .xb.xb .xb-main, #root .xb.xb .xb-side, #root .xb.xb .xb-side > * { min-width: 0; }
 #root .xb.xb .xb-side { position: sticky; top: 12px; display: grid; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-bottom: 4px; }
 @media (max-width: 1020px) {
