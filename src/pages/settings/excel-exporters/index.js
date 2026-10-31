@@ -137,6 +137,7 @@ import training_session              from "./training_session";
 
 /* ─── Inspection + Fleet ─── */
 import municipality_inspection       from "./municipality_inspection";
+import internal_multi_audit          from "./internal_multi_audit";
 import car_approvals                 from "./car_approvals";
 import cars_loading_inspection       from "./cars_loading_inspection";
 import truck_daily_cleaning          from "./truck_daily_cleaning";
@@ -286,6 +287,7 @@ const CUSTOM = {
 
   /* Inspection + Fleet */
   "municipality_inspection":                municipality_inspection,
+  "internal_multi_audit":                   internal_multi_audit,
   "car_approvals":                          car_approvals,
   "cars_loading_inspection":                cars_loading_inspection,
   "truck_daily_cleaning":                   truck_daily_cleaning,
@@ -390,7 +392,6 @@ const AUTO_REGISTER_TYPES = [
 
   /* Inspection / training / MRP / change logs */
   "inspection_annual_plan",
-  "internal_multi_audit",
   "supervisor_corrective_action",
   "training_annual_plan",
   "training_quiz",

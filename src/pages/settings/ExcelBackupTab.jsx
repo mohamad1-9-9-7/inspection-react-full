@@ -19,7 +19,10 @@ import {
 import { fetchUnlistedTypes, unlistedBranch } from "./_shared/unlistedTypes";
 import { enhanceSheet } from "./excel-exporters/_postpass";
 import { addReturnsMonthSheets, buildReturnsYearSummary, returnsKindOf } from "./excel-exporters/returns_extras";
-import { collectPhotoUrls, downloadRecordPhotos, addPhotosSheet, relinkToLocal } from "./_shared/backupPhotos";
+import {
+  collectPhotoUrls, downloadRecordPhotos, addPhotosSheet, relinkToLocal, fetchEmbeddableImages,
+} from "./_shared/backupPhotos";
+import { auditBranchOf } from "./excel-exporters/internal_multi_audit";
 import {
   fetchProductCatalog, fetchAccounts, fetchAuditTrail,
   addProductsSheet, addAccountsSheet, addAuditSheet,
@@ -148,6 +151,14 @@ function monthParts(records, { force = false } = {}) {
   if (undated.length) parts.push({ key: "", year: "", label: "No date", records: undated });
   return parts;
 }
+
+/* Inspection visits (Al Mawashi): one FILE per report, in a folder per branch,
+   the date leading the name, photos embedded in their column. Each entry
+   returns the record's branch. */
+const PER_REPORT_FILES = {
+  internal_multi_audit: auditBranchOf,
+  municipality_inspection: (r) => String(r?.payload?.branchName || r?.payload?.branch || "").trim(),
+};
 
 const abortError = () => {
   const e = new Error("Aborted");
@@ -310,7 +321,7 @@ async function buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, reco
     if (count > 0) name = `${name.slice(0, 28)}(${count})`;
     name = sanitizeSheetName(name);
     try {
-      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name, blankForm });
+      await exporter(wb, rec, { branchLabel, typeKey, typeLabel, sheetName: name, blankForm, images: opts.images || null });
     } catch (e) {
       console.error(`Exporter failed for ${typeKey} record ${i}:`, e);
       const ws = wb.addWorksheet(name, { views: [{ showGridLines: false }] });
@@ -624,10 +635,26 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
            Awaited inside this same iteration, so the shared counters it bumps
            are never raced. */
         // eslint-disable-next-line no-loop-func
-        const writeOne = async (recs, segs, fileName, { monthLabel = "" } = {}) => {
+        const writeOne = async (recs, segs, fileName, { monthLabel = "", embed = false } = {}) => {
           checkAbort();
           const folder = folderFor(zip, segs, folderCache);
-          const photoCounts = wantPhotos ? recs.map((r) => collectPhotoUrls(r).length) : null;
+          /* embed: the photos go INSIDE the sheet, in the exporter's photo
+             column — no side folder, no Photos sheet. */
+          let images = null;
+          if (embed) {
+            const urls = recs.flatMap((r) => collectPhotoUrls(r).map((x) => x.url));
+            if (urls.length) {
+              images = await fetchEmbeddableImages(urls, {
+                signal,
+                onProgress: (done, total) => setProgress({
+                  current: atStep, total: work.length, label: `📷 ${typeLabel} — ${monthLabel} — صور ${done}/${total}`,
+                }),
+              });
+              photosSaved += images.size;
+              photosFailed += new Set(urls).size - images.size;
+            }
+          }
+          const photoCounts = wantPhotos && !embed ? recs.map((r) => collectPhotoUrls(r).length) : null;
           const hasPhotos = !!photoCounts && photoCounts.some((n) => n > 0);
           let photoIndex = null;
           if (hasPhotos && exporter.collection) {
@@ -638,7 +665,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             ? (wb) => addReturnsMonthSheets(wb, recs, { kind: retKind, monthLabel: monthLabel || filterLabel(filter) })
             : null;
           const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, recs, {
-            brand, tenantBrand, enhance: isMawashi, before, photoIndex,
+            brand, tenantBrand, enhance: isMawashi, before, photoIndex, images,
           });
 
           if (hasPhotos) {
@@ -680,6 +707,23 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             path: [...segs, finalName].join("/"),
           });
         };
+
+        /* تقارير التفتيش: كل تقرير ملف لحاله بمجلد فرعه، والتاريخ أول الاسم. */
+        const perReport = isMawashi ? PER_REPORT_FILES[typeKey] : null;
+        if (perReport && records.length) {
+          const used = new Map();
+          const label = safeSegment(typeLabel);
+          for (const rec of records) {
+            const br = safeSegment(perReport(rec) || "No branch");
+            const day = recordDate(rec) || "no-date";
+            let name = `${day} — ${br} — ${label}`;
+            const n = (used.get(name) || 0) + 1;
+            used.set(name, n);
+            if (n > 1) name += ` (${n})`;
+            await writeOne([rec], [...segments, fileBase, br], `${name}.xlsx`, { monthLabel: `${day} · ${br}`, embed: true });
+          }
+          continue;
+        }
 
         /* ملف لكل شهر: مجلد باسم التقرير ← مجلد لكل سنة ← ملف لكل شهر.
            المرتجعات دايماً هيك، حتى لو النسخة شهر واحد. */

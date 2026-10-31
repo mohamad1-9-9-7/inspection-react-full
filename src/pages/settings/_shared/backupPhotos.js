@@ -142,6 +142,31 @@ export async function downloadRecordPhotos(records, opts) {
 }
 
 /**
+ * صور للتضمين جوّا خلايا الإكسل: Cloudinary بيرجّعها jpg بعرض 600px (واضحة
+ * لما تكبّر، وخفيفة). صورة مش من Cloudinary بتنضمّن بس إذا jpg/png (إكسل ما
+ * بيقرأ webp/heic). PDF ما بينضمّن — بيضل رابط.
+ * @returns {Promise<Map<string, {buffer: Uint8Array, extension: string}>>}
+ */
+export async function fetchEmbeddableImages(urls, { signal, onProgress } = {}) {
+  const list = [...new Set(urls)].filter((u) => !isPdf(u));
+  const out = new Map();
+  let done = 0;
+  await pool(list, 4, async (u) => {
+    const cloud = /res\.cloudinary\.com\/.+\/image\/upload\//i.test(u);
+    let extension = "jpeg";
+    if (!cloud) {
+      if (/\.png(\?|#|$)/i.test(u)) extension = "png";
+      else if (!/\.jpe?g(\?|#|$)/i.test(u)) { done++; onProgress?.(done, list.length); return; }
+    }
+    const bytes = await fetchBytes(cloud ? cloudinaryVariant(u, "c_limit,w_600,q_auto,f_jpg") : u, signal);
+    if (bytes && bytes.length) out.set(u, { buffer: bytes, extension });
+    done++;
+    onProgress?.(done, list.length);
+  });
+  return out;
+}
+
+/**
  * ورقة «Photos»: سطر لكل صورة مع صورة مصغّرة مضمّنة ورابط للملف المحلي.
  * لازم تنضاف قبل `wb.xlsx.writeBuffer`.
  */

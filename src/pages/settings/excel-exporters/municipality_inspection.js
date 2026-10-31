@@ -67,6 +67,29 @@ export default async function build(wb, record, ctx) {
     const lines = String(val ?? "").split("\n").length;
     ws.getRow(r).height = Math.max(22, lines * 16); r++;
   };
+  /* Al Mawashi backup: ctx.images (url → bytes) puts the picture itself in
+     the row, clickable to the original; otherwise the row is the link. */
+  const images_ = ctx?.images instanceof Map ? ctx.images : null;
+  const photoRow = (label, url) => {
+    const img = url && images_ ? images_.get(url) : null;
+    if (!img) { linkRow(label, url); return; }
+    ws.getCell(r, 1).value = { text: label, hyperlink: url };
+    ws.getCell(r, 1).font = { ...lblFont, underline: true };
+    ws.getCell(r, 1).fill = lblFill;
+    ws.getCell(r, 1).alignment = { ...left, vertical: "top" };
+    ws.getCell(r, 1).border = BORDER_BLACK;
+    ws.mergeCells(r, 2, r, NC);
+    ws.getCell(r, 2).border = BORDER_BLACK;
+    const id = wb.addImage({ buffer: img.buffer, extension: img.extension || "jpeg" });
+    ws.addImage(id, {
+      tl: { nativeCol: 1, nativeColOff: 6 * 9525, nativeRow: r - 1, nativeRowOff: 6 * 9525 },
+      ext: { width: 320, height: 240 },
+      editAs: "oneCell",
+      hyperlinks: { hyperlink: url, tooltip: "Open the original photo" },
+    });
+    ws.getRow(r).height = 189; // 252px = 240 + padding
+    r++;
+  };
   const linkRow = (label, url) => {
     ws.getCell(r, 1).value = label;
     ws.getCell(r, 1).font = lblFont; ws.getCell(r, 1).fill = lblFill;
@@ -87,7 +110,7 @@ export default async function build(wb, record, ctx) {
 
   if (images.length || pdfs.length) {
     section("Attachments");
-    images.forEach((im, i) => linkRow(`Image ${i + 1}${im?.name ? ` — ${im.name}` : ""}`, typeof im === "string" ? im : im?.url));
+    images.forEach((im, i) => photoRow(`Image ${i + 1}${im?.name ? ` — ${im.name}` : ""}`, typeof im === "string" ? im : im?.url));
     pdfs.forEach((pf, i) => linkRow(`PDF ${i + 1}${pf?.name ? ` — ${pf.name}` : ""}`, typeof pf === "string" ? pf : pf?.url));
   }
 
