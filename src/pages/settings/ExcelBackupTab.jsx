@@ -1025,939 +1025,634 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
   }
   const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
+  /* Quick packages: tick only the types of these dashboard cards. */
+  function selectCards(cardIdsToPick) {
+    const want = new Set(cardIdsToPick);
+    const next = new Set();
+    treeBranches.forEach((b) => {
+      if (!want.has(b.card)) return;
+      b.types.forEach(([k]) => next.add(`${b.id}::${k}`));
+    });
+    setPicked(next);
+  }
+  const PRESETS = [
+    ["all", "🗂️ الكل", null],
+    ["returns", "♻️ المرتجعات", ["returns"]],
+    ["inspector", "🔍 التفتيش", ["inspector"]],
+    ["daily", "📅 المراقبة اليومية", ["daily"]],
+    ["iso", "📘 ISO & HACCP", ["iso"]],
+    ["hse", "🦺 HSE", ["hse"]],
+  ];
+
+  const lastBackup = backupLog && backupLog[0];
+  const lastAge = lastBackup ? daysSince(lastBackup.at) : Infinity;
+  const backupStale = lastAge > BACKUP_STALE_DAYS;
+  const fmtWhen = (iso) => {
+    try { return new Date(iso).toLocaleString("en-GB", { timeZone: "Asia/Dubai", dateStyle: "medium", timeStyle: "short" }); }
+    catch { return String(iso || ""); }
+  };
+  const pickedPct = totalTypes ? Math.round((pickedCount / totalTypes) * 100) : 0;
+
   return (
-    <div style={S.root}>
-      {/* ═══ Hero ═══ */}
-      <div style={S.hero}>
-        <div style={S.heroLeft}>
-          <div style={S.heroBadge}>📊  EXCEL BACKUP</div>
-          <h1 style={S.heroTitle}>نسخ احتياطي مُصمَّم لكل تقرير</h1>
-          <p style={S.heroSub}>
-            كل تقرير في السيستم بيطلع صفحة Excel منفصلة بنفس تصميم صفحة العرض الأصلية.
-            اختار الفروع والتقارير اللي بدك ياها بالتحديد، وحدّد يوم أو مدة معيّنة بدل التصدير الشامل.
+    <div className="xb" dir="rtl">
+      <style dangerouslySetInnerHTML={{ __html: XB_CSS }} />
+
+      {/* ═══ Header ═══ */}
+      <header className="xb-head">
+        <div className="xb-head-txt">
+          <div className="xb-eyebrow">📊 Excel Backup</div>
+          <h1 className="xb-title">النسخ الاحتياطي Excel</h1>
+          <p className="xb-sub">
+            كل تقرير بيطلع بنفس تصميم صفحة العرض، مرتّب بمجلدات متل الشاشة الرئيسية.
+            اختار التقارير من اليمين، وحدّد المدة والخيارات من الشريط الجانبي.
           </p>
         </div>
-        <div style={S.heroRight}>
-          <div style={S.heroStat}>
-            <div style={S.heroStatNum}>{pickedCount}</div>
-            <div style={S.heroStatLbl}>تقرير مُختار</div>
-          </div>
-          <div style={S.heroStatDivider} />
-          <div style={S.heroStat}>
-            <div style={S.heroStatNum}>{totalTypes}</div>
-            <div style={S.heroStatLbl}>إجمالي</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ تحذير نافذة الرؤية ═══ */}
-      {windowWarning && (
-        <div
-          style={{
-            margin: "0 0 14px",
-            padding: "12px 16px",
-            borderRadius: 12,
-            border: "1px solid #fca5a5",
-            background: "#fef2f2",
-            color: "#991b1b",
-            fontSize: "0.9rem",
-            lineHeight: 1.7,
-            fontWeight: 600,
-          }}
-        >
-          {windowWarning}
-        </div>
-      )}
-
-      {/* ═══ سجل النسخ (Al Mawashi) ═══ */}
-      {isMawashi && backupLog && (() => {
-        const last = backupLog[0];
-        const age = last ? daysSince(last.at) : Infinity;
-        const stale = age > BACKUP_STALE_DAYS;
-        const fmt = (iso) => {
-          try { return new Date(iso).toLocaleString("en-GB", { timeZone: "Asia/Dubai", dateStyle: "medium", timeStyle: "short" }); }
-          catch { return String(iso || ""); }
-        };
-        return (
-          <div style={S.logCard(stale)}>
-            <div style={S.logHead}>
-              <span style={S.logTitle}>🗂️ سجل النسخ الاحتياطية</span>
-              <span style={S.logState(stale)}>
-                {!last
-                  ? `⚠️ ما في ولا نسخة مسجّلة — خُد نسخة هلق`
-                  : stale
-                    ? `⚠️ آخر نسخة من ${age} يوم — صار لازم نسخة جديدة`
-                    : `✅ آخر نسخة من ${age === 0 ? "اليوم" : `${age} يوم`}`}
-              </span>
-            </div>
-            {backupLog.length > 0 && (
-              <div style={S.logList}>
-                {backupLog.slice(0, 6).map((b) => (
-                  <div key={b.id || b.at} style={S.logRow}>
-                    <span style={S.logWhen}>{fmt(b.at)}</span>
-                    <span style={S.logWho}>{b.byName || b.by || "—"}</span>
-                    <span style={S.logWhat}>
-                      {b.filter || "—"} · {Number(b.files || 0).toLocaleString()} ملف · {Number(b.records || 0).toLocaleString()} سجل
-                      {b.photos ? ` · 📷 ${b.photos}` : ""}
-                      {b.sizeMB != null ? ` · ${b.sizeMB} MB` : ""}
-                      {b.types && b.typesTotal ? ` · ${b.types}/${b.typesTotal} نوع` : ""}
-                      {b.incomplete ? " · ⚠️ ناقصة" : ""}
-                    </span>
-                  </div>
-                ))}
+        {isMawashi && backupLog && (
+          <div className={`xb-status ${backupStale ? "is-warn" : "is-ok"}`}>
+            <span className="xb-status-ico">{backupStale ? "⚠️" : "✅"}</span>
+            <div>
+              <div className="xb-status-main">
+                {!lastBackup
+                  ? "ما في ولا نسخة مسجّلة"
+                  : lastAge === 0 ? "آخر نسخة: اليوم" : `آخر نسخة: قبل ${lastAge} يوم`}
               </div>
-            )}
+              <div className="xb-status-sub">
+                {!lastBackup
+                  ? "خُد أول نسخة هلق"
+                  : backupStale ? `مرّ أكتر من ${BACKUP_STALE_DAYS} يوم — صار لازم نسخة جديدة` : (lastBackup.byName || lastBackup.by || "")}
+              </div>
+            </div>
           </div>
-        );
-      })()}
+        )}
+      </header>
 
-      {/* ═══ Toolbar ═══ */}
-      <div style={S.toolbar}>
-        <div style={S.search}>
-          <span style={S.searchIco}>🔎</span>
-          <input
-            type="text"
-            placeholder="ابحث عن نوع تقرير..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={S.searchInput}
-          />
-          {query && (
-            <button type="button" onClick={() => setQuery("")} style={S.searchClear} title="مسح">✕</button>
-          )}
+      {/* ═══ KPI strip ═══ */}
+      <div className="xb-kpis">
+        <div className="xb-kpi">
+          <div className="xb-kpi-lbl">التقارير المختارة</div>
+          <div className="xb-kpi-val">{pickedCount}<span className="xb-kpi-of"> / {totalTypes}</span></div>
+          <div className="xb-meter"><span style={{ width: `${pickedPct}%` }} /></div>
         </div>
-        <div style={S.toolbarBtns}>
-          <button onClick={() => selectAll(true)}  style={S.btnGhost}>تحديد الكل</button>
-          <button onClick={() => selectAll(false)} style={S.btnGhost}>إلغاء الكل</button>
-          <button
-            onClick={() => setExpandedBranches(new Set(treeBranches.map((b) => b.id)))}
-            style={S.btnGhost}
-          >
-            توسيع
-          </button>
-          <button
-            onClick={() => setExpandedBranches(new Set())}
-            style={S.btnGhost}
-          >
-            طي
-          </button>
+        <div className="xb-kpi">
+          <div className="xb-kpi-lbl">المدة</div>
+          <div className="xb-kpi-val xb-kpi-txt">{filterLabel(filter)}</div>
+        </div>
+        <div className="xb-kpi">
+          <div className="xb-kpi-lbl">الصور</div>
+          <div className="xb-kpi-val xb-kpi-txt">
+            {isMawashi ? (withPhotos ? "كل التقارير المختارة" : "التفتيش فقط") : "روابط فقط"}
+          </div>
+        </div>
+        <div className="xb-kpi">
+          <div className="xb-kpi-lbl">ترتيب الملفات</div>
+          <div className="xb-kpi-val xb-kpi-txt">{isMawashi && splitMonths ? "ملف لكل شهر" : "ملف لكل تقرير"}</div>
         </div>
       </div>
 
-      {/* ═══ Date filter ═══ */}
-      <div style={S.filterCard(filterOn)}>
-        <div style={S.filterHead}>
-          <span style={S.filterTitle}>🗓️ فلترة حسب التاريخ</span>
-          <span style={S.filterState(filterOn)}>{filterLabel(filter)}</span>
-        </div>
+      {windowWarning && <div className="xb-banner is-bad">{windowWarning}</div>}
 
-        <div style={S.filterRow}>
-          {[
-            ["all", "كل التواريخ"],
-            ["day", "يوم محدد"],
-            ["range", "نطاق تاريخ"],
-            ["months", "آخر عدة أشهر"],
-          ].map(([m, lbl]) => (
-            <button key={m} type="button" onClick={() => setMode(m)} style={S.chip(filter.mode === m)}>
-              {lbl}
-            </button>
-          ))}
-        </div>
-
-        {filter.mode === "day" && (
-          <div style={S.filterRow}>
-            <label style={S.fieldLbl}>التاريخ</label>
-            <input
-              type="date"
-              value={filter.day}
-              onChange={(e) => setFilter((f) => ({ ...f, day: e.target.value }))}
-              style={S.dateInput}
-            />
-            <button type="button" onClick={() => setFilter((f) => ({ ...f, day: todayISO() }))} style={S.btnGhostSm}>
-              اليوم
-            </button>
+      <div className="xb-grid">
+        {/* ═══════════ Reports tree ═══════════ */}
+        <main className="xb-main">
+          <div className="xb-toolbar">
+            <div className="xb-search">
+              <span aria-hidden="true">🔎</span>
+              <input
+                type="text"
+                placeholder="ابحث عن تقرير أو فرع..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {query && (
+                <button type="button" className="xb-x" onClick={() => setQuery("")} title="مسح">✕</button>
+              )}
+            </div>
+            <div className="xb-tools">
+              <button type="button" className="xb-btn-ghost" onClick={() => setExpandedBranches(new Set(treeBranches.map((b) => b.id)))}>توسيع الكل</button>
+              <button type="button" className="xb-btn-ghost" onClick={() => setExpandedBranches(new Set())}>طي الكل</button>
+              <button type="button" className="xb-btn-ghost" onClick={() => selectAll(false)}>إلغاء التحديد</button>
+            </div>
           </div>
-        )}
 
-        {filter.mode === "range" && (
-          <div style={S.filterRow}>
-            <label style={S.fieldLbl}>من</label>
-            <input
-              type="date"
-              value={filter.from}
-              onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value }))}
-              style={S.dateInput}
-            />
-            <label style={S.fieldLbl}>إلى</label>
-            <input
-              type="date"
-              value={filter.to}
-              onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value }))}
-              style={S.dateInput}
-            />
-          </div>
-        )}
-
-        {filter.mode === "months" && (
-          <div style={S.filterRow}>
-            <label style={S.fieldLbl}>آخر</label>
-            <input
-              type="number"
-              min="1"
-              max="60"
-              value={filter.months}
-              onChange={(e) =>
-                setFilter((f) => ({ ...f, months: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))
-              }
-              style={{ ...S.dateInput, width: 90 }}
-            />
-            <label style={S.fieldLbl}>شهر</label>
-            {[1, 3, 6, 12].map((n) => (
-              <button key={n} type="button" onClick={() => setFilter((f) => ({ ...f, months: n }))} style={S.chip(filter.months === n)}>
-                {n}
+          <div className="xb-presets">
+            <span className="xb-presets-lbl">اختيار سريع:</span>
+            {PRESETS.filter(([id, , cards]) => !cards || treeCards.some((c) => cards.includes(c.id)) || id === "all").map(([id, lbl, cards]) => (
+              <button
+                key={id}
+                type="button"
+                className="xb-chip"
+                onClick={() => (cards ? selectCards(cards) : selectAll(true))}
+              >
+                {lbl}
               </button>
             ))}
           </div>
-        )}
 
-        <div style={S.filterRow}>
-          {filterOn && (
-            <label style={S.checkRow}>
-              <input
-                type="checkbox"
-                checked={filter.includeUndated}
-                onChange={(e) => setFilter((f) => ({ ...f, includeUndated: e.target.checked }))}
-                style={S.checkBox}
-              />
-              <span>تضمين السجلات بدون تاريخ</span>
-            </label>
-          )}
-          <label style={S.checkRow}>
-            <input
-              type="checkbox"
-              checked={skipEmpty}
-              onChange={(e) => setSkipEmpty(e.target.checked)}
-              style={S.checkBox}
-            />
-            <span>تخطّي الملفات الفارغة (لا تنشئ ملف للتقارير بلا سجلات)</span>
-          </label>
-        </div>
+          {treeCards.map((card) => {
+            const branches = branchesFor(card.id);
+            const cardTotal  = branches.reduce((s, b) => s + b.types.length, 0);
+            const cardPicked = branches.reduce((s, b) => s + branchPickedCount(b), 0);
+            const cardBranches = branches
+              .map((branch) => {
+                const visibleTypes = branch.types.filter(([, lbl]) => {
+                  if (!filterQ) return true;
+                  return lbl.toLowerCase().includes(filterQ)
+                    || branch.label.toLowerCase().includes(filterQ)
+                    || card.label.toLowerCase().includes(filterQ);
+                });
+                return { branch, visibleTypes };
+              })
+              .filter(({ visibleTypes }) => !filterQ || visibleTypes.length > 0);
+            if (!cardBranches.length) return null;
+            const cardState = cardPicked === 0 ? "off" : cardPicked === cardTotal ? "on" : "some";
 
-        {isMawashi && (
-          <div style={S.filterRow}>
-            <label style={S.checkRow}>
-              <input type="checkbox" checked={splitMonths} onChange={(e) => setSplitMonths(e.target.checked)} style={S.checkBox} />
-              <span>📅 ملف لكل شهر — التقرير اللي بيغطي أكتر من شهر بيصير مجلد ← سنة ← ملف لكل شهر (المرتجعات دايماً هيك)</span>
-            </label>
-            <label style={S.checkRow}>
-              <input type="checkbox" checked={withPhotos} onChange={(e) => setWithPhotos(e.target.checked)} style={S.checkBox} />
-              <span>📷 إرفاق صور كل التقارير المختارة (تقارير التفتيش دايماً مع صورها) — بيكبّر حجم الـZIP</span>
-            </label>
-            <label style={S.checkRow}>
-              <input type="checkbox" checked={includeTables} onChange={(e) => setIncludeTables(e.target.checked)} style={S.checkBox} />
-              <span>🗄️ جداول قاعدة البيانات: المنتجات، الحسابات (بلا كلمات سر)، سجل التعديلات</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* ═══ Card → branch → group tree ═══
-           نفس شجرة المجلدات اللي بتطلع بالـZIP، فاللي بيختار من هون بيعرف
-           سلفاً وين رح يلاقي الملف. */}
-      {treeCards.map((card) => {
-        const branches = branchesFor(card.id);
-        const cardTotal  = branches.reduce((s, b) => s + b.types.length, 0);
-        const cardPicked = branches.reduce((s, b) => s + branchPickedCount(b), 0);
-
-        const cardBranches = branches
-          .map((branch) => {
-            const visibleTypes = branch.types.filter(([, lbl]) => {
-              if (!filterQ) return true;
-              return lbl.toLowerCase().includes(filterQ)
-                || branch.label.toLowerCase().includes(filterQ)
-                || card.label.toLowerCase().includes(filterQ);
-            });
-            return { branch, visibleTypes };
-          })
-          .filter(({ visibleTypes }) => !filterQ || visibleTypes.length > 0);
-
-        if (!cardBranches.length) return null;
-
-        return (
-          <section key={card.id} style={S.cardSection}>
-            <div style={S.cardHead}>
-              <span style={S.cardEmoji}>{card.emoji}</span>
-              <h2 style={S.cardTitle}>{card.label}</h2>
-              <span style={S.cardMeta}>{cardPicked}/{cardTotal} نوع · {branches.length} مجلد</span>
-              <span style={S.cardRule} aria-hidden="true" />
-              <button
-                type="button"
-                onClick={() => toggleCardAll(branches)}
-                style={S.cardTogAll(cardPicked === cardTotal)}
-              >
-                {cardPicked === cardTotal ? "إلغاء الكرت" : "تحديد الكرت"}
-              </button>
-            </div>
-
-            <div style={S.branchGrid}>
-              {cardBranches.map(({ branch, visibleTypes }) => {
-                const expanded = expandedBranches.has(branch.id);
-                const count = branchPickedCount(branch);
-                const total = branch.types.length;
-                const allOn = count === total;
-                const someOn = count > 0 && count < total;
-                const groups = groupsOfBranch(branch);
-
-                return (
-                  <div key={`${card.id}:${branch.id}`} style={S.branchCard(branch.accent, count > 0)}>
-                    {/* Branch header */}
-                    <div style={S.branchHead}>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(branch.id)}
-                        style={S.branchHeadLeft}
-                        title={expanded ? "طي" : "توسيع"}
-                      >
-                        <span style={S.branchEmoji}>{branch.emoji}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={S.branchName(branch.accent)}>{branch.label}</div>
-                          <div style={S.branchCount}>
-                            {count}/{total} نوع
-                          </div>
-                        </div>
-                        <span style={S.branchChev}>{expanded ? "▾" : "▸"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleBranchAll(branch)}
-                        style={S.branchTogAll(allOn, someOn, branch.accent)}
-                        title={allOn ? "إلغاء كل تقارير الفرع" : "تحديد كل تقارير الفرع"}
-                      >
-                        {allOn ? "✓" : someOn ? "—" : ""}
-                      </button>
-                    </div>
-
-                    {/* Types list (collapsible), split by the same groups the
-                        ZIP turns into sub-folders. */}
-                    {expanded && (
-                      <div style={S.typeList}>
-                        {["", ...groups].map((g) => {
-                          const inGroup = visibleTypes.filter(([, , tg]) => (tg || "") === g);
-                          if (!inGroup.length) return null;
-                          return (
-                            <div key={g || "__root"}>
-                              {g && <div style={S.groupHead}>{g}</div>}
-                              {inGroup.map(([k, lbl]) => {
-                                const on = isPicked(branch.id, k);
-                                return (
-                                  <label key={k} style={S.typeRow(on, branch.accent)}>
-                                    {/* hidden native checkbox for accessibility */}
-                                    <input
-                                      type="checkbox"
-                                      checked={on}
-                                      onChange={() => togglePicked(branch.id, k)}
-                                      style={S.typeChkHidden}
-                                    />
-                                    <span style={S.typeLbl}>{lbl}</span>
-                                    {/* custom visible checkbox */}
-                                    <span style={S.typeChkBox(on, branch.accent)}>
-                                      {on && "✓"}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+            return (
+              <section key={card.id} className="xb-card">
+                <div className="xb-card-head">
+                  <span className="xb-card-emoji">{card.emoji}</span>
+                  <div className="xb-card-titles">
+                    <h2 className="xb-card-title">{card.label}</h2>
+                    <div className="xb-card-meta">{cardPicked}/{cardTotal} تقرير · {branches.length} مجلد</div>
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+                  <div className="xb-meter xb-card-meter"><span style={{ width: `${cardTotal ? (cardPicked / cardTotal) * 100 : 0}%` }} /></div>
+                  <button
+                    type="button"
+                    className={`xb-tri is-${cardState}`}
+                    onClick={() => toggleCardAll(branches)}
+                    title={cardState === "on" ? "إلغاء الكرت" : "تحديد الكرت"}
+                  >
+                    {cardState === "on" ? "✓" : cardState === "some" ? "–" : ""}
+                  </button>
+                </div>
 
-      {/* ═══ Blank forms ═══ */}
-      <div style={S.blankCard}>
-        <div style={S.blankHead}>
-          <span style={S.blankTitle}>📄 نماذج فارغة للطباعة</span>
-          <span style={S.blankSub}>
-            نفس شجرة المجلدات، بس كل ملف نموذج فاضي بترويسته وأعمدته وأسئلته — بلا بيانات.
-          </span>
-        </div>
-        <div style={S.filterRow}>
-          <label style={S.fieldLbl}>أسطر فارغة لكل نموذج</label>
-          <input
-            type="number"
-            min="1"
-            max="60"
-            value={blankRows}
-            onChange={(e) => setBlankRows(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
-            style={{ ...S.dateInput, width: 90 }}
-          />
-          {[10, 15, 25, 40].map((n) => (
-            <button key={n} type="button" onClick={() => setBlankRows(n)} style={S.chip(blankRows === n)}>
-              {n}
+                <div className="xb-branches">
+                  {cardBranches.map(({ branch, visibleTypes }) => {
+                    const expanded = expandedBranches.has(branch.id) || !!filterQ;
+                    const count = branchPickedCount(branch);
+                    const total = branch.types.length;
+                    const state = count === 0 ? "off" : count === total ? "on" : "some";
+                    const groups = groupsOfBranch(branch);
+                    return (
+                      <div
+                        key={`${card.id}:${branch.id}`}
+                        className={`xb-branch ${count > 0 ? "is-active" : ""}`}
+                        style={{ "--acc": branch.accent || "#0ea5e9" }}
+                      >
+                        <div className="xb-branch-head">
+                          <button
+                            type="button"
+                            className="xb-branch-open"
+                            onClick={() => toggleExpand(branch.id)}
+                            aria-expanded={expanded}
+                          >
+                            <span className="xb-branch-emoji">{branch.emoji}</span>
+                            <span className="xb-branch-name">{branch.label}</span>
+                            <span className="xb-branch-count">{count}/{total}</span>
+                            <span className="xb-chev">{expanded ? "▾" : "◂"}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`xb-tri is-${state}`}
+                            onClick={() => toggleBranchAll(branch)}
+                            title={state === "on" ? "إلغاء الفرع" : "تحديد الفرع"}
+                          >
+                            {state === "on" ? "✓" : state === "some" ? "–" : ""}
+                          </button>
+                        </div>
+
+                        {expanded && (
+                          <div className="xb-types">
+                            {["", ...groups].map((g) => {
+                              const inGroup = visibleTypes.filter(([, , tg]) => (tg || "") === g);
+                              if (!inGroup.length) return null;
+                              return (
+                                <div key={g || "__root"} className="xb-group">
+                                  {g && <div className="xb-group-head">{g}</div>}
+                                  {inGroup.map(([k, lbl]) => {
+                                    const on = isPicked(branch.id, k);
+                                    return (
+                                      <label key={k} className={`xb-type ${on ? "is-on" : ""}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={on}
+                                          onChange={() => togglePicked(branch.id, k)}
+                                        />
+                                        <span className="xb-box" aria-hidden="true">{on ? "✓" : ""}</span>
+                                        <span className="xb-type-lbl">{lbl}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </main>
+
+        {/* ═══════════ Side panel ═══════════ */}
+        <aside className="xb-side">
+          {/* Export */}
+          <section className="xb-panel xb-panel-cta">
+            <div className="xb-panel-title">📥 التصدير</div>
+            <ul className="xb-summary">
+              <li><span>التقارير</span><b>{pickedCount}</b></li>
+              <li><span>المدة</span><b>{filterLabel(filter)}</b></li>
+              {isMawashi && <li><span>جداول قاعدة البيانات</span><b>{includeTables ? "نعم" : "لا"}</b></li>}
+            </ul>
+            <button
+              type="button"
+              className="xb-btn-primary"
+              onClick={handleGenerate}
+              disabled={busy || pickedCount === 0}
+            >
+              {busy ? `⏳ ${progress.current}/${progress.total} — ${pct}%` : "إنشاء وتحميل ZIP"}
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={handleBlankForms}
-            disabled={busy || pickedCount === 0}
-            style={S.btnBlank(busy, pickedCount === 0)}
-          >
-            📄 تحميل النماذج الفارغة · {pickedCount}
-          </button>
-        </div>
-      </div>
+            {busy && (
+              <>
+                <div className="xb-progress"><span style={{ width: `${pct}%` }} /></div>
+                {progress.label && <div className="xb-progress-lbl">{progress.label}</div>}
+                <button type="button" className="xb-btn-cancel" onClick={cancelRun}>⛔ إلغاء</button>
+              </>
+            )}
+            {msg.text && <div className={`xb-msg is-${msg.kind || "info"}`}>{msg.text}</div>}
+            {stats && !busy && (
+              <div className="xb-stats">
+                <div><b>{stats.filesCreated}</b><span>{stats.mode === "blank" ? "نموذج" : "ملف"}</span></div>
+                <div><b>{stats.filesEmpty}</b><span>{stats.mode === "blank" ? "بلا سجل" : "فارغ"}</span></div>
+                {stats.mode !== "blank" && <div><b>{stats.totalRows.toLocaleString()}</b><span>سجل</span></div>}
+                <div><b>{stats.branches}</b><span>فرع</span></div>
+              </div>
+            )}
+          </section>
 
-      {/* ═══ Action bar (sticky bottom) ═══ */}
-      <div style={S.actionBar}>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={busy || pickedCount === 0}
-          style={S.btnGenerate(busy, pickedCount === 0)}
-        >
-          {busy
-            ? `⏳  ${progress.current}/${progress.total} — ${pct}%`
-            : `📥  إنشاء وتحميل ZIP   ·   ${pickedCount} ملف Excel`}
-        </button>
-
-        {busy && (
-          <button type="button" onClick={cancelRun} style={S.btnCancel}>
-            ⛔ إلغاء
-          </button>
-        )}
-
-        {busy && (
-          <div style={S.progressBox}>
-            <div style={S.progressTrack}>
-              <div style={S.progressBar(pct)} />
+          {/* Period */}
+          <section className="xb-panel">
+            <div className="xb-panel-title">🗓️ المدة</div>
+            <div className="xb-seg">
+              {[
+                ["all", "الكل"],
+                ["day", "يوم"],
+                ["range", "من - إلى"],
+                ["months", "آخر أشهر"],
+              ].map(([m, lbl]) => (
+                <button key={m} type="button" className={filter.mode === m ? "is-on" : ""} onClick={() => setMode(m)}>
+                  {lbl}
+                </button>
+              ))}
             </div>
-            {progress.label && <div style={S.progressLabel}>{progress.label}</div>}
-          </div>
-        )}
-      </div>
 
-      {/* ═══ Message ═══ */}
-      {msg.text && <div style={S.msgBox(msg.kind)}>{msg.text}</div>}
+            {filter.mode === "day" && (
+              <div className="xb-fields">
+                <input
+                  type="date"
+                  className="xb-input"
+                  value={filter.day}
+                  onChange={(e) => setFilter((f) => ({ ...f, day: e.target.value }))}
+                />
+                <button type="button" className="xb-chip" onClick={() => setFilter((f) => ({ ...f, day: todayISO() }))}>اليوم</button>
+              </div>
+            )}
+            {filter.mode === "range" && (
+              <div className="xb-fields xb-fields-2">
+                <label className="xb-field">
+                  <span>من</span>
+                  <input type="date" className="xb-input" value={filter.from}
+                    onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value }))} />
+                </label>
+                <label className="xb-field">
+                  <span>إلى</span>
+                  <input type="date" className="xb-input" value={filter.to}
+                    onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value }))} />
+                </label>
+              </div>
+            )}
+            {filter.mode === "months" && (
+              <div className="xb-fields">
+                {[1, 3, 6, 12].map((n) => (
+                  <button key={n} type="button" className={`xb-chip ${filter.months === n ? "is-on" : ""}`}
+                    onClick={() => setFilter((f) => ({ ...f, months: n }))}>
+                    {n} {n === 1 ? "شهر" : "أشهر"}
+                  </button>
+                ))}
+                <input
+                  type="number" min="1" max="60" className="xb-input xb-input-num"
+                  value={filter.months}
+                  onChange={(e) => setFilter((f) => ({ ...f, months: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))}
+                />
+              </div>
+            )}
+            <div className="xb-hint">{filterLabel(filter)}</div>
+            {filterOn && (
+              <Switch
+                on={filter.includeUndated}
+                onChange={(v) => setFilter((f) => ({ ...f, includeUndated: v }))}
+                label="تضمين السجلات بدون تاريخ"
+                hint="أبطأ: بيقرأ كل سجلات النوع بدل فلترة السيرفر"
+              />
+            )}
+          </section>
 
-      {/* ═══ Stats ═══ */}
-      {stats && !busy && (
-        <div style={S.statsGrid}>
-          <Stat
-            icon="✅"
-            label={stats.mode === "blank" ? "نموذج فارغ" : "ملف بيانات"}
-            value={stats.filesCreated} color="#16a34a" bg="#dcfce7"
-          />
-          <Stat
-            icon="📭"
-            label={stats.mode === "blank" ? "بلا سجل يُبنى عليه" : "ملف فارغ"}
-            value={stats.filesEmpty} color="#92400e" bg="#fef3c7"
-          />
-          {stats.mode !== "blank" && (
-            <Stat icon="📋" label="إجمالي السجلات" value={stats.totalRows.toLocaleString()} color="#1e40af" bg="#dbeafe" />
+          {/* Options */}
+          <section className="xb-panel">
+            <div className="xb-panel-title">⚙️ الخيارات</div>
+            <Switch
+              on={skipEmpty}
+              onChange={setSkipEmpty}
+              label="تخطّي التقارير الفارغة"
+              hint="ما بينعمل ملف لتقرير بلا سجلات"
+            />
+            {isMawashi && (
+              <>
+                <Switch
+                  on={splitMonths}
+                  onChange={setSplitMonths}
+                  label="📅 ملف لكل شهر"
+                  hint="التقرير ← سنة ← ملف لكل شهر (المرتجعات دايماً هيك)"
+                />
+                <Switch
+                  on={withPhotos}
+                  onChange={setWithPhotos}
+                  label="📷 صور كل التقارير"
+                  hint="التفتيش دايماً مع صوره · بيكبّر حجم الـZIP"
+                />
+                <Switch
+                  on={includeTables}
+                  onChange={setIncludeTables}
+                  label="🗄️ جداول قاعدة البيانات"
+                  hint="المنتجات · الحسابات (بلا كلمات سر) · سجل التعديلات"
+                />
+              </>
+            )}
+          </section>
+
+          {/* Blank forms */}
+          <details className="xb-panel xb-details">
+            <summary className="xb-panel-title">📄 نماذج فارغة للطباعة</summary>
+            <p className="xb-hint">نفس المجلدات، وكل ملف نموذج فاضي بترويسته وأعمدته — للتعبئة باليد.</p>
+            <div className="xb-fields">
+              <span className="xb-field-lbl">أسطر لكل نموذج</span>
+              {[10, 15, 25, 40].map((n) => (
+                <button key={n} type="button" className={`xb-chip ${blankRows === n ? "is-on" : ""}`} onClick={() => setBlankRows(n)}>{n}</button>
+              ))}
+              <input
+                type="number" min="1" max="60" className="xb-input xb-input-num"
+                value={blankRows}
+                onChange={(e) => setBlankRows(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+              />
+            </div>
+            <button
+              type="button"
+              className="xb-btn-soft"
+              onClick={handleBlankForms}
+              disabled={busy || pickedCount === 0}
+            >
+              📄 تحميل {pickedCount} نموذج فارغ
+            </button>
+          </details>
+
+          {/* Backup log */}
+          {isMawashi && backupLog && backupLog.length > 0 && (
+            <section className="xb-panel">
+              <div className="xb-panel-title">🗂️ آخر النسخ</div>
+              <ol className="xb-log">
+                {backupLog.slice(0, 6).map((b) => (
+                  <li key={b.id || b.at}>
+                    <div className="xb-log-top">
+                      <span className="xb-log-when">{fmtWhen(b.at)}</span>
+                      {b.incomplete && <span className="xb-tag is-warn">ناقصة</span>}
+                    </div>
+                    <div className="xb-log-who">{b.byName || b.by || "—"} · {b.filter || "—"}</div>
+                    <div className="xb-log-what">
+                      {Number(b.files || 0).toLocaleString()} ملف · {Number(b.records || 0).toLocaleString()} سجل
+                      {b.photos ? ` · 📷 ${b.photos}` : ""}
+                      {b.sizeMB != null ? ` · ${b.sizeMB} MB` : ""}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
           )}
-          <Stat icon="🏢" label="فرع"          value={stats.branches}    color="#7c3aed" bg="#ede9fe" />
-        </div>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }
 
-function Stat({ icon, label, value, color, bg }) {
+/** On/off switch with a second line of help text. */
+function Switch({ on, onChange, label, hint }) {
   return (
-    <div style={{ background: bg, border: `1.5px solid ${color}44`, borderRadius: 16, padding: "18px 22px" }}>
-      <div style={{ fontSize: 26, lineHeight: 1 }}>{icon}</div>
-      <div style={{ fontSize: 32, fontWeight: 1000, color, marginTop: 8, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: "#475569", marginTop: 6 }}>{label}</div>
-    </div>
+    <label className={`xb-switch ${on ? "is-on" : ""}`}>
+      <input type="checkbox" checked={!!on} onChange={(e) => onChange(e.target.checked)} />
+      <span className="xb-switch-track" aria-hidden="true"><span className="xb-switch-dot" /></span>
+      <span className="xb-switch-txt">
+        <span className="xb-switch-lbl">{label}</span>
+        {hint && <span className="xb-switch-hint">{hint}</span>}
+      </span>
+    </label>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   STYLES — wide cards, big font, clear checkboxes
+   STYLES — Soft Sky, page-scoped.
+   globals.css forces `#root * { font-size: … !important }`, so inline font
+   sizes are dead: every rule here uses the doubled class `.xb.xb` to out-rank
+   it, and sizes follow the app's Aa text-size control via --app-fs.
+   globals.css also sets overflow-x:hidden on html/body/#root, which kills
+   position:sticky — `overflow-x: clip` on this page brings the side panel's
+   sticky back.
    ═══════════════════════════════════════════════════════════════ */
-const NAVY   = "#0b1f4d";
-const SLATE  = "#475569";
-const SLATE2 = "#64748b";
-const BORDER = "#dde3ec";
+const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const XB_CSS = `
+html:has(.xb), body:has(.xb), #root:has(.xb) { overflow-x: clip; }
+#root .xb.xb {
+  --ink: #1e293b; --ink-2: #475569; --ink-3: #64748b; --line: #e2e8f0; --line-2: #cbd5e1;
+  --sky: #0ea5e9; --sky-d: #0369a1; --sky-50: #f0f9ff; --sky-100: #e0f2fe; --sky-200: #bae6fd;
+  --ok: #15803d; --ok-bg: #f0fdf4; --warn: #92400e; --warn-bg: #fffbeb; --bad: #b91c1c; --bad-bg: #fef2f2;
+  color: var(--ink); max-width: 1440px; margin: 0 auto; padding: 4px 4px 40px;
+  font-family: inherit;
+}
+#root .xb.xb * { box-sizing: border-box; }
+#root .xb.xb button { font-family: inherit; }
 
-const S = {
-  root: {
-    fontFamily: 'ui-sans-serif, "Segoe UI", Cairo, sans-serif',
-    color: NAVY,
-    direction: "rtl",
-  },
+/* header */
+#root .xb.xb .xb-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 60%); border: 1px solid var(--sky-200); border-radius: 18px; padding: 20px 22px; }
+#root .xb.xb .xb-eyebrow { display: inline-block; font-size: ${fs(12)}; font-weight: 800; letter-spacing: .04em; color: var(--sky-d);
+  background: var(--sky-100); border-radius: 999px; padding: 3px 10px; }
+#root .xb.xb .xb-title { font-size: ${fs(26)}; font-weight: 900; margin: 8px 0 4px; color: #0f172a; line-height: 1.25; }
+#root .xb.xb .xb-sub { font-size: ${fs(14)}; color: var(--ink-2); margin: 0; max-width: 720px; line-height: 1.7; }
+#root .xb.xb .xb-status { display: flex; gap: 10px; align-items: center; border-radius: 14px; padding: 12px 16px; min-width: 240px; border: 1px solid; }
+#root .xb.xb .xb-status.is-ok { background: var(--ok-bg); border-color: #bbf7d0; }
+#root .xb.xb .xb-status.is-warn { background: var(--warn-bg); border-color: #fde68a; }
+#root .xb.xb .xb-status-ico { font-size: ${fs(22)}; }
+#root .xb.xb .xb-status-main { font-size: ${fs(15)}; font-weight: 800; }
+#root .xb.xb .xb-status.is-ok .xb-status-main { color: var(--ok); }
+#root .xb.xb .xb-status.is-warn .xb-status-main { color: var(--warn); }
+#root .xb.xb .xb-status-sub { font-size: ${fs(12.5)}; color: var(--ink-3); margin-top: 2px; }
 
-  /* ── Hero ── */
-  hero: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: 24,
-    alignItems: "center",
-    padding: "28px 36px",
-    background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #2d5a8e 100%)",
-    color: "#fff",
-    borderRadius: 20,
-    marginBottom: 18,
-    boxShadow: "0 18px 40px rgba(15,23,42,.22)",
-  },
-  heroLeft: { minWidth: 0 },
-  heroBadge: {
-    display: "inline-block",
-    padding: "6px 16px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,.15)",
-    border: "1px solid rgba(255,255,255,.28)",
-    fontSize: 12,
-    fontWeight: 900,
-    letterSpacing: ".16em",
-    marginBottom: 12,
-  },
-  heroTitle: {
-    margin: 0,
-    fontSize: "1.9rem",
-    fontWeight: 1000,
-    lineHeight: 1.2,
-  },
-  heroSub: {
-    margin: "10px 0 0",
-    fontSize: 15,
-    opacity: 0.85,
-    lineHeight: 1.65,
-    maxWidth: 720,
-  },
-  heroRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 18,
-    padding: "18px 24px",
-    background: "rgba(255,255,255,.09)",
-    border: "1px solid rgba(255,255,255,.22)",
-    borderRadius: 16,
-  },
-  heroStat: { textAlign: "center", minWidth: 80 },
-  heroStatNum: { fontSize: "2.4rem", fontWeight: 1000, lineHeight: 1, color: "#fff" },
-  heroStatLbl: { fontSize: 13, fontWeight: 700, opacity: 0.8, marginTop: 5 },
-  heroStatDivider: { width: 1, height: 44, background: "rgba(255,255,255,.28)" },
+/* kpis */
+#root .xb.xb .xb-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+#root .xb.xb .xb-kpi { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+#root .xb.xb .xb-kpi-lbl { font-size: ${fs(12)}; color: var(--ink-3); font-weight: 700; }
+#root .xb.xb .xb-kpi-val { font-size: ${fs(24)}; font-weight: 900; color: #0f172a; margin-top: 4px; line-height: 1.2; }
+#root .xb.xb .xb-kpi-of { font-size: ${fs(14)}; color: var(--ink-3); font-weight: 700; }
+#root .xb.xb .xb-kpi-txt { font-size: ${fs(14.5)}; font-weight: 800; color: var(--sky-d); overflow-wrap: anywhere; }
+#root .xb.xb .xb-meter { height: 6px; background: var(--sky-100); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+#root .xb.xb .xb-meter > span { display: block; height: 100%; background: var(--sky); border-radius: 999px; transition: width .25s; }
 
-  /* ── Toolbar ── */
-  toolbar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    padding: "14px 18px",
-    background: "#fff",
-    border: `1.5px solid ${BORDER}`,
-    borderRadius: 16,
-    marginBottom: 14,
-    boxShadow: "0 3px 10px rgba(2,6,23,.06)",
-  },
-  search: {
-    flex: "1 1 300px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    background: "#f6f8fb",
-    border: `1.5px solid ${BORDER}`,
-    borderRadius: 12,
-    padding: "0 16px",
-    height: 46,
-  },
-  searchIco: { fontSize: 17, color: SLATE2 },
-  searchInput: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    fontSize: 16,
-    fontWeight: 600,
-    fontFamily: "inherit",
-    color: NAVY,
-    height: "100%",
-  },
-  searchClear: {
-    background: "#e2e8f0",
-    color: NAVY,
-    border: "none",
-    borderRadius: 999,
-    width: 24,
-    height: 24,
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 13,
-    display: "grid",
-    placeItems: "center",
-  },
-  toolbarBtns: { display: "flex", gap: 8, flexWrap: "wrap" },
-  btnGhost: {
-    background: "#f1f5f9",
-    color: NAVY,
-    border: `1.5px solid ${BORDER}`,
-    padding: "10px 20px",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontWeight: 800,
-    fontSize: 14,
-    fontFamily: "inherit",
-    transition: "all .12s",
-  },
+#root .xb.xb .xb-banner { border-radius: 12px; padding: 12px 16px; margin: 0 0 14px; font-size: ${fs(13.5)}; font-weight: 600; line-height: 1.7; }
+#root .xb.xb .xb-banner.is-bad { background: var(--bad-bg); border: 1px solid #fecaca; color: var(--bad); }
 
-  /* ── Date filter ── */
-  filterCard: (on) => ({
-    background: "#fff",
-    border: `2px solid ${on ? "#2d5a8e" : BORDER}`,
-    borderRadius: 16,
-    padding: "14px 18px",
-    marginBottom: 14,
-    boxShadow: on ? "0 8px 22px rgba(45,90,142,.16)" : "0 3px 10px rgba(2,6,23,.06)",
-  }),
-  filterHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 10,
-  },
-  filterTitle: { fontSize: 16, fontWeight: 900, color: NAVY },
-  filterState: (on) => ({
-    fontSize: 14,
-    fontWeight: 800,
-    color: on ? "#1e3a5f" : SLATE2,
-    background: on ? "#e6eff9" : "#f1f5f9",
-    border: `1.5px solid ${on ? "#2d5a8e44" : BORDER}`,
-    borderRadius: 999,
-    padding: "5px 14px",
-  }),
-  filterRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    flexWrap: "wrap",
-    marginTop: 9,
-  },
-  chip: (on) => ({
-    padding: "9px 18px",
-    borderRadius: 999,
-    border: `1.5px solid ${on ? "#2d5a8e" : BORDER}`,
-    background: on ? "linear-gradient(135deg,#1e3a5f,#2d5a8e)" : "#f6f8fb",
-    color: on ? "#fff" : NAVY,
-    fontWeight: 800,
-    fontSize: 14,
-    fontFamily: "inherit",
-    cursor: "pointer",
-    transition: "all .12s",
-  }),
-  fieldLbl: { fontSize: 14, fontWeight: 800, color: SLATE },
-  dateInput: {
-    padding: "9px 12px",
-    border: `1.5px solid ${BORDER}`,
-    borderRadius: 10,
-    fontSize: 15,
-    fontWeight: 700,
-    fontFamily: "inherit",
-    color: NAVY,
-    background: "#fff",
-  },
-  btnGhostSm: {
-    background: "#f1f5f9",
-    color: NAVY,
-    border: `1.5px solid ${BORDER}`,
-    padding: "8px 16px",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontWeight: 800,
-    fontSize: 13.5,
-    fontFamily: "inherit",
-  },
-  checkRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    fontSize: 14,
-    fontWeight: 700,
-    color: SLATE,
-    cursor: "pointer",
-  },
-  checkBox: { width: 19, height: 19, cursor: "pointer", accentColor: "#2d5a8e" },
+/* layout */
+#root .xb.xb .xb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+#root .xb.xb .xb-main, #root .xb.xb .xb-side, #root .xb.xb .xb-side > * { min-width: 0; }
+#root .xb.xb .xb-side { position: sticky; top: 12px; display: grid; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-bottom: 4px; }
+@media (max-width: 1020px) {
+  #root .xb.xb .xb-grid { grid-template-columns: minmax(0, 1fr); }
+  #root .xb.xb .xb-side { position: static; max-height: none; overflow: visible; order: -1; }
+  #root .xb.xb .xb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
-  /* ── Branch grid — wider cards ── */
-  /* ── Blank-forms panel ── */
-  blankCard: {
-    background: "#fffbeb",
-    border: "2px solid #fcd34d",
-    borderRadius: 18,
-    padding: "18px 22px",
-    marginBottom: 18,
-  },
-  blankHead: { marginBottom: 12 },
-  blankTitle: { display: "block", fontSize: 17, fontWeight: 1000, color: "#78350f" },
-  blankSub: { display: "block", fontSize: 13.5, fontWeight: 600, color: "#92400e", marginTop: 4, lineHeight: 1.7 },
-  btnBlank: (busy, none) => ({
-    marginInlineStart: "auto",
-    padding: "11px 22px",
-    borderRadius: 12,
-    border: "none",
-    background: busy || none ? "#e2e8f0" : "linear-gradient(135deg,#f59e0b,#d97706)",
-    color: busy || none ? "#94a3b8" : "#fff",
-    fontWeight: 1000,
-    fontSize: 14.5,
-    cursor: busy || none ? "not-allowed" : "pointer",
-    boxShadow: busy || none ? "none" : "0 10px 24px rgba(217,119,6,.28)",
-  }),
+/* toolbar */
+#root .xb.xb .xb-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+#root .xb.xb .xb-search { flex: 1 1 260px; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line-2);
+  border-radius: 12px; padding: 0 12px; height: 42px; }
+#root .xb.xb .xb-search:focus-within { border-color: var(--sky); box-shadow: 0 0 0 3px var(--sky-100); }
+#root .xb.xb .xb-search input { flex: 1; border: 0; outline: 0; background: transparent; font-size: ${fs(14)}; color: var(--ink); min-width: 0; }
+#root .xb.xb .xb-x { border: 0; background: var(--sky-50); color: var(--ink-3); border-radius: 8px; width: 26px; height: 26px; cursor: pointer; font-size: ${fs(12)}; }
+#root .xb.xb .xb-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+#root .xb.xb .xb-btn-ghost { border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); border-radius: 10px; padding: 8px 12px;
+  font-size: ${fs(13)}; font-weight: 700; cursor: pointer; }
+#root .xb.xb .xb-btn-ghost:hover { border-color: var(--sky); color: var(--sky-d); background: var(--sky-50); }
+#root .xb.xb .xb-presets { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+#root .xb.xb .xb-presets-lbl { font-size: ${fs(12.5)}; color: var(--ink-3); font-weight: 700; margin-inline-end: 4px; }
+#root .xb.xb .xb-chip { border: 1px solid var(--sky-200); background: var(--sky-50); color: var(--sky-d); border-radius: 999px; padding: 6px 12px;
+  font-size: ${fs(13)}; font-weight: 700; cursor: pointer; white-space: nowrap; }
+#root .xb.xb .xb-chip:hover { background: var(--sky-100); }
+#root .xb.xb .xb-chip.is-on { background: var(--sky); border-color: var(--sky); color: #fff; }
 
-  /* ── Card section — one per dashboard tile, mirrors the top ZIP folder ── */
-  cardSection: { marginBottom: 26 },
-  cardHead: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    margin: "0 0 12px",
-  },
-  cardEmoji: { fontSize: 22, lineHeight: 1 },
-  cardTitle: {
-    margin: 0,
-    fontSize: 19,
-    fontWeight: 1000,
-    color: NAVY,
-    whiteSpace: "nowrap",
-  },
-  cardMeta: {
-    fontSize: 12.5,
-    fontWeight: 800,
-    color: SLATE2,
-    background: "#f1f5f9",
-    border: `1px solid ${BORDER}`,
-    borderRadius: 999,
-    padding: "3px 12px",
-    whiteSpace: "nowrap",
-  },
-  cardRule: { flex: 1, height: 1, background: BORDER },
-  cardTogAll: (allOn) => ({
-    padding: "6px 14px",
-    borderRadius: 999,
-    border: `1.5px solid ${allOn ? "#16a34a" : BORDER}`,
-    background: allOn ? "#dcfce7" : "#fff",
-    color: allOn ? "#166534" : SLATE,
-    fontWeight: 900,
-    fontSize: 12.5,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  }),
-  groupHead: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: SLATE2,
-    letterSpacing: ".04em",
-    padding: "10px 4px 4px",
-    borderBottom: `1px dashed ${BORDER}`,
-    marginBottom: 4,
-  },
+/* cards */
+#root .xb.xb .xb-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 14px; }
+#root .xb.xb .xb-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+#root .xb.xb .xb-card-emoji { font-size: ${fs(24)}; width: 42px; height: 42px; display: grid; place-items: center; background: var(--sky-50); border-radius: 12px; flex: none; }
+#root .xb.xb .xb-card-titles { min-width: 0; }
+#root .xb.xb .xb-card-title { font-size: ${fs(17)}; font-weight: 900; margin: 0; color: #0f172a; }
+#root .xb.xb .xb-card-meta { font-size: ${fs(12.5)}; color: var(--ink-3); font-weight: 600; margin-top: 2px; }
+#root .xb.xb .xb-card-meter { flex: 1; margin-top: 0; max-width: 220px; margin-inline-start: auto; }
 
-  branchGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
-    gap: 16,
-    marginBottom: 4,
-  },
-  branchCard: (accent, hasSelection) => ({
-    background: "#fff",
-    border: `2px solid ${hasSelection ? accent : BORDER}`,
-    borderRadius: 18,
-    padding: 0,
-    overflow: "hidden",
-    boxShadow: hasSelection
-      ? `0 10px 30px ${accent}28`
-      : "0 2px 8px rgba(2,6,23,.06)",
-    transition: "all .16s",
-    display: "flex",
-    flexDirection: "column",
-  }),
-  branchHead: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "16px 20px",
-    background: "#f6f8fb",
-    borderBottom: `1.5px solid ${BORDER}`,
-  },
-  branchHeadLeft: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    color: NAVY,
-    textAlign: "start",
-    padding: 0,
-  },
-  branchEmoji: { fontSize: 30, flexShrink: 0 },
-  branchName: () => ({
-    fontWeight: 900,
-    fontSize: 18,
-    color: NAVY,
-    lineHeight: 1.2,
-  }),
-  branchCount: { fontSize: 13, fontWeight: 700, color: SLATE2, marginTop: 3 },
-  branchChev: { fontSize: 16, color: SLATE2, fontWeight: 900, marginLeft: 4 },
+/* tri-state checkbox button */
+#root .xb.xb .xb-tri { width: 28px; height: 28px; flex: none; border-radius: 8px; border: 2px solid var(--line-2); background: #fff; cursor: pointer;
+  display: grid; place-items: center; font-size: ${fs(15)}; font-weight: 900; color: #fff; line-height: 1; }
+#root .xb.xb .xb-tri.is-on { background: var(--sky); border-color: var(--sky); }
+#root .xb.xb .xb-tri.is-some { background: var(--sky-100); border-color: var(--sky); color: var(--sky-d); }
 
-  /* ── Branch select-all toggle ── */
-  branchTogAll: (allOn, someOn, accent) => ({
-    width: 34, height: 34, borderRadius: 9,
-    background: allOn ? accent : (someOn ? `${accent}22` : "#fff"),
-    color: allOn ? "#fff" : (someOn ? accent : NAVY),
-    border: `2px solid ${allOn || someOn ? accent : "#c8d0dc"}`,
-    cursor: "pointer",
-    fontWeight: 1000,
-    fontSize: 16,
-    display: "grid",
-    placeItems: "center",
-    flexShrink: 0,
-    transition: "all .14s",
-  }),
+/* branches */
+#root .xb.xb .xb-branches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 10px; align-items: start; }
+#root .xb.xb .xb-branch { border: 1px solid var(--line); border-radius: 12px; background: #fbfdff; border-top: 3px solid var(--line-2); }
+#root .xb.xb .xb-branch.is-active { border-top-color: var(--acc); background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+#root .xb.xb .xb-branch-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+#root .xb.xb .xb-branch-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; cursor: pointer; padding: 2px 0; text-align: start; }
+#root .xb.xb .xb-branch-emoji { font-size: ${fs(17)}; }
+#root .xb.xb .xb-branch-name { font-size: ${fs(14.5)}; font-weight: 800; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#root .xb.xb .xb-branch-count { font-size: ${fs(12)}; font-weight: 800; color: var(--ink-3); background: var(--sky-50); border-radius: 999px; padding: 1px 8px; }
+#root .xb.xb .xb-branch.is-active .xb-branch-count { color: var(--acc); }
+#root .xb.xb .xb-chev { margin-inline-start: auto; color: var(--ink-3); font-size: ${fs(12)}; }
 
-  /* ── Type rows ── */
-  typeList: {
-    padding: "10px 10px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 5,
-    maxHeight: 440,
-    overflowY: "auto",
-  },
-  typeRow: (on, accent) => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "13px 16px",
-    borderRadius: 12,
-    background: on ? `${accent}12` : "#fdfdfe",
-    border: `1.5px solid ${on ? accent : "#e4e9f0"}`,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    transition: "all .12s",
-    minHeight: 52,
-  }),
-  typeChkHidden: {
-    position: "absolute",
-    opacity: 0,
-    width: 0,
-    height: 0,
-    pointerEvents: "none",
-  },
-  typeLbl: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: 700,
-    color: "#0f172a",
-    lineHeight: 1.4,
-  },
-  typeChkBox: (on, accent) => ({
-    width: 28, height: 28,
-    borderRadius: 8,
-    border: `2px solid ${on ? accent : "#c4cdd8"}`,
-    background: on ? accent : "#fff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    transition: "all .13s",
-    fontSize: 15,
-    color: "#fff",
-    fontWeight: 900,
-    boxShadow: on ? `0 3px 10px ${accent}44` : "none",
-  }),
+/* types */
+#root .xb.xb .xb-types { border-top: 1px dashed var(--line); padding: 6px 6px 8px; }
+#root .xb.xb .xb-group-head { font-size: ${fs(11.5)}; font-weight: 800; color: var(--ink-3); padding: 8px 6px 4px; letter-spacing: .02em; }
+#root .xb.xb .xb-type { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 8px; cursor: pointer; }
+#root .xb.xb .xb-type:hover { background: var(--sky-50); }
+#root .xb.xb .xb-type input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+#root .xb.xb .xb-box { width: 18px; height: 18px; flex: none; border-radius: 5px; border: 2px solid var(--line-2); background: #fff;
+  display: grid; place-items: center; font-size: ${fs(11)}; font-weight: 900; color: #fff; }
+#root .xb.xb .xb-type.is-on .xb-box { background: var(--acc); border-color: var(--acc); }
+#root .xb.xb .xb-type input:focus-visible + .xb-box { box-shadow: 0 0 0 3px var(--sky-200); }
+#root .xb.xb .xb-type-lbl { font-size: ${fs(13)}; color: var(--ink-2); line-height: 1.4; }
+#root .xb.xb .xb-type.is-on .xb-type-lbl { color: var(--ink); font-weight: 700; }
 
-  /* ── Action bar ── */
-  actionBar: {
-    position: "sticky",
-    bottom: 0,
-    background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.85) 25%, #fff 50%)",
-    paddingTop: 14,
-    paddingBottom: 10,
-    zIndex: 5,
-    marginBottom: 14,
-  },
-  btnGenerate: (busy, disabled) => ({
-    width: "100%",
-    padding: "17px 24px",
-    borderRadius: 16,
-    border: "none",
-    background: busy
-      ? "#94a3b8"
-      : disabled
-        ? "#cbd5e1"
-        : "linear-gradient(135deg, #0b1f4d 0%, #1e3a5f 50%, #2d5a8e 100%)",
-    color: "#fff",
-    fontWeight: 1000,
-    fontSize: 16,
-    fontFamily: "inherit",
-    cursor: busy || disabled ? "not-allowed" : "pointer",
-    boxShadow: busy || disabled ? "none" : "0 16px 32px rgba(11,31,77,.35)",
-    transition: "all .2s",
-    letterSpacing: ".03em",
-  }),
-  progressBox: { marginTop: 12 },
-  btnCancel: {
-    marginTop: 10, padding: "10px 22px", borderRadius: 12, cursor: "pointer",
-    border: "1px solid #fca5a5", background: "#fef2f2", color: "#b91c1c",
-    fontWeight: 800, fontSize: "0.95rem",
-  },
-  logCard: (stale) => ({
-    margin: "0 0 14px", padding: "12px 16px", borderRadius: 14,
-    border: `1px solid ${stale ? "#fcd34d" : "#bae6fd"}`,
-    background: stale ? "#fffbeb" : "#f0f9ff",
-  }),
-  logHead: { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" },
-  logTitle: { fontWeight: 800, color: "#0f172a" },
-  logState: (stale) => ({ fontWeight: 700, color: stale ? "#92400e" : "#0369a1" }),
-  logList: { marginTop: 8, display: "grid", gap: 4 },
-  logRow: { display: "flex", flexWrap: "wrap", gap: 10, fontSize: "0.85rem", color: "#334155" },
-  logWhen: { fontWeight: 700, minWidth: 150 },
-  logWho: { minWidth: 90, color: "#0f766e", fontWeight: 700 },
-  logWhat: { flex: 1, minWidth: 200 },
-  progressTrack: {
-    height: 10, background: "#e2e8f0", borderRadius: 999, overflow: "hidden",
-  },
-  progressBar: (pct) => ({
-    height: "100%", width: `${pct}%`,
-    background: "linear-gradient(90deg, #1e3a5f, #2d5a8e, #7c3aed)",
-    borderRadius: 999,
-    transition: "width .3s ease",
-  }),
-  progressLabel: {
-    fontSize: 13, color: SLATE, fontWeight: 700, marginTop: 7, textAlign: "center",
-  },
+/* side panels */
+#root .xb.xb .xb-panel { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+#root .xb.xb .xb-panel-title { font-size: ${fs(15)}; font-weight: 900; color: #0f172a; margin-bottom: 10px; }
+#root .xb.xb .xb-seg { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--sky-50); border: 1px solid var(--sky-100); border-radius: 12px; padding: 3px; gap: 3px; }
+#root .xb.xb .xb-seg button { border: 0; background: transparent; border-radius: 9px; padding: 8px 4px; font-size: ${fs(13)}; font-weight: 700; color: var(--ink-2); cursor: pointer; }
+#root .xb.xb .xb-seg button.is-on { background: #fff; color: var(--sky-d); box-shadow: 0 1px 3px rgba(15,23,42,.1); }
+#root .xb.xb .xb-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+#root .xb.xb .xb-fields-2 { display: grid; grid-template-columns: 1fr 1fr; }
+#root .xb.xb .xb-field { display: grid; gap: 4px; }
+#root .xb.xb .xb-field > span, #root .xb.xb .xb-field-lbl { font-size: ${fs(12)}; color: var(--ink-3); font-weight: 700; }
+#root .xb.xb .xb-input { border: 1px solid var(--line-2); border-radius: 10px; padding: 7px 10px; font-size: ${fs(13.5)}; color: var(--ink); background: #fff; min-width: 0; width: 100%; }
+#root .xb.xb .xb-fields:not(.xb-fields-2) .xb-input { width: auto; flex: 1 1 140px; }
+#root .xb.xb .xb-fields .xb-input-num { flex: 0 0 72px; width: 72px; }
+#root .xb.xb .xb-input:focus { outline: 0; border-color: var(--sky); box-shadow: 0 0 0 3px var(--sky-100); }
+#root .xb.xb .xb-hint { font-size: ${fs(12)}; color: var(--ink-3); margin-top: 8px; line-height: 1.6; }
 
-  /* ── Message ── */
-  msgBox: (kind) => ({
-    borderRadius: 14,
-    padding: "14px 20px",
-    fontWeight: 800,
-    fontSize: 15,
-    marginBottom: 16,
-    lineHeight: 1.6,
-    background: kind === "ok" ? "#f0fdf4" : kind === "err" ? "#fef2f2" : "#eff6ff",
-    border: `1.5px solid ${kind === "ok" ? "#86efac" : kind === "err" ? "#fca5a5" : "#bfdbfe"}`,
-    color:   kind === "ok" ? "#065f46" : kind === "err" ? "#991b1b" : "#1e40af",
-  }),
+/* switch */
+#root .xb.xb .xb-switch { display: flex; gap: 10px; align-items: flex-start; padding: 8px 2px; cursor: pointer; border-top: 1px solid #f1f5f9; }
+#root .xb.xb .xb-panel-title + .xb-switch { border-top: 0; }
+#root .xb.xb .xb-switch input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+#root .xb.xb .xb-switch-track { flex: none; width: 38px; height: 22px; border-radius: 999px; background: var(--line-2); position: relative; transition: background .2s; margin-top: 1px; }
+#root .xb.xb .xb-switch-dot { position: absolute; top: 3px; inset-inline-start: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: inset-inline-start .2s; }
+#root .xb.xb .xb-switch.is-on .xb-switch-track { background: var(--sky); }
+#root .xb.xb .xb-switch.is-on .xb-switch-dot { inset-inline-start: 19px; }
+#root .xb.xb .xb-switch input:focus-visible + .xb-switch-track { box-shadow: 0 0 0 3px var(--sky-200); }
+#root .xb.xb .xb-switch-txt { display: grid; gap: 2px; min-width: 0; }
+#root .xb.xb .xb-switch-lbl { font-size: ${fs(13.5)}; font-weight: 800; color: var(--ink); }
+#root .xb.xb .xb-switch-hint { font-size: ${fs(12)}; color: var(--ink-3); line-height: 1.5; }
 
-  /* ── Stats ── */
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-    marginBottom: 16,
-  },
-};
+/* export */
+#root .xb.xb .xb-panel-cta { border-color: var(--sky-200); background: linear-gradient(180deg, #f8fcff, #fff); }
+#root .xb.xb .xb-summary { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+#root .xb.xb .xb-summary li { display: flex; justify-content: space-between; gap: 10px; font-size: ${fs(13)}; color: var(--ink-2); }
+#root .xb.xb .xb-summary b { color: var(--ink); font-weight: 800; text-align: end; overflow-wrap: anywhere; }
+#root .xb.xb .xb-btn-primary { width: 100%; border: 0; border-radius: 12px; padding: 13px 16px; cursor: pointer;
+  background: var(--sky); color: #fff; font-size: ${fs(15.5)}; font-weight: 900; box-shadow: 0 6px 16px rgba(14,165,233,.25); }
+#root .xb.xb .xb-btn-primary:hover:not(:disabled) { background: #0284c7; }
+#root .xb.xb .xb-btn-primary:disabled { background: #cbd5e1; box-shadow: none; cursor: not-allowed; }
+#root .xb.xb .xb-btn-cancel { width: 100%; margin-top: 8px; border: 1px solid #fecaca; background: var(--bad-bg); color: var(--bad);
+  border-radius: 10px; padding: 9px; font-size: ${fs(13.5)}; font-weight: 800; cursor: pointer; }
+#root .xb.xb .xb-btn-soft { width: 100%; margin-top: 10px; border: 1px solid var(--sky-200); background: var(--sky-50); color: var(--sky-d);
+  border-radius: 10px; padding: 10px; font-size: ${fs(13.5)}; font-weight: 800; cursor: pointer; }
+#root .xb.xb .xb-btn-soft:disabled { opacity: .5; cursor: not-allowed; }
+#root .xb.xb .xb-progress { height: 8px; background: var(--sky-100); border-radius: 999px; overflow: hidden; margin-top: 12px; }
+#root .xb.xb .xb-progress > span { display: block; height: 100%; background: linear-gradient(90deg, #38bdf8, #0ea5e9); transition: width .3s; }
+#root .xb.xb .xb-progress-lbl { font-size: ${fs(12)}; color: var(--ink-3); margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
+#root .xb.xb .xb-msg { margin-top: 12px; border-radius: 10px; padding: 10px 12px; font-size: ${fs(12.5)}; line-height: 1.7; overflow-wrap: anywhere; border: 1px solid; }
+#root .xb.xb .xb-msg.is-ok { background: var(--ok-bg); border-color: #bbf7d0; color: var(--ok); }
+#root .xb.xb .xb-msg.is-info { background: var(--sky-50); border-color: var(--sky-200); color: var(--sky-d); }
+#root .xb.xb .xb-msg.is-err { background: var(--bad-bg); border-color: #fecaca; color: var(--bad); }
+#root .xb.xb .xb-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+#root .xb.xb .xb-stats > div { background: var(--sky-50); border-radius: 10px; padding: 8px 10px; display: grid; }
+#root .xb.xb .xb-stats b { font-size: ${fs(18)}; font-weight: 900; color: #0f172a; }
+#root .xb.xb .xb-stats span { font-size: ${fs(12)}; color: var(--ink-3); font-weight: 700; }
+
+/* details + log */
+#root .xb.xb .xb-details summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+#root .xb.xb .xb-details summary::-webkit-details-marker { display: none; }
+#root .xb.xb .xb-details summary::after { content: "◂"; float: left; color: var(--ink-3); font-size: ${fs(12)}; }
+#root .xb.xb .xb-details[open] summary { margin-bottom: 8px; }
+#root .xb.xb .xb-details[open] summary::after { content: "▾"; }
+#root .xb.xb .xb-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+#root .xb.xb .xb-log li { border-inline-start: 3px solid var(--sky-200); padding: 2px 10px; }
+#root .xb.xb .xb-log-top { display: flex; gap: 6px; align-items: center; }
+#root .xb.xb .xb-log-when { font-size: ${fs(13)}; font-weight: 800; color: var(--ink); }
+#root .xb.xb .xb-log-who { font-size: ${fs(12)}; color: var(--sky-d); font-weight: 700; }
+#root .xb.xb .xb-log-what { font-size: ${fs(12)}; color: var(--ink-3); }
+#root .xb.xb .xb-tag { font-size: ${fs(11)}; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+#root .xb.xb .xb-tag.is-warn { background: var(--warn-bg); color: var(--warn); }
+
+@media (max-width: 560px) {
+  #root .xb.xb .xb-head { padding: 16px; }
+  #root .xb.xb .xb-title { font-size: ${fs(21)}; }
+  #root .xb.xb .xb-branches { grid-template-columns: minmax(0, 1fr); }
+  #root .xb.xb .xb-card-meter { display: none; }
+}
+`;
