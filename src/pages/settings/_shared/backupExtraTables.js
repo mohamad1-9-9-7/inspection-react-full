@@ -14,8 +14,19 @@ import { COLORS, BORDER_BLACK, fillSolid, center, left } from "../excel-exporter
 
 const CELL_MAX = 32000; // سقف Excel للخلية 32767 حرف
 
+/** Thrown when the session token is no longer accepted by a strict route. */
+export const SESSION_EXPIRED = "session_expired";
+
 async function getJson(path, signal) {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", signal });
+  /* authRedirect:false — a 401 here must not sign the user out mid-backup
+     (utils/authFetch.js). The table is skipped and the backup goes on. */
+  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", signal, authRedirect: false });
+  if (res.status === 401) {
+    const e = new Error("انتهت جلسة الدخول");
+    e.code = SESSION_EXPIRED;
+    throw e;
+  }
+  if (res.status === 403) throw new Error("بدّو حساب مدير");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

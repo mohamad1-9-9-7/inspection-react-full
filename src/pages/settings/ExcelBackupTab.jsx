@@ -25,7 +25,7 @@ import {
 import { auditBranchOf } from "./excel-exporters/internal_multi_audit";
 import {
   fetchProductCatalog, fetchAccounts, fetchAuditTrail,
-  addProductsSheet, addAccountsSheet, addAuditSheet,
+  addProductsSheet, addAccountsSheet, addAuditSheet, SESSION_EXPIRED,
 } from "./_shared/backupExtraTables";
 import { getRefNo } from "../../utils/reportRef";
 import { getCurrentUser } from "../../utils/perms";
@@ -775,6 +775,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       /* جداول قاعدة البيانات اللي مش تقارير (Al Mawashi). كل جدول لحالو:
          جدول فشل (صلاحية مثلاً) ما بيوقّف الباقي، وبينكتب بالـREADME. */
       const tables = [];
+      let sessionExpired = false;
       if (isMawashi && includeTables) {
         const segs = ["99 Database Tables"];
         const tableJobs = [
@@ -817,7 +818,8 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             });
           } catch (e) {
             if (e?.name === "AbortError") throw e;
-            notes.push(`${label}: ما انحفظ (${e?.message || e}) — غالباً بدّو حساب مدير.`);
+            if (e?.code === SESSION_EXPIRED) sessionExpired = true;
+            notes.push(`${label}: ما انحفظ (${e?.message || e}).`);
           }
         }
       }
@@ -895,9 +897,12 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         : "";
       const tableNote = tables.length ? `  🗄️ ${tables.join(" · ")}.` : "";
       const windowNote = windowWarning ? `  ${windowWarning}` : "";
+      const sessionNote = sessionExpired
+        ? "  🔑 جلسة الدخول منتهية: انحفظت النسخة بس بلا جدول الحسابات/سجل التعديلات. سجّل خروج ودخول من جديد وخُد نسخة تانية لهالجداول."
+        : "";
       setMsg({
-        kind: cutTypes.length > 0 || windowWarning ? "err" : (heavyTypes.length > 0 ? "info" : "ok"),
-        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${manifest.length} ملف بالفهرس · ${(blob.size / 1048576).toFixed(1)} MB${filterNote}${skipNote}${photoNote}${tableNote}${pagedNote}${cutNote}${windowNote}${heavyNote}`,
+        kind: cutTypes.length > 0 || windowWarning || sessionExpired ? "err" : (heavyTypes.length > 0 ? "info" : "ok"),
+        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${manifest.length} ملف بالفهرس · ${(blob.size / 1048576).toFixed(1)} MB${filterNote}${skipNote}${photoNote}${tableNote}${sessionNote}${pagedNote}${cutNote}${windowNote}${heavyNote}`,
       });
     } catch (e) {
       if (e?.name === "AbortError") {

@@ -277,7 +277,13 @@ window.fetch = function authFetch(input, init = {}) {
 
   function finishResponse(res) {
     const isLoginCall = url.includes("/api/auth/login");
-    if (res.status === 401 && !isLoginCall) {
+    /* `authRedirect: false` — an optional call the caller handles itself (the
+       Excel backup's admin-only tables). /api/reports still answers an expired
+       token while REQUIRE_AUTH is off, so an account can work for days on a
+       dead token; the first strict endpoint it touches must not throw away a
+       backup that is half done. */
+    const optOut = init && init.authRedirect === false;
+    if (res.status === 401 && !isLoginCall && !optOut) {
       clearAppSession();
       // The public /demo and /readiness pages have no session to lose — never bounce a visitor off them.
       // Nor a referrer on its private /ref/<token> page.
