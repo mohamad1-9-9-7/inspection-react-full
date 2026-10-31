@@ -282,6 +282,8 @@ export default function SettingsPage() {
 
   const accessibleItems = useMemo(() => visibleSections.flatMap((section) => section.items), [visibleSections]);
   const activeItem = active ? accessibleItems.find((item) => item.id === active) : null;
+  /* Tools that bring their own full page header and layout open full screen. */
+  const fullScreen = FULL_SCREEN_TOOLS.has(active);
 
   useEffect(() => {
     // أداة غير مسموحة أو اسم غلط بالرابط — نظّف الرابط بلا ما تزيد خطوة بالتاريخ.
@@ -390,6 +392,7 @@ export default function SettingsPage() {
       `}</style>
 
       <div style={styles.layout}>
+        {!fullScreen && (
         <section style={styles.hero}>
           <div aria-hidden="true" style={styles.heroGlow} />
           <div aria-hidden="true" style={styles.heroSweep} />
@@ -439,6 +442,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+        )}
 
         {active === null ? (
           <>
@@ -515,14 +519,14 @@ export default function SettingsPage() {
             )}
           </>
         ) : (
-          <section className="settings-panel-shell" style={styles.panelShell}>
-            <aside style={styles.panelAside}>
+          <section className="settings-panel-shell" style={fullScreen ? styles.panelShellFull : styles.panelShell}>
+            <aside style={fullScreen ? styles.panelAsideFull : styles.panelAside}>
               <button type="button" onClick={() => setActive(null)} style={styles.backToTools}>
                 <FiArrowLeft aria-hidden="true" />
                 {t("allTools")}
               </button>
 
-              {activeItem && (
+              {activeItem && !fullScreen && (
                 <div style={styles.activeTool}>
                   <div style={styles.iconWrap(activeItem)}>
                     <activeItem.Icon aria-hidden="true" size={25} />
@@ -536,7 +540,7 @@ export default function SettingsPage() {
               )}
             </aside>
 
-            <div style={styles.panelCard}>
+            <div style={fullScreen ? styles.panelCardFull : styles.panelCard}>
               {toolComponent(active)}
             </div>
           </section>
@@ -548,6 +552,8 @@ export default function SettingsPage() {
     </main>
   );
 }
+
+const FULL_SCREEN_TOOLS = new Set(["excel-backup"]);
 
 const styles = {
   page: {
@@ -976,6 +982,21 @@ const styles = {
     fontWeight: 950,
     cursor: "pointer",
     boxShadow: "0 14px 32px rgba(15,23,42,.28)",
+  },
+  /* Full-screen tools: no hero, no frame — and no overflow:auto, which
+     would turn the card into a scroll box and kill the tool's sticky panel. */
+  panelShellFull: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 8,
+  },
+  panelAsideFull: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  panelCardFull: {
+    minWidth: 0,
   },
   panelCard: {
     minWidth: 0,
