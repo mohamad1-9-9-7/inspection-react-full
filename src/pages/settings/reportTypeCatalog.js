@@ -467,6 +467,7 @@ export const BRANCHES = [
       ["admin_notification_config", "Notification Settings (config)"],
       ["alert_rules_config",        "Alert Rules & Recipients (config)"],
       ["settings_audit_log",        "Settings Change Log"],
+      ["excel_backup_log",          "Excel Backup Log"],
     ],
   },
 

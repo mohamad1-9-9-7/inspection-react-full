@@ -102,7 +102,12 @@ export function makeAutoRegister(spec = {}) {
 
   async function exporter(wb, records, ctx) {
     const { branchLabel, typeLabel } = ctx || {};
-    const rows = (records || []).map((r) => ({
+    /* ctx.photoIndex (Al Mawashi backup with photos): one { count, row } per
+       record, same order — the photo count links to that record's first line
+       on the "Photos" sheet. */
+    const photoIndex = Array.isArray(ctx?.photoIndex) ? ctx.photoIndex : null;
+    const rows = (records || []).map((r, i) => ({
+      __photos: photoIndex ? photoIndex[i] || null : null,
       __rowId: r?.id ?? r?._id ?? "",
       __reporter: r?.reporter || "",
       __created: r?.created_at || r?.createdAt || "",
@@ -137,6 +142,7 @@ export function makeAutoRegister(spec = {}) {
       { key: "__rowId", label: "#", width: 8 },
       ...keys.map((k) => ({ key: k, label: prettifyKey(k.replace(/\./g, " · ")), width: 18 })),
       ...(overflow.length ? [{ key: "__overflow", label: "Other fields", width: 40 }] : []),
+      ...(photoIndex ? [{ key: "__photos", label: "📷 Photos", width: 12 }] : []),
       { key: "__reporter", label: "Entered by", width: 18 },
     ];
     const NC = cols.length;
@@ -199,6 +205,17 @@ export function makeAutoRegister(spec = {}) {
         let maxLines = 1;
         cols.forEach((col, ci) => {
           const c = ws.getCell(r, ci + 1);
+          if (col.key === "__photos") {
+            const ph = row.__photos;
+            c.value = ph && ph.count
+              ? { text: `📷 ${ph.count}`, hyperlink: `Photos!A${ph.row}` }
+              : "—";
+            c.font = ph && ph.count ? { size: 10, color: { argb: "1D4ED8" }, underline: true } : { size: 10 };
+            c.fill = fillSolid(bg);
+            c.alignment = { ...center };
+            c.border = BORDER_BLACK;
+            return;
+          }
           const raw = col.key === "__overflow" ? overflowText : row[col.key];
           const { value, numFmt } = cellValue(raw);
           c.value = value;

@@ -2,7 +2,7 @@
 // 📊 Excel Backup — each report becomes one Excel sheet matching its view design.
 //    Branches and individual report types are independently selectable.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../config/api";
 import { getExporter, exporterKindFor } from "./excel-exporters";
 import {
@@ -14,9 +14,18 @@ import {
 } from "./reportTypeCatalog";
 import { fetchAllOfType, visibilityWarningText } from "./_shared/reportBackupFetch";
 import {
-  buildWorkList, folderFor, manifestCsv, readmeText, blankReadmeText,
+  buildWorkList, folderFor, manifestCsv, readmeText, blankReadmeText, safeSegment,
 } from "./_shared/backupTree";
 import { fetchUnlistedTypes, unlistedBranch } from "./_shared/unlistedTypes";
+import { enhanceSheet } from "./excel-exporters/_postpass";
+import { addReturnsMonthSheets, buildReturnsYearSummary, returnsKindOf } from "./excel-exporters/returns_extras";
+import { collectPhotoUrls, downloadRecordPhotos, addPhotosSheet, relinkToLocal } from "./_shared/backupPhotos";
+import {
+  fetchProductCatalog, fetchAccounts, fetchAuditTrail,
+  addProductsSheet, addAccountsSheet, addAuditSheet,
+} from "./_shared/backupExtraTables";
+import { getRefNo } from "../../utils/reportRef";
+import { getCurrentUser } from "../../utils/perms";
 
 /* ═══════════════════════════════════════════════════════════════
    DATE FILTER
@@ -102,6 +111,91 @@ function dateSpan(records) {
   return { firstDate: days[0] || "", lastDate: days[days.length - 1] || "" };
 }
 
+/** Oldest first — a month file reads like the month did. Undated last. */
+function sortByDate(records) {
+  return records
+    .map((r, i) => ({ r, i, d: recordDate(r) }))
+    .sort((a, b) => (a.d && b.d ? a.d.localeCompare(b.d) : a.d ? -1 : b.d ? 1 : 0) || a.i - b.i)
+    .map((x) => x.r);
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
+/**
+ * One file per month (Al Mawashi backup). Returns null when the type stays a
+ * single file: fewer than two dated months, unless `force` (the Returns card
+ * always gets its year / month folders, even for a one-month backup).
+ * @returns {null | {key:string, year:string, label:string, records:object[]}[]}
+ */
+function monthParts(records, { force = false } = {}) {
+  const byMonth = new Map();
+  const undated = [];
+  for (const r of records) {
+    const d = recordDate(r);
+    if (!d) { undated.push(r); continue; }
+    const k = d.slice(0, 7);
+    if (!byMonth.has(k)) byMonth.set(k, []);
+    byMonth.get(k).push(r);
+  }
+  if (byMonth.size === 0 || (byMonth.size < 2 && !force)) return null;
+  const parts = [...byMonth.keys()].sort().map((k) => ({
+    key: k,
+    year: k.slice(0, 4),
+    label: `${k} ${MONTH_NAMES[Number(k.slice(5, 7)) - 1] || ""}`.trim(),
+    records: byMonth.get(k),
+  }));
+  if (undated.length) parts.push({ key: "", year: "", label: "No date", records: undated });
+  return parts;
+}
+
+const abortError = () => {
+  const e = new Error("Aborted");
+  e.name = "AbortError";
+  return e;
+};
+
+/** سجل النسخ الاحتياطية (Al Mawashi): سجل لكل نسخة على السيرفر. */
+const BACKUP_LOG_TYPE = "excel_backup_log";
+const BACKUP_STALE_DAYS = 30;
+
+async function fetchBackupLog() {
+  try {
+    const res = await fetch(`${API_BASE}/api/reports?type=${BACKUP_LOG_TYPE}&limit=15`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    const rows = Array.isArray(json) ? json : json?.data || [];
+    return rows
+      .map((r) => ({ id: r.id, ...(r.payload || {}), at: r.payload?.at || r.created_at }))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  } catch {
+    return null;
+  }
+}
+
+async function saveBackupLog(entry) {
+  try {
+    const u = getCurrentUser();
+    await fetch(`${API_BASE}/api/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reporter: u.username || "backup",
+        type: BACKUP_LOG_TYPE,
+        // بلا date/reportDate عمداً: الفهرس الفريد (type, التاريخ) كان رح يرفض نسختين بنفس اليوم.
+        payload: { ...entry, by: u.username || "", byName: u.displayName || u.display_name || u.name || "" },
+      }),
+    });
+  } catch {
+    /* A log line must never fail the backup the user already downloaded. */
+  }
+}
+
+const daysSince = (iso) => {
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? Math.floor((Date.now() - t) / 86400000) : Infinity;
+};
+
 /** Hand a finished ZIP to the browser. */
 function downloadBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
@@ -176,20 +270,29 @@ async function buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, reco
 
   const exporter = getExporter(typeKey);
   const blankForm = !!opts.blankForm;
+  /* Al Mawashi only: real date/number cells + a filter row on every table. */
+  const finish = () => {
+    wb.worksheets.forEach((ws) => {
+      linkifySheet(ws); // not point-free: forEach passes the index, which would land in maxRows
+      if (opts.enhance) enhanceSheet(ws);
+    });
+  };
+  // Extra sheets that must open first (the returns month summary).
+  if (opts.before && records.length) opts.before(wb);
 
   // Collection exporters (registers/logs) render ALL records into ONE sheet
   // that mirrors the on-screen table — call once with the full array.
   if (exporter.collection) {
     if (!records.length) { addEmptySheet(wb, typeLabel); return wb; }
     try {
-      await exporter(wb, records, { branchLabel, typeKey, typeLabel, blankForm });
+      await exporter(wb, records, { branchLabel, typeKey, typeLabel, blankForm, photoIndex: opts.photoIndex || null });
     } catch (e) {
       console.error(`Collection exporter failed for ${typeKey}:`, e);
       const ws = wb.addWorksheet(sanitizeSheetName(typeLabel), { views: [{ showGridLines: false }] });
       ws.getCell("A1").value = `⚠️ Failed to render this register: ${e?.message || e}`;
       ws.getCell("A1").font = { color: { argb: "B91C1C" } };
     }
-    wb.worksheets.forEach((ws) => linkifySheet(ws)); // not point-free: forEach passes the index, which would land in maxRows
+    finish();
     return wb;
   }
 
@@ -215,7 +318,7 @@ async function buildWorkbookInner(ExcelJS, branchLabel, typeKey, typeLabel, reco
       ws.getCell("A1").font = { color: { argb: "B91C1C" } };
     }
   }
-  wb.worksheets.forEach((ws) => linkifySheet(ws)); // not point-free: forEach passes the index, which would land in maxRows
+  finish();
   return wb;
 }
 
@@ -297,6 +400,24 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
     includeUndated: false,
   });
   const [skipEmpty, setSkipEmpty] = useState(false);
+  /* Al Mawashi backup options (a customer company's scoped backup keeps the
+     old single-file layout). */
+  const isMawashi = !cardIds;
+  const [splitMonths, setSplitMonths] = useState(true);
+  const [withPhotos, setWithPhotos] = useState(false);
+  const [includeTables, setIncludeTables] = useState(true);
+  const abortRef = useRef(null);
+  const [backupLog, setBackupLog] = useState(null); // null = loading/unavailable
+  useEffect(() => {
+    if (!isMawashi) return undefined;
+    let alive = true;
+    fetchBackupLog().then((list) => { if (alive) setBackupLog(list); });
+    return () => { alive = false; };
+  }, [isMawashi]);
+  function cancelRun() {
+    abortRef.current?.abort();
+    setMsg({ kind: "info", text: "⛔ جارٍ الإلغاء..." });
+  }
   /* Blank-forms export: how many writable lines a free-entry log gets. */
   const [blankRows, setBlankRows] = useState(15);
 
@@ -403,6 +524,10 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
     setBusy(true);
     setStats(null);
     setMsg({ kind: "info", text: "⏳ جارٍ جلب البيانات من السيرفر..." });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+    const checkAbort = () => { if (signal.aborted) throw abortError(); };
 
     try {
       const [JSZipModule, ExcelJSModule] = await Promise.all([
@@ -418,12 +543,20 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
          the unlisted-types folder comes last. */
       const work = buildWorkList(picked, extraBranch ? [extraBranch] : []);
 
+      /* المدة بتنبعت للسيرفر (فلترة SQL) بدل ما ننزّل كل السجلات ونفلتر هون.
+         «تضمين السجلات بدون تاريخ» بيحتاج القراءة الكاملة — السيرفر ما بيرجّع
+         سجل بلا تاريخ لطلب فيه مدة. */
+      const win = filterOn && !filter.includeUndated ? filterWindow(filter) : { from: "", to: "" };
+
       let step = 0;
       let filesCreated = 0;
       let filesEmpty   = 0;
       let filesSkipped = 0;
       let totalRows    = 0;   // records that survived the date filter
       let totalFetched = 0;   // records returned by the server before filtering
+      let serverFiltered = 0; // types whose date window ran in SQL
+      let photosSaved  = 0;
+      let photosFailed = 0;
       const folderCache = new Map();
       const fetchCache  = new Map(); // typeKey → page, so a type listed under two cards is read once
       const counted     = new Set(); // typeKeys already added to the record total
@@ -431,8 +564,10 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       const heavyTypes  = []; // types with 400+ records — warn user after export
       const pagedTypes  = []; // types that needed date-splitting to clear the 5000 cap
       const cutTypes    = []; // types where even one day exceeded the cap
+      const notes       = [];
 
       for (const item of work) {
+        checkAbort();
         const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
         step++;
         setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
@@ -441,8 +576,11 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         let page = fetchCache.get(typeKey);
         if (!page) {
           page = await fetchAllOfType(typeKey, {
+            from: win.from,
+            to: win.to,
+            signal,
             onProgress: ({ requests }) => {
-              if (requests > 1) {
+              if (requests > 2) {
                 setProgress({
                   current: atStep,
                   total: work.length,
@@ -453,11 +591,13 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           });
           fetchCache.set(typeKey, page);
           totalFetched += page.rows.length;
+          if (page.serverFiltered) serverFiltered++;
           if (page.paged) pagedTypes.push(`${typeLabel} (${page.requests} طلب)`);
           if (page.truncated) cutTypes.push(typeLabel);
         }
         const fetched = page.rows;
-        const records = filterOn ? fetched.filter((r) => matchesFilter(r, filter)) : fetched;
+        const filtered = filterOn ? fetched.filter((r) => matchesFilter(r, filter)) : fetched;
+        const records = isMawashi ? sortByDate(filtered) : filtered;
         /* Counted per TYPE, not per file: a type placed under two cards writes
            two files but is still one set of records, and adding it twice would
            inflate the summary the user reads. */
@@ -475,28 +615,107 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           continue;
         }
 
-        const folder = folderFor(zip, segments, folderCache);
-        const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records, { brand, tenantBrand });
-        const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+        const retKind = isMawashi ? returnsKindOf(typeKey) : "";
+        /* تقارير التفتيش دايماً مع صورها؛ الباقي لما ينطلب. */
+        const wantPhotos = isMawashi && (card.id === "inspector" || withPhotos);
+        const exporter = getExporter(typeKey);
 
-        const empty = records.length === 0;
-        const fileName = empty ? `${fileBase} — empty.xlsx` : `${fileBase}.xlsx`;
-        folder.file(fileName, buf);
-        if (empty) filesEmpty++; else filesCreated++;
+        /* Writes one workbook (+ its photos folder) and its INDEX line.
+           Awaited inside this same iteration, so the shared counters it bumps
+           are never raced. */
+        // eslint-disable-next-line no-loop-func
+        const writeOne = async (recs, segs, fileName, { monthLabel = "" } = {}) => {
+          checkAbort();
+          const folder = folderFor(zip, segs, folderCache);
+          const photoCounts = wantPhotos ? recs.map((r) => collectPhotoUrls(r).length) : null;
+          const hasPhotos = !!photoCounts && photoCounts.some((n) => n > 0);
+          let photoIndex = null;
+          if (hasPhotos && exporter.collection) {
+            let row = 3; // the Photos sheet: title row, header row, then one line per photo
+            photoIndex = photoCounts.map((n) => { const at = { count: n, row }; row += n; return at; });
+          }
+          const before = retKind
+            ? (wb) => addReturnsMonthSheets(wb, recs, { kind: retKind, monthLabel: monthLabel || filterLabel(filter) })
+            : null;
+          const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, recs, {
+            brand, tenantBrand, enhance: isMawashi, before, photoIndex,
+          });
 
-        const { firstDate, lastDate } = dateSpan(records);
-        manifest.push({
-          card: card.label,
-          branch: branch.label,
-          group: item.group,
-          typeLabel,
-          typeKey,
-          count: records.length,
-          firstDate,
-          lastDate,
-          kind: exporterKindFor(typeKey),
-          path: [...segments, fileName].join("/"),
-        });
+          if (hasPhotos) {
+            const stem = fileName.replace(/\.xlsx$/i, "");
+            const dirName = `${stem.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").slice(0, 70)}_photos`;
+            const res = await downloadRecordPhotos(recs, {
+              zipFolder: folder,
+              dirName,
+              dateOf: recordDate,
+              refOf: (r) => getRefNo(r, typeKey),
+              signal,
+              onProgress: (done, total) => setProgress({
+                current: atStep, total: work.length, label: `📷 ${typeLabel} — صور ${done}/${total}`,
+              }),
+            });
+            addPhotosSheet(wb, res.entries);
+            relinkToLocal(wb, res.localByUrl);
+            photosSaved += res.localByUrl.size;
+            photosFailed += res.failed;
+          }
+
+          const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+          const empty = recs.length === 0;
+          const finalName = empty ? fileName.replace(/\.xlsx$/i, " — empty.xlsx") : fileName;
+          folder.file(finalName, buf);
+          if (empty) filesEmpty++; else filesCreated++;
+
+          const { firstDate, lastDate } = dateSpan(recs);
+          manifest.push({
+            card: card.label,
+            branch: branch.label,
+            group: item.group,
+            typeLabel: monthLabel ? `${typeLabel} — ${monthLabel}` : typeLabel,
+            typeKey,
+            count: recs.length,
+            firstDate,
+            lastDate,
+            kind: exporterKindFor(typeKey),
+            path: [...segs, finalName].join("/"),
+          });
+        };
+
+        /* ملف لكل شهر: مجلد باسم التقرير ← مجلد لكل سنة ← ملف لكل شهر.
+           المرتجعات دايماً هيك، حتى لو النسخة شهر واحد. */
+        const parts = isMawashi && (splitMonths || card.id === "returns")
+          ? monthParts(records, { force: card.id === "returns" })
+          : null;
+
+        if (!parts) {
+          await writeOne(records, segments, `${fileBase}.xlsx`);
+          continue;
+        }
+        const label = safeSegment(typeLabel);
+        for (const part of parts) {
+          const segs = [...segments, fileBase, ...(part.year ? [part.year] : [])];
+          await writeOne(part.records, segs, `${part.label} — ${label}.xlsx`, { monthLabel: part.label });
+        }
+        /* المرتجعات: ملخّص السنة (شهر × فرع، شهر × إجراء) أول ملف بمجلد السنة. */
+        if (retKind) {
+          const years = [...new Set(parts.map((x) => x.year).filter(Boolean))];
+          for (const y of years) {
+            checkAbort();
+            const yearRecs = parts.filter((x) => x.year === y).flatMap((x) => x.records);
+            const wb = new ExcelJS.Workbook();
+            wb.creator = `${brand} — Excel Backup`;
+            buildReturnsYearSummary(wb, yearRecs, { kind: retKind, year: y });
+            const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+            const segs = [...segments, fileBase, y];
+            const fileName = `00 Year Summary ${y} — ${label}.xlsx`;
+            folderFor(zip, segs, folderCache).file(fileName, buf);
+            manifest.push({
+              card: card.label, branch: branch.label, group: item.group,
+              typeLabel: `${typeLabel} — Year Summary ${y}`, typeKey, count: yearRecs.length,
+              ...dateSpan(yearRecs), kind: "summary", path: [...segs, fileName].join("/"),
+            });
+          }
+        }
       }
 
       if (filesCreated === 0 && filesEmpty === 0) {
@@ -509,16 +728,68 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
         return;
       }
 
+      /* جداول قاعدة البيانات اللي مش تقارير (Al Mawashi). كل جدول لحالو:
+         جدول فشل (صلاحية مثلاً) ما بيوقّف الباقي، وبينكتب بالـREADME. */
+      const tables = [];
+      if (isMawashi && includeTables) {
+        const segs = ["99 Database Tables"];
+        const tableJobs = [
+          ["01 Products Catalog.xlsx", "Products Catalog", async (wb) => {
+            const items = await fetchProductCatalog(signal);
+            addProductsSheet(wb, items);
+            return items.length;
+          }],
+          ["02 Accounts (no passwords).xlsx", "Accounts", async (wb) => {
+            const users = await fetchAccounts(signal);
+            addAccountsSheet(wb, users);
+            return users.length;
+          }],
+          ["03 Audit Trail.xlsx", "Audit Trail", async (wb) => {
+            const w = filterOn ? filterWindow(filter) : { from: "", to: "" };
+            const res = await fetchAuditTrail({
+              from: w.from, to: w.to, signal,
+              onPage: (got, total) => setProgress({
+                current: work.length, total: work.length, label: `🗄️ سجل التعديلات ${got.toLocaleString()}/${total.toLocaleString()}`,
+              }),
+            });
+            addAuditSheet(wb, res.rows, filterOn ? filterLabel(filter) : "");
+            if (res.capped) notes.push(`سجل التعديلات: أول ${res.rows.length.toLocaleString()} من ${res.total.toLocaleString()} — ضيّق المدة للباقي.`);
+            return res.rows.length;
+          }],
+        ];
+        for (const [fileName, label, run] of tableJobs) {
+          checkAbort();
+          setProgress({ current: work.length, total: work.length, label: `🗄️ ${label}` });
+          try {
+            const wb = new ExcelJS.Workbook();
+            wb.creator = `${brand} — Excel Backup`;
+            const n = await run(wb);
+            const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+            folderFor(zip, segs, folderCache).file(fileName, buf);
+            tables.push(`${label} (${n.toLocaleString()})`);
+            manifest.push({
+              card: "Database Tables", branch: "", group: "", typeLabel: label, typeKey: "",
+              count: n, firstDate: "", lastDate: "", kind: "table", path: [...segs, fileName].join("/"),
+            });
+          } catch (e) {
+            if (e?.name === "AbortError") throw e;
+            notes.push(`${label}: ما انحفظ (${e?.message || e}) — غالباً بدّو حساب مدير.`);
+          }
+        }
+      }
+
       setProgress({ current: work.length, total: work.length, label: "🗜️ جارٍ ضغط الملفات..." });
 
       /* Index + readme at the ZIP root. Without them a 200-file archive is a
          pile of folders with no way to tell what is inside without opening
          each one, or to notice that a type came back empty. */
       const generatedAt = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
-      const notes = [];
       if (cutTypes.length)   notes.push(`نسخة ناقصة (يوم فيه أكتر من 5000 سجل): ${cutTypes.join(" · ")}`);
       if (pagedTypes.length) notes.push(`انقسمت المدة لتجاوز السقف: ${pagedTypes.join(" · ")}`);
       if (filesSkipped)      notes.push(`${filesSkipped} نوع بلا سجلات — ما انعمله ملف.`);
+      if (photosSaved || photosFailed) {
+        notes.push(`📷 ${photosSaved} صورة محفوظة جوّا النسخة${photosFailed ? ` · ${photosFailed} ما نزلت (بيضل رابطها الأونلاين بورقة Photos)` : ""}.`);
+      }
       if (windowWarning)     notes.push(windowWarning.replace(/^⚠️\s*/, ""));
       zip.file("00 INDEX.csv", manifestCsv(manifest));
       zip.file("00 README.txt", readmeText({
@@ -530,20 +801,43 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       }));
 
       const today = new Date().toISOString().slice(0, 10);
+      checkAbort();
       const blob = await zip.generateAsync({
         type: "blob",
         compression: "DEFLATE",
         compressionOptions: { level: 6 },
       });
+      checkAbort();
 
       downloadBlob(blob, `${fileBrand}_Excel_Backup_${today}${filterSuffix(filter)}.zip`);
+
+      if (isMawashi) {
+        const w = filterWindow(filter);
+        await saveBackupLog({
+          at: new Date().toISOString(),
+          filter: filterLabel(filter),
+          mode: filter.mode,
+          from: w.from || "",
+          to: w.to || "",
+          files: filesCreated,
+          emptyFiles: filesEmpty,
+          records: totalRows,
+          types: counted.size,
+          typesTotal: totalTypes,
+          photos: photosSaved,
+          tables,
+          sizeMB: Math.round((blob.size / 1048576) * 10) / 10,
+          incomplete: cutTypes.length > 0 || !!windowWarning,
+        });
+        fetchBackupLog().then((list) => list && setBackupLog(list));
+      }
 
       setStats({ mode: "backup", filesCreated, filesEmpty, totalRows, branches: new Set(manifest.map((m) => m.branch)).size });
       const heavyNote = heavyTypes.length > 0
         ? `  ⚠️ تقارير ضخمة (${heavyTypes.length}): ${heavyTypes.join(" · ")}`
         : "";
       const filterNote = filterOn
-        ? `  🗓️ الفلترة: ${filterLabel(filter)} — ${totalRows.toLocaleString()} من أصل ${totalFetched.toLocaleString()} سجل.`
+        ? `  🗓️ الفلترة: ${filterLabel(filter)} — ${totalRows.toLocaleString()} سجل${serverFiltered ? ` (${serverFiltered} نوع انفلتر على السيرفر)` : ""}.`
         : "";
       const skipNote = filesSkipped > 0 ? `  ⏭️ ${filesSkipped} نوع بلا سجلات (ما انعمله ملف).` : "";
       const pagedNote = pagedTypes.length > 0
@@ -552,15 +846,24 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       const cutNote = cutTypes.length > 0
         ? `  ⛔ يوم واحد فيه أكتر من 5000 سجل — النسخة ناقصة لـ: ${cutTypes.join(" · ")}.`
         : "";
+      const photoNote = photosSaved || photosFailed
+        ? `  📷 ${photosSaved} صورة${photosFailed ? ` (${photosFailed} ما نزلت)` : ""}.`
+        : "";
+      const tableNote = tables.length ? `  🗄️ ${tables.join(" · ")}.` : "";
       const windowNote = windowWarning ? `  ${windowWarning}` : "";
       setMsg({
         kind: cutTypes.length > 0 || windowWarning ? "err" : (heavyTypes.length > 0 ? "info" : "ok"),
-        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${manifest.length} ملف بالفهرس${filterNote}${skipNote}${pagedNote}${cutNote}${windowNote}${heavyNote}`,
+        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${manifest.length} ملف بالفهرس · ${(blob.size / 1048576).toFixed(1)} MB${filterNote}${skipNote}${photoNote}${tableNote}${pagedNote}${cutNote}${windowNote}${heavyNote}`,
       });
     } catch (e) {
-      console.error(e);
-      setMsg({ kind: "err", text: `❌ فشل الإنشاء: ${e?.message || e}` });
+      if (e?.name === "AbortError") {
+        setMsg({ kind: "info", text: "⛔ انلغت النسخة — ما نزل أي ملف." });
+      } else {
+        console.error(e);
+        setMsg({ kind: "err", text: `❌ فشل الإنشاء: ${e?.message || e}` });
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
       setProgress({ current: 0, total: 0, label: "" });
     }
@@ -578,6 +881,8 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
     setBusy(true);
     setStats(null);
     setMsg({ kind: "info", text: "⏳ جارٍ تحضير النماذج الفارغة..." });
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const [JSZipModule, ExcelJSModule] = await Promise.all([
@@ -597,6 +902,7 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
       let made = 0;
 
       for (const item of work) {
+        if (controller.signal.aborted) throw abortError();
         const { branch, card, typeKey, typeLabel, segments, fileBase } = item;
         step++;
         setProgress({ current: step, total: work.length, label: `${card.label} ← ${branch.label} ← ${typeLabel}` });
@@ -661,9 +967,14 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             : ""),
       });
     } catch (e) {
-      console.error(e);
-      setMsg({ kind: "err", text: `❌ فشل إنشاء النماذج: ${e?.message || e}` });
+      if (e?.name === "AbortError") {
+        setMsg({ kind: "info", text: "⛔ انلغى تحضير النماذج — ما نزل أي ملف." });
+      } else {
+        console.error(e);
+        setMsg({ kind: "err", text: `❌ فشل إنشاء النماذج: ${e?.message || e}` });
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
       setProgress({ current: 0, total: 0, label: "" });
     }
@@ -713,6 +1024,48 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
           {windowWarning}
         </div>
       )}
+
+      {/* ═══ سجل النسخ (Al Mawashi) ═══ */}
+      {isMawashi && backupLog && (() => {
+        const last = backupLog[0];
+        const age = last ? daysSince(last.at) : Infinity;
+        const stale = age > BACKUP_STALE_DAYS;
+        const fmt = (iso) => {
+          try { return new Date(iso).toLocaleString("en-GB", { timeZone: "Asia/Dubai", dateStyle: "medium", timeStyle: "short" }); }
+          catch { return String(iso || ""); }
+        };
+        return (
+          <div style={S.logCard(stale)}>
+            <div style={S.logHead}>
+              <span style={S.logTitle}>🗂️ سجل النسخ الاحتياطية</span>
+              <span style={S.logState(stale)}>
+                {!last
+                  ? `⚠️ ما في ولا نسخة مسجّلة — خُد نسخة هلق`
+                  : stale
+                    ? `⚠️ آخر نسخة من ${age} يوم — صار لازم نسخة جديدة`
+                    : `✅ آخر نسخة من ${age === 0 ? "اليوم" : `${age} يوم`}`}
+              </span>
+            </div>
+            {backupLog.length > 0 && (
+              <div style={S.logList}>
+                {backupLog.slice(0, 6).map((b) => (
+                  <div key={b.id || b.at} style={S.logRow}>
+                    <span style={S.logWhen}>{fmt(b.at)}</span>
+                    <span style={S.logWho}>{b.byName || b.by || "—"}</span>
+                    <span style={S.logWhat}>
+                      {b.filter || "—"} · {Number(b.files || 0).toLocaleString()} ملف · {Number(b.records || 0).toLocaleString()} سجل
+                      {b.photos ? ` · 📷 ${b.photos}` : ""}
+                      {b.sizeMB != null ? ` · ${b.sizeMB} MB` : ""}
+                      {b.types && b.typesTotal ? ` · ${b.types}/${b.typesTotal} نوع` : ""}
+                      {b.incomplete ? " · ⚠️ ناقصة" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ═══ Toolbar ═══ */}
       <div style={S.toolbar}>
@@ -845,6 +1198,23 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             <span>تخطّي الملفات الفارغة (لا تنشئ ملف للتقارير بلا سجلات)</span>
           </label>
         </div>
+
+        {isMawashi && (
+          <div style={S.filterRow}>
+            <label style={S.checkRow}>
+              <input type="checkbox" checked={splitMonths} onChange={(e) => setSplitMonths(e.target.checked)} style={S.checkBox} />
+              <span>📅 ملف لكل شهر — التقرير اللي بيغطي أكتر من شهر بيصير مجلد ← سنة ← ملف لكل شهر (المرتجعات دايماً هيك)</span>
+            </label>
+            <label style={S.checkRow}>
+              <input type="checkbox" checked={withPhotos} onChange={(e) => setWithPhotos(e.target.checked)} style={S.checkBox} />
+              <span>📷 إرفاق صور كل التقارير المختارة (تقارير التفتيش دايماً مع صورها) — بيكبّر حجم الـZIP</span>
+            </label>
+            <label style={S.checkRow}>
+              <input type="checkbox" checked={includeTables} onChange={(e) => setIncludeTables(e.target.checked)} style={S.checkBox} />
+              <span>🗄️ جداول قاعدة البيانات: المنتجات، الحسابات (بلا كلمات سر)، سجل التعديلات</span>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ═══ Card → branch → group tree ═══
@@ -1011,6 +1381,12 @@ export default function ExcelBackupTab({ cardIds = null, brand = "Al Mawashi" } 
             ? `⏳  ${progress.current}/${progress.total} — ${pct}%`
             : `📥  إنشاء وتحميل ZIP   ·   ${pickedCount} ملف Excel`}
         </button>
+
+        {busy && (
+          <button type="button" onClick={cancelRun} style={S.btnCancel}>
+            ⛔ إلغاء
+          </button>
+        )}
 
         {busy && (
           <div style={S.progressBox}>
@@ -1489,6 +1865,24 @@ const S = {
     letterSpacing: ".03em",
   }),
   progressBox: { marginTop: 12 },
+  btnCancel: {
+    marginTop: 10, padding: "10px 22px", borderRadius: 12, cursor: "pointer",
+    border: "1px solid #fca5a5", background: "#fef2f2", color: "#b91c1c",
+    fontWeight: 800, fontSize: "0.95rem",
+  },
+  logCard: (stale) => ({
+    margin: "0 0 14px", padding: "12px 16px", borderRadius: 14,
+    border: `1px solid ${stale ? "#fcd34d" : "#bae6fd"}`,
+    background: stale ? "#fffbeb" : "#f0f9ff",
+  }),
+  logHead: { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" },
+  logTitle: { fontWeight: 800, color: "#0f172a" },
+  logState: (stale) => ({ fontWeight: 700, color: stale ? "#92400e" : "#0369a1" }),
+  logList: { marginTop: 8, display: "grid", gap: 4 },
+  logRow: { display: "flex", flexWrap: "wrap", gap: 10, fontSize: "0.85rem", color: "#334155" },
+  logWhen: { fontWeight: 700, minWidth: 150 },
+  logWho: { minWidth: 90, color: "#0f766e", fontWeight: 700 },
+  logWhat: { flex: 1, minWidth: 200 },
   progressTrack: {
     height: 10, background: "#e2e8f0", borderRadius: 999, overflow: "hidden",
   },

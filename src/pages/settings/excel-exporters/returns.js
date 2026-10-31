@@ -118,7 +118,7 @@ export default async function build(wb, record, ctx) {
         c.alignment = ci === NC - 1 ? { ...left, wrapText: true } : center;
         c.border    = BORDER_BLACK;
         /* action column coloring */
-        if (ci === 7) {
+        if (ci === 8) { // Action column (Expiry Date was added before it at index 7)
           if (/condemn/i.test(action)) {
             c.font = { bold: true, color: { argb: COLORS.RED },   size: 10 };
             c.fill = fillSolid(COLORS.RED_BG);

@@ -399,6 +399,7 @@ const AUTO_REGISTER_TYPES = [
   "mrp_audit_log",
   "butcher_day_plan",
   "settings_audit_log",
+  "excel_backup_log",
   "returns_changes",
   "returns_customers_changes",
   "returns_report_log",

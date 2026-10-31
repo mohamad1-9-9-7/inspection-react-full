@@ -36,40 +36,65 @@ const FLOOR_YEAR = 2015;
  *
  * @returns {Promise<{dates: Map<string, number>, total: number} | null>}
  */
-async function getDateIndex(type) {
+async function getDateIndex(type, signal) {
+  const raw = await getRawDateIndex(type, signal);
+  if (!raw || !raw.rows.length) return null;
+  if (raw.rows.length === PAGE_CAP) return null; // غالباً ردّ lite مسقّف، مش فهرس كامل
+  const { dates } = raw;
+  return dates.size ? { dates, total: raw.rows.length } : null;
+}
+
+/**
+ * نفس فهرس التواريخ بس خام: بيرجّع كمان كم تاريخ مش بصيغة YYYY-MM-DD.
+ * السيرفر بيقارن BUSINESS_DATE كـ«نص»، فطلب from/to موثوق بس لما كل
+ * التواريخ المخزّنة ISO. سجل قديم واحد بـ DD/MM/YYYY كافي لنرجع للقراءة الكاملة.
+ * `null` = تعذّر الطلب (أو سيرفر قديم) — مش «ما في سجلات».
+ */
+async function getRawDateIndex(type, signal) {
   try {
     const qs = new URLSearchParams({ type, dates: "1" });
-    const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, { cache: "no-store", signal });
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
+    if (!json) return null;
     const rows = Array.isArray(json) ? json : json?.data || [];
-    if (!rows.length) return null;
-    if (rows.length === PAGE_CAP) return null; // غالباً ردّ lite مسقّف، مش فهرس كامل
 
     const dates = new Map();
+    let nonIso = 0;
     for (const r of rows) {
-      const d = isoOf(r?.reportDate);
+      const s = String(r?.reportDate ?? "").trim();
+      if (s && !/^\d{4}-\d{2}-\d{2}/.test(s)) nonIso += 1;
+      const d = isoOf(s);
       if (!d) continue;
       dates.set(d, (dates.get(d) || 0) + 1);
     }
-    return dates.size ? { dates, total: rows.length } : null;
-  } catch {
+    return { rows, dates, nonIso };
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
     return null;
   }
 }
 
-async function getPage(type, from, to) {
+async function getPage(type, from, to, signal) {
   const qs = new URLSearchParams({ type, limit: String(PAGE_CAP) });
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
   try {
-    const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, { cache: "no-store", signal });
     if (!res.ok) return [];
     const json = await res.json().catch(() => null);
     return Array.isArray(json) ? json : json?.data || [];
-  } catch {
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
     return [];
   }
+}
+
+/** YYYY-MM-DD مزاح n يوم (UTC، فبلا مفاجآت التوقيت الصيفي). */
+function shiftDay(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 /* ─────────────────────────── مفاتيح ودمج ─────────────────────────── */
@@ -154,8 +179,8 @@ function packWindows(dateCounts) {
  * يجيب مدة واحدة، وإذا ضربت بالسقف بيقسّمها للمستوى الأدقّ.
  * @returns {boolean} true لو وصلنا ليوم واحد وبعده ضارب بالسقف (تعذّر التقسيم).
  */
-async function fetchSpan(type, from, to, level, map, onStep) {
-  const rows = await getPage(type, from, to);
+async function fetchSpan(type, from, to, level, map, onStep, signal) {
+  const rows = await getPage(type, from, to, signal);
   onStep?.(rows.length);
   mergeInto(map, rows);
 
@@ -168,7 +193,7 @@ async function fetchSpan(type, from, to, level, map, onStep) {
     for (let m = 1; m <= 12; m++) {
       const last = lastDayOfMonth(y, m);
       const deeper = await fetchSpan(
-        type, `${y}-${pad(m)}-01`, `${y}-${pad(m)}-${pad(last)}`, "month", map, onStep
+        type, `${y}-${pad(m)}-01`, `${y}-${pad(m)}-${pad(last)}`, "month", map, onStep, signal
       );
       hitFloor = hitFloor || deeper;
     }
@@ -181,7 +206,7 @@ async function fetchSpan(type, from, to, level, map, onStep) {
     let hitFloor = false;
     for (let d = 1; d <= last; d++) {
       const day = `${y}-${pad(m)}-${pad(d)}`;
-      const deeper = await fetchSpan(type, day, day, "day", map, onStep);
+      const deeper = await fetchSpan(type, day, day, "day", map, onStep, signal);
       hitFloor = hitFloor || deeper;
     }
     return hitFloor;
@@ -193,22 +218,75 @@ async function fetchSpan(type, from, to, level, map, onStep) {
 
 /* ─────────────────────────── الواجهة ─────────────────────────── */
 
+/** هامش أيام حوالين المدة المطلوبة: تاريخ السيرفر (BUSINESS_DATE) وتاريخ
+ *  المتصفّح (extractDate) ممكن يختلفوا بيوم أو يومين لنفس السجل، فمنطلب أوسع
+ *  شوي والفلترة الدقيقة بتصير بعدين بالمتصفّح. */
+const WINDOW_PAD_DAYS = 7;
+
 /**
- * كل سجلات نوع واحد.
+ * سجلات نوع واحد ضمن مدة — والفلترة على السيرفر بدل المتصفّح.
+ *
+ * قبل: نسخة «آخر شهر» كانت تسحب كل سجلات النوع من أول يوم (بالـpayload كامل)
+ * وتفلتر بالمتصفّح. هلق منجيب فهرس التواريخ (id + تاريخ، بلا payload) أولاً:
+ *   • ما في ولا سجل بالمدة ⇒ ما منطلب ولا payload أصلاً.
+ *   • كل التواريخ ISO ⇒ منطلب بس أيام المدة (مقسومة تحت السقف).
+ *   • في تواريخ قديمة بصيغة نصّية تانية ⇒ منرجع للقراءة الكاملة (أمان قبل السرعة).
+ * `null` = ما قدرنا نعتمد الفلترة على السيرفر، والمنادي بيرجع للقراءة الكاملة.
+ */
+async function fetchWindow(type, from, to, signal, step) {
+  const index = await getRawDateIndex(type, signal);
+  step(0);
+  if (!index) return null;
+  if (index.rows.length === PAGE_CAP) return null; // ردّ مسقّف من سيرفر قديم
+  if (index.nonIso > 0) return null;
+
+  const lo = from ? shiftDay(from, -WINDOW_PAD_DAYS) : "";
+  const hi = to ? shiftDay(to, WINDOW_PAD_DAYS) : "";
+  const inWindow = new Map();
+  for (const [d, n] of index.dates) {
+    if (lo && d < lo) continue;
+    if (hi && d > hi) continue;
+    inWindow.set(d, n);
+  }
+
+  const map = new Map();
+  let truncated = false;
+  for (const w of packWindows(inWindow)) {
+    const rows = await getPage(type, w.from, w.to, signal);
+    step(rows.length);
+    mergeInto(map, rows);
+    if (w.overCap) truncated = true;
+  }
+  return {
+    rows: [...map.values()],
+    paged: inWindow.size > 0 && map.size >= PAGE_CAP,
+    truncated,
+    indexedTotal: [...inWindow.values()].reduce((s, n) => s + n, 0),
+    mayMissUndated: false,
+    serverFiltered: true,
+  };
+}
+
+/**
+ * كل سجلات نوع واحد (أو سجلات مدة منه).
  *
  * @param {string} type
  * @param {object} [opts]
  * @param {(info:{requests:number,rows:number}) => void} [opts.onProgress]
+ * @param {string} [opts.from]  YYYY-MM-DD — مع `to` بتصير الفلترة على السيرفر
+ * @param {string} [opts.to]
+ * @param {AbortSignal} [opts.signal]  زر «إلغاء» — بيرمي AbortError
  * @returns {Promise<{
  *   rows: object[],
  *   requests: number,
  *   paged: boolean,        // اضطرّينا نقسّم المدة
  *   truncated: boolean,    // يوم واحد تجاوز السقف — في سجلات ما وصلناها
- *   mayMissUndated: boolean // سجلات بلا تاريخ أقدم من أحدث 5000 ما بتوصلها القسمة
+ *   mayMissUndated: boolean, // سجلات بلا تاريخ أقدم من أحدث 5000 ما بتوصلها القسمة
+ *   serverFiltered?: boolean // المدة انفلترت على السيرفر
  * }>}
  */
 export async function fetchAllOfType(type, opts = {}) {
-  const { onProgress } = opts;
+  const { onProgress, signal } = opts;
   let requests = 0;
   const map = new Map();
   const step = (n) => {
@@ -216,8 +294,14 @@ export async function fetchAllOfType(type, opts = {}) {
     onProgress?.({ requests, rows: map.size + n });
   };
 
+  // ٠) مدة محددة ⇒ الفلترة على السيرفر لما تكون موثوقة.
+  if (opts.from || opts.to) {
+    const win = await fetchWindow(type, opts.from || "", opts.to || "", signal, step);
+    if (win) return { ...win, requests };
+  }
+
   // ١) طلب واحد بلا مدة. الحالة الغالبة: النوع تحت السقف وبنخلص هون.
-  const probe = await getPage(type);
+  const probe = await getPage(type, "", "", signal);
   step(probe.length);
   mergeInto(map, probe);
 
@@ -233,13 +317,13 @@ export async function fetchAllOfType(type, opts = {}) {
 
   // ٢) ضربنا بالسقف. المفضّل: فهرس التواريخ الكامل، منه منفصّل نوافذ مضمونة.
   let truncated = false;
-  const index = await getDateIndex(type);
+  const index = await getDateIndex(type, signal);
   requests += 1;
 
   if (index) {
     const windows = packWindows(index.dates);
     for (const w of windows) {
-      const rows = await getPage(type, w.from, w.to);
+      const rows = await getPage(type, w.from, w.to, signal);
       step(rows.length);
       mergeInto(map, rows);
       if (w.overCap) truncated = true;
@@ -265,7 +349,7 @@ export async function fetchAllOfType(type, opts = {}) {
   );
 
   for (let y = newestYear; y >= FLOOR_YEAR; y--) {
-    const hitFloor = await fetchSpan(type, `${y}-01-01`, `${y}-12-31`, "year", map, step);
+    const hitFloor = await fetchSpan(type, `${y}-01-01`, `${y}-12-31`, "year", map, step, signal);
     truncated = truncated || hitFloor;
   }
 
