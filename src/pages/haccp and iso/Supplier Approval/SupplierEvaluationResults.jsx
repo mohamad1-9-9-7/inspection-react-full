@@ -109,6 +109,38 @@ const UI = {
     declStateNone: "Declaration not confirmed by the supplier",
     halal_notRequired: "Not required",
     halal_attention: "Missing or expired",
+    fDecl: "Declaration",
+    declAll: "Declaration: All",
+    declSigned: "Declaration: signed copy",
+    declOnline: "Declaration: online only",
+    declNone: "Declaration: none",
+    compAll: "Compliance: All",
+    compPass: "Compliance: 80%+ (pass)",
+    compWatch: "Compliance: 60–79%",
+    compFail: "Compliance: below 60%",
+    compHasNo: "Has NO answers",
+    periodAll: "Submitted: any time",
+    p30: "Submitted: last 30 days",
+    p90: "Submitted: last 90 days",
+    p365: "Submitted: last 12 months",
+    pDue: "Re-evaluation due (12+ months)",
+    sNewest: "Sort: last update",
+    sOldest: "Sort: oldest submission",
+    sName: "Sort: name A–Z",
+    sCompLow: "Sort: compliance low → high",
+    sCompHigh: "Sort: compliance high → low",
+    exportExcel: "⬇ Excel",
+    exporting: "Exporting...",
+    reevalDue: "Re-evaluation due",
+    noAnswers: "NO",
+    clearAll: "Clear filters",
+    keysHint: "↑ ↓ to move between suppliers",
+    qFilterAll: "All",
+    qFilterNo: "NO only",
+    qFilterNa: "N/A only",
+    qFilterYes: "YES only",
+    qSearchPh: "Search questions...",
+    qNone: "No questions match.",
     pickSupplier: "Select a supplier from the list to see the evaluation.",
     searchShortPh: "Search supplier...",
     typeAll: "All types",
@@ -232,6 +264,38 @@ const UI = {
     declStateNone: "لم يؤكد المورد الإقرار",
     halal_notRequired: "غير مطلوب",
     halal_attention: "ناقص أو منتهي",
+    fDecl: "الإقرار",
+    declAll: "الإقرار: الكل",
+    declSigned: "الإقرار: نسخة موقّعة",
+    declOnline: "الإقرار: إلكتروني فقط",
+    declNone: "الإقرار: لا يوجد",
+    compAll: "المطابقة: الكل",
+    compPass: "المطابقة: 80% فأكثر (ناجح)",
+    compWatch: "المطابقة: 60–79%",
+    compFail: "المطابقة: أقل من 60%",
+    compHasNo: "فيه إجابات «لا»",
+    periodAll: "الإرسال: أي وقت",
+    p30: "الإرسال: آخر 30 يوم",
+    p90: "الإرسال: آخر 90 يوم",
+    p365: "الإرسال: آخر 12 شهر",
+    pDue: "يحتاج إعادة تقييم (12 شهر+)",
+    sNewest: "الترتيب: آخر تحديث",
+    sOldest: "الترتيب: الأقدم إرسالاً",
+    sName: "الترتيب: الاسم أ–ي",
+    sCompLow: "الترتيب: المطابقة من الأقل",
+    sCompHigh: "الترتيب: المطابقة من الأعلى",
+    exportExcel: "⬇ Excel",
+    exporting: "جاري التصدير...",
+    reevalDue: "يحتاج إعادة تقييم",
+    noAnswers: "لا",
+    clearAll: "مسح الفلاتر",
+    keysHint: "↑ ↓ للتنقل بين الموردين",
+    qFilterAll: "الكل",
+    qFilterNo: "«لا» فقط",
+    qFilterNa: "غير متاح فقط",
+    qFilterYes: "«نعم» فقط",
+    qSearchPh: "ابحث في الأسئلة...",
+    qNone: "لا توجد أسئلة مطابقة.",
     pickSupplier: "اختر مورداً من القائمة لعرض التقييم.",
     searchShortPh: "ابحث عن مورد...",
     typeAll: "كل الأنواع",
@@ -1167,6 +1231,14 @@ const rowCard = {
 const td = { padding: "14px 12px", verticalAlign: "top", fontWeight: 850, color: "#0f172a", fontSize: 15 };
 const muted = { color: "#64748b", fontWeight: 850, fontSize: 14 };
 
+/* Days since the supplier submitted (record date as fallback) */
+function rowAgeDays(r) {
+  const iso = getSubmittedAtIso(r) || getRecordDate(r);
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d) ? Math.floor((Date.now() - d.getTime()) / 864e5) : null;
+}
+const REEVAL_DAYS = 365;
+
 /* Halal declaration status of a list row (received / requested / missing) */
 function rowHalalStatus(r) {
   const files = findHalalFilesInSubmission(getAttachmentsFromReport(r), getFieldAttachmentsFromReport(r));
@@ -1377,6 +1449,13 @@ export default function SupplierEvaluationResults() {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [halalFilter, setHalalFilter] = useState("all");
+  const [declFilter, setDeclFilter] = useState("all");
+  const [compFilter, setCompFilter] = useState("all");
+  const [periodFilter, setPeriodFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("updated");
+  const [exporting, setExporting] = useState(false);
+  const [qFilter, setQFilter] = useState("all");
+  const [qSearch, setQSearch] = useState("");
   const [detailTab, setDetailTab] = useState("overview");
   // Wide screens: list + detail side by side, each scrolling on its own.
   const [isWide, setIsWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1100px)").matches);
@@ -1445,8 +1524,25 @@ export default function SupplierEvaluationResults() {
     const q = String(query || "").trim().toLowerCase();
     const tf = String(typeFilter || "all").toLowerCase();
 
-    return (items || []).filter((r) => {
+    const out = (items || []).filter((r) => {
       const p = getPayloadObj(r) || {};
+
+      if (declFilter !== "all" && rowDeclState(r) !== declFilter) return false;
+
+      if (compFilter !== "all") {
+        const c = rowCounts(p);
+        const pct = compliancePct(c);
+        if (compFilter === "hasNo" ? !(c?.noCount > 0) : pct == null) return false;
+        if (compFilter === "pass" && pct < 80) return false;
+        if (compFilter === "watch" && (pct < 60 || pct >= 80)) return false;
+        if (compFilter === "fail" && pct >= 60) return false;
+      }
+
+      if (periodFilter !== "all") {
+        const age = rowAgeDays(r);
+        if (age == null) return false;
+        if (periodFilter === "due" ? age < REEVAL_DAYS : age > Number(periodFilter)) return false;
+      }
 
       // Type filter
       if (tf !== "all") {
@@ -1486,7 +1582,91 @@ export default function SupplierEvaluationResults() {
 
       return true;
     });
-  }, [items, query, typeFilter, halalFilter]);
+
+    const name = (r) => String(getPayloadObj(r)?.fields?.company_name || "").toLowerCase();
+    const pctOf = (r) => compliancePct(rowCounts(getPayloadObj(r) || {}));
+    const sorters = {
+      updated: null, // items already arrive newest-update first
+      oldest: (a, b) => (rowAgeDays(b) ?? -1) - (rowAgeDays(a) ?? -1),
+      name: (a, b) => name(a).localeCompare(name(b)),
+      compLow: (a, b) => (pctOf(a) ?? 101) - (pctOf(b) ?? 101),
+      compHigh: (a, b) => (pctOf(b) ?? -1) - (pctOf(a) ?? -1),
+    };
+    return sorters[sortBy] ? [...out].sort(sorters[sortBy]) : out;
+  }, [items, query, typeFilter, halalFilter, declFilter, compFilter, periodFilter, sortBy]);
+
+  const activeFilters =
+    [typeFilter, halalFilter, declFilter, compFilter, periodFilter].filter((v) => v !== "all").length + (query ? 1 : 0);
+  const clearFilters = () => {
+    setQuery("");
+    setTypeFilter("all");
+    setHalalFilter("all");
+    setDeclFilter("all");
+    setCompFilter("all");
+    setPeriodFilter("all");
+  };
+
+  /* Excel of exactly what the list shows (filters + sort) */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const mod = await import("exceljs");
+      const ExcelJS = mod.default || mod;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(lang === "ar" ? "الموردون" : "Suppliers", { views: [{ state: "frozen", ySplit: 1, rightToLeft: isRTL }] });
+      ws.columns = [
+        { header: t.supplier, key: "name", width: 38 },
+        { header: t.supplierType, key: "type", width: 26 },
+        { header: t.recordDate, key: "rec", width: 13 },
+        { header: t.submittedAt, key: "sub", width: 18 },
+        { header: t.lastUpdate, key: "upd", width: 18 },
+        { header: t.compliance + " %", key: "pct", width: 13 },
+        { header: t.yes, key: "yes", width: 8 },
+        { header: t.no, key: "no", width: 8 },
+        { header: t.na, key: "na", width: 8 },
+        { header: t.filterHalal, key: "halal", width: 20 },
+        { header: t.fDecl, key: "decl", width: 24 },
+        { header: t.reevalDue, key: "due", width: 18 },
+      ];
+      filtered.forEach((r) => {
+        const p = getPayloadObj(r) || {};
+        const c = rowCounts(p);
+        const st = getSupplierType(p);
+        const ds = rowDeclState(r);
+        const age = rowAgeDays(r);
+        ws.addRow({
+          name: p?.fields?.company_name || p?.public?.submission?.fields?.company_name || "—",
+          type: st ? getSupplierTypeLabel(st, lang) : "—",
+          rec: getRecordDate(r) || "",
+          sub: fmtDateTime(getSubmittedAtIso(r)),
+          upd: fmtDateTime(getLastUpdateIso(r)),
+          pct: compliancePct(c),
+          yes: c?.yesCount ?? 0,
+          no: c?.noCount ?? 0,
+          na: c?.naCount ?? 0,
+          halal: halalApplies(st) ? t["halal_" + rowHalalStatus(r)] : t.halal_notRequired,
+          decl: ds === "signed" ? t.declSigned : ds === "online" ? t.declOnline : t.declNone,
+          due: age != null && age >= REEVAL_DAYS ? "✔" : "",
+        });
+      });
+      const head = ws.getRow(1);
+      head.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
+      ws.autoFilter = { from: "A1", to: "L1" };
+      const buf = await wb.xlsx.writeBuffer();
+      const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Supplier_Evaluations_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const opened = useMemo(() => {
     return (items || []).find((x) => String(getReportObj(x)?.id ?? x?.id) === String(openId)) || null;
@@ -1596,6 +1776,16 @@ export default function SupplierEvaluationResults() {
       return { key: k, q: lang === "ar" ? arQ : enQ, v: ans[k] };
     });
   }, [openedAnswers, lang]);
+
+  const visibleAnswerPairs = useMemo(() => {
+    const q = qSearch.trim().toLowerCase();
+    return openedAnswerPairs.filter((x) => {
+      if (qFilter === "no" && x.v !== false) return false;
+      if (qFilter === "yes" && x.v !== true) return false;
+      if (qFilter === "na" && (x.v === true || x.v === false)) return false;
+      return !q || String(x.q).toLowerCase().includes(q) || String(x.key).toLowerCase().includes(q);
+    });
+  }, [openedAnswerPairs, qFilter, qSearch]);
 
   const copyText = async (txt) => {
     try {
@@ -1890,12 +2080,39 @@ export default function SupplierEvaluationResults() {
     };
     calc();
     window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
+    // the top bar grows with the Aa text size / wrapping KPIs without a window resize
+    const top = bodyRef.current?.previousElementSibling;
+    const ro = top && typeof ResizeObserver !== "undefined" ? new ResizeObserver(calc) : null;
+    if (ro) ro.observe(top);
+    return () => {
+      window.removeEventListener("resize", calc);
+      if (ro) ro.disconnect();
+    };
   }, [isWide, lang]);
 
   useEffect(() => {
     setDetailTab("overview");
+    setQFilter("all");
+    setQSearch("");
   }, [openId]);
+
+  // ↑ / ↓ walk the list (not while typing or editing)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || "") || e.target?.isContentEditable) return;
+      if (editMode || editingNotes || !filtered.length) return;
+      const ids = filtered.map((r) => String(getReportObj(r)?.id ?? r?.id));
+      const i = ids.indexOf(String(openId));
+      const next = ids[Math.min(ids.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))];
+      if (!next || next === String(openId)) return;
+      e.preventDefault();
+      setOpenId(next);
+      document.querySelector(`[data-card-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filtered, openId, editMode, editingNotes]);
 
   useEffect(() => {
     if (!isWide || !filtered.length || editMode || savingEdit || editingNotes) return;
@@ -2360,7 +2577,7 @@ export default function SupplierEvaluationResults() {
           }}
         >
           <aside style={{ ...panel, padding: 12, display: "flex", flexDirection: "column", gap: 8, minHeight: 0, minWidth: 0, height: isWide ? "100%" : "auto" }}>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...input, padding: "10px 12px" }} placeholder={t.searchShortPh} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...input, padding: "10px 12px" }} placeholder={t.searchShortPh} title={t.keysHint} />
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
               <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ ...input, padding: "8px 10px", minWidth: 0, cursor: "pointer" }} title={t.filterType}>
@@ -2380,23 +2597,56 @@ export default function SupplierEvaluationResults() {
               </select>
             </div>
 
-            <div className="ser-sm ser-sm" style={{ fontWeight: 900, color: "#64748b", display: "flex", justifyContent: "space-between" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+              {[
+                [declFilter, setDeclFilter, [["all", t.declAll], ["signed", t.declSigned], ["online", t.declOnline], ["none", t.declNone]]],
+                [compFilter, setCompFilter, [["all", t.compAll], ["pass", t.compPass], ["watch", t.compWatch], ["fail", t.compFail], ["hasNo", t.compHasNo]]],
+                [periodFilter, setPeriodFilter, [["all", t.periodAll], ["30", t.p30], ["90", t.p90], ["365", t.p365], ["due", t.pDue]]],
+                [sortBy, setSortBy, [["updated", t.sNewest], ["oldest", t.sOldest], ["name", t.sName], ["compLow", t.sCompLow], ["compHigh", t.sCompHigh]]],
+              ].map(([value, set, opts], i) => (
+                <select
+                  key={i}
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  style={{
+                    ...input,
+                    padding: "8px 10px",
+                    minWidth: 0,
+                    cursor: "pointer",
+                    borderColor: i < 3 && value !== "all" ? "#0ea5e9" : undefined,
+                    background: i < 3 && value !== "all" ? "#f0f9ff" : input.background,
+                  }}
+                >
+                  {opts.map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              ))}
+            </div>
+
+            <div className="ser-sm ser-sm" style={{ fontWeight: 900, color: "#64748b", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <span>
                 {t.total}: {filtered.length}
+                {activeFilters ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    style={{ border: "none", background: "transparent", color: "#0369a1", fontWeight: 900, cursor: "pointer", padding: 0, marginInlineStart: 10 }}
+                  >
+                    ✖ {t.clearAll} ({activeFilters})
+                  </button>
+                ) : null}
               </span>
-              {typeFilter !== "all" || halalFilter !== "all" || query ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTypeFilter("all");
-                    setHalalFilter("all");
-                    setQuery("");
-                  }}
-                  style={{ border: "none", background: "transparent", color: "#0369a1", fontWeight: 900, cursor: "pointer", padding: 0 }}
-                >
-                  ✖ {t.halalAll}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={exportExcel}
+                disabled={exporting || !filtered.length}
+                style={{ ...btn, padding: "6px 12px", background: "#ecfdf5", borderColor: "#6ee7b7", color: "#065f46", opacity: exporting || !filtered.length ? 0.6 : 1 }}
+              >
+                {exporting ? t.exporting : `${t.exportExcel} (${filtered.length})`}
+              </button>
             </div>
 
             <div
@@ -2429,12 +2679,14 @@ export default function SupplierEvaluationResults() {
                   const ds = rowDeclState(r);
                   const active = String(openId) === id;
                   const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
+                  const age = rowAgeDays(r);
                   const ellipsis = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
                   return (
                     <button
                       key={id}
                       type="button"
                       className="ser-card"
+                      data-card-id={id}
                       onClick={() => setOpenId(id)}
                       style={{
                         width: "100%",
@@ -2497,6 +2749,8 @@ export default function SupplierEvaluationResults() {
                       <div className="ser-xs ser-xs" style={{ gridColumn: "1 / -1", display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                         {hs ? <span style={chip(HALAL_STATUS_STYLE[hs], { maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" })}>{t.halalShort}: {t["halal_" + hs]}</span> : null}
                         <span style={chip(DECL_STYLE[ds], { maxWidth: "100%" })}>{ds === "signed" ? t.declShortOk : ds === "online" ? t.declShortOnline : t.declShortNo}</span>
+                        {c?.noCount > 0 ? <span style={chip(HALAL_STATUS_STYLE.missing)}>✖ {c.noCount} {t.noAnswers}</span> : null}
+                        {age != null && age >= REEVAL_DAYS ? <span style={chip(HALAL_STATUS_STYLE.expired)}>🔁 {t.reevalDue}</span> : null}
                       </div>
                     </button>
                   );
@@ -3447,8 +3701,39 @@ export default function SupplierEvaluationResults() {
                   ❓ {t.qList}
                 </div>
 
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                  {[
+                    ["all", t.qFilterAll, openedAnswerPairs.length],
+                    ["no", "✖ " + t.qFilterNo, openedCounts.noCount],
+                    ["na", "— " + t.qFilterNa, openedCounts.naCount],
+                    ["yes", "✔ " + t.qFilterYes, openedCounts.yesCount],
+                  ].map(([k, label, n]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setQFilter(k)}
+                      style={{
+                        ...btn,
+                        padding: "6px 12px",
+                        background: qFilter === k ? "#ede9fe" : "#fff",
+                        borderColor: qFilter === k ? "#8b5cf6" : "rgba(15,23,42,0.16)",
+                        color: qFilter === k ? "#5b21b6" : "#475569",
+                      }}
+                    >
+                      {label} ({n ?? 0})
+                    </button>
+                  ))}
+                  <input
+                    value={qSearch}
+                    onChange={(e) => setQSearch(e.target.value)}
+                    placeholder={t.qSearchPh}
+                    style={{ ...input, padding: "7px 10px", flex: "1 1 200px", minWidth: 160 }}
+                  />
+                </div>
+
                 <div style={{ display: "grid", gap: 10 }}>
-                  {openedAnswerPairs.map((x) => {
+                  {visibleAnswerPairs.length === 0 ? <div style={{ ...muted, padding: 10 }}>{t.qNone}</div> : null}
+                  {visibleAnswerPairs.map((x) => {
                     const currentV = editMode
                       ? (Object.prototype.hasOwnProperty.call(answersDraft, x.key)
                           ? answersDraft[x.key]
