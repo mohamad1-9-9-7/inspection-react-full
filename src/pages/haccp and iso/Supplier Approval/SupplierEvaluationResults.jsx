@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
 import { getPublicOrigin } from "../../../config/publicOrigin";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
+import { getActiveCompanyName } from "../../../utils/companyContext";
+import HalalDeclarationPanel from "./HalalDeclarationPanel";
+import { halalApplies, halalStatus, findHalalFilesInSubmission, HALAL_STATUS_STYLE } from "./halalDeclaration";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -87,6 +90,11 @@ const UI = {
     supplierType: "Supplier Type",
     filterType: "Filter by Type",
     allTypes: "All Types",
+    filterHalal: "Halal declaration",
+    halalAll: "All",
+    halal_missing: "Not received",
+    halal_requested: "Requested",
+    halal_received: "Received",
     allergenDeclaration: "Allergens declared",
     serviceScope: "Service Scope",
     downloadPdf: "⬇ Download PDF",
@@ -183,6 +191,11 @@ const UI = {
     supplierType: "نوع المورد",
     filterType: "تصفية حسب النوع",
     allTypes: "جميع الأنواع",
+    filterHalal: "إقرار الحلال",
+    halalAll: "الكل",
+    halal_missing: "لم يصل",
+    halal_requested: "تم الطلب",
+    halal_received: "تم الاستلام",
     allergenDeclaration: "مسببات الحساسية المصرَّح بها",
     serviceScope: "نطاق الخدمة",
     downloadPdf: "⬇ تنزيل PDF",
@@ -1110,6 +1123,12 @@ const rowCard = {
 const td = { padding: "14px 12px", verticalAlign: "top", fontWeight: 850, color: "#0f172a", fontSize: 15 };
 const muted = { color: "#64748b", fontWeight: 850, fontSize: 14 };
 
+/* Halal declaration status of a list row (received / requested / missing) */
+function rowHalalStatus(r) {
+  const files = findHalalFilesInSubmission(getAttachmentsFromReport(r), getFieldAttachmentsFromReport(r));
+  return halalStatus(getPayloadObj(r) || {}, files);
+}
+
 function FieldLine({ label, value }) {
   if (!value) return null;
   return (
@@ -1253,6 +1272,7 @@ export default function SupplierEvaluationResults() {
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [halalFilter, setHalalFilter] = useState("all");
   const [openId, setOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [openAttachment, setOpenAttachment] = useState(null);
@@ -1329,6 +1349,12 @@ export default function SupplierEvaluationResults() {
         }
       }
 
+      // Halal declaration filter (food suppliers only)
+      if (halalFilter !== "all") {
+        if (!halalApplies(getSupplierType(p))) return false;
+        if (rowHalalStatus(r) !== halalFilter) return false;
+      }
+
       // Text query
       if (q) {
         const company = String(p?.fields?.company_name || "").toLowerCase();
@@ -1350,7 +1376,7 @@ export default function SupplierEvaluationResults() {
 
       return true;
     });
-  }, [items, query, typeFilter]);
+  }, [items, query, typeFilter, halalFilter]);
 
   const opened = useMemo(() => {
     return (items || []).find((x) => String(getReportObj(x)?.id ?? x?.id) === String(openId)) || null;
@@ -1420,6 +1446,41 @@ export default function SupplierEvaluationResults() {
     const fieldOk = Object.values(fa).some((v) => Array.isArray(v) && v.length > 0);
     return generalOk || fieldOk;
   }, [openedAttachments, openedFieldAttachments]);
+
+  const openedHalalFiles = useMemo(
+    () => findHalalFilesInSubmission(openedAttachments, openedFieldAttachments),
+    [openedAttachments, openedFieldAttachments]
+  );
+
+  /* Save payload.halal on its own (no edit mode needed) */
+  const saveHalal = async (newHalal) => {
+    const rep = getReportObj(opened) || {};
+    const id = rep?.id ?? opened?.id;
+    if (!id) throw new Error(lang === "ar" ? "معرّف التقرير مفقود" : "Report id is missing");
+    const currentPayload = getPayloadObj(opened) || {};
+    const updatedPayload = {
+      ...currentPayload,
+      halal: newHalal,
+      meta: { ...(currentPayload.meta || {}), updatedAt: new Date().toISOString() },
+    };
+    await updateReportPayload(id, updatedPayload);
+    setItems((prev) =>
+      (prev || []).map((r) => {
+        const rid = getReportObj(r)?.id ?? r?.id;
+        if (String(rid) !== String(id)) return r;
+        const r2 = { ...r };
+        if (r2.payload) r2.payload = updatedPayload;
+        if (r2.payload_json) r2.payload_json = updatedPayload;
+        if (r2.report) r2.report = { ...r2.report, payload: updatedPayload };
+        if (r2.item) r2.item = { ...r2.item, payload: updatedPayload };
+        if (r2.data) r2.data = { ...r2.data, payload: updatedPayload };
+        if (!r2.payload && !r2.payload_json && !r2.report && !r2.item && !r2.data) {
+          Object.assign(r2, { payload: updatedPayload });
+        }
+        return r2;
+      })
+    );
+  };
 
   const openedAnswerPairs = useMemo(() => {
     const ans = openedAnswers || {};
@@ -1587,6 +1648,18 @@ export default function SupplierEvaluationResults() {
          </div>`
       : "";
 
+    /* Halal declaration */
+    const halal = p?.halal && typeof p.halal === "object" ? p.halal : {};
+    const hs = halalStatus(p, openedHalalFiles);
+    const halalHtml = `<div class="section decl ${hs === "received" ? "ok" : "bad"}">
+         <div class="section-title">${hs === "received" ? "✅" : "⚠"} ${esc(lang === "ar" ? "إقرار الحلال" : "Halal Declaration")}</div>
+         <div>${esc(t["halal_" + hs])}</div>
+         <div class="kvs" style="margin-top:6px">
+           ${halal.hasCertificate === true ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "شهادة الحلال" : "Halal certificate")}</div><div class="v">${esc([halal.certNo, halal.certBody, halal.certExpiry].filter(Boolean).join(" — ") || (lang === "ar" ? "متوفرة" : "Available"))}</div></div>` : ""}
+           ${halal.hasCertificate === false ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "شهادة الحلال" : "Halal certificate")}</div><div class="v">${esc(lang === "ar" ? "غير متوفرة" : "Not available")}</div></div>` : ""}
+         </div>
+       </div>`;
+
     /* Declaration */
     const declHtml = decl
       ? `<div class="section decl ${decl.agreed ? "ok" : "bad"}">
@@ -1675,6 +1748,7 @@ export default function SupplierEvaluationResults() {
   ${productsHtml}
   ${attachmentsHtml}
   ${declHtml}
+  ${halalHtml}
   ${answersHtml}
 
   <div class="footer">© Al Mawashi — Quality &amp; Food Safety System</div>
@@ -2150,6 +2224,31 @@ export default function SupplierEvaluationResults() {
             })}
           </div>
 
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...muted, whiteSpace: "nowrap" }}>{t.filterHalal}:</span>
+            {["all", "missing", "requested", "received"].map((key) => {
+              const active = halalFilter === key;
+              const c = HALAL_STATUS_STYLE[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setHalalFilter(key)}
+                  style={{
+                    ...btn,
+                    padding: "7px 11px",
+                    fontSize: 12,
+                    background: active ? (c ? c.bg : "linear-gradient(135deg, #0ea5e9, #22c55e)") : "rgba(255,255,255,0.95)",
+                    borderColor: active ? (c ? c.border : "rgba(14,165,233,0.4)") : "rgba(15,23,42,0.16)",
+                    color: active ? (c ? c.fg : "#fff") : "#0f172a",
+                  }}
+                >
+                  {key === "all" ? t.halalAll : t["halal_" + key]}
+                </button>
+              );
+            })}
+          </div>
+
           <div style={muted}>
             {t.total}: {filtered.length}
           </div>
@@ -2227,6 +2326,29 @@ export default function SupplierEvaluationResults() {
                         >
                           {supTypeLabel}
                         </span>
+                        {halalApplies(supType) ? (() => {
+                          const hs = rowHalalStatus(r);
+                          const hc = HALAL_STATUS_STYLE[hs];
+                          return (
+                            <div style={{ marginTop: 6 }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "4px 9px",
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 900,
+                                  background: hc.bg,
+                                  color: hc.fg,
+                                  border: `1px solid ${hc.border}`,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {t.filterHalal}: {t["halal_" + hs]}
+                              </span>
+                            </div>
+                          );
+                        })() : null}
                       </td>
 
                       <td style={tdAlign}>{recDate}</td>
@@ -2919,6 +3041,23 @@ export default function SupplierEvaluationResults() {
                   </div>
                 );
               })()}
+
+              {/* Halal declaration — print for the supplier, attach the signed copy + certificate */}
+              <HalalDeclarationPanel
+                lang={lang}
+                payload={openedPayload}
+                supplierType={openedSupplierType}
+                fields={openedFields}
+                products={openedProductsList}
+                buyer={getActiveCompanyName() || "Al Mawashi"}
+                refNo={String(openedPayload?.public?.token || "")}
+                submissionFiles={openedHalalFiles}
+                uploadFile={uploadViaServer}
+                onSave={saveHalal}
+                onOpenFile={setOpenAttachment}
+                btn={btn}
+                input={input}
+              />
 
               {/* Attachments */}
               <div
