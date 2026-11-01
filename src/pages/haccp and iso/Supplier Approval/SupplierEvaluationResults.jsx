@@ -1,5 +1,5 @@
 // D:\inspection-react-full\src\pages\haccp and iso\Supplier Approval\SupplierEvaluationResults.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
 import { getPublicOrigin } from "../../../config/publicOrigin";
@@ -91,6 +91,20 @@ const UI = {
     filterType: "Filter by Type",
     allTypes: "All Types",
     filterHalal: "Halal declaration",
+    tabOverview: "Overview",
+    tabQuestions: "Questions",
+    tabDocs: "Documents",
+    tabNotes: "Notes",
+    kpiTotal: "Suppliers",
+    kpiCompliance: "Avg. compliance",
+    kpiHalalMissing: "Halal missing / expired",
+    kpiDeclMissing: "Declaration not signed",
+    compliance: "Compliance",
+    declShortOk: "Declaration ✓",
+    declShortNo: "No declaration",
+    pickSupplier: "Select a supplier from the list to see the evaluation.",
+    searchShortPh: "Search supplier...",
+    typeAll: "All types",
     halalAll: "All",
     halal_missing: "Not received",
     halal_requested: "Requested",
@@ -193,6 +207,20 @@ const UI = {
     filterType: "تصفية حسب النوع",
     allTypes: "جميع الأنواع",
     filterHalal: "إقرار الحلال",
+    tabOverview: "نظرة عامة",
+    tabQuestions: "الأسئلة",
+    tabDocs: "المستندات",
+    tabNotes: "الملاحظات",
+    kpiTotal: "الموردون",
+    kpiCompliance: "متوسط المطابقة",
+    kpiHalalMissing: "حلال ناقص / منتهي",
+    kpiDeclMissing: "إقرار غير موقَّع",
+    compliance: "المطابقة",
+    declShortOk: "الإقرار ✓",
+    declShortNo: "لا يوجد إقرار",
+    pickSupplier: "اختر مورداً من القائمة لعرض التقييم.",
+    searchShortPh: "ابحث عن مورد...",
+    typeAll: "كل الأنواع",
     halalAll: "الكل",
     halal_missing: "لم يصل",
     halal_requested: "تم الطلب",
@@ -1131,6 +1159,41 @@ function rowHalalStatus(r) {
   return halalStatus(getPayloadObj(r) || {}, files);
 }
 
+/* Compliance = YES out of answered (YES + NO); N/A is left out */
+function compliancePct(c) {
+  const y = c?.yesCount || 0;
+  const n = c?.noCount || 0;
+  return y + n ? Math.round((y * 100) / (y + n)) : null;
+}
+function pctStyle(pct) {
+  if (pct == null) return { bg: "#f1f5f9", fg: "#475569", border: "#cbd5e1" };
+  if (pct >= 80) return HALAL_STATUS_STYLE.received;
+  if (pct >= 60) return HALAL_STATUS_STYLE.requested;
+  return HALAL_STATUS_STYLE.missing;
+}
+function rowCounts(p) {
+  return p?.meta?.counts || calcCounts(p?.answers || p?.public?.submission?.answers || {});
+}
+function rowDeclAgreed(p) {
+  const d = p?.declaration || p?.public?.submission?.declaration || p?.public?.declaration || p?.submission?.declaration || null;
+  const o = asObject(d) || (d && typeof d === "object" ? d : null);
+  return !!o?.agreed || !!o?.file?.url;
+}
+const chip = (c, extra) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "3px 9px",
+  borderRadius: 999,
+  fontSize: 11.5,
+  fontWeight: 900,
+  background: c.bg,
+  color: c.fg,
+  border: `1px solid ${c.border}`,
+  whiteSpace: "nowrap",
+  ...extra,
+});
+
 function FieldLine({ label, value }) {
   if (!value) return null;
   return (
@@ -1275,6 +1338,11 @@ export default function SupplierEvaluationResults() {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [halalFilter, setHalalFilter] = useState("all");
+  const [detailTab, setDetailTab] = useState("overview");
+  // Wide screens: list + detail side by side, each scrolling on its own.
+  const [isWide, setIsWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1100px)").matches);
+  const bodyRef = useRef(null);
+  const [bodyH, setBodyH] = useState(640);
   const [openId, setOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [openAttachment, setOpenAttachment] = useState(null);
@@ -1773,6 +1841,51 @@ export default function SupplierEvaluationResults() {
     win.focus();
   };
 
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1100px)");
+    const onChange = () => setIsWide(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // The two columns fill the screen below the top bar (page sticky is dead under #root overflow)
+  useEffect(() => {
+    const calc = () => {
+      const el = bodyRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setBodyH(Math.max(480, window.innerHeight - top - 16));
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, [isWide, lang]);
+
+  useEffect(() => {
+    setDetailTab("overview");
+  }, [openId]);
+
+  const stats = useMemo(() => {
+    let halalMissing = 0;
+    let declMissing = 0;
+    let sum = 0;
+    let n = 0;
+    (items || []).forEach((r) => {
+      const p = getPayloadObj(r) || {};
+      if (halalApplies(getSupplierType(p))) {
+        const hs = rowHalalStatus(r);
+        if (hs === "missing" || hs === "expired") halalMissing += 1;
+      }
+      if (!rowDeclAgreed(p)) declMissing += 1;
+      const pct = compliancePct(rowCounts(p));
+      if (pct != null) {
+        sum += pct;
+        n += 1;
+      }
+    });
+    return { total: (items || []).length, halalMissing, declMissing, avg: n ? Math.round(sum / n) : null };
+  }, [items]);
+
   // Reset notes-editing state when the opened report changes (or modal closes)
   useEffect(() => {
     setEditingNotes(false);
@@ -2133,436 +2246,329 @@ export default function SupplierEvaluationResults() {
   return (
     <main style={pageStyle}>
       <div style={wrap}>
-        {/* Top header */}
-        <div style={{ ...panel, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 26, fontWeight: 980 }}>{t.title}</div>
-            <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>{t.sub}</div>
+        {/* Top bar: title, KPIs, actions */}
+        <div style={{ ...panel, padding: "14px 18px", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+          <div style={{ minWidth: 220 }}>
+            <div style={{ fontSize: 22, fontWeight: 980 }}>{t.title}</div>
+            <div style={{ marginTop: 2, color: "#64748b", fontWeight: 800, fontSize: 13 }}>{t.sub}</div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {/* Language toggle */}
-            {!hideSectionLangToggle() && (
-            <span
-              style={{
-                padding: "9px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(15,23,42,0.14)",
-                background: "rgba(255,255,255,0.95)",
-                fontWeight: 950,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 15,
-              }}
-            >
-              {t.lang}:
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {[
+              { key: "total", label: t.kpiTotal, value: stats.total, c: { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" }, onClick: () => { setTypeFilter("all"); setHalalFilter("all"); setQuery(""); } },
+              { key: "avg", label: t.kpiCompliance, value: stats.avg == null ? "—" : stats.avg + "%", c: pctStyle(stats.avg) },
+              { key: "halal", label: t.kpiHalalMissing, value: stats.halalMissing, c: stats.halalMissing ? HALAL_STATUS_STYLE.missing : HALAL_STATUS_STYLE.received, onClick: () => setHalalFilter("missing") },
+              { key: "decl", label: t.kpiDeclMissing, value: stats.declMissing, c: stats.declMissing ? HALAL_STATUS_STYLE.requested : HALAL_STATUS_STYLE.received },
+            ].map((k) => (
               <button
-                onClick={() => setLang("en")}
-                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 950, opacity: lang === "en" ? 1 : 0.55 }}
+                key={k.key}
+                type="button"
+                onClick={k.onClick}
+                style={{
+                  minWidth: 130,
+                  padding: "8px 14px",
+                  borderRadius: 14,
+                  border: "1px solid " + k.c.border,
+                  background: k.c.bg,
+                  color: k.c.fg,
+                  cursor: k.onClick ? "pointer" : "default",
+                  textAlign: "start",
+                }}
               >
-                {t.enBtn}
+                <div style={{ fontSize: 22, fontWeight: 990, lineHeight: 1.1 }}>{k.value}</div>
+                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85 }}>{k.label}</div>
               </button>
-              <span style={{ opacity: 0.35 }}>•</span>
-              <button
-                onClick={() => setLang("ar")}
-                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 950, opacity: lang === "ar" ? 1 : 0.55 }}
-              >
-                {t.arBtn}
-              </button>
-            </span>
-            )}
+            ))}
+          </div>
 
-            <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {!hideSectionLangToggle() && (
+              <span style={{ ...btn, padding: "8px 12px", display: "inline-flex", gap: 8, cursor: "default" }}>
+                <button onClick={() => setLang("en")} style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 950, opacity: lang === "en" ? 1 : 0.5 }}>
+                  {t.enBtn}
+                </button>
+                <span style={{ opacity: 0.35 }}>•</span>
+                <button onClick={() => setLang("ar")} style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 950, opacity: lang === "ar" ? 1 : 0.5 }}>
+                  {t.arBtn}
+                </button>
+              </span>
+            )}
+            <button style={{ ...btn, padding: "9px 13px" }} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
               {t.back}
             </button>
-            <button style={btn} disabled={loading} onClick={fetchData}>
+            <button style={{ ...btn, padding: "9px 13px" }} disabled={loading} onClick={fetchData}>
               {loading ? t.refreshing : t.refresh}
             </button>
           </div>
         </div>
 
-        {/* Search + Type filter */}
-        <div style={{ ...panel, marginTop: 14, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-          <div style={{ fontWeight: 950, color: "#0f172a", fontSize: 16 }}>{t.search}</div>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} style={input} placeholder={t.searchPh} />
+        {/* Body: supplier list + evaluation detail */}
+        <div
+          ref={bodyRef}
+          style={{
+            display: isWide ? "grid" : "block",
+            gridTemplateColumns: "minmax(320px, 390px) minmax(0, 1fr)",
+            gap: 14,
+            marginTop: 14,
+            height: isWide ? bodyH : "auto",
+          }}
+        >
+          <aside style={{ ...panel, padding: 12, display: "flex", flexDirection: "column", gap: 8, minHeight: 0, height: isWide ? "100%" : "auto" }}>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...input, padding: "10px 12px", fontSize: 14 }} placeholder={t.searchShortPh} />
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ ...muted, whiteSpace: "nowrap" }}>{t.filterType}:</span>
-            <button
-              type="button"
-              onClick={() => setTypeFilter("all")}
-              style={{
-                ...btn,
-                padding: "7px 11px",
-                fontSize: 12,
-                background: typeFilter === "all" ? "linear-gradient(135deg, #0ea5e9, #22c55e)" : "rgba(255,255,255,0.95)",
-                color: typeFilter === "all" ? "#fff" : "#0f172a",
-                borderColor: typeFilter === "all" ? "rgba(14,165,233,0.4)" : "rgba(15,23,42,0.16)",
-              }}
-            >
-              {t.allTypes}
-            </button>
-            {Object.entries(SUPPLIER_TYPE_LABELS).map(([key, v]) => {
-              const active = typeFilter === key;
-              const c = getSupplierTypeBadgeColor(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setTypeFilter(key)}
-                  style={{
-                    ...btn,
-                    padding: "7px 11px",
-                    fontSize: 12,
-                    background: active ? c.bg : "rgba(255,255,255,0.95)",
-                    borderColor: active ? c.border : "rgba(15,23,42,0.16)",
-                    color: active ? c.fg : "#0f172a",
-                  }}
-                >
-                  {lang === "ar" ? v.ar : v.en}
-                </button>
-              );
-            })}
-          </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {[["all", { en: t.typeAll, ar: t.typeAll }], ...Object.entries(SUPPLIER_TYPE_LABELS)].map(([key, v]) => {
+                const active = typeFilter === key;
+                const c = key === "all" ? { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" } : getSupplierTypeBadgeColor(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTypeFilter(key)}
+                    style={{ ...chip(active ? c : { bg: "#fff", fg: "#475569", border: "rgba(15,23,42,0.16)" }), cursor: "pointer", padding: "5px 10px" }}
+                  >
+                    {lang === "ar" ? v.ar : v.en}
+                  </button>
+                );
+              })}
+            </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ ...muted, whiteSpace: "nowrap" }}>{t.filterHalal}:</span>
-            {["all", "missing", "requested", "received", "expired"].map((key) => {
-              const active = halalFilter === key;
-              const c = HALAL_STATUS_STYLE[key];
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setHalalFilter(key)}
-                  style={{
-                    ...btn,
-                    padding: "7px 11px",
-                    fontSize: 12,
-                    background: active ? (c ? c.bg : "linear-gradient(135deg, #0ea5e9, #22c55e)") : "rgba(255,255,255,0.95)",
-                    borderColor: active ? (c ? c.border : "rgba(14,165,233,0.4)") : "rgba(15,23,42,0.16)",
-                    color: active ? (c ? c.fg : "#fff") : "#0f172a",
-                  }}
-                >
-                  {key === "all" ? t.halalAll : t["halal_" + key]}
-                </button>
-              );
-            })}
-          </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>{t.filterHalal}:</span>
+              {["all", "missing", "requested", "received", "expired"].map((key) => {
+                const active = halalFilter === key;
+                const c = HALAL_STATUS_STYLE[key] || { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" };
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setHalalFilter(key)}
+                    style={{ ...chip(active ? c : { bg: "#fff", fg: "#475569", border: "rgba(15,23,42,0.16)" }), cursor: "pointer", padding: "5px 10px" }}
+                  >
+                    {key === "all" ? t.halalAll : t["halal_" + key]}
+                  </button>
+                );
+              })}
+            </div>
 
-          <div style={muted}>
-            {t.total}: {filtered.length}
-          </div>
-        </div>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+              {t.total}: {filtered.length}
+            </div>
 
-        {/* List */}
-        <div style={{ ...panel, marginTop: 14 }}>
-          {filtered.length === 0 ? (
-            <div style={{ fontWeight: 900, color: "#64748b" }}>{loading ? t.loading : t.none}</div>
-          ) : (
-            <div className="sa-table-wrap">
-            <table className="sa-table" style={table}>
-              <thead>
-                <tr>
-                  <th style={thAlign}>{t.supplier}</th>
-                  <th style={thAlign}>{t.supplierType}</th>
-                  <th style={thAlign}>{t.recordDate}</th>
-                  <th style={thAlign}>{t.submittedAt}</th>
-                  <th style={thAlign}>{t.lastUpdate}</th>
-                  <th style={thAlign}>{t.yesNoNa}</th>
-                  <th style={thAlign}>{t.action}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => {
-                  const rep = getReportObj(r);
+            <div style={{ flex: 1, minHeight: 0, overflowY: isWide ? "auto" : "visible", display: "grid", gap: 8, alignContent: "start", paddingInlineEnd: 2 }}>
+              {filtered.length === 0 ? (
+                <div style={{ fontWeight: 900, color: "#64748b", padding: 12 }}>{loading ? t.loading : t.none}</div>
+              ) : (
+                filtered.map((r) => {
+                  const id = String(getReportObj(r)?.id ?? r?.id);
                   const p = getPayloadObj(r) || {};
                   const supplier = p?.fields?.company_name || p?.public?.submission?.fields?.company_name || "—";
-                  const recDate = getRecordDate(r) || "—";
-                  const submittedAt = getSubmittedAtIso(r) || p?.meta?.savedAt || p?.public?.savedAt || p?.public?.submission?.savedAt || "";
-                  const lastUpd = getLastUpdateIso(r) || "";
-                  const answers = p?.answers || p?.public?.submission?.answers || {};
-                  const c = p?.meta?.counts || calcCounts(answers);
-                  const token = String(p?.public?.token || "");
-                  const isDeleting = String(deletingId) === String(rep?.id ?? r?.id);
+                  const c = rowCounts(p);
+                  const pct = compliancePct(c);
+                  const pc = pctStyle(pct);
                   const supType = getSupplierType(p);
-                  const supTypeLabel = supType ? getSupplierTypeLabel(supType, lang) : (lang === "ar" ? "غير محدَّد" : "Unspecified");
-                  const supTypeColor = getSupplierTypeBadgeColor(supType);
-
+                  const typeC = getSupplierTypeBadgeColor(supType);
+                  const typeLabel = supType ? getSupplierTypeLabel(supType, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
+                  const hs = halalApplies(supType) ? rowHalalStatus(r) : null;
+                  const declOk = rowDeclAgreed(p);
+                  const active = String(openId) === id;
+                  const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
                   return (
-                    <tr key={String(rep?.id ?? r?.id)} style={rowCard}>
-                      <td style={tdAlign}>
-                        <div style={{ fontWeight: 980 }}>{supplier}</div>
-                        <div style={muted}>
-                          {t.token}: {token || "—"}{" "}
-                          {token ? (
-                            <button
-                              style={{
-                                ...btn,
-                                padding: "6px 10px",
-                                marginLeft: isRTL ? 0 : 8,
-                                marginRight: isRTL ? 8 : 0,
-                              }}
-                              onClick={() => copyText(token)}
-                            >
-                              {t.copy}
-                            </button>
-                          ) : null}
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setOpenId(id)}
+                      style={{
+                        textAlign: "start",
+                        padding: "11px 12px",
+                        borderRadius: 14,
+                        cursor: "pointer",
+                        background: active ? "linear-gradient(135deg, #e0f2fe, #f0fdf4)" : "#fff",
+                        border: active ? "2px solid #0ea5e9" : "1px solid rgba(15,23,42,0.12)",
+                        boxShadow: active ? "0 6px 16px rgba(14,165,233,0.18)" : "0 2px 6px rgba(2,132,199,0.05)",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontWeight: 980, fontSize: 15, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={supplier}>
+                          {supplier}
                         </div>
-                      </td>
-
-                      <td style={tdAlign}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 900,
-                            background: supTypeColor.bg,
-                            color: supTypeColor.fg,
-                            border: `1px solid ${supTypeColor.border}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {supTypeLabel}
-                        </span>
-                        {halalApplies(supType) ? (() => {
-                          const hs = rowHalalStatus(r);
-                          const hc = HALAL_STATUS_STYLE[hs];
-                          return (
-                            <div style={{ marginTop: 6 }}>
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  padding: "4px 9px",
-                                  borderRadius: 999,
-                                  fontSize: 11,
-                                  fontWeight: 900,
-                                  background: hc.bg,
-                                  color: hc.fg,
-                                  border: `1px solid ${hc.border}`,
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {t.filterHalal}: {t["halal_" + hs]}
-                              </span>
-                            </div>
-                          );
-                        })() : null}
-                      </td>
-
-                      <td style={tdAlign}>{recDate}</td>
-                      <td style={tdAlign}>{fmtDateTime(submittedAt)}</td>
-                      <td style={tdAlign}>{fmtDateTime(lastUpd)}</td>
-
-                      <td style={tdAlign}>
-                        <div style={{ fontWeight: 980 }}>
-                          {t.yes}: {c?.yesCount ?? 0} &nbsp;•&nbsp; {t.no}: {c?.noCount ?? 0} &nbsp;•&nbsp; {t.na}: {c?.naCount ?? 0}
-                        </div>
-                        <div style={muted}>
-                          {t.totalQ}: {c?.total ?? 0}
-                        </div>
-                      </td>
-
-                      <td style={tdAlign}>
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-start" }}>
-                          <button style={btnPrimary} onClick={() => setOpenId(String(rep?.id ?? r?.id))} disabled={isDeleting}>
-                            {t.view}
-                          </button>
-                          <button style={btnDanger} onClick={() => handleDelete(r)} disabled={isDeleting} data-delete-action="true">
-                            {isDeleting ? t.deleting : t.del}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                        <span style={chip(pc, { fontSize: 12.5 })}>{pct == null ? "—" : pct + "%"}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={chip(typeC)}>{typeLabel}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{getRecordDate(r) || "—"}</span>
+                      </div>
+                      <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", background: "#e2e8f0" }}>
+                        <span style={{ width: ((c?.yesCount || 0) * 100) / tot + "%", background: "#22c55e" }} />
+                        <span style={{ width: ((c?.noCount || 0) * 100) / tot + "%", background: "#ef4444" }} />
+                        <span style={{ width: ((c?.naCount || 0) * 100) / tot + "%", background: "#94a3b8" }} />
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {hs ? <span style={chip(HALAL_STATUS_STYLE[hs])}>{t.filterHalal}: {t["halal_" + hs]}</span> : null}
+                        <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested)}>{declOk ? t.declShortOk : t.declShortNo}</span>
+                      </div>
+                    </button>
                   );
-                })}
-              </tbody>
-            </table>
+                })
+              )}
             </div>
-          )}
-        </div>
+          </aside>
 
-        {/* Details modal */}
+        {/* Evaluation detail — side panel on wide screens, full-screen sheet on small ones */}
         {opened ? (
           <div
-            role="dialog"
-            aria-modal="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(2,6,23,0.62)",
-              display: "flex",
-              alignItems: "stretch",
-              justifyContent: "stretch",
-              padding: 0,
-              overflowY: "auto",
-              zIndex: 9999,
-              direction: isRTL ? "rtl" : "ltr",
-            }}
-            onClick={() => setOpenId(null)}
+            role={isWide ? undefined : "dialog"}
+            aria-modal={isWide ? undefined : "true"}
+            style={
+              isWide
+                ? { ...panel, padding: 0, minHeight: 0, height: "100%", overflowY: "auto", direction: isRTL ? "rtl" : "ltr" }
+                : { position: "fixed", inset: 0, background: "rgba(2,6,23,0.62)", overflowY: "auto", zIndex: 9999, direction: isRTL ? "rtl" : "ltr" }
+            }
+            onClick={isWide ? undefined : () => setOpenId(null)}
           >
             <div
               style={{
                 width: "100%",
-                minHeight: "100vh",
+                minHeight: isWide ? "auto" : "100vh",
                 background: "linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)",
-                border: "none",
-                borderRadius: 0,
-                boxShadow: "0 24px 70px rgba(2,6,23,0.35)",
-                padding: "28px 32px 48px",
+                padding: isWide ? "0 20px 32px" : "0 16px 40px",
                 boxSizing: "border-box",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 14,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  padding: "18px 22px",
-                  borderRadius: 14,
-                  background: "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(248,250,252,0.65))",
-                  border: "1px solid rgba(15,23,42,0.10)",
-                  boxShadow: "0 4px 12px rgba(2,132,199,0.08)",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 24, fontWeight: 990, color: "#071b2d" }}>
-                    {openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")} — {t.detailsTitle}
-                  </div>
-                  {(() => {
-                    const st = getSupplierType(openedPayload);
-                    const color = getSupplierTypeBadgeColor(st);
-                    const label = st ? getSupplierTypeLabel(st, lang) : (lang === "ar" ? "غير محدَّد" : "Unspecified");
-                    return (
-                      <div style={{ marginTop: 6 }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "6px 12px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 900,
-                            background: color.bg,
-                            color: color.fg,
-                            border: `1px solid ${color.border}`,
-                          }}
-                        >
-                          🏷 {t.supplierType}: {label}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>
-                    {t.recordDate}: <b>{getRecordDate(opened) || "—"}</b> • {t.submittedAt}:{" "}
-                    <b>{fmtDateTime(getSubmittedAtIso(opened) || openedPayload?.meta?.savedAt || openedPayload?.public?.submission?.savedAt)}</b> •{" "}
-                    {t.lastUpdate}: <b>{fmtDateTime(getLastUpdateIso(opened))}</b>
-                  </div>
-                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>
-                    {t.summary} — {t.yes}: <b>{openedCounts.yesCount}</b> • {t.no}: <b>{openedCounts.noCount}</b> • {t.na}:{" "}
-                    <b>{openedCounts.naCount}</b>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {!editMode ? (
-                    <button
-                      style={{
-                        ...btn,
-                        background: "linear-gradient(135deg, #f59e0b, #ef4444)",
-                        color: "#fff",
-                        border: "1px solid rgba(255,255,255,0.85)",
-                        fontWeight: 900,
-                      }}
-                      onClick={startEditMode}
-                      title={t.editEvaluation}
-                    >
-                      {t.editEvaluation}
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        style={{
-                          ...btn,
-                          background: savingEdit
-                            ? "#e2e8f0"
-                            : "linear-gradient(135deg, #22c55e, #16a34a)",
-                          color: savingEdit ? "#94a3b8" : "#fff",
-                          border: savingEdit
-                            ? "1px solid rgba(15,23,42,0.16)"
-                            : "1px solid rgba(34,197,94,0.45)",
-                          cursor: savingEdit ? "not-allowed" : "pointer",
-                          opacity: savingEdit ? 0.7 : 1,
-                          fontWeight: 900,
-                        }}
-                        disabled={savingEdit}
-                        onClick={saveEditMode}
-                      >
-                        {savingEdit ? t.savingEvaluation : t.saveEvaluation}
-                      </button>
-                      <button
-                        style={btn}
-                        disabled={savingEdit}
-                        onClick={cancelEditMode}
-                      >
-                        {t.cancelEdit}
-                      </button>
-                    </>
-                  )}
-
-                  <button
+              {/* Sticky header: supplier, status chips, actions, tabs */}
+              {(() => {
+                const st = getSupplierType(openedPayload);
+                const typeC = getSupplierTypeBadgeColor(st);
+                const typeLabel = st ? getSupplierTypeLabel(st, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
+                const pct = compliancePct(openedCounts);
+                const hs = halalApplies(st) ? halalStatus(openedPayload, openedHalalFiles) : null;
+                const declOk = !!openedDeclaration?.agreed || !!openedDeclaration?.file?.url;
+                const docsCount =
+                  (openedAttachments?.length || 0) +
+                  Object.values(openedFieldAttachments || {}).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
+                const isDeletingOpened = String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id);
+                const small = { ...btn, padding: "8px 12px", fontSize: 13 };
+                const tabs = [
+                  ["overview", "🏢 " + t.tabOverview],
+                  ["questions", "❓ " + t.tabQuestions + " (" + (openedCounts.total ?? openedAnswerPairs.length) + ")"],
+                  ["docs", "📎 " + t.tabDocs + " (" + docsCount + ")"],
+                  ["notes", "📝 " + t.tabNotes + (openedPayload?.notes ? " •" : "")],
+                ];
+                return (
+                  <div
                     style={{
-                      ...btn,
-                      background: "linear-gradient(135deg, #0ea5e9, #8b5cf6)",
-                      color: "#fff",
-                      border: "1px solid rgba(255,255,255,0.85)",
-                      fontWeight: 900,
-                      opacity: editMode ? 0.55 : 1,
-                      pointerEvents: editMode ? "none" : "auto",
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 5,
+                      background: "rgba(255,255,255,0.97)",
+                      backdropFilter: "blur(6px)",
+                      borderBottom: "1px solid rgba(15,23,42,0.10)",
+                      margin: isWide ? "0 -20px" : "0 -16px",
+                      padding: isWide ? "16px 20px 0" : "14px 16px 0",
                     }}
-                    onClick={downloadPdf}
-                    title={t.downloadPdf}
-                    disabled={editMode}
                   >
-                    {t.downloadPdf}
-                  </button>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 21, fontWeight: 990, color: "#071b2d" }}>{openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")}</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                          <span style={chip(typeC)}>{typeLabel}</span>
+                          <span style={chip(pctStyle(pct))}>
+                            {t.compliance}: {pct == null ? "—" : pct + "%"}
+                          </span>
+                          <span style={chip({ bg: "#f8fafc", fg: "#334155", border: "#cbd5e1" })}>
+                            ✔ {openedCounts.yesCount} · ✖ {openedCounts.noCount} · — {openedCounts.naCount}
+                          </span>
+                          {hs ? <span style={chip(HALAL_STATUS_STYLE[hs])}>{t.filterHalal}: {t["halal_" + hs]}</span> : null}
+                          <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested)}>{declOk ? t.declShortOk : t.declShortNo}</span>
+                        </div>
+                        <div style={{ marginTop: 6, color: "#64748b", fontWeight: 800, fontSize: 12.5 }}>
+                          {t.recordDate}: <b>{getRecordDate(opened) || "—"}</b> · {t.submittedAt}:{" "}
+                          <b>{fmtDateTime(getSubmittedAtIso(opened) || openedPayload?.meta?.savedAt || openedPayload?.public?.submission?.savedAt)}</b> · {t.lastUpdate}:{" "}
+                          <b>{fmtDateTime(getLastUpdateIso(opened))}</b>
+                        </div>
+                      </div>
 
-                  {openedPayload?.public?.token ? (
-                    <>
-                      <button style={btn} onClick={() => copyText(buildPublicUrl(openedPayload.public.token))} disabled={editMode}>
-                        {t.copyLink}
-                      </button>
-                      <button
-                        style={btnPrimary}
-                        onClick={() => {
-                          const u = buildPublicUrl(openedPayload.public.token);
-                          if (u) window.open(u, "_blank", "noopener,noreferrer");
-                        }}
-                        disabled={editMode}
-                      >
-                        {t.openLink}
-                      </button>
-                    </>
-                  ) : null}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {!editMode ? (
+                          <button style={{ ...small, background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }} onClick={startEditMode}>
+                            {t.editEvaluation}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              style={{ ...small, background: savingEdit ? "#e2e8f0" : "#16a34a", color: savingEdit ? "#94a3b8" : "#fff", borderColor: "#16a34a" }}
+                              disabled={savingEdit}
+                              onClick={saveEditMode}
+                            >
+                              {savingEdit ? t.savingEvaluation : t.saveEvaluation}
+                            </button>
+                            <button style={small} disabled={savingEdit} onClick={cancelEditMode}>
+                              {t.cancelEdit}
+                            </button>
+                          </>
+                        )}
+                        <button style={{ ...small, opacity: editMode ? 0.5 : 1 }} onClick={downloadPdf} disabled={editMode}>
+                          {t.downloadPdf}
+                        </button>
+                        {openedPayload?.public?.token ? (
+                          <>
+                            <button style={small} onClick={() => copyText(buildPublicUrl(openedPayload.public.token))} disabled={editMode}>
+                              🔗 {t.copyLink}
+                            </button>
+                            <button
+                              style={small}
+                              onClick={() => {
+                                const u = buildPublicUrl(openedPayload.public.token);
+                                if (u) window.open(u, "_blank", "noopener,noreferrer");
+                              }}
+                              disabled={editMode}
+                            >
+                              ↗ {t.openLink}
+                            </button>
+                          </>
+                        ) : null}
+                        <button style={{ ...btnDanger, padding: "8px 12px", fontSize: 13 }} disabled={editMode || isDeletingOpened} onClick={() => handleDelete(opened)} data-delete-action="true">
+                          {isDeletingOpened ? t.deleting : t.del}
+                        </button>
+                        <button style={small} onClick={() => setOpenId(null)} disabled={savingEdit}>
+                          {t.close}
+                        </button>
+                      </div>
+                    </div>
 
-                  <button
-                    style={btnDanger}
-                    disabled={editMode || String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id)}
-                    onClick={() => handleDelete(opened)}
-                   data-delete-action="true">
-                    {String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id) ? t.deleting : t.del}
-                  </button>
-
-                  <button style={btn} onClick={() => setOpenId(null)} disabled={savingEdit}>
-                    {t.close}
-                  </button>
-                </div>
-              </div>
+                    <div role="tablist" style={{ display: "flex", gap: 2, marginTop: 12, overflowX: "auto" }}>
+                      {tabs.map(([key, label]) => {
+                        const on = detailTab === key;
+                        return (
+                          <button
+                            key={key}
+                            role="tab"
+                            aria-selected={on}
+                            type="button"
+                            onClick={() => setDetailTab(key)}
+                            style={{
+                              padding: "10px 16px",
+                              border: "none",
+                              borderBottom: on ? "3px solid #0ea5e9" : "3px solid transparent",
+                              background: "transparent",
+                              color: on ? "#0c4a6e" : "#64748b",
+                              fontWeight: on ? 980 : 850,
+                              fontSize: 14,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* ✏ Edit-mode banner + flash */}
               {editFlash ? (
@@ -2616,6 +2622,8 @@ export default function SupplierEvaluationResults() {
                 </div>
               ) : null}
 
+              {detailTab === "overview" && (
+              <>
               {/* ✅ ALL submitted fields — dynamic list, nothing gets missed */}
               <div
                 style={{
@@ -2774,6 +2782,11 @@ export default function SupplierEvaluationResults() {
                 </div>
               )}
 
+              </>
+              )}
+
+              {detailTab === "docs" && (
+              <>
               {/* Declaration — always shown, editable in edit mode */}
               {(() => {
                 const displayDecl = editMode ? (declarationDraft || {}) : (openedDeclaration || {});
@@ -3320,7 +3333,11 @@ export default function SupplierEvaluationResults() {
                 })()}
               </div>
 
+              </>
+              )}
+
               {/* YES/NO questions */}
+              {detailTab === "questions" && (
               <div
                 style={{
                   marginTop: 16,
@@ -3422,8 +3439,11 @@ export default function SupplierEvaluationResults() {
                     );
                   })}
                 </div>
+              </div>
+              )}
 
-                {/* ✏ Internal Notes — always visible, with inline Edit/Save */}
+                {/* ✏ Internal Notes — inline Edit/Save */}
+                {detailTab === "notes" && (
                 <div
                   style={{
                     marginTop: 16,
@@ -3582,10 +3602,18 @@ export default function SupplierEvaluationResults() {
                     </div>
                   )}
                 </div>
-              </div>
+                )}
             </div>
           </div>
+        ) : isWide ? (
+          <section style={{ ...panel, height: "100%", display: "grid", placeItems: "center", color: "#64748b", fontWeight: 900, textAlign: "center" }}>
+            <div>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>📋</div>
+              {t.pickSupplier}
+            </div>
+          </section>
         ) : null}
+        </div>
 
         {/* attachment popup */}
         {openAttachment ? <AttachmentModal file={openAttachment} onClose={() => setOpenAttachment(null)} t={t} /> : null}
