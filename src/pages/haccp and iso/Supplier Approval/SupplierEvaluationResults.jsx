@@ -95,6 +95,7 @@ const UI = {
     halal_missing: "Not received",
     halal_requested: "Requested",
     halal_received: "Received",
+    halal_expired: "Expired",
     allergenDeclaration: "Allergens declared",
     serviceScope: "Service Scope",
     downloadPdf: "⬇ Download PDF",
@@ -196,6 +197,7 @@ const UI = {
     halal_missing: "لم يصل",
     halal_requested: "تم الطلب",
     halal_received: "تم الاستلام",
+    halal_expired: "منتهي",
     allergenDeclaration: "مسببات الحساسية المصرَّح بها",
     serviceScope: "نطاق الخدمة",
     downloadPdf: "⬇ تنزيل PDF",
@@ -2226,7 +2228,7 @@ export default function SupplierEvaluationResults() {
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...muted, whiteSpace: "nowrap" }}>{t.filterHalal}:</span>
-            {["all", "missing", "requested", "received"].map((key) => {
+            {["all", "missing", "requested", "received", "expired"].map((key) => {
               const active = halalFilter === key;
               const c = HALAL_STATUS_STYLE[key];
               return (

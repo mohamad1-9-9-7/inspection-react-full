@@ -2,7 +2,7 @@
 // Print a pre-filled declaration for the supplier, then attach the signed +
 // stamped copy and their Halal certificate when they send it back.
 import React, { useEffect, useState } from "react";
-import { getHalal, halalStatus, halalApplies, printHalalDeclaration, HALAL_STATUS_STYLE } from "./halalDeclaration";
+import { getHalal, halalStatus, halalApplies, halalValidUntil, printHalalDeclaration, HALAL_STATUS_STYLE } from "./halalDeclaration";
 
 const T = {
   en: {
@@ -13,6 +13,8 @@ const T = {
     missing: "Not received from supplier",
     requestedOn: "Requested on",
     receivedOn: "Received on",
+    validUntil: "Valid until",
+    renew: "Expired — print a new declaration for renewal",
     fromSubmission: "Found in the supplier's uploaded files",
     print: "🖨 Print declaration form",
     printLang: "Form language",
@@ -44,6 +46,8 @@ const T = {
     missing: "لم يصل من المورد",
     requestedOn: "تاريخ الطلب",
     receivedOn: "تاريخ الاستلام",
+    validUntil: "ساري حتى",
+    renew: "منتهي — اطبع إقراراً جديداً للتجديد",
     fromSubmission: "موجود ضمن الملفات التي رفعها المورد",
     print: "🖨 طباعة نموذج الإقرار",
     printLang: "لغة النموذج",
@@ -93,6 +97,7 @@ export default function HalalDeclarationPanel({
   const halal = getHalal(payload);
   const status = halalStatus(payload, submissionFiles);
   const sc = HALAL_STATUS_STYLE[status];
+  const validUntil = halal.declarationFile?.url ? halalValidUntil(halal) : null;
 
   const [printLang, setPrintLang] = useState("en");
   const [busy, setBusy] = useState(""); // "declarationFile" | "certificateFile" | "save"
@@ -137,7 +142,8 @@ export default function HalalDeclarationPanel({
     try {
       const up = await uploadFile(file);
       const patch = { [which]: { ...up, uploadedAt: new Date().toISOString() } };
-      if (which === "declarationFile" && !halal.receivedAt) patch.receivedAt = new Date().toISOString();
+      // a new signed copy (first one or a renewal) restarts the one-year validity
+      if (which === "declarationFile") patch.receivedAt = new Date().toISOString();
       if (which === "certificateFile" && draft.hasCertificate == null) patch.hasCertificate = true;
       await onSave({ ...halal, ...patch });
     } catch (e) {
@@ -199,11 +205,16 @@ export default function HalalDeclarationPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
         <div style={{ fontWeight: 990, fontSize: 17, color: "#0f766e" }}>📜 {t.title}</div>
         <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 900, background: sc.bg, color: sc.fg, border: `1px solid ${sc.border}` }}>
-          {status === "received" ? "✅ " : status === "requested" ? "⏳ " : "❌ "}
-          {t[status]}
+          {{ received: "✅ ", expired: "⌛ ", requested: "⏳ " }[status] || "❌ "}
+          {status === "expired" ? t.renew : t[status]}
         </span>
         {halal.requestedAt ? <span style={{ fontSize: 13, color: "#64748b", fontWeight: 850 }}>{t.requestedOn}: {fmtDate(halal.requestedAt, lang)}</span> : null}
         {halal.receivedAt ? <span style={{ fontSize: 13, color: "#64748b", fontWeight: 850 }}>{t.receivedOn}: {fmtDate(halal.receivedAt, lang)}</span> : null}
+        {validUntil ? (
+          <span style={{ fontSize: 13, fontWeight: 900, color: status === "expired" ? "#9a3412" : "#166534" }}>
+            {t.validUntil}: {fmtDate(validUntil, lang)}
+          </span>
+        ) : null}
       </div>
       {!halalApplies(supplierType) ? <div style={{ fontSize: 13, color: "#64748b", fontWeight: 850, marginBottom: 6 }}>{t.optional}</div> : null}
 
