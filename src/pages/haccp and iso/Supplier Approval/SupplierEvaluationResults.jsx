@@ -91,6 +91,7 @@ const UI = {
     filterType: "Filter by Type",
     allTypes: "All Types",
     filterHalal: "Halal declaration",
+    halalShort: "Halal",
     tabOverview: "Overview",
     tabQuestions: "Questions",
     tabDocs: "Documents",
@@ -207,6 +208,7 @@ const UI = {
     filterType: "تصفية حسب النوع",
     allTypes: "جميع الأنواع",
     filterHalal: "إقرار الحلال",
+    halalShort: "حلال",
     tabOverview: "نظرة عامة",
     tabQuestions: "الأسئلة",
     tabDocs: "المستندات",
@@ -1865,6 +1867,12 @@ export default function SupplierEvaluationResults() {
     setDetailTab("overview");
   }, [openId]);
 
+  useEffect(() => {
+    if (!isWide || !filtered.length) return;
+    const ids = filtered.map((r) => String(getReportObj(r)?.id ?? r?.id));
+    if (!openId || !ids.includes(String(openId))) setOpenId(ids[0]);
+  }, [isWide, filtered, openId]);
+
   const stats = useMemo(() => {
     let halalMissing = 0;
     let declMissing = 0;
@@ -2245,12 +2253,20 @@ export default function SupplierEvaluationResults() {
 
   return (
     <main style={pageStyle}>
+      <style>{`
+        #root .ser-h1.ser-h1 { font-size: calc(21px * var(--app-fs, 1)) !important; }
+        #root .ser-kv.ser-kv { font-size: calc(22px * var(--app-fs, 1)) !important; }
+        #root .ser-sm.ser-sm, #root .ser-sm.ser-sm * { font-size: calc(12px * var(--app-fs, 1)) !important; }
+        #root .ser-xs.ser-xs, #root .ser-xs.ser-xs * { font-size: calc(11.5px * var(--app-fs, 1)) !important; }
+        #root .ser-name.ser-name { font-size: calc(14.5px * var(--app-fs, 1)) !important; }
+        .ser-card:hover { border-color: #7dd3fc !important; }
+      `}</style>
       <div style={wrap}>
         {/* Top bar: title, KPIs, actions */}
         <div style={{ ...panel, padding: "14px 18px", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
           <div style={{ minWidth: 220 }}>
-            <div style={{ fontSize: 22, fontWeight: 980 }}>{t.title}</div>
-            <div style={{ marginTop: 2, color: "#64748b", fontWeight: 800, fontSize: 13 }}>{t.sub}</div>
+            <div className="ser-h1 ser-h1" style={{ fontWeight: 980 }}>{t.title}</div>
+            <div className="ser-sm ser-sm" style={{ marginTop: 2, color: "#64748b", fontWeight: 800 }}>{t.sub}</div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -2275,8 +2291,8 @@ export default function SupplierEvaluationResults() {
                   textAlign: "start",
                 }}
               >
-                <div style={{ fontSize: 22, fontWeight: 990, lineHeight: 1.1 }}>{k.value}</div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85 }}>{k.label}</div>
+                <div className="ser-kv ser-kv" style={{ fontWeight: 990, lineHeight: 1.15 }}>{k.value}</div>
+                <div className="ser-sm ser-sm" style={{ fontWeight: 900, opacity: 0.85 }}>{k.label}</div>
               </button>
             ))}
           </div>
@@ -2307,55 +2323,65 @@ export default function SupplierEvaluationResults() {
           ref={bodyRef}
           style={{
             display: isWide ? "grid" : "block",
-            gridTemplateColumns: "minmax(320px, 390px) minmax(0, 1fr)",
+            gridTemplateColumns: "minmax(340px, 420px) minmax(0, 1fr)",
             gap: 14,
             marginTop: 14,
             height: isWide ? bodyH : "auto",
           }}
         >
-          <aside style={{ ...panel, padding: 12, display: "flex", flexDirection: "column", gap: 8, minHeight: 0, height: isWide ? "100%" : "auto" }}>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...input, padding: "10px 12px", fontSize: 14 }} placeholder={t.searchShortPh} />
+          <aside style={{ ...panel, padding: 12, display: "flex", flexDirection: "column", gap: 8, minHeight: 0, minWidth: 0, height: isWide ? "100%" : "auto" }}>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...input, padding: "10px 12px" }} placeholder={t.searchShortPh} />
 
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {[["all", { en: t.typeAll, ar: t.typeAll }], ...Object.entries(SUPPLIER_TYPE_LABELS)].map(([key, v]) => {
-                const active = typeFilter === key;
-                const c = key === "all" ? { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" } : getSupplierTypeBadgeColor(key);
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setTypeFilter(key)}
-                    style={{ ...chip(active ? c : { bg: "#fff", fg: "#475569", border: "rgba(15,23,42,0.16)" }), cursor: "pointer", padding: "5px 10px" }}
-                  >
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ ...input, padding: "8px 10px", minWidth: 0, cursor: "pointer" }} title={t.filterType}>
+                <option value="all">{t.typeAll}</option>
+                {Object.entries(SUPPLIER_TYPE_LABELS).map(([key, v]) => (
+                  <option key={key} value={key}>
                     {lang === "ar" ? v.ar : v.en}
-                  </button>
-                );
-              })}
+                  </option>
+                ))}
+              </select>
+              <select value={halalFilter} onChange={(e) => setHalalFilter(e.target.value)} style={{ ...input, padding: "8px 10px", minWidth: 0, cursor: "pointer" }} title={t.filterHalal}>
+                {["all", "missing", "requested", "received", "expired"].map((key) => (
+                  <option key={key} value={key}>
+                    {t.filterHalal}: {key === "all" ? t.halalAll : t["halal_" + key]}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>{t.filterHalal}:</span>
-              {["all", "missing", "requested", "received", "expired"].map((key) => {
-                const active = halalFilter === key;
-                const c = HALAL_STATUS_STYLE[key] || { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" };
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setHalalFilter(key)}
-                    style={{ ...chip(active ? c : { bg: "#fff", fg: "#475569", border: "rgba(15,23,42,0.16)" }), cursor: "pointer", padding: "5px 10px" }}
-                  >
-                    {key === "all" ? t.halalAll : t["halal_" + key]}
-                  </button>
-                );
-              })}
+            <div className="ser-sm ser-sm" style={{ fontWeight: 900, color: "#64748b", display: "flex", justifyContent: "space-between" }}>
+              <span>
+                {t.total}: {filtered.length}
+              </span>
+              {typeFilter !== "all" || halalFilter !== "all" || query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypeFilter("all");
+                    setHalalFilter("all");
+                    setQuery("");
+                  }}
+                  style={{ border: "none", background: "transparent", color: "#0369a1", fontWeight: 900, cursor: "pointer", padding: 0 }}
+                >
+                  ✖ {t.halalAll}
+                </button>
+              ) : null}
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-              {t.total}: {filtered.length}
-            </div>
-
-            <div style={{ flex: 1, minHeight: 0, overflowY: isWide ? "auto" : "visible", display: "grid", gap: 8, alignContent: "start", paddingInlineEnd: 2 }}>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: isWide ? "auto" : "visible",
+                overflowX: "hidden",
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr)",
+                gap: 8,
+                alignContent: "start",
+                paddingInlineEnd: 4,
+              }}
+            >
               {filtered.length === 0 ? (
                 <div style={{ fontWeight: 900, color: "#64748b", padding: 12 }}>{loading ? t.loading : t.none}</div>
               ) : (
@@ -2373,41 +2399,62 @@ export default function SupplierEvaluationResults() {
                   const declOk = rowDeclAgreed(p);
                   const active = String(openId) === id;
                   const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
+                  const ellipsis = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
                   return (
                     <button
                       key={id}
                       type="button"
+                      className="ser-card"
                       onClick={() => setOpenId(id)}
                       style={{
+                        width: "100%",
+                        minWidth: 0,
                         textAlign: "start",
-                        padding: "11px 12px",
-                        borderRadius: 14,
+                        padding: "10px 12px",
+                        borderRadius: 12,
                         cursor: "pointer",
-                        background: active ? "linear-gradient(135deg, #e0f2fe, #f0fdf4)" : "#fff",
+                        background: active ? "#eff8ff" : "#fff",
                         border: active ? "2px solid #0ea5e9" : "1px solid rgba(15,23,42,0.12)",
-                        boxShadow: active ? "0 6px 16px rgba(14,165,233,0.18)" : "0 2px 6px rgba(2,132,199,0.05)",
+                        borderInlineStart: "5px solid " + (active ? "#0ea5e9" : typeC.border),
+                        boxShadow: active ? "0 6px 16px rgba(14,165,233,0.16)" : "none",
                         display: "grid",
-                        gap: 6,
+                        gridTemplateColumns: "minmax(0, 1fr) auto",
+                        columnGap: 10,
+                        rowGap: 5,
+                        alignItems: "center",
                       }}
                     >
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ fontWeight: 980, fontSize: 15, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={supplier}>
-                          {supplier}
-                        </div>
-                        <span style={chip(pc, { fontSize: 12.5 })}>{pct == null ? "—" : pct + "%"}</span>
+                      <div className="ser-name ser-name" style={{ ...ellipsis, fontWeight: 980, color: "#0f172a" }} title={supplier}>
+                        {supplier}
                       </div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={chip(typeC)}>{typeLabel}</span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{getRecordDate(r) || "—"}</span>
+                      <span
+                        style={{
+                          gridRow: "1 / span 2",
+                          gridColumn: 2,
+                          width: 54,
+                          height: 54,
+                          borderRadius: 12,
+                          display: "grid",
+                          placeItems: "center",
+                          background: pc.bg,
+                          color: pc.fg,
+                          border: "1px solid " + pc.border,
+                          fontWeight: 990,
+                        }}
+                      >
+                        {pct == null ? "—" : pct + "%"}
+                      </span>
+                      <div className="ser-sm ser-sm" style={{ ...ellipsis, color: "#64748b", fontWeight: 800 }} title={typeLabel}>
+                        <span style={{ color: typeC.fg, fontWeight: 900 }}>{typeLabel}</span> · {getRecordDate(r) || "—"}
                       </div>
-                      <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", background: "#e2e8f0" }}>
+                      <div style={{ gridColumn: "1 / -1", display: "flex", height: 5, borderRadius: 99, overflow: "hidden", background: "#e2e8f0" }}>
                         <span style={{ width: ((c?.yesCount || 0) * 100) / tot + "%", background: "#22c55e" }} />
                         <span style={{ width: ((c?.noCount || 0) * 100) / tot + "%", background: "#ef4444" }} />
                         <span style={{ width: ((c?.naCount || 0) * 100) / tot + "%", background: "#94a3b8" }} />
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {hs ? <span style={chip(HALAL_STATUS_STYLE[hs])}>{t.filterHalal}: {t["halal_" + hs]}</span> : null}
-                        <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested)}>{declOk ? t.declShortOk : t.declShortNo}</span>
+                      <div className="ser-xs ser-xs" style={{ gridColumn: "1 / -1", display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                        {hs ? <span style={chip(HALAL_STATUS_STYLE[hs], { maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" })}>{t.halalShort}: {t["halal_" + hs]}</span> : null}
+                        <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested, { maxWidth: "100%" })}>{declOk ? t.declShortOk : t.declShortNo}</span>
                       </div>
                     </button>
                   );
@@ -2472,7 +2519,7 @@ export default function SupplierEvaluationResults() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 21, fontWeight: 990, color: "#071b2d" }}>{openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")}</div>
+                        <div className="ser-h1 ser-h1" style={{ fontWeight: 990, color: "#071b2d" }}>{openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")}</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                           <span style={chip(typeC)}>{typeLabel}</span>
                           <span style={chip(pctStyle(pct))}>
@@ -2533,9 +2580,11 @@ export default function SupplierEvaluationResults() {
                         <button style={{ ...btnDanger, padding: "8px 12px", fontSize: 13 }} disabled={editMode || isDeletingOpened} onClick={() => handleDelete(opened)} data-delete-action="true">
                           {isDeletingOpened ? t.deleting : t.del}
                         </button>
-                        <button style={small} onClick={() => setOpenId(null)} disabled={savingEdit}>
-                          {t.close}
-                        </button>
+                        {!isWide ? (
+                          <button style={small} onClick={() => setOpenId(null)} disabled={savingEdit}>
+                            {t.close}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
 
