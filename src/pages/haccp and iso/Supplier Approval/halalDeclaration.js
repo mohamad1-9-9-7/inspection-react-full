@@ -4,9 +4,11 @@
 // on the evaluation record under payload.halal:
 //   { requestedAt, requestedLang, declarationFile, certificateFile,
 //     hasCertificate: true|false|null, certNo, certBody, certExpiry,
-//     receivedAt, notes }
-// A declaration is valid for one year from receipt, or until the Halal
-// certificate expires if that comes first.
+//     receivedAt, signedOn, notes }
+// A declaration is valid for one year from the signing date written on the
+// form (signedOn; receipt date until QA enters it), or until the Halal
+// certificate expires if that comes first. A Halal file found in the
+// questionnaire counts from the questionnaire's submission date.
 
 const HALAL_RE = /halal|حلال/i;
 
@@ -51,25 +53,30 @@ const toDay = (v) => {
   return d;
 };
 
-/** Last day the received declaration counts: receipt + 1 year, capped by the certificate expiry. */
-export function halalValidUntil(halal) {
+/** Last day the declaration counts: signing (or receipt / submission) + 1 year, capped by the certificate expiry. */
+export function halalValidUntil(halal, fallbackStart) {
   const h = halal || {};
-  const received = toDay(h.receivedAt);
-  if (!received) return null;
-  const oneYear = new Date(received);
+  const start = toDay(h.signedOn) || toDay(h.receivedAt) || toDay(fallbackStart);
+  if (!start) return null;
+  const oneYear = new Date(start);
   oneYear.setFullYear(oneYear.getFullYear() + 1);
   const certEnd = h.hasCertificate === true ? toDay(h.certExpiry) : null;
   return certEnd && certEnd < oneYear ? certEnd : oneYear;
 }
 
 /** "received" | "expired" | "requested" | "missing" */
-export function halalStatus(payload, submissionFiles) {
+export function halalStatus(payload, submissionFiles, submittedAt) {
   const h = getHalal(payload);
+  const today = toDay(new Date());
   if (h.declarationFile?.url) {
     const until = halalValidUntil(h);
-    return until && until < toDay(new Date()) ? "expired" : "received";
+    return until && until < today ? "expired" : "received";
   }
-  if (Array.isArray(submissionFiles) && submissionFiles.length) return "received";
+  if (Array.isArray(submissionFiles) && submissionFiles.length) {
+    // no signedOn/receivedAt of our own — the questionnaire date starts the year
+    const until = halalValidUntil({ hasCertificate: h.hasCertificate, certExpiry: h.certExpiry }, submittedAt);
+    return until && until < today ? "expired" : "received";
+  }
   if (h.requestedAt) return "requested";
   return "missing";
 }
@@ -206,14 +213,13 @@ const TXT = {
 
 /**
  * Prints the one-page declaration (pre-filled from the evaluation) — print dialog only.
- * @returns {boolean} always true (kept so the panel can stamp requestedAt)
+ * onAfterPrint runs once the print dialog has closed (printed or cancelled).
  */
-export function printHalalDeclaration({ lang = "en", buyer, fields = {}, products = [] }) {
+export function printHalalDeclaration({ lang = "en", buyer, fields = {}, products = [], logoUrl = "", onAfterPrint }) {
   const L = TXT[lang] || TXT.en;
   const rtl = lang === "ar";
   const buyerName = buyer || (rtl ? "شركتنا" : "our company");
   const today = new Date().toLocaleDateString(rtl ? "ar-AE" : "en-GB");
-  const logo = `${window.location.origin}/mawashi-logo.jpg`;
 
   const prodNames = (Array.isArray(products) ? products : [])
     .map((p) => (typeof p === "string" ? p : p?.name))
@@ -275,7 +281,7 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
 <body>
   <table class="dc">
     <tr>
-      <td class="logo" rowspan="3"><img src="${logo}" alt="" /></td>
+      <td class="logo" rowspan="3">${logoUrl ? `<img src="${esc(logoUrl)}" alt="" />` : `<b>${esc(buyerName)}</b>`}</td>
       ${dc(L.docTitle, L.docTitleV)}${dc(L.docNo, HALAL_FORM_DOC.docNo)}
     </tr>
     <tr>${dc(L.issueDate, HALAL_FORM_DOC.issueDate)}${dc(L.revision, HALAL_FORM_DOC.revision)}</tr>
@@ -365,6 +371,8 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
     cleaned = true;
     document.title = pageTitle;
     frame.remove();
+    // the browser does not say whether the user printed or cancelled — the caller asks
+    if (typeof onAfterPrint === "function") setTimeout(onAfterPrint, 50);
   };
   frame.onload = () => {
     const w = frame.contentWindow;

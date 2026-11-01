@@ -14,6 +14,9 @@ const T = {
     missing: "Not received from supplier",
     requestedOn: "Requested on",
     receivedOn: "Received on",
+    signedOn: "Signed on (date written on the form)",
+    signedHint: "Validity counts from this date; empty = upload date.",
+    confirmRequested: "Was the declaration form printed / sent to the supplier?\nOK = mark it as requested today.",
     validUntil: "Valid until",
     renew: "Expired — print a new declaration for renewal",
     fromSubmission: "Found in the supplier's uploaded files",
@@ -48,6 +51,9 @@ const T = {
     missing: "لم يصل من المورد",
     requestedOn: "تاريخ الطلب",
     receivedOn: "تاريخ الاستلام",
+    signedOn: "تاريخ التوقيع (المكتوب على النموذج)",
+    signedHint: "الصلاحية تُحسب من هذا التاريخ؛ إن تُرك فارغاً فمن تاريخ الرفع.",
+    confirmRequested: "هل تمت طباعة نموذج الإقرار / إرساله للمورد؟\nموافق = تسجيله كمطلوب بتاريخ اليوم.",
     validUntil: "ساري حتى",
     renew: "منتهي — اطبع إقراراً جديداً للتجديد",
     fromSubmission: "موجود ضمن الملفات التي رفعها المورد",
@@ -90,6 +96,8 @@ export default function HalalDeclarationPanel({
   fields,
   products,
   buyer,
+  logoUrl,
+  submittedAt,
   submissionFiles,
   uploadFile,
   onSave,
@@ -100,18 +108,22 @@ export default function HalalDeclarationPanel({
   const t = T[lang] || T.en;
   const halal = getHalal(payload);
   const applies = halalApplies(supplierType);
-  const raw = halalStatus(payload, submissionFiles);
+  const raw = halalStatus(payload, submissionFiles, submittedAt);
   // Non-food suppliers: nothing is missing unless QA asked for it
   const status = !applies && raw === "missing" ? "notRequired" : raw;
   const sc = HALAL_STATUS_STYLE[status] || NOT_REQUIRED_STYLE;
-  const validUntil = halal.declarationFile?.url ? halalValidUntil(halal) : null;
+  const validUntil = halal.declarationFile?.url
+    ? halalValidUntil(halal)
+    : submissionFiles?.length
+      ? halalValidUntil({ hasCertificate: halal.hasCertificate, certExpiry: halal.certExpiry }, submittedAt)
+      : null;
 
   const [printLang, setPrintLang] = useState("en");
   const [busy, setBusy] = useState(""); // "declarationFile" | "certificateFile" | "save"
   const [flash, setFlash] = useState("");
   const [draft, setDraft] = useState({});
 
-  const draftKey = JSON.stringify([halal.hasCertificate, halal.certNo, halal.certBody, halal.certExpiry, halal.notes]);
+  const draftKey = JSON.stringify([halal.hasCertificate, halal.certNo, halal.certBody, halal.certExpiry, halal.notes, halal.signedOn]);
   useEffect(() => {
     setDraft({
       hasCertificate: halal.hasCertificate ?? null,
@@ -119,6 +131,7 @@ export default function HalalDeclarationPanel({
       certBody: halal.certBody || "",
       certExpiry: halal.certExpiry || "",
       notes: halal.notes || "",
+      signedOn: halal.signedOn || "",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
@@ -139,8 +152,18 @@ export default function HalalDeclarationPanel({
   };
 
   const handlePrint = () => {
-    const ok = printHalalDeclaration({ lang: printLang, buyer, fields, products });
-    if (ok && !halal.requestedAt) save({ requestedAt: new Date().toISOString(), requestedLang: printLang }, "print");
+    printHalalDeclaration({
+      lang: printLang,
+      buyer,
+      fields,
+      products,
+      logoUrl,
+      // only mark "requested" when QA confirms the form actually went out
+      onAfterPrint: () => {
+        if (status === "received") return;
+        if (window.confirm(t.confirmRequested)) save({ requestedAt: new Date().toISOString(), requestedLang: printLang }, "print");
+      },
+    });
   };
 
   const handleUpload = async (which, file) => {
@@ -150,7 +173,10 @@ export default function HalalDeclarationPanel({
       const up = await uploadFile(file);
       const patch = { [which]: { ...up, uploadedAt: new Date().toISOString() } };
       // a new signed copy (first one or a renewal) restarts the one-year validity
-      if (which === "declarationFile") patch.receivedAt = new Date().toISOString();
+      if (which === "declarationFile") {
+        patch.receivedAt = new Date().toISOString();
+        patch.signedOn = ""; // the new copy carries its own signing date
+      }
       if (which === "certificateFile" && draft.hasCertificate == null) patch.hasCertificate = true;
       await onSave({ ...halal, ...patch });
     } catch (e) {
@@ -260,6 +286,18 @@ export default function HalalDeclarationPanel({
       </div>
 
       {fileRow("declarationFile", t.signed)}
+      {halal.declarationFile?.url ? (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", paddingBottom: 8 }}>
+          <span style={{ fontWeight: 900, color: "#475569" }}>{t.signedOn}:</span>
+          <input
+            type="date"
+            style={{ ...input, padding: "7px 10px", width: 180 }}
+            value={draft.signedOn || ""}
+            onChange={(e) => setDraft((d) => ({ ...d, signedOn: e.target.value }))}
+          />
+          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{t.signedHint}</span>
+        </div>
+      ) : null}
       {fileRow("certificateFile", t.cert)}
 
       <div style={{ borderTop: "1px dashed rgba(15,23,42,0.12)", paddingTop: 10, marginTop: 2 }}>

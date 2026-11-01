@@ -1170,7 +1170,7 @@ const muted = { color: "#64748b", fontWeight: 850, fontSize: 14 };
 /* Halal declaration status of a list row (received / requested / missing) */
 function rowHalalStatus(r) {
   const files = findHalalFilesInSubmission(getAttachmentsFromReport(r), getFieldAttachmentsFromReport(r));
-  return halalStatus(getPayloadObj(r) || {}, files);
+  return halalStatus(getPayloadObj(r) || {}, files, getSubmittedAtIso(r));
 }
 
 /* Compliance = YES out of answered (YES + NO); N/A is left out */
@@ -1548,6 +1548,11 @@ export default function SupplierEvaluationResults() {
     [openedAttachments, openedFieldAttachments]
   );
 
+  // The printed form carries the Al Mawashi logo only for Al Mawashi; any other
+  // company gets its own name in the logo cell instead of someone else's brand.
+  const halalBuyer = getActiveCompanyName() || "Al Mawashi";
+  const halalLogo = /mawashi|المواشي/i.test(halalBuyer) ? `${window.location.origin}/mawashi-logo.jpg` : "";
+
   /* Save payload.halal on its own (no edit mode needed) */
   const saveHalal = async (newHalal) => {
     const rep = getReportObj(opened) || {};
@@ -1746,7 +1751,7 @@ export default function SupplierEvaluationResults() {
 
     /* Halal declaration */
     const halal = p?.halal && typeof p.halal === "object" ? p.halal : {};
-    const hs = halalApplies(getSupplierType(p)) ? halalStatus(p, openedHalalFiles) : "notRequired";
+    const hs = halalApplies(getSupplierType(p)) ? halalStatus(p, openedHalalFiles, getSubmittedAtIso(opened)) : "notRequired";
     const halalHtml = `<div class="section decl ${hs === "received" || hs === "notRequired" ? "ok" : "bad"}">
          <div class="section-title">${hs === "received" ? "✅" : "⚠"} ${esc(lang === "ar" ? "إقرار الحلال" : "Halal Declaration")}</div>
          <div>${esc(t["halal_" + hs])}</div>
@@ -2528,7 +2533,7 @@ export default function SupplierEvaluationResults() {
                 const typeC = getSupplierTypeBadgeColor(st);
                 const typeLabel = st ? getSupplierTypeLabel(st, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
                 const pct = compliancePct(openedCounts);
-                const hs = halalApplies(st) ? halalStatus(openedPayload, openedHalalFiles) : null;
+                const hs = halalApplies(st) ? halalStatus(openedPayload, openedHalalFiles, getSubmittedAtIso(opened)) : null;
                 const ds = declState(openedDeclaration);
                 const docsCount =
                   (openedAttachments?.length || 0) +
@@ -3144,7 +3149,9 @@ export default function SupplierEvaluationResults() {
                 supplierType={openedSupplierType}
                 fields={openedFields}
                 products={openedProductsList}
-                buyer={getActiveCompanyName() || "Al Mawashi"}
+                buyer={halalBuyer}
+                logoUrl={halalLogo}
+                submittedAt={getSubmittedAtIso(opened)}
                 submissionFiles={openedHalalFiles}
                 uploadFile={uploadViaServer}
                 onSave={saveHalal}
