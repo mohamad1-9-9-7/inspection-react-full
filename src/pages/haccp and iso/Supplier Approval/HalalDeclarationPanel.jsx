@@ -7,7 +7,8 @@ import { getHalal, halalStatus, halalApplies, halalValidUntil, printHalalDeclara
 const T = {
   en: {
     title: "Halal Declaration",
-    optional: "Optional for this supplier type.",
+    optional: "Not required for this supplier type — you can still request it.",
+    notRequired: "Not required",
     received: "Received",
     requested: "Requested — waiting for the signed copy",
     missing: "Not received from supplier",
@@ -40,7 +41,8 @@ const T = {
   },
   ar: {
     title: "إقرار الحلال",
-    optional: "اختياري لهذا النوع من الموردين.",
+    optional: "غير مطلوب لهذا النوع من الموردين — ويمكن طلبه عند الحاجة.",
+    notRequired: "غير مطلوب",
     received: "تم الاستلام",
     requested: "تم الطلب — بانتظار النسخة الموقّعة",
     missing: "لم يصل من المورد",
@@ -73,6 +75,8 @@ const T = {
   },
 };
 
+const NOT_REQUIRED_STYLE = { bg: "#f1f5f9", fg: "#475569", border: "#cbd5e1" };
+
 const fmtDate = (iso, lang) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -95,8 +99,11 @@ export default function HalalDeclarationPanel({
 }) {
   const t = T[lang] || T.en;
   const halal = getHalal(payload);
-  const status = halalStatus(payload, submissionFiles);
-  const sc = HALAL_STATUS_STYLE[status];
+  const applies = halalApplies(supplierType);
+  const raw = halalStatus(payload, submissionFiles);
+  // Non-food suppliers: nothing is missing unless QA asked for it
+  const status = !applies && raw === "missing" ? "notRequired" : raw;
+  const sc = HALAL_STATUS_STYLE[status] || NOT_REQUIRED_STYLE;
   const validUntil = halal.declarationFile?.url ? halalValidUntil(halal) : null;
 
   const [printLang, setPrintLang] = useState("en");
@@ -205,7 +212,7 @@ export default function HalalDeclarationPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
         <div style={{ fontWeight: 990, fontSize: 17, color: "#0f766e" }}>📜 {t.title}</div>
         <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 900, background: sc.bg, color: sc.fg, border: `1px solid ${sc.border}` }}>
-          {{ received: "✅ ", expired: "⌛ ", requested: "⏳ " }[status] || "❌ "}
+          {{ received: "✅ ", expired: "⌛ ", requested: "⏳ ", notRequired: "➖ " }[status] || "❌ "}
           {status === "expired" ? t.renew : t[status]}
         </span>
         {halal.requestedAt ? <span style={{ fontSize: 13, color: "#64748b", fontWeight: 850 }}>{t.requestedOn}: {fmtDate(halal.requestedAt, lang)}</span> : null}
@@ -216,7 +223,7 @@ export default function HalalDeclarationPanel({
           </span>
         ) : null}
       </div>
-      {!halalApplies(supplierType) ? <div style={{ fontSize: 13, color: "#64748b", fontWeight: 850, marginBottom: 6 }}>{t.optional}</div> : null}
+      {!applies ? <div style={{ fontSize: 13, color: "#64748b", fontWeight: 850, marginBottom: 6 }}>{t.optional}</div> : null}
 
       {Array.isArray(submissionFiles) && submissionFiles.length ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>

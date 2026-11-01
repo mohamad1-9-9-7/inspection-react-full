@@ -99,10 +99,15 @@ const UI = {
     kpiTotal: "Suppliers",
     kpiCompliance: "Avg. compliance",
     kpiHalalMissing: "Halal missing / expired",
-    kpiDeclMissing: "Declaration not signed",
+    kpiDeclMissing: "Signed declaration missing",
     compliance: "Compliance",
     declShortOk: "Declaration ✓",
     declShortNo: "No declaration",
+    declShortOnline: "Declaration: copy missing",
+    declStateSigned: "Signed & stamped copy on file",
+    declStateOnline: "Confirmed online only — signed & stamped copy not uploaded yet",
+    declStateNone: "Declaration not confirmed by the supplier",
+    halal_notRequired: "Not required",
     pickSupplier: "Select a supplier from the list to see the evaluation.",
     searchShortPh: "Search supplier...",
     typeAll: "All types",
@@ -216,10 +221,15 @@ const UI = {
     kpiTotal: "الموردون",
     kpiCompliance: "متوسط المطابقة",
     kpiHalalMissing: "حلال ناقص / منتهي",
-    kpiDeclMissing: "إقرار غير موقَّع",
+    kpiDeclMissing: "إقرار موقَّع ناقص",
     compliance: "المطابقة",
     declShortOk: "الإقرار ✓",
     declShortNo: "لا يوجد إقرار",
+    declShortOnline: "الإقرار: النسخة ناقصة",
+    declStateSigned: "النسخة الموقّعة والمختومة مرفوعة",
+    declStateOnline: "تم التأكيد إلكترونياً فقط — لم تُرفع النسخة الموقّعة والمختومة بعد",
+    declStateNone: "لم يؤكد المورد الإقرار",
+    halal_notRequired: "غير مطلوب",
     pickSupplier: "اختر مورداً من القائمة لعرض التقييم.",
     searchShortPh: "ابحث عن مورد...",
     typeAll: "كل الأنواع",
@@ -1176,11 +1186,21 @@ function pctStyle(pct) {
 function rowCounts(p) {
   return p?.meta?.counts || calcCounts(p?.answers || p?.public?.submission?.answers || {});
 }
-function rowDeclAgreed(p) {
-  const d = p?.declaration || p?.public?.submission?.declaration || p?.public?.declaration || p?.submission?.declaration || null;
+/* "signed" = signed & stamped file uploaded · "online" = ticked on the form only · "none" */
+function declState(d) {
   const o = asObject(d) || (d && typeof d === "object" ? d : null);
-  return !!o?.agreed || !!o?.file?.url;
+  if (o?.file?.url) return "signed";
+  if (o?.agreed) return "online";
+  return "none";
 }
+function rowDeclState(p) {
+  return declState(p?.declaration || p?.public?.submission?.declaration || p?.public?.declaration || p?.submission?.declaration || null);
+}
+const DECL_STYLE = {
+  signed: HALAL_STATUS_STYLE.received,
+  online: HALAL_STATUS_STYLE.requested,
+  none: HALAL_STATUS_STYLE.missing,
+};
 const chip = (c, extra) => ({
   display: "inline-flex",
   alignItems: "center",
@@ -1722,8 +1742,8 @@ export default function SupplierEvaluationResults() {
 
     /* Halal declaration */
     const halal = p?.halal && typeof p.halal === "object" ? p.halal : {};
-    const hs = halalStatus(p, openedHalalFiles);
-    const halalHtml = `<div class="section decl ${hs === "received" ? "ok" : "bad"}">
+    const hs = halalApplies(getSupplierType(p)) ? halalStatus(p, openedHalalFiles) : "notRequired";
+    const halalHtml = `<div class="section decl ${hs === "received" || hs === "notRequired" ? "ok" : "bad"}">
          <div class="section-title">${hs === "received" ? "✅" : "⚠"} ${esc(lang === "ar" ? "إقرار الحلال" : "Halal Declaration")}</div>
          <div>${esc(t["halal_" + hs])}</div>
          <div class="kvs" style="margin-top:6px">
@@ -1733,10 +1753,11 @@ export default function SupplierEvaluationResults() {
        </div>`;
 
     /* Declaration */
+    const pdfDs = declState(decl);
     const declHtml = decl
-      ? `<div class="section decl ${decl.agreed ? "ok" : "bad"}">
-           <div class="section-title">${decl.agreed ? "✅" : "⚠"} ${esc(lang === "ar" ? "الإقرار" : "Declaration")}</div>
-           <div>${esc(decl.agreed ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed") : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Not confirmed"))}</div>
+      ? `<div class="section decl ${pdfDs === "signed" ? "ok" : "bad"}">
+           <div class="section-title">${pdfDs === "signed" ? "✅" : "⚠"} ${esc(lang === "ar" ? "الإقرار" : "Declaration")}</div>
+           <div>${esc(pdfDs === "signed" ? t.declStateSigned : pdfDs === "online" ? t.declStateOnline : t.declStateNone)}</div>
            <div class="kvs">
              ${decl.name ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "الاسم" : "Name")}</div><div class="v">${esc(decl.name)}</div></div>` : ""}
              ${decl.position ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "المنصب" : "Position")}</div><div class="v">${esc(decl.position)}</div></div>` : ""}
@@ -1884,7 +1905,7 @@ export default function SupplierEvaluationResults() {
         const hs = rowHalalStatus(r);
         if (hs === "missing" || hs === "expired") halalMissing += 1;
       }
-      if (!rowDeclAgreed(p)) declMissing += 1;
+      if (rowDeclState(p) !== "signed") declMissing += 1;
       const pct = compliancePct(rowCounts(p));
       if (pct != null) {
         sum += pct;
@@ -2396,7 +2417,7 @@ export default function SupplierEvaluationResults() {
                   const typeC = getSupplierTypeBadgeColor(supType);
                   const typeLabel = supType ? getSupplierTypeLabel(supType, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
                   const hs = halalApplies(supType) ? rowHalalStatus(r) : null;
-                  const declOk = rowDeclAgreed(p);
+                  const ds = rowDeclState(p);
                   const active = String(openId) === id;
                   const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
                   const ellipsis = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
@@ -2466,7 +2487,7 @@ export default function SupplierEvaluationResults() {
                       </div>
                       <div className="ser-xs ser-xs" style={{ gridColumn: "1 / -1", display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                         {hs ? <span style={chip(HALAL_STATUS_STYLE[hs], { maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" })}>{t.halalShort}: {t["halal_" + hs]}</span> : null}
-                        <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested, { maxWidth: "100%" })}>{declOk ? t.declShortOk : t.declShortNo}</span>
+                        <span style={chip(DECL_STYLE[ds], { maxWidth: "100%" })}>{ds === "signed" ? t.declShortOk : ds === "online" ? t.declShortOnline : t.declShortNo}</span>
                       </div>
                     </button>
                   );
@@ -2504,7 +2525,7 @@ export default function SupplierEvaluationResults() {
                 const typeLabel = st ? getSupplierTypeLabel(st, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
                 const pct = compliancePct(openedCounts);
                 const hs = halalApplies(st) ? halalStatus(openedPayload, openedHalalFiles) : null;
-                const declOk = !!openedDeclaration?.agreed || !!openedDeclaration?.file?.url;
+                const ds = declState(openedDeclaration);
                 const docsCount =
                   (openedAttachments?.length || 0) +
                   Object.values(openedFieldAttachments || {}).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
@@ -2541,7 +2562,7 @@ export default function SupplierEvaluationResults() {
                             ✔ {openedCounts.yesCount} · ✖ {openedCounts.noCount} · — {openedCounts.naCount}
                           </span>
                           {hs ? <span style={chip(HALAL_STATUS_STYLE[hs])}>{t.filterHalal}: {t["halal_" + hs]}</span> : null}
-                          <span style={chip(declOk ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested)}>{declOk ? t.declShortOk : t.declShortNo}</span>
+                          <span style={chip(DECL_STYLE[ds])}>{ds === "signed" ? t.declShortOk : ds === "online" ? t.declShortOnline : t.declShortNo}</span>
                         </div>
                         <div style={{ marginTop: 6, color: "#64748b", fontWeight: 800, fontSize: 12.5 }}>
                           {t.recordDate}: <b>{getRecordDate(opened) || "—"}</b> · {t.submittedAt}:{" "}
@@ -2853,18 +2874,16 @@ export default function SupplierEvaluationResults() {
                 const displayDecl = editMode ? (declarationDraft || {}) : (openedDeclaration || {});
                 const isAgreed = !!displayDecl.agreed;
                 const hasFile = !!(displayDecl.file && displayDecl.file.url);
+                const ds = declState(displayDecl);
+                const dc = DECL_STYLE[ds];
                 return (
                   <div
                     style={{
                       marginTop: 16,
                       padding: "18px 20px",
                       borderRadius: 14,
-                      background: isAgreed
-                        ? "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
-                        : "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                      border: isAgreed
-                        ? "1px solid rgba(34,197,94,0.35)"
-                        : "1px solid rgba(239,68,68,0.35)",
+                      background: dc.bg,
+                      border: "1px solid " + dc.border,
                     }}
                   >
                     <div
@@ -2872,14 +2891,12 @@ export default function SupplierEvaluationResults() {
                         fontWeight: 980,
                         marginBottom: 14,
                         fontSize: 18,
-                        color: isAgreed ? "#14532d" : "#991b1b",
+                        color: dc.fg,
                         paddingBottom: 8,
-                        borderBottom: isAgreed
-                          ? "2px dashed rgba(34,197,94,0.35)"
-                          : "2px dashed rgba(239,68,68,0.35)",
+                        borderBottom: "2px dashed " + dc.border,
                       }}
                     >
-                      {isAgreed ? "✅" : "⚠"} {lang === "ar" ? "الإقرار" : "Declaration"}
+                      {ds === "signed" ? "✅" : ds === "online" ? "⏳" : "⚠"} {lang === "ar" ? "الإقرار" : "Declaration"}
                     </div>
 
                     {editMode ? (
@@ -3054,10 +3071,8 @@ export default function SupplierEvaluationResults() {
                       </div>
                     ) : openedDeclaration || hasFile ? (
                       <div style={{ display: "grid", gap: 10 }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: isAgreed ? "#14532d" : "#991b1b" }}>
-                          {isAgreed
-                            ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
-                            : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
+                        <div style={{ fontSize: 16, fontWeight: 900, color: dc.fg }}>
+                          {ds === "signed" ? t.declStateSigned : ds === "online" ? t.declStateOnline : t.declStateNone}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                           <FieldLine label={t.declSignerName} value={openedDeclaration?.name} />
@@ -3103,11 +3118,11 @@ export default function SupplierEvaluationResults() {
                               </a>
                             </div>
                           </div>
-                        ) : (
+                        ) : ds === "none" ? (
                           <div style={{ color: "#78350f", fontStyle: "italic", fontWeight: 800, fontSize: 14 }}>
                             {t.declNoFile}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ) : (
                       <div style={{ fontSize: 15, fontWeight: 800, color: "#991b1b" }}>
