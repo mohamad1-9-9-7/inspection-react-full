@@ -2323,7 +2323,7 @@ export default function SupplierEvaluationResults() {
           ref={bodyRef}
           style={{
             display: isWide ? "grid" : "block",
-            gridTemplateColumns: "minmax(340px, 420px) minmax(0, 1fr)",
+            gridTemplateColumns: "minmax(440px, 540px) minmax(0, 1fr)",
             gap: 14,
             marginTop: 14,
             height: isWide ? bodyH : "auto",
@@ -2344,7 +2344,7 @@ export default function SupplierEvaluationResults() {
               <select value={halalFilter} onChange={(e) => setHalalFilter(e.target.value)} style={{ ...input, padding: "8px 10px", minWidth: 0, cursor: "pointer" }} title={t.filterHalal}>
                 {["all", "missing", "requested", "received", "expired"].map((key) => (
                   <option key={key} value={key}>
-                    {t.filterHalal}: {key === "all" ? t.halalAll : t["halal_" + key]}
+                    {t.halalShort}: {key === "all" ? t.halalAll : t["halal_" + key]}
                   </option>
                 ))}
               </select>
@@ -2410,7 +2410,7 @@ export default function SupplierEvaluationResults() {
                         width: "100%",
                         minWidth: 0,
                         textAlign: "start",
-                        padding: "10px 12px",
+                        padding: "12px 14px",
                         borderRadius: 12,
                         cursor: "pointer",
                         background: active ? "#eff8ff" : "#fff",
@@ -2419,20 +2419,24 @@ export default function SupplierEvaluationResults() {
                         boxShadow: active ? "0 6px 16px rgba(14,165,233,0.16)" : "none",
                         display: "grid",
                         gridTemplateColumns: "minmax(0, 1fr) auto",
-                        columnGap: 10,
-                        rowGap: 5,
+                        columnGap: 14,
+                        rowGap: 6,
                         alignItems: "center",
                       }}
                     >
-                      <div className="ser-name ser-name" style={{ ...ellipsis, fontWeight: 980, color: "#0f172a" }} title={supplier}>
+                      <div
+                        className="ser-name ser-name"
+                        style={{ minWidth: 0, fontWeight: 980, color: "#0f172a", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                        title={supplier}
+                      >
                         {supplier}
                       </div>
                       <span
                         style={{
                           gridRow: "1 / span 2",
                           gridColumn: 2,
-                          width: 54,
-                          height: 54,
+                          width: 84,
+                          height: 58,
                           borderRadius: 12,
                           display: "grid",
                           placeItems: "center",
@@ -2442,10 +2446,16 @@ export default function SupplierEvaluationResults() {
                           fontWeight: 990,
                         }}
                       >
-                        {pct == null ? "—" : pct + "%"}
+                        <span style={{ display: "grid", placeItems: "center", lineHeight: 1.1 }}>
+                          <span>{pct == null ? "—" : pct + "%"}</span>
+                          <span className="ser-xs ser-xs" style={{ fontWeight: 800, opacity: 0.8 }}>{t.compliance}</span>
+                        </span>
                       </span>
-                      <div className="ser-sm ser-sm" style={{ ...ellipsis, color: "#64748b", fontWeight: 800 }} title={typeLabel}>
-                        <span style={{ color: typeC.fg, fontWeight: 900 }}>{typeLabel}</span> · {getRecordDate(r) || "—"}
+                      <div className="ser-sm ser-sm" style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, color: "#64748b", fontWeight: 800 }}>
+                        <span style={{ ...ellipsis, color: typeC.fg, fontWeight: 900 }} title={typeLabel}>
+                          {typeLabel}
+                        </span>
+                        <span style={{ flexShrink: 0 }}>📅 {getRecordDate(r) || "—"}</span>
                       </div>
                       <div style={{ gridColumn: "1 / -1", display: "flex", height: 5, borderRadius: 99, overflow: "hidden", background: "#e2e8f0" }}>
                         <span style={{ width: ((c?.yesCount || 0) * 100) / tot + "%", background: "#22c55e" }} />
