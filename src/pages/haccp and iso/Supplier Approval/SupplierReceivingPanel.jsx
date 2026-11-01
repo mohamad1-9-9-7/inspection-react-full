@@ -1,9 +1,11 @@
 // Suppliers that appear in goods receiving (last 12 months) but have no
 // evaluation. Shown in the results page's right pane from the KPI tile.
 // Per name: send an evaluation link, link it to an evaluated supplier (a
-// spelling the fuzzy match missed), or ignore it (internal / not a supplier).
+// spelling the fuzzy match missed — the picker ranks the likely ones first,
+// and a link can be undone), or ignore it (internal / not a supplier).
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { nameSimilarity } from "./supplierReceiving";
 
 const T = {
   en: {
@@ -14,8 +16,16 @@ const T = {
     since: "since",
     variants: "Spellings",
     evaluate: "📨 Create evaluation link",
-    linkTo: "🔗 Same as…",
-    pick: "— choose the evaluated supplier —",
+    linkTo: "🔗 Link to an existing supplier",
+    linkHint: "Same supplier, different spelling? Pick the evaluated supplier — every delivery under this name will count for it.",
+    linkSearch: "Search evaluated suppliers...",
+    likely: "likely",
+    noMatch: "No evaluated supplier matches.",
+    cancel: "Cancel",
+    confirmLink: (a, b) => `Link "${a}" to the evaluated supplier "${b}"?`,
+    linkedTitle: "Names linked by hand",
+    unlink: "✂ Unlink",
+    missingEval: "evaluation not found",
     ignore: "🙈 Not a supplier",
     restore: "↩ Restore",
     ignoredTitle: "Ignored names",
@@ -33,8 +43,16 @@ const T = {
     since: "منذ",
     variants: "طرق الكتابة",
     evaluate: "📨 إنشاء رابط تقييم",
-    linkTo: "🔗 نفس المورد…",
-    pick: "— اختر المورد المُقيَّم —",
+    linkTo: "🔗 ربط بمورد موجود",
+    linkHint: "نفس المورد لكن الاسم مكتوب بشكل مختلف؟ اختر المورد المُقيَّم — كل الاستلامات بهذا الاسم ستُحسب له.",
+    linkSearch: "ابحث في الموردين المُقيَّمين...",
+    likely: "الأقرب",
+    noMatch: "لا يوجد مورد مُقيَّم مطابق.",
+    cancel: "إلغاء",
+    confirmLink: (a, b) => `ربط "${a}" بالمورد المُقيَّم "${b}"؟`,
+    linkedTitle: "أسماء مربوطة يدوياً",
+    unlink: "✂ فك الربط",
+    missingEval: "التقييم غير موجود",
     ignore: "🙈 ليس مورداً",
     restore: "↩ استرجاع",
     ignoredTitle: "أسماء متجاهلة",
@@ -52,6 +70,40 @@ export default function SupplierReceivingPanel({ lang, match, evaluated, cfg, on
   const [showIgnored, setShowIgnored] = useState(false);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
+  const [linking, setLinking] = useState(""); // key of the name whose picker is open
+  const [linkQ, setLinkQ] = useState("");
+  const [showLinked, setShowLinked] = useState(false);
+  const evalName = (id) => (evaluated.find((e) => e.id === id) || {}).name;
+
+  /* Evaluated suppliers ranked by likeness to this receiving name (all spellings). */
+  const choices = (r) => {
+    const query = linkQ.trim().toLowerCase();
+    const seen = new Set();
+    return evaluated
+      .map((e) => ({ ...e, score: Math.max(...r.names.map((n) => nameSimilarity(n, e.name))) }))
+      .filter((e) => !query || e.name.toLowerCase().includes(query))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .filter((e) => {
+        // one row per supplier name (re-evaluations share a name) — the first is the best-ranked
+        const k = e.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, query ? 30 : 8);
+  };
+
+  const linkTo = (r, e) => {
+    if (!window.confirm(t.confirmLink(r.name, e.name))) return;
+    const aliases = { ...(cfg.aliases || {}) };
+    // every spelling of this name points at the chosen evaluation
+    r.keys.forEach((k) => {
+      aliases[k] = e.id;
+    });
+    setLinking("");
+    setLinkQ("");
+    save({ ...cfg, aliases }, r.key);
+  };
 
   const save = async (next, key) => {
     setBusy(key);
@@ -118,29 +170,17 @@ export default function SupplierReceivingPanel({ lang, match, evaluated, cfg, on
                   >
                     {t.evaluate}
                   </button>
-                  <select
-                    value=""
+                  <button
+                    type="button"
                     disabled={!!busy}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      if (!id) return;
-                      const aliases = { ...(cfg.aliases || {}) };
-                      // every spelling of this name points at the chosen evaluation
-                      r.keys.forEach((k) => {
-                        aliases[k] = id;
-                      });
-                      save({ ...cfg, aliases }, r.key);
+                    style={{ ...btn, padding: "6px 12px", ...(linking === r.key ? { background: "#e0f2fe", borderColor: "#0284c7" } : null) }}
+                    onClick={() => {
+                      setLinking(linking === r.key ? "" : r.key);
+                      setLinkQ("");
                     }}
-                    style={{ ...input, padding: "6px 10px", width: "auto", maxWidth: 280 }}
-                    title={t.linkTo}
                   >
-                    <option value="">{t.linkTo}</option>
-                    {evaluated.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name}
-                      </option>
-                    ))}
-                  </select>
+                    {t.linkTo}
+                  </button>
                   <button
                     type="button"
                     disabled={!!busy}
@@ -150,9 +190,69 @@ export default function SupplierReceivingPanel({ lang, match, evaluated, cfg, on
                     {busy === r.key ? "…" : t.ignore}
                   </button>
                 </div>
+                {linking === r.key ? (
+                  <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 10, background: "#f0f9ff", border: "1px solid #bae6fd" }}>
+                    <div className="ser-sm ser-sm" style={{ color: "#075985", fontWeight: 850, marginBottom: 6 }}>{t.linkHint}</div>
+                    <input
+                      autoFocus
+                      value={linkQ}
+                      onChange={(e) => setLinkQ(e.target.value)}
+                      placeholder={t.linkSearch}
+                      style={{ ...input, padding: "6px 10px", marginBottom: 6 }}
+                    />
+                    <div style={{ display: "grid", gap: 4, maxHeight: 260, overflowY: "auto" }}>
+                      {choices(r).map((e, i) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => linkTo(r, e)}
+                          style={{ ...btn, padding: "6px 10px", display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", textAlign: "start", background: "#fff" }}
+                        >
+                          <span style={{ fontWeight: 900 }}>{e.name}</span>
+                          {i < 3 && e.score >= 0.5 && !linkQ.trim() ? <span style={chip("#dcfce7", "#166534", "#86efac")}>{t.likely}</span> : null}
+                        </button>
+                      ))}
+                      {!choices(r).length ? <div style={{ color: "#64748b", fontWeight: 850 }}>{t.noMatch}</div> : null}
+                    </div>
+                    <button type="button" style={{ ...btn, padding: "4px 10px", marginTop: 6 }} onClick={() => setLinking("")}>
+                      {t.cancel}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
+
+          {(match?.linked || []).length ? (
+            <div style={{ marginTop: 16 }}>
+              <button type="button" style={{ ...btn, padding: "6px 12px" }} onClick={() => setShowLinked((v) => !v)}>
+                {showLinked ? "▾" : "▸"} {t.linkedTitle} ({match.linked.length})
+              </button>
+              {showLinked ? (
+                <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                  {match.linked.map((r) => (
+                    <div key={r.evaluatedId + "|" + r.key} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "6px 10px", borderRadius: 10, background: "#f0f9ff", border: "1px solid #bae6fd" }}>
+                      <span style={{ flex: 1, minWidth: 180, fontWeight: 850, color: "#334155" }}>
+                        {r.names.join(" · ")} → <b>{evalName(r.evaluatedId) || `⚠ ${t.missingEval}`}</b> — {r.deliveries} {t.deliveries}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        style={{ ...btn, padding: "4px 10px" }}
+                        onClick={() => {
+                          const aliases = { ...(cfg.aliases || {}) };
+                          r.keys.forEach((k) => delete aliases[k]);
+                          save({ ...cfg, aliases }, r.key);
+                        }}
+                      >
+                        {busy === r.key ? "…" : t.unlink}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {(match?.ignored || []).length ? (
             <div style={{ marginTop: 16 }}>

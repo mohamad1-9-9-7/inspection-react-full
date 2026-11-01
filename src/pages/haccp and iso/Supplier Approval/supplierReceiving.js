@@ -82,6 +82,42 @@ export function sameSupplier(a, b) {
   return levenshtein(a, b) <= Math.max(1, Math.floor(long.length / 7));
 }
 
+/* Meaningful words of a name: "H.K. Enterprises L.L.C." → ["hk"]. */
+function nameTokens(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/l\.\s*l\.\s*c\.?/g, " llc ")
+    .replace(/\./g, "")
+    .replace(/[^a-z0-9؀-ۿ]+/g, " ")
+    .split(" ")
+    .filter((w) => w && !STOP.has(w));
+}
+
+/**
+ * How alike two supplier names are, 0…1 — ranks the "link to an existing
+ * supplier" choices so the likely one is on top. Spelling distance of the
+ * keys, a shared word, or one name's initials matching the other ("HK" ↔
+ * "Hamid & Kumar") all count.
+ */
+export function nameSimilarity(a, b) {
+  const ka = supplierKey(a);
+  const kb = supplierKey(b);
+  if (!ka || !kb) return 0;
+  if (sameSupplier(ka, kb)) return 1;
+  let score = 1 - levenshtein(ka, kb) / Math.max(ka.length, kb.length);
+  const ta = nameTokens(a);
+  const tb = nameTokens(b);
+  if (ta.some((w) => w.length >= 4 && tb.some((x) => x === w || (x.length >= 4 && (x.startsWith(w) || w.startsWith(x)))))) {
+    score = Math.max(score, 0.75);
+  }
+  const initials = (t) => t.map((w) => w[0]).join("");
+  if ((ta.length === 1 && ta[0].length <= 4 && ta[0] === initials(tb)) || (tb.length === 1 && tb[0].length <= 4 && tb[0] === initials(ta))) {
+    score = Math.max(score, 0.7);
+  }
+  return score;
+}
+
 /* ───────── server ───────── */
 
 export async function fetchReceivingSuppliers(days = 365, signal) {
@@ -154,6 +190,7 @@ export function looksInternal(key, ownNames = []) {
  *   byEvaluated: { [evaluatedId]: { deliveries, lastDate, branches[], names[] } },
  *   unevaluated: [{ key, name, deliveries, lastDate, firstDate, branches[] }],  // most deliveries first
  *   ignored:     [{ key, name, deliveries, lastDate, branches[], auto }],
+ *   linked:      [{ key, evaluatedId, name, deliveries, … }],              // linked by hand (aliases)
  * }
  */
 export function matchReceiving(receiving, evaluated, cfg = {}, ownNames = []) {
@@ -164,6 +201,7 @@ export function matchReceiving(receiving, evaluated, cfg = {}, ownNames = []) {
   const byEvaluated = {};
   const pending = new Map(); // key → aggregated unevaluated row
   const ignored = new Map();
+  const linked = new Map(); // names QA linked by hand, so they can be unlinked
 
   const add = (bucket, row, extra = {}) => {
     const cur = bucket || { deliveries: 0, lastDate: "", firstDate: "", branches: new Set(), names: new Set(), keys: new Set(), ...extra };
@@ -183,6 +221,8 @@ export function matchReceiving(receiving, evaluated, cfg = {}, ownNames = []) {
       const row = { ...r, part, key };
       if (aliases[key]) {
         byEvaluated[aliases[key]] = add(byEvaluated[aliases[key]], row);
+        const lk = `${aliases[key]}|${key}`;
+        linked.set(lk, add(linked.get(lk), row, { key, evaluatedId: aliases[key] }));
         return;
       }
       // "FANTCO(FAISAL AL NUSIF)": the name in brackets is often the real one
@@ -217,5 +257,6 @@ export function matchReceiving(receiving, evaluated, cfg = {}, ownNames = []) {
     byEvaluated,
     unevaluated: Array.from(pending.values()).map(finish).sort((a, b) => b.deliveries - a.deliveries),
     ignored: Array.from(ignored.values()).map(finish).sort((a, b) => b.deliveries - a.deliveries),
+    linked: Array.from(linked.values()).map(finish).sort((a, b) => b.deliveries - a.deliveries),
   };
 }
