@@ -108,6 +108,7 @@ const UI = {
     declStateOnline: "Confirmed online only — signed & stamped copy not uploaded yet",
     declStateNone: "Declaration not confirmed by the supplier",
     halal_notRequired: "Not required",
+    halal_attention: "Missing or expired",
     pickSupplier: "Select a supplier from the list to see the evaluation.",
     searchShortPh: "Search supplier...",
     typeAll: "All types",
@@ -230,6 +231,7 @@ const UI = {
     declStateOnline: "تم التأكيد إلكترونياً فقط — لم تُرفع النسخة الموقّعة والمختومة بعد",
     declStateNone: "لم يؤكد المورد الإقرار",
     halal_notRequired: "غير مطلوب",
+    halal_attention: "ناقص أو منتهي",
     pickSupplier: "اختر مورداً من القائمة لعرض التقييم.",
     searchShortPh: "ابحث عن مورد...",
     typeAll: "كل الأنواع",
@@ -1193,8 +1195,23 @@ function declState(d) {
   if (o?.agreed) return "online";
   return "none";
 }
-function rowDeclState(p) {
-  return declState(p?.declaration || p?.public?.submission?.declaration || p?.public?.declaration || p?.submission?.declaration || null);
+/* Every place the supplier app has been seen to store the declaration */
+function findDeclaration(r) {
+  const p = getPayloadObj(r) || {};
+  const rep = getReportObj(r) || {};
+  const d =
+    p?.declaration ||
+    p?.public?.submission?.declaration ||
+    p?.public?.declaration ||
+    p?.submission?.declaration ||
+    p?.meta?.declaration ||
+    rep?.declaration ||
+    rep?.data?.declaration ||
+    null;
+  return asObject(d) || (d && typeof d === "object" && !Array.isArray(d) ? d : null);
+}
+function rowDeclState(r) {
+  return declState(findDeclaration(r));
 }
 const DECL_STYLE = {
   signed: HALAL_STATUS_STYLE.received,
@@ -1444,7 +1461,8 @@ export default function SupplierEvaluationResults() {
       // Halal declaration filter (food suppliers only)
       if (halalFilter !== "all") {
         if (!halalApplies(getSupplierType(p))) return false;
-        if (rowHalalStatus(r) !== halalFilter) return false;
+        const hs = rowHalalStatus(r);
+        if (halalFilter === "attention" ? hs !== "missing" && hs !== "expired" : hs !== halalFilter) return false;
       }
 
       // Text query
@@ -1500,21 +1518,7 @@ export default function SupplierEvaluationResults() {
   }, [openedPayload, openedFields]);
 
   // ✅ declaration
-  const openedDeclaration = useMemo(() => {
-    const rep = getReportObj(opened) || {};
-    // Try many server nesting variants — supplier-app sometimes wraps submission differently
-    const d =
-      openedPayload?.declaration ||
-      openedPayload?.public?.submission?.declaration ||
-      openedPayload?.public?.declaration ||
-      openedPayload?.submission?.declaration ||
-      openedPayload?.meta?.declaration ||
-      rep?.declaration ||
-      rep?.data?.declaration ||
-      null;
-    const obj = asObject(d) || (d && typeof d === "object" && !Array.isArray(d) ? d : null);
-    return obj;
-  }, [openedPayload, opened]);
+  const openedDeclaration = useMemo(() => (opened ? findDeclaration(opened) : null), [opened]);
 
   // Resolve supplier type for the opened report (used in PDF + section)
   const openedSupplierType = useMemo(() => getSupplierType(openedPayload), [openedPayload]);
@@ -1889,10 +1893,10 @@ export default function SupplierEvaluationResults() {
   }, [openId]);
 
   useEffect(() => {
-    if (!isWide || !filtered.length) return;
+    if (!isWide || !filtered.length || editMode || savingEdit || editingNotes) return;
     const ids = filtered.map((r) => String(getReportObj(r)?.id ?? r?.id));
     if (!openId || !ids.includes(String(openId))) setOpenId(ids[0]);
-  }, [isWide, filtered, openId]);
+  }, [isWide, filtered, openId, editMode, savingEdit, editingNotes]);
 
   const stats = useMemo(() => {
     let halalMissing = 0;
@@ -1905,7 +1909,7 @@ export default function SupplierEvaluationResults() {
         const hs = rowHalalStatus(r);
         if (hs === "missing" || hs === "expired") halalMissing += 1;
       }
-      if (rowDeclState(p) !== "signed") declMissing += 1;
+      if (rowDeclState(r) !== "signed") declMissing += 1;
       const pct = compliancePct(rowCounts(p));
       if (pct != null) {
         sum += pct;
@@ -2294,7 +2298,7 @@ export default function SupplierEvaluationResults() {
             {[
               { key: "total", label: t.kpiTotal, value: stats.total, c: { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" }, onClick: () => { setTypeFilter("all"); setHalalFilter("all"); setQuery(""); } },
               { key: "avg", label: t.kpiCompliance, value: stats.avg == null ? "—" : stats.avg + "%", c: pctStyle(stats.avg) },
-              { key: "halal", label: t.kpiHalalMissing, value: stats.halalMissing, c: stats.halalMissing ? HALAL_STATUS_STYLE.missing : HALAL_STATUS_STYLE.received, onClick: () => setHalalFilter("missing") },
+              { key: "halal", label: t.kpiHalalMissing, value: stats.halalMissing, c: stats.halalMissing ? HALAL_STATUS_STYLE.missing : HALAL_STATUS_STYLE.received, onClick: () => setHalalFilter("attention") },
               { key: "decl", label: t.kpiDeclMissing, value: stats.declMissing, c: stats.declMissing ? HALAL_STATUS_STYLE.requested : HALAL_STATUS_STYLE.received },
             ].map((k) => (
               <button
@@ -2363,7 +2367,7 @@ export default function SupplierEvaluationResults() {
                 ))}
               </select>
               <select value={halalFilter} onChange={(e) => setHalalFilter(e.target.value)} style={{ ...input, padding: "8px 10px", minWidth: 0, cursor: "pointer" }} title={t.filterHalal}>
-                {["all", "missing", "requested", "received", "expired"].map((key) => (
+                {["all", "attention", "missing", "requested", "received", "expired"].map((key) => (
                   <option key={key} value={key}>
                     {t.halalShort}: {key === "all" ? t.halalAll : t["halal_" + key]}
                   </option>
@@ -2417,7 +2421,7 @@ export default function SupplierEvaluationResults() {
                   const typeC = getSupplierTypeBadgeColor(supType);
                   const typeLabel = supType ? getSupplierTypeLabel(supType, lang) : lang === "ar" ? "غير محدَّد" : "Unspecified";
                   const hs = halalApplies(supType) ? rowHalalStatus(r) : null;
-                  const ds = rowDeclState(p);
+                  const ds = rowDeclState(r);
                   const active = String(openId) === id;
                   const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
                   const ellipsis = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
