@@ -2435,8 +2435,10 @@ export default function SupplierEvaluationResults() {
                         style={{
                           gridRow: "1 / span 2",
                           gridColumn: 2,
-                          width: 84,
-                          height: 58,
+                          minWidth: 84,
+                          minHeight: 58,
+                          padding: "6px 10px",
+                          whiteSpace: "nowrap",
                           borderRadius: 12,
                           display: "grid",
                           placeItems: "center",
