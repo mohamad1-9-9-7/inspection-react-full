@@ -288,6 +288,36 @@ export const CLICHES = {
   },
 };
 
+/* Missing documents WITH an upload link: the supplier uploads each file on a
+   page of its own (/supplier-approval/docs/:token) instead of replying by
+   e-mail, and every file lands in the evaluation by itself. */
+CLICHES.docsLink = {
+  ...CLICHES.docs,
+  id: "docsLink",
+  icon: "📤",
+  name: { en: "Missing documents (upload link)", ar: "مستندات ناقصة (رابط رفع)" },
+  hint: { en: "Ask for the paperwork with a link the supplier uploads to.", ar: "طلب المستندات مع رابط يرفع عليه المورد." },
+  showCta: true,
+  ctaLabel: { en: "Upload the documents", ar: "رفع المستندات" },
+  steps: [
+    "Open the link below (or scan the QR code) on a computer or phone.",
+    "Upload each document listed on this page — a photo or PDF is fine.",
+    "For the Halal declaration: download the form on that page, sign and stamp it, then upload it.",
+    "Each file is received immediately; no need to reply to this e-mail.",
+  ],
+  intro: {
+    en:
+      "Dear {company} team,\n\n" +
+      "Thank you for completing the self-assessment questionnaire. Before we can finalise your evaluation " +
+      "we still need the documents listed below.\n\n" +
+      "Please upload them through the secure link below — each file reaches us as soon as it is uploaded.",
+    ar:
+      "السادة {company} المحترمين،\n\n" +
+      "شكراً لتعبئتكم استبيان التقييم الذاتي. لاستكمال التقييم ما زلنا بحاجة إلى المستندات المذكورة أدناه.\n\n" +
+      "يُرجى رفعها عبر الرابط الآمن أدناه — يصلنا كل ملف فور رفعه.",
+  },
+};
+
 export const CLICHE_LIST = [
   CLICHES.invite,
   CLICHES.reminder,
@@ -432,12 +462,13 @@ export async function generateSupplierLetter(payload, clicheId, { requestedDocum
 
   /* Only a live link deserves steps, a URL and a QR. */
   if (cl.showCta && m.alive) {
-    section("HOW TO COMPLETE IT", [
-      kv("1", "Open the link below (or scan the QR code) on a computer or phone."),
-      kv("2", "Fill in every section; answers are saved as you go."),
-      kv("3", "Attach the supporting documents listed on this page."),
-      kv("4", "Press Submit. You will see a confirmation on screen."),
-    ], 26);
+    const steps = cl.steps || [
+      "Open the link below (or scan the QR code) on a computer or phone.",
+      "Fill in every section; answers are saved as you go.",
+      "Attach the supporting documents listed on this page.",
+      "Press Submit. You will see a confirmation on screen.",
+    ];
+    section("HOW TO COMPLETE IT", steps.map((txt, i) => kv(String(i + 1), txt)), 26);
 
     autoTable(pdf, {
       startY: y,
@@ -497,7 +528,7 @@ function documentText(doc, lang) {
 }
 
 function documentsForCliche(m, cl, requestedDocuments) {
-  if (cl.id === "docs" && Array.isArray(requestedDocuments) && requestedDocuments.length) {
+  if ((cl.id === "docs" || cl.id === "docsLink") && Array.isArray(requestedDocuments) && requestedDocuments.length) {
     return requestedDocuments;
   }
   return m.docs;
@@ -515,7 +546,7 @@ function docsListHtml(docs, lang) {
 
 function ctaHtml(m, cl, lang) {
   if (!cl.showCta || !m.alive) return "";
-  const label = lang === "ar" ? "فتح الاستبيان" : "Open the questionnaire";
+  const label = cl.ctaLabel?.[lang] || (lang === "ar" ? "فتح الاستبيان" : "Open the questionnaire");
   return `
   <div style="text-align:center;margin:18px 0 6px">
     <a href="${A(m.url)}" style="display:inline-block;background:${cl.accent};color:#fff;text-decoration:none;padding:13px 30px;border-radius:999px;font-weight:800;font-size:15px">${A(label)}</a>
@@ -620,9 +651,14 @@ export const SUPPLIER_EMAIL_TYPE = "supplier_self_assessment_form";
  * @param onSent    called after a successful send, so the tracker can stamp the
  *                  record's activity log with who was mailed and when
  */
-export function makeSupplierEmailConfig(clicheId, onSent, { requestedDocuments = [] } = {}) {
+export function makeSupplierEmailConfig(clicheId, onSent, { requestedDocuments = [], upload = null, extraAttachment = null } = {}) {
   const cl = CLICHES[clicheId] || CLICHES.invite;
   const exactDocuments = Array.isArray(requestedDocuments) ? requestedDocuments : [];
+  /* An upload link replaces the questionnaire link for the CTA, QR and deadline. */
+  const P = (payload) =>
+    upload?.url
+      ? { ...payload, public: { ...(payload?.public || {}), url: upload.url, disabled: false, expiresAt: upload.expiresAt || "" } }
+      : payload;
 
   return {
     reportTitle: `${cl.icon} ${cl.name.en}`,
@@ -631,22 +667,24 @@ export function makeSupplierEmailConfig(clicheId, onSent, { requestedDocuments =
     clicheId: cl.id,
 
     /* Keys the per-record send history — the token identifies this exact link. */
-    getReportRef: (payload) => linkMeta(payload).token || null,
+    getReportRef: (payload) => upload?.token || linkMeta(P(payload)).token || null,
     /* Pre-fills "To" with the supplier's own address. */
     getDefaultTo: (payload) => {
-      const e = linkMeta(payload).email;
+      const e = linkMeta(P(payload)).email;
       return e ? [e] : [];
     },
-    getDefaultIntro: (payload) => fillIntro(cl.intro.en, linkMeta(payload), "en"),
-    getSubject: (payload) => cl.subject(linkMeta(payload)),
+    getDefaultIntro: (payload) => fillIntro(cl.intro.en, linkMeta(P(payload)), "en"),
+    getSubject: (payload) => cl.subject(linkMeta(P(payload))),
 
-    generatePdf: (payload) => generateSupplierLetter(payload, cl.id, { requestedDocuments: exactDocuments }),
-    buildHtml: (payload, opts = {}) => buildHtmlBody(payload, cl.id, { ...opts, requestedDocuments: exactDocuments }),
-    buildText: (payload, opts = {}) => buildTextBody(payload, cl.id, { ...opts, requestedDocuments: exactDocuments }),
+    generatePdf: (payload) => generateSupplierLetter(P(payload), cl.id, { requestedDocuments: exactDocuments }),
+    buildHtml: (payload, opts = {}) => buildHtmlBody(P(payload), cl.id, { ...opts, requestedDocuments: exactDocuments }),
+    buildText: (payload, opts = {}) => buildTextBody(P(payload), cl.id, { ...opts, requestedDocuments: exactDocuments }),
     getImages: () => [],
+    /* e.g. the Halal declaration form to sign: { url (blob: or https), name } */
+    getCertificate: () => extraAttachment || null,
 
     getSummary: (payload) => {
-      const m = linkMeta(payload);
+      const m = linkMeta(P(payload));
       const status = m.submitted
         ? "SUBMITTED"
         : m.disabled

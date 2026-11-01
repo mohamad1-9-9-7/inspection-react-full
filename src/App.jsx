@@ -476,6 +476,10 @@ const SupplierPerformance = lazy(() =>
 const SupplierEvaluationPublic = lazy(() =>
   import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationPublic")
 );
+// Public: the supplier uploads the documents QA asked for (token link)
+const SupplierDocsUpload = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierDocsUpload")
+);
 
 /* ✅🆕 التدريب الداخلي (جلسات تدريب + إنشاء + قائمة) */
 const TrainingHome = lazy(() => import("./pages/training/TrainingHome"));
@@ -2414,6 +2418,7 @@ export default function App() {
         <Route path="/menu-nutrition" element={<MenuBookletPublic />} />
 
         {/* ✅✅✅ PUBLIC SUPPLIER LINK (NO login) */}
+        <Route path="/supplier-approval/docs/:token" element={<SupplierDocsUpload />} />
         <Route
           path="/supplier-approval/t/:token"
           element={<SupplierEvaluationPublic />}

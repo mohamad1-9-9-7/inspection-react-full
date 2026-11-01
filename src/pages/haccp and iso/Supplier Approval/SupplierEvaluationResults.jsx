@@ -6,6 +6,13 @@ import { getPublicOrigin } from "../../../config/publicOrigin";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 import { getActiveCompanyName } from "../../../utils/companyContext";
 import HalalDeclarationPanel from "./HalalDeclarationPanel";
+import SupplierDocRequest from "./SupplierDocRequest";
+import SupplierReceivingPanel from "./SupplierReceivingPanel";
+import SupplierHistory from "./SupplierHistory";
+import { printApprovedSupplierList, aslStatus } from "./supplierAsl";
+import { supplierRisk, nextEvaluationDate, daysUntil, RISK_STYLE, RISK_LABEL, RISK_LEVELS } from "./supplierRisk";
+import { fetchReceivingSuppliers, fetchReceivingConfig, saveReceivingConfig, matchReceiving } from "./supplierReceiving";
+import { buildPublicUrl } from "../../../config/publicOrigin";
 import { halalApplies, halalStatus, findHalalFilesInSubmission, HALAL_STATUS_STYLE } from "./halalDeclaration";
 
 /* ===================== API base (NORMALIZED) ===================== */
@@ -109,6 +116,38 @@ const UI = {
     declStateNone: "Declaration not confirmed by the supplier",
     halal_notRequired: "Not required",
     halal_attention: "Missing or expired",
+    kpiRecv: "In receiving, not evaluated",
+    asl: "🖨 Approved Supplier List",
+    requestDocs: "📤 Request documents",
+    tabHistory: "History",
+    riskTitle: "Risk",
+    riskComputed: "Calculated",
+    riskOverridden: "set by QA",
+    riskAuto: "Risk: automatic",
+    riskAll: "Risk: All",
+    nextEval: "Next evaluation",
+    overdueBy: "overdue by",
+    dueIn: "due in",
+    days: "days",
+    months: "months",
+    every: "every",
+    reason: "Reason",
+    reasonPrompt: "Reason for changing the risk level:",
+    recvTitle: "Goods receiving (12 months)",
+    recvNone: "No deliveries recorded in the last 12 months.",
+    recvDeliveries: "deliveries",
+    recvLast: "Last delivery",
+    recvBranches: "Branches",
+    recvNames: "Written as",
+    drTitle: "Document upload link",
+    drReceived: "received",
+    drSent: "created",
+    drValid: "valid until",
+    drExpired: "expired",
+    drRevoked: "closed",
+    drCopy: "📋 Copy link",
+    drRevoke: "Close link",
+    reevalOverdue: "Re-evaluation overdue",
     fDecl: "Declaration",
     declAll: "Declaration: All",
     declSigned: "Declaration: signed copy",
@@ -123,7 +162,7 @@ const UI = {
     p30: "Submitted: last 30 days",
     p90: "Submitted: last 90 days",
     p365: "Submitted: last 12 months",
-    pDue: "Re-evaluation due (12+ months)",
+    pDue: "Re-evaluation due (≤ 30 days / overdue)",
     sNewest: "Sort: last update",
     sOldest: "Sort: oldest submission",
     sName: "Sort: name A–Z",
@@ -264,6 +303,38 @@ const UI = {
     declStateNone: "لم يؤكد المورد الإقرار",
     halal_notRequired: "غير مطلوب",
     halal_attention: "ناقص أو منتهي",
+    kpiRecv: "في الاستلام بدون تقييم",
+    asl: "🖨 قائمة الموردين المعتمدين",
+    requestDocs: "📤 طلب المستندات",
+    tabHistory: "السجل",
+    riskTitle: "الخطر",
+    riskComputed: "المحسوب",
+    riskOverridden: "حدّده ضبط الجودة",
+    riskAuto: "الخطر: تلقائي",
+    riskAll: "الخطر: الكل",
+    nextEval: "التقييم القادم",
+    overdueBy: "متأخر",
+    dueIn: "بعد",
+    days: "يوم",
+    months: "شهر",
+    every: "كل",
+    reason: "السبب",
+    reasonPrompt: "سبب تغيير مستوى الخطر:",
+    recvTitle: "استلام الشحنات (12 شهر)",
+    recvNone: "لا يوجد استلام مسجّل في آخر 12 شهر.",
+    recvDeliveries: "استلام",
+    recvLast: "آخر استلام",
+    recvBranches: "الفروع",
+    recvNames: "مكتوب باسم",
+    drTitle: "رابط رفع المستندات",
+    drReceived: "مستلم",
+    drSent: "أُنشئ",
+    drValid: "صالح حتى",
+    drExpired: "منتهي",
+    drRevoked: "مغلق",
+    drCopy: "📋 نسخ الرابط",
+    drRevoke: "إغلاق الرابط",
+    reevalOverdue: "إعادة التقييم متأخرة",
     fDecl: "الإقرار",
     declAll: "الإقرار: الكل",
     declSigned: "الإقرار: نسخة موقّعة",
@@ -278,7 +349,7 @@ const UI = {
     p30: "الإرسال: آخر 30 يوم",
     p90: "الإرسال: آخر 90 يوم",
     p365: "الإرسال: آخر 12 شهر",
-    pDue: "يحتاج إعادة تقييم (12 شهر+)",
+    pDue: "إعادة التقييم مستحقة (≤ 30 يوم / متأخرة)",
     sNewest: "الترتيب: آخر تحديث",
     sOldest: "الترتيب: الأقدم إرسالاً",
     sName: "الترتيب: الاسم أ–ي",
@@ -1237,7 +1308,17 @@ function rowAgeDays(r) {
   const d = iso ? new Date(iso) : null;
   return d && !isNaN(d) ? Math.floor((Date.now() - d.getTime()) / 864e5) : null;
 }
-const REEVAL_DAYS = 365;
+/* Risk level and when the next evaluation is due (supplierRisk.js) */
+function rowRisk(r) {
+  const p = getPayloadObj(r) || {};
+  return supplierRisk(p, getSupplierType(p), compliancePct(rowCounts(p)));
+}
+function rowNextEval(r) {
+  return nextEvaluationDate(getSubmittedAtIso(r) || getRecordDate(r), rowRisk(r).months);
+}
+function rowDueDays(r) {
+  return daysUntil(rowNextEval(r));
+}
 
 /* Halal declaration status of a list row (received / requested / missing) */
 function rowHalalStatus(r) {
@@ -1453,6 +1534,7 @@ export default function SupplierEvaluationResults() {
   const [compFilter, setCompFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("all");
   const [sortBy, setSortBy] = useState("updated");
+  const [riskFilter, setRiskFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
   const [qFilter, setQFilter] = useState("all");
   const [qSearch, setQSearch] = useState("");
@@ -1464,6 +1546,10 @@ export default function SupplierEvaluationResults() {
   const [openId, setOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [openAttachment, setOpenAttachment] = useState(null);
+  const [rightView, setRightView] = useState("detail"); // "detail" | "receiving"
+  const [recv, setRecv] = useState({ loading: true, error: "", rows: [] });
+  const [recvCfg, setRecvCfg] = useState({ ignored: [], aliases: {} });
+  const [showDocRequest, setShowDocRequest] = useState(false);
 
   /* ===== Notes editing state ===== */
   const [editingNotes, setEditingNotes] = useState(false);
@@ -1528,6 +1614,7 @@ export default function SupplierEvaluationResults() {
       const p = getPayloadObj(r) || {};
 
       if (declFilter !== "all" && rowDeclState(r) !== declFilter) return false;
+      if (riskFilter !== "all" && rowRisk(r).level !== riskFilter) return false;
 
       if (compFilter !== "all") {
         const c = rowCounts(p);
@@ -1541,7 +1628,10 @@ export default function SupplierEvaluationResults() {
       if (periodFilter !== "all") {
         const age = rowAgeDays(r);
         if (age == null) return false;
-        if (periodFilter === "due" ? age < REEVAL_DAYS : age > Number(periodFilter)) return false;
+        if (periodFilter === "due") {
+          const dd = rowDueDays(r);
+          if (dd == null || dd > 30) return false;
+        } else if (age > Number(periodFilter)) return false;
       }
 
       // Type filter
@@ -1593,10 +1683,10 @@ export default function SupplierEvaluationResults() {
       compHigh: (a, b) => (pctOf(b) ?? -1) - (pctOf(a) ?? -1),
     };
     return sorters[sortBy] ? [...out].sort(sorters[sortBy]) : out;
-  }, [items, query, typeFilter, halalFilter, declFilter, compFilter, periodFilter, sortBy]);
+  }, [items, query, typeFilter, halalFilter, declFilter, compFilter, periodFilter, riskFilter, sortBy]);
 
   const activeFilters =
-    [typeFilter, halalFilter, declFilter, compFilter, periodFilter].filter((v) => v !== "all").length + (query ? 1 : 0);
+    [typeFilter, halalFilter, declFilter, compFilter, periodFilter, riskFilter].filter((v) => v !== "all").length + (query ? 1 : 0);
   const clearFilters = () => {
     setQuery("");
     setTypeFilter("all");
@@ -1604,6 +1694,7 @@ export default function SupplierEvaluationResults() {
     setDeclFilter("all");
     setCompFilter("all");
     setPeriodFilter("all");
+    setRiskFilter("all");
   };
 
   /* Excel of exactly what the list shows (filters + sort) */
@@ -1626,14 +1717,14 @@ export default function SupplierEvaluationResults() {
         { header: t.na, key: "na", width: 8 },
         { header: t.filterHalal, key: "halal", width: 20 },
         { header: t.fDecl, key: "decl", width: 24 },
-        { header: t.reevalDue, key: "due", width: 18 },
+        { header: t.riskTitle, key: "risk", width: 14 },
+        { header: t.nextEval, key: "due", width: 16 },
       ];
       filtered.forEach((r) => {
         const p = getPayloadObj(r) || {};
         const c = rowCounts(p);
         const st = getSupplierType(p);
         const ds = rowDeclState(r);
-        const age = rowAgeDays(r);
         ws.addRow({
           name: p?.fields?.company_name || p?.public?.submission?.fields?.company_name || "—",
           type: st ? getSupplierTypeLabel(st, lang) : "—",
@@ -1646,13 +1737,14 @@ export default function SupplierEvaluationResults() {
           na: c?.naCount ?? 0,
           halal: halalApplies(st) ? t["halal_" + rowHalalStatus(r)] : t.halal_notRequired,
           decl: ds === "signed" ? t.declSigned : ds === "online" ? t.declOnline : t.declNone,
-          due: age != null && age >= REEVAL_DAYS ? "✔" : "",
+          risk: RISK_LABEL[rowRisk(r).level][lang],
+          due: rowNextEval(r) ? rowNextEval(r).toLocaleDateString("en-GB") : "",
         });
       });
       const head = ws.getRow(1);
       head.font = { bold: true, color: { argb: "FFFFFFFF" } };
       head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
-      ws.autoFilter = { from: "A1", to: "L1" };
+      ws.autoFilter = { from: "A1", to: "M1" };
       const buf = await wb.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
@@ -1733,17 +1825,31 @@ export default function SupplierEvaluationResults() {
   const halalBuyer = getActiveCompanyName() || "Al Mawashi";
   const halalLogo = /mawashi|المواشي/i.test(halalBuyer) ? `${window.location.origin}/mawashi-logo.jpg` : "";
 
-  /* Save payload.halal on its own (no edit mode needed) */
-  const saveHalal = async (newHalal) => {
+  const currentUserName = useMemo(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("currentUser") || "{}");
+      return u.name || u.fullName || u.username || "";
+    } catch {
+      return "";
+    }
+  }, []);
+
+  /* Save part of the opened payload (no edit mode needed); `log` adds a
+     line to payload.changeLog for things the audit trail cannot describe. */
+  const savePayload = async (mutate, log) => {
     const rep = getReportObj(opened) || {};
     const id = rep?.id ?? opened?.id;
     if (!id) throw new Error(lang === "ar" ? "معرّف التقرير مفقود" : "Report id is missing");
     const currentPayload = getPayloadObj(opened) || {};
+    const nowIso = new Date().toISOString();
     const updatedPayload = {
-      ...currentPayload,
-      halal: newHalal,
-      meta: { ...(currentPayload.meta || {}), updatedAt: new Date().toISOString() },
+      ...mutate(currentPayload),
+      meta: { ...(currentPayload.meta || {}), updatedAt: nowIso },
     };
+    if (log) {
+      const prev = Array.isArray(currentPayload.changeLog) ? currentPayload.changeLog : [];
+      updatedPayload.changeLog = [...prev, { at: nowIso, by: currentUserName || "QA", ...log }].slice(-300);
+    }
     await updateReportPayload(id, updatedPayload);
     setItems((prev) =>
       (prev || []).map((r) => {
@@ -1761,6 +1867,81 @@ export default function SupplierEvaluationResults() {
         return r2;
       })
     );
+  };
+
+  const saveHalal = (newHalal) => savePayload((p) => ({ ...p, halal: newHalal }));
+
+  const setRiskOverride = async (level) => {
+    let reason = "";
+    if (level) {
+      reason = window.prompt(t.reasonPrompt, openedPayload?.risk?.reason || "");
+      if (reason === null) return; // cancelled
+    }
+    try {
+      await savePayload(
+        (p) => ({ ...p, risk: level ? { level, reason: reason.trim(), by: currentUserName, at: new Date().toISOString() } : null }),
+        { action: "risk", detail: level ? `${level}${reason ? " — " + reason.trim() : ""}` : "automatic" }
+      );
+    } catch (e) {
+      alert(String(e?.message || e));
+    }
+  };
+
+  /* Goods receiving ↔ evaluations (server aggregates, page matches names) */
+  useEffect(() => {
+    let alive = true;
+    Promise.all([fetchReceivingSuppliers(365), fetchReceivingConfig()])
+      .then(([rows, cfg]) => {
+        if (!alive) return;
+        setRecv({ loading: false, error: "", rows });
+        setRecvCfg(cfg);
+      })
+      .catch((e) => alive && setRecv({ loading: false, error: String(e?.message || e), rows: [] }));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const evaluatedList = useMemo(
+    () =>
+      (items || [])
+        .map((r) => ({ id: String(getReportObj(r)?.id ?? r?.id), name: String(getPayloadObj(r)?.fields?.company_name || "").trim() }))
+        .filter((x) => x.name),
+    [items]
+  );
+  const recvMatch = useMemo(
+    () => matchReceiving(recv.rows, evaluatedList, recvCfg, [halalBuyer]),
+    [recv.rows, evaluatedList, recvCfg, halalBuyer]
+  );
+  const saveRecvCfg = async (next) => setRecvCfg(await saveReceivingConfig(next, currentUserName));
+
+  const printAsl = () => {
+    const rows = (items || [])
+      .map((r) => {
+        const p = getPayloadObj(r) || {};
+        const st = getSupplierType(p);
+        const pct = compliancePct(rowCounts(p));
+        const ds = rowDeclState(r);
+        const hs = halalApplies(st) ? rowHalalStatus(r) : "notRequired";
+        const next = rowNextEval(r);
+        const dd = rowDueDays(r);
+        const id = String(getReportObj(r)?.id ?? r?.id);
+        return {
+          name: p?.fields?.company_name || "—",
+          category: st ? getSupplierTypeLabel(st, lang) : "—",
+          risk: RISK_LABEL[rowRisk(r).level][lang],
+          pct,
+          decl: ds === "signed" ? t.declShortOk : ds === "online" ? t.declShortOnline : t.declShortNo,
+          halal: t["halal_" + hs],
+          evaluated: String(getSubmittedAtIso(r) || getRecordDate(r) || "").slice(0, 10),
+          next: next ? next.toLocaleDateString("en-GB") : "—",
+          overdue: dd != null && dd < 0,
+          deliveries: String(recvMatch.byEvaluated[id]?.deliveries ?? 0),
+          status: aslStatus({ pct, declSigned: ds === "signed", halalOk: hs === "received" || hs === "notRequired", overdue: dd != null && dd < 0 }),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    printApprovedSupplierList({ lang, rows, buyer: halalBuyer, logoUrl: halalLogo });
   };
 
   const openedAnswerPairs = useMemo(() => {
@@ -2115,10 +2296,10 @@ export default function SupplierEvaluationResults() {
   }, [filtered, openId, editMode, editingNotes]);
 
   useEffect(() => {
-    if (!isWide || !filtered.length || editMode || savingEdit || editingNotes) return;
+    if (!isWide || !filtered.length || editMode || savingEdit || editingNotes || rightView !== "detail") return;
     const ids = filtered.map((r) => String(getReportObj(r)?.id ?? r?.id));
     if (!openId || !ids.includes(String(openId))) setOpenId(ids[0]);
-  }, [isWide, filtered, openId, editMode, savingEdit, editingNotes]);
+  }, [isWide, filtered, openId, editMode, savingEdit, editingNotes, rightView]);
 
   const stats = useMemo(() => {
     let halalMissing = 0;
@@ -2521,7 +2702,14 @@ export default function SupplierEvaluationResults() {
               { key: "total", label: t.kpiTotal, value: stats.total, c: { bg: "#e0f2fe", fg: "#075985", border: "#7dd3fc" }, onClick: () => { setTypeFilter("all"); setHalalFilter("all"); setQuery(""); } },
               { key: "avg", label: t.kpiCompliance, value: stats.avg == null ? "—" : stats.avg + "%", c: pctStyle(stats.avg) },
               { key: "halal", label: t.kpiHalalMissing, value: stats.halalMissing, c: stats.halalMissing ? HALAL_STATUS_STYLE.missing : HALAL_STATUS_STYLE.received, onClick: () => setHalalFilter("attention") },
-              { key: "decl", label: t.kpiDeclMissing, value: stats.declMissing, c: stats.declMissing ? HALAL_STATUS_STYLE.requested : HALAL_STATUS_STYLE.received },
+              { key: "decl", label: t.kpiDeclMissing, value: stats.declMissing, c: stats.declMissing ? HALAL_STATUS_STYLE.requested : HALAL_STATUS_STYLE.received, onClick: () => setDeclFilter("online") },
+              {
+                key: "recv",
+                label: "🚚 " + t.kpiRecv,
+                value: recv.loading ? "…" : recv.error ? "!" : recvMatch.unevaluated.length,
+                c: recvMatch.unevaluated.length ? { bg: "#ffedd5", fg: "#9a3412", border: "#fdba74" } : HALAL_STATUS_STYLE.received,
+                onClick: () => setRightView("receiving"),
+              },
             ].map((k) => (
               <button
                 key={k.key}
@@ -2556,6 +2744,9 @@ export default function SupplierEvaluationResults() {
                 </button>
               </span>
             )}
+            <button style={{ ...btn, padding: "9px 13px" }} onClick={printAsl} disabled={!items.length}>
+              {t.asl}
+            </button>
             <button style={{ ...btn, padding: "9px 13px" }} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
               {t.back}
             </button>
@@ -2602,6 +2793,7 @@ export default function SupplierEvaluationResults() {
                 [declFilter, setDeclFilter, [["all", t.declAll], ["signed", t.declSigned], ["online", t.declOnline], ["none", t.declNone]]],
                 [compFilter, setCompFilter, [["all", t.compAll], ["pass", t.compPass], ["watch", t.compWatch], ["fail", t.compFail], ["hasNo", t.compHasNo]]],
                 [periodFilter, setPeriodFilter, [["all", t.periodAll], ["30", t.p30], ["90", t.p90], ["365", t.p365], ["due", t.pDue]]],
+                [riskFilter, setRiskFilter, [["all", t.riskAll], ...RISK_LEVELS.slice().reverse().map((l) => [l, RISK_LABEL[l][lang]])]],
                 [sortBy, setSortBy, [["updated", t.sNewest], ["oldest", t.sOldest], ["name", t.sName], ["compLow", t.sCompLow], ["compHigh", t.sCompHigh]]],
               ].map(([value, set, opts], i) => (
                 <select
@@ -2613,8 +2805,8 @@ export default function SupplierEvaluationResults() {
                     padding: "8px 10px",
                     minWidth: 0,
                     cursor: "pointer",
-                    borderColor: i < 3 && value !== "all" ? "#0ea5e9" : undefined,
-                    background: i < 3 && value !== "all" ? "#f0f9ff" : input.background,
+                    borderColor: i < 4 && value !== "all" ? "#0ea5e9" : undefined,
+                    background: i < 4 && value !== "all" ? "#f0f9ff" : input.background,
                   }}
                 >
                   {opts.map(([v, label]) => (
@@ -2679,7 +2871,8 @@ export default function SupplierEvaluationResults() {
                   const ds = rowDeclState(r);
                   const active = String(openId) === id;
                   const tot = (c?.yesCount || 0) + (c?.noCount || 0) + (c?.naCount || 0) || 1;
-                  const age = rowAgeDays(r);
+                  const dueDays = rowDueDays(r);
+                  const risk = rowRisk(r);
                   const ellipsis = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
                   return (
                     <button
@@ -2687,7 +2880,10 @@ export default function SupplierEvaluationResults() {
                       type="button"
                       className="ser-card"
                       data-card-id={id}
-                      onClick={() => setOpenId(id)}
+                      onClick={() => {
+                        setOpenId(id);
+                        setRightView("detail");
+                      }}
                       style={{
                         width: "100%",
                         minWidth: 0,
@@ -2750,7 +2946,13 @@ export default function SupplierEvaluationResults() {
                         {hs ? <span style={chip(HALAL_STATUS_STYLE[hs], { maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" })}>{t.halalShort}: {t["halal_" + hs]}</span> : null}
                         <span style={chip(DECL_STYLE[ds], { maxWidth: "100%" })}>{ds === "signed" ? t.declShortOk : ds === "online" ? t.declShortOnline : t.declShortNo}</span>
                         {c?.noCount > 0 ? <span style={chip(HALAL_STATUS_STYLE.missing)}>✖ {c.noCount} {t.noAnswers}</span> : null}
-                        {age != null && age >= REEVAL_DAYS ? <span style={chip(HALAL_STATUS_STYLE.expired)}>🔁 {t.reevalDue}</span> : null}
+                        <span style={chip(RISK_STYLE[risk.level])}>⚖ {RISK_LABEL[risk.level][lang]}</span>
+                        {dueDays != null && dueDays < 0 ? <span style={chip(HALAL_STATUS_STYLE.missing)}>🔁 {t.reevalOverdue}</span> : null}
+                        {dueDays != null && dueDays >= 0 && dueDays <= 30 ? (
+                          <span style={chip(HALAL_STATUS_STYLE.expired)}>
+                            🔁 {t.reevalDue} · {t.dueIn} {dueDays} {t.days}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -2760,7 +2962,37 @@ export default function SupplierEvaluationResults() {
           </aside>
 
         {/* Evaluation detail — side panel on wide screens, full-screen sheet on small ones */}
-        {opened ? (
+        {rightView === "receiving" ? (
+          <div
+            style={
+              isWide
+                ? { minHeight: 0, height: "100%" }
+                : { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(2,6,23,0.62)", padding: 10, direction: isRTL ? "rtl" : "ltr" }
+            }
+          >
+            <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" style={{ ...btn, padding: "6px 12px" }} onClick={() => setRightView("detail")}>
+                  {t.close}
+                </button>
+              </div>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <SupplierReceivingPanel
+                  lang={lang}
+                  match={recvMatch}
+                  evaluated={evaluatedList}
+                  cfg={recvCfg}
+                  onSaveCfg={saveRecvCfg}
+                  loading={recv.loading}
+                  error={recv.error}
+                  btn={btn}
+                  input={input}
+                  panel={panel}
+                />
+              </div>
+            </div>
+          </div>
+        ) : opened ? (
           <div
             role={isWide ? undefined : "dialog"}
             aria-modal={isWide ? undefined : "true"}
@@ -2799,6 +3031,7 @@ export default function SupplierEvaluationResults() {
                   ["questions", "❓ " + t.tabQuestions + " (" + (openedCounts.total ?? openedAnswerPairs.length) + ")"],
                   ["docs", "📎 " + t.tabDocs + " (" + docsCount + ")"],
                   ["notes", "📝 " + t.tabNotes + (openedPayload?.notes ? " •" : "")],
+                  ["history", "🕓 " + t.tabHistory],
                 ];
                 return (
                   <div
@@ -2853,6 +3086,13 @@ export default function SupplierEvaluationResults() {
                             </button>
                           </>
                         )}
+                        <button
+                          style={{ ...small, background: "#f0fdfa", borderColor: "#5eead4", color: "#0f766e", opacity: editMode ? 0.5 : 1 }}
+                          onClick={() => setShowDocRequest(true)}
+                          disabled={editMode}
+                        >
+                          {t.requestDocs}
+                        </button>
                         <button style={{ ...small, opacity: editMode ? 0.5 : 1 }} onClick={downloadPdf} disabled={editMode}>
                           {t.downloadPdf}
                         </button>
@@ -2969,6 +3209,75 @@ export default function SupplierEvaluationResults() {
 
               {detailTab === "overview" && (
               <>
+              {(() => {
+                const st = getSupplierType(openedPayload);
+                const rk = supplierRisk(openedPayload, st, compliancePct(openedCounts));
+                const next = nextEvaluationDate(getSubmittedAtIso(opened) || getRecordDate(opened), rk.months);
+                const dd = daysUntil(next);
+                const rs = RISK_STYLE[rk.level];
+                const rcv = recvMatch.byEvaluated[String(getReportObj(opened)?.id ?? opened?.id)];
+                const line = { color: "#334155", fontWeight: 800, marginTop: 4 };
+                return (
+                  <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                    <div style={{ padding: "14px 16px", borderRadius: 14, background: rs.bg, border: "1px solid " + rs.border }}>
+                      <div style={{ fontWeight: 990, color: rs.fg }}>
+                        ⚖ {t.riskTitle}: {RISK_LABEL[rk.level][lang]}
+                      </div>
+                      <div style={line}>
+                        {t.riskComputed}: {RISK_LABEL[rk.computed][lang]}
+                        {rk.overridden ? ` · ${t.riskOverridden}` : ""}
+                      </div>
+                      {rk.reason ? (
+                        <div style={line}>
+                          {t.reason}: {rk.reason}
+                        </div>
+                      ) : null}
+                      <div style={line}>
+                        {t.nextEval}: <b>{next ? next.toLocaleDateString("en-GB") : "—"}</b>{" "}
+                        {dd != null ? (
+                          <span style={{ color: dd < 0 ? "#b91c1c" : dd <= 30 ? "#b45309" : "#166534" }}>
+                            ({dd < 0 ? `${t.overdueBy} ${-dd} ${t.days}` : `${t.dueIn} ${dd} ${t.days}`})
+                          </span>
+                        ) : null}{" "}
+                        · {t.every} {rk.months} {t.months}
+                      </div>
+                      <select
+                        value={openedPayload?.risk?.level || ""}
+                        onChange={(e) => setRiskOverride(e.target.value)}
+                        disabled={editMode}
+                        style={{ ...input, marginTop: 8, padding: "6px 10px", width: "auto" }}
+                      >
+                        <option value="">{t.riskAuto}</option>
+                        {RISK_LEVELS.slice().reverse().map((l) => (
+                          <option key={l} value={l}>
+                            {RISK_LABEL[l][lang]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ padding: "14px 16px", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                      <div style={{ fontWeight: 990, color: "#9a3412" }}>🚚 {t.recvTitle}</div>
+                      {recv.loading ? (
+                        <div style={line}>⏳</div>
+                      ) : rcv ? (
+                        <>
+                          <div style={line}>
+                            <b>{rcv.deliveries}</b> {t.recvDeliveries} · {t.recvLast}: <b>{rcv.lastDate || "—"}</b>
+                          </div>
+                          <div style={line}>
+                            {t.recvBranches}: {rcv.branches.join(", ") || "—"}
+                          </div>
+                          <div className="ser-sm ser-sm" style={{ ...line, color: "#94a3b8" }}>
+                            {t.recvNames}: {rcv.names.join(" · ")}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={line}>{t.recvNone}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               {/* ✅ ALL submitted fields — dynamic list, nothing gets missed */}
               <div
                 style={{
@@ -3132,6 +3441,67 @@ export default function SupplierEvaluationResults() {
 
               {detailTab === "docs" && (
               <>
+              {(() => {
+                const dr = openedPayload?.docRequest;
+                return (
+                  <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 14, background: "#f0fdfa", border: "1px solid #99f6e4" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 990, color: "#0f766e", flex: 1 }}>📤 {t.drTitle}</div>
+                      <button type="button" style={{ ...btn, padding: "6px 12px", background: "#0f766e", color: "#fff", borderColor: "#0f766e" }} disabled={editMode} onClick={() => setShowDocRequest(true)}>
+                        {t.requestDocs}
+                      </button>
+                    </div>
+                    {dr?.token
+                      ? (() => {
+                          const url = buildPublicUrl(`/supplier-approval/docs/${dr.token}`);
+                          const expired = dr.expiresAt && new Date(dr.expiresAt) < new Date();
+                          const items = Array.isArray(dr.items) ? dr.items : [];
+                          const got = items.filter((it) => (dr.uploads?.[it.key] || []).length).length;
+                          return (
+                            <>
+                              <div style={{ color: "#334155", fontWeight: 800, marginTop: 6 }}>
+                                <b>
+                                  {got}/{items.length}
+                                </b>{" "}
+                                {t.drReceived} · {t.drSent} {fmtDateTime(dr.createdAt)} ·{" "}
+                                {dr.revokedAt ? t.drRevoked : expired ? t.drExpired : `${t.drValid} ${fmtDateTime(dr.expiresAt)}`}
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                                {items.map((it) => {
+                                  const n = (dr.uploads?.[it.key] || []).length;
+                                  return (
+                                    <span key={it.key} style={chip(n ? HALAL_STATUS_STYLE.received : HALAL_STATUS_STYLE.requested)}>
+                                      {n ? "✅" : "⏳"} {lang === "ar" ? it.ar || it.en : it.en}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              {!dr.revokedAt && !expired ? (
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                                  <button type="button" style={{ ...btn, padding: "6px 12px" }} onClick={() => copyText(url)}>
+                                    {t.drCopy}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={{ ...btn, padding: "6px 12px" }}
+                                    onClick={() =>
+                                      savePayload((p) => ({ ...p, docRequest: { ...p.docRequest, revokedAt: new Date().toISOString() } }), {
+                                        action: "docRequest",
+                                        detail: "closed",
+                                      }).catch((e) => alert(String(e?.message || e)))
+                                    }
+                                  >
+                                    {t.drRevoke}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        })()
+                      : null}
+                  </div>
+                );
+              })()}
               {/* Declaration — always shown, editable in edit mode */}
               {(() => {
                 const displayDecl = editMode ? (declarationDraft || {}) : (openedDeclaration || {});
@@ -3975,6 +4345,10 @@ export default function SupplierEvaluationResults() {
                   )}
                 </div>
                 )}
+
+              {detailTab === "history" && (
+                <SupplierHistory lang={lang} reportId={String(getReportObj(opened)?.id ?? opened?.id)} payload={openedPayload} />
+              )}
             </div>
           </div>
         ) : isWide ? (
@@ -3986,6 +4360,33 @@ export default function SupplierEvaluationResults() {
           </section>
         ) : null}
         </div>
+
+        {showDocRequest && opened ? (
+          <SupplierDocRequest
+            lang={lang}
+            payload={openedPayload}
+            supplierType={openedSupplierType}
+            declarationState={declState(openedDeclaration)}
+            halalStatusValue={halalStatus(openedPayload, openedHalalFiles, getSubmittedAtIso(opened))}
+            buyer={halalBuyer}
+            logoUrl={halalLogo}
+            fields={openedFields}
+            products={openedProductsList}
+            userName={currentUserName}
+            onSaveRequest={(dr) =>
+              savePayload((p) => ({ ...p, docRequest: dr }), { action: "docRequest", detail: dr.items.map((x) => x.en).join(", ") })
+            }
+            onEmailSent={(info) =>
+              savePayload((p) => p, {
+                action: "email",
+                detail: `Missing documents → ${[].concat(info?.to || info?.recipients || []).join(", ")}`,
+              }).catch(() => {})
+            }
+            onClose={() => setShowDocRequest(false)}
+            btn={btn}
+            input={input}
+          />
+        ) : null}
 
         {/* attachment popup */}
         {openAttachment ? <AttachmentModal file={openAttachment} onClose={() => setOpenAttachment(null)} t={t} /> : null}

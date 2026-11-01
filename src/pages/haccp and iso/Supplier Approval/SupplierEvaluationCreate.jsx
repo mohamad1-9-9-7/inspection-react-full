@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "./SupplierApproval.css";
 import { buildPublicUrl } from "../../../config/publicOrigin";
 
@@ -152,8 +152,10 @@ const SUPPLIER_TYPES = [
 export default function SupplierEvaluationCreate() {
   const nav = useNavigate();
 
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierType, setSupplierType] = useState("food");
+  // ?name=&type= — opened from "In receiving, not evaluated" on the results page
+  const [params] = useSearchParams();
+  const [supplierName, setSupplierName] = useState(() => params.get("name") || "");
+  const [supplierType, setSupplierType] = useState(() => params.get("type") || "food");
   const [email, setEmail] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [expiryDays, setExpiryDays] = useState(30); // 0 = no expiry

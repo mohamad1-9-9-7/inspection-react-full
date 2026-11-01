@@ -211,11 +211,8 @@ const TXT = {
   },
 };
 
-/**
- * Prints the one-page declaration (pre-filled from the evaluation) — print dialog only.
- * onAfterPrint runs once the print dialog has closed (printed or cancelled).
- */
-export function printHalalDeclaration({ lang = "en", buyer, fields = {}, products = [], logoUrl = "", onAfterPrint }) {
+/** The one-page declaration as a full HTML document (pre-filled from the evaluation). */
+export function buildHalalDeclarationHtml({ lang = "en", buyer, fields = {}, products = [], logoUrl = "" }) {
   const L = TXT[lang] || TXT.en;
   const rtl = lang === "ar";
   const buyerName = buyer || (rtl ? "شركتنا" : "our company");
@@ -358,9 +355,16 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
   </div>
 </body>
 </html>`;
+  return html;
+}
 
-  // Print from a hidden iframe so only the browser's print dialog shows —
-  // no extra window. srcdoc's load fires after the logo has loaded.
+/**
+ * Prints a full HTML document from a hidden iframe, so only the browser's
+ * print dialog shows — no extra window. srcdoc's load fires after images.
+ * `title` names the "Save as PDF" file; onAfterPrint runs once the dialog
+ * has closed (printed or cancelled — the browser does not say which).
+ */
+export function printHtmlDocument(html, { title = "", onAfterPrint } = {}) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
@@ -371,7 +375,6 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
     cleaned = true;
     document.title = pageTitle;
     frame.remove();
-    // the browser does not say whether the user printed or cancelled — the caller asks
     if (typeof onAfterPrint === "function") setTimeout(onAfterPrint, 50);
   };
   frame.onload = () => {
@@ -379,7 +382,7 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
     if (!w) return cleanup();
     w.addEventListener("afterprint", () => setTimeout(cleanup, 100));
     // "Save as PDF" names the file after the top page's title
-    document.title = `${L.title} - ${fields.company_name || ""}`.trim();
+    if (title) document.title = title;
     w.focus();
     w.print();
     setTimeout(cleanup, 60000);
@@ -387,4 +390,44 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
   frame.srcdoc = html;
   document.body.appendChild(frame);
   return true;
+}
+
+/** Prints the declaration — print dialog only. */
+export function printHalalDeclaration(opts = {}) {
+  const L = TXT[opts.lang] || TXT.en;
+  return printHtmlDocument(buildHalalDeclarationHtml(opts), {
+    title: `${L.title} - ${opts.fields?.company_name || ""}`.trim(),
+    onAfterPrint: opts.onAfterPrint,
+  });
+}
+
+/**
+ * The declaration as a one-page A4 PDF Blob, to attach to an e-mail.
+ * English only: html2canvas → jsPDF cannot shape Arabic.
+ */
+export async function halalDeclarationPdf(opts = {}) {
+  const html = buildHalalDeclarationHtml({ ...opts, lang: "en" });
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  // A4 at 96 dpi, off-screen but laid out (visibility:hidden would still render)
+  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0";
+  document.body.appendChild(frame);
+  try {
+    await new Promise((resolve) => {
+      frame.onload = resolve;
+      frame.srcdoc = html;
+    });
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
+    const doc = frame.contentDocument;
+    // the print margins come from @page, which the screenshot ignores
+    doc.body.style.padding = "36px 44px";
+    const canvas = await html2canvas(doc.body, { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: 794 });
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const w = 210;
+    const h = Math.min(297, (canvas.height * w) / canvas.width);
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, w, h);
+    return pdf.output("blob");
+  } finally {
+    frame.remove();
+  }
 }
