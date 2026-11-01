@@ -82,7 +82,6 @@ export default function HalalDeclarationPanel({
   fields,
   products,
   buyer,
-  refNo,
   submissionFiles,
   uploadFile,
   onSave,
@@ -128,7 +127,7 @@ export default function HalalDeclarationPanel({
   };
 
   const handlePrint = () => {
-    const ok = printHalalDeclaration({ lang: printLang, buyer, fields, products, refNo });
+    const ok = printHalalDeclaration({ lang: printLang, buyer, fields, products });
     if (ok && !halal.requestedAt) save({ requestedAt: new Date().toISOString(), requestedLang: printLang }, "print");
   };
 

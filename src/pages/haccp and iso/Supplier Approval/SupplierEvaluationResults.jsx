@@ -3050,7 +3050,6 @@ export default function SupplierEvaluationResults() {
                 fields={openedFields}
                 products={openedProductsList}
                 buyer={getActiveCompanyName() || "Al Mawashi"}
-                refNo={String(openedPayload?.public?.token || "")}
                 submissionFiles={openedHalalFiles}
                 uploadFile={uploadViaServer}
                 onSave={saveHalal}
