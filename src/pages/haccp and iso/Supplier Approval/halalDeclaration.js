@@ -90,7 +90,6 @@ const TXT = {
     stamp: "Company stamp",
     returnNote: (buyer) =>
       `Please sign, stamp and return this page to ${buyer} with a copy of your Halal certificate (if available).`,
-    popup: "Could not open print window — please allow pop-ups.",
   },
   ar: {
     title: "إقرار حلال",
@@ -122,13 +121,12 @@ const TXT = {
     sDate: "التاريخ",
     stamp: "ختم الشركة",
     returnNote: (buyer) => `يرجى توقيع هذه الصفحة وختمها وإعادتها إلى ${buyer} مع نسخة من شهادة الحلال (إن وُجدت).`,
-    popup: "فشل فتح النافذة — يرجى السماح بالنوافذ المنبثقة",
   },
 };
 
 /**
- * Opens a print window with the one-page declaration pre-filled from the evaluation.
- * @returns {boolean} false when the pop-up was blocked
+ * Prints the one-page declaration (pre-filled from the evaluation) — print dialog only.
+ * @returns {boolean} always true (kept so the panel can stamp requestedAt)
  */
 export function printHalalDeclaration({ lang = "en", buyer, fields = {}, products = [] }) {
   const L = TXT[lang] || TXT.en;
@@ -231,20 +229,33 @@ export function printHalalDeclaration({ lang = "en", buyer, fields = {}, product
   </div>
 
   <div class="note">${esc(L.returnNote(buyerName))}</div>
-
-  <script>
-    window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });
-  </script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=900,height=900");
-  if (!win) {
-    alert(L.popup);
-    return false;
-  }
-  win.document.write(html);
-  win.document.close();
-  win.focus();
+  // Print from a hidden iframe so only the browser's print dialog shows —
+  // no extra window. srcdoc's load fires after the logo has loaded.
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  const pageTitle = document.title;
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.title = pageTitle;
+    frame.remove();
+  };
+  frame.onload = () => {
+    const w = frame.contentWindow;
+    if (!w) return cleanup();
+    w.addEventListener("afterprint", () => setTimeout(cleanup, 100));
+    // "Save as PDF" names the file after the top page's title
+    document.title = `${L.title} - ${fields.company_name || ""}`.trim();
+    w.focus();
+    w.print();
+    setTimeout(cleanup, 60000);
+  };
+  frame.srcdoc = html;
+  document.body.appendChild(frame);
   return true;
 }
