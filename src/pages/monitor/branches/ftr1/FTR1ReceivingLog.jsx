@@ -5,8 +5,11 @@
 import React from "react";
 import ReceivingLogForm from "../_shared/ReceivingLogForm";
 
-/* Food trucks also record the Dubai Municipality approval of the vehicle. */
-const DM_FIELD = [{ key: "dmApprovalNo", label: "DM approval no. (vehicle)", labelAr: "رقم موافقة البلدية للمركبة" }];
+/* Food trucks also record the vehicle plate and its Dubai Municipality approval. */
+const DM_FIELD = [
+  { key: "vehicleNo",    label: "Vehicle no.",               labelAr: "رقم السيارة" },
+  { key: "dmApprovalNo", label: "DM approval no. (vehicle)", labelAr: "رقم موافقة البلدية للمركبة" },
+];
 
 export default function FTR1ReceivingLog() {
   return (
@@ -17,6 +20,9 @@ export default function FTR1ReceivingLog() {
       documentNo="TELT/QC/RECLOG/01"
       photos
       extraFields={DM_FIELD}
+      rowPhotos
+      productWidth={420}
+      preparedBy
     />
   );
 }

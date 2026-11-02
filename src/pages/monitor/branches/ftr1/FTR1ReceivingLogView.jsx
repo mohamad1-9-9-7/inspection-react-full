@@ -33,6 +33,7 @@ const COLS = [
     label: "DM approval number of the delivery vehicle",
     align: "left",
   },
+  { key: "vehicleNo", label: "Vehicle no.", align: "center" },
   { key: "vehicleTemp", label: "Vehicle Temp (°C)", align: "center" },
   { key: "foodTemp", label: "Food Temp (°C)", align: "center" },
   { key: "vehicleClean", label: "Vehicle clean", align: "center" },
@@ -55,7 +56,7 @@ const COLS = [
 
 /* أبعاد الأعمدة الأساسية (قبل التحجيم) — لا صور */
 const COL_WIDTHS_PX = [
-  64, 160, 110, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
+  64, 160, 110, 110, 320, 110, 160, 120, 110, 110, 110, 130, 110, 110, 100, 260, 130, 130, 130, 220, 140,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
 const MIN_SCALE = 0.5; // حد أدنى للتحجيم
@@ -595,6 +596,7 @@ export default function FTR1ReceivingLogView() {
 
   const getRowImages = (row) => {
     const raw =
+      (row?.photo ? [row.photo, ...(Array.isArray(row?.images) ? row.images : [])] : null) ||
       row?.images ||
       row?.photos ||
       row?.Photos ||
@@ -1135,6 +1137,11 @@ export default function FTR1ReceivingLogView() {
                       gap: 8,
                     }}
                   >
+                    {(!isEditing ? selectedReport?.payload : draft)?.createdBy && (
+                      <div>
+                        <SignatureName label="Created By" name={(!isEditing ? selectedReport?.payload : draft)?.createdBy} inline />
+                      </div>
+                    )}
                     <div>
                       <SignatureName label="Checked By" name={(!isEditing ? selectedReport?.payload : draft)?.checkedBy} inline />
                     </div>

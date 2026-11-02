@@ -3,7 +3,7 @@ import {
   addDocHeader, addFooter, formatDMY, extractDate,
   pageSetupLandscape, rowsOf } from "./_lib";
 
-const COLS = [
+export const FTR_RECEIVING_COLS = [
   { key: "supplier",        label: "Name of the Supplier",   width: 22, align: "left" },
   { key: "itemCode",        label: "Item Code",              width: 12, align: "left" },
   { key: "foodItem",        label: "Food Item",              width: 20, align: "left" },
@@ -33,7 +33,7 @@ const COLS = [
  *                on the form itself (POS 10).
  */
 export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
-  const COLUMNS = opts.cols || COLS;
+  const COLUMNS = opts.cols || FTR_RECEIVING_COLS;
 
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
@@ -125,6 +125,7 @@ export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
     addFooter(ws, {
       checkedBy:  p?.footer?.checkedBy || p.checkedBy || p.receivedBy || "",
       verifiedBy: p?.footer?.verifiedBy || p.verifiedBy || "",
+      createdBy:  p.createdBy || "",
     }, NC);
     return ws;
   };

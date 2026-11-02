@@ -113,6 +113,7 @@ export default function FTR1PersonalHygieneView() {
 
     const header = [
       "S.No",
+      "Employee No.",
       "Employee Name",
       ...HYGIENE_COLUMNS,
       "Fit for Food Handling? (Yes/No)",
@@ -126,6 +127,7 @@ export default function FTR1PersonalHygieneView() {
       header,
       ...(selectedReport?.payload?.entries || []).map((entry, i) => [
         i + 1,
+        entry?.empNo || "",
         entry?.name || "",
         ...HYGIENE_COLUMNS.map((c) => entry?.[c] || ""),
         entry?.fitForFoodHandling || "",
@@ -483,6 +485,7 @@ export default function FTR1PersonalHygieneView() {
               <thead>
                 <tr style={{ background: "#2980b9", color: "#fff" }}>
                   <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+                  <th style={{ ...thStyle, width: "90px" }}>Employee No.</th>
                   <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
 
                   {HYGIENE_COLUMNS.map((col, i) => (
@@ -502,6 +505,7 @@ export default function FTR1PersonalHygieneView() {
                 {entries.map((entry, i) => (
                   <tr key={i}>
                     <td style={tdStyle}>{i + 1}</td>
+                    <td style={tdStyle}>{entry?.empNo || "—"}</td>
                     <td style={tdStyle}>{entry?.name || "—"}</td>
 
                     {HYGIENE_COLUMNS.map((col, cIndex) => (

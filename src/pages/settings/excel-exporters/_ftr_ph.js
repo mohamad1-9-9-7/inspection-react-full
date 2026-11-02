@@ -21,6 +21,7 @@ export function makeFtrPhBuilder(branchLabel) {
 
     const HEAD = [
       { label: "S.No",  width: 7 },
+      { label: "Employee No.", width: 12 },
       { label: "Employee Name", width: 22 },
       ...HYGIENE_COLUMNS.map((c, i) => ({ label: c, width: i === 3 ? 30 : 12 })),
       { label: "Fit for Food Handling?", width: 14 },
@@ -76,6 +77,7 @@ export function makeFtrPhBuilder(branchLabel) {
         const bg = i % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
         const values = [
           i + 1,
+          entry?.empNo || "",
           entry?.name || entry?.employeeName || "",
           ...HYGIENE_COLUMNS.map((c) => entry?.[c] || ""),
           entry?.fitForFoodHandling || "",
@@ -91,7 +93,7 @@ export function makeFtrPhBuilder(branchLabel) {
           c.fill = fillSolid(bg);
           c.alignment = ci === values.length - 1
             ? { ...left, wrapText: true }
-            : (ci === 1 ? left : center);
+            : (ci === 2 ? left : center);
           c.border = BORDER_BLACK;
           const s = String(v ?? "").trim().toLowerCase();
           if (s === "yes" || s === "√" || s === "ok") {

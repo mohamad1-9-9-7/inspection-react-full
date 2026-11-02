@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/ftr1/FTR1DailyCleanliness.jsx
 import React, { useMemo, useState } from "react";
+import CncToggle from "../_shared/CncToggle";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -76,11 +77,18 @@ export default function FTR1DailyCleanliness() {
 
   const [opMsg, setOpMsg] = useState("");
 
-  const handleChange = (index, field, value) => {
-    const updated = [...entries];
-    updated[index][field] = value;
-    setEntries(updated);
-  };
+  const handleChange = (index, field, value) =>
+    setEntries((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
+
+  /* Fill every still-empty item with C (one section, or the whole sheet);
+     items already marked — NC included — are left alone. */
+  const markAllC = (secNo = null) =>
+    setEntries((prev) => prev.map((e) =>
+      !e.isSection && !e.status && (secNo == null || e.secNo === secNo) ? { ...e, status: "C" } : e));
+
+  const items = entries.filter((e) => !e.isSection);
+  const doneCount = items.filter((e) => e.status).length;
+  const ncCount = items.filter((e) => e.status === "NC").length;
 
   const validationErrors = useMemo(() => {
     const errs = [];
@@ -244,13 +252,25 @@ export default function FTR1DailyCleanliness() {
         </div>
       )}
 
+      {/* Quick fill */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+        <button type="button" onClick={() => markAllC()} style={allCBtn}>
+          ✓ Mark all remaining as C
+        </button>
+        <span style={{ fontWeight: 700, color: "#334155" }}>
+          {doneCount} / {items.length} checked
+          {ncCount > 0 && <span style={{ color: "#dc2626" }}> · {ncCount} NC</span>}
+        </span>
+        <span style={{ color: "#64748b" }}>Tap ✓ C or ✗ NC on each item — tap again to clear.</span>
+      </div>
+
       {/* Table */}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={thStyle}>Sl-No</th>
             <th style={thStyle}>General Cleaning</th>
-            <th style={thStyle}>C / NC</th>
+            <th style={{ ...thStyle, width: 170 }}>C / NC</th>
             <th style={thStyle}>Observation</th>
             <th style={thStyle}>Informed To</th>
             <th style={thStyle}>Remarks & CA</th>
@@ -258,24 +278,19 @@ export default function FTR1DailyCleanliness() {
         </thead>
         <tbody>
           {entries.map((entry, i) => (
-            <tr key={i}>
+            <tr key={i} style={entry.isSection ? { background: "#f1f5f9" } : entry.status === "NC" ? { background: "#fef2f2" } : undefined}>
               <td style={tdStyle}>{entry.isSection ? entry.secNo : entry.subLetter}</td>
               <td style={{ ...tdStyle, fontWeight: entry.isSection ? 700 : 400 }}>
                 {entry.section || entry.item}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection ? (
-                  <select
-                    value={entry.status}
-                    onChange={(e) => handleChange(i, "status", e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">--</option>
-                    <option value="C">C</option>
-                    <option value="NC">NC</option>
-                  </select>
+                  <CncToggle value={entry.status} onChange={(v) => handleChange(i, "status", v)} />
                 ) : (
-                  "—"
+                  <button type="button" onClick={() => markAllC(entry.secNo)} style={secAllCBtn}
+                    title="Mark this section's empty items as C">
+                    ✓ All C
+                  </button>
                 )}
               </td>
               <td style={tdStyle}>
@@ -285,7 +300,7 @@ export default function FTR1DailyCleanliness() {
                     value={entry.observation}
                     onChange={(e) => handleChange(i, "observation", e.target.value)}
                     style={inputStyle}
-                    placeholder="Observation"
+                    placeholder={entry.status === "NC" ? "What was found?" : "Observation"}
                   />
                 )}
               </td>
@@ -395,3 +410,11 @@ const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center" 
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "center" };
 const inputStyle = { padding: "6px", borderRadius: "6px", border: "1px solid #aaa" };
 const tdHeader = { border: "1px solid #ccc", padding: "4px 6px", fontSize: "0.85rem" };
+const allCBtn = {
+  padding: "8px 14px", borderRadius: 10, border: "1px solid #16a34a",
+  background: "#f0fdf4", color: "#15803d", fontWeight: 800, cursor: "pointer",
+};
+const secAllCBtn = {
+  padding: "4px 10px", borderRadius: 8, border: "1px solid #86efac",
+  background: "#fff", color: "#15803d", fontWeight: 700, cursor: "pointer",
+};

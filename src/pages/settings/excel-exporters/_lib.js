@@ -239,7 +239,7 @@ export function addNotesBlock(ws, lines, totalCols) {
 
 /* ─── Footer block: Verified by / Checked by ─── */
 export function addFooter(ws, opts, totalCols) {
-  const { verifiedBy = "", checkedBy = "", revDate = "", revNo = "" } = opts || {};
+  const { verifiedBy = "", checkedBy = "", createdBy = "", revDate = "", revNo = "" } = opts || {};
   const NC = Math.max(totalCols, 4);
   let r = ws.lastRow ? ws.lastRow.number + 2 : 1; // leave a blank row above
 
@@ -247,6 +247,7 @@ export function addFooter(ws, opts, totalCols) {
     ["Checked by:",  checkedBy],
     ["Verified by:", verifiedBy],
   ];
+  if (createdBy) entries.unshift(["Created by:", createdBy]);
   if (revDate) entries.push(["Rev. Date:", revDate]);
   if (revNo)   entries.push(["Rev. No:",   revNo]);
 

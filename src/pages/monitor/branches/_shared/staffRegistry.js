@@ -52,7 +52,7 @@ export const STAFF_FORMS = [
   { key: "pos11_personal_hygiene", reportType: "pos11_personal_hygiene",   site: "POS 11",  siteAr: "العين",         en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "pos15_personal_hygiene", reportType: "pos15_personal_hygiene",   site: "POS 15",  siteAr: "البرشاء",       en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
   { key: "pos19_personal_hygiene", reportType: "pos19_personal_hygiene",   site: "POS 19",  siteAr: "موتور سيتي",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
-  { key: "ftr1_personal_hygiene",  reportType: "ftr1_personal_hygiene",    site: "FTR 1",   siteAr: "حديقة المشرف",  en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "ftr1_personal_hygiene",  reportType: "ftr1_personal_hygiene",    site: "FTR 1",   siteAr: "حديقة المشرف",  en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
   { key: "ftr2_personal_hygiene",  reportType: "ftr2_personal_hygiene",    site: "FTR 2",   siteAr: "الممزر",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
   { key: "prod_personal_hygiene",  reportType: "prod_personal_hygiene",    site: "Production", siteAr: "الإنتاج",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },
   { key: "sweets_personal_hygiene", reportType: "sweets-ph",               site: "Sweets",  siteAr: "الحلويات",      en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true  },

@@ -1,5 +1,11 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygiene.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import CncToggle from "../_shared/CncToggle";
+import {
+  COMPANY_DIRECTORY,
+  normalizeEmpNo,
+  useStaffDirectory,
+} from "../_shared/staffRegistry";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -14,7 +20,14 @@ const API_BASE =
  * ✅ Verified by (QA) لازم مستقل عن Checked By
  * ✅ ملاحظة: Checked By من قبل مشرف الفرع الحاصل على شهادة PIC
  * ✅ حذف Area badge اللي كانت طالعة لحالها على الطرف
+ * ✅ Employee No.: typing it looks the person up (Staff Directory, then the
+ *    company directory) and fills the name; the name stays editable for
+ *    people who aren't in either list yet.
  */
+
+/** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
+const PH_FORM_KEY = "ftr1_personal_hygiene";
+const COMPANY_BY_NO = new Map(COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d]));
 
 const HYGIENE_COLUMNS = [
   "Nails",
@@ -26,6 +39,7 @@ const HYGIENE_COLUMNS = [
 const YESNO = ["", "Yes", "No"];
 
 const makeEmptyRow = () => ({
+  empNo: "",
   name: "",
   Nails: "",
   Hair: "",
@@ -51,9 +65,45 @@ export default function FTR1PersonalHygiene() {
   const [verifiedByQA, setVerifiedByQA] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
+  const { roster, loading: staffLoading, byNo } = useStaffDirectory(PH_FORM_KEY);
+
+  const findEmployee = (empNo) => {
+    const key = normalizeEmpNo(empNo);
+    if (!key) return null;
+    return byNo.get(key) || COMPANY_BY_NO.get(key) || null;
+  };
+
+  // Pre-fill the sheet once with the people assigned to this form, as long as
+  // nobody has typed into it yet.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading) return;
+    seededRef.current = true;
+    if (!roster.length) return;
+    setEntries((prev) => {
+      if (prev.some((r) => norm(r.empNo) || norm(r.name))) return prev;
+      const rows = roster.map((s) => ({ ...makeEmptyRow(), empNo: s.empNo, name: s.name }));
+      while (rows.length < prev.length) rows.push(makeEmptyRow());
+      return rows;
+    });
+  }, [roster, staffLoading]);
+
+  const addRow = () => setEntries((prev) => [...prev, makeEmptyRow()]);
+  // Removing a draft line is editing the sheet, not deleting saved data — so
+  // it is open to everyone and carries no data-delete-action.
+  const removeRow = (rowIndex) =>
+    setEntries((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== rowIndex) : prev));
+
   const handleChange = (rowIndex, field, value) => {
     const updated = [...entries];
     updated[rowIndex] = { ...updated[rowIndex], [field]: value };
+
+    // Employee No. fills the name when the number is known; an unknown
+    // number leaves whatever name was typed.
+    if (field === "empNo") {
+      const match = findEmployee(value);
+      if (match) updated[rowIndex].name = match.name;
+    }
 
     // ✅ إذا Fit = Yes امسح أسباب الـ No
     if (field === "fitForFoodHandling" && value === "Yes") {
@@ -122,7 +172,8 @@ export default function FTR1PersonalHygiene() {
         branch: "FTR 1",
         reportDate: date,
         area: "QA",
-        entries,
+        // blank lines are left out of the saved sheet
+        entries: entries.filter((r) => norm(r.empNo) || norm(r.name)),
         checkedBy: norm(checkedBy),
         verifiedByQA: norm(verifiedByQA),
 
@@ -270,10 +321,11 @@ export default function FTR1PersonalHygiene() {
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+            <th style={{ ...thStyle, width: "100px" }}>Employee No.</th>
             <th style={{ ...thStyle, width: "160px" }}>Employee Name</th>
 
             {HYGIENE_COLUMNS.map((col, i) => (
-              <th key={i} style={{ ...thStyle, width: "120px" }}>
+              <th key={i} style={{ ...thStyle, width: "130px" }}>
                 {col}
               </th>
             ))}
@@ -298,6 +350,7 @@ export default function FTR1PersonalHygiene() {
             <th style={{ ...thStyle, width: "260px" }}>
               Remarks and Corrective Actions
             </th>
+            <th style={{ ...thStyle, width: "50px" }}></th>
           </tr>
         </thead>
 
@@ -309,6 +362,21 @@ export default function FTR1PersonalHygiene() {
             return (
               <tr key={i}>
                 <td style={tdStyle}>{i + 1}</td>
+
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="No."
+                    value={entry.empNo || ""}
+                    onChange={(e) => handleChange(i, "empNo", e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      borderColor: norm(entry.empNo) && !findEmployee(entry.empNo) ? "#f59e0b" : "#aaa",
+                    }}
+                    title={norm(entry.empNo) && !findEmployee(entry.empNo) ? "Employee number not found — type the name" : ""}
+                  />
+                </td>
 
                 <td style={tdStyle}>
                   <input
@@ -325,18 +393,10 @@ export default function FTR1PersonalHygiene() {
                   />
                 </td>
 
-                {/* ✅ نظافة عامة (C/NC) مثل ما هو */}
+                {/* ✅ نظافة عامة (C/NC) — زرّين بدل القائمة */}
                 {HYGIENE_COLUMNS.map((col, cIndex) => (
                   <td key={cIndex} style={tdStyle}>
-                    <select
-                      value={entry[col]}
-                      onChange={(e) => handleChange(i, col, e.target.value)}
-                      style={{ ...inputStyle, width: "100%" }}
-                    >
-                      <option value="">--</option>
-                      <option value="C">C</option>
-                      <option value="NC">NC</option>
-                    </select>
+                    <CncToggle value={entry[col]} onChange={(v) => handleChange(i, col, v)} minWidth={0} />
                   </td>
                 ))}
 
@@ -435,11 +495,48 @@ export default function FTR1PersonalHygiene() {
                     }}
                   />
                 </td>
+
+                <td style={tdStyle}>
+                  <button
+                    type="button"
+                    title="Remove row"
+                    onClick={() => removeRow(i)}
+                    disabled={entries.length <= 1}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      border: "1px solid #ef4444",
+                      color: "#ef4444",
+                      background: "#fff",
+                      cursor: entries.length <= 1 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    ✖
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      <div style={{ marginTop: "0.5rem" }}>
+        <button
+          type="button"
+          onClick={addRow}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: "1px solid #2980b9",
+            color: "#2980b9",
+            background: "#fff",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          ＋ Add row
+        </button>
+      </div>
 
       {/* Remarks footer */}
       <div style={{ marginTop: "1rem", fontWeight: "600" }}>

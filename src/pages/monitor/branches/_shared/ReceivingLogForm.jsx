@@ -24,6 +24,7 @@ import { ItemCodeInput, ItemNameInput } from "./CodedProductField";
 import { getReportRowByDate, payloadOf, reportId } from "./reportApi";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { uploadImage } from "../../../../utils/imageUpload";
+import { getCurrentUser } from "../../../../utils/perms";
 
 /* Columns judged C / NC on arrival. */
 const TICK_COLS = [
@@ -53,11 +54,12 @@ const TAIL_COLS = [
    sideways instead of squeezing inputs until dates and names are cut off. */
 const NO_W = 48;
 const DEL_W = 52;
-const TABLE_W = NO_W + DEL_W + [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].reduce((s, c) => s + c.w, 0);
+const PHOTO_W = 92;
 /* # + code + name stay pinned while scrolling to the C/NC and date columns. */
 const STICKY_AT = { no: 0, itemCode: NO_W, foodItem: NO_W + TEXT_COLS[0].w };
 
-const LINE_KEYS = [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].map((c) => c.key);
+/* `photo` = the one picture a line may carry (rowPhotos sheets). */
+const LINE_KEYS = [...[...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].map((c) => c.key), "photo"];
 /* Fields that belong to the delivery, not the line. */
 const DELIVERY_KEYS = ["supplier", "invoiceNo", "receivedBy", "vehicleTemp"];
 const STARTING_ROWS = 5;
@@ -167,9 +169,15 @@ const STYLES = `
   .rl-photo { width:96px; height:72px; border:1px dashed #cbd5e1; border-radius:10px; display:grid; place-items:center; position:relative; overflow:hidden; background:#f8fafc; cursor:pointer; color:#64748b; font-weight:700; }
   .rl-photo img { width:100%; height:100%; object-fit:cover; }
   .rl-photo button { position:absolute; top:3px; inset-inline-end:3px; border:0; border-radius:6px; background:rgba(15,23,42,.65); color:#fff; cursor:pointer; padding:0 6px; }
+  .rl-table .rl-photo.rl-row-photo { width:72px; height:42px; margin:0 auto; font-size:18px; }
 `;
 
 const L = (isAr, en, ar) => (isAr ? ar : en);
+
+const accountName = () => {
+  const u = getCurrentUser() || {};
+  return String(u.displayName || u.name || u.username || "").trim();
+};
 
 /**
  * @param {string}  branch      "POS 10"
@@ -179,15 +187,29 @@ const L = (isAr, en, ar) => (isAr ? ar : en);
  * @param {boolean} photos      4 photo slots per delivery (FTR trucks)
  * @param {Array}   extraFields more per-delivery fields, e.g. FTR's
  *                              [{ key: "dmApprovalNo", label, labelAr }]
+ * @param {boolean} rowPhotos   one photo per line (own column)
+ * @param {number}  productWidth width of the product-name column (px)
+ * @param {boolean} preparedBy  "Report created by" signature beside
+ *                              checked / verified (prefilled with the account)
  */
-export default function ReceivingLogForm({ branch, type, reporter, documentNo = "FSMS/BR/F01A", photos = false, extraFields = [] }) {
+export default function ReceivingLogForm({
+  branch, type, reporter, documentNo = "FSMS/BR/F01A", photos = false, extraFields = [],
+  rowPhotos = false, productWidth = 0, preparedBy = false,
+}) {
   const { t, dir, isAr } = useLang();
+
+  const textCols = productWidth
+    ? TEXT_COLS.map((c) => (c.key === "foodItem" ? { ...c, w: productWidth } : c))
+    : TEXT_COLS;
+  const tableW = NO_W + DEL_W + (rowPhotos ? PHOTO_W : 0)
+    + [...textCols, ...TICK_COLS, ...TAIL_COLS].reduce((s, c) => s + c.w, 0);
 
   const [date, setDate] = useState(todayDubai);
   const [formRef, setFormRef] = useState(documentNo);
   const [deliveries, setDeliveries] = useState(() => [emptyDelivery()]);
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
+  const [createdBy, setCreatedBy] = useState(() => (preparedBy ? accountName() : ""));
 
   const [recordId, setRecordId] = useState(null);   // the day's record, once it exists
   const [loadingDay, setLoadingDay] = useState(false);
@@ -216,11 +238,13 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
         if (p.formRef) setFormRef(p.formRef);
         setCheckedBy(p.checkedBy || p.receivedBy || "");
         setVerifiedBy(p.verifiedBy || "");
+        setCreatedBy(p.createdBy || (preparedBy ? accountName() : ""));
       } else {
         setRecordId(null);
         setDeliveries([emptyDelivery()]);
         setCheckedBy("");
         setVerifiedBy("");
+        setCreatedBy(preparedBy ? accountName() : "");
       }
     } catch (e) {
       // Without knowing whether the day has a sheet, saving could file a
@@ -275,6 +299,18 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
       setUploading("");
     }
   }
+  async function pickRowPhoto(di, ri, file) {
+    if (!file) return;
+    setUploading(`row:${di}:${ri}`);
+    try {
+      const url = await uploadImage(file, `${type}_line_photo`);
+      updateRow(di, ri, "photo", url);
+    } catch (e) {
+      alert(L(isAr, "Photo upload failed: ", "فشل رفع الصورة: ") + (e?.message || e));
+    } finally {
+      setUploading("");
+    }
+  }
   const removePhoto = (di, slot) =>
     setDeliveries((prev) => prev.map((d, i) => {
       if (i !== di) return d;
@@ -310,6 +346,9 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
           return flash(`⚠️ ${L(isAr, "Delivery", "التوريدة")} ${n}, ${i + 1}: ${t("rc_bad_dates")}`, 6000);
         }
       }
+    }
+    if (preparedBy && !createdBy.trim()) {
+      return flash("⚠️ " + L(isAr, "Report created by", "تم إنشاء التقرير بواسطة"));
     }
     if (!checkedBy.trim() || !verifiedBy.trim()) {
       return flash("⚠️ " + t("sig_checked_by") + " / " + t("sig_verified_by"));
@@ -352,6 +391,7 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
       invoiceNo: uniq("invoiceNo"),
       receivedBy: uniq("receivedBy"),
       vehicleTemp: outDeliveries[0]?.vehicleTemp ?? "",
+      ...(preparedBy ? { createdBy: createdBy.trim() } : {}),
       checkedBy,
       verifiedBy,
       savedAt: Date.now(),
@@ -475,18 +515,20 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
             </div>
 
             <div className="ph-table-wrap ph-scroll-x">
-              <table className="ph-table rl-table" style={{ width: TABLE_W }}>
+              <table className="ph-table rl-table" style={{ width: tableW }}>
                 <colgroup>
                   <col style={{ width: NO_W }} />
-                  {[...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].map((c) => <col key={c.key} style={{ width: c.w }} />)}
+                  {[...textCols, ...TICK_COLS, ...TAIL_COLS].map((c) => <col key={c.key} style={{ width: c.w }} />)}
+                  {rowPhotos && <col style={{ width: PHOTO_W }} />}
                   <col style={{ width: DEL_W }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th {...stickyCell("no")}>{t("ph_col_no")}</th>
-                    {TEXT_COLS.map((c) => <th key={c.key} {...stickyCell(c.key)}>{c.label}</th>)}
+                    {textCols.map((c) => <th key={c.key} {...stickyCell(c.key)}>{c.label}</th>)}
                     {TICK_COLS.map((c) => <th key={c.key}>{c.label}</th>)}
                     {TAIL_COLS.map((c) => <th key={c.key} style={{ textAlign: alignStart }}>{c.label}</th>)}
+                    {rowPhotos && <th>{L(isAr, "Photo", "صورة")}</th>}
                     <th className="no-print" />
                   </tr>
                 </thead>
@@ -494,7 +536,7 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
                   {d.rows.map((row, ri) => (
                     <tr key={ri}>
                       <td {...stickyCell("no", "ph-num")}>{ri + 1}</td>
-                      {TEXT_COLS.map((c) => (
+                      {textCols.map((c) => (
                         <td key={c.key} {...stickyCell(c.key)}>
                           {c.type === "code" ? (
                             <ItemCodeInput code={row.itemCode || ""} name={row.foodItem || ""}
@@ -528,6 +570,22 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
                             onChange={(e) => updateRow(di, ri, c.key, e.target.value)} />
                         </td>
                       ))}
+                      {rowPhotos && (
+                        <td>
+                          <label className="rl-photo rl-row-photo" title={L(isAr, "Line photo", "صورة السطر")}>
+                            {uploading === `row:${di}:${ri}` ? "⏳" : row.photo ? (
+                              <>
+                                <img src={row.photo} alt="" />
+                                <button type="button" onClick={(e) => { e.preventDefault(); updateRow(di, ri, "photo", ""); }}>×</button>
+                              </>
+                            ) : "📷"}
+                            {!row.photo && (
+                              <input type="file" accept="image/*" hidden
+                                onChange={(e) => { pickRowPhoto(di, ri, e.target.files?.[0]); e.target.value = ""; }} />
+                            )}
+                          </label>
+                        </td>
+                      )}
                       <td className="no-print">
                         {/* removing a draft line is editing, not deleting data — no data-delete-action */}
                         <button type="button" onClick={() => removeRow(di, ri)} className="ph-btn-icon ph-btn-danger"
@@ -568,6 +626,10 @@ export default function ReceivingLogForm({ branch, type, reporter, documentNo = 
 
       <SignatureFooter
         t={t}
+        {...(preparedBy ? {
+          createdBy, setCreatedBy,
+          createdLabel: L(isAr, "Report created by", "تم إنشاء التقرير بواسطة"),
+        } : {})}
         checkedBy={checkedBy}
         setCheckedBy={setCheckedBy}
         verifiedBy={verifiedBy}

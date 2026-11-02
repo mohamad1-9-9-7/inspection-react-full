@@ -14,9 +14,22 @@ export default function FormShell({ dir = "ltr", children }) {
   );
 }
 
-export function SignatureFooter({ t, checkedBy, setCheckedBy, verifiedBy, setVerifiedBy }) {
+export function SignatureFooter({ t, checkedBy, setCheckedBy, verifiedBy, setVerifiedBy, createdBy, setCreatedBy, createdLabel }) {
+  const withCreator = typeof setCreatedBy === "function";
   return (
-    <div className="ph-footer">
+    <div className={`ph-footer${withCreator ? " ph-footer-3" : ""}`}>
+      {withCreator && (
+        <div className="ph-sig">
+          <label>{createdLabel} <span className="ph-req">*</span></label>
+          <input
+            type="text"
+            value={createdBy}
+            onChange={(e) => setCreatedBy(e.target.value)}
+            placeholder={t("sig_name_sig")}
+            className="ph-input"
+          />
+        </div>
+      )}
       <div className="ph-sig">
         <label>{t("sig_checked_by")} <span className="ph-req">*</span></label>
         <input
@@ -290,6 +303,7 @@ const FORM_STYLES = `
     grid-template-columns: 1fr 1fr;
     gap: 14px;
   }
+  .ph-footer.ph-footer-3 { grid-template-columns: 1fr 1fr 1fr; }
   .ph-sig {
     background: #fff;
     border: 1px solid #e2e8f0;
