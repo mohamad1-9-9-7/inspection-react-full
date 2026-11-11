@@ -9,6 +9,15 @@ import {
   normalizeEmpNo,
   searchCompany,
 } from "../monitor/branches/_shared/staffRegistry";
+import {
+  EMPTY_ADV,
+  EXPIRY_PRESETS,
+  MultiSelect,
+  CertExportModal,
+  applyCertFilters,
+  describeFilters,
+  clearFilterPart,
+} from "./certExportKit";
 
 // دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
 const DIRECTORY_BY_NO = new Map(
@@ -256,9 +265,11 @@ export default function TrainingCertificatesView() {
 
   // فلاتر وفرز ذكي
   const [statusFilter, setStatusFilter] = useState("all"); // all|expired|expiring_soon|expiring|valid|no_expiry
-  const [branchFilter, setBranchFilter] = useState("");
-  const [courseFilter, setCourseFilter] = useState("");
-  const [nationalityFilter, setNationalityFilter] = useState("");
+  // فلاتر متعددة الاختيار + نطاقات تاريخ (فروع، كورسات، جنسيات، وظائف…)
+  const [adv, setAdv] = useState(EMPTY_ADV);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const setAdvPart = (patch) => setAdv((p) => ({ ...p, ...patch }));
   const [sortBy, setSortBy] = useState("expiry_asc");
   const [groupByBranch, setGroupByBranch] = useState(false);
 
@@ -368,6 +379,52 @@ export default function TrainingCertificatesView() {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [allRows]);
 
+  const jobList = useMemo(() => {
+    const s = new Set();
+    allRows.forEach((r) => {
+      if (r.job) s.add(r.job);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [allRows]);
+
+  // عدد السجلات لكل خيار (يظهر جنب كل خيار في القوائم)
+  const optionCounts = useMemo(() => {
+    const mk = (fn) => {
+      const o = {};
+      allRows.forEach((r) => {
+        if (r.leftCompany) return;
+        const k = fn(r);
+        if (k) o[k] = (o[k] || 0) + 1;
+      });
+      return o;
+    };
+    return {
+      branch: mk((r) => r.branch),
+      course: mk((r) => r.courseType),
+      nat: mk((r) => r.nationality),
+      job: mk((r) => r.job),
+    };
+  }, [allRows]);
+
+  // فلاتر الصفحة بصيغة الموديل المشترك (تُمرَّر لنافذة التصدير أيضاً)
+  const pageFilters = useMemo(
+    () => ({
+      ...adv,
+      search,
+      statuses:
+        statusFilter === "all" || statusFilter === "left_company"
+          ? []
+          : [statusFilter],
+      leftMode: statusFilter === "left_company" ? "only" : "exclude",
+    }),
+    [adv, search, statusFilter]
+  );
+  const advChips = useMemo(
+    () =>
+      describeFilters({ ...adv, search: "", statuses: [], leftMode: "exclude" }),
+    [adv]
+  );
+
   // إحصاءات على الموظفين النشطين فقط (نستثني من ترك الشركة)
   const stats = useMemo(() => {
     const out = {
@@ -418,49 +475,7 @@ export default function TrainingCertificatesView() {
 
   // الصفوف بعد تطبيق كل الفلاتر والفرز
   const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    let out = allRows.slice();
-
-    // فلتر بحث نصي
-    if (q) {
-      out = out.filter((r) => {
-        return (
-          String(r.employeeNo).toLowerCase().includes(q) ||
-          String(r.name).toLowerCase().includes(q) ||
-          String(r.branch).toLowerCase().includes(q) ||
-          String(r.job).toLowerCase().includes(q) ||
-          String(r.courseType).toLowerCase().includes(q) ||
-          String(r.nationality).toLowerCase().includes(q)
-        );
-      });
-    }
-
-    // Left Company: نخفيها افتراضياً، نظهرها فقط عند اختيار الفلتر "left_company"
-    if (statusFilter === "left_company") {
-      out = out.filter((r) => r.leftCompany);
-    } else {
-      out = out.filter((r) => !r.leftCompany);
-      // فلتر الحالة العادية
-      if (statusFilter !== "all") {
-        out = out.filter((r) => r.status.key === statusFilter);
-      }
-    }
-
-    // فلتر الفرع
-    if (branchFilter) {
-      out = out.filter((r) => r.branch === branchFilter);
-    }
-
-    // فلتر الكورس
-    if (courseFilter) {
-      out = out.filter((r) => r.courseType === courseFilter);
-    }
-
-    // فلتر الجنسية
-    if (nationalityFilter) {
-      out = out.filter((r) => r.nationality === nationalityFilter);
-    }
+    let out = applyCertFilters(allRows, pageFilters);
 
     // الفرز الذكي
     const cmpStr = (a, b) => String(a || "").localeCompare(String(b || ""));
@@ -495,23 +510,13 @@ export default function TrainingCertificatesView() {
     });
 
     return out;
-  }, [
-    allRows,
-    search,
-    statusFilter,
-    branchFilter,
-    courseFilter,
-    nationalityFilter,
-    sortBy,
-  ]);
+  }, [allRows, pageFilters, sortBy]);
 
   // مسح كل الفلاتر
   function clearAllFilters() {
     setSearch("");
     setStatusFilter("all");
-    setBranchFilter("");
-    setCourseFilter("");
-    setNationalityFilter("");
+    setAdv(EMPTY_ADV);
     setSortBy("expiry_asc");
   }
 
@@ -617,8 +622,8 @@ export default function TrainingCertificatesView() {
           <div class="meta">
             Records: ${rows.length} &nbsp;|&nbsp;
             Status: ${statusFilter} &nbsp;|&nbsp;
-            Branch: ${branchFilter || "All"} &nbsp;|&nbsp;
-            Course: ${courseFilter || "All"} &nbsp;|&nbsp;
+            Branch: ${escapeHTML(adv.branches.join(", ") || "All")} &nbsp;|&nbsp;
+            Course: ${escapeHTML(adv.courses.join(", ") || "All")} &nbsp;|&nbsp;
             Generated: ${new Date().toLocaleString()}
           </div>
           <table>
@@ -1567,47 +1572,59 @@ export default function TrainingCertificatesView() {
               marginBottom: 10,
             }}
           >
-            <select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              style={selectStyle}
-              title="Filter by Branch"
-            >
-              <option value="">🏢 All Branches</option>
-              {branchList.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
+            <MultiSelect
+              icon="🏢"
+              label="Branch"
+              options={branchList}
+              value={adv.branches}
+              onChange={(v) => setAdvPart({ branches: v })}
+              counts={optionCounts.branch}
+            />
+            <MultiSelect
+              icon="🎓"
+              label="Course"
+              options={courseList}
+              value={adv.courses}
+              onChange={(v) => setAdvPart({ courses: v })}
+              counts={optionCounts.course}
+              minWidth={160}
+            />
+            <MultiSelect
+              icon="🌍"
+              label="Nationality"
+              options={nationalityList}
+              value={adv.nationalities}
+              onChange={(v) => setAdvPart({ nationalities: v })}
+              counts={optionCounts.nat}
+            />
+            <MultiSelect
+              icon="💼"
+              label="Job"
+              options={jobList}
+              value={adv.jobs}
+              onChange={(v) => setAdvPart({ jobs: v })}
+              counts={optionCounts.job}
+            />
 
-            <select
-              value={courseFilter}
-              onChange={(e) => setCourseFilter(e.target.value)}
-              style={selectStyle}
-              title="Filter by Course Type"
+            <button
+              type="button"
+              onClick={() => setShowMoreFilters((v) => !v)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: showMoreFilters
+                  ? "1.5px solid #2563eb"
+                  : "1px solid rgba(148,163,184,0.9)",
+                background: showMoreFilters
+                  ? "linear-gradient(135deg,#eff6ff,#dbeafe)"
+                  : "linear-gradient(135deg,#ffffff,#f1f5f9)",
+                color: "#0f172a",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
             >
-              <option value="">🎓 All Courses</option>
-              {courseList.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={nationalityFilter}
-              onChange={(e) => setNationalityFilter(e.target.value)}
-              style={selectStyle}
-              title="Filter by Nationality"
-            >
-              <option value="">🌍 All Nationalities</option>
-              {nationalityList.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+              ⚙ More filters {showMoreFilters ? "▴" : "▾"}
+            </button>
 
             <select
               value={sortBy}
@@ -1669,20 +1686,39 @@ export default function TrainingCertificatesView() {
 
             <button
               type="button"
-              onClick={exportCSV}
+              onClick={() => setExportOpen(true)}
+              disabled={!allRows.length}
+              title="Choose records, columns, grouping and layout"
               style={{
-                padding: "6px 12px",
+                padding: "7px 14px",
                 borderRadius: 999,
                 border: "none",
                 background: "linear-gradient(135deg,#10b981,#047857)",
                 color: "#fff",
-                fontSize: 11,
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: "pointer",
                 boxShadow: "0 4px 10px rgba(16,185,129,0.35)",
               }}
             >
-              ⬇ Export CSV
+              📊 Export Excel…
+            </button>
+
+            <button
+              type="button"
+              onClick={exportCSV}
+              title="Quick CSV of the rows shown below"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #10b981",
+                background: "#fff",
+                color: "#047857",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ⬇ CSV
             </button>
 
             <button
@@ -1703,6 +1739,140 @@ export default function TrainingCertificatesView() {
               🖨 Print
             </button>
           </div>
+
+          {/* More filters: date ranges, days left, image */}
+          {showMoreFilters && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 12,
+                padding: 12,
+                marginBottom: 10,
+                borderRadius: 14,
+                border: "1px solid rgba(148,163,184,0.6)",
+                background: "linear-gradient(135deg,#ffffff,#f1f5f9)",
+              }}
+            >
+              <div>
+                <div style={moreLbl}>Expiry date</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>
+                  {EXPIRY_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setAdvPart(p.range())}
+                      style={presetChip}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={rangeGrid}>
+                  <input type="date" value={adv.expiryFrom} onChange={(e) => setAdvPart({ expiryFrom: e.target.value })} style={rangeInput} />
+                  <span>→</span>
+                  <input type="date" value={adv.expiryTo} onChange={(e) => setAdvPart({ expiryTo: e.target.value })} style={rangeInput} />
+                </div>
+              </div>
+              <div>
+                <div style={moreLbl}>Issue date</div>
+                <div style={rangeGrid}>
+                  <input type="date" value={adv.issueFrom} onChange={(e) => setAdvPart({ issueFrom: e.target.value })} style={rangeInput} />
+                  <span>→</span>
+                  <input type="date" value={adv.issueTo} onChange={(e) => setAdvPart({ issueTo: e.target.value })} style={rangeInput} />
+                </div>
+                <div style={{ ...moreLbl, marginTop: 10 }}>Days left</div>
+                <div style={rangeGrid}>
+                  <input type="number" placeholder="min" value={adv.daysMin} onChange={(e) => setAdvPart({ daysMin: e.target.value })} style={rangeInput} />
+                  <span>→</span>
+                  <input type="number" placeholder="max" value={adv.daysMax} onChange={(e) => setAdvPart({ daysMax: e.target.value })} style={rangeInput} />
+                </div>
+              </div>
+              <div>
+                <div style={moreLbl}>Certificate image</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    ["any", "Any"],
+                    ["with", "Attached"],
+                    ["without", "Missing"],
+                  ].map(([v, t]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setAdvPart({ image: v })}
+                      style={{
+                        flex: 1,
+                        padding: "6px 10px",
+                        borderRadius: 9,
+                        border: adv.image === v ? "1.5px solid #2563eb" : "1px solid #cbd5e1",
+                        background: adv.image === v ? "#dbeafe" : "#fff",
+                        color: "#0f172a",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {advChips.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10, alignItems: "center" }}>
+              <span style={{ fontWeight: 700, color: "#374151" }}>ACTIVE:</span>
+              {advChips.map((c) => (
+                <span
+                  key={c.id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "3px 4px 3px 10px",
+                    borderRadius: 999,
+                    background: "#dbeafe",
+                    color: "#1e3a8a",
+                    fontWeight: 700,
+                  }}
+                >
+                  {c.text}
+                  <button
+                    type="button"
+                    onClick={() => setAdv((p) => clearFilterPart(p, c.id))}
+                    title="Remove this filter"
+                    style={{
+                      border: "none",
+                      background: "#1d4ed8",
+                      color: "#fff",
+                      borderRadius: 999,
+                      width: 20,
+                      height: 20,
+                      cursor: "pointer",
+                      padding: 0,
+                      lineHeight: "20px",
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <CertExportModal
+            open={exportOpen}
+            onClose={() => setExportOpen(false)}
+            allRows={allRows}
+            initialFilters={pageFilters}
+            lists={{
+              branches: branchList,
+              courses: courseList,
+              nationalities: nationalityList,
+              jobs: jobList,
+            }}
+          />
 
           {/* Search + status */}
           <div
@@ -1795,19 +1965,21 @@ export default function TrainingCertificatesView() {
                   key={b.branch}
                   type="button"
                   onClick={() =>
-                    setBranchFilter(
-                      branchFilter === b.branch ? "" : b.branch
-                    )
+                    setAdvPart({
+                      branches: adv.branches.includes(b.branch)
+                        ? adv.branches.filter((x) => x !== b.branch)
+                        : [...adv.branches, b.branch],
+                    })
                   }
                   style={{
                     padding: "6px 10px",
                     borderRadius: 10,
                     border:
-                      branchFilter === b.branch
+                      adv.branches.includes(b.branch)
                         ? "2px solid #1d4ed8"
                         : "1px solid rgba(148,163,184,0.7)",
                     background:
-                      branchFilter === b.branch
+                      adv.branches.includes(b.branch)
                         ? "linear-gradient(135deg,#dbeafe,#bfdbfe)"
                         : "#ffffff",
                     cursor: "pointer",
@@ -3143,6 +3315,39 @@ const selectStyle = {
   minWidth: 200,
   maxWidth: 360,
   textOverflow: "ellipsis",
+};
+
+const moreLbl = {
+  fontWeight: 800,
+  color: "#475569",
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
+  marginBottom: 6,
+};
+const rangeGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto 1fr",
+  gap: 6,
+  alignItems: "center",
+};
+const rangeInput = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "6px 8px",
+  borderRadius: 9,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#0f172a",
+  outline: "none",
+};
+const presetChip = {
+  padding: "3px 9px",
+  borderRadius: 999,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
 function StatCard({ label, value, color, icon, active, onClick }) {
