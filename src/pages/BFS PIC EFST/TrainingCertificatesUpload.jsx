@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+import { canonicalBranch, branchOptions, withEvent } from "./certHistoryKit";
 
 /* ========= API ========= */
 
@@ -589,8 +590,9 @@ export default function TrainingCertificatesBFS() {
             ? cert.customCourseName || "OTHER"
             : cert.courseType;
 
-        const payload = {
+        const payload = withEvent({
           ...employee,
+          branch: canonicalBranch(employee.branch),
           courseType: courseTypeToSave,
           issueDate: cert.issueDate,
           expiryDate: cert.expiryDate || undefined,
@@ -603,7 +605,12 @@ export default function TrainingCertificatesBFS() {
               }
             : {}),
           savedAt: new Date().toISOString(),
-        };
+        }, {
+          type: "created",
+          course: courseTypeToSave,
+          issueDate: cert.issueDate,
+          expiryDate: cert.expiryDate || "",
+        });
 
         const body = JSON.stringify({
           reporter: "MOHAMAD ABDULLAH",
@@ -989,7 +996,17 @@ export default function TrainingCertificatesBFS() {
               label="Branch"
               value={employee.branch}
               onChange={(v) => setEmpField("branch", v)}
+              onBlur={(v) => setEmpField("branch", canonicalBranch(v))}
+              list="tc-entry-branch-list"
             />
+            <datalist id="tc-entry-branch-list">
+              {(() => {
+                const o = branchOptions();
+                return [...o.main, ...o.other];
+              })().map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
             <Field
               label="Job Title"
               value={employee.job}
@@ -1282,7 +1299,7 @@ export default function TrainingCertificatesBFS() {
 }
 
 /* ========= Tiny UI helpers ========= */
-function Field({ label, value, onChange }) {
+function Field({ label, value, onChange, list, onBlur }) {
   return (
     <label
       style={{
@@ -1299,6 +1316,8 @@ function Field({ label, value, onChange }) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
+        list={list}
         style={{
           padding: "8px 10px",
           borderRadius: 10,

@@ -18,6 +18,17 @@ import {
   describeFilters,
   clearFilterPart,
 } from "./certExportKit";
+import {
+  canonicalBranch,
+  branchOptions,
+  diffPayload,
+  withEvent,
+  newEventId,
+  currentActor,
+  employeeKeyOf,
+  HistoryDrawer,
+  TransferModal,
+} from "./certHistoryKit";
 
 // دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
 const DIRECTORY_BY_NO = new Map(
@@ -270,6 +281,10 @@ export default function TrainingCertificatesView() {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const setAdvPart = (patch) => setAdv((p) => ({ ...p, ...patch }));
+
+  // سجل التغييرات + نقل الموظف
+  const [historyKey, setHistoryKey] = useState(null); // employee key | "__all__"
+  const [transferKey, setTransferKey] = useState(null);
   const [sortBy, setSortBy] = useState("expiry_asc");
   const [groupByBranch, setGroupByBranch] = useState(false);
 
@@ -336,7 +351,11 @@ export default function TrainingCertificatesView() {
         employeeNo: p.employeeNo || p.appNo || "",
         name: p.name || "",
         nationality: p.nationality || "",
-        branch: p.branch || "",
+        // الاسم الموحّد للفرع (Al Warqa kitchen / FTR 1 … → الاسم الرسمي)
+        branch: canonicalBranch(p.branch || ""),
+        rawBranch: p.branch || "",
+        history: Array.isArray(p.history) ? p.history : [],
+        createdAt: rec?.createdAt || rec?.created_at || "",
         job: p.job || "",
         courseType: p.courseType || "",
         issueDate: p.issueDate || "",
@@ -518,6 +537,103 @@ export default function TrainingCertificatesView() {
     setStatusFilter("all");
     setAdv(EMPTY_ADV);
     setSortBy("expiry_asc");
+  }
+
+  /* ===== سجل التغييرات + نقل الموظف ===== */
+  const rowsByEmployee = useMemo(() => {
+    const m = new Map();
+    allRows.forEach((r) => {
+      const k = employeeKeyOf(r);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    });
+    return m;
+  }, [allRows]);
+
+  const allBranchNames = useMemo(
+    () => allRows.map((r) => r.branch).filter(Boolean),
+    [allRows]
+  );
+  const editBranchOpts = useMemo(() => {
+    const o = branchOptions(allBranchNames);
+    return [...o.main, ...o.other];
+  }, [allBranchNames]);
+
+  const historyRows =
+    historyKey === "__all__" ? allRows : historyKey ? rowsByEmployee.get(historyKey) || [] : [];
+  const transferRows = transferKey ? rowsByEmployee.get(transferKey) || [] : [];
+  const transferEmployee = useMemo(() => {
+    if (!transferRows.length) return null;
+    const latest = transferRows
+      .slice()
+      .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))[0];
+    return latest;
+  }, [transferRows]);
+
+  // كتابة payload لسجل موجود: PUT أولاً، وإلا POST جديد + حذف القديم (نفس نمط الصفحة)
+  async function writePayload(rid, payload) {
+    const putRes = await jsonFetch(
+      `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
+      { method: "PUT", body: JSON.stringify({ type: TYPE, payload }) }
+    );
+    if (putRes.ok) return putRes;
+    const postRes = await jsonFetch(`${API_BASE}/api/reports`, {
+      method: "POST",
+      body: JSON.stringify({ reporter: currentActor(), type: TYPE, payload }),
+    });
+    if (postRes.ok) {
+      try {
+        await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+          method: "DELETE",
+        });
+      } catch (e) {
+        console.warn("Delete old record after POST failed:", e);
+      }
+    }
+    return postRes;
+  }
+
+  // نقل الموظف: يحدّث فرع كل شهاداته + نفس حدث السجل (id واحد) على كل سجل
+  async function doTransfer(t) {
+    const list = transferRows.filter((r) => r._rid);
+    if (!list.length) throw new Error("No saved records for this employee.");
+    const event = {
+      id: newEventId(),
+      at: new Date().toISOString(),
+      by: currentActor(),
+      type: "transfer",
+      fromBranch: t.fromBranch,
+      toBranch: t.toBranch,
+      effectiveDate: t.effectiveDate,
+      reason: t.reason,
+      note: t.note,
+      changes: t.newJob
+        ? [{ field: "job", label: "Job Title", from: t.oldJob, to: t.newJob }]
+        : [],
+    };
+    let failed = 0;
+    for (const r of list) {
+      const rec = raw.find((x) => getId(x) === r._rid);
+      const orig = rec?.payload || rec || {};
+      const history = Array.isArray(orig.history) ? orig.history : [];
+      const payload = {
+        ...orig,
+        branch: t.toBranch,
+        ...(t.newJob ? { job: t.newJob } : {}),
+        savedAt: new Date().toISOString(),
+        history: [...history, event],
+      };
+      const res = await writePayload(r._rid, payload);
+      if (!res.ok) failed += 1;
+    }
+    await reload();
+    if (failed) {
+      throw new Error(
+        `${failed} of ${list.length} record(s) could not be updated. Try again.`
+      );
+    }
+    setTransferKey(null);
+    setMsg(`✅ ${transferEmployee?.name || "Employee"} transferred to ${t.toBranch}.`);
   }
 
   // تصدير CSV للسجلات الظاهرة حالياً
@@ -1091,12 +1207,12 @@ export default function TrainingCertificatesView() {
     const rec = raw.find((r) => getId(r) === rid);
     const origPayload = rec?.payload || rec || {};
 
-    const payload = {
+    let payload = {
       ...origPayload,
       employeeNo: editDraft.employeeNo,
       name: editDraft.name,
       nationality: editDraft.nationality,
-      branch: editDraft.branch,
+      branch: canonicalBranch(editDraft.branch),
       job: editDraft.job,
       courseType: editDraft.courseType,
       issueDate: editDraft.issueDate,
@@ -1121,6 +1237,16 @@ export default function TrainingCertificatesView() {
           ? editDraft.instituteImageName || "institute.jpg"
           : undefined,
     };
+
+    // سجل التغييرات: نحفظ كل حقل تغيّر (من → إلى) مع المستخدم والوقت
+    const changes = diffPayload(origPayload, payload);
+    if (changes.length) {
+      payload = withEvent(payload, {
+        type: "edit",
+        course: payload.courseType,
+        changes,
+      });
+    }
 
     try {
       setSavingEdit(true);
@@ -1217,11 +1343,14 @@ export default function TrainingCertificatesView() {
 
     const rec = raw.find((r) => getId(r) === row._rid);
     const origPayload = rec?.payload || rec || {};
-    const payload = {
-      ...origPayload,
-      leftCompany: newVal,
-      savedAt: new Date().toISOString(),
-    };
+    const payload = withEvent(
+      {
+        ...origPayload,
+        leftCompany: newVal,
+        savedAt: new Date().toISOString(),
+      },
+      { type: newVal ? "left" : "restored", course: origPayload.courseType || "" }
+    );
 
     try {
       setMsg("");
@@ -1306,6 +1435,27 @@ export default function TrainingCertificatesView() {
       // 404 نعتبرها كأن السجل غير موجود أصلاً
       if (!res.ok && res.status !== 404) {
         throw new Error(`HTTP ${res.status}`);
+      }
+
+      // الحذف يُسجَّل على باقي شهادات نفس الموظف (السجل المحذوف راح مع تاريخه)
+      const siblings = (rowsByEmployee.get(employeeKeyOf(row)) || []).filter(
+        (r) => r._rid && r._rid !== rid
+      );
+      for (const s of siblings) {
+        const rec = raw.find((x) => getId(x) === s._rid);
+        const orig = rec?.payload || rec || {};
+        try {
+          await writePayload(
+            s._rid,
+            withEvent(orig, {
+              type: "deleted",
+              course: row.courseType || "",
+              reason: `Issued ${row.issueDate || "—"} · expiry ${row.expiryDate || "—"}`,
+            })
+          );
+        } catch (e) {
+          console.warn("Logging the deletion failed:", e);
+        }
       }
 
       await reload();
@@ -1686,6 +1836,24 @@ export default function TrainingCertificatesView() {
 
             <button
               type="button"
+              onClick={() => setHistoryKey("__all__")}
+              title="Every edit, transfer and status change"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #c7d2fe",
+                background: "#eef2ff",
+                color: "#4338ca",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🕘 Change log
+            </button>
+
+            <button
+              type="button"
               onClick={() => setExportOpen(true)}
               disabled={!allRows.length}
               title="Choose records, columns, grouping and layout"
@@ -1860,6 +2028,23 @@ export default function TrainingCertificatesView() {
               ))}
             </div>
           )}
+
+          <HistoryDrawer
+            open={!!historyKey}
+            mode={historyKey === "__all__" ? "all" : "employee"}
+            rows={historyRows}
+            onClose={() => setHistoryKey(null)}
+            onTransfer={(emp) => setTransferKey(employeeKeyOf(emp))}
+            onOpenEmployee={(emp) => emp && setHistoryKey(employeeKeyOf(emp))}
+          />
+          <TransferModal
+            open={!!transferKey}
+            employee={transferEmployee}
+            rows={transferRows}
+            allBranches={allBranchNames}
+            onClose={() => setTransferKey(null)}
+            onConfirm={doTransfer}
+          />
 
           <CertExportModal
             open={exportOpen}
@@ -2321,6 +2506,50 @@ export default function TrainingCertificatesView() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => setHistoryKey(employeeKeyOf(r))}
+                                title="Change history of this employee"
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 999,
+                                  border: "1px solid #c7d2fe",
+                                  background: "#eef2ff",
+                                  color: "#4338ca",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                🕘 History
+                                {(() => {
+                                  const n = new Set(
+                                    (rowsByEmployee.get(employeeKeyOf(r)) || []).flatMap(
+                                      (x) => x.history.map((e) => e.id)
+                                    )
+                                  ).size;
+                                  return n ? ` · ${n}` : "";
+                                })()}
+                              </button>
+                              {!r.leftCompany && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTransferKey(employeeKeyOf(r))}
+                                  title="Move this employee to another branch"
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 999,
+                                    border: "1px solid #93c5fd",
+                                    background: "#eff6ff",
+                                    color: "#1d4ed8",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  ⇄ Transfer
+                                </button>
+                              )}
+                              <button
+                                type="button"
                                 onClick={() => toggleLeftCompany(r)}
                                 title={
                                   r.leftCompany
@@ -2754,10 +2983,21 @@ export default function TrainingCertificatesView() {
                             type="text"
                             value={editDraft[k] || ""}
                             onChange={(e) => updateEditField(k, e.target.value)}
+                            onBlur={
+                              k === "branch"
+                                ? (e) => updateEditField(k, canonicalBranch(e.target.value))
+                                : undefined
+                            }
+                            list={k === "branch" ? "tc-branch-list" : undefined}
                             style={inputStyleFor(k)}
                           />
                         )
                       )}
+                      <datalist id="tc-branch-list">
+                        {editBranchOpts.map((b) => (
+                          <option key={b} value={b} />
+                        ))}
+                      </datalist>
                     </div>
 
                     {/* ربط الرقم الوظيفي بدليل الموظفين */}
