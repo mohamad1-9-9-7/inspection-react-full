@@ -18,18 +18,18 @@ export const MAIN_BRANCHES = [
   "AL QUASIS (STORE)",
   "FOOD TRUCK (MUSHRIF PARK) - FTR 1",
   "FOOD TRUCK (AL MAMZAR) - FTR 2",
-  "AL WARKA KITCHEN",
+  "AL WARQA KITCHEN",
   "ALBARSHA BUTCHERY (POS 15)",
   "AL AIN BUTCHERY (POS 14)",
 ];
 
 /** Spelling variants found in saved records → the standard name. */
 const BRANCH_ALIASES = {
-  "al warqa kitchen": "AL WARKA KITCHEN",
-  "al warka kitchen": "AL WARKA KITCHEN",
-  "alwarqa kitchen": "AL WARKA KITCHEN",
-  "al warqa": "AL WARKA KITCHEN",
-  "al warka": "AL WARKA KITCHEN",
+  "al warqa kitchen": "AL WARQA KITCHEN",
+  "al warka kitchen": "AL WARQA KITCHEN",
+  "alwarqa kitchen": "AL WARQA KITCHEN",
+  "al warqa": "AL WARQA KITCHEN",
+  "al warka": "AL WARQA KITCHEN",
   "ftr 1": "FOOD TRUCK (MUSHRIF PARK) - FTR 1",
   "ftr1": "FOOD TRUCK (MUSHRIF PARK) - FTR 1",
   "ftr 2": "FOOD TRUCK (AL MAMZAR) - FTR 2",
@@ -165,7 +165,7 @@ const fmtDateTime = (s) => {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
-const TRANSFER_REASONS = ["Operational need", "Employee request", "Promotion", "Temporary cover", "New branch opening", "Performance / disciplinary", "Other"];
+const TRANSFER_REASONS = ["Operational need", "Current branch closed", "Employee request", "Promotion", "Temporary cover", "New branch opening", "Performance / disciplinary", "Other"];
 
 /* ===================== Branch <select> ===================== */
 export function BranchSelect({ value, onChange, extra = [], exclude, className, style, placeholder = "— Choose branch —" }) {
