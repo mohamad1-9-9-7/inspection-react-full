@@ -31,6 +31,7 @@ import {
   RenewModal,
   renewPayload,
 } from "./certHistoryKit";
+import { RowMenu } from "./certRowMenu";
 
 // دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
 const DIRECTORY_BY_NO = new Map(
@@ -222,20 +223,19 @@ const SORT_OPTIONS = [
   { value: "name_asc",    label: "Name (A → Z)" },
   { value: "name_desc",   label: "Name (Z → A)" },
   { value: "branch_asc",  label: "Branch (A → Z)" },
-  { value: "saved_desc",  label: "Saved Date (Newest)" },
-  { value: "saved_asc",   label: "Saved Date (Oldest)" },
+  { value: "branch_desc", label: "Branch (Z → A)" },
+  { value: "course_asc",  label: "Course (A → Z)" },
+  { value: "course_desc", label: "Course (Z → A)" },
+  { value: "job_asc",     label: "Job title (A → Z)" },
+  { value: "job_desc",    label: "Job title (Z → A)" },
+  { value: "issue_desc",  label: "Issue date (Newest)" },
+  { value: "issue_asc",   label: "Issue date (Oldest)" },
+  { value: "status_asc",  label: "Status (Expired first)" },
+  { value: "status_desc", label: "Status (Valid first)" },
+  { value: "saved_desc",  label: "Last updated (Newest)" },
+  { value: "saved_asc",   label: "Last updated (Oldest)" },
 ];
 
-// خيارات تصفية الحالة
-const STATUS_FILTERS = [
-  { value: "all",           label: "All",            color: "#1d4ed8" },
-  { value: "expired",       label: "Expired",        color: "#b91c1c" },
-  { value: "expiring_soon", label: "≤ 30 Days",      color: "#c2410c" },
-  { value: "expiring",      label: "≤ 90 Days",      color: "#a16207" },
-  { value: "valid",         label: "Valid",          color: "#15803d" },
-  { value: "no_expiry",     label: "No Expiry",      color: "#6b7280" },
-  { value: "left_company",  label: "🚪 Left Company", color: "#7c2d12" },
-];
 
 // HTML escape (للطباعة)
 function escapeHTML(v) {
@@ -288,6 +288,9 @@ export default function TrainingCertificatesView() {
   const [historyKey, setHistoryKey] = useState(null); // employee key | "__all__"
   const [transferKey, setTransferKey] = useState(null);
   const [renewRid, setRenewRid] = useState(null);
+  // فحوصات البيانات
+  const [issueFilter, setIssueFilter] = useState("");
+  const [showChecks, setShowChecks] = useState(false);
   const [sortBy, setSortBy] = useState("expiry_asc");
   const [groupByBranch, setGroupByBranch] = useState(false);
 
@@ -496,9 +499,50 @@ export default function TrainingCertificatesView() {
     );
   }, [allRows]);
 
+  // فحوصات جودة البيانات لكل صف (rid/idx → [issue keys])
+  const rowIssues = useMemo(() => {
+    const byEmp = new Map();
+    allRows.forEach((r) => {
+      const k = employeeKeyOf(r);
+      if (!byEmp.has(k)) byEmp.set(k, []);
+      byEmp.get(k).push(r);
+    });
+    const norm = (v) => String(v || "").trim().replace(/\s+/g, " ").toLowerCase();
+    const out = new Map();
+    allRows.forEach((r) => {
+      const list = byEmp.get(employeeKeyOf(r)) || [];
+      const issues = [];
+      if (list.filter((x) => x.courseType === r.courseType).length > 1) issues.push("duplicate");
+      if (list.some((x) => x.leftCompany) && list.some((x) => !x.leftCompany)) issues.push("leftMixed");
+      if (!r.nationality) issues.push("noNationality");
+      if (!r.hasImage) issues.push("noImage");
+      const no = normalizeEmpNo(r.employeeNo);
+      const dir = no ? DIRECTORY_BY_NO.get(no) : null;
+      if (no && !dir) issues.push("notInDirectory");
+      if (dir && norm(dir.name) !== norm(r.name)) issues.push("nameMismatch");
+      if (r.rawBranch && r.rawBranch !== r.branch) issues.push("branchSpelling");
+      if (issues.length) out.set(r._rid || r.idx, issues);
+    });
+    return out;
+  }, [allRows]);
+
+  // عدد الصفوف لكل مشكلة (ضمن الحالة/الفلاتر الحالية بدون فلتر المشكلة نفسه)
+  const issueCounts = useMemo(() => {
+    const o = {};
+    applyCertFilters(allRows, pageFilters).forEach((r) => {
+      const list = rowIssues.get(r._rid || r.idx) || [];
+      if (list.length) o.__any = (o.__any || 0) + 1;
+      list.forEach((k) => (o[k] = (o[k] || 0) + 1));
+    });
+    return o;
+  }, [allRows, pageFilters, rowIssues]);
+
   // الصفوف بعد تطبيق كل الفلاتر والفرز
   const rows = useMemo(() => {
     let out = applyCertFilters(allRows, pageFilters);
+    if (issueFilter) {
+      out = out.filter((r) => (rowIssues.get(r._rid || r.idx) || []).includes(issueFilter));
+    }
 
     // الفرز الذكي
     const cmpStr = (a, b) => String(a || "").localeCompare(String(b || ""));
@@ -523,6 +567,24 @@ export default function TrainingCertificatesView() {
           return (
             cmpStr(a.branch, b.branch) || expiryRank(a) - expiryRank(b)
           );
+        case "branch_desc":
+          return cmpStr(b.branch, a.branch) || expiryRank(a) - expiryRank(b);
+        case "job_asc":
+          return cmpStr(a.job, b.job) || cmpStr(a.name, b.name);
+        case "job_desc":
+          return cmpStr(b.job, a.job) || cmpStr(a.name, b.name);
+        case "course_asc":
+          return cmpStr(a.courseType, b.courseType) || expiryRank(a) - expiryRank(b);
+        case "course_desc":
+          return cmpStr(b.courseType, a.courseType) || expiryRank(a) - expiryRank(b);
+        case "issue_asc":
+          return cmpStr(a.issueDate, b.issueDate);
+        case "issue_desc":
+          return cmpStr(b.issueDate, a.issueDate);
+        case "status_asc":
+          return a.status.sortRank - b.status.sortRank || expiryRank(a) - expiryRank(b);
+        case "status_desc":
+          return b.status.sortRank - a.status.sortRank || expiryRank(a) - expiryRank(b);
         case "saved_desc":
           return cmpStr(b.savedAt, a.savedAt);
         case "saved_asc":
@@ -533,13 +595,14 @@ export default function TrainingCertificatesView() {
     });
 
     return out;
-  }, [allRows, pageFilters, sortBy]);
+  }, [allRows, pageFilters, sortBy, issueFilter, rowIssues]);
 
   // مسح كل الفلاتر
   function clearAllFilters() {
     setSearch("");
     setStatusFilter("all");
     setAdv(EMPTY_ADV);
+    setIssueFilter("");
     setSortBy("expiry_asc");
   }
 
@@ -759,7 +822,17 @@ export default function TrainingCertificatesView() {
           <h1>Training Certificates (BFS / EFST / PIC / HACCP)</h1>
           <div class="meta">
             Records: ${rows.length} &nbsp;|&nbsp;
-            Status: ${statusFilter} &nbsp;|&nbsp;
+            Status: ${escapeHTML(
+              {
+                all: "All active",
+                expired: "Expired",
+                expiring_soon: "≤ 30 days",
+                expiring: "≤ 90 days",
+                valid: "Valid",
+                no_expiry: "No expiry",
+                left_company: "Left company",
+              }[statusFilter] || statusFilter
+            )} &nbsp;|&nbsp;
             Branch: ${escapeHTML(adv.branches.join(", ") || "All")} &nbsp;|&nbsp;
             Course: ${escapeHTML(adv.courses.join(", ") || "All")} &nbsp;|&nbsp;
             Generated: ${new Date().toLocaleString()}
@@ -1348,84 +1421,48 @@ export default function TrainingCertificatesView() {
     }
   }
 
-  // قلب حالة Left Company بسرعة (نفس نمط saveEdit: PUT أولاً ثم POST + DELETE)
+  // ترك الشركة / الإرجاع: ينطبق على كل شهادات الموظف (كان سابقاً على شهادة واحدة فقط
+  // فيصير نفس الموظف "ترك" بسجل و"نشط" بسجل آخر)
   async function toggleLeftCompany(row) {
     if (!row?._rid) {
       alert("⚠️ Missing record id. Cannot update this row.");
       return;
     }
     const newVal = !row.leftCompany;
-    const action = newVal
-      ? "Mark as Left Company"
-      : "Restore (Active Employee)";
+    const list = (rowsByEmployee.get(employeeKeyOf(row)) || []).filter(
+      (r) => r._rid && r.leftCompany !== newVal
+    );
+    const n = list.length || 1;
+    const action = newVal ? "Mark employee as Left Company" : "Restore employee as active";
     const note = newVal
-      ? "This will hide the record from the main view & expiry alerts. Record stays in the database."
-      : "This will return the record to the active list.";
+      ? `${row.name || "This employee"} — ${n} certificate(s) will be hidden from the main view and expiry alerts. Records stay in the database.`
+      : `${row.name || "This employee"} — ${n} certificate(s) return to the active list.`;
     if (!window.confirm(`${action}?\n\n${note}`)) return;
 
-    const rec = raw.find((r) => getId(r) === row._rid);
-    const origPayload = rec?.payload || rec || {};
-    const payload = withEvent(
-      {
-        ...origPayload,
-        leftCompany: newVal,
-        savedAt: new Date().toISOString(),
-      },
-      { type: newVal ? "left" : "restored", course: origPayload.courseType || "" }
-    );
-
+    const targets = list.length ? list : [row];
+    let failed = 0;
+    setMsg("");
     try {
-      setMsg("");
-      let ok = false;
-      let status = 0;
-      let data = null;
-
-      const putRes = await jsonFetch(
-        `${API_BASE}/api/reports/${encodeURIComponent(row._rid)}`,
-        { method: "PUT", body: JSON.stringify({ type: TYPE, payload }) }
-      );
-      ok = putRes.ok;
-      status = putRes.status;
-      data = putRes.data;
-
-      if (!ok) {
-        // Fallback: POST سجل جديد ثم حذف القديم
-        const postRes = await jsonFetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          body: JSON.stringify({
-            reporter: "MOHAMAD ABDULLAH",
-            type: TYPE,
-            payload,
-          }),
-        });
-        ok = postRes.ok;
-        status = postRes.status;
-        data = postRes.data;
-        if (ok) {
-          try {
-            await fetch(
-              `${API_BASE}/api/reports/${encodeURIComponent(row._rid)}`,
-              { method: "DELETE" }
-            );
-          } catch (e) {
-            console.warn("Delete old after POST failed:", e);
-          }
-        }
-      }
-
-      if (!ok) {
-        setMsg(
-          `Failed to update (HTTP ${status}). ${data?.message || ""}`
+      for (const r of targets) {
+        const rec = raw.find((x) => getId(x) === r._rid);
+        const orig = rec?.payload || rec || {};
+        const payload = withEvent(
+          { ...orig, leftCompany: newVal, savedAt: new Date().toISOString() },
+          { type: newVal ? "left" : "restored", course: orig.courseType || "" }
         );
-        return;
+        const res = await writePayload(r._rid, payload);
+        if (!res.ok) failed += 1;
       }
-
       await reload();
-      setMsg(
-        newVal
-          ? "✅ Marked as Left Company (hidden from main view)."
-          : "✅ Restored as active employee."
-      );
+      if (failed) {
+        setMsg(`❌ ${failed} of ${targets.length} certificate(s) could not be updated. Try again.`);
+      } else {
+        setMsg(
+          newVal
+            ? `✅ ${row.name || "Employee"} marked as Left Company (${targets.length} certificate(s)).`
+            : `✅ ${row.name || "Employee"} restored as active (${targets.length} certificate(s)).`
+        );
+      }
     } catch (err) {
       console.error("toggleLeftCompany error:", err);
       setMsg("❌ Network error while updating. Please try again.");
@@ -1494,9 +1531,8 @@ export default function TrainingCertificatesView() {
     <div
       style={{
         minHeight: "100vh",
-        padding: "2.5rem 1.5rem",
-        background:
-          "radial-gradient(circle at top left, #1d4ed8 0%, #020617 50%, #020617 100%)",
+        padding: "1.5rem 1rem",
+        background: "linear-gradient(180deg,#eaf3ff 0%,#f5f9ff 45%,#f8fafc 100%)",
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
@@ -1509,20 +1545,18 @@ export default function TrainingCertificatesView() {
         style={{
           width: "100%",
           maxWidth: "100%",
-          background:
-            "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.94))",
-          borderRadius: 24,
-          padding: 2,
-          boxShadow: "0 24px 60px rgba(15,23,42,0.75)",
-          border: "1px solid rgba(148,163,184,0.5)",
+          background: "#ffffff",
+          borderRadius: 22,
+          padding: 0,
+          boxShadow: "0 10px 30px rgba(30,64,175,0.08)",
+          border: "1px solid #dbe4f0",
         }}
       >
         <div
           style={{
-            background:
-              "radial-gradient(circle at top right, #eff6ff 0%, #f9fafb 40%, #e5e7eb 100%)",
+            background: "#ffffff",
             borderRadius: 22,
-            padding: "1.75rem 1.75rem 1.5rem",
+            padding: "1.5rem 1.5rem 1.25rem",
           }}
         >
           {/* Header */}
@@ -1604,14 +1638,12 @@ export default function TrainingCertificatesView() {
                   marginTop: 6,
                   padding: "6px 12px",
                   borderRadius: 999,
-                  border: "none",
-                  background:
-                    "linear-gradient(135deg,#0f172a,#1f2937,#020617)",
-                  color: "#f9fafb",
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: "pointer",
-                  boxShadow: "0 8px 18px rgba(15,23,42,0.55)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
@@ -1688,50 +1720,6 @@ export default function TrainingCertificatesView() {
               active={statusFilter === "left_company"}
               onClick={() => setStatusFilter("left_company")}
             />
-          </div>
-
-          {/* Filter row 1: Status chips */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 6,
-              marginBottom: 10,
-              alignItems: "center",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#374151",
-                marginRight: 4,
-              }}
-            >
-              STATUS:
-            </span>
-            {STATUS_FILTERS.map((s) => {
-              const isActive = statusFilter === s.value;
-              return (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => setStatusFilter(s.value)}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: `1px solid ${s.color}`,
-                    background: isActive ? s.color : "transparent",
-                    color: isActive ? "#fff" : s.color,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
           </div>
 
           {/* Filter row 2: dropdowns + sort + actions */}
@@ -1834,8 +1822,26 @@ export default function TrainingCertificatesView() {
                 onChange={(e) => setGroupByBranch(e.target.checked)}
                 style={{ margin: 0 }}
               />
-              Group by Branch
+              Branch breakdown
             </label>
+
+            <button
+              type="button"
+              onClick={() => setShowChecks((v) => !v)}
+              title="Duplicates, missing data, directory mismatches"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: showChecks || issueFilter ? "1.5px solid #d97706" : "1px solid #fcd34d",
+                background: showChecks || issueFilter ? "#fef3c7" : "#fffbeb",
+                color: "#92400e",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🩺 Data checks
+              {issueCounts.__any ? ` · ${issueCounts.__any}` : ""}
+            </button>
 
             <button
               type="button"
@@ -2051,6 +2057,70 @@ export default function TrainingCertificatesView() {
             </div>
           )}
 
+          {/* Data checks: click an issue to list only those rows */}
+          {(showChecks || issueFilter) && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid #fde68a",
+                background: "#fffbeb",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <b style={{ color: "#92400e" }}>🩺 Data checks</b>
+                <span style={{ color: "#a16207" }}>
+                  {issueCounts.__any
+                    ? `${issueCounts.__any} row(s) need attention in the current view — click a check to list them.`
+                    : "No problems found in the current view."}
+                </span>
+                <span style={{ flex: 1 }} />
+                {issueFilter && (
+                  <button type="button" onClick={() => setIssueFilter("")} style={linkBtnStyle}>
+                    Show all rows
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChecks(false);
+                    setIssueFilter("");
+                  }}
+                  style={linkBtnStyle}
+                >
+                  Close
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {Object.entries(ISSUE_DEFS).map(([k, d]) => {
+                  const n = issueCounts[k] || 0;
+                  const on = issueFilter === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      disabled={!n && !on}
+                      onClick={() => setIssueFilter(on ? "" : k)}
+                      title={d.label}
+                      style={{
+                        padding: "5px 11px",
+                        borderRadius: 999,
+                        border: on ? "1.5px solid #b45309" : "1px solid #fcd34d",
+                        background: on ? "#f59e0b" : n ? "#fff" : "#fefce8",
+                        color: on ? "#fff" : n ? "#92400e" : "#cbd5e1",
+                        fontWeight: 700,
+                        cursor: n || on ? "pointer" : "default",
+                      }}
+                    >
+                      {d.short} <b>{n}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <HistoryDrawer
             open={!!historyKey}
             mode={historyKey === "__all__" ? "all" : "employee"}
@@ -2123,7 +2193,8 @@ export default function TrainingCertificatesView() {
               }}
             >
               Showing <b style={{ color: "#1d4ed8" }}>{rows.length}</b> of{" "}
-              {stats.total}
+              {statusFilter === "left_company" ? stats.left_company : stats.total}
+              {statusFilter === "left_company" ? " who left" : " active"}
             </div>
             {loading && (
               <div
@@ -2252,208 +2323,227 @@ export default function TrainingCertificatesView() {
           <div
             style={{
               borderRadius: 16,
-              border: "1px solid rgba(148,163,184,0.7)",
+              border: "1px solid #dbe4f0",
               overflow: "hidden",
-              background:
-                "linear-gradient(135deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))",
+              background: "#ffffff",
+              boxShadow: "0 2px 10px rgba(15,23,42,0.05)",
             }}
           >
-            <div
-              style={{
-                maxHeight: "65vh",
-                overflow: "auto",
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 12,
-                }}
-              >
+            <div style={{ maxHeight: "68vh", overflow: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
-                  <tr
-                    style={{
-                      background:
-                        "linear-gradient(135deg,#111827,#1f2937,#111827)",
-                      color: "#e5e7eb",
-                    }}
-                  >
+                  <tr>
                     <th style={thStyle}>#</th>
-                    <th style={thStyle}>Employee No</th>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Nationality</th>
-                    <th style={thStyle}>Branch</th>
-                    <th style={thStyle}>Job Title</th>
-                    <th style={thStyle}>Course Type</th>
-                    <th style={thStyle}>Issue Date</th>
-                    <th style={thStyle}>Expiry Date</th>
-                    <th style={thStyle}>Days Left</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Saved At</th>
+                    {[
+                      ["name", "Employee"],
+                      ["branch", "Branch"],
+                      ["job", "Job Title"],
+                      ["course", "Course"],
+                      ["issue", "Issue Date"],
+                      ["expiry", "Expiry Date"],
+                      ["expiry", "Days Left", "days"],
+                      ["status", "Status"],
+                      ["saved", "Last Updated"],
+                    ].map(([key, label, id]) => {
+                      const [sk, sd] = String(sortBy).split("_");
+                      const active = sk === key && (!id || id === "days");
+                      return (
+                        <th
+                          key={id || key}
+                          style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
+                          onClick={() =>
+                            setSortBy(
+                              active && sd === "asc" ? `${key}_desc` : `${key}_asc`
+                            )
+                          }
+                          title={`Sort by ${label}`}
+                        >
+                          {label}
+                          <span style={{ marginLeft: 4, color: active ? "#1d4ed8" : "#94a3b8" }}>
+                            {active ? (sd === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </th>
+                      );
+                    })}
                     <th style={thStyle}>Image</th>
-                    <th style={thStyle}>Actions</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 && !loading && (
                     <tr>
-                      <td
-                        colSpan={14}
-                        style={{
-                          padding: 16,
-                          textAlign: "center",
-                          color: "#6b7280",
-                          fontWeight: 600,
-                        }}
-                      >
-                        No certificates found.
+                      <td colSpan={12} style={{ padding: 28, textAlign: "center", color: "#64748b", fontWeight: 600 }}>
+                        No certificates match these filters.{" "}
+                        <button type="button" onClick={clearAllFilters} style={linkBtnStyle}>
+                          Clear filters
+                        </button>
                       </td>
                     </tr>
                   )}
 
                   {rows.map((r, idx) => {
-                    const stripeBg =
-                      idx % 2 === 0 ? "#f9fafb" : "#f3f4f6";
-                    const rowBg =
-                      r.status.rowBg && r.status.rowBg !== "transparent"
-                        ? r.status.rowBg
-                        : stripeBg;
-                    const showLeftBar =
-                      r.status.key === "expired" ||
-                      r.status.key === "expiring_soon" ||
-                      r.status.key === "expiring";
+                    const accent =
+                      r.status.key === "expired"
+                        ? "#dc2626"
+                        : r.status.key === "expiring_soon"
+                        ? "#ea580c"
+                        : r.status.key === "expiring"
+                        ? "#ca8a04"
+                        : "transparent";
+                    const issues = rowIssues.get(r._rid || r.idx) || [];
+                    const empKey = employeeKeyOf(r);
+                    const histCount = new Set(
+                      (rowsByEmployee.get(empKey) || []).flatMap((x) => x.history.map((e) => e.id))
+                    ).size;
+                    const needsRenew = ["expired", "expiring_soon", "expiring"].includes(r.status.key);
+
+                    let primary = null;
+                    if (r._rid) {
+                      if (r.leftCompany) {
+                        primary = { label: "↩ Restore", onClick: () => toggleLeftCompany(r), tone: "green" };
+                      } else if (needsRenew) {
+                        primary = { label: "↻ Renew", onClick: () => setRenewRid(r._rid), tone: "orange" };
+                      } else {
+                        primary = { label: "✎ Edit", onClick: () => startEdit(r), tone: "blue" };
+                      }
+                    }
 
                     return (
                       <tr
                         key={r._rid || r.idx}
                         style={{
-                          backgroundColor: rowBg,
-                          borderLeft: showLeftBar
-                            ? `4px solid ${
-                                r.status.key === "expired"
-                                  ? "#b91c1c"
-                                  : r.status.key === "expiring_soon"
-                                  ? "#c2410c"
-                                  : "#a16207"
-                              }`
-                            : "4px solid transparent",
+                          backgroundColor: r.leftCompany ? "#fafafa" : idx % 2 ? "#f8fafc" : "#ffffff",
+                          boxShadow: `inset 4px 0 0 ${accent}`,
+                          opacity: r.leftCompany ? 0.85 : 1,
                         }}
                       >
-                        <td style={tdStyle}>{idx + 1}</td>
+                        <td style={{ ...tdStyle, color: "#94a3b8" }}>{idx + 1}</td>
 
-                        {/* Employee No */}
-                        <td style={tdStyle}>
-                          {r.employeeNo}
-                        </td>
-
-                        {/* Name */}
-                        <td style={tdStyle}>
-                          {r.name}
-                        </td>
-
-                        {/* Nationality */}
-                        <td style={tdStyle}>
-                          {r.nationality}
+                        {/* Employee: name (opens history) + number · nationality */}
+                        <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: 200 }}>
+                          <button
+                            type="button"
+                            onClick={() => setHistoryKey(empKey)}
+                            title="Open employee history"
+                            style={{
+                              border: 0,
+                              background: "transparent",
+                              padding: 0,
+                              textAlign: "left",
+                              fontWeight: 700,
+                              color: "#0f172a",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {r.name || "—"}
+                          </button>
+                          <div style={{ color: "#64748b", marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            <span>#{r.employeeNo || "—"}</span>
+                            <span>·</span>
+                            <span style={{ color: r.nationality ? "#64748b" : "#d97706" }}>
+                              {r.nationality || "no nationality"}
+                            </span>
+                            {issues.length > 0 && (
+                              <span
+                                title={issues.map((k) => ISSUE_DEFS[k].label).join("\n")}
+                                style={{
+                                  padding: "0 6px",
+                                  borderRadius: 999,
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  fontWeight: 800,
+                                  cursor: "help",
+                                }}
+                              >
+                                ⚠ {issues.length}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Branch */}
-                        <td style={tdStyle}>
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                              }}
-                            >
-                              <span>{r.branch}</span>
-                              {r.leftCompany && (
-                                <span
-                                  style={{
-                                    fontSize: 9,
-                                    fontWeight: 800,
-                                    color: "#fff",
-                                    background:
-                                      "linear-gradient(135deg,#dc2626,#7c2d12)",
-                                    padding: "1px 6px",
-                                    borderRadius: 999,
-                                    letterSpacing: 0.3,
-                                    whiteSpace: "nowrap",
-                                    width: "fit-content",
-                                  }}
-                                >
-                                  🚪 LEFT COMPANY
-                                </span>
-                              )}
-                            </div>
-                        </td>
-
-                        {/* Job */}
-                        <td style={tdStyle}>
-                          {r.job}
-                        </td>
-
-                        {/* Course Type */}
-                        <td style={tdStyle}>
-                          {r.courseType}
-                        </td>
-
-                        {/* Issue Date */}
-                        <td style={tdStyle}>
-                          {r.issueDate}
-                        </td>
-
-                        {/* Expiry Date */}
-                        <td style={tdStyle}>
-                          {r.expiryDate || "—"}
-                        </td>
-
-                        {/* Days Left */}
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          {r.status.days === null ? (
-                            <span style={{ color: "#9ca3af" }}>—</span>
-                          ) : r.status.days < 0 ? (
+                        <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: 150 }}>
+                          <div>{r.branch || "—"}</div>
+                          {r.leftCompany && (
                             <span
                               style={{
-                                fontWeight: 700,
-                                color: "#b91c1c",
+                                display: "inline-block",
+                                marginTop: 3,
+                                fontWeight: 800,
+                                color: "#9f1239",
+                                background: "#ffe4e6",
+                                border: "1px solid #fecdd3",
+                                padding: "0 7px",
+                                borderRadius: 999,
                               }}
-                              title={`Expired ${Math.abs(
-                                r.status.days
-                              )} day(s) ago`}
                             >
-                              -{Math.abs(r.status.days)}
+                              Left company
                             </span>
+                          )}
+                        </td>
+
+                        <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: 120 }}>{r.job || "—"}</td>
+
+                        <td style={tdStyle}>
+                          <span
+                            title={r.courseType}
+                            style={{
+                              display: "inline-block",
+                              padding: "1px 8px",
+                              borderRadius: 6,
+                              background: "#eef2ff",
+                              color: "#3730a3",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {r.courseType || "—"}
+                          </span>
+                          {r.renewals.length > 0 && (
+                            <span title={`Renewed ${r.renewals.length} time(s)`} style={{ marginLeft: 6, color: "#c2410c", fontWeight: 800 }}>
+                              ↻{r.renewals.length}
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>{fmtDMY(r.issueDate)}</td>
+                        <td style={tdStyle}>{r.expiryDate ? fmtDMY(r.expiryDate) : "—"}</td>
+
+                        <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800 }}>
+                          {r.status.days === null ? (
+                            <span style={{ color: "#94a3b8" }}>—</span>
                           ) : (
                             <span
                               style={{
-                                fontWeight: 700,
                                 color:
-                                  r.status.key === "expiring_soon"
+                                  r.status.days < 0
+                                    ? "#b91c1c"
+                                    : r.status.key === "expiring_soon"
                                     ? "#c2410c"
                                     : r.status.key === "expiring"
                                     ? "#a16207"
                                     : "#15803d",
                               }}
-                              title={`${r.status.days} day(s) remaining`}
+                              title={
+                                r.status.days < 0
+                                  ? `Expired ${Math.abs(r.status.days)} day(s) ago`
+                                  : `${r.status.days} day(s) remaining`
+                              }
                             >
                               {r.status.days}
                             </span>
                           )}
                         </td>
 
-                        {/* Status */}
                         <td style={tdStyle}>
                           <span
                             style={{
                               display: "inline-block",
-                              padding: "2px 8px",
+                              padding: "2px 9px",
                               borderRadius: 999,
-                              fontSize: 10,
                               fontWeight: 800,
-                              color: "#fff",
-                              background: r.status.bg,
-                              letterSpacing: 0.3,
+                              color: STATUS_TONE[r.status.key].fg,
+                              background: STATUS_TONE[r.status.key].bg,
+                              border: `1px solid ${STATUS_TONE[r.status.key].bd}`,
                               whiteSpace: "nowrap",
                             }}
                           >
@@ -2461,14 +2551,10 @@ export default function TrainingCertificatesView() {
                           </span>
                         </td>
 
-                        {/* Saved At */}
-                        <td style={tdStyle}>
-                          {r.savedAt
-                            ? String(r.savedAt).slice(0, 10)
-                            : "—"}
+                        <td style={{ ...tdStyle, color: "#64748b" }}>
+                          {r.savedAt ? fmtDMY(r.savedAt) : "—"}
                         </td>
 
-                        {/* Image */}
                         <td style={tdStyle}>
                           {isEfst(r.courseType) ? (
                             <div style={{ display: "flex", gap: 6 }}>
@@ -2480,183 +2566,64 @@ export default function TrainingCertificatesView() {
                           )}
                         </td>
 
-                        {/* Actions */}
-                        <td style={tdStyle}>
+                        {/* Actions: one contextual button + menu */}
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
                           {!r._rid ? (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "#9ca3af",
-                              }}
-                            >
-                              —
-                            </span>
+                            <span style={{ color: "#9ca3af" }}>—</span>
                           ) : (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 6,
-                                flexWrap: "wrap",
-                              }}
-                            >
+                            <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                               <button
                                 type="button"
-                                onClick={() => startEdit(r)}
-                                title="Edit certificate"
+                                onClick={primary.onClick}
                                 style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                  padding: "4px 11px",
-                                  borderRadius: 999,
-                                  border: "1px solid #7dd3fc",
-                                  background: "#f0f9ff",
-                                  color: "#0369a1",
-                                  fontSize: 11,
-                                  fontWeight: 700,
+                                  minWidth: 84,
+                                  height: 28,
+                                  padding: "0 12px",
+                                  borderRadius: 8,
+                                  fontWeight: 800,
                                   cursor: "pointer",
+                                  ...(primary.tone === "orange"
+                                    ? { border: 0, background: "linear-gradient(135deg,#fb923c,#ea580c)", color: "#fff" }
+                                    : primary.tone === "green"
+                                    ? { border: "1px solid #86efac", background: "#f0fdf4", color: "#15803d" }
+                                    : { border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8" }),
                                 }}
                               >
-                                <svg
-                                  width="12"
-                                  height="12"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.4"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M12 20h9" />
-                                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                                </svg>
-                                Edit
+                                {primary.label}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setHistoryKey(employeeKeyOf(r))}
-                                title="Change history of this employee"
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: "1px solid #c7d2fe",
-                                  background: "#eef2ff",
-                                  color: "#4338ca",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                🕘 History
-                                {(() => {
-                                  const n = new Set(
-                                    (rowsByEmployee.get(employeeKeyOf(r)) || []).flatMap(
-                                      (x) => x.history.map((e) => e.id)
-                                    )
-                                  ).size;
-                                  return n ? ` · ${n}` : "";
-                                })()}
-                              </button>
-                              {!r.leftCompany && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRenewRid(r._rid)}
-                                  title="Renew: new dates + new certificate image; the old one is archived"
-                                  style={
-                                    ["expired", "expiring_soon", "expiring"].includes(r.status.key)
-                                      ? {
-                                          padding: "4px 11px",
-                                          borderRadius: 999,
-                                          border: "none",
-                                          background: "linear-gradient(135deg,#fb923c,#ea580c)",
-                                          color: "#fff",
-                                          fontSize: 11,
-                                          fontWeight: 800,
-                                          cursor: "pointer",
-                                          boxShadow: "0 3px 8px rgba(234,88,12,0.35)",
-                                        }
-                                      : {
-                                          padding: "4px 10px",
-                                          borderRadius: 999,
-                                          border: "1px solid #fdba74",
-                                          background: "#fff7ed",
-                                          color: "#c2410c",
-                                          fontSize: 11,
-                                          fontWeight: 700,
-                                          cursor: "pointer",
-                                        }
-                                  }
-                                >
-                                  ↻ Renew
-                                  {r.renewals.length ? ` · ${r.renewals.length}` : ""}
-                                </button>
-                              )}
-                              {!r.leftCompany && (
-                                <button
-                                  type="button"
-                                  onClick={() => setTransferKey(employeeKeyOf(r))}
-                                  title="Move this employee to another branch"
-                                  style={{
-                                    padding: "4px 10px",
-                                    borderRadius: 999,
-                                    border: "1px solid #93c5fd",
-                                    background: "#eff6ff",
-                                    color: "#1d4ed8",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  ⇄ Transfer
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => toggleLeftCompany(r)}
-                                title={
-                                  r.leftCompany
-                                    ? "Restore as active employee"
-                                    : "Mark as Left Company (hide from main view)"
-                                }
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: "none",
-                                  background: r.leftCompany
-                                    ? "linear-gradient(135deg,#10b981,#047857)"
-                                    : "linear-gradient(135deg,#dc2626,#7c2d12)",
-                                  color: "#f9fafb",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {r.leftCompany ? "↩ Restore" : "🚪 Left"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCert(r)}
-                                disabled={deletingRid === r._rid}
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: "none",
-                                  background:
-                                    "linear-gradient(135deg,#ef4444,#b91c1c)",
-                                  color: "#f9fafb",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor:
-                                    deletingRid === r._rid
-                                      ? "default"
-                                      : "pointer",
-                                }}
-                               data-delete-action="true">
-                                {deletingRid === r._rid
-                                  ? "Deleting…"
-                                  : "Delete"}
-                              </button>
+                              <RowMenu
+                                items={[
+                                  { key: "edit", icon: "✎", label: "Edit certificate", onClick: () => startEdit(r), hidden: primary.tone === "blue" },
+                                  {
+                                    key: "renew",
+                                    icon: "↻",
+                                    label: "Renew certificate",
+                                    color: "#ea580c",
+                                    badge: r.renewals.length || null,
+                                    onClick: () => setRenewRid(r._rid),
+                                    hidden: r.leftCompany || primary.tone === "orange",
+                                  },
+                                  { key: "hist", icon: "🕘", label: "Employee history", badge: histCount || null, onClick: () => setHistoryKey(empKey) },
+                                  { key: "transfer", icon: "⇄", label: "Transfer employee", color: "#2563eb", onClick: () => setTransferKey(empKey), hidden: r.leftCompany },
+                                  { divider: true },
+                                  {
+                                    key: "left",
+                                    icon: "⎋",
+                                    label: "Mark employee as left",
+                                    onClick: () => toggleLeftCompany(r),
+                                    hidden: r.leftCompany,
+                                  },
+                                  {
+                                    key: "del",
+                                    icon: "🗑",
+                                    label: deletingRid === r._rid ? "Deleting…" : "Delete certificate",
+                                    danger: true,
+                                    deleteAction: true,
+                                    disabled: deletingRid === r._rid,
+                                    onClick: () => handleDeleteCert(r),
+                                  },
+                                ]}
+                              />
                             </div>
                           )}
                         </td>
@@ -3472,16 +3439,47 @@ export default function TrainingCertificatesView() {
 }
 
 const thStyle = {
-  padding: "8px 10px",
+  padding: "10px 10px",
   textAlign: "left",
-  borderBottom: "1px solid rgba(31,41,55,0.8)",
+  borderBottom: "1px solid #dbe4f0",
   position: "sticky",
   top: 0,
-  zIndex: 1,
-  fontWeight: 700,
+  zIndex: 2,
+  fontWeight: 800,
   fontSize: 11,
   whiteSpace: "nowrap",
+  background: "#f1f6fd",
+  color: "#334155",
+  textTransform: "uppercase",
+  letterSpacing: 0.3,
 };
+
+// شارات الحالة (فاتحة، متناسقة مع Soft Sky)
+const STATUS_TONE = {
+  expired: { fg: "#b91c1c", bg: "#fee2e2", bd: "#fecaca" },
+  expiring_soon: { fg: "#c2410c", bg: "#ffedd5", bd: "#fed7aa" },
+  expiring: { fg: "#a16207", bg: "#fef9c3", bd: "#fde68a" },
+  valid: { fg: "#15803d", bg: "#dcfce7", bd: "#bbf7d0" },
+  no_expiry: { fg: "#475569", bg: "#f1f5f9", bd: "#e2e8f0" },
+};
+
+// فحوصات جودة البيانات (لوحة Data checks + علامة ⚠ على الصف)
+const ISSUE_DEFS = {
+  duplicate: { label: "Same course recorded twice for this employee", short: "Duplicate course" },
+  leftMixed: { label: "Some certificates of this employee are marked left, others active", short: "Left / active mixed" },
+  noNationality: { label: "Nationality is missing", short: "No nationality" },
+  noImage: { label: "Certificate image is missing", short: "No image" },
+  notInDirectory: { label: "Employee number is not in the staff directory", short: "Not in staff directory" },
+  nameMismatch: { label: "Name differs from the staff directory", short: "Name ≠ directory" },
+  branchSpelling: { label: "Branch saved with a non-standard spelling", short: "Branch spelling" },
+};
+
+// DD/MM/YYYY للعرض
+function fmtDMY(v) {
+  const s = String(v || "").slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s || "—";
+}
 
 const editBtnStyle = {
   display: "inline-flex",
