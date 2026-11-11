@@ -223,6 +223,9 @@ export const CERT_COLUMNS = [
   { key: "status", label: "Status", width: 15, type: "status", def: true,
     value: (r) => (r.leftCompany ? "Left Company" : r.status.label),
     sortValue: (r) => (r.leftCompany ? 9 : r.status.sortRank) },
+  { key: "renewCount", label: "Times Renewed", width: 14, type: "number", value: (r) => (Array.isArray(r.renewals) ? r.renewals.length : 0) },
+  { key: "lastRenewed", label: "Last Renewed", width: 14, type: "date", value: (r) => (Array.isArray(r.renewals) && r.renewals.length ? d10(r.renewals[r.renewals.length - 1].renewedAt) : "") },
+  { key: "prevExpiry", label: "Previous Expiry", width: 15, type: "date", value: (r) => (Array.isArray(r.renewals) && r.renewals.length ? d10(r.renewals[r.renewals.length - 1].prevExpiryDate) : "") },
   { key: "leftCompany", label: "Left Company", width: 13, emp: true, value: (r) => yesNo(r.leftCompany) },
   { key: "hasImage", label: "Certificate Attached", width: 18, value: (r) => yesNo(r.hasImage) },
   { key: "imageUrl", label: "Certificate Link", width: 18, type: "link", value: (r) => (isUrl(r.imageData) ? r.imageData : "") },
@@ -798,7 +801,7 @@ function savePrefs(cols, opts) {
 
 const COLUMN_GROUPS = [
   { id: "emp", label: "Employee", keys: ["seq", "employeeNo", "name", "nationality", "branch", "job", "leftCompany"] },
-  { id: "cert", label: "Certificate", keys: ["courseType", "courseName", "issueDate", "expiryDate", "expiryMonth", "validity", "daysLeft", "status"] },
+  { id: "cert", label: "Certificate", keys: ["courseType", "courseName", "issueDate", "expiryDate", "expiryMonth", "validity", "daysLeft", "status", "renewCount", "lastRenewed", "prevExpiry"] },
   { id: "evid", label: "Evidence & record", keys: ["hasImage", "imageUrl", "instituteUrl", "savedAt"] },
 ];
 
@@ -807,7 +810,7 @@ const COLUMN_PRESETS = [
   { id: "renewal", label: "Renewal list", hint: "Who must renew", keys: ["seq", "employeeNo", "name", "branch", "courseName", "expiryDate", "daysLeft", "status"] },
   { id: "audit", label: "Audit evidence", hint: "Inspector pack", keys: ["seq", "employeeNo", "name", "job", "branch", "courseName", "issueDate", "expiryDate", "status", "hasImage", "imageUrl", "instituteUrl"] },
   { id: "hr", label: "HR roster", hint: "People only", keys: ["seq", "employeeNo", "name", "nationality", "job", "branch", "leftCompany"] },
-  { id: "all", label: "Everything", hint: "All 19 columns", keys: CERT_COLUMNS.map((c) => c.key) },
+  { id: "all", label: "Everything", hint: "All 22 columns", keys: CERT_COLUMNS.map((c) => c.key) },
 ];
 
 const GROUP_CHOICES = [

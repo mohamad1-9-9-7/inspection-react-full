@@ -28,6 +28,8 @@ import {
   employeeKeyOf,
   HistoryDrawer,
   TransferModal,
+  RenewModal,
+  renewPayload,
 } from "./certHistoryKit";
 
 // دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
@@ -285,6 +287,7 @@ export default function TrainingCertificatesView() {
   // سجل التغييرات + نقل الموظف
   const [historyKey, setHistoryKey] = useState(null); // employee key | "__all__"
   const [transferKey, setTransferKey] = useState(null);
+  const [renewRid, setRenewRid] = useState(null);
   const [sortBy, setSortBy] = useState("expiry_asc");
   const [groupByBranch, setGroupByBranch] = useState(false);
 
@@ -355,6 +358,7 @@ export default function TrainingCertificatesView() {
         branch: canonicalBranch(p.branch || ""),
         rawBranch: p.branch || "",
         history: Array.isArray(p.history) ? p.history : [],
+        renewals: Array.isArray(p.renewals) ? p.renewals : [],
         createdAt: rec?.createdAt || rec?.created_at || "",
         job: p.job || "",
         courseType: p.courseType || "",
@@ -591,6 +595,24 @@ export default function TrainingCertificatesView() {
       }
     }
     return postRes;
+  }
+
+  // تجديد شهادة: الشهادة القديمة تنتقل للأرشيف (payload.renewals) + حدث "renewed"
+  const renewRow = renewRid ? allRows.find((r) => r._rid === renewRid) || null : null;
+  async function doRenew(data) {
+    const rec = raw.find((x) => getId(x) === renewRid);
+    if (!rec) throw new Error("Record not found — reload the page.");
+    const orig = rec?.payload || rec || {};
+    const res = await writePayload(renewRid, renewPayload(orig, data));
+    if (!res.ok) {
+      throw new Error(
+        `Save failed (HTTP ${res.status}). ${res.data?.message || "Try again."}`
+      );
+    }
+    const who = renewRow?.name || "Certificate";
+    await reload();
+    setRenewRid(null);
+    setMsg(`✅ ${who} — ${orig.courseType || ""} certificate renewed until ${data.expiryDate || "no expiry"}.`);
   }
 
   // نقل الموظف: يحدّث فرع كل شهاداته + نفس حدث السجل (id واحد) على كل سجل
@@ -2037,6 +2059,13 @@ export default function TrainingCertificatesView() {
             onTransfer={(emp) => setTransferKey(employeeKeyOf(emp))}
             onOpenEmployee={(emp) => emp && setHistoryKey(employeeKeyOf(emp))}
           />
+          <RenewModal
+            open={!!renewRow}
+            row={renewRow}
+            onClose={() => setRenewRid(null)}
+            onConfirm={doRenew}
+            upload={(file) => uploadImage(file, TYPE)}
+          />
           <TransferModal
             open={!!transferKey}
             employee={transferEmployee}
@@ -2529,6 +2558,40 @@ export default function TrainingCertificatesView() {
                                   return n ? ` · ${n}` : "";
                                 })()}
                               </button>
+                              {!r.leftCompany && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRenewRid(r._rid)}
+                                  title="Renew: new dates + new certificate image; the old one is archived"
+                                  style={
+                                    ["expired", "expiring_soon", "expiring"].includes(r.status.key)
+                                      ? {
+                                          padding: "4px 11px",
+                                          borderRadius: 999,
+                                          border: "none",
+                                          background: "linear-gradient(135deg,#fb923c,#ea580c)",
+                                          color: "#fff",
+                                          fontSize: 11,
+                                          fontWeight: 800,
+                                          cursor: "pointer",
+                                          boxShadow: "0 3px 8px rgba(234,88,12,0.35)",
+                                        }
+                                      : {
+                                          padding: "4px 10px",
+                                          borderRadius: 999,
+                                          border: "1px solid #fdba74",
+                                          background: "#fff7ed",
+                                          color: "#c2410c",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          cursor: "pointer",
+                                        }
+                                  }
+                                >
+                                  ↻ Renew
+                                  {r.renewals.length ? ` · ${r.renewals.length}` : ""}
+                                </button>
+                              )}
                               {!r.leftCompany && (
                                 <button
                                   type="button"

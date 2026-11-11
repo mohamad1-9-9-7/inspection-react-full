@@ -126,7 +126,11 @@ export function buildTimeline(rows) {
     });
     // every certificate has a "added" moment even if it predates the log
     if (!hist.some((e) => e.type === "created")) {
-      const at = r.createdAt || (r.issueDate ? `${String(r.issueDate).slice(0, 10)}T00:00:00` : "") || r.savedAt;
+      // after renewals the ORIGINAL certificate dates live in the first archive entry
+      const first = Array.isArray(r.renewals) && r.renewals.length ? r.renewals[0] : null;
+      const issueDate = first ? first.prevIssueDate : r.issueDate;
+      const expiryDate = first ? first.prevExpiryDate : r.expiryDate;
+      const at = r.createdAt || (issueDate ? `${String(issueDate).slice(0, 10)}T00:00:00` : "") || r.savedAt;
       if (at)
         out.push({
           id: `created:${r._rid || r.idx}`,
@@ -134,8 +138,8 @@ export function buildTimeline(rows) {
           at,
           by: "",
           course: r.courseType,
-          issueDate: r.issueDate,
-          expiryDate: r.expiryDate,
+          issueDate,
+          expiryDate,
           synthetic: true,
         });
     }
@@ -166,6 +170,322 @@ const fmtDateTime = (s) => {
 };
 
 const TRANSFER_REASONS = ["Operational need", "Current branch closed", "Employee request", "Promotion", "Temporary cover", "New branch opening", "Performance / disciplinary", "Other"];
+
+/* ===================== Renewal ===================== */
+/** Validity in years per course (same as the entry page). */
+export const COURSE_YEARS = { BFS: 2, PIC: 5, EFST: 5 };
+
+const addYearsIso = (iso, years) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  if (!m) return "";
+  return new Date(Date.UTC(+m[1] + years, +m[2] - 1, +m[3])).toISOString().slice(0, 10);
+};
+const addDaysIso = (iso, days) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  if (!m) return "";
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) + days * 864e5).toISOString().slice(0, 10);
+};
+const daysBetween = (a, b) => {
+  const pa = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(a || "").slice(0, 10));
+  const pb = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(b || "").slice(0, 10));
+  if (!pa || !pb) return null;
+  return Math.round((Date.UTC(+pb[1], +pb[2] - 1, +pb[3]) - Date.UTC(+pa[1], +pa[2] - 1, +pa[3])) / 864e5);
+};
+
+/** Suggested expiry for a renewal: course rule, else the previous certificate's validity length. */
+export function suggestExpiry(row, issueDate) {
+  const years = COURSE_YEARS[String(row?.courseType || "").toUpperCase()];
+  if (years) return { expiry: addYearsIso(issueDate, years), basis: `${years}-year ${row.courseType} validity` };
+  const len = daysBetween(row?.issueDate, row?.expiryDate);
+  if (len && len > 0) return { expiry: addDaysIso(issueDate, len), basis: "same validity as the previous certificate" };
+  return { expiry: "", basis: "" };
+}
+
+/**
+ * Builds the renewed payload: new dates/images, the previous certificate kept in
+ * payload.renewals[] (archive) and a "renewed" history event.
+ */
+export function renewPayload(orig, data) {
+  const efst = String(orig.courseType || "").toUpperCase() === "EFST";
+  const archive = {
+    renewedAt: new Date().toISOString(),
+    by: currentActor(),
+    prevIssueDate: orig.issueDate || "",
+    prevExpiryDate: orig.expiryDate || "",
+    prevImageUrl: orig.imageUrl || (/^https?:/i.test(orig.imageData || "") ? orig.imageData : "") || "",
+    prevInstituteImageUrl: orig.instituteImageUrl || "",
+  };
+  const next = {
+    ...orig,
+    issueDate: data.issueDate,
+    expiryDate: data.expiryDate || undefined,
+    imageUrl: data.imageUrl,
+    imageData: "",
+    imageName: data.imageName || "certificate.jpg",
+    imageType: "image/jpeg",
+    ...(efst
+      ? { instituteImageUrl: data.instituteImageUrl || undefined, instituteImageName: data.instituteImageUrl ? data.instituteImageName || "institute.jpg" : undefined }
+      : {}),
+    savedAt: new Date().toISOString(),
+    renewals: [...(Array.isArray(orig.renewals) ? orig.renewals : []), archive],
+  };
+  return withEvent(next, {
+    type: "renewed",
+    course: orig.courseType || "",
+    note: data.note || "",
+    prevImageUrl: archive.prevImageUrl,
+    prevInstituteImageUrl: archive.prevInstituteImageUrl,
+    changes: [
+      { field: "issueDate", label: "Issue Date", from: archive.prevIssueDate, to: data.issueDate },
+      { field: "expiryDate", label: "Expiry Date", from: archive.prevExpiryDate, to: data.expiryDate || "No expiry" },
+    ],
+  });
+}
+
+function ImageSlot({ label, required, url, busy, onPick, onClear }) {
+  const [over, setOver] = useState(false);
+  const inputId = useMemo(() => `rn_${Math.random().toString(36).slice(2)}`, []);
+  return (
+    <div
+      className={`tch-slot${over ? " over" : ""}${url ? " has" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) onPick(f);
+      }}
+    >
+      <div className="tch-slot-h">
+        {label} {required ? <em>required</em> : <em className="opt">optional</em>}
+      </div>
+      {url ? (
+        <div className="tch-slot-img">
+          <img src={url} alt={label} />
+          <div className="tch-slot-act">
+            <a href={url} target="_blank" rel="noreferrer">
+              Open ↗
+            </a>
+            <button type="button" onClick={onClear}>
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <label htmlFor={inputId} className="tch-slot-drop">
+          {busy ? "Uploading…" : "Drop the new certificate here or click to choose"}
+        </label>
+      )}
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = "";
+          if (f) onPick(f);
+        }}
+      />
+    </div>
+  );
+}
+
+export function RenewModal({ open, row, onClose, onConfirm, upload }) {
+  const [issue, setIssue] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [noExpiry, setNoExpiry] = useState(false);
+  const [touchedExpiry, setTouchedExpiry] = useState(false);
+  const [img, setImg] = useState({ url: "", name: "" });
+  const [inst, setInst] = useState({ url: "", name: "" });
+  const [uploading, setUploading] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (open && row) {
+      const today = new Date().toISOString().slice(0, 10);
+      setIssue(today);
+      setExpiry(suggestExpiry(row, today).expiry);
+      setNoExpiry(false);
+      setTouchedExpiry(false);
+      setImg({ url: "", name: "" });
+      setInst({ url: "", name: "" });
+      setNote("");
+      setErr("");
+    }
+  }, [open, row]);
+
+  if (!open || !row) return null;
+  const efst = String(row.courseType || "").toUpperCase() === "EFST";
+  const sug = suggestExpiry(row, issue);
+  const prevRenewals = Array.isArray(row.renewals) ? row.renewals.length : 0;
+  const daysOld = row.status?.days;
+
+  function changeIssue(v) {
+    setIssue(v);
+    if (!touchedExpiry) setExpiry(suggestExpiry(row, v).expiry);
+  }
+
+  async function pick(file, slot) {
+    if (!/^image\//.test(file.type)) return setErr("Please choose an image file.");
+    setErr("");
+    setUploading(slot);
+    try {
+      const url = await upload(file);
+      if (slot === "inst") setInst({ url, name: file.name });
+      else setImg({ url, name: file.name });
+    } catch (e) {
+      setErr("Image upload failed. Try another image.");
+    } finally {
+      setUploading("");
+    }
+  }
+
+  async function submit() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!issue) return setErr("Enter the new issue date.");
+    if (!noExpiry && !expiry) return setErr("Enter the new expiry date (or tick “No expiry”).");
+    if (!noExpiry && expiry <= issue) return setErr("Expiry must be after the issue date.");
+    if (!noExpiry && expiry < today) return setErr("The new expiry date is already in the past.");
+    if (row.issueDate && issue < String(row.issueDate).slice(0, 10)) return setErr("The new issue date is older than the current certificate.");
+    if (!img.url) return setErr("Attach the new certificate image.");
+    setBusy(true);
+    setErr("");
+    try {
+      await onConfirm({
+        issueDate: issue,
+        expiryDate: noExpiry ? "" : expiry,
+        imageUrl: img.url,
+        imageName: img.name,
+        instituteImageUrl: inst.url,
+        instituteImageName: inst.name,
+        note: note.trim(),
+      });
+    } catch (e) {
+      setErr(e?.message || "Renewal failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="tch tch-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()} dir="ltr" lang="en">
+      <style>{TCH_CSS}</style>
+      <div className="tch-dlg md" role="dialog" aria-modal="true" aria-label="Renew certificate">
+        <header className="tch-head">
+          <div className="tch-logo orange">↻</div>
+          <div className="tch-grow">
+            <div className="tch-title">Renew {row.courseType || ""} certificate</div>
+            <div className="tch-sub">
+              {row.name} · #{row.employeeNo || "—"} · {row.branch || "—"}
+            </div>
+          </div>
+          <button type="button" className="tch-x" onClick={onClose} disabled={busy} aria-label="Close">
+            ✕
+          </button>
+        </header>
+
+        <div className="tch-pad">
+          <div className="tch-renew">
+            <div className={`tch-rcard old s-${row.status?.key || "valid"}`}>
+              <div className="tch-rcard-h">Current certificate</div>
+              <div className="tch-rrow">
+                <span>Issued</span>
+                <b>{fmtDate(row.issueDate)}</b>
+              </div>
+              <div className="tch-rrow">
+                <span>Expires</span>
+                <b>{row.expiryDate ? fmtDate(row.expiryDate) : "No expiry"}</b>
+              </div>
+              <div className="tch-rbadge">
+                {daysOld === null || daysOld === undefined ? row.status?.label : daysOld < 0 ? `Expired ${Math.abs(daysOld)} days ago` : `${daysOld} days left`}
+              </div>
+              <div className="tch-rnote">Moves to the archive — still visible in the employee history{prevRenewals ? ` (renewed ${prevRenewals}× before)` : ""}.</div>
+            </div>
+            <div className="tch-move-arrow">→</div>
+            <div className="tch-rcard new">
+              <div className="tch-rcard-h">New certificate</div>
+              <label className="tch-field">
+                <span>Issue date</span>
+                <input type="date" className="tch-input" value={issue} onChange={(e) => changeIssue(e.target.value)} />
+              </label>
+              <label className="tch-field">
+                <span>Expiry date</span>
+                <input
+                  type="date"
+                  className="tch-input"
+                  value={noExpiry ? "" : expiry}
+                  disabled={noExpiry}
+                  onChange={(e) => {
+                    setTouchedExpiry(true);
+                    setExpiry(e.target.value);
+                  }}
+                />
+              </label>
+              {sug.basis && !noExpiry && (
+                <div className="tch-hintline">
+                  {touchedExpiry && expiry !== sug.expiry ? (
+                    <button
+                      type="button"
+                      className="tch-linkbtn"
+                      onClick={() => {
+                        setTouchedExpiry(false);
+                        setExpiry(sug.expiry);
+                      }}
+                    >
+                      ↺ Use {fmtDate(sug.expiry)} ({sug.basis})
+                    </button>
+                  ) : (
+                    <>Auto: {sug.basis}</>
+                  )}
+                </div>
+              )}
+              <label className="tch-check">
+                <input type="checkbox" checked={noExpiry} onChange={(e) => setNoExpiry(e.target.checked)} />
+                No expiry
+              </label>
+            </div>
+          </div>
+
+          <div className={efst ? "tch-grid2" : ""}>
+            <ImageSlot
+              label={efst ? "Municipality certificate" : "Certificate image"}
+              required
+              url={img.url}
+              busy={uploading === "main"}
+              onPick={(f) => pick(f, "main")}
+              onClear={() => setImg({ url: "", name: "" })}
+            />
+            {efst && (
+              <ImageSlot label="Institute certificate" url={inst.url} busy={uploading === "inst"} onPick={(f) => pick(f, "inst")} onClear={() => setInst({ url: "", name: "" })} />
+            )}
+          </div>
+
+          <label className="tch-field">
+            <span>Note (optional)</span>
+            <input className="tch-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. training centre, batch no." />
+          </label>
+          {err && <div className="tch-err">{err}</div>}
+        </div>
+
+        <footer className="tch-foot">
+          <button type="button" className="tch-btn" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="tch-btn orange" onClick={submit} disabled={busy || !!uploading}>
+            {busy ? "Saving…" : "↻ Renew certificate"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
 
 /* ===================== Branch <select> ===================== */
 export function BranchSelect({ value, onChange, extra = [], exclude, className, style, placeholder = "— Choose branch —" }) {
@@ -334,6 +654,7 @@ const EV_META = {
   left: { icon: "⎋", color: "#b91c1c", label: "Left company" },
   restored: { icon: "↺", color: "#047857", label: "Restored" },
   created: { icon: "＋", color: "#7c3aed", label: "Added" },
+  renewed: { icon: "↻", color: "#ea580c", label: "Renewed" },
   deleted: { icon: "🗑", color: "#64748b", label: "Deleted" },
   branch_fix: { icon: "Aa", color: "#a16207", label: "Name fix" },
 };
@@ -342,6 +663,7 @@ const HISTORY_TABS = [
   ["transfer", "Transfers"],
   ["edit", "Edits"],
   ["status", "Status"],
+  ["renewed", "Renewals"],
   ["created", "Certificates"],
 ];
 
@@ -524,6 +846,20 @@ export function HistoryDrawer({ open, mode = "employee", rows, onClose, onTransf
                     {e.synthetic && <span>before the change log started</span>}
                   </div>
                   {e.note && <div className="tch-ev-note">“{e.note}”</div>}
+                  {(e.prevImageUrl || e.prevInstituteImageUrl) && (
+                    <div className="tch-ev-links">
+                      {e.prevImageUrl && (
+                        <a href={e.prevImageUrl} target="_blank" rel="noreferrer">
+                          📄 Previous certificate ↗
+                        </a>
+                      )}
+                      {e.prevInstituteImageUrl && (
+                        <a href={e.prevInstituteImageUrl} target="_blank" rel="noreferrer">
+                          📄 Previous institute certificate ↗
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -547,6 +883,8 @@ function evTitle(e) {
       return `Restored as active${c ? ` (${e.course})` : ""}`;
     case "created":
       return `${(e.course || "").trim() || "Certificate"} certificate added`;
+    case "renewed":
+      return `${(e.course || "").trim() || "Certificate"} certificate renewed`;
     case "deleted":
       return `${(e.course || "").trim() || "A"} certificate deleted`;
     case "branch_fix":
@@ -568,6 +906,40 @@ const TCH_CSS = `
 .tch .tch-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#fff}
 .tch .tch-logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;flex:none;font-weight:800}
 .tch .tch-logo.blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+.tch .tch-logo.orange{background:linear-gradient(135deg,#fb923c,#ea580c)}
+.tch .tch-dlg.md{width:min(720px,100%)}
+.tch .tch-renew{display:grid;grid-template-columns:1fr auto 1.2fr;gap:12px;align-items:center}
+.tch .tch-rcard{border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.tch .tch-rcard.old{background:#fff}
+.tch .tch-rcard.new{border-color:#fdba74;background:#fff7ed}
+.tch .tch-rcard-h{font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em}
+.tch .tch-rrow{display:flex;justify-content:space-between;gap:8px}
+.tch .tch-rrow span{color:#64748b}
+.tch .tch-rbadge{align-self:flex-start;padding:3px 10px;border-radius:999px;font-weight:800;border:1px solid}
+.tch .tch-rcard.s-expired .tch-rbadge{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
+.tch .tch-rcard.s-expiring_soon .tch-rbadge{background:#ffedd5;color:#c2410c;border-color:#fed7aa}
+.tch .tch-rcard.s-expiring .tch-rbadge{background:#fef9c3;color:#a16207;border-color:#fde68a}
+.tch .tch-rcard.s-valid .tch-rbadge,.tch .tch-rcard.s-no_expiry .tch-rbadge{background:#dcfce7;color:#15803d;border-color:#bbf7d0}
+.tch .tch-rnote{color:#64748b}
+.tch .tch-rcard.old.s-expired,.tch .tch-rcard.old.s-expiring_soon,.tch .tch-rcard.old.s-expiring,.tch .tch-rcard.old.s-valid,.tch .tch-rcard.old.s-no_expiry{background:#fff;color:#0f172a;border-color:#e2e8f0}
+.tch .tch-hintline{color:#9a3412}
+.tch .tch-linkbtn{border:0;background:transparent;color:#c2410c;font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
+.tch .tch-slot{border:1.5px dashed #cbd5e1;border-radius:14px;padding:10px;background:#f8fafc;display:flex;flex-direction:column;gap:8px}
+.tch .tch-slot.over{border-color:#ea580c;background:#fff7ed}
+.tch .tch-slot.has{border-style:solid;border-color:#86efac;background:#f0fdf4}
+.tch .tch-slot-h{font-weight:700;color:#334155}
+.tch .tch-slot-h em{font-style:normal;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ffedd5;color:#c2410c;font-weight:800}
+.tch .tch-slot-h em.opt{background:#f1f5f9;color:#64748b}
+.tch .tch-slot-drop{display:grid;place-items:center;min-height:96px;border-radius:10px;background:#fff;color:#64748b;font-weight:600;cursor:pointer;text-align:center;padding:10px}
+.tch .tch-slot-drop:hover{color:#c2410c}
+.tch .tch-slot-img{display:flex;gap:10px;align-items:center}
+.tch .tch-slot-img img{width:120px;height:84px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;background:#fff}
+.tch .tch-slot-act{display:flex;flex-direction:column;gap:6px}
+.tch .tch-slot-act a{color:#2563eb;font-weight:700}
+.tch .tch-slot-act button{border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:8px;padding:4px 10px;font-weight:700;cursor:pointer}
+.tch .tch-btn.orange{background:linear-gradient(135deg,#fb923c,#ea580c);border:0;color:#fff}
+.tch .tch-ev-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.tch .tch-ev-links a{color:#2563eb;font-weight:700;text-decoration:none;padding:3px 8px;border-radius:7px;background:#eff6ff}
 .tch .tch-grow{flex:1;min-width:0}
 .tch .tch-title{font-weight:800}
 .tch .tch-sub{color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -639,6 +1011,7 @@ const TCH_CSS = `
 .tch .tch-ev-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;color:#64748b}
 .tch .tch-ev-note{margin-top:6px;padding:6px 10px;border-left:3px solid #c7d2fe;background:#f8fafc;color:#334155;font-style:italic}
 .tch .tch-empty{padding:30px 10px;text-align:center;color:#94a3b8;font-weight:600}
+@media (max-width:640px){.tch .tch-renew{grid-template-columns:1fr}}
 @media (max-width:560px){.tch .tch-grid2,.tch .tch-emp-grid{grid-template-columns:1fr}.tch .tch-move{grid-template-columns:1fr}.tch .tch-move-arrow{transform:rotate(90deg);justify-self:center}}
 #root .tch, #root .tch *{font-size:${FS(14)}}
 #root .tch .tch-title{font-size:${FS(18)}}
