@@ -422,11 +422,9 @@ function employeeKey(r) {
   return no ? `#${no}` : `n:${String(r.name || "").trim().toLowerCase()}`;
 }
 
-function writeMatrixSheet(ws, rows, cols, opts, meta, courseFilter) {
-  const empCols = cols.filter((c) => COL_BY_KEY.get(c.key).emp || c.key === "seq");
+/** Employee × course grid: latest record wins for employee details, latest expiry per course. */
+export function buildMatrix(rows, courseFilter, opts) {
   const courses = (courseFilter && courseFilter.length ? courseFilter.slice() : Array.from(new Set(rows.map((r) => r.courseType).filter(Boolean)))).sort(courseCmp);
-
-  // one entry per employee; latest record wins for employee details; latest expiry per course
   const map = new Map();
   rows.forEach((r) => {
     const k = employeeKey(r);
@@ -436,8 +434,14 @@ function writeMatrixSheet(ws, rows, cols, opts, meta, courseFilter) {
     if (!prev || d10(r.expiryDate || "9999") > d10(prev.expiryDate || "9999")) cur.certs[r.courseType] = r;
     map.set(k, cur);
   });
-  let emps = Array.from(map.values());
-  emps = sortRows(emps.map((e) => ({ ...e.info, __e: e })), opts.sort1 && COL_BY_KEY.get(opts.sort1)?.emp ? opts.sort1 : "name", opts.dir1, "name", "asc").map((x) => x.__e);
+  const sortKey = opts.sort1 && COL_BY_KEY.get(opts.sort1)?.emp ? opts.sort1 : "name";
+  const emps = sortRows(Array.from(map.values()).map((e) => ({ ...e.info, __e: e })), sortKey, opts.dir1, "name", "asc").map((x) => x.__e);
+  return { emps, courses };
+}
+
+function writeMatrixSheet(ws, rows, cols, opts, meta, courseFilter) {
+  const empCols = cols.filter((c) => COL_BY_KEY.get(c.key).emp || c.key === "seq");
+  const { emps, courses } = buildMatrix(rows, courseFilter, opts);
 
   const extra = ["Held", "Expired", "Missing"];
   const ncols = empCols.length + courses.length + extra.length;
@@ -777,7 +781,6 @@ function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
     if (!p) return null;
-    // keep saved order, drop unknown keys, append new columns
     const known = (p.cols || []).filter((c) => COL_BY_KEY.has(c.key));
     const missing = CERT_COLUMNS.filter((c) => !known.some((k) => k.key === c.key)).map((c) => ({ key: c.key, on: false, label: c.label }));
     return { cols: [...known, ...missing], opts: { ...DEFAULT_OPTS, ...(p.opts || {}), fileName: "" } };
@@ -793,19 +796,64 @@ function savePrefs(cols, opts) {
   }
 }
 
+const COLUMN_GROUPS = [
+  { id: "emp", label: "Employee", keys: ["seq", "employeeNo", "name", "nationality", "branch", "job", "leftCompany"] },
+  { id: "cert", label: "Certificate", keys: ["courseType", "courseName", "issueDate", "expiryDate", "expiryMonth", "validity", "daysLeft", "status"] },
+  { id: "evid", label: "Evidence & record", keys: ["hasImage", "imageUrl", "instituteUrl", "savedAt"] },
+];
+
 const COLUMN_PRESETS = [
-  { id: "default", label: "Standard", keys: CERT_COLUMNS.filter((c) => c.def).map((c) => c.key) },
-  { id: "renewal", label: "Renewal list", keys: ["seq", "employeeNo", "name", "branch", "courseName", "expiryDate", "daysLeft", "status"] },
-  { id: "audit", label: "Audit evidence", keys: ["seq", "employeeNo", "name", "job", "branch", "courseName", "issueDate", "expiryDate", "status", "hasImage", "imageUrl", "instituteUrl"] },
-  { id: "hr", label: "HR roster", keys: ["seq", "employeeNo", "name", "nationality", "job", "branch", "leftCompany"] },
-  { id: "all", label: "All columns", keys: CERT_COLUMNS.map((c) => c.key) },
+  { id: "default", label: "Standard", hint: "Everyday register", keys: CERT_COLUMNS.filter((c) => c.def).map((c) => c.key) },
+  { id: "renewal", label: "Renewal list", hint: "Who must renew", keys: ["seq", "employeeNo", "name", "branch", "courseName", "expiryDate", "daysLeft", "status"] },
+  { id: "audit", label: "Audit evidence", hint: "Inspector pack", keys: ["seq", "employeeNo", "name", "job", "branch", "courseName", "issueDate", "expiryDate", "status", "hasImage", "imageUrl", "instituteUrl"] },
+  { id: "hr", label: "HR roster", hint: "People only", keys: ["seq", "employeeNo", "name", "nationality", "job", "branch", "leftCompany"] },
+  { id: "all", label: "Everything", hint: "All 19 columns", keys: CERT_COLUMNS.map((c) => c.key) },
+];
+
+const GROUP_CHOICES = [
+  { v: "none", t: "Single sheet", d: "All rows in one table" },
+  { v: "rows_branch", t: "Grouped by branch", d: "One sheet, a heading per branch" },
+  { v: "rows_course", t: "Grouped by course", d: "One sheet, a heading per course" },
+  { v: "sheet_branch", t: "Sheet per branch", d: "A tab for every branch" },
+  { v: "sheet_course", t: "Sheet per course", d: "A tab for every course" },
+  { v: "sheet_status", t: "Sheet per status", d: "Expired, Valid… each on a tab" },
+];
+
+const WORKBOOK_TOGGLES = [
+  { k: "summary", t: "Summary sheet", d: "Counts by branch, course and nationality with compliance %" },
+  { k: "colorStatus", t: "Status colours", d: "Red / orange / yellow / green fills" },
+  { k: "titleBlock", t: "Title & filters block", d: "Report title, date and the filters used above the table" },
+  { k: "zebra", t: "Striped rows", d: "Alternate row shading" },
+  { k: "freeze", t: "Freeze header", d: "Header and name stay visible while scrolling" },
+  { k: "autoFilter", t: "Excel filter buttons", d: "Drop-down filters on every header" },
+  { k: "totalsRow", t: "Totals row", d: "Record count under the table", listOnly: true },
+];
+
+function planSheets(rows, opts) {
+  const out = [];
+  if (opts.summary) out.push("Summary");
+  if (opts.layout === "matrix") return [...out, "Matrix"];
+  if (!opts.groupBy.startsWith("sheet_")) return [...out, "Certificates"];
+  if (opts.allSheet) out.push("All");
+  const keyFn =
+    opts.groupBy === "sheet_branch" ? (x) => x.branch || "—" : opts.groupBy === "sheet_course" ? (x) => x.courseType || "—" : (x) => (x.leftCompany ? "Left Company" : x.status.label);
+  return [...out, ...Array.from(new Set(rows.map(keyFn))).sort((a, b) => String(a).localeCompare(String(b)))];
+}
+
+const STEPS = [
+  { id: "records", t: "Records", icon: "⛃" },
+  { id: "columns", t: "Columns", icon: "▥" },
+  { id: "layout", t: "Layout", icon: "▦" },
+  { id: "review", t: "Review", icon: "✓" },
 ];
 
 export function CertExportModal({ open, onClose, allRows, initialFilters, lists }) {
   const [f, setF] = useState(initialFilters || EMPTY_FILTERS);
   const [cols, setCols] = useState(() => loadPrefs()?.cols || defaultCols());
   const [opts, setOpts] = useState(() => loadPrefs()?.opts || DEFAULT_OPTS);
+  const [step, setStep] = useState(0);
   const [dragKey, setDragKey] = useState(null);
+  const [colQ, setColQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -813,6 +861,7 @@ export function CertExportModal({ open, onClose, allRows, initialFilters, lists 
     if (open) {
       setF(initialFilters || EMPTY_FILTERS);
       setErr("");
+      setStep(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -826,9 +875,11 @@ export function CertExportModal({ open, onClose, allRows, initialFilters, lists 
 
   const filtered = useMemo(() => applyCertFilters(allRows, f), [allRows, f]);
   const sorted = useMemo(() => sortRows(filtered, opts.sort1, opts.dir1, opts.sort2, opts.dir2), [filtered, opts.sort1, opts.dir1, opts.sort2, opts.dir2]);
-  const activeCols = cols.filter((c) => c.on);
-  const filterChips = describeFilters(f);
-
+  const statusCounts = useMemo(() => {
+    const o = {};
+    applyCertFilters(allRows, { ...f, statuses: [] }).forEach((r) => (o[r.status.key] = (o[r.status.key] || 0) + 1));
+    return o;
+  }, [allRows, f]);
   const counts = useMemo(() => {
     const mk = (fn) => {
       const o = {};
@@ -840,53 +891,69 @@ export function CertExportModal({ open, onClose, allRows, initialFilters, lists 
     };
     return { branch: mk((r) => r.branch), course: mk((r) => r.courseType), nat: mk((r) => r.nationality), job: mk((r) => r.job) };
   }, [allRows]);
-
-  const matrixEmployees = useMemo(() => (opts.layout === "matrix" ? new Set(filtered.map(employeeKey)).size : 0), [filtered, opts.layout]);
+  const employees = useMemo(() => new Set(filtered.map(employeeKey)).size, [filtered]);
+  const matrix = useMemo(() => (open && opts.layout === "matrix" ? buildMatrix(sorted, f.courses, opts) : null), [open, sorted, f.courses, opts]);
+  const sheets = useMemo(() => planSheets(sorted, opts), [sorted, opts]);
 
   if (!open) return null;
 
+  const activeCols = cols.filter((c) => c.on);
+  const filterChips = describeFilters(f);
   const set = (patch) => setF((p) => ({ ...p, ...patch }));
   const setO = (patch) => setOpts((p) => ({ ...p, ...patch }));
   const toggleStatus = (k) => set({ statuses: f.statuses.includes(k) ? f.statuses.filter((x) => x !== k) : [...f.statuses, k] });
+  const usedInMatrix = (key) => key === "seq" || !!COL_BY_KEY.get(key).emp;
 
   function moveCol(key, delta) {
     setCols((prev) => {
-      const i = prev.findIndex((c) => c.key === key);
+      const on = prev.filter((c) => c.on);
+      const off = prev.filter((c) => !c.on);
+      const i = on.findIndex((c) => c.key === key);
       const j = i + delta;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = prev.slice();
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
+      if (i < 0 || j < 0 || j >= on.length) return prev;
+      [on[i], on[j]] = [on[j], on[i]];
+      return [...on, ...off];
     });
   }
   function dropOn(targetKey) {
     if (!dragKey || dragKey === targetKey) return;
     setCols((prev) => {
-      const from = prev.findIndex((c) => c.key === dragKey);
-      const to = prev.findIndex((c) => c.key === targetKey);
-      const next = prev.slice();
-      const [m] = next.splice(from, 1);
-      next.splice(to, 0, m);
-      return next;
+      const on = prev.filter((c) => c.on);
+      const off = prev.filter((c) => !c.on);
+      const from = on.findIndex((c) => c.key === dragKey);
+      const to = on.findIndex((c) => c.key === targetKey);
+      if (from < 0 || to < 0) return prev;
+      const [m] = on.splice(from, 1);
+      on.splice(to, 0, m);
+      return [...on, ...off];
     });
     setDragKey(null);
   }
+  const addCol = (key) =>
+    setCols((prev) => {
+      const on = prev.filter((c) => c.on);
+      const off = prev.filter((c) => !c.on);
+      const item = off.find((c) => c.key === key);
+      return item ? [...on, { ...item, on: true }, ...off.filter((c) => c.key !== key)] : prev;
+    });
+  const removeCol = (key) => setCols((prev) => [...prev.filter((c) => c.on && c.key !== key), ...prev.filter((c) => !c.on || c.key === key).map((c) => (c.key === key ? { ...c, on: false } : c))]);
   function applyPreset(p) {
     setCols((prev) => {
       const byKey = new Map(prev.map((c) => [c.key, c]));
-      const first = p.keys.map((k) => ({ ...byKey.get(k), on: true }));
-      const rest = prev.filter((c) => !p.keys.includes(c.key)).map((c) => ({ ...c, on: false }));
-      return [...first, ...rest];
+      return [...p.keys.map((k) => ({ ...byKey.get(k), on: true })), ...prev.filter((c) => !p.keys.includes(c.key)).map((c) => ({ ...c, on: false }))];
     });
   }
+  const presetActive = (p) => activeCols.length === p.keys.length && activeCols.every((c, i) => c.key === p.keys[i]);
 
   async function doExport() {
     if (!activeCols.length) {
       setErr("Choose at least one column.");
+      setStep(1);
       return;
     }
     if (!sorted.length) {
       setErr("No certificates match these filters.");
+      setStep(0);
       return;
     }
     setBusy(true);
@@ -909,464 +976,761 @@ export function CertExportModal({ open, onClose, allRows, initialFilters, lists 
     }
   }
 
-  const previewRows = sorted.slice(0, 6);
+  const stepSub = [
+    `${sorted.length} certificate${sorted.length === 1 ? "" : "s"}${filterChips.length ? ` · ${filterChips.length} filter${filterChips.length === 1 ? "" : "s"}` : ""}`,
+    `${activeCols.length} column${activeCols.length === 1 ? "" : "s"}`,
+    opts.layout === "matrix" ? "Training matrix" : GROUP_CHOICES.find((g) => g.v === opts.groupBy)?.t || "List",
+    `${sheets.length} sheet${sheets.length === 1 ? "" : "s"}`,
+  ];
+  const defaultName = `training_certificates_${opts.layout === "matrix" ? "matrix_" : ""}${new Date().toISOString().slice(0, 10)}`;
+  const isLast = step === STEPS.length - 1;
+  const cantExport = busy || !sorted.length || !activeCols.length;
 
-  return (
-    <div
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9999,
-        background: "rgba(2,6,23,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        direction: "ltr",
-      }}
-    >
-      <div
-        style={{
-          width: "min(1280px, 100%)",
-          maxHeight: "94vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "#f8fafc",
-          borderRadius: 18,
-          boxShadow: "0 30px 80px rgba(2,6,23,0.55)",
-          overflow: "hidden",
-          fontFamily: "Inter, Tahoma, Arial, sans-serif",
-          color: "#0f172a",
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "linear-gradient(135deg,#065f46,#047857,#10b981)", color: "#fff" }}>
-          <div style={{ fontSize: 22 }}>📊</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 17 }}>Custom Excel Export</div>
-            <div style={{ opacity: 0.9 }}>Pick the records, the columns and how the workbook is laid out.</div>
-          </div>
-          <button type="button" onClick={onClose} disabled={busy} style={{ ...ghostBtn, color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}>
-            ✕
+  /* ---------- step bodies ---------- */
+  const recordsStep = (
+    <>
+      <StepHead title="Which certificates?" desc="Start from the page filters or build your own selection. Counts update live." />
+      <div className="tcx-card">
+        <div className="tcx-card-t">
+          Search
+          <span className="tcx-sp" />
+          <button type="button" className="tcx-link" onClick={() => setF(initialFilters || EMPTY_FILTERS)}>
+            ↺ Use page filters
+          </button>
+          <button type="button" className="tcx-link" onClick={() => setF(EMPTY_FILTERS)}>
+            Clear all
           </button>
         </div>
+        <input className="tcx-input" value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="Name, employee no., job, course…" />
+      </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 14, alignItems: "start" }}>
-          {/* ---- 1. Filters ---- */}
-          <section style={card}>
-            <div style={cardHead}>
-              <span>① Records</span>
-              <span style={{ flex: 1 }} />
-              <button type="button" style={miniLink} onClick={() => setF(initialFilters || EMPTY_FILTERS)}>
-                Page filters
+      <div className="tcx-card">
+        <div className="tcx-card-t">
+          Status
+          <span className="tcx-hint">{f.statuses.length ? `${f.statuses.length} selected` : "All statuses"}</span>
+        </div>
+        <div className="tcx-status">
+          {STATUS_DEFS.map((s) => {
+            const on = f.statuses.includes(s.key);
+            return (
+              <button
+                key={s.key}
+                type="button"
+                className={`tcx-stile${on ? " on" : ""}`}
+                onClick={() => toggleStatus(s.key)}
+                style={{ borderLeftColor: s.color, background: on ? `${s.color}14` : undefined, outlineColor: s.color }}
+              >
+                <span className="tcx-stile-n" style={{ color: s.color }}>
+                  {statusCounts[s.key] || 0}
+                </span>
+                <span className="tcx-stile-l">{s.label}</span>
+                {on && (
+                  <span className="tcx-tick" style={{ background: s.color }}>
+                    ✓
+                  </span>
+                )}
               </button>
-              <button type="button" style={miniLink} onClick={() => setF(EMPTY_FILTERS)}>
-                Reset
+            );
+          })}
+        </div>
+        <div className="tcx-row" style={{ marginTop: 12 }}>
+          <span className="tcx-lbl">Staff</span>
+          <Seg
+            value={f.leftMode}
+            onChange={(v) => set({ leftMode: v })}
+            items={[
+              ["exclude", "Active only"],
+              ["include", "Active + left"],
+              ["only", "Left company"],
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="tcx-card">
+        <div className="tcx-card-t">Organisation</div>
+        <div className="tcx-grid2">
+          <MultiSelect inline icon="🏢" label="Branches" options={lists.branches} value={f.branches} onChange={(v) => set({ branches: v })} counts={counts.branch} />
+          <MultiSelect inline icon="🎓" label="Courses" options={lists.courses} value={f.courses} onChange={(v) => set({ courses: v })} counts={counts.course} />
+          <MultiSelect inline icon="🌍" label="Nationalities" options={lists.nationalities} value={f.nationalities} onChange={(v) => set({ nationalities: v })} counts={counts.nat} />
+          <MultiSelect inline icon="💼" label="Job titles" options={lists.jobs} value={f.jobs} onChange={(v) => set({ jobs: v })} counts={counts.job} />
+        </div>
+      </div>
+
+      <div className="tcx-card">
+        <div className="tcx-card-t">Dates & evidence</div>
+        <div className="tcx-lbl">Expiry date</div>
+        <div className="tcx-chips">
+          {EXPIRY_PRESETS.map((p) => {
+            const r = p.range();
+            const on = r.expiryFrom === f.expiryFrom && r.expiryTo === f.expiryTo;
+            return (
+              <button key={p.id} type="button" className={`tcx-chip${on ? " on" : ""}`} onClick={() => set(on ? { expiryFrom: "", expiryTo: "" } : r)}>
+                {p.label}
               </button>
-            </div>
+            );
+          })}
+        </div>
+        <Range a={f.expiryFrom} b={f.expiryTo} onA={(v) => set({ expiryFrom: v })} onB={(v) => set({ expiryTo: v })} type="date" />
+        <div className="tcx-grid2" style={{ marginTop: 14 }}>
+          <div>
+            <div className="tcx-lbl">Issue date</div>
+            <Range a={f.issueFrom} b={f.issueTo} onA={(v) => set({ issueFrom: v })} onB={(v) => set({ issueTo: v })} type="date" />
+          </div>
+          <div>
+            <div className="tcx-lbl">Days left</div>
+            <Range a={f.daysMin} b={f.daysMax} onA={(v) => set({ daysMin: v })} onB={(v) => set({ daysMax: v })} type="number" />
+          </div>
+        </div>
+        <div className="tcx-row" style={{ marginTop: 14 }}>
+          <span className="tcx-lbl">Certificate image</span>
+          <Seg
+            value={f.image}
+            onChange={(v) => set({ image: v })}
+            items={[
+              ["any", "Any"],
+              ["with", "Attached"],
+              ["without", "Missing"],
+            ]}
+          />
+        </div>
+      </div>
+    </>
+  );
 
-            <input value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="🔎 Name, employee no, job…" style={inputSt} />
+  const offCols = cols.filter((c) => !c.on && (!colQ || c.label.toLowerCase().includes(colQ.toLowerCase())));
+  const columnsStep = (
+    <>
+      <StepHead title="Which columns, in what order?" desc="Pick a preset or build your own. Drag to reorder, click a header name to rename it in the file." />
+      <div className="tcx-presets">
+        {COLUMN_PRESETS.map((p) => (
+          <button key={p.id} type="button" className={`tcx-preset${presetActive(p) ? " on" : ""}`} onClick={() => applyPreset(p)}>
+            <b>{p.label}</b>
+            <span>
+              {p.hint} · {p.keys.length}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="tcx-dual">
+        <div className="tcx-pane">
+          <div className="tcx-pane-h">
+            Available <span className="tcx-badge">{cols.length - activeCols.length}</span>
+            <span className="tcx-sp" />
+            <button type="button" className="tcx-link" onClick={() => setCols((p) => p.map((c) => ({ ...c, on: true })))}>
+              Add all
+            </button>
+          </div>
+          <div style={{ padding: "8px 10px 4px" }}>
+            <input className="tcx-input sm" value={colQ} onChange={(e) => setColQ(e.target.value)} placeholder="Find a column…" />
+          </div>
+          <div className="tcx-list">
+            {COLUMN_GROUPS.map((g) => {
+              const items = offCols.filter((c) => g.keys.includes(c.key));
+              if (!items.length) return null;
+              return (
+                <div key={g.id}>
+                  <div className="tcx-grp">{g.label}</div>
+                  {items.map((c) => (
+                    <button key={c.key} type="button" className="tcx-item add" onClick={() => addCol(c.key)}>
+                      <span className="tcx-plus">+</span>
+                      <span className="tcx-grow">{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+            {!offCols.length && <div className="tcx-empty">{colQ ? "No match" : "Every column is in the file"}</div>}
+          </div>
+        </div>
 
-            <div style={lbl}>Status</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {STATUS_DEFS.map((s) => {
-                const on = f.statuses.includes(s.key);
-                return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => toggleStatus(s.key)}
-                    style={{ padding: "4px 10px", borderRadius: 999, border: `1px solid ${s.color}`, background: on ? s.color : "#fff", color: on ? "#fff" : s.color, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              {[
-                ["exclude", "Active staff"],
-                ["include", "+ Left company"],
-                ["only", "Left company only"],
-              ].map(([v, t]) => (
-                <button key={v} type="button" onClick={() => set({ leftMode: v })} style={segBtn(f.leftMode === v)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-              <MultiSelect inline icon="🏢" label="Branches" options={lists.branches} value={f.branches} onChange={(v) => set({ branches: v })} counts={counts.branch} />
-              <MultiSelect inline icon="🎓" label="Courses" options={lists.courses} value={f.courses} onChange={(v) => set({ courses: v })} counts={counts.course} />
-              <MultiSelect inline icon="🌍" label="Nationalities" options={lists.nationalities} value={f.nationalities} onChange={(v) => set({ nationalities: v })} counts={counts.nat} />
-              <MultiSelect inline icon="💼" label="Job titles" options={lists.jobs} value={f.jobs} onChange={(v) => set({ jobs: v })} counts={counts.job} />
-            </div>
-
-            <div style={lbl}>Expiry date</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>
-              {EXPIRY_PRESETS.map((p) => (
-                <button key={p.id} type="button" style={chipBtn} onClick={() => set(p.range())}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div style={rangeRow}>
-              <input type="date" value={f.expiryFrom} onChange={(e) => set({ expiryFrom: e.target.value })} style={inputSt} />
-              <span>→</span>
-              <input type="date" value={f.expiryTo} onChange={(e) => set({ expiryTo: e.target.value })} style={inputSt} />
-            </div>
-
-            <div style={lbl}>Issue date</div>
-            <div style={rangeRow}>
-              <input type="date" value={f.issueFrom} onChange={(e) => set({ issueFrom: e.target.value })} style={inputSt} />
-              <span>→</span>
-              <input type="date" value={f.issueTo} onChange={(e) => set({ issueTo: e.target.value })} style={inputSt} />
-            </div>
-
-            <div style={lbl}>Days left</div>
-            <div style={rangeRow}>
-              <input type="number" placeholder="min" value={f.daysMin} onChange={(e) => set({ daysMin: e.target.value })} style={inputSt} />
-              <span>→</span>
-              <input type="number" placeholder="max" value={f.daysMax} onChange={(e) => set({ daysMax: e.target.value })} style={inputSt} />
-            </div>
-
-            <div style={lbl}>Certificate image</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {[
-                ["any", "Any"],
-                ["with", "Attached"],
-                ["without", "Missing"],
-              ].map(([v, t]) => (
-                <button key={v} type="button" onClick={() => set({ image: v })} style={segBtn(f.image === v)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* ---- 2. Columns ---- */}
-          <section style={card}>
-            <div style={cardHead}>
-              <span>② Columns</span>
-              <span style={{ color: "#64748b", fontWeight: 600 }}>
-                {activeCols.length}/{cols.length}
-              </span>
-              <span style={{ flex: 1 }} />
-              <button type="button" style={miniLink} onClick={() => setCols((p) => p.map((c) => ({ ...c, on: true })))}>
-                All
-              </button>
-              <button type="button" style={miniLink} onClick={() => setCols((p) => p.map((c) => ({ ...c, on: false })))}>
-                None
-              </button>
-              <button type="button" style={miniLink} onClick={() => setCols(defaultCols())}>
-                Reset
-              </button>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
-              {COLUMN_PRESETS.map((p) => (
-                <button key={p.id} type="button" style={chipBtn} onClick={() => applyPreset(p)}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ color: "#64748b", marginBottom: 6 }}>Tick to include · drag or use ↑↓ to reorder · edit the header text</div>
-            <div style={{ display: "grid", gap: 4 }}>
-              {cols.map((c, i) => (
+        <div className="tcx-pane">
+          <div className="tcx-pane-h">
+            In the file <span className="tcx-badge blue">{activeCols.length}</span>
+            <span className="tcx-sp" />
+            <button type="button" className="tcx-link" onClick={() => setCols(defaultCols())}>
+              Reset
+            </button>
+            <button type="button" className="tcx-link" onClick={() => setCols((p) => p.map((c) => ({ ...c, on: false })))}>
+              Remove all
+            </button>
+          </div>
+          <div className="tcx-list">
+            {activeCols.map((c, i) => {
+              const warn = opts.layout === "matrix" && !usedInMatrix(c.key);
+              return (
                 <div
                   key={c.key}
+                  className={`tcx-item sel${dragKey === c.key ? " drag" : ""}${warn ? " warn" : ""}`}
                   draggable
                   onDragStart={() => setDragKey(c.key)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => dropOn(c.key)}
                   onDragEnd={() => setDragKey(null)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 6px",
-                    borderRadius: 9,
-                    border: dragKey === c.key ? "1.5px dashed #2563eb" : "1px solid #e2e8f0",
-                    background: c.on ? "#fff" : "#f1f5f9",
-                    opacity: c.on ? 1 : 0.7,
-                  }}
+                  title={warn ? "Not used in the training-matrix layout" : COL_BY_KEY.get(c.key).label}
                 >
-                  <span style={{ cursor: "grab", color: "#94a3b8" }}>⋮⋮</span>
-                  <input type="checkbox" checked={c.on} onChange={() => setCols((p) => p.map((x) => (x.key === c.key ? { ...x, on: !x.on } : x)))} style={{ margin: 0 }} />
-                  <input
-                    value={c.label}
-                    onChange={(e) => setCols((p) => p.map((x) => (x.key === c.key ? { ...x, label: e.target.value } : x)))}
-                    style={{ flex: 1, minWidth: 0, border: "1px solid transparent", background: "transparent", padding: "3px 4px", borderRadius: 6, fontWeight: 600, color: "#0f172a" }}
-                    onFocus={(e) => (e.target.style.borderColor = "#93c5fd")}
-                    onBlur={(e) => (e.target.style.borderColor = "transparent")}
-                    title={COL_BY_KEY.get(c.key).label}
-                  />
-                  {opts.layout === "matrix" && c.on && !COL_BY_KEY.get(c.key).emp && c.key !== "seq" && (
-                    <span title="Not used in the matrix layout" style={{ color: "#a16207" }}>
-                      ⓘ
-                    </span>
-                  )}
-                  <button type="button" style={arrowBtn} disabled={i === 0} onClick={() => moveCol(c.key, -1)}>
+                  <span className="tcx-grip">⠿</span>
+                  <span className="tcx-ord">{i + 1}</span>
+                  <input className="tcx-rename" value={c.label} onChange={(e) => setCols((p) => p.map((x) => (x.key === c.key ? { ...x, label: e.target.value } : x)))} />
+                  <button type="button" className="tcx-ic" disabled={i === 0} onClick={() => moveCol(c.key, -1)} aria-label="Move up">
                     ↑
                   </button>
-                  <button type="button" style={arrowBtn} disabled={i === cols.length - 1} onClick={() => moveCol(c.key, 1)}>
+                  <button type="button" className="tcx-ic" disabled={i === activeCols.length - 1} onClick={() => moveCol(c.key, 1)} aria-label="Move down">
                     ↓
                   </button>
+                  <button type="button" className="tcx-ic del" onClick={() => removeCol(c.key)} aria-label="Remove">
+                    ×
+                  </button>
                 </div>
-              ))}
-            </div>
-          </section>
+              );
+            })}
+            {!activeCols.length && <div className="tcx-empty">Add columns from the left</div>}
+          </div>
+        </div>
+      </div>
+      {opts.layout === "matrix" && <div className="tcx-note">Training matrix uses only the employee columns (No, Name, Branch, Job…); highlighted ones are skipped there.</div>}
+    </>
+  );
 
-          {/* ---- 3. Layout ---- */}
-          <section style={card}>
-            <div style={cardHead}>③ Layout & options</div>
+  const layoutStep = (
+    <>
+      <StepHead title="How should the workbook look?" desc="Choose the table shape, grouping, sort order and finishing touches." />
+      <div className="tcx-layouts">
+        <button type="button" className={`tcx-lcard${opts.layout === "list" ? " on" : ""}`} onClick={() => setO({ layout: "list" })}>
+          <span className="tcx-ill list" />
+          <span>
+            <b>Certificate list</b>
+            <small>One row per certificate — the classic register</small>
+          </span>
+        </button>
+        <button type="button" className={`tcx-lcard${opts.layout === "matrix" ? " on" : ""}`} onClick={() => setO({ layout: "matrix" })}>
+          <span className="tcx-ill matrix" />
+          <span>
+            <b>Training matrix</b>
+            <small>One row per employee, one column per course</small>
+          </span>
+        </button>
+      </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <button type="button" style={bigSeg(opts.layout === "list")} onClick={() => setO({ layout: "list" })}>
-                <b>📄 List</b>
-                <span>One row per certificate</span>
+      {opts.layout === "list" ? (
+        <div className="tcx-card">
+          <div className="tcx-card-t">Organise rows</div>
+          <div className="tcx-radios">
+            {GROUP_CHOICES.map((g) => (
+              <button key={g.v} type="button" className={`tcx-radio${opts.groupBy === g.v ? " on" : ""}`} onClick={() => setO({ groupBy: g.v })}>
+                <span className="tcx-dot" />
+                <span>
+                  <b>{g.t}</b>
+                  <small>{g.d}</small>
+                </span>
               </button>
-              <button type="button" style={bigSeg(opts.layout === "matrix")} onClick={() => setO({ layout: "matrix" })}>
-                <b>▦ Training matrix</b>
-                <span>Employee × course</span>
-              </button>
-            </div>
+            ))}
+          </div>
+          {opts.groupBy.startsWith("sheet_") && <Toggle t='Also add an "All" sheet' d="Every record on its own tab before the split tabs" on={opts.allSheet} onChange={(v) => setO({ allSheet: v })} />}
+        </div>
+      ) : (
+        <div className="tcx-card">
+          <div className="tcx-card-t">Each course cell shows</div>
+          <Seg
+            value={opts.matrixCell}
+            onChange={(v) => setO({ matrixCell: v })}
+            items={[
+              ["expiry", "Expiry date"],
+              ["status", "Status"],
+              ["days", "Days left"],
+            ]}
+          />
+          <div className="tcx-note">Courses = your course filter, or every course found. "—" means the employee has no certificate for that course.</div>
+        </div>
+      )}
 
-            {opts.layout === "list" ? (
-              <>
-                <div style={lbl}>Group / split</div>
-                <select value={opts.groupBy} onChange={(e) => setO({ groupBy: e.target.value })} style={inputSt}>
-                  <option value="none">No grouping — one sheet</option>
-                  <option value="rows_branch">Group rows by branch (one sheet)</option>
-                  <option value="rows_course">Group rows by course (one sheet)</option>
-                  <option value="sheet_branch">One sheet per branch</option>
-                  <option value="sheet_course">One sheet per course</option>
-                  <option value="sheet_status">One sheet per status</option>
-                </select>
-                {opts.groupBy.startsWith("sheet_") && (
-                  <Check label='Also add an "All" sheet' checked={opts.allSheet} onChange={(v) => setO({ allSheet: v })} />
-                )}
-              </>
-            ) : (
-              <>
-                <div style={lbl}>Matrix cell shows</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {[
-                    ["expiry", "Expiry date"],
-                    ["status", "Status"],
-                    ["days", "Days left"],
-                  ].map(([v, t]) => (
-                    <button key={v} type="button" onClick={() => setO({ matrixCell: v })} style={segBtn(opts.matrixCell === v)}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ color: "#64748b", marginTop: 6 }}>
-                  Uses the employee columns you ticked (No, Name, Branch, Job…). Courses = the course filter, or every course found. "—" = no certificate.
-                </div>
-              </>
-            )}
+      <div className="tcx-card">
+        <div className="tcx-card-t">Sort order</div>
+        <div className="tcx-sort">
+          <span className="tcx-lbl">Sort by</span>
+          <select className="tcx-input" value={opts.sort1} onChange={(e) => setO({ sort1: e.target.value })}>
+            {CERT_COLUMNS.filter((c) => !c.noSort).map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <Seg value={opts.dir1} onChange={(v) => setO({ dir1: v })} items={[["asc", "Ascending"], ["desc", "Descending"]]} />
+          <span className="tcx-lbl">Then by</span>
+          <select className="tcx-input" value={opts.sort2} onChange={(e) => setO({ sort2: e.target.value })}>
+            <option value="">— none —</option>
+            {CERT_COLUMNS.filter((c) => !c.noSort).map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <Seg value={opts.dir2} onChange={(v) => setO({ dir2: v })} items={[["asc", "Ascending"], ["desc", "Descending"]]} disabled={!opts.sort2} />
+        </div>
+      </div>
 
-            <div style={lbl}>Sort by</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
-              <select value={opts.sort1} onChange={(e) => setO({ sort1: e.target.value })} style={inputSt}>
-                {CERT_COLUMNS.filter((c) => !c.noSort).map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              <button type="button" style={segBtn(true)} onClick={() => setO({ dir1: opts.dir1 === "asc" ? "desc" : "asc" })}>
-                {opts.dir1 === "asc" ? "↑ A→Z" : "↓ Z→A"}
-              </button>
-              <select value={opts.sort2} onChange={(e) => setO({ sort2: e.target.value })} style={inputSt}>
-                <option value="">— then by —</option>
-                {CERT_COLUMNS.filter((c) => !c.noSort).map((c) => (
-                  <option key={c.key} value={c.key}>
-                    then {c.label}
-                  </option>
-                ))}
-              </select>
-              <button type="button" style={segBtn(true)} onClick={() => setO({ dir2: opts.dir2 === "asc" ? "desc" : "asc" })} disabled={!opts.sort2}>
-                {opts.dir2 === "asc" ? "↑ A→Z" : "↓ Z→A"}
-              </button>
-            </div>
+      <div className="tcx-card">
+        <div className="tcx-card-t">Workbook options</div>
+        {WORKBOOK_TOGGLES.filter((t) => !t.listOnly || opts.layout === "list").map((t) => (
+          <Toggle key={t.k} t={t.t} d={t.d} on={!!opts[t.k]} onChange={(v) => setO({ [t.k]: v })} />
+        ))}
+      </div>
 
-            <div style={lbl}>Workbook</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 10px" }}>
-              <Check label="Summary sheet" checked={opts.summary} onChange={(v) => setO({ summary: v })} />
-              <Check label="Status colours" checked={opts.colorStatus} onChange={(v) => setO({ colorStatus: v })} />
-              <Check label="Title & filters block" checked={opts.titleBlock} onChange={(v) => setO({ titleBlock: v })} />
-              <Check label="Striped rows" checked={opts.zebra} onChange={(v) => setO({ zebra: v })} />
-              <Check label="Freeze header" checked={opts.freeze} onChange={(v) => setO({ freeze: v })} />
-              <Check label="Excel filter buttons" checked={opts.autoFilter} onChange={(v) => setO({ autoFilter: v })} />
-              {opts.layout === "list" && <Check label="Totals row" checked={opts.totalsRow} onChange={(v) => setO({ totalsRow: v })} />}
-            </div>
-
-            <div style={lbl}>Date format</div>
-            <select value={opts.dateFormat} onChange={(e) => setO({ dateFormat: e.target.value })} style={inputSt}>
+      <div className="tcx-card">
+        <div className="tcx-card-t">File</div>
+        <div className="tcx-grid2">
+          <div>
+            <div className="tcx-lbl">Date format</div>
+            <select className="tcx-input" value={opts.dateFormat} onChange={(e) => setO({ dateFormat: e.target.value })}>
               <option value="dd/mm/yyyy">31/12/2026</option>
               <option value="dd-mmm-yyyy">31-Dec-2026</option>
               <option value="yyyy-mm-dd">2026-12-31</option>
               <option value="mm/dd/yyyy">12/31/2026</option>
             </select>
-
-            <div style={lbl}>File name</div>
-            <input value={opts.fileName} onChange={(e) => setO({ fileName: e.target.value })} placeholder={`training_certificates_${new Date().toISOString().slice(0, 10)}`} style={inputSt} />
-          </section>
-        </div>
-
-        {/* Preview */}
-        <div style={{ padding: "0 14px 10px" }}>
-          <div style={{ ...card, padding: 10 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <b>Preview</b>
-              {filterChips.length === 0 ? (
-                <span style={{ color: "#64748b" }}>No filters — every active certificate</span>
-              ) : (
-                filterChips.map((c) => (
-                  <span key={c.id} style={{ padding: "2px 8px", borderRadius: 999, background: "#e0f2fe", color: "#075985", fontWeight: 600 }}>
-                    {c.text}
-                  </span>
-                ))
-              )}
+          </div>
+          <div>
+            <div className="tcx-lbl">File name</div>
+            <div className="tcx-file">
+              <input className="tcx-input" value={opts.fileName} onChange={(e) => setO({ fileName: e.target.value })} placeholder={defaultName} />
+              <span>.xlsx</span>
             </div>
-            {opts.layout === "matrix" ? (
-              <div style={{ color: "#334155" }}>
-                {matrixEmployees} employee row(s) built from {sorted.length} certificate(s).
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const previewList = sorted.slice(0, 10);
+  const reviewStep = (
+    <>
+      <StepHead title="Review & download" desc="This is what the first rows of your file will look like." />
+      <div className="tcx-card">
+        <div className="tcx-card-t">Sheets in the workbook</div>
+        <div className="tcx-tabs">
+          {sheets.slice(0, 14).map((s, i) => (
+            <span key={`${s}-${i}`} className="tcx-tab">
+              {s}
+            </span>
+          ))}
+          {sheets.length > 14 && <span className="tcx-tab more">+{sheets.length - 14} more</span>}
+        </div>
+      </div>
+      <div className="tcx-card flush">
+        <div className="tcx-card-t pad">
+          Preview
+          <span className="tcx-hint">{opts.layout === "matrix" ? `${matrix?.emps.length || 0} employees × ${matrix?.courses.length || 0} courses` : `${Math.min(10, sorted.length)} of ${sorted.length} rows`}</span>
+        </div>
+        <div className="tcx-tblwrap">
+          {opts.layout === "matrix" && matrix ? (
+            <table className="tcx-tbl">
+              <thead>
+                <tr>
+                  {activeCols.filter((c) => usedInMatrix(c.key)).map((c) => (
+                    <th key={c.key}>{c.label}</th>
+                  ))}
+                  {matrix.courses.map((c) => (
+                    <th key={c} className="c">
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.emps.slice(0, 10).map((e, i) => (
+                  <tr key={i}>
+                    {activeCols.filter((c) => usedInMatrix(c.key)).map((c) => (
+                      <td key={c.key}>{String(COL_BY_KEY.get(c.key).value(e.info, i) ?? "")}</td>
+                    ))}
+                    {matrix.courses.map((course) => {
+                      const cert = e.certs[course];
+                      if (!cert) return <td key={course} className="c miss">—</td>;
+                      const s = STATUS_ARGB[cert.status.key];
+                      const txt = opts.matrixCell === "status" ? cert.status.label : opts.matrixCell === "days" ? cert.status.days ?? "No Expiry" : d10(cert.expiryDate) || "No Expiry";
+                      return (
+                        <td key={course} className="c" style={opts.colorStatus ? { background: `#${s.fill.slice(2)}`, color: `#${s.font.slice(2)}`, fontWeight: 700 } : undefined}>
+                          {txt}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="tcx-tbl">
+              <thead>
+                <tr>
+                  {activeCols.map((c) => (
+                    <th key={c.key}>{c.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewList.map((r, i) => (
+                  <tr key={r._rid || r.idx} className={opts.zebra && i % 2 ? "z" : ""}>
+                    {activeCols.map((c) => {
+                      const def = COL_BY_KEY.get(c.key);
+                      let v = def.value(r, i);
+                      if (def.type === "link") v = v ? "Open ↗" : "";
+                      const s = def.type === "status" && opts.colorStatus ? STATUS_ARGB[statusKeyOf(r)] : null;
+                      return (
+                        <td key={c.key} className={def.type === "link" && v ? "lnk" : ""} style={s ? { background: `#${s.fill.slice(2)}`, color: `#${s.font.slice(2)}`, fontWeight: 700 } : undefined}>
+                          {v === null || v === undefined ? "" : String(v)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!sorted.length && <div className="tcx-empty">No certificates match these filters.</div>}
+        </div>
+      </div>
+    </>
+  );
+
+  const bodies = [recordsStep, columnsStep, layoutStep, reviewStep];
+
+  return (
+    <div className="tcx tcx-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()} lang="en" dir="ltr">
+      <style>{TCX_CSS}</style>
+      <div className="tcx-dlg" role="dialog" aria-modal="true" aria-label="Export to Excel">
+        <header className="tcx-head">
+          <div className="tcx-logo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
+              <path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="tcx-grow">
+            <div className="tcx-title">Export to Excel</div>
+            <div className="tcx-sub">Training Certificates Register · custom report builder</div>
+          </div>
+          <button type="button" className="tcx-x" onClick={onClose} disabled={busy} aria-label="Close">
+            ✕
+          </button>
+        </header>
+
+        <div className="tcx-body">
+          <nav className="tcx-nav">
+            {STEPS.map((s, i) => (
+              <button key={s.id} type="button" className={`tcx-step${i === step ? " on" : ""}${i < step ? " done" : ""}`} onClick={() => setStep(i)}>
+                <span className="tcx-num">{i < step ? "✓" : i + 1}</span>
+                <span className="tcx-grow">
+                  <span className="tcx-step-t">{s.t}</span>
+                  <span className="tcx-step-s">{stepSub[i]}</span>
+                </span>
+              </button>
+            ))}
+          </nav>
+
+          <main className="tcx-main">{bodies[step]}</main>
+
+          <aside className="tcx-aside">
+            <div className="tcx-aside-t">Export summary</div>
+            <div className="tcx-kpis">
+              <div className="tcx-kpi">
+                <b className={sorted.length ? "" : "bad"}>{sorted.length}</b>
+                <span>Certificates</span>
+              </div>
+              <div className="tcx-kpi">
+                <b>{employees}</b>
+                <span>Employees</span>
+              </div>
+              <div className="tcx-kpi">
+                <b>{opts.layout === "matrix" ? activeCols.filter((c) => usedInMatrix(c.key)).length + (matrix?.courses.length || 0) : activeCols.length}</b>
+                <span>Columns</span>
+              </div>
+              <div className="tcx-kpi">
+                <b>{sheets.length}</b>
+                <span>Sheets</span>
+              </div>
+            </div>
+
+            <div className="tcx-aside-t">Filters</div>
+            {filterChips.length ? (
+              <div className="tcx-fchips">
+                {filterChips.map((c) => (
+                  <span key={c.id} className="tcx-fchip">
+                    {c.text}
+                    <button type="button" onClick={() => setF((p) => clearFilterPart(p, c.id))} aria-label="Remove filter">
+                      ×
+                    </button>
+                  </span>
+                ))}
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", whiteSpace: "nowrap" }}>
-                  <thead>
-                    <tr>
-                      {activeCols.map((c) => (
-                        <th key={c.key} style={{ background: "#0f172a", color: "#fff", padding: "5px 8px", textAlign: "left", border: "1px solid #334155" }}>
-                          {c.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((r, i) => (
-                      <tr key={r._rid || r.idx}>
-                        {activeCols.map((c) => {
-                          const def = COL_BY_KEY.get(c.key);
-                          let v = def.value(r, i);
-                          if (def.type === "link") v = v ? "Open ↗" : "";
-                          const s = def.type === "status" ? STATUS_ARGB[statusKeyOf(r)] : null;
-                          return (
-                            <td
-                              key={c.key}
-                              style={{
-                                padding: "4px 8px",
-                                border: "1px solid #e2e8f0",
-                                background: s ? `#${s.fill.slice(2)}` : i % 2 ? "#f8fafc" : "#fff",
-                                color: s ? `#${s.font.slice(2)}` : "#0f172a",
-                                fontWeight: s ? 700 : 400,
-                              }}
-                            >
-                              {v === null || v === undefined ? "" : String(v)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                    {sorted.length > previewRows.length && (
-                      <tr>
-                        <td colSpan={Math.max(activeCols.length, 1)} style={{ padding: 5, color: "#64748b", textAlign: "center" }}>
-                          … and {sorted.length - previewRows.length} more row(s)
-                        </td>
-                      </tr>
-                    )}
-                    {!sorted.length && (
-                      <tr>
-                        <td colSpan={Math.max(activeCols.length, 1)} style={{ padding: 8, color: "#b91c1c", textAlign: "center", fontWeight: 700 }}>
-                          No certificates match these filters.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <div className="tcx-muted">None — every active certificate</div>
             )}
-          </div>
+
+            <div className="tcx-aside-t">Layout</div>
+            <dl className="tcx-dl">
+              <dt>Shape</dt>
+              <dd>{opts.layout === "matrix" ? "Training matrix" : "Certificate list"}</dd>
+              {opts.layout === "list" && (
+                <>
+                  <dt>Rows</dt>
+                  <dd>{GROUP_CHOICES.find((g) => g.v === opts.groupBy)?.t}</dd>
+                </>
+              )}
+              <dt>Sort</dt>
+              <dd>
+                {COL_BY_KEY.get(opts.sort1)?.label} {opts.dir1 === "asc" ? "↑" : "↓"}
+                {opts.sort2 ? `, ${COL_BY_KEY.get(opts.sort2)?.label} ${opts.dir2 === "asc" ? "↑" : "↓"}` : ""}
+              </dd>
+              <dt>File</dt>
+              <dd className="tcx-ell">{(opts.fileName || defaultName) + ".xlsx"}</dd>
+            </dl>
+          </aside>
         </div>
 
-        {/* Footer */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: "1px solid #e2e8f0", background: "#fff" }}>
-          <div style={{ fontWeight: 700 }}>
-            <span style={{ color: "#047857", fontSize: 18 }}>{sorted.length}</span> certificate(s) · {activeCols.length} column(s)
+        <footer className="tcx-foot">
+          <div className="tcx-foot-info">
+            {err ? (
+              <span className="tcx-err">{err}</span>
+            ) : (
+              <span>
+                Step {step + 1} of {STEPS.length} · <b>{sorted.length}</b> certificates · <b>{activeCols.length}</b> columns
+              </span>
+            )}
           </div>
-          {err && <div style={{ color: "#b91c1c", fontWeight: 700 }}>{err}</div>}
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} disabled={busy} style={ghostBtn}>
-            Cancel
+          <button type="button" className="tcx-btn" onClick={() => (step ? setStep(step - 1) : onClose())} disabled={busy}>
+            {step ? "← Back" : "Cancel"}
           </button>
-          <button
-            type="button"
-            onClick={doExport}
-            disabled={busy || !sorted.length || !activeCols.length}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 999,
-              border: "none",
-              background: busy || !sorted.length ? "#94a3b8" : "linear-gradient(135deg,#10b981,#047857)",
-              color: "#fff",
-              fontWeight: 800,
-              cursor: busy || !sorted.length ? "not-allowed" : "pointer",
-              boxShadow: "0 6px 16px rgba(16,185,129,0.35)",
-            }}
-          >
-            {busy ? "⏳ Building…" : "⬇ Download Excel"}
+          {!isLast && (
+            <button type="button" className="tcx-btn primary" onClick={() => setStep(step + 1)}>
+              Next: {STEPS[step + 1].t} →
+            </button>
+          )}
+          <button type="button" className={`tcx-btn success${isLast ? "" : " ghosty"}`} onClick={doExport} disabled={cantExport}>
+            {busy ? "Building…" : "⬇ Download .xlsx"}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
 }
 
-function Check({ label, checked, onChange }) {
+/* ---------- small pieces ---------- */
+function StepHead({ title, desc }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", cursor: "pointer", color: "#0f172a" }}>
-      <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} style={{ margin: 0 }} />
-      {label}
-    </label>
+    <div className="tcx-sh">
+      <div className="tcx-h2">{title}</div>
+      <div className="tcx-desc">{desc}</div>
+    </div>
+  );
+}
+function Seg({ value, onChange, items, disabled }) {
+  return (
+    <div className={`tcx-seg${disabled ? " dis" : ""}`}>
+      {items.map(([v, t]) => (
+        <button key={v} type="button" className={value === v ? "on" : ""} onClick={() => !disabled && onChange(v)} disabled={disabled}>
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+function Range({ a, b, onA, onB, type }) {
+  return (
+    <div className="tcx-range">
+      <input className="tcx-input" type={type} value={a} onChange={(e) => onA(e.target.value)} placeholder={type === "number" ? "Min" : undefined} />
+      <span className="tcx-arrow">to</span>
+      <input className="tcx-input" type={type} value={b} onChange={(e) => onB(e.target.value)} placeholder={type === "number" ? "Max" : undefined} />
+    </div>
+  );
+}
+function Toggle({ t, d, on, onChange }) {
+  return (
+    <button type="button" className="tcx-toggle" onClick={() => onChange(!on)} aria-pressed={on}>
+      <span className="tcx-grow">
+        <b>{t}</b>
+        {d && <small>{d}</small>}
+      </span>
+      <span className={`tcx-sw${on ? " on" : ""}`} />
+    </button>
   );
 }
 
-/* ---- dialog styles ---- */
-const card = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" };
-const cardHead = { display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#065f46", marginBottom: 10 };
-const lbl = { fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.3, margin: "12px 0 5px" };
-const inputSt = { width: "100%", boxSizing: "border-box", padding: "6px 9px", borderRadius: 9, border: "1px solid #cbd5e1", background: "#fff", color: "#0f172a", outline: "none" };
-const rangeRow = { display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center" };
-const chipBtn = { padding: "3px 9px", borderRadius: 999, border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#065f46", fontWeight: 700, cursor: "pointer" };
-const miniLink = { padding: "2px 8px", borderRadius: 7, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 700, cursor: "pointer" };
-const arrowBtn = { width: 26, height: 24, borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer", color: "#0f172a", padding: 0 };
-const ghostBtn = { padding: "8px 16px", borderRadius: 999, border: "1px solid #cbd5e1", background: "transparent", color: "#0f172a", fontWeight: 700, cursor: "pointer" };
-const segBtn = (on) => ({
-  flex: 1,
-  padding: "5px 10px",
-  borderRadius: 9,
-  border: on ? "1.5px solid #047857" : "1px solid #cbd5e1",
-  background: on ? "#d1fae5" : "#fff",
-  color: on ? "#065f46" : "#0f172a",
-  fontWeight: 700,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-});
-const bigSeg = (on) => ({
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  alignItems: "flex-start",
-  padding: "9px 10px",
-  borderRadius: 12,
-  border: on ? "2px solid #047857" : "1px solid #cbd5e1",
-  background: on ? "#ecfdf5" : "#fff",
-  color: "#0f172a",
-  cursor: "pointer",
-  textAlign: "left",
-});
+/* ---------- styles (scoped; #root prefix beats globals.css forced sizes) ---------- */
+const FS = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
+const TCX_CSS = `
+.tcx.tcx-overlay{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;font-family:Inter,"Segoe UI",Tahoma,Arial,sans-serif;color:#0f172a}
+.tcx *{box-sizing:border-box}
+.tcx .tcx-dlg{width:min(1240px,100%);height:min(860px,100%);background:#fff;border-radius:18px;box-shadow:0 30px 90px rgba(2,6,23,.45);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
+.tcx .tcx-head{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid #e2e8f0;background:linear-gradient(180deg,#f8fbff,#fff)}
+.tcx .tcx-logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#10b981,#047857);color:#fff;display:grid;place-items:center;box-shadow:0 6px 14px rgba(16,185,129,.35);flex:none}
+.tcx .tcx-title{font-weight:800;letter-spacing:-.01em}
+.tcx .tcx-sub{color:#64748b;margin-top:2px}
+.tcx .tcx-x{width:38px;height:38px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;flex:none}
+.tcx .tcx-x:hover{background:#f1f5f9}
+.tcx .tcx-grow{flex:1;min-width:0;display:flex;flex-direction:column}
+.tcx .tcx-sp{flex:1}
+.tcx .tcx-body{display:grid;grid-template-columns:236px minmax(0,1fr) 296px;min-height:0}
+.tcx .tcx-nav{background:#f8fafc;border-right:1px solid #e2e8f0;padding:16px 12px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.tcx .tcx-step{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border-radius:12px;border:1px solid transparent;background:transparent;text-align:left;cursor:pointer;color:#0f172a}
+.tcx .tcx-step:hover{background:#eef2f7}
+.tcx .tcx-step.on{background:#fff;border-color:#bfdbfe;box-shadow:0 4px 14px rgba(37,99,235,.10)}
+.tcx .tcx-num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#e2e8f0;color:#475569;font-weight:800;flex:none}
+.tcx .tcx-step.on .tcx-num{background:#2563eb;color:#fff}
+.tcx .tcx-step.done .tcx-num{background:#10b981;color:#fff}
+.tcx .tcx-step-t{font-weight:700}
+.tcx .tcx-step-s{color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcx .tcx-main{overflow:auto;padding:22px 26px 28px;background:#fff}
+.tcx .tcx-sh{margin-bottom:16px}
+.tcx .tcx-h2{font-weight:800;letter-spacing:-.01em}
+.tcx .tcx-desc{color:#64748b;margin-top:4px}
+.tcx .tcx-card{border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-bottom:14px;background:#fff}
+.tcx .tcx-card.flush{padding:0;overflow:hidden}
+.tcx .tcx-card-t{display:flex;align-items:center;gap:8px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.tcx .tcx-card-t.pad{padding:14px 16px 0}
+.tcx .tcx-hint{margin-left:auto;text-transform:none;letter-spacing:0;color:#64748b;font-weight:600}
+.tcx .tcx-lbl{font-weight:700;color:#475569;margin-bottom:6px;display:block}
+.tcx .tcx-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tcx .tcx-row .tcx-lbl{margin:0;min-width:120px}
+.tcx .tcx-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.tcx .tcx-input{width:100%;height:40px;padding:0 12px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;outline:none;transition:border-color .15s,box-shadow .15s}
+.tcx .tcx-input.sm{height:34px}
+.tcx .tcx-input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.tcx select.tcx-input{cursor:pointer}
+.tcx .tcx-link{border:0;background:transparent;color:#2563eb;font-weight:700;cursor:pointer;padding:2px 6px;border-radius:6px;text-transform:none;letter-spacing:0}
+.tcx .tcx-link:hover{background:#eff6ff}
+.tcx .tcx-status{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.tcx .tcx-stile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border:1px solid #e2e8f0;border-left:4px solid;border-radius:12px;background:#fff;cursor:pointer;text-align:left;color:#0f172a;transition:box-shadow .15s}
+.tcx .tcx-stile:hover{box-shadow:0 4px 12px rgba(15,23,42,.08)}
+.tcx .tcx-stile.on{outline:2px solid;outline-offset:-1px}
+.tcx .tcx-stile-n{font-weight:800;line-height:1.1}
+.tcx .tcx-stile-l{color:#475569;font-weight:600}
+.tcx .tcx-tick{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;color:#fff;display:grid;place-items:center;font-weight:800}
+.tcx .tcx-seg{display:inline-flex;background:#f1f5f9;border-radius:11px;padding:3px;gap:2px;flex-wrap:wrap}
+.tcx .tcx-seg button{border:0;background:transparent;padding:7px 14px;border-radius:9px;font-weight:700;color:#475569;cursor:pointer;white-space:nowrap}
+.tcx .tcx-seg button.on{background:#fff;color:#1d4ed8;box-shadow:0 1px 4px rgba(15,23,42,.12)}
+.tcx .tcx-seg.dis{opacity:.45}
+.tcx .tcx-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.tcx .tcx-chip{padding:6px 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#334155;font-weight:600;cursor:pointer}
+.tcx .tcx-chip:hover{border-color:#93c5fd}
+.tcx .tcx-chip.on{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+.tcx .tcx-range{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.tcx .tcx-arrow{color:#94a3b8;font-weight:600}
+.tcx .tcx-presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:14px}
+.tcx .tcx-preset{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;text-align:left;color:#0f172a}
+.tcx .tcx-preset span{color:#64748b}
+.tcx .tcx-preset:hover{border-color:#93c5fd}
+.tcx .tcx-preset.on{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 1px #2563eb inset}
+.tcx .tcx-dual{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:14px}
+.tcx .tcx-pane{border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;background:#fff}
+.tcx .tcx-pane-h{display:flex;align-items:center;gap:8px;padding:11px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:800;color:#334155}
+.tcx .tcx-badge{min-width:24px;height:22px;padding:0 7px;border-radius:999px;background:#e2e8f0;color:#334155;display:inline-grid;place-items:center;font-weight:800}
+.tcx .tcx-badge.blue{background:#dbeafe;color:#1d4ed8}
+.tcx .tcx-list{max-height:430px;overflow:auto;padding:4px 0}
+.tcx .tcx-grp{padding:10px 12px 4px;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.tcx .tcx-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 12px;border:0;background:transparent;text-align:left;color:#0f172a}
+.tcx .tcx-item.add{cursor:pointer}
+.tcx .tcx-item.add:hover{background:#f0fdf4}
+.tcx .tcx-item.add:hover .tcx-plus{background:#10b981;color:#fff;border-color:#10b981}
+.tcx .tcx-plus{width:24px;height:24px;border-radius:7px;border:1px solid #cbd5e1;display:grid;place-items:center;color:#475569;font-weight:800;flex:none}
+.tcx .tcx-item.sel{border-bottom:1px solid #f1f5f9}
+.tcx .tcx-item.sel:hover{background:#f8fafc}
+.tcx .tcx-item.drag{background:#eff6ff;outline:2px dashed #2563eb;outline-offset:-2px}
+.tcx .tcx-item.warn{background:#fffbeb}
+.tcx .tcx-grip{color:#cbd5e1;cursor:grab;flex:none}
+.tcx .tcx-ord{width:24px;height:24px;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;display:grid;place-items:center;flex:none}
+.tcx .tcx-rename{flex:1;min-width:0;height:32px;border:1px solid transparent;background:transparent;border-radius:8px;padding:0 8px;font-weight:600;color:#0f172a;outline:none}
+.tcx .tcx-rename:hover{border-color:#e2e8f0}
+.tcx .tcx-rename:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.tcx .tcx-ic{width:28px;height:28px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;flex:none;padding:0}
+.tcx .tcx-ic:hover:not(:disabled){background:#f1f5f9}
+.tcx .tcx-ic:disabled{opacity:.35;cursor:default}
+.tcx .tcx-ic.del:hover{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.tcx .tcx-empty{padding:22px;text-align:center;color:#94a3b8;font-weight:600}
+.tcx .tcx-note{margin-top:10px;padding:10px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+.tcx .tcx-layouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px}
+.tcx .tcx-lcard{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;border:2px solid #e2e8f0;background:#fff;cursor:pointer;text-align:left;color:#0f172a}
+.tcx .tcx-lcard span{display:flex;flex-direction:column;gap:3px}
+.tcx .tcx-lcard small{color:#64748b}
+.tcx .tcx-lcard.on{border-color:#2563eb;background:#f5f9ff}
+.tcx .tcx-ill{width:64px;height:50px;border-radius:8px;border:1px solid #cbd5e1;flex:none;background-color:#fff}
+.tcx .tcx-ill.list{background-image:linear-gradient(#0f172a,#0f172a),repeating-linear-gradient(#fff 0 8px,#e2e8f0 8px 9px);background-size:100% 9px,100% 100%;background-repeat:no-repeat,repeat}
+.tcx .tcx-ill.matrix{background-image:linear-gradient(90deg,transparent 22px,#dcfce7 22px 36px,#fee2e2 36px 50px,#fef9c3 50px),repeating-linear-gradient(#fff 0 9px,#e2e8f0 9px 10px)}
+.tcx .tcx-radios{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.tcx .tcx-radio{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;text-align:left;color:#0f172a}
+.tcx .tcx-radio span{display:flex;flex-direction:column;gap:2px}
+.tcx .tcx-radio small{color:#64748b}
+.tcx .tcx-radio.on{border-color:#2563eb;background:#f5f9ff}
+.tcx .tcx-dot{width:18px;height:18px;border-radius:50%;border:2px solid #cbd5e1;flex:none;margin-top:1px}
+.tcx .tcx-radio.on .tcx-dot{border:5px solid #2563eb}
+.tcx .tcx-sort{display:grid;grid-template-columns:auto minmax(160px,1fr) auto;gap:10px 12px;align-items:center}
+.tcx .tcx-sort .tcx-lbl{margin:0}
+.tcx .tcx-toggle{display:flex;align-items:center;gap:14px;width:100%;padding:11px 2px;border:0;border-bottom:1px solid #f1f5f9;background:transparent;text-align:left;cursor:pointer;color:#0f172a}
+.tcx .tcx-toggle:last-child{border-bottom:0}
+.tcx .tcx-toggle small{color:#64748b;margin-top:1px}
+.tcx .tcx-sw{position:relative;width:42px;height:24px;border-radius:999px;background:#cbd5e1;flex:none;transition:background .15s}
+.tcx .tcx-sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.tcx .tcx-sw.on{background:#10b981}
+.tcx .tcx-sw.on::after{left:21px}
+.tcx .tcx-file{display:flex;align-items:center;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden}
+.tcx .tcx-file .tcx-input{border:0;border-radius:0;box-shadow:none}
+.tcx .tcx-file span{padding:0 12px;color:#64748b;background:#f8fafc;align-self:stretch;display:grid;place-items:center;border-left:1px solid #e2e8f0;font-weight:700}
+.tcx .tcx-tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tcx .tcx-tab{padding:6px 12px;border-radius:8px 8px 0 0;border:1px solid #cbd5e1;border-bottom:3px solid #10b981;background:#f8fafc;font-weight:700;color:#065f46}
+.tcx .tcx-tab.more{border-bottom-color:#cbd5e1;color:#64748b}
+.tcx .tcx-tblwrap{overflow:auto;max-height:420px;margin-top:12px;border-top:1px solid #e2e8f0}
+.tcx .tcx-tbl{border-collapse:collapse;width:100%;white-space:nowrap}
+.tcx .tcx-tbl th{position:sticky;top:0;background:#0f172a;color:#fff;padding:8px 10px;text-align:left;font-weight:700}
+.tcx .tcx-tbl td{padding:7px 10px;border-bottom:1px solid #e2e8f0;border-right:1px solid #f1f5f9;color:#0f172a}
+.tcx .tcx-tbl tr.z td{background:#f8fafc}
+.tcx .tcx-tbl .c{text-align:center}
+.tcx .tcx-tbl td.miss{color:#94a3b8;background:#f8fafc}
+.tcx .tcx-tbl td.lnk{color:#2563eb;text-decoration:underline}
+.tcx .tcx-aside{background:#f8fafc;border-left:1px solid #e2e8f0;padding:18px 16px;overflow:auto}
+.tcx .tcx-aside-t{font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin:4px 0 10px}
+.tcx .tcx-aside-t:not(:first-child){margin-top:20px}
+.tcx .tcx-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tcx .tcx-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column}
+.tcx .tcx-kpi b{font-weight:800;color:#0f172a;line-height:1.15}
+.tcx .tcx-kpi b.bad{color:#b91c1c}
+.tcx .tcx-kpi span{color:#64748b}
+.tcx .tcx-fchips{display:flex;flex-direction:column;gap:6px}
+.tcx .tcx-fchip{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 10px;border-radius:9px;background:#fff;border:1px solid #dbeafe;color:#1e3a8a;font-weight:600}
+.tcx .tcx-fchip button{margin-left:auto;width:22px;height:22px;border-radius:6px;border:0;background:#eff6ff;color:#1d4ed8;cursor:pointer;flex:none}
+.tcx .tcx-fchip button:hover{background:#dbeafe}
+.tcx .tcx-muted{color:#94a3b8}
+.tcx .tcx-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;margin:0}
+.tcx .tcx-dl dt{color:#64748b}
+.tcx .tcx-dl dd{margin:0;font-weight:700;color:#0f172a;min-width:0}
+.tcx .tcx-ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcx .tcx-foot{display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid #e2e8f0;background:#fff;flex-wrap:wrap}
+.tcx .tcx-foot-info{flex:1;min-width:180px;color:#475569}
+.tcx .tcx-err{color:#b91c1c;font-weight:700}
+.tcx .tcx-btn{height:42px;padding:0 18px;border-radius:11px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:700;cursor:pointer;white-space:nowrap}
+.tcx .tcx-btn:hover:not(:disabled){background:#f8fafc}
+.tcx .tcx-btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+.tcx .tcx-btn.primary:hover{background:#1d4ed8}
+.tcx .tcx-btn.success{background:linear-gradient(135deg,#10b981,#047857);border:0;color:#fff;box-shadow:0 6px 16px rgba(16,185,129,.3)}
+.tcx .tcx-btn.success.ghosty{background:#fff;color:#047857;border:1px solid #10b981;box-shadow:none}
+.tcx .tcx-btn:disabled{opacity:.5;cursor:not-allowed}
+@media (max-width:1100px){.tcx .tcx-body{grid-template-columns:210px minmax(0,1fr)}.tcx .tcx-aside{display:none}}
+@media (max-width:760px){
+ .tcx.tcx-overlay{padding:0}
+ .tcx .tcx-dlg{height:100%;border-radius:0}
+ .tcx .tcx-body{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+ .tcx .tcx-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid #e2e8f0;padding:8px}
+ .tcx .tcx-step{min-width:150px}
+ .tcx .tcx-main{padding:16px}
+ .tcx .tcx-dual{grid-template-columns:1fr}
+ .tcx .tcx-sort{grid-template-columns:1fr}
+ .tcx .tcx-head{padding:12px 16px}
+}
+#root .tcx, #root .tcx *{font-size:${FS(14)}}
+#root .tcx .tcx-title{font-size:${FS(19)}}
+#root .tcx .tcx-h2{font-size:${FS(20)}}
+#root .tcx .tcx-desc, #root .tcx .tcx-sub{font-size:${FS(13.5)}}
+#root .tcx .tcx-card-t, #root .tcx .tcx-aside-t, #root .tcx .tcx-grp{font-size:${FS(11.5)}}
+#root .tcx .tcx-card-t .tcx-hint, #root .tcx .tcx-card-t .tcx-link{font-size:${FS(13)}}
+#root .tcx .tcx-step-s, #root .tcx small, #root .tcx .tcx-preset span, #root .tcx .tcx-kpi span{font-size:${FS(12.5)}}
+#root .tcx .tcx-stile-n{font-size:${FS(24)}}
+#root .tcx .tcx-kpi b{font-size:${FS(24)}}
+#root .tcx .tcx-tbl th, #root .tcx .tcx-tbl td{font-size:${FS(12.5)}}
+#root .tcx .tcx-num, #root .tcx .tcx-ord, #root .tcx .tcx-badge{font-size:${FS(12.5)}}
+`;
