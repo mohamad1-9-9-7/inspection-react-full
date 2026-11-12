@@ -135,6 +135,16 @@ const ENTITY_DEFS = [
       const branch = p.branch || p.branchName || "—";
       const out = [];
       const id = rep?.id || rep?._id || "";
+      // the entry form saves ONE license as payload.license (object)
+      if (!Array.isArray(p.licenses) && p.license && (p.license.name || p.license.expiryDate)) {
+        out.push({
+          id: `${id}-lic-0`,
+          name: p.license.name || "License",
+          branch,
+          expiryDate: p.license.expiryDate || null,
+          extra: { kind: "license", notes: p.license.notes },
+        });
+      }
       // licenses array
       if (Array.isArray(p.licenses)) {
         p.licenses.forEach((lic, idx) => {

@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import API_BASE from "../../../config/api";
+import { mkEvent, newUid } from "./licensesKit";
 
 
 const TYPE = "licenses_contracts";
@@ -337,6 +338,10 @@ export default function LicensesContractsInput() {
         })),
       savedAt: Date.now(),
     };
+    payload.contracts = payload.contracts.map((c) => ({ ...c, uid: c.uid || newUid() }));
+    payload.history = [mkEvent("created", { kind: "record", uid: "record", label: license.name || branch }, {
+      note: `${license.name ? "1 license" : "no license"}, ${payload.contracts.length} contract(s)`,
+    })];
 
     try {
       setSaving(true);
