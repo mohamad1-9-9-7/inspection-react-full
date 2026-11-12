@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import CreatorBadge from "./CreatorBadge";
 import {
   getId,
   btn,
@@ -323,6 +324,7 @@ export default function FTR1DailyCleanlinessView() {
 
             {/* Signatures */}
             <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", fontWeight: 700 }}>
+              {selectedPayload?.createdBy ? <CreatorBadge name={selectedPayload.createdBy} empNo={selectedPayload.createdByEmpNo} /> : null}
               <SignatureName label="Checked By" name={selectedPayload?.checkedBy} align="start" />
               <SignatureName label="Verified by (QA)" name={selectedPayload?.verifiedByQA} align="end" />
             </div>

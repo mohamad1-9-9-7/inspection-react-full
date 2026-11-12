@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/ftr1/FTR1OilCalibration.jsx
 import React, { useState } from "react";
+import { useStaffDirectory } from "../_shared/staffRegistry";
+import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -9,6 +11,9 @@ export default function FTR1OilCalibration() {
     { date: "", result: "", action: "", checkedBy: "", verifiedBy: "" },
   ]);
   const [opMsg, setOpMsg] = useState("");
+  // Created by / Checked By (employee numbers) + Verified by (QA) — one set
+  // for the sheet; stamped onto every row on save so the viewer columns fill.
+  const sig = useFtrSignatures(useStaffDirectory(), { verifiedKey: "verifiedBy" });
 
   const handleChange = (index, field, value) => {
     const updated = [...entries];
@@ -24,11 +29,17 @@ export default function FTR1OilCalibration() {
   };
 
   const handleSave = async () => {
+    if (sig.errors.length) {
+      alert("⚠️ Please fix:\n\n- " + sig.errors.join("\n- "));
+      return;
+    }
     try {
       setOpMsg("⏳ Saving...");
+      const signed = sig.fields();
       const payload = {
         branch: "FTR 1",
-        entries,
+        entries: entries.map((e) => ({ ...e, checkedBy: signed.checkedBy, verifiedBy: signed.verifiedBy })),
+        ...signed,
         savedAt: Date.now(),
       };
 
@@ -95,8 +106,6 @@ export default function FTR1OilCalibration() {
             <th style={thStyle}>Date</th>
             <th style={thStyle}>Evaluation Results</th>
             <th style={thStyle}>Corrective Action</th>
-            <th style={thStyle}>Checked By</th>
-            <th style={thStyle}>Verified By</th>
           </tr>
         </thead>
         <tbody>
@@ -128,28 +137,12 @@ export default function FTR1OilCalibration() {
                   placeholder="Action"
                 />
               </td>
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.checkedBy}
-                  onChange={(e) => handleChange(i, "checkedBy", e.target.value)}
-                  style={{ ...inputStyle, width: "160px" }}
-                  placeholder="Name"
-                />
-              </td>
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.verifiedBy}
-                  onChange={(e) => handleChange(i, "verifiedBy", e.target.value)}
-                  style={{ ...inputStyle, width: "160px" }}
-                  placeholder="Name"
-                />
-              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      <FtrSignatureBlock sig={sig} />
 
       {/* Buttons */}
       <div style={{ marginTop: "1rem" }}>

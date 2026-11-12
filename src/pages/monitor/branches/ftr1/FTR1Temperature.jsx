@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/ftr1/FTR1Temperature.jsx
 import React, { useState, useMemo, useEffect } from "react";
+import { useStaffDirectory } from "../_shared/staffRegistry";
+import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -82,8 +84,8 @@ export default function FTR1Temperature() {
       : Array.from({ length: 8 }, (_, i) => ({ name: defaultRows[i], temps: {}, remarks: "" }));
   });
   const [reportDate, setReportDate] = useState(() => loadDraft().reportDate || "");
-  const [checkedBy, setCheckedBy] = useState(() => loadDraft().checkedBy || "");
-  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
+  // Created by / Checked By (employee numbers) + Verified by (QA)
+  const sig = useFtrSignatures(useStaffDirectory(), { verifiedKey: "verifiedBy" });
   const [opMsg, setOpMsg] = useState("");
 
   const kpi = useMemo(() => calculateKPI(coolers), [coolers]);
@@ -93,10 +95,10 @@ export default function FTR1Temperature() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ coolers, reportDate, checkedBy, verifiedBy, ts: Date.now() })
+        JSON.stringify({ coolers, reportDate, ts: Date.now() })
       );
     } catch {}
-  }, [coolers, reportDate, checkedBy, verifiedBy]);
+  }, [coolers, reportDate]);
 
   const baseInput = {
     width: "63px",
@@ -157,6 +159,7 @@ export default function FTR1Temperature() {
 
   const handleSave = async () => {
     if (!reportDate) return alert("⚠️ الرجاء اختيار تاريخ التقرير أولًا");
+    if (sig.errors.length) return alert("⚠️ Please fix:\n\n- " + sig.errors.join("\n- "));
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
@@ -164,8 +167,7 @@ export default function FTR1Temperature() {
         coolers,
         times, // نرسل القائمة الكاملة للتوافق مع صفحة العرض
         date: reportDate,
-        checkedBy,
-        verifiedBy,
+        ...sig.fields(),
         savedAt: Date.now(),
       };
       const res = await fetch(`${API_BASE}/api/reports`, {
@@ -294,19 +296,12 @@ export default function FTR1Temperature() {
           KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C | Out-of-range: {kpi.out}
         </div>
 
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontWeight: 700 }}>Checked By:-</span>
-            <input value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)}
-                   placeholder="Enter name" style={miniInput} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontWeight: 700 }}>Verified By:-</span>
-            <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)}
-                   placeholder="Enter name" style={miniInput} />
-          </div>
-          <button onClick={handleSave} style={saveBtn}>💾 Save to Server</button>
-        </div>
+      </div>
+
+      <FtrSignatureBlock sig={sig} />
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+        <button onClick={handleSave} style={saveBtn}>💾 Save to Server</button>
       </div>
 
       {opMsg && (
@@ -356,7 +351,6 @@ const thCell = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "ce
 const tdCellCenter = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center" };
 const tdCellLeft = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "left" };
 
-const miniInput = { border: "1px solid #aaa", borderRadius: 6, padding: "4px 8px", minWidth: 160, background: "#fff" };
 const saveBtn = {
   background: "linear-gradient(180deg,#10b981,#059669)",
   color: "#fff",

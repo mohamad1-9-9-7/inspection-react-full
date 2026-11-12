@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/ftr1/FTR1DailyCleanliness.jsx
 import React, { useMemo, useState } from "react";
 import CncToggle from "../_shared/CncToggle";
+import { useStaffDirectory } from "../_shared/staffRegistry";
+import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -48,16 +50,12 @@ const sections = [
   },
 ];
 
-function norm(s) {
-  return String(s ?? "").trim();
-}
-
 export default function FTR1DailyCleanliness() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
 
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedByQA, setVerifiedByQA] = useState("");
+  // Created by / Checked By (employee numbers) + Verified by (QA)
+  const sig = useFtrSignatures(useStaffDirectory(), { verifiedKey: "verifiedByQA" });
 
   // تجهيز البيانات
   const [entries, setEntries] = useState(() =>
@@ -90,20 +88,13 @@ export default function FTR1DailyCleanliness() {
   const doneCount = items.filter((e) => e.status).length;
   const ncCount = items.filter((e) => e.status === "NC").length;
 
-  const validationErrors = useMemo(() => {
+  const baseErrors = useMemo(() => {
     const errs = [];
     if (!date) errs.push("Please select report date.");
     if (!time) errs.push("Please enter Time.");
-    if (!norm(checkedBy)) errs.push("Checked By is mandatory.");
-    if (!norm(verifiedByQA)) errs.push("Verified by (QA) is mandatory.");
-
-    if (norm(checkedBy) && norm(verifiedByQA)) {
-      if (norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()) {
-        errs.push("Verified by (QA) must be independent (cannot be the same as Checked By).");
-      }
-    }
     return errs;
-  }, [date, time, checkedBy, verifiedByQA]);
+  }, [date, time]);
+  const validationErrors = [...baseErrors, ...sig.errors];
 
   const handleSave = async () => {
     if (validationErrors.length) {
@@ -120,8 +111,7 @@ export default function FTR1DailyCleanliness() {
         reportTime: time,
         area: "QA",
 
-        checkedBy: norm(checkedBy),
-        verifiedByQA: norm(verifiedByQA),
+        ...sig.fields(),
 
         checkedByNote:
           "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
@@ -337,35 +327,7 @@ export default function FTR1DailyCleanliness() {
         *(C = Conform &nbsp;&nbsp;&nbsp; N/C = Non Conform)
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginTop: "1rem", fontWeight: 600 }}>
-        <div>
-          Checked By:{" "}
-          <input
-            type="text"
-            value={checkedBy}
-            onChange={(e) => setCheckedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}
-          />
-        </div>
-        <div>
-          Verified by (QA):{" "}
-          <input
-            type="text"
-            value={verifiedByQA}
-            onChange={(e) => setVerifiedByQA(e.target.value)}
-            style={{
-              ...inputStyle,
-              minWidth: "180px",
-              borderColor:
-                norm(checkedBy) &&
-                norm(verifiedByQA) &&
-                norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()
-                  ? "#ef4444"
-                  : "#aaa",
-            }}
-          />
-        </div>
-      </div>
+      <FtrSignatureBlock sig={sig} />
 
       {/* Save */}
       <div style={{ textAlign: "center", marginTop: 20 }}>

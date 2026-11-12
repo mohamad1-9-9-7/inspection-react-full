@@ -85,8 +85,3 @@ export function EmpNoField({ label, icon = "👤", empNo, name, unknown, onEmpNo
     </div>
   );
 }
-
-/** Created by = EmpNoField with its fixed label. */
-export function CreatorField(props) {
-  return <EmpNoField label="Created by:" title="Your employee number" {...props} />;
-}

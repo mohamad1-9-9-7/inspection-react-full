@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/ftr1/FTR1CookingTemperatureLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { useStaffDirectory } from "../_shared/staffRegistry";
+import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "ftr1_cooking_temp_log_draft_v1";
@@ -30,7 +32,6 @@ const emptyRow = () => ({
   coreTemp: "",
   holdTime: "",
   correctiveAction: "",
-  checkedByRow: "",
 });
 
 export default function FTR1CookingTemperatureLogInput() {
@@ -47,7 +48,9 @@ export default function FTR1CookingTemperatureLogInput() {
   });
 
   // فوتر
-  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
+  // Created by / Checked By (employee numbers) + Verified by (QA) — one set
+  // for the sheet; Checked By is stamped onto every row on save.
+  const sig = useFtrSignatures(useStaffDirectory(), { verifiedKey: "verifiedBy" });
 
   // الصفوف (3 افتراضيًا)
   const [rows, setRows] = useState(() => {
@@ -61,10 +64,10 @@ export default function FTR1CookingTemperatureLogInput() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ reportDate, verifiedBy, rows, ts: Date.now() })
+        JSON.stringify({ reportDate, rows, ts: Date.now() })
       );
     } catch {}
-  }, [reportDate, verifiedBy, rows]);
+  }, [reportDate, rows]);
 
   /* ===== ستايلات ===== */
   const gridStyle = useMemo(() => ({
@@ -119,7 +122,6 @@ export default function FTR1CookingTemperatureLogInput() {
     <col key="temp" style={{ width: 140 }} />,
     <col key="time" style={{ width: 140 }} />,
     <col key="ca"   style={{ width: 240 }} />,
-    <col key="chk"  style={{ width: 160 }} />,
   ]), []);
 
   function updateRow(i, key, val) {
@@ -139,6 +141,8 @@ export default function FTR1CookingTemperatureLogInput() {
       Object.values(r).some((v) => String(v || "").trim() !== "")
     );
     if (!entries.length) return alert("لا يوجد بيانات للحفظ.");
+    if (sig.errors.length) return alert("⚠️ Please fix:\n\n- " + sig.errors.join("\n- "));
+    const signed = sig.fields();
 
     const payload = {
       company: "Trans Emirates Livestock Trading L.L.C. (Al Mawashi)",
@@ -153,9 +157,9 @@ export default function FTR1CookingTemperatureLogInput() {
         coreTemp: r.coreTemp || "",
         holdTime: r.holdTime || "",
         correctiveAction: r.correctiveAction || "",
-        checkedBy: r.checkedByRow || "",
+        checkedBy: signed.checkedBy,
       })),
-      verifiedBy,
+      ...signed,
       savedAt: Date.now(),
     };
 
@@ -231,7 +235,6 @@ export default function FTR1CookingTemperatureLogInput() {
               <th style={thCell}>Core Temp (°C)</th>
               <th style={thCell}>Time</th>
               <th style={thCell}>Corrective Action{"\n"}(if any)</th>
-              <th style={thCell}>Checked by</th>
             </tr>
           </thead>
           <tbody>
@@ -254,9 +257,6 @@ export default function FTR1CookingTemperatureLogInput() {
                 </td>
                 <td style={tdCell}>
                   <input type="text" value={r.correctiveAction} onChange={(e)=>updateRow(i,"correctiveAction",e.target.value)} style={inputStyle} placeholder="If temp not met…" />
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.checkedByRow} onChange={(e)=>updateRow(i,"checkedByRow",e.target.value)} style={inputStyle} />
                 </td>
               </tr>
             ))}
@@ -292,11 +292,9 @@ export default function FTR1CookingTemperatureLogInput() {
           </div>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"220px 1fr", gap:8, marginTop:10, alignItems:"center" }}>
-          <div style={{ fontWeight:800 }}>Verified by / تم التحقق بواسطة:</div>
-          <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={inputStyle} />
-        </div>
       </div>
+
+      <FtrSignatureBlock sig={sig} />
 
       {/* أفعال */}
       <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:14 }}>

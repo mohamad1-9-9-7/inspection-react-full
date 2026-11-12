@@ -191,10 +191,13 @@ const accountName = () => {
  * @param {number}  productWidth width of the product-name column (px)
  * @param {boolean} preparedBy  "Report created by" signature beside
  *                              checked / verified (prefilled with the account)
+ * @param {object}  signatures  replaces the whole signature footer with the
+ *                              caller's own (FTR 1: employee-number pickers):
+ *                              { errors, fields(), load(payload), reset(), render() }
  */
 export default function ReceivingLogForm({
   branch, type, reporter, documentNo = "FSMS/BR/F01A", photos = false, extraFields = [],
-  rowPhotos = false, productWidth = 0, preparedBy = false,
+  rowPhotos = false, productWidth = 0, preparedBy = false, signatures = null,
 }) {
   const { t, dir, isAr } = useLang();
 
@@ -210,6 +213,9 @@ export default function ReceivingLogForm({
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [createdBy, setCreatedBy] = useState(() => (preparedBy ? accountName() : ""));
+  // latest caller signatures (loadDay is memoised on type only)
+  const sigRef = useRef(signatures);
+  sigRef.current = signatures;
 
   const [recordId, setRecordId] = useState(null);   // the day's record, once it exists
   const [loadingDay, setLoadingDay] = useState(false);
@@ -239,12 +245,14 @@ export default function ReceivingLogForm({
         setCheckedBy(p.checkedBy || p.receivedBy || "");
         setVerifiedBy(p.verifiedBy || "");
         setCreatedBy(p.createdBy || (preparedBy ? accountName() : ""));
+        sigRef.current?.load(p);
       } else {
         setRecordId(null);
         setDeliveries([emptyDelivery()]);
         setCheckedBy("");
         setVerifiedBy("");
         setCreatedBy(preparedBy ? accountName() : "");
+        sigRef.current?.reset();
       }
     } catch (e) {
       // Without knowing whether the day has a sheet, saving could file a
@@ -347,11 +355,15 @@ export default function ReceivingLogForm({
         }
       }
     }
-    if (preparedBy && !createdBy.trim()) {
-      return flash("⚠️ " + L(isAr, "Report created by", "تم إنشاء التقرير بواسطة"));
-    }
-    if (!checkedBy.trim() || !verifiedBy.trim()) {
-      return flash("⚠️ " + t("sig_checked_by") + " / " + t("sig_verified_by"));
+    if (signatures) {
+      if (signatures.errors.length) return flash("⚠️ " + signatures.errors.join(" · "), 8000);
+    } else {
+      if (preparedBy && !createdBy.trim()) {
+        return flash("⚠️ " + L(isAr, "Report created by", "تم إنشاء التقرير بواسطة"));
+      }
+      if (!checkedBy.trim() || !verifiedBy.trim()) {
+        return flash("⚠️ " + t("sig_checked_by") + " / " + t("sig_verified_by"));
+      }
     }
 
     const outDeliveries = used.map((d) => ({
@@ -391,9 +403,9 @@ export default function ReceivingLogForm({
       invoiceNo: uniq("invoiceNo"),
       receivedBy: uniq("receivedBy"),
       vehicleTemp: outDeliveries[0]?.vehicleTemp ?? "",
-      ...(preparedBy ? { createdBy: createdBy.trim() } : {}),
-      checkedBy,
-      verifiedBy,
+      ...(signatures
+        ? signatures.fields()
+        : { ...(preparedBy ? { createdBy: createdBy.trim() } : {}), checkedBy, verifiedBy }),
       savedAt: Date.now(),
     };
 
@@ -624,7 +636,7 @@ export default function ReceivingLogForm({
         ＋ {L(isAr, "Add delivery (another supplier / invoice)", "إضافة توريدة (مورد / فاتورة تانية)")}
       </button>
 
-      <SignatureFooter
+      {signatures ? signatures.render() : <SignatureFooter
         t={t}
         {...(preparedBy ? {
           createdBy, setCreatedBy,
@@ -633,7 +645,7 @@ export default function ReceivingLogForm({
         checkedBy={checkedBy}
         setCheckedBy={setCheckedBy}
         verifiedBy={verifiedBy}
-        setVerifiedBy={setVerifiedBy}/>
+        setVerifiedBy={setVerifiedBy}/>}
       <SaveBar t={t} opMsg={opMsg} saving={saving} disabled={loadingDay} onSave={handleSave} />
     </FormShell>
   );

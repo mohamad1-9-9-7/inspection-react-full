@@ -4,6 +4,8 @@
 // vehicle °C above each table). See _shared/ReceivingLogForm.jsx.
 import React from "react";
 import ReceivingLogForm from "../_shared/ReceivingLogForm";
+import { useStaffDirectory } from "../_shared/staffRegistry";
+import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
 /* Food trucks also record the vehicle plate and its Dubai Municipality approval. */
 const DM_FIELD = [
@@ -12,6 +14,9 @@ const DM_FIELD = [
 ];
 
 export default function FTR1ReceivingLog() {
+  // FTR 1 signature pattern: Created by / Checked By by employee number,
+  // Verified by (QA) pre-filled.
+  const sig = useFtrSignatures(useStaffDirectory(), { verifiedKey: "verifiedBy" });
   return (
     <ReceivingLogForm
       branch="FTR 1"
@@ -22,7 +27,7 @@ export default function FTR1ReceivingLog() {
       extraFields={DM_FIELD}
       rowPhotos
       productWidth={420}
-      preparedBy
+      signatures={{ ...sig, render: () => <FtrSignatureBlock sig={sig} /> }}
     />
   );
 }

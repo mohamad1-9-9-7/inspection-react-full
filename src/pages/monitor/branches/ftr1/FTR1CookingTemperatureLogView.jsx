@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import CreatorBadge from "./CreatorBadge";
 import { canDelete } from "../../../../utils/perms";
 import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 
@@ -487,6 +488,7 @@ export default function FTR1CookingTemperatureLogView() {
 
             {/* Signatures */}
             <div style={signRow}>
+              {selectedReport?.payload?.createdBy ? <CreatorBadge name={selectedReport?.payload.createdBy} empNo={selectedReport?.payload.createdByEmpNo} /> : null}
               <div>
                 Verified By:-{" "}
                 {editMode ? (

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { canDelete } from "../../../../utils/perms";
+import CreatorBadge from "./CreatorBadge";
 import { listReportDates, getReportById, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
 const API_BASE =
@@ -561,6 +562,11 @@ export default function FTR1OilCalibrationView() {
                 )}
               </tbody>
             </table>
+            {selectedReport?.payload?.createdBy ? (
+              <div style={{ marginTop: 12 }}>
+                <CreatorBadge name={selectedReport.payload.createdBy} empNo={selectedReport.payload.createdByEmpNo} />
+              </div>
+            ) : null}
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import CreatorBadge from "./CreatorBadge";
 import {
   getId,
   btn,
@@ -422,6 +423,7 @@ export default function FTR1TemperatureView() {
 
             {/* Signatures */}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontWeight: 700, flexWrap: "wrap", gap: 12 }}>
+              {selectedReport?.payload?.createdBy ? <CreatorBadge name={selectedReport?.payload.createdBy} empNo={selectedReport?.payload.createdByEmpNo} /> : null}
               <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
               <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
             </div>
