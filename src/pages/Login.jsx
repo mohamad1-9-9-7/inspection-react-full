@@ -203,6 +203,21 @@ function rememberedHome() {
   } catch { return ""; }
 }
 
+/* A QR sticker scanned while signed out (App.jsx ProtectedRoute kept the
+   path): after the sign-in go straight back to that unit instead of the home
+   screen. Meat accounts and the platform owner (whose home is the company
+   picker — the owner scanning a sticker used to land there and never reach
+   the temperature page). Read once, then forgotten. */
+const QR_RETURN_PATHS = ["/monitor/qcs/coolers/quick", "/monitor/branch-temp/", "/car/driver/"];
+function qrReturnOr(target) {
+  try {
+    const back = sessionStorage.getItem("afterLoginPath") || "";
+    sessionStorage.removeItem("afterLoginPath");
+    if ((target === "/named-dashboard" || target === "/select-company") && QR_RETURN_PATHS.some((p) => back.startsWith(p))) return back;
+  } catch {}
+  return target;
+}
+
 function greetIndex() {
   const h = new Date().getHours();
   return h < 12 ? 0 : h < 18 ? 1 : 2;
@@ -259,7 +274,7 @@ function Login() {
   useEffect(() => {
     if (location.pathname !== "/") return;
     const home = rememberedHome();
-    if (home) navigate(home, { replace: true });
+    if (home) navigate(qrReturnOr(home), { replace: true });
   }, [location.pathname, navigate]);
 
   if (location.pathname !== "/") return null;
@@ -364,13 +379,8 @@ function Login() {
         // مالك المنصّة (سوبر أدمن) ما إلوش شركة ثابتة بالتوكن — بيختارها كل
         // مرة من شاشة الكروت. الحساب العادي بيروح لنظام شركته: نشاط 'meat'
         // = الداشبورد الحالي، أي نشاط تاني = المحرّك العام.
-        let target = homeFor(data.user.isSuperAdmin, data.user.company?.industry);
         // Came from a QR sticker (ProtectedRoute kept the path): go straight back to it.
-        try {
-          const back = sessionStorage.getItem("afterLoginPath") || "";
-          sessionStorage.removeItem("afterLoginPath");
-          if (target === "/named-dashboard" && (back.startsWith("/monitor/qcs/coolers/quick") || back.startsWith("/monitor/branch-temp/"))) target = back;
-        } catch {}
+        const target = qrReturnOr(homeFor(data.user.isSuperAdmin, data.user.company?.industry));
         // A short success beat (the scan ring ticks) before the workspace opens.
         setDone(true);
         setTimeout(() => navigate(target), 650);
