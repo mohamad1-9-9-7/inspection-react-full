@@ -347,34 +347,22 @@ export default function FTR1PersonalHygiene() {
       {/* Table — scrolls sideways inside its own frame instead of squeezing columns */}
       <div style={tableFrame}>
         <table style={tableStyle}>
-          <colgroup>
-            <col style={{ width: 52 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 210 }} />
-            {HYGIENE_COLUMNS.map((col) => (
-              <col key={col} style={{ width: col.startsWith("Wearing") ? 220 : 170 }} />
-            ))}
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 180 }} />
-            <col style={{ width: 260 }} />
-            <col style={{ width: 52 }} />
-          </colgroup>
+          {/* Widths live on the header cells: globals.css forces table-layout:auto
+              and wipes <col> widths, so a colgroup would be ignored. */}
           <thead>
             <tr>
-              <th style={thStyle}>S.No</th>
-              <th style={thStyle}>Employee No.</th>
-              <th style={thStyle}>Employee Name 🔒</th>
+              <th style={thW(52)}>S.No</th>
+              <th style={thW(120)}>Employee No.</th>
+              <th style={thW(210)}>Employee Name 🔒</th>
               {HYGIENE_COLUMNS.map((col) => (
-                <th key={col} style={thStyle}>{col}</th>
+                <th key={col} style={thW(col.startsWith("Wearing") ? 220 : 170)}>{col}</th>
               ))}
-              <th style={thStyle}>Fit for Food Handling?<br /><span style={thSub}>(Yes/No)</span></th>
-              <th style={thStyle}>If No: Communicable disease<br /><span style={thSub}>(Yes/No)</span></th>
-              <th style={thStyle}>If No: Open wound<br /><span style={thSub}>(Yes/No)</span></th>
-              <th style={thStyle}>If No: Other</th>
-              <th style={thStyle}>Remarks and Corrective Actions</th>
-              <th style={thStyle} aria-label="Remove row"></th>
+              <th style={thW(130)}>Fit for Food Handling?<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thW(130)}>If No: Communicable disease<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thW(130)}>If No: Open wound<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thW(180)}>If No: Other</th>
+              <th style={thW(260)}>Remarks and Corrective Actions</th>
+              <th style={thW(52)} aria-label="Remove row"></th>
             </tr>
           </thead>
 
@@ -634,6 +622,9 @@ const thStyle = {
   whiteSpace: "normal",
   wordBreak: "break-word",
 };
+
+/** Header cell pinned to an exact width (min = max = width). */
+const thW = (w) => ({ ...thStyle, width: w, minWidth: w, maxWidth: w });
 
 const thSub = { fontWeight: 500, opacity: 0.85 };
 
