@@ -3,6 +3,8 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import CreatorBadge from "./CreatorBadge";
+import TemperatureMatchingReport from "../_shared/TemperatureMatchingReport";
+import { GRID_TIMES, makeClassify, calcKPI } from "./ftr1TempUnits";
 import {
   getId,
   btn,
@@ -290,12 +292,13 @@ export default function FTR1TemperatureView() {
     });
   }, [selectedReport]);
 
-  // ===== Spectral table styles =====
-  const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 15, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
-  const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
-  const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-  const tdCellCenter = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle", fontWeight: 600, color: "#2c3e50" };
-  const tdCellLeft = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "left", verticalAlign: "middle" };
+  // Old records carry their own time list; new ones use the sheet's slots.
+  const sheetTimes = times.length ? times : GRID_TIMES;
+  const classify = useMemo(() => {
+    const fn = makeClassify(coolers);
+    return (name, i) => fn(name, i);
+  }, [coolers]);
+  const kpi = useMemo(() => calcKPI(coolers), [coolers]);
 
   return (
     <GlassShell
@@ -387,6 +390,7 @@ export default function FTR1TemperatureView() {
               fontSize: "0.92rem",
               marginBottom: 10,
             }}>
+              <div><b>Limits:</b> Chillers 0°C to +5°C · Freezers −20°C to −16°C.</div>
               <div>1. If the temp is +5°C or more / Check product temperature - corrective action should be taken.</div>
               <div>2. If the loading area is more than +16°C - corrective action should be taken.</div>
               <div>3. If the preparation area is more than +10°C - corrective action should be taken.</div>
@@ -395,31 +399,20 @@ export default function FTR1TemperatureView() {
               </div>
             </div>
 
-            {/* Table */}
-            <table style={gridStyle}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={thCell}>Cooler</th>
-                  {times.map((t, i) => (
-                    <th key={i} style={thCell}>{t}</th>
-                  ))}
-                  <th style={thCell}>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coolers.map((c, idx) => (
-                  <tr key={idx} style={{ background: idx % 2 ? "rgba(237,233,254,0.45)" : "#fff" }}>
-                    <td style={tdCellLeft}>{c.__name}</td>
-                    {times.map((t, j) => (
-                      <td key={j} style={tdCellCenter}>
-                        {c?.temps?.[t] ?? "—"}
-                      </td>
-                    ))}
-                    <td style={tdCellLeft}>{c?.remarks ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Units (cards) + product matching — same layout as the input sheet */}
+            <TemperatureMatchingReport
+              units={coolers}
+              times={sheetTimes}
+              classify={classify}
+              productVerifications={selectedReport?.payload?.productVerifications || []}
+              readOnly
+            />
+
+            {kpi.readings > 0 && (
+              <div style={{ marginTop: 10, padding: "8px 12px", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: 10, fontWeight: 700, color: "#0c4a6e" }}>
+                KPI — Readings: {kpi.readings}/{kpi.total} · Out of range: {kpi.out} · Compliance: {kpi.compliance}% · Min/Max: {kpi.min}°C / {kpi.max}°C
+              </div>
+            )}
 
             {/* Signatures */}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontWeight: 700, flexWrap: "wrap", gap: 12 }}>
