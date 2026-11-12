@@ -7,11 +7,13 @@ import ReceivingLogForm from "../_shared/ReceivingLogForm";
 import { useStaffDirectory } from "../_shared/staffRegistry";
 import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
 
-/* Food trucks also record the vehicle plate and its Dubai Municipality approval. */
+/* Food trucks also record the vehicle plate (the DM approval no. was dropped,
+   Nov 2026 — older records keep theirs). */
 const DM_FIELD = [
-  { key: "vehicleNo",    label: "Vehicle no.",               labelAr: "رقم السيارة" },
-  { key: "dmApprovalNo", label: "DM approval no. (vehicle)", labelAr: "رقم موافقة البلدية للمركبة" },
+  { key: "vehicleNo", label: "Vehicle no.", labelAr: "رقم السيارة" },
 ];
+/* The truck is supplied by the company itself; still editable per delivery. */
+const DEFAULT_SUPPLIER = "Trans Emirates Livestock Meat Trading LLC";
 
 export default function FTR1ReceivingLog() {
   // FTR 1 signature pattern: Created by / Checked By by employee number,
@@ -27,6 +29,8 @@ export default function FTR1ReceivingLog() {
       extraFields={DM_FIELD}
       rowPhotos
       productWidth={420}
+      hideCols={["countryOfOrigin"]}
+      defaultSupplier={DEFAULT_SUPPLIER}
       signatures={{ ...sig, render: () => <FtrSignatureBlock sig={sig} /> }}
     />
   );

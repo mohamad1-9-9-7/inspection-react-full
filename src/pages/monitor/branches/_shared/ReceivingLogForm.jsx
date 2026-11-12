@@ -191,6 +191,8 @@ const accountName = () => {
  * @param {number}  productWidth width of the product-name column (px)
  * @param {boolean} preparedBy  "Report created by" signature beside
  *                              checked / verified (prefilled with the account)
+ * @param {string[]} hideCols  line columns this branch does not use (e.g. FTR 1: ["countryOfOrigin"])
+ * @param {string}  defaultSupplier  pre-filled supplier of a NEW delivery (still editable)
  * @param {object}  signatures  replaces the whole signature footer with the
  *                              caller's own (FTR 1: employee-number pickers):
  *                              { errors, fields(), load(payload), reset(), render() }
@@ -198,18 +200,21 @@ const accountName = () => {
 export default function ReceivingLogForm({
   branch, type, reporter, documentNo = "FSMS/BR/F01A", photos = false, extraFields = [],
   rowPhotos = false, productWidth = 0, preparedBy = false, signatures = null,
+  hideCols = [], defaultSupplier = "",
 }) {
+  const tailCols = TAIL_COLS.filter((c) => !hideCols.includes(c.key));
+  const newDelivery = (rows) => ({ ...emptyDelivery(rows), supplier: defaultSupplier });
   const { t, dir, isAr } = useLang();
 
   const textCols = productWidth
     ? TEXT_COLS.map((c) => (c.key === "foodItem" ? { ...c, w: productWidth } : c))
     : TEXT_COLS;
   const tableW = NO_W + DEL_W + (rowPhotos ? PHOTO_W : 0)
-    + [...textCols, ...TICK_COLS, ...TAIL_COLS].reduce((s, c) => s + c.w, 0);
+    + [...textCols, ...TICK_COLS, ...tailCols].reduce((s, c) => s + c.w, 0);
 
   const [date, setDate] = useState(todayDubai);
   const [formRef, setFormRef] = useState(documentNo);
-  const [deliveries, setDeliveries] = useState(() => [emptyDelivery()]);
+  const [deliveries, setDeliveries] = useState(() => [newDelivery()]);
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [createdBy, setCreatedBy] = useState(() => (preparedBy ? accountName() : ""));
@@ -248,7 +253,7 @@ export default function ReceivingLogForm({
         sigRef.current?.load(p);
       } else {
         setRecordId(null);
-        setDeliveries([emptyDelivery()]);
+        setDeliveries([newDelivery()]);
         setCheckedBy("");
         setVerifiedBy("");
         setCreatedBy(preparedBy ? accountName() : "");
@@ -282,12 +287,12 @@ export default function ReceivingLogForm({
   const addRow = (di) => patchDelivery(di, { rows: [...deliveries[di].rows, emptyRow()] });
   const removeRow = (di, ri) =>
     setDeliveries((prev) => prev.map((d, i) => (i !== di || d.rows.length <= 1 ? d : { ...d, rows: d.rows.filter((_, j) => j !== ri) })));
-  const addDelivery = () => setDeliveries((prev) => [...prev, emptyDelivery(3)]);
+  const addDelivery = () => setDeliveries((prev) => [...prev, newDelivery(3)]);
   const removeDelivery = (di) => {
     const d = deliveries[di];
     const hasData = d.rows.some(isFilled) || DELIVERY_KEYS.some((k) => String(d[k] ?? "").trim());
     if (hasData && !window.confirm(L(isAr, "Remove this delivery and its lines from the sheet?", "حذف هالتوريدة وأسطرها من الورقة؟"))) return;
-    setDeliveries((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== di) : [emptyDelivery()]));
+    setDeliveries((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== di) : [newDelivery()]));
   };
 
   async function pickPhoto(di, slot, file) {
@@ -530,7 +535,7 @@ export default function ReceivingLogForm({
               <table className="ph-table rl-table" style={{ width: tableW }}>
                 <colgroup>
                   <col style={{ width: NO_W }} />
-                  {[...textCols, ...TICK_COLS, ...TAIL_COLS].map((c) => <col key={c.key} style={{ width: c.w }} />)}
+                  {[...textCols, ...TICK_COLS, ...tailCols].map((c) => <col key={c.key} style={{ width: c.w }} />)}
                   {rowPhotos && <col style={{ width: PHOTO_W }} />}
                   <col style={{ width: DEL_W }} />
                 </colgroup>
@@ -539,7 +544,7 @@ export default function ReceivingLogForm({
                     <th {...stickyCell("no")}>{t("ph_col_no")}</th>
                     {textCols.map((c) => <th key={c.key} {...stickyCell(c.key)}>{c.label}</th>)}
                     {TICK_COLS.map((c) => <th key={c.key}>{c.label}</th>)}
-                    {TAIL_COLS.map((c) => <th key={c.key} style={{ textAlign: alignStart }}>{c.label}</th>)}
+                    {tailCols.map((c) => <th key={c.key} style={{ textAlign: alignStart }}>{c.label}</th>)}
                     {rowPhotos && <th>{L(isAr, "Photo", "صورة")}</th>}
                     <th className="no-print" />
                   </tr>
@@ -576,7 +581,7 @@ export default function ReceivingLogForm({
                           </td>
                         );
                       })}
-                      {TAIL_COLS.map((c) => (
+                      {tailCols.map((c) => (
                         <td key={c.key}>
                           <input type={c.type} value={row[c.key]} className="ph-input"
                             onChange={(e) => updateRow(di, ri, c.key, e.target.value)} />

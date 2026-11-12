@@ -59,6 +59,7 @@ const COL_WIDTHS_PX = [
   64, 160, 110, 110, 320, 110, 160, 120, 110, 110, 110, 130, 110, 110, 100, 260, 130, 130, 130, 220, 140,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
+const RETIRED_COLS = ["dmApprovalNo", "countryOfOrigin"];
 const MIN_SCALE = 0.5; // حد أدنى للتحجيم
 
 /* ===== Helper: nav buttons style ===== */
@@ -651,6 +652,14 @@ export default function FTR1ReceivingLogView() {
     );
   };
 
+  /* Columns retired from the FTR 1 sheet (Nov 2026): shown only for an older
+     record that actually holds a value in them. */
+  const viewRows = (isEditing ? draft?.entries : selectedReport?.payload?.entries) || [];
+  const shownCols = COLS.filter(
+    (c) => !RETIRED_COLS.includes(c.key) || viewRows.some((r) => String(r?.[c.key] ?? "").trim() !== "")
+  );
+  const shownWidths = [COL_WIDTHS_PX[0], ...COLS.map((c, i) => (shownCols.includes(c) ? COL_WIDTHS_PX[i + 1] : null)).filter((w) => w != null)];
+
   return (
     <div style={shell}>
       {/* Sidebar */}
@@ -1058,14 +1067,14 @@ export default function FTR1ReceivingLogView() {
                     }}
                   >
                     <colgroup>
-                      {COL_WIDTHS_PX.map((w, i) => (
+                      {shownWidths.map((w, i) => (
                         <col key={i} style={{ width: `${w}px` }} />
                       ))}
                     </colgroup>
                     <thead>
                       <tr>
                         <th style={thStyle}>S.No</th>
-                        {COLS.map((c, i) => (
+                        {shownCols.map((c, i) => (
                           <th key={i} style={thStyle}>
                             {c.label}
                           </th>
@@ -1080,7 +1089,7 @@ export default function FTR1ReceivingLogView() {
                               {i + 1}
                             </td>
 
-                            {COLS.map((c) => {
+                            {shownCols.map((c) => {
                               const val = row?.[c.key];
                               const type =
                                 c.key === "productionDate" || c.key === "expiryDate"
