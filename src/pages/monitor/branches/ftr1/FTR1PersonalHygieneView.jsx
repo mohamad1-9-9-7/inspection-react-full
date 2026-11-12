@@ -465,7 +465,7 @@ export default function FTR1PersonalHygieneView() {
                 <strong>Date:</strong> {selectedPayload?.reportDate || "—"}
               </div>
               {/* older reports were saved before the creator was recorded */}
-              {selectedPayload?.createdBy ? <CreatorBadge name={selectedPayload.createdBy} /> : null}
+              {selectedPayload?.createdBy ? <CreatorBadge name={selectedPayload.createdBy} empNo={selectedPayload.createdByEmpNo} /> : null}
             </div>
 
             {/* PIC note */}

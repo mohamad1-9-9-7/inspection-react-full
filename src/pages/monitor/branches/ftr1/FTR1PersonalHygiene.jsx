@@ -1,7 +1,7 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygiene.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CncToggle from "../_shared/CncToggle";
-import CreatorBadge from "./CreatorBadge";
+import { CreatorField } from "./CreatorBadge";
 import { getCurrentUser } from "../../../../utils/perms";
 import {
   COMPANY_DIRECTORY,
@@ -60,15 +60,11 @@ function norm(s) {
   return String(s ?? "").trim();
 }
 
-/** The logged-in account — recorded as the report's creator. */
-function currentAccount() {
+/** Username of the logged-in account — kept for audit alongside the creator. */
+function currentUsername() {
   const u = getCurrentUser() || {};
-  return {
-    name: norm(u.displayName || u.name || u.username),
-    username: norm(u.username),
-  };
+  return norm(u.username || u.displayName || u.name);
 }
-
 
 export default function FTR1PersonalHygiene() {
   const [date, setDate] = useState("");
@@ -78,13 +74,18 @@ export default function FTR1PersonalHygiene() {
   const [opMsg, setOpMsg] = useState("");
 
   const { roster, loading: staffLoading, byNo } = useStaffDirectory(PH_FORM_KEY);
-  const creator = useMemo(currentAccount, []);
-
   const findEmployee = (empNo) => {
     const key = normalizeEmpNo(empNo);
     if (!key) return null;
     return byNo.get(key) || COMPANY_BY_NO.get(key) || null;
   };
+
+  // Created by = the employee who fills the sheet in, picked by employee
+  // number (the name is locked, same as the table rows).
+  const [creatorNo, setCreatorNo] = useState("");
+  const creatorMatch = findEmployee(creatorNo);
+  const creatorName = creatorMatch ? creatorMatch.name : "";
+  const creatorUnknown = !!norm(creatorNo) && !staffLoading && !creatorMatch;
 
   // Pre-fill the sheet once with the people assigned to this form, as long as
   // nobody has typed into it yet.
@@ -134,6 +135,9 @@ export default function FTR1PersonalHygiene() {
     if (!date) errs.push("Please select a date.");
     if (!norm(checkedBy)) errs.push("Checked By is required.");
     if (!norm(verifiedByQA)) errs.push("Verified by (QA) is required.");
+    if (!norm(creatorNo)) errs.push("Created by: enter your employee number.");
+    else if (creatorUnknown)
+      errs.push(`Created by: employee number "${norm(creatorNo)}" was not found in the Staff Directory.`);
 
     // ✅ لازم يكون QA مستقل (منع إذا نفس الشخص)
     if (norm(checkedBy) && norm(verifiedByQA)) {
@@ -174,7 +178,7 @@ export default function FTR1PersonalHygiene() {
 
     return errs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, checkedBy, verifiedByQA, entries, staffLoading, byNo]);
+  }, [date, checkedBy, verifiedByQA, entries, staffLoading, byNo, creatorNo, creatorUnknown]);
 
   const handleSave = async () => {
     if (validationErrors.length) {
@@ -195,8 +199,9 @@ export default function FTR1PersonalHygiene() {
         verifiedByQA: norm(verifiedByQA),
 
         // the account that filled the sheet in (may differ from Checked By)
-        createdBy: creator.name,
-        createdByUser: creator.username,
+        createdBy: creatorName,
+        createdByEmpNo: norm(creatorNo),
+        createdByUser: currentUsername(),
 
         // ✅ ملاحظة مطلوبة
         checkedByNote:
@@ -306,7 +311,12 @@ export default function FTR1PersonalHygiene() {
             }}
           />
         </div>
-        <CreatorBadge name={creator.name} />
+        <CreatorField
+          empNo={creatorNo}
+          name={creatorName}
+          unknown={creatorUnknown}
+          onEmpNoChange={setCreatorNo}
+        />
       </div>
 
       {/* ✅ PIC note */}
