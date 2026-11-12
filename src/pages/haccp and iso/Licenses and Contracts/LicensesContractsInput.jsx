@@ -15,7 +15,7 @@ import {
   TYPE, safeArr, getId, isImageUrl, isPdfUrl, displayUrl, todayYmd, addPeriod, fmtDate,
   STATUS, statusOf, mkEvent, newUid,
 } from "./licensesKit";
-import { uploadPicked } from "./licensesApi";
+import { uploadPicked } from "./licensesNet";
 
 const BRANCHES = [
   "Al Qusais Warehouse",

@@ -19,7 +19,7 @@ import {
   STATUS, statusOf, flattenRecords, ensureUids, diffPayloads, applyRenewal,
   collectHistory, contractUid, newUid,
 } from "./licensesKit";
-import { uploadPicked, writeRecord } from "./licensesApi";
+import { uploadPicked, writeRecord } from "./licensesNet";
 
 const BRANCHES = [
   "Al Qusais Warehouse",
@@ -49,7 +49,9 @@ const T = {
     noRows: "No documents match these filters.",
     // renew modal
     renewTitle: "Renew document", current: "Current", newDoc: "New", expiry: "Expiry date",
-    renewedOn: "Renewed on", newExpiry: "New expiry date", samePeriod: "Same period",
+    renewedOn: "New issue date", newExpiry: "New expiry date", samePeriod: "Same period",
+    validFor: "Valid for:", daysWord: "days",
+    errNoIssue: "Enter the new issue date.", errBeforeIssue: "The expiry date must be after the issue date.",
     plus1: "+1 year", plus2: "+2 years", plus3: "+3 years", plus6m: "+6 months",
     newFiles: "New document (PDF or images)", keepOld: "Keep the old files attached too (otherwise they move to the archive)",
     note: "Note", notePh: "e.g. renewed with Dubai Municipality, receipt no. …",
@@ -91,7 +93,9 @@ const T = {
     upcoming: "التجديدات القادمة (90 يوم)", nothingUpcoming: "لا شيء ينتهي خلال 90 يوماً.",
     noRows: "لا توجد مستندات مطابقة.",
     renewTitle: "تجديد المستند", current: "الحالي", newDoc: "الجديد", expiry: "تاريخ الانتهاء",
-    renewedOn: "تاريخ التجديد", newExpiry: "تاريخ الانتهاء الجديد", samePeriod: "نفس المدة",
+    renewedOn: "تاريخ الإصدار الجديد", newExpiry: "تاريخ الانتهاء الجديد", samePeriod: "نفس المدة",
+    validFor: "مدة الصلاحية:", daysWord: "يوم",
+    errNoIssue: "أدخل تاريخ الإصدار الجديد.", errBeforeIssue: "تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار.",
     plus1: "+ سنة", plus2: "+ سنتين", plus3: "+ 3 سنوات", plus6m: "+ 6 أشهر",
     newFiles: "المستند الجديد (PDF أو صور)", keepOld: "إبقاء الملفات القديمة مرفقة أيضاً (وإلا تنتقل إلى الأرشيف)",
     note: "ملاحظة", notePh: "مثال: جُددت لدى بلدية دبي، رقم الإيصال …",
@@ -264,18 +268,21 @@ function PreviewModal({ state, onClose, setState }) {
 function RenewModal({ t, lang, item, onClose, onSave }) {
   const prevExp = item.expiryDate || "";
   const lastRen = item.lastRenewal;
-  // the previous validity length: last renewal (prev→new), else 1 year
+  // the previous validity length: last renewal (issue date → expiry), if any
   const prevPeriod = useMemo(() => {
-    if (lastRen?.prevExpiryDate && lastRen?.newExpiryDate) {
-      const d = diffDays(lastRen.prevExpiryDate, lastRen.newExpiryDate);
+    if (lastRen?.renewedOn && lastRen?.newExpiryDate) {
+      const d = diffDays(lastRen.renewedOn, lastRen.newExpiryDate);
       if (d && d > 20) return d;
     }
     return null;
   }, [lastRen]);
-  // renewing a still-valid document → new period starts from the old expiry; expired → from today
-  const baseDate = prevExp && daysUntil(prevExp) !== null && daysUntil(prevExp) >= 0 ? prevExp : todayYmd();
+  // The new validity is counted from the NEW issue date (renewedOn).
+  // period = the quick choice in use; null once the expiry is typed by hand.
   const [renewedOn, setRenewedOn] = useState(todayYmd());
-  const [newExpiry, setNewExpiry] = useState(addPeriod(baseDate, { years: 1 }));
+  const [period, setPeriod] = useState({ id: "1y", per: { years: 1 } });
+  const [manualExpiry, setManualExpiry] = useState("");
+  const newExpiry = period ? addPeriod(renewedOn, period.per) : manualExpiry;
+  const setNewExpiry = (v) => { setPeriod(null); setManualExpiry(v); };
   const [files, setFiles] = useState({ urls: [], names: [] });
   const [keepOld, setKeepOld] = useState(false);
   const [note, setNote] = useState("");
@@ -283,8 +290,9 @@ function RenewModal({ t, lang, item, onClose, onSave }) {
   const [err, setErr] = useState("");
 
   const quick = [
-    [t.plus6m, { months: 6 }], [t.plus1, { years: 1 }], [t.plus2, { years: 2 }], [t.plus3, { years: 3 }],
+    ["6m", t.plus6m, { months: 6 }], ["1y", t.plus1, { years: 1 }], ["2y", t.plus2, { years: 2 }], ["3y", t.plus3, { years: 3 }],
   ];
+  if (prevPeriod) quick.push(["same", `${t.samePeriod} (${Math.round(prevPeriod / 30.4)}m)`, { days: prevPeriod }]);
 
   async function pick(fl) {
     setErr("");
@@ -301,7 +309,9 @@ function RenewModal({ t, lang, item, onClose, onSave }) {
 
   async function submit() {
     setErr("");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(renewedOn)) return setErr(t.errNoIssue);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newExpiry)) return setErr(t.errNoDate);
+    if (newExpiry <= renewedOn) return setErr(t.errBeforeIssue);
     if (prevExp && newExpiry <= prevExp) return setErr(t.errBefore);
     if (!files.urls.length && !window.confirm(t.warnNoFile)) return;
     setBusy(t.saving);
@@ -356,15 +366,21 @@ function RenewModal({ t, lang, item, onClose, onSave }) {
             <input type="date" style={S.input} value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {quick.map(([lbl, per]) => (
-            <button key={lbl} type="button" style={mini} onClick={() => setNewExpiry(addPeriod(baseDate, per))}>{lbl}</button>
-          ))}
-          {prevPeriod && (
-            <button type="button" style={mini} onClick={() => setNewExpiry(addPeriod(baseDate, { days: prevPeriod }))}>
-              {t.samePeriod} ({Math.round(prevPeriod / 30.4)}m)
-            </button>
-          )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: C.sub }}>{t.validFor}</span>
+          {quick.map(([id, lbl, per]) => {
+            const on = period?.id === id;
+            return (
+              <button key={id} type="button" onClick={() => setPeriod({ id, per })}
+                style={on ? { ...mini, background: C.brand, color: "#fff", border: `1px solid ${C.brand}` } : mini}>
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 12, color: C.sub, fontWeight: 700, marginTop: -6 }}>
+          {fmtDate(renewedOn, lang)} → {fmtDate(newExpiry, lang)}
+          {/^\d{4}-\d{2}-\d{2}$/.test(newExpiry) && /^\d{4}-\d{2}-\d{2}$/.test(renewedOn) && ` · ${diffDays(renewedOn, newExpiry)} ${t.daysWord}`}
         </div>
 
         <div>
