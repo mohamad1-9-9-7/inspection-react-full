@@ -298,7 +298,7 @@ export default function FTR1TemperatureView() {
     const fn = makeClassify(coolers);
     return (name, i) => fn(name, i);
   }, [coolers]);
-  const kpi = useMemo(() => calcKPI(coolers), [coolers]);
+  const kpi = useMemo(() => calcKPI(coolers, sheetTimes), [coolers, sheetTimes]);
 
   return (
     <GlassShell

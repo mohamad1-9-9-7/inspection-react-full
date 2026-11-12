@@ -10,7 +10,11 @@
 //   • unit editor: add / rename / remove / chiller-or-freezer
 //   • an out-of-range reading needs a corrective action before saving
 //   • live KPI + the FTR 1 signature block (Created by / Checked By / QA)
+//   • 📱 phone entry by QR sticker per unit (qcs/BranchTempQuick "ftr1"); phone
+//     readings land in the same day record and merge into this sheet
+//   • readings 1 PM – 10 PM, every 2 hours + closing at 10 PM (ftr1TempUnits GRID_TIMES)
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { queuedMessage } from "../../../../utils/reportOutbox";
 import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedList, isSheetFiled } from "../_shared/branchTempDay";
 import { getLatestPayload, getReportRowByDate, payloadOf } from "../_shared/reportApi";
@@ -283,6 +287,7 @@ export default function FTR1Temperature() {
 
       {/* Date + day status */}
       <div style={dateRow}>
+        <Link to="/monitor/branch-temp/ftr1" style={phoneLink}>📱 Phone entry & QR</Link>
         <label style={{ fontWeight: 700 }}>📅 Date:</label>
         <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={dateInput} />
         {dateBusy && <span style={{ color: "#6b7280", fontWeight: 600 }}>Checking…</span>}
@@ -404,6 +409,7 @@ const band1 = { textAlign: "center", background: "#bfc7cf", color: "#2c3e50", fo
 const band2 = { textAlign: "center", background: "#dde3e9", color: "#2c3e50", fontWeight: 700, padding: "6px 4px", border: "1px solid #9aa4ae", borderTop: "none", marginBottom: 8 };
 const dateRow = { margin: "8px 0 10px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" };
 const dateInput = { padding: "6px 10px", borderRadius: 8, border: "1px solid #9aa4ae", background: "#fff" };
+const phoneLink = { background: "#2563eb", color: "#fff", borderRadius: 8, padding: "6px 12px", fontWeight: 800, textDecoration: "none" };
 const pill = { padding: "4px 12px", borderRadius: 999, fontWeight: 700 };
 const rulesBox = { border: "1px solid #9aa4ae", background: "#f1f5f9", padding: "8px 10px", marginBottom: 10, borderRadius: 8 };
 const editorBox = { border: "1px solid #c7d2fe", background: "#fff", borderRadius: 12, padding: 12, marginBottom: 12 };

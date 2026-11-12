@@ -9,8 +9,10 @@
 
 export const TYPE = "ftr1_temperature";
 
-/* Time slots printed on the sheet ("Corrective Action" kept for the old viewer). */
-export const GRID_TIMES = ["8:00 AM", "11:00 AM", "2:00 PM", "5:00 PM", "8:00 PM", "10:00 PM"];
+/* Time slots printed on the sheet — the truck opens 1 PM – 10 PM, a reading
+   every 2 hours plus the closing reading at 10 PM ("Corrective Action" kept for the old viewer). Records filed
+   before Nov 2026 used 8 AM … 10 PM; they carry their own payload.times. */
+export const GRID_TIMES = ["1:00 PM", "3:00 PM", "5:00 PM", "7:00 PM", "9:00 PM", "10:00 PM"];
 export const TIMES = [...GRID_TIMES, "Corrective Action"];
 
 export const UNIT_TYPES = {
@@ -48,11 +50,11 @@ export const makeClassify = (units) => (_name, i) => {
 const filled = (v) => v !== "" && v != null && !Number.isNaN(Number(v));
 
 /** Readings outside their unit's range: [{ unit, index, time, value, range }]. */
-export function outOfRange(units) {
+export function outOfRange(units, times = GRID_TIMES) {
   const out = [];
   (units || []).forEach((u, i) => {
     const { range } = UNIT_TYPES[unitTypeOf(u, i, units.length)];
-    GRID_TIMES.forEach((t) => {
+    times.forEach((t) => {
       const v = u?.temps?.[t];
       if (!filled(v)) return;
       const n = Number(v);
@@ -63,17 +65,17 @@ export function outOfRange(units) {
 }
 
 /** KPI across every unit, each judged by its own range. */
-export function calcKPI(units) {
+export function calcKPI(units, times = GRID_TIMES) {
   const all = [];
   (units || []).forEach((u) => {
-    GRID_TIMES.forEach((t) => {
+    times.forEach((t) => {
       const v = u?.temps?.[t];
       if (filled(v)) all.push(Number(v));
     });
   });
-  const out = outOfRange(units).length;
+  const out = outOfRange(units, times).length;
   const filledSlots = all.length;
-  const totalSlots = (units || []).length * GRID_TIMES.length;
+  const totalSlots = (units || []).length * times.length;
   return {
     readings: filledSlots,
     total: totalSlots,

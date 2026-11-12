@@ -2,7 +2,7 @@
 //
 // 📱 Branch temperature quick entry (QR sticker on each unit) for the branch
 // temperature sheets:
-//   /monitor/branch-temp/:branch            hub     (pos10 | pos11 | pos15 | pos19)
+//   /monitor/branch-temp/:branch            hub     (pos10 | pos11 | pos15 | pos19 | ftr1)
 //   /monitor/branch-temp/:branch/:unit      one unit — the unit is its NAME
 //
 // Same screen as QCS (_shared/QuickTempPage); this file is the adapter for
@@ -14,6 +14,7 @@
 // sheet's default rows. Limits are the ones printed on the sheets:
 //   POS 10/11/15 — chiller ≤ 5°C · freezer -25…-12°C · preparation ≤ 10°C · loading ≤ 16°C
 //   POS 19       — chiller ≤ 5°C · freezer ≤ -18°C · ambient ≤ 25°C
+//   FTR 1        — by the row's type (its unit editor): chiller 0…5°C · freezer -20…-16°C
 
 import React, { useMemo } from "react";
 import { useParams } from "react-router-dom";
@@ -25,6 +26,7 @@ import { BRANCH_READING_KIND, postBranchReading } from "../../../../utils/report
 import { buildPublicUrl } from "../../../../config/publicOrigin";
 import { canReport } from "../../../../utils/reportPerms";
 import { CALIB_LOGS, branchOfLog } from "../../../haccp and iso/Calibration/calibrationLink";
+import { GRID_TIMES as FTR1_TIMES, DEFAULT_UNITS as FTR1_UNITS, UNIT_TYPES as FTR1_TYPES, unitTypeOf as ftr1TypeOf } from "../ftr1/ftr1TempUnits";
 
 export const BRANCH_TEMP_PATH = "/monitor/branch-temp";
 
@@ -47,6 +49,11 @@ function gridDef(name) {
   if (/production|prep/.test(n)) return def(name, "production", NO_MIN, 10);
   if (/loading/.test(n)) return def(name, "ambient", NO_MIN, 16);
   return def(name, "chilled", NO_MIN, 5);
+}
+function ftr1Def(name, unitType) {
+  const t = FTR1_TYPES[unitType] ? unitType : ftr1TypeOf({ name }, -1, 0);
+  const { range } = FTR1_TYPES[t];
+  return def(name, t === "freezer" ? "frozen" : "chilled", range.min, range.max);
 }
 function pos19Def(name, unitType) {
   if (unitType === "freezer") return def(name, "frozen", NO_MIN, -18);
@@ -82,6 +89,16 @@ export const BRANCH_TEMP = {
     ],
     defaults: [],
   },
+  ftr1: {
+    branch: "FTR 1", type: "ftr1_temperature", reportId: "temperature", shape: "grid", typed: true,
+    sheet: "/monitor/ftr1?tab=temp",
+    // Calibration records name this site "Supervisor Food Truck"; it is not in
+    // CALIB_LOGS (that list also drives the cold-rooms 3D links).
+    calib: { branch: "Supervisor Food Truck", log: "ftr1_temperature" },
+    slots: gridSlots(FTR1_TIMES),
+    defaults: FTR1_UNITS.map((u) => u.name),
+    defaultTypes: Object.fromEntries(FTR1_UNITS.map((u) => [u.name, u.type])),
+  },
 };
 
 const sameName = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
@@ -90,8 +107,13 @@ const sameName = (a, b) => String(a || "").trim().toLowerCase() === String(b || 
 function rowsOf(cfg, payload) {
   if (!payload) return [];
   if (cfg.shape === "grid") {
-    return (Array.isArray(payload.coolers) ? payload.coolers : [])
-      .map((c) => ({ name: String(c?.name || "").trim() })).filter((r) => r.name);
+    const list = Array.isArray(payload.coolers) ? payload.coolers : [];
+    return list
+      .map((c, i) => ({
+        name: String(c?.name || "").trim(),
+        ...(cfg.typed ? { unitType: ftr1TypeOf(c, i, list.length) } : {}),
+      }))
+      .filter((r) => r.name);
   }
   return (Array.isArray(payload.entries) ? payload.entries : [])
     .map((e) => ({ name: String(e?.equipment || "").trim(), unitType: e?.unitType || "chiller" })).filter((r) => r.name);
@@ -112,14 +134,16 @@ function uaeHM(d = new Date()) {
 export function makeBranchTempAdapter(code) {
   const cfg = BRANCH_TEMP[code];
   if (!cfg) return null;
-  const defOf = (row) => (cfg.shape === "grid" ? gridDef(row.name) : pos19Def(row.name, row.unitType));
+  const defOf = (row) =>
+    cfg.typed ? ftr1Def(row.name, row.unitType)
+      : cfg.shape === "grid" ? gridDef(row.name) : pos19Def(row.name, row.unitType);
   return {
     label: cfg.branch,
     type: cfg.type,
     printTitle: cfg.branch,
     hubPath: `${BRANCH_TEMP_PATH}/${code}`,
     sheetPath: cfg.sheet,
-    calib: branchOfLog(cfg.type) ? { branch: branchOfLog(cfg.type), log: CALIB_LOGS[branchOfLog(cfg.type)].log } : null,
+    calib: cfg.calib || (branchOfLog(cfg.type) ? { branch: branchOfLog(cfg.type), log: CALIB_LOGS[branchOfLog(cfg.type)].log } : null),
     allowed: () => canReport(cfg.branch, cfg.reportId, "input"),
     slots: cfg.slots,
     slotForNow(now) {
@@ -140,7 +164,7 @@ export function makeBranchTempAdapter(code) {
         const last = await getLatestReport(cfg.type).catch(() => null);
         rows = rowsOf(cfg, last ? payloadOf(last) || last.payload : null);
       }
-      if (!rows.length) rows = cfg.defaults.map((name) => ({ name }));
+      if (!rows.length) rows = cfg.defaults.map((name) => ({ name, ...(cfg.defaultTypes ? { unitType: cfg.defaultTypes[name] } : {}) }));
       return { payload, units: rows.map((r) => ({ key: r.name, def: defOf(r), unitType: r.unitType })), extra: { rows } };
     },
     readingsOf(payload, key) {
