@@ -19,7 +19,7 @@ export default function ThemeToggle() {
     return () => window.removeEventListener("app:theme-changed", onChange);
   }, []);
 
-  if (PUBLIC_PAGES.includes(pathname) || pathname.startsWith("/ref/")) return null;
+  if (PUBLIC_PAGES.includes(pathname) || pathname.startsWith("/ref/") || pathname.startsWith("/inspector/")) return null;
 
   const dark = theme === "dark";
   const label = dark ? "الوضع النهاري / Day mode" : "الوضع الليلي / Night mode";

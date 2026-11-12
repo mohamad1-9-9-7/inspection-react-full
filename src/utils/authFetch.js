@@ -286,8 +286,8 @@ window.fetch = function authFetch(input, init = {}) {
     if (res.status === 401 && !isLoginCall && !optOut) {
       clearAppSession();
       // The public /demo and /readiness pages have no session to lose — never bounce a visitor off them.
-      // Nor a referrer on its private /ref/<token> page.
-      if (!["/", "/demo", "/readiness"].includes(window.location.pathname) && !window.location.pathname.startsWith("/ref/")) {
+      // Nor a referrer on its private /ref/<token> page, nor an inspector on /inspector/<token>.
+      if (!["/", "/demo", "/readiness"].includes(window.location.pathname) && !window.location.pathname.startsWith("/ref/") && !window.location.pathname.startsWith("/inspector/")) {
         window.location.href = "/";
       }
       return res;

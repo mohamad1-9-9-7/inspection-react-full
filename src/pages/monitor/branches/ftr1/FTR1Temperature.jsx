@@ -12,6 +12,8 @@
 //   • live KPI + the FTR 1 signature block (Created by / Checked By / QA)
 //   • 📱 phone entry by QR sticker per unit (qcs/BranchTempQuick "ftr1"); phone
 //     readings land in the same day record and merge into this sheet
+//   • 🔍 Inspector QR (admins): a sticker an outside inspector scans to read the
+//     last 7 days, no account (InspectorLinksPanel + pages/public/InspectorWeek)
 //   • readings 1 PM – 10 PM, every 2 hours + closing at 10 PM (ftr1TempUnits GRID_TIMES)
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -22,6 +24,7 @@ import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } fro
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 import { useStaffDirectory } from "../_shared/staffRegistry";
 import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
+import InspectorLinksPanel, { canManageInspectorLinks } from "./InspectorLinksPanel";
 import {
   TYPE, TIMES, GRID_TIMES, UNIT_TYPES, DEFAULT_UNITS,
   blankUnit, unitTypeOf, makeClassify, outOfRange, calcKPI,
@@ -70,6 +73,8 @@ export default function FTR1Temperature() {
   );
   const [reportDate, setReportDate] = useState(() => draft.reportDate || todayDubai());
   const [editUnits, setEditUnits] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
+  const isLinkAdmin = canManageInspectorLinks();
   const [opMsg, setOpMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -299,10 +304,19 @@ export default function FTR1Temperature() {
               : <span style={{ ...pill, background: "#dbeafe", color: "#1e40af" }}>📝 This day's report is open — saving updates it</span>
             : <span style={{ ...pill, background: "#dcfce7", color: "#166534" }}>✅ New report for this day</span>
         )}
-        <button type="button" onClick={() => setEditUnits((v) => !v)} style={{ ...ghostBtn, marginInlineStart: "auto" }}>
+        {isLinkAdmin && (
+          <button type="button" onClick={() => setShowInspector((v) => !v)} style={{ ...ghostBtn, marginInlineStart: "auto", borderColor: "#0e7490", color: "#0e7490" }}>
+            🔍 Inspector QR
+          </button>
+        )}
+        <button type="button" onClick={() => setEditUnits((v) => !v)} style={{ ...ghostBtn, marginInlineStart: isLinkAdmin ? 0 : "auto" }}>
           ⚙️ {editUnits ? "Done" : "Edit units"}
         </button>
       </div>
+
+      {showInspector && isLinkAdmin && (
+        <InspectorLinksPanel type={TYPE} title="Temperature Control Record (CCP) — FTR 1" />
+      )}
 
       {/* Rules */}
       <div style={rulesBox}>

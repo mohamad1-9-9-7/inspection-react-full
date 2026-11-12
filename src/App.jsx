@@ -32,6 +32,7 @@ const MyBilling = lazy(() => import("./pages/billing/MyBilling"));
 const BillingDueBanner = lazy(() => import("./pages/billing/BillingDueBanner"));
 // Public: a promo code holder's own page (what the code brought + commission).
 const ReferrerPortal = lazy(() => import("./pages/referrer/ReferrerPortal"));
+const InspectorWeek = lazy(() => import("./pages/public/InspectorWeek"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 
 // Lazy imports
@@ -922,6 +923,8 @@ export default function App() {
         <Route path="/readiness" element={<ReadinessCheck />} />
         {/* Public: a referrer's private page — the token in the link is the key */}
         <Route path="/ref/:token" element={<ReferrerPortal />} />
+        {/* Public: an outside inspector's QR — last 7 days of one report, read-only (server: routes/inspectorLinks.cjs) */}
+        <Route path="/inspector/:token" element={<InspectorWeek />} />
         {/* 💳 A company admin's subscription, invoices and payment receipts */}
         <Route path="/my-billing" element={<ProtectedRoute allowExpired><MyBilling /></ProtectedRoute>} />
         {/* 🔍 Inspection module — the icon opens a hub, not the form directly */}

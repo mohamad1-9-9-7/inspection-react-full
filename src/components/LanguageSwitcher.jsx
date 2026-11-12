@@ -12,7 +12,7 @@ import { getAppLang, setAppLang, onAppLang, isUnifiedLang } from "../utils/appLa
 // Pages outside an account (login, sales, public links) keep their own switch.
 const PUBLIC_PAGES = ["/", "/demo", "/readiness", "/subscription-expired"];
 const PUBLIC_PREFIXES = [
-  "/ref/", "/t/", "/training/quiz/", "/training/verify", "/sweets-training/",
+  "/ref/", "/inspector/", "/t/", "/training/quiz/", "/training/verify", "/sweets-training/",
   "/supplier-approval/", "/supplier-evaluation/", "/inspection/evidence/", "/menu-nutrition",
 ];
 

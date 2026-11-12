@@ -17,7 +17,7 @@ import { fetchAlerts, ackAlert, alertVisible, ALERTS_EVENT, SEVERITY } from "../
 
 const PUBLIC_PAGES = ["/", "/demo", "/readiness", "/subscription-expired"];
 const PUBLIC_PREFIXES = [
-  "/ref/", "/t/", "/training/quiz/", "/training/verify", "/sweets-training/",
+  "/ref/", "/inspector/", "/t/", "/training/quiz/", "/training/verify", "/sweets-training/",
   "/supplier-approval/", "/supplier-evaluation/", "/inspection/evidence/", "/menu-nutrition",
 ];
 const REFRESH_MS = 10 * 60_000;
