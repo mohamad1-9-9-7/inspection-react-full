@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygiene.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CncToggle from "../_shared/CncToggle";
+import CreatorBadge from "./CreatorBadge";
+import { getCurrentUser } from "../../../../utils/perms";
 import {
   COMPANY_DIRECTORY,
   normalizeEmpNo,
@@ -58,6 +60,16 @@ function norm(s) {
   return String(s ?? "").trim();
 }
 
+/** The logged-in account — recorded as the report's creator. */
+function currentAccount() {
+  const u = getCurrentUser() || {};
+  return {
+    name: norm(u.displayName || u.name || u.username),
+    username: norm(u.username),
+  };
+}
+
+
 export default function FTR1PersonalHygiene() {
   const [date, setDate] = useState("");
   const [entries, setEntries] = useState(Array.from({ length: 9 }, makeEmptyRow));
@@ -66,6 +78,7 @@ export default function FTR1PersonalHygiene() {
   const [opMsg, setOpMsg] = useState("");
 
   const { roster, loading: staffLoading, byNo } = useStaffDirectory(PH_FORM_KEY);
+  const creator = useMemo(currentAccount, []);
 
   const findEmployee = (empNo) => {
     const key = normalizeEmpNo(empNo);
@@ -181,6 +194,10 @@ export default function FTR1PersonalHygiene() {
         checkedBy: norm(checkedBy),
         verifiedByQA: norm(verifiedByQA),
 
+        // the account that filled the sheet in (may differ from Checked By)
+        createdBy: creator.name,
+        createdByUser: creator.username,
+
         // ✅ ملاحظة مطلوبة
         checkedByNote:
           "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
@@ -264,19 +281,32 @@ export default function FTR1PersonalHygiene() {
         PERSONAL HYGIENE CHECKLIST FTR-1
       </h3>
 
-      {/* Date فقط (بدون Area badge) */}
-      <div style={{ marginBottom: "0.75rem" }}>
-        <strong>Date:</strong>{" "}
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          style={{
-            padding: "4px 8px",
-            borderRadius: "6px",
-            border: "1px solid #ccc",
-          }}
-        />
+      {/* Date + who is creating the report (the logged-in account — not
+          necessarily the supervisor who signs Checked By) */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: "0.75rem",
+        }}
+      >
+        <div>
+          <strong>Date:</strong>{" "}
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              borderRadius: "6px",
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+        <CreatorBadge name={creator.name} />
       </div>
 
       {/* ✅ PIC note */}

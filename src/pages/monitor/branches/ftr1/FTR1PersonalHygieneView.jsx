@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import CreatorBadge from "./CreatorBadge";
 import { canDelete } from "../../../../utils/perms";
 import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 
@@ -459,8 +460,12 @@ export default function FTR1PersonalHygieneView() {
             </h3>
 
             {/* Date */}
-            <div style={{ marginBottom: "0.75rem" }}>
-              <strong>Date:</strong> {selectedPayload?.reportDate || "—"}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: "0.75rem" }}>
+              <div>
+                <strong>Date:</strong> {selectedPayload?.reportDate || "—"}
+              </div>
+              {/* older reports were saved before the creator was recorded */}
+              {selectedPayload?.createdBy ? <CreatorBadge name={selectedPayload.createdBy} /> : null}
             </div>
 
             {/* PIC note */}
