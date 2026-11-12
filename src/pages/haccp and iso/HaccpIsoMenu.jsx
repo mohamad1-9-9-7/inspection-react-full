@@ -92,10 +92,19 @@ const sections = [
     route: "/haccp-iso/site-certificates",
   },
 
+  // Licenses & Contracts — two cards, one permission ("licenses-contracts")
   {
-    id: "licenses-contracts",
-    title: "Licenses & Contracts",
-    subtitle: "Company licenses, permits, contracts & expiry tracking",
+    id: "licenses-contracts-view",
+    permId: "licenses-contracts",
+    title: "📜 Licenses & Contracts — Register",
+    subtitle: "All branch licenses & contracts in one register: expiry status, renewals, change log, Excel & reminders",
+    route: "/haccp-iso/licenses-contracts/view",
+  },
+  {
+    id: "licenses-contracts-entry",
+    permId: "licenses-contracts",
+    title: "📝 Licenses & Contracts — New Entry",
+    subtitle: "Add a branch license and its service contracts (pest control, cleaning, waste…) with documents",
     route: "/haccp-iso/licenses-contracts",
   },
 
@@ -280,7 +289,7 @@ function sectionVisible(item) {
   }
   const leaves = SUBHUB_LEAVES[item.id];
   if (leaves) return leaves.some((leaf) => isItemAllowed("iso", leaf));
-  return isItemAllowed("iso", item.id);
+  return isItemAllowed("iso", item.permId || item.id);
 }
 
 // Simple icon
@@ -668,7 +677,8 @@ const categoryById = {
   "haccp-dashboard": "performance",
   "product-details": "operations",
   kitchen: "operations",
-  "licenses-contracts": "governance",
+  "licenses-contracts-view": "governance",
+  "licenses-contracts-entry": "governance",
   "site-certificates": "governance",
   "dm-inspection": "records",
   "supplier-evaluation": "operations",
