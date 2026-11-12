@@ -39,11 +39,55 @@ function emptyRow() {
   };
 }
 
-// مساواة الحقول عبر مجموعة صفوف
-const equalAcross = (rows, keys) => {
-  if (!rows.length) return false;
-  const f = rows[0];
-  return rows.every(r => keys.every(k => String(r?.[k] ?? "") === String(f?.[k] ?? "")));
+const RAW_KEYS   = ["rawCode","rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"];
+const FINAL_KEYS = ["finalCode","finalName","finalProdDate","finalExpDate","finalWeight"];
+const keyOf = (r, keys) => keys.map((k) => String(r?.[k] ?? "").trim()).join("|");
+
+/* rowSpan for each run of consecutive rows that share the same side.
+   The old rule merged a side only when EVERY row of the batch matched, so a
+   batch cut from two raw materials printed the first carcass again on each of
+   its 11 products. 0 = covered by the cell above. */
+const runSpans = (rows, keys) => {
+  const spans = new Array(rows.length).fill(0);
+  let i = 0;
+  while (i < rows.length) {
+    const k = keyOf(rows[i], keys);
+    let j = i + 1;
+    while (j < rows.length && keyOf(rows[j], keys) === k) j++;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+};
+
+const num = (v) => {
+  const n = parseFloat(String(v ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/* Raw in vs product out for one batch. Each raw material / final product is
+   counted once even when the saved rows pair them several times. */
+function batchYield(rows) {
+  const raws = new Map();
+  const finals = new Map();
+  rows.forEach((r) => {
+    if (String(r.rawName ?? r.rawCode ?? "").trim()) raws.set(keyOf(r, RAW_KEYS), num(r.rawWeight));
+    if (String(r.finalName ?? r.finalCode ?? "").trim()) finals.set(keyOf(r, FINAL_KEYS), num(r.finalWeight));
+  });
+  const rawKg = [...raws.values()].reduce((s, v) => s + v, 0);
+  const finalKg = [...finals.values()].reduce((s, v) => s + v, 0);
+  return { rawKg, finalKg, pct: rawKg > 0 ? (finalKg / rawKg) * 100 : null };
+}
+
+/* Edit buffer: every saved line plus blanks. A fixed 12 used to drop line 13+
+   on the next "Save changes". */
+const toEditRows = (entries) => {
+  const list = Array.isArray(entries) ? entries : [];
+  const n = Math.max(12, list.length + 3);
+  return Array.from({ length: n }, (_, i) => {
+    const e = list[i];
+    return e ? { ...emptyRow(), ...e } : emptyRow();
+  });
 };
 
 export default function POS10TraceabilityLogView() {
@@ -128,18 +172,7 @@ export default function POS10TraceabilityLogView() {
       setRecord(match);
 
       // Init edit buffers
-      const rows = Array.from({ length: 12 }, (_, i) => {
-        const e = match?.payload?.entries?.[i];
-        return e ? {
-          batchId: e.batchId ?? "",
-          rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
-          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
-          rawWeight: e.rawWeight ?? "",
-          finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
-          finalWeight: e.finalWeight ?? "",
-        } : emptyRow();
-      });
-      setEditRows(rows);
+      setEditRows(toEditRows(match?.payload?.entries));
       setEditCheckedBy(match?.payload?.checkedBy || "");
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
       setEditing(false);
@@ -159,18 +192,7 @@ export default function POS10TraceabilityLogView() {
 
   function toggleEdit() {
     if (editing) {
-      const rows = Array.from({ length: 12 }, (_, i) => {
-        const e = record?.payload?.entries?.[i];
-        return e ? {
-          batchId: e.batchId ?? "",
-          rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
-          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
-          rawWeight: e.rawWeight ?? "",
-          finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
-          finalWeight: e.finalWeight ?? "",
-        } : emptyRow();
-      });
-      setEditRows(rows);
+      setEditRows(toEditRows(record?.payload?.entries));
       setEditCheckedBy(record?.payload?.checkedBy || "");
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
       setEditing(false);
@@ -625,9 +647,11 @@ export default function POS10TraceabilityLogView() {
                         const rows = allRows.filter(isFilledRow);
                         if (!rows.length) return null;
 
-                        const rawsSame   = equalAcross(rows, ["rawCode","rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
-                        const finalsSame = equalAcross(rows, ["finalCode","finalName","finalProdDate","finalExpDate","finalWeight"]);
+                        const rawSpans   = runSpans(rows, RAW_KEYS);
+                        const finalSpans = runSpans(rows, FINAL_KEYS);
                         const span = rows.length;
+                        const y = batchYield(rows);
+                        const overYield = y.pct != null && y.pct > 100.5;
 
                         return (
                           <React.Fragment key={`g-${gi}`}>
@@ -643,6 +667,13 @@ export default function POS10TraceabilityLogView() {
                                 padding: "9px 12px"
                               }}>
                                 🧬 Batch / Lot: {batchId} — {rows.length} row(s)
+                                {(y.rawKg > 0 || y.finalKg > 0) && (
+                                  <span style={{ marginInlineStart: 14, fontWeight: 700, color: overYield ? "#b91c1c" : "#334155" }}>
+                                    Raw {y.rawKg.toFixed(2)} kg → Final {y.finalKg.toFixed(2)} kg
+                                    {y.pct != null && ` (${y.pct.toFixed(1)}%)`}
+                                    {overYield && " ⚠️ final weight is more than the raw material"}
+                                  </span>
+                                )}
                               </td>
                             </tr>
 
@@ -656,44 +687,24 @@ export default function POS10TraceabilityLogView() {
                                 )}
 
                                 {/* RAW side */}
-                                {rawsSame ? (
-                                  idx === 0 ? (
-                                    <>
-                                      <td style={tdCell} rowSpan={span}>{codedName(rows[0].rawCode, rows[0].rawName)}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].bestBefore))}</td>
-                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawWeight) ? `${rows[0].rawWeight} kg` : ""}</td>
-                                    </>
-                                  ) : null
-                                ) : (
+                                {rawSpans[idx] > 0 && (
                                   <>
-                                    <td style={tdCell}>{codedName(r.rawCode, r.rawName)}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.openedDate))}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td>
-                                    <td style={tdCell}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{codedName(r.rawCode, r.rawName)}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{formatDMY(safe(r.origProdDate))}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{formatDMY(safe(r.origExpDate))}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{formatDMY(safe(r.openedDate))}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{formatDMY(safe(r.bestBefore))}</td>
+                                    <td style={tdCell} rowSpan={rawSpans[idx]}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td>
                                   </>
                                 )}
 
                                 {/* FINAL side */}
-                                {finalsSame ? (
-                                  idx === 0 ? (
-                                    <>
-                                      <td style={tdCell} rowSpan={span}>{codedName(rows[0].finalCode, rows[0].finalName)}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td>
-                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td>
-                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td>
-                                    </>
-                                  ) : null
-                                ) : (
+                                {finalSpans[idx] > 0 && (
                                   <>
-                                    <td style={tdCell}>{codedName(r.finalCode, r.finalName)}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td>
-                                    <td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td>
-                                    <td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td>
+                                    <td style={tdCell} rowSpan={finalSpans[idx]}>{codedName(r.finalCode, r.finalName)}</td>
+                                    <td style={tdCell} rowSpan={finalSpans[idx]}>{formatDMY(safe(r.finalProdDate))}</td>
+                                    <td style={tdCell} rowSpan={finalSpans[idx]}>{formatDMY(safe(r.finalExpDate))}</td>
+                                    <td style={tdCell} rowSpan={finalSpans[idx]}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td>
                                   </>
                                 )}
                               </tr>

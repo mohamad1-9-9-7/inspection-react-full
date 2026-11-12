@@ -117,6 +117,73 @@ function emptyRow() {
   };
 }
 
+/* Edit buffer: every saved line plus a few blank ones. A fixed 15 used to cut
+   off line 16+ and the next "Save changes" deleted them for good. */
+const toEditRows = (entries) => {
+  const list = Array.isArray(entries) ? entries : [];
+  const n = Math.max(15, list.length + 3);
+  return Array.from({ length: n }, (_, i) => list[i] || emptyRow());
+};
+
+/* One delivery = supplier + invoice + receiver + vehicle °C. Invoice alone is
+   not enough: 11 Oct 2026 has two blocks on invoice 20756 taken by two people. */
+const deliveryKey = (e = {}) =>
+  ["supplier", "invoiceNo", "receivedBy", "vehicleTemp"].map((k) => String(e[k] ?? "").trim()).join("|");
+
+/* The input form (_shared/ReceivingLogForm) opens a day from `deliveries`, not
+   from the flat `entries`. An edit made here must rebuild both, otherwise the
+   next save from the input page brings the old lines back. */
+function deliveriesFromEntries(entries, oldDeliveries = []) {
+  const map = new Map();
+  for (const e of entries) {
+    const key = deliveryKey(e);
+    if (!map.has(key)) {
+      const old = (oldDeliveries || []).find((d) => deliveryKey(d) === key) || {};
+      map.set(key, {
+        ...old,
+        supplier: String(e.supplier ?? "").trim(),
+        invoiceNo: String(e.invoiceNo ?? "").trim(),
+        receivedBy: e.receivedBy ?? old.receivedBy ?? "",
+        vehicleTemp: e.vehicleTemp ?? old.vehicleTemp ?? "",
+        entries: [],
+      });
+    }
+    // eslint-disable-next-line no-unused-vars
+    const { supplier, invoiceNo, receivedBy, vehicleTemp, quantity, weightKg, images, ...line } = e;
+    map.get(key).entries.push(line);
+  }
+  return [...map.values()];
+}
+
+/* Readings that look copied rather than measured. */
+function temperatureChecks(entries = []) {
+  const rows = entries.filter(isFilledRow);
+  const out = [];
+  const temps = rows.map((e) => String(e.foodTemp ?? "").trim()).filter(Boolean);
+  if (temps.length >= 3 && new Set(temps).size === 1) {
+    const veh = new Set(rows.map((e) => String(e.vehicleTemp ?? "").trim()).filter(Boolean));
+    const sameAsVehicle = veh.size === 1 && [...veh][0] === temps[0];
+    out.push(
+      `All ${temps.length} products show the same food temperature (${temps[0]} °C)` +
+        (sameAsVehicle ? ", identical to the vehicle temperature" : "") +
+        " — check that each product was actually probed."
+    );
+  }
+  const noTemp = rows.filter((e) => !String(e.foodTemp ?? "").trim()).length;
+  if (noTemp) out.push(`${noTemp} line(s) have no food temperature.`);
+  const seen = new Map();
+  rows.forEach((e) => {
+    const k = `${String(e.itemCode ?? "").trim()}|${norm(e.foodItem)}`;
+    if (k !== "|") seen.set(k, [...(seen.get(k) || []), e]);
+  });
+  seen.forEach((list) => {
+    if (list.length > 1) {
+      out.push(`${safe(list[0].foodItem) || safe(list[0].itemCode)} is recorded ${list.length} times on this day.`);
+    }
+  });
+  return out;
+}
+
 export default function POS10ReceivingLogView() {
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -245,10 +312,9 @@ export default function POS10ReceivingLogView() {
       const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
 
-      const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
-      setEditRows(rows);
+      setEditRows(toEditRows(match?.payload?.entries));
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
-      setEditReceivedBy(match?.payload?.receivedBy || "");
+      setEditReceivedBy(match?.payload?.checkedBy || match?.payload?.receivedBy || "");
       setEditing(false);
     } catch (e) {
       console.error(e);
@@ -298,13 +364,9 @@ export default function POS10ReceivingLogView() {
 
   function toggleEdit() {
     if (editing) {
-      const rows = Array.from(
-        { length: 15 },
-        (_, i) => record?.payload?.entries?.[i] || emptyRow()
-      );
-      setEditRows(rows);
+      setEditRows(toEditRows(record?.payload?.entries));
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
-      setEditReceivedBy(record?.payload?.receivedBy || "");
+      setEditReceivedBy(record?.payload?.checkedBy || record?.payload?.receivedBy || "");
       setEditing(false);
       return;
     }
@@ -317,36 +379,45 @@ export default function POS10ReceivingLogView() {
     if (!record) return;
 
     const rid = getId(record);
-    const cleaned = editRows.filter(isFilledRow);
+    // The weight is edited here as "quantity" ("12 KG"); the input form reads
+    // netWeight — keep the three spellings of the same number in step.
+    const cleaned = editRows.filter(isFilledRow).map((e) => {
+      const kg = String(e.quantity ?? "").replace(/[^\d.]/g, "");
+      return kg ? { ...e, netWeight: kg, weightKg: kg } : e;
+    });
+    const deliveries = deliveriesFromEntries(cleaned, record?.payload?.deliveries);
+    const uniq = (k) => [...new Set(deliveries.map((d) => d[k]).filter(Boolean))].join(" / ");
 
     const payload = {
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
+      deliveries,
       entries: cleaned,
+      supplier: uniq("supplier"),
+      invoiceNo: uniq("invoiceNo"),
+      vehicleTemp: deliveries[0]?.vehicleTemp ?? "",
       verifiedBy: editVerifiedBy,
-      receivedBy: editReceivedBy,
+      // receivedBy = who took each delivery (lives on the delivery);
+      // the footer signature is the sheet's "Checked by".
+      receivedBy: uniq("receivedBy") || record?.payload?.receivedBy || "",
+      checkedBy: editReceivedBy,
       savedAt: Date.now(),
     };
 
     try {
       setLoading(true);
 
-      if (rid) {
-        try {
-          await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
-            method: "DELETE",
-          });
-        } catch (e) {
-          console.warn("DELETE (ignored error):", e);
+      // PUT on the existing id. The old DELETE-then-POST lost the whole day
+      // whenever the POST failed, and gave the record a new reference number.
+      const postRes = await fetch(
+        rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`,
+        {
+          method: rid ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reporter: "pos10", type: TYPE, payload }),
         }
-      }
-
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos10", type: TYPE, payload }),
-      });
+      );
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
 
       alert("✅ Changes saved");
@@ -783,6 +854,24 @@ export default function POS10ReceivingLogView() {
     return entries.filter((r) => rowHaystack(r).includes(q));
   }, [record, search]);
 
+  /* Supplier / invoice / vehicle °C belong to the DELIVERY, but the saved
+     lines carry a copy each — printed per line they read as the same
+     temperature repeated for every product. One merged cell per delivery. */
+  const deliverySpans = useMemo(() => {
+    const spans = new Array(viewRows.length).fill(0);
+    let i = 0;
+    while (i < viewRows.length) {
+      const k = deliveryKey(viewRows[i]);
+      let j = i + 1;
+      while (j < viewRows.length && deliveryKey(viewRows[j]) === k) j++;
+      spans[i] = j - i;
+      i = j;
+    }
+    return spans;
+  }, [viewRows]);
+
+  const dataChecks = useMemo(() => temperatureChecks(record?.payload?.entries || []), [record]);
+
   const editMatch = useMemo(() => {
     const q = norm(search);
     if (!q) return () => false;
@@ -894,6 +983,16 @@ export default function POS10ReceivingLogView() {
                   ))}
                 </div>
 
+                {/* Data checks — readings that look copied, missing or repeated */}
+                {!editing && dataChecks.length > 0 && (
+                  <div style={{ margin: "0 0 10px", padding: "9px 14px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e", fontSize: 14, lineHeight: 1.6 }}>
+                    <strong>⚠️ Data check</strong>
+                    {dataChecks.map((m, i) => (
+                      <div key={i}>• {m}</div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Legend strip — شريط طيفي */}
                 <div style={{
                   background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
@@ -947,8 +1046,22 @@ export default function POS10ReceivingLogView() {
                           <tr key={idx} style={zebra(idx)}>
                             <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                             <td style={tdCell}>{safe(r.foodItem)}</td>
-                            <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
-                            <td style={tdCell}>{safe(r.vehicleTemp)}</td>
+                            {deliverySpans[idx] > 0 && (
+                              <>
+                                <td style={{ ...tdCell, fontWeight: 700, background: "rgba(224,242,254,0.55)" }} rowSpan={deliverySpans[idx]}>
+                                  {safe(r.supplier)}
+                                  {safe(r.invoiceNo) && (
+                                    <div style={{ fontWeight: 600, color: "#475569", marginTop: 4 }}>Inv: {safe(r.invoiceNo)}</div>
+                                  )}
+                                  {safe(r.receivedBy) && (
+                                    <div style={{ fontWeight: 600, color: "#475569" }}>Rcv: {safe(r.receivedBy)}</div>
+                                  )}
+                                </td>
+                                <td style={{ ...tdCell, fontWeight: 700, background: "rgba(224,242,254,0.55)" }} rowSpan={deliverySpans[idx]}>
+                                  {safe(r.vehicleTemp)}
+                                </td>
+                              </>
+                            )}
                             <td style={tdCell}>{safe(r.foodTemp)}</td>
                             <td style={tdCell}>{safe(r.quantity)}</td>
                             <td style={tdCell}><Tick v={r.vehicleClean} /></td>
@@ -1181,10 +1294,12 @@ export default function POS10ReceivingLogView() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, flex: "1 1 320px", minWidth: 300 }}>
-                    <strong>Received by:</strong>
+                    {/* The input sheet signs "Checked by"; older records only
+                        carried "Received by", so that is the fallback. */}
+                    <strong>Checked by:</strong>
                     {!editing ? (
                       <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
-                        {safe(record.payload?.receivedBy)}
+                        <SignatureName name={safe(record.payload?.checkedBy || record.payload?.receivedBy)} underline={false} />
                       </span>
                     ) : (
                       <input
