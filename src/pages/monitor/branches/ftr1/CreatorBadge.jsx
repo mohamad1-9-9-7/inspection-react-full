@@ -38,48 +38,55 @@ export default function CreatorBadge({ name, empNo }) {
 }
 
 /**
- * Input field: employee number box + locked name box beside it.
- * `name` is resolved by the parent from the staff directory; `unknown` marks a
- * number that was typed but not found.
+ * Employee-number picker: number box + the resolved name beside it (locked —
+ * it can only come from the number). The name is plain text, not an input, so
+ * a long name is shown in full instead of being cut off.
+ * `name` is resolved by the parent; `unknown` marks a number not found.
  */
-export function CreatorField({ empNo, name, unknown, onEmpNoChange }) {
+export function EmpNoField({ label, icon = "👤", empNo, name, unknown, onEmpNoChange, title }) {
   return (
     <div style={{ ...CHIP, padding: "6px 8px 6px 12px", borderRadius: 12, flexWrap: "wrap" }}>
-      <span aria-hidden="true">👤</span>
-      <span style={{ color: "#64748b", fontWeight: 600 }}>Created by:</span>
+      <span aria-hidden="true">{icon}</span>
+      <span style={{ color: "#64748b", fontWeight: 600 }}>{label}</span>
       <input
         type="text"
         inputMode="numeric"
         placeholder="Emp. No."
         value={empNo}
         onChange={(e) => onEmpNoChange(e.target.value)}
-        title={unknown ? "Employee number not found in the Staff Directory" : "Your employee number"}
+        title={unknown ? "Employee number not found in the Staff Directory" : title || "Employee number"}
         style={{
           ...BOX,
-          width: 110,
+          width: 100,
           textAlign: "center",
           fontWeight: 700,
           borderColor: unknown || !empNo ? "#ef4444" : "#cbd5e1",
           background: unknown ? "#fef2f2" : "#fff",
         }}
       />
-      <input
-        type="text"
-        readOnly
-        tabIndex={-1}
-        value={name}
-        placeholder={unknown ? "Not found" : "Name fills from the number"}
-        title={name || "Filled automatically from the employee number"}
+      <span
+        title="Filled automatically from the employee number"
         style={{
           ...BOX,
-          width: 220,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          minWidth: 200,
           borderColor: "#e2e8f0",
           background: "#f1f5f9",
           color: name ? "#0f172a" : unknown ? "#dc2626" : "#94a3b8",
-          fontWeight: 600,
-          cursor: "not-allowed",
+          fontWeight: name ? 700 : 500,
+          whiteSpace: "nowrap",
         }}
-      />
+      >
+        <span aria-hidden="true" style={{ opacity: 0.6 }}>🔒</span>
+        {name || (unknown ? "Not found" : "Name fills from the number")}
+      </span>
     </div>
   );
+}
+
+/** Created by = EmpNoField with its fixed label. */
+export function CreatorField(props) {
+  return <EmpNoField label="Created by:" title="Your employee number" {...props} />;
 }

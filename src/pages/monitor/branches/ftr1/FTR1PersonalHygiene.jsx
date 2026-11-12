@@ -1,7 +1,7 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygiene.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CncToggle from "../_shared/CncToggle";
-import { CreatorField } from "./CreatorBadge";
+import { CreatorField, EmpNoField } from "./CreatorBadge";
 import { getCurrentUser } from "../../../../utils/perms";
 import {
   COMPANY_DIRECTORY,
@@ -29,6 +29,8 @@ const API_BASE =
 
 /** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
 const PH_FORM_KEY = "ftr1_personal_hygiene";
+/** Pre-filled QA verifier (editable). */
+const DEFAULT_QA_VERIFIER = "MOHAMAD ABDULLAH";
 const COMPANY_BY_NO = new Map(COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d]));
 
 const HYGIENE_COLUMNS = [
@@ -69,8 +71,9 @@ function currentUsername() {
 export default function FTR1PersonalHygiene() {
   const [date, setDate] = useState("");
   const [entries, setEntries] = useState(Array.from({ length: 9 }, makeEmptyRow));
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedByQA, setVerifiedByQA] = useState("");
+  const [checkedNo, setCheckedNo] = useState("");
+  // QA verifier defaults to the QA owner; still editable for a stand-in.
+  const [verifiedByQA, setVerifiedByQA] = useState(DEFAULT_QA_VERIFIER);
   const [opMsg, setOpMsg] = useState("");
 
   const { roster, loading: staffLoading, byNo } = useStaffDirectory(PH_FORM_KEY);
@@ -86,6 +89,11 @@ export default function FTR1PersonalHygiene() {
   const creatorMatch = findEmployee(creatorNo);
   const creatorName = creatorMatch ? creatorMatch.name : "";
   const creatorUnknown = !!norm(creatorNo) && !staffLoading && !creatorMatch;
+
+  // Checked By = the branch supervisor (PIC), also picked by employee number.
+  const checkedMatch = findEmployee(checkedNo);
+  const checkedBy = checkedMatch ? checkedMatch.name : "";
+  const checkedUnknown = !!norm(checkedNo) && !staffLoading && !checkedMatch;
 
   // Pre-fill the sheet once with the people assigned to this form, as long as
   // nobody has typed into it yet.
@@ -133,7 +141,9 @@ export default function FTR1PersonalHygiene() {
     const errs = [];
 
     if (!date) errs.push("Please select a date.");
-    if (!norm(checkedBy)) errs.push("Checked By is required.");
+    if (!norm(checkedNo)) errs.push("Checked By: enter the supervisor's employee number.");
+    else if (checkedUnknown)
+      errs.push(`Checked By: employee number "${norm(checkedNo)}" was not found in the Staff Directory.`);
     if (!norm(verifiedByQA)) errs.push("Verified by (QA) is required.");
     if (!norm(creatorNo)) errs.push("Created by: enter your employee number.");
     else if (creatorUnknown)
@@ -178,7 +188,7 @@ export default function FTR1PersonalHygiene() {
 
     return errs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, checkedBy, verifiedByQA, entries, staffLoading, byNo, creatorNo, creatorUnknown]);
+  }, [date, checkedBy, verifiedByQA, entries, staffLoading, byNo, creatorNo, creatorUnknown, checkedNo, checkedUnknown]);
 
   const handleSave = async () => {
     if (validationErrors.length) {
@@ -196,6 +206,7 @@ export default function FTR1PersonalHygiene() {
         // blank lines are left out of the saved sheet
         entries: entries.filter((r) => norm(r.empNo) || norm(r.name)),
         checkedBy: norm(checkedBy),
+        checkedByEmpNo: norm(checkedNo),
         verifiedByQA: norm(verifiedByQA),
 
         // the account that filled the sheet in (may differ from Checked By)
@@ -547,19 +558,19 @@ export default function FTR1PersonalHygiene() {
           fontWeight: 600,
         }}
       >
-        <div>
-          Checked By:{" "}
-          <input
-            type="text"
-            required
-            value={checkedBy}
-            onChange={(e) => setCheckedBy(e.target.value)}
-            style={footerInput}
-          />
-        </div>
+        <EmpNoField
+          label="Checked By:"
+          icon="🧑‍💼"
+          title="Branch supervisor (PIC) employee number"
+          empNo={checkedNo}
+          name={checkedBy}
+          unknown={checkedUnknown}
+          onEmpNoChange={setCheckedNo}
+        />
 
-        <div>
-          Verified by (QA):{" "}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span aria-hidden="true">✅</span>
+          Verified by (QA):
           <input
             type="text"
             required
