@@ -46,6 +46,10 @@ const buildPayload = (d) =>
         date: String(e?.date || ""),
         timeOfCooking: String(e?.timeOfCooking || ""),
         foodName: String(e?.foodName || ""),
+        // since Nov 2026 the input keeps code + name apart (foodName = "code — name")
+        itemCode: String(e?.itemCode || ""),
+        productName: String(e?.productName || ""),
+        result: String(e?.result || ""),
         coreTemp: String(e?.coreTemp || ""),
         holdTime: String(e?.holdTime || ""),
         correctiveAction: String(e?.correctiveAction || ""),
@@ -424,9 +428,9 @@ export default function FTR1CookingTemperatureLogView() {
                 <tr>
                   <th style={thCell}>Date</th>
                   <th style={thCell}>Time of cooking</th>
-                  <th style={thCell}>Name of the Food</th>
+                  <th style={thCell}>Product (code — name)</th>
                   <th style={thCell}>Core Temp (°C)</th>
-                  <th style={thCell}>Time</th>
+                  <th style={thCell}>Held at core temp</th>
                   <th style={thCell}>Corrective Action (if any)</th>
                   <th style={thCell}>Checked by</th>
                 </tr>

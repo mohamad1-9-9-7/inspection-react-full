@@ -3,9 +3,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { useStaffDirectory } from "../_shared/staffRegistry";
 import { useFtrSignatures, FtrSignatureBlock } from "./ftr1Signatures";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 /* ===== Draft (localStorage) ===== */
-const DRAFT_KEY = "ftr1_cooking_temp_log_draft_v1";
+const DRAFT_KEY = "ftr1_cooking_temp_log_draft_v2";
 const loadDraft = () => {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
@@ -24,15 +25,38 @@ const BRANCH = "FTR 1 Food Truck";
 /* رقم المستند (المقترح الجديد) */
 const DOC_NO = "FS-QM/REC/CTL"; // Cooking Temperature Log
 
-/* قالب سطر */
+/* قالب سطر — the report date is the sheet's (no date per row); the product is
+   item code + name from the catalog. */
 const emptyRow = () => ({
-  date: "",
   timeOfCooking: "",
-  foodName: "",
+  itemCode: "",
+  productName: "",
   coreTemp: "",
   holdTime: "",
   correctiveAction: "",
 });
+
+/* How long the CENTRE of the product stayed at its core temperature. */
+const HOLD_OPTIONS = [
+  { v: "", label: "—", sec: null },
+  { v: "30s", label: "30 sec", sec: 30 },
+  { v: "1m", label: "1 min", sec: 60 },
+  { v: "2m", label: "2 min", sec: 120 },
+  { v: "2m+", label: "More than 2 min", sec: 180 },
+];
+const holdSec = (v) => (HOLD_OPTIONS.find((o) => o.v === v) || {}).sec ?? null;
+const holdLabel = (v) => (HOLD_OPTIONS.find((o) => o.v === v) || {}).label || v || "";
+
+/* Safe = core 75 °C for 30 s, or core 70 °C for 2 min. */
+function cookResult(r) {
+  const tC = r.coreTemp === "" || r.coreTemp == null ? null : Number(r.coreTemp);
+  const s = holdSec(r.holdTime);
+  if (tC == null || Number.isNaN(tC)) return { key: "", label: "—", color: "#64748b", bg: "#f1f5f9" };
+  if ((tC >= 75 && (s == null || s >= 30)) || (tC >= 70 && s != null && s >= 120))
+    return { key: "pass", label: "Safe", color: "#166534", bg: "#dcfce7" };
+  if (tC >= 70 && s == null) return { key: "hold", label: "Enter hold time", color: "#92400e", bg: "#fef3c7" };
+  return { key: "fail", label: "Not safe", color: "#991b1b", bg: "#fee2e2" };
+}
 
 export default function FTR1CookingTemperatureLogInput() {
   // تاريخ عام للتقرير (اختياري للحفظ كميتا)
@@ -115,14 +139,8 @@ export default function FTR1CookingTemperatureLogInput() {
   });
 
   // عرض الأعمدة
-  const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 120 }} />,
-    <col key="toc"  style={{ width: 140 }} />,
-    <col key="food" style={{ width: 260 }} />,
-    <col key="temp" style={{ width: 140 }} />,
-    <col key="time" style={{ width: 140 }} />,
-    <col key="ca"   style={{ width: 240 }} />,
-  ]), []);
+  /* globals.css wipes <col> widths — widths sit on the header cells. */
+  const thW = (w) => ({ ...thCell, width: w, minWidth: w, maxWidth: w });
 
   function updateRow(i, key, val) {
     setRows((prev) => {
@@ -131,6 +149,9 @@ export default function FTR1CookingTemperatureLogInput() {
       return next;
     });
   }
+
+  const setProduct = (i, { code, name }) =>
+    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, itemCode: code, productName: name } : r)));
 
   function addRow() {
     setRows((prev) => [...prev, emptyRow()]);
@@ -141,6 +162,18 @@ export default function FTR1CookingTemperatureLogInput() {
       Object.values(r).some((v) => String(v || "").trim() !== "")
     );
     if (!entries.length) return alert("لا يوجد بيانات للحفظ.");
+    const rowErrors = [];
+    entries.forEach((r) => {
+      const i = rows.indexOf(r) + 1;
+      if (!String(r.productName || "").trim()) rowErrors.push(`Row ${i}: choose the product (code or name).`);
+      if (!String(r.timeOfCooking || "").trim()) rowErrors.push(`Row ${i}: enter the time of cooking.`);
+      const res = cookResult(r);
+      if (!res.key) rowErrors.push(`Row ${i}: enter the core temperature.`);
+      if (res.key === "hold") rowErrors.push(`Row ${i}: core is 70–75 °C — enter how long it was held.`);
+      if (res.key === "fail" && !String(r.correctiveAction || "").trim())
+        rowErrors.push(`Row ${i}: limit not reached — write the corrective action (continue cooking and re-check).`);
+    });
+    if (rowErrors.length) return alert("⚠️ Please fix:\n\n- " + rowErrors.join("\n- "));
     if (sig.errors.length) return alert("⚠️ Please fix:\n\n- " + sig.errors.join("\n- "));
     const signed = sig.fields();
 
@@ -151,11 +184,15 @@ export default function FTR1CookingTemperatureLogInput() {
       branch: BRANCH,
       reportDate, // ميتاداتا اختيارية
       entries: entries.map((r) => ({
-        date: r.date || "",
+        date: reportDate, // the sheet's date (older viewer / Excel read it per row)
         timeOfCooking: r.timeOfCooking || "",
-        foodName: r.foodName || "",
+        itemCode: String(r.itemCode || "").trim(),
+        productName: String(r.productName || "").trim(),
+        // older viewer / Excel column
+        foodName: [String(r.itemCode || "").trim(), String(r.productName || "").trim()].filter(Boolean).join(" — "),
         coreTemp: r.coreTemp || "",
-        holdTime: r.holdTime || "",
+        holdTime: holdLabel(r.holdTime),
+        result: cookResult(r).key,
         correctiveAction: r.correctiveAction || "",
         checkedBy: signed.checkedBy,
       })),
@@ -226,34 +263,42 @@ export default function FTR1CookingTemperatureLogInput() {
       {/* ===== Table ===== */}
       <div style={{ overflowX:"auto" }}>
         <table style={gridStyle}>
-          <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time of cooking</th>
-              <th style={thCell}>Name of the Food</th>
-              <th style={thCell}>Core Temp (°C)</th>
-              <th style={thCell}>Time</th>
-              <th style={thCell}>Corrective Action{"\n"}(if any)</th>
+              <th style={thW(120)}>Time of cooking</th>
+              <th style={thW(140)}>Item code</th>
+              <th style={thW(300)}>Product name</th>
+              <th style={thW(120)}>Core temp (°C)</th>
+              <th style={thW(150)}>Held at core temp</th>
+              <th style={thW(120)}>Result</th>
+              <th style={thW(260)}>Corrective action{"\n"}(if any)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
                 <td style={tdCell}>
-                  <input type="date" value={r.date} onChange={(e)=>updateRow(i,"date",e.target.value)} style={inputStyle} />
-                </td>
-                <td style={tdCell}>
                   <input type="time" value={r.timeOfCooking} onChange={(e)=>updateRow(i,"timeOfCooking",e.target.value)} style={inputStyle} />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.foodName} onChange={(e)=>updateRow(i,"foodName",e.target.value)} style={inputStyle} placeholder="e.g., Chicken breast, beef stew…" />
+                  <ItemCodeInput code={r.itemCode || ""} name={r.productName || ""} onChange={(pair) => setProduct(i, pair)} style={inputStyle} />
+                </td>
+                <td style={tdCell}>
+                  <ItemNameInput code={r.itemCode || ""} name={r.productName || ""} onChange={(pair) => setProduct(i, pair)} style={inputStyle} placeholder="Search code or product…" />
                 </td>
                 <td style={tdCell}>
                   <input type="number" step="0.1" value={r.coreTemp} onChange={(e)=>updateRow(i,"coreTemp",e.target.value)} style={inputStyle} placeholder="°C" />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.holdTime} onChange={(e)=>updateRow(i,"holdTime",e.target.value)} style={inputStyle} placeholder="e.g., 15 min" />
+                  <select value={r.holdTime} onChange={(e)=>updateRow(i,"holdTime",e.target.value)} style={inputStyle}>
+                    {HOLD_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                  </select>
+                </td>
+                <td style={tdCell}>
+                  {(() => {
+                    const res = cookResult(r);
+                    return <span style={{ display: "inline-block", minWidth: 80, padding: "3px 10px", borderRadius: 999, background: res.bg, color: res.color, fontWeight: 800 }}>{res.label}</span>;
+                  })()}
                 </td>
                 <td style={tdCell}>
                   <input type="text" value={r.correctiveAction} onChange={(e)=>updateRow(i,"correctiveAction",e.target.value)} style={inputStyle} placeholder="If temp not met…" />
@@ -274,21 +319,27 @@ export default function FTR1CookingTemperatureLogInput() {
         <div style={{ fontWeight:800, marginBottom:4 }}>Direction / التوجيه:</div>
         <div style={{ fontSize:12 }}>
           <div>
-            Record the date, time and food/dish name. Take the core temperature of the product and the time
-            combination. Record the deviation and the corrective action taken if there is any. Put the
-            name/signature of the person in charge of monitoring.
+            Record the time of cooking and the product (item code + name). When the product is cooked, insert a
+            clean, calibrated probe into the centre of the thickest piece and record the core temperature, and how
+            long the centre stayed at that temperature. If the limit is not reached, continue cooking, re-check and
+            record the corrective action.
           </div>
           <div dir="rtl" style={{ marginTop:4 }}>
-            دوّن التاريخ والوقت واسم الغذاء/الطبق. خذ درجة الحرارة القلبية للمنتج مع زمن الطهي/الاحتجاز.
-            سجّل أي انحراف والإجراء التصحيحي المتخذ إن وجد. اكتب اسم/توقيع الشخص المسؤول عن المتابعة.
+            سجّل وقت الطهي والمنتج (الكود + الاسم). بعد ما يستوي المنتج، أدخل ميزان حرارة نظيف ومُعاير بمنتصف أسمك
+            قطعة وسجّل درجة الحرارة القلبية والمدة اللي ضلّ فيها قلب المنتج على هالدرجة. إذا ما وصل للحد، كمّل الطهي
+            وأعد القياس وسجّل الإجراء التصحيحي.
           </div>
         </div>
 
         <div style={{ fontWeight:800, marginTop:10, marginBottom:4 }}>Limit / الحد:</div>
         <div style={{ fontSize:12 }}>
-          Cooking (core temperature of <strong>75°C for 30 sec</strong> / <strong>70°C for 2 minutes</strong>).
+          Core (centre) temperature of <strong>75°C held for 30 seconds</strong>, or <strong>70°C held for 2 minutes</strong>.
+          The time is how long the centre stays at that temperature once it is reached — not the total cooking time
+          (fries, for example, cook for several minutes; what counts is the core temperature at the end).
           <div dir="rtl" style={{ marginTop:4 }}>
-            الطهي (درجة الحرارة القلبية <strong>75°م لمدة 30 ثانية</strong> / <strong>70°م لمدة دقيقتين</strong>).
+            درجة حرارة قلب المنتج <strong>75°م وتثبت 30 ثانية</strong>، أو <strong>70°م وتثبت دقيقتين</strong>.
+            المدة هي الوقت اللي بيضل فيه قلب المنتج على هالدرجة بعد ما يوصلها — مش مدة الطهي كلها
+            (البطاطا مثلاً بتنقلى كم دقيقة، والمهم حرارة قلبها بالآخر).
           </div>
         </div>
 
