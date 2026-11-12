@@ -21,8 +21,8 @@ const API_BASE =
  * ✅ ملاحظة: Checked By من قبل مشرف الفرع الحاصل على شهادة PIC
  * ✅ حذف Area badge اللي كانت طالعة لحالها على الطرف
  * ✅ Employee No.: typing it looks the person up (Staff Directory, then the
- *    company directory) and fills the name; the name stays editable for
- *    people who aren't in either list yet.
+ *    company directory) and fills the name. The name is LOCKED — it can only
+ *    come from a known employee number; an unknown number blocks the save.
  */
 
 /** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
@@ -98,11 +98,11 @@ export default function FTR1PersonalHygiene() {
     const updated = [...entries];
     updated[rowIndex] = { ...updated[rowIndex], [field]: value };
 
-    // Employee No. fills the name when the number is known; an unknown
-    // number leaves whatever name was typed.
+    // The name is locked: it comes only from the Employee No. An unknown
+    // number leaves the name empty (and the row is flagged).
     if (field === "empNo") {
       const match = findEmployee(value);
-      if (match) updated[rowIndex].name = match.name;
+      updated[rowIndex].name = match ? match.name : "";
     }
 
     // ✅ إذا Fit = Yes امسح أسباب الـ No
@@ -133,6 +133,9 @@ export default function FTR1PersonalHygiene() {
 
     // ✅ تحقق على الصفوف اللي فيها اسم
     entries.forEach((r, idx) => {
+      if (!staffLoading && norm(r.empNo) && !findEmployee(r.empNo))
+        errs.push(`Row ${idx + 1}: Employee No. "${norm(r.empNo)}" was not found in the Staff Directory.`);
+
       const hasName = !!norm(r.name);
       if (!hasName) return;
 
@@ -157,7 +160,8 @@ export default function FTR1PersonalHygiene() {
     });
 
     return errs;
-  }, [date, checkedBy, verifiedByQA, entries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, checkedBy, verifiedByQA, entries, staffLoading, byNo]);
 
   const handleSave = async () => {
     if (validationErrors.length) {
@@ -310,215 +314,176 @@ export default function FTR1PersonalHygiene() {
         </div>
       )}
 
-      {/* Table */}
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          tableLayout: "fixed",
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#2980b9", color: "#fff" }}>
-            <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "100px" }}>Employee No.</th>
-            <th style={{ ...thStyle, width: "160px" }}>Employee Name</th>
-
-            {HYGIENE_COLUMNS.map((col, i) => (
-              <th key={i} style={{ ...thStyle, width: "130px" }}>
-                {col}
-              </th>
+      {/* Table — scrolls sideways inside its own frame instead of squeezing columns */}
+      <div style={tableFrame}>
+        <table style={tableStyle}>
+          <colgroup>
+            <col style={{ width: 52 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 210 }} />
+            {HYGIENE_COLUMNS.map((col) => (
+              <col key={col} style={{ width: col.startsWith("Wearing") ? 190 : 128 }} />
             ))}
+            <col style={{ width: 130 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 180 }} />
+            <col style={{ width: 260 }} />
+            <col style={{ width: 52 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={thStyle}>S.No</th>
+              <th style={thStyle}>Employee No.</th>
+              <th style={thStyle}>Employee Name 🔒</th>
+              {HYGIENE_COLUMNS.map((col) => (
+                <th key={col} style={thStyle}>{col}</th>
+              ))}
+              <th style={thStyle}>Fit for Food Handling?<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thStyle}>If No: Communicable disease<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thStyle}>If No: Open wound<br /><span style={thSub}>(Yes/No)</span></th>
+              <th style={thStyle}>If No: Other</th>
+              <th style={thStyle}>Remarks and Corrective Actions</th>
+              <th style={thStyle} aria-label="Remove row"></th>
+            </tr>
+          </thead>
 
-            <th style={{ ...thStyle, width: "150px" }}>
-              Fit for Food Handling?
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "140px" }}>
-              If No: Communicable disease
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "140px" }}>
-              If No: Open wound
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "170px" }}>If No: Other (text)</th>
+          <tbody>
+            {entries.map((entry, i) => {
+              const fit = norm(entry.fitForFoodHandling);
+              const isNo = fit === "No";
+              const unknownNo = !!norm(entry.empNo) && !staffLoading && !findEmployee(entry.empNo);
+              const rowBg = i % 2 ? "#f8fafc" : "#fff";
 
-            <th style={{ ...thStyle, width: "260px" }}>
-              Remarks and Corrective Actions
-            </th>
-            <th style={{ ...thStyle, width: "50px" }}></th>
-          </tr>
-        </thead>
+              return (
+                <tr key={i} style={{ background: rowBg }}>
+                  <td style={{ ...tdStyle, color: "#64748b", fontWeight: 700 }}>{i + 1}</td>
 
-        <tbody>
-          {entries.map((entry, i) => {
-            const fit = norm(entry.fitForFoodHandling);
-            const isNo = fit === "No";
-
-            return (
-              <tr key={i}>
-                <td style={tdStyle}>{i + 1}</td>
-
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="No."
-                    value={entry.empNo || ""}
-                    onChange={(e) => handleChange(i, "empNo", e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      borderColor: norm(entry.empNo) && !findEmployee(entry.empNo) ? "#f59e0b" : "#aaa",
-                    }}
-                    title={norm(entry.empNo) && !findEmployee(entry.empNo) ? "Employee number not found — type the name" : ""}
-                  />
-                </td>
-
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.name}
-                    onChange={(e) => handleChange(i, "name", e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      maxWidth: "150px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  />
-                </td>
-
-                {/* ✅ نظافة عامة (C/NC) — زرّين بدل القائمة */}
-                {HYGIENE_COLUMNS.map((col, cIndex) => (
-                  <td key={cIndex} style={tdStyle}>
-                    <CncToggle value={entry[col]} onChange={(v) => handleChange(i, col, v)} minWidth={0} />
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Emp. No."
+                      value={entry.empNo || ""}
+                      onChange={(e) => handleChange(i, "empNo", e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        textAlign: "center",
+                        fontWeight: 700,
+                        borderColor: unknownNo ? "#ef4444" : inputStyle.borderColor,
+                        background: unknownNo ? "#fef2f2" : "#fff",
+                      }}
+                      title={unknownNo ? "Employee number not found in the Staff Directory" : ""}
+                    />
                   </td>
-                ))}
 
-                {/* ✅ Fit Yes/No */}
-                <td style={tdStyle}>
-                  <select
-                    value={entry.fitForFoodHandling}
-                    onChange={(e) =>
-                      handleChange(i, "fitForFoodHandling", e.target.value)
-                    }
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      borderColor: fit ? "#aaa" : "#ef4444",
-                    }}
-                  >
-                    {YESNO.map((v) => (
-                      <option key={v} value={v}>
-                        {v || "--"}
-                      </option>
-                    ))}
-                  </select>
-                </td>
+                  {/* 🔒 Name is locked — filled only from the employee number */}
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      readOnly
+                      tabIndex={-1}
+                      value={entry.name}
+                      placeholder={unknownNo ? "Not found" : "Enter Emp. No."}
+                      title={entry.name || "Filled automatically from the employee number"}
+                      style={{
+                        ...inputStyle,
+                        ...lockedStyle,
+                        color: entry.name ? "#0f172a" : unknownNo ? "#dc2626" : "#94a3b8",
+                      }}
+                    />
+                  </td>
 
-                {/* ✅ If No reasons */}
-                <td style={tdStyle}>
-                  <select
-                    value={entry.reasonCommunicableDisease}
-                    onChange={(e) =>
-                      handleChange(i, "reasonCommunicableDisease", e.target.value)
-                    }
-                    disabled={!isNo}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      background: !isNo ? "#f8fafc" : "#fff",
-                    }}
-                  >
-                    {YESNO.map((v) => (
-                      <option key={v} value={v}>
-                        {v || "--"}
-                      </option>
-                    ))}
-                  </select>
-                </td>
+                  {/* ✅ نظافة عامة (C/NC) — زرّين بدل القائمة */}
+                  {HYGIENE_COLUMNS.map((col) => (
+                    <td key={col} style={tdStyle}>
+                      <CncToggle value={entry[col]} onChange={(v) => handleChange(i, col, v)} minWidth={0} />
+                    </td>
+                  ))}
 
-                <td style={tdStyle}>
-                  <select
-                    value={entry.reasonOpenWound}
-                    onChange={(e) =>
-                      handleChange(i, "reasonOpenWound", e.target.value)
-                    }
-                    disabled={!isNo}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      background: !isNo ? "#f8fafc" : "#fff",
-                    }}
-                  >
-                    {YESNO.map((v) => (
-                      <option key={v} value={v}>
-                        {v || "--"}
-                      </option>
-                    ))}
-                  </select>
-                </td>
+                  {/* ✅ Fit Yes/No */}
+                  <td style={tdStyle}>
+                    <select
+                      value={entry.fitForFoodHandling}
+                      onChange={(e) => handleChange(i, "fitForFoodHandling", e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        borderColor: !fit && norm(entry.name) ? "#ef4444" : inputStyle.borderColor,
+                      }}
+                    >
+                      {YESNO.map((v) => (
+                        <option key={v} value={v}>{v || "--"}</option>
+                      ))}
+                    </select>
+                  </td>
 
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.reasonOther}
-                    onChange={(e) => handleChange(i, "reasonOther", e.target.value)}
-                    disabled={!isNo}
-                    placeholder={!isNo ? "" : "Other reason..."}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      background: !isNo ? "#f8fafc" : "#fff",
-                    }}
-                  />
-                </td>
+                  {/* ✅ If No reasons */}
+                  {["reasonCommunicableDisease", "reasonOpenWound"].map((field) => (
+                    <td key={field} style={tdStyle}>
+                      <select
+                        value={entry[field]}
+                        onChange={(e) => handleChange(i, field, e.target.value)}
+                        disabled={!isNo}
+                        style={{ ...inputStyle, ...(!isNo ? disabledStyle : null) }}
+                      >
+                        {YESNO.map((v) => (
+                          <option key={v} value={v}>{v || "--"}</option>
+                        ))}
+                      </select>
+                    </td>
+                  ))}
 
-                {/* ✅ Corrective action required if No */}
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.remarks}
-                    onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                    placeholder={
-                      isNo ? "Required if Fit is No (transfer/exclude/clinic)" : ""
-                    }
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      borderColor: isNo && !norm(entry.remarks) ? "#ef4444" : "#aaa",
-                    }}
-                  />
-                </td>
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      value={entry.reasonOther}
+                      onChange={(e) => handleChange(i, "reasonOther", e.target.value)}
+                      disabled={!isNo}
+                      placeholder={!isNo ? "" : "Other reason..."}
+                      style={{ ...inputStyle, ...(!isNo ? disabledStyle : null) }}
+                    />
+                  </td>
 
-                <td style={tdStyle}>
-                  <button
-                    type="button"
-                    title="Remove row"
-                    onClick={() => removeRow(i)}
-                    disabled={entries.length <= 1}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 6,
-                      border: "1px solid #ef4444",
-                      color: "#ef4444",
-                      background: "#fff",
-                      cursor: entries.length <= 1 ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ✖
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  {/* ✅ Corrective action required if No */}
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      value={entry.remarks}
+                      onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                      placeholder={isNo ? "Required: transfer / exclude / clinic" : ""}
+                      style={{
+                        ...inputStyle,
+                        borderColor: isNo && !norm(entry.remarks) ? "#ef4444" : inputStyle.borderColor,
+                      }}
+                    />
+                  </td>
+
+                  <td style={tdStyle}>
+                    <button
+                      type="button"
+                      title="Remove row"
+                      onClick={() => removeRow(i)}
+                      disabled={entries.length <= 1}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        border: "1px solid #fecaca",
+                        color: "#ef4444",
+                        background: "#fff",
+                        cursor: entries.length <= 1 ? "not-allowed" : "pointer",
+                        opacity: entries.length <= 1 ? 0.4 : 1,
+                      }}
+                    >
+                      ✖
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       <div style={{ marginTop: "0.5rem" }}>
         <button
@@ -579,7 +544,7 @@ export default function FTR1PersonalHygiene() {
                 norm(verifiedByQA) &&
                 norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()
                   ? "#ef4444"
-                  : "#aaa",
+                  : "#cbd5e1",
             }}
           />
         </div>
@@ -612,35 +577,86 @@ export default function FTR1PersonalHygiene() {
   );
 }
 
-const thStyle = {
-  padding: "6px",
-  border: "1px solid #ccc",
-  textAlign: "center",
-  fontSize: "0.85rem",
+const tableFrame = {
+  width: "100%",
+  overflowX: "auto",
+  border: "1px solid #dbe3ee",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(15,23,42,.06)",
 };
 
-const tdStyle = {
-  padding: "6px",
-  border: "1px solid #ccc",
+const tableStyle = {
+  width: "100%",
+  minWidth: 1700,
+  borderCollapse: "collapse",
+  tableLayout: "fixed",
+};
+
+const thStyle = {
+  padding: "10px 8px",
+  background: "#2980b9",
+  color: "#fff",
+  border: "1px solid #2472a4",
   textAlign: "center",
+  verticalAlign: "middle",
+  fontWeight: 700,
+  lineHeight: 1.3,
+  whiteSpace: "normal",
+  wordBreak: "break-word",
+};
+
+const thSub = { fontWeight: 500, opacity: 0.85 };
+
+const tdStyle = {
+  padding: "8px",
+  height: 52,
+  border: "1px solid #e2e8f0",
+  textAlign: "center",
+  verticalAlign: "middle",
 };
 
 const tdHeader = {
   border: "1px solid #ccc",
-  padding: "4px 6px",
-  fontSize: "0.85rem",
+  padding: "6px 10px",
 };
 
 const inputStyle = {
-  padding: "4px 6px",
-  borderRadius: "4px",
-  border: "1px solid #aaa",
+  display: "block",
   width: "100%",
+  height: 36,
+  boxSizing: "border-box",
+  padding: "0 10px",
+  borderRadius: 8,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#cbd5e1",
+  background: "#fff",
+};
+
+const lockedStyle = {
+  background: "#f1f5f9",
+  borderColor: "#e2e8f0",
+  textAlign: "left",
+  fontWeight: 600,
+  cursor: "not-allowed",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const disabledStyle = {
+  background: "#f1f5f9",
+  borderColor: "#e2e8f0",
+  cursor: "not-allowed",
 };
 
 const footerInput = {
-  border: "1px solid #aaa",
-  borderRadius: "6px",
-  padding: "4px 6px",
-  minWidth: "180px",
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "#cbd5e1",
+  borderRadius: 8,
+  height: 36,
+  boxSizing: "border-box",
+  padding: "0 10px",
+  minWidth: 220,
 };
