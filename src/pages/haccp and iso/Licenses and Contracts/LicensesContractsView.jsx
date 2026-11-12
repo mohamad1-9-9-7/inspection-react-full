@@ -20,6 +20,7 @@ import {
   collectHistory, contractUid, newUid,
 } from "./licensesKit";
 import { uploadPicked, writeRecord } from "./licensesNet";
+import DocumentsViewer from "./DocumentsViewer";
 
 const BRANCHES = [
   "Al Qusais Warehouse",
@@ -51,6 +52,7 @@ const T = {
     renewTitle: "Renew document", current: "Current", newDoc: "New", expiry: "Expiry date",
     renewedOn: "New issue date", newExpiry: "New expiry date", samePeriod: "Same period",
     validFor: "Valid for:", daysWord: "days",
+    viewDocs: "View documents", archivedN: (n) => `${n} archived`,
     errNoIssue: "Enter the new issue date.", errBeforeIssue: "The expiry date must be after the issue date.",
     plus1: "+1 year", plus2: "+2 years", plus3: "+3 years", plus6m: "+6 months",
     newFiles: "New document (PDF or images)", keepOld: "Keep the old files attached too (otherwise they move to the archive)",
@@ -95,6 +97,7 @@ const T = {
     renewTitle: "تجديد المستند", current: "الحالي", newDoc: "الجديد", expiry: "تاريخ الانتهاء",
     renewedOn: "تاريخ الإصدار الجديد", newExpiry: "تاريخ الانتهاء الجديد", samePeriod: "نفس المدة",
     validFor: "مدة الصلاحية:", daysWord: "يوم",
+    viewDocs: "عرض المستندات", archivedN: (n) => `${n} مؤرشف`,
     errNoIssue: "أدخل تاريخ الإصدار الجديد.", errBeforeIssue: "تاريخ الانتهاء يجب أن يكون بعد تاريخ الإصدار.",
     plus1: "+ سنة", plus2: "+ سنتين", plus3: "+ 3 سنوات", plus6m: "+ 6 أشهر",
     newFiles: "المستند الجديد (PDF أو صور)", keepOld: "إبقاء الملفات القديمة مرفقة أيضاً (وإلا تنتقل إلى الأرشيف)",
@@ -265,7 +268,7 @@ function PreviewModal({ state, onClose, setState }) {
 }
 
 /* ───────────────────────── Renew modal ───────────────────────── */
-function RenewModal({ t, lang, item, onClose, onSave }) {
+function RenewModal({ t, lang, item, onClose, onSave, onViewDocs }) {
   const prevExp = item.expiryDate || "";
   const lastRen = item.lastRenewal;
   // the previous validity length: last renewal (issue date → expiry), if any
@@ -343,7 +346,9 @@ function RenewModal({ t, lang, item, onClose, onSave }) {
             <div style={{ fontSize: 18, fontWeight: 900, marginTop: 4 }}>{fmtDate(prevExp, lang)}</div>
             <div style={{ marginTop: 6 }}><StatusPill t={t} expiryDate={prevExp} small /></div>
             <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {item.files.length ? item.files.map((u, i) => <FileChip key={u} url={u} label={fileLabel(u, i)} />) : <span style={{ fontSize: 12, color: C.faint }}>{t.noFiles}</span>}
+              {item.files.length || item.renewals.length
+                ? <button type="button" style={mini} onClick={() => onViewDocs?.(item)}>🗂 {t.viewDocs} ({item.files.length}{item.renewals.length ? ` + ${t.archivedN(item.renewals.length)}` : ""})</button>
+                : <span style={{ fontSize: 12, color: C.faint }}>{t.noFiles}</span>}
             </div>
           </div>
           <div style={{ border: "1.5px solid #86efac", background: "#f0fdf4", borderRadius: 14, padding: 12 }}>
@@ -530,6 +535,7 @@ export default function LicensesContractsView() {
 
   const [preview, setPreview] = useState({ open: false, title: "", urls: [], index: 0 });
   const [renewItem, setRenewItem] = useState(null);
+  const [docsItem, setDocsItem] = useState(null);
   const [historyView, setHistoryView] = useState(null); // { title, events }
   const [toast, setToast] = useState("");
 
@@ -640,9 +646,7 @@ export default function LicensesContractsView() {
     setPreview({ open: true, title, urls: list, index: Math.max(0, Math.min(idx, list.length - 1)) });
   }
   function openFiles(it) {
-    const imgs = it.files.filter(isImageUrl);
-    if (imgs.length) openPreview(it.name, it.files, 0);
-    else if (it.files[0]) window.open(it.files[0], "_blank", "noopener");
+    if (it) setDocsItem(it);
   }
 
   function itemHistory(it) {
@@ -844,8 +848,9 @@ export default function LicensesContractsView() {
   return (
     <main style={S.shell} dir={dir}>
       <PreviewModal state={preview} setState={setPreview} onClose={() => setPreview((p) => ({ ...p, open: false }))} />
+      {docsItem && <DocumentsViewer item={docsItem} lang={lang} onClose={() => setDocsItem(null)} />}
       {renewItem && (
-        <RenewModal t={t} lang={lang} item={renewItem} onClose={() => setRenewItem(null)} onSave={(d) => saveRenewal(renewItem, d)} />
+        <RenewModal t={t} lang={lang} item={renewItem} onClose={() => setRenewItem(null)} onSave={(d) => saveRenewal(renewItem, d)} onViewDocs={openFiles} />
       )}
       {historyView && (
         <HistoryDrawer t={t} lang={lang} title={historyView.title} events={historyView.events}
@@ -968,7 +973,11 @@ export default function LicensesContractsView() {
                         <td style={S.td}><StatusPill t={t} expiryDate={it.expiryDate} small /></td>
                         <td style={S.td}>
                           {it.files.length
-                            ? <button type="button" style={mini} onClick={() => openFiles(it)}>📎 {it.files.length}</button>
+                            ? (
+                              <button type="button" style={mini} onClick={() => openFiles(it)} title={t.viewDocs}>
+                                📎 {it.files.length}{it.renewals.length ? <span style={{ color: C.faint }}> · 🗂 {it.renewals.length}</span> : null}
+                              </button>
+                            )
                             : <span style={{ fontSize: 11, color: "#b45309", fontWeight: 800 }}>⚠ {t.noFiles}</span>}
                         </td>
                         <td style={{ ...S.td, whiteSpace: "nowrap", fontSize: 12 }}>
@@ -1125,7 +1134,14 @@ export default function LicensesContractsView() {
                           ? <input style={S.input} value={editLicense.notes || ""} onChange={(e) => setEditLicense((p) => ({ ...p, notes: e.target.value }))} />
                           : <div style={{ fontWeight: 700, color: license.notes ? C.ink : C.faint }}>{license.notes || "—"}</div>}
                       </div>
-                      <label style={S.label}>{t.colFiles} ({licFiles.length})</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <label style={{ ...S.label, marginBottom: 0 }}>{t.colFiles} ({licFiles.length})</label>
+                        {!editing && licItem && (licItem.files.length > 0 || licItem.renewals.length > 0) && (
+                          <button type="button" style={mini} onClick={() => openFiles(licItem)}>
+                            🗂 {t.viewDocs}{licItem.renewals.length ? ` · ${t.archivedN(licItem.renewals.length)}` : ""}
+                          </button>
+                        )}
+                      </div>
                       {editing && (
                         <div style={{ marginBottom: 8 }}>
                           <input type="file" accept="application/pdf,image/*" multiple style={{ ...S.input, padding: "8px 10px" }} disabled={!!uploadingKey}
@@ -1142,10 +1158,10 @@ export default function LicensesContractsView() {
                             ? <FileChip key={u} url={u} label={fileLabel(u, i, editLicense.fileNames)}
                                 onRemove={() => setEditLicense((p) => ({ ...p, fileUrls: p.fileUrls.filter((_, j) => j !== i), fileNames: safeArr(p.fileNames).filter((_, j) => j !== i) }))} />
                             : isImageUrl(u)
-                              ? <button key={u} type="button" onClick={() => openPreview(t.companyLicense, licFiles, i)} style={{ width: 70, height: 52, borderRadius: 10, overflow: "hidden", border: `1.5px solid ${C.line}`, padding: 0, cursor: "pointer", background: C.soft }}>
+                              ? <button key={u} type="button" onClick={() => openFiles(licItem)} style={{ width: 70, height: 52, borderRadius: 10, overflow: "hidden", border: `1.5px solid ${C.line}`, padding: 0, cursor: "pointer", background: C.soft }}>
                                   <img src={displayUrl(u, 320)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                 </button>
-                              : <a key={u} href={u} target="_blank" rel="noreferrer" style={mini}>📄 {fileLabel(u, i, license.fileNames)}</a>
+                              : <button key={u} type="button" style={mini} onClick={() => openFiles(licItem)}>📄 {fileLabel(u, i, license.fileNames)}</button>
                         ))}
                       </div>
                     </div>
@@ -1205,7 +1221,9 @@ export default function LicensesContractsView() {
                                           onRemove={() => setEditContracts((prev) => prev.map((x, j) => (j === i ? { ...x, fileUrls: x.fileUrls.filter((_, k) => k !== fi), fileNames: safeArr(x.fileNames).filter((_, k) => k !== fi) } : x)))} />
                                       ))
                                     : cFiles.length > 0 && (
-                                        <button type="button" style={mini} onClick={() => (cFiles.some(isImageUrl) ? openPreview(c.contractType || t.contract, cFiles, 0) : window.open(cFiles[0], "_blank", "noopener"))}>📎 {cFiles.length}</button>
+                                        <button type="button" style={mini} onClick={() => openFiles(cItem)}>
+                                          📎 {cFiles.length}{cItem && cItem.renewals.length ? ` · 🗂 ${cItem.renewals.length}` : ""}
+                                        </button>
                                       )}
                                 </div>
                               </td>

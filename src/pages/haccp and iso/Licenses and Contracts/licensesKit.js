@@ -169,7 +169,7 @@ export function flattenRecords(reports) {
         key: `${rid}:license`, rid, record: r, branch, kind: "license", uid: "license",
         name: String(lic.name || "").trim() || "License",
         company: "", expiryDate: lic.expiryDate || "", notes: lic.notes || "",
-        files: normalizeFiles(lic), status: st.key, days: st.days,
+        files: normalizeFiles(lic), fileNames: safeArr(lic.fileNames), status: st.key, days: st.days,
         renewals: ren, lastRenewal: ren[ren.length - 1] || null,
       });
     }
@@ -182,7 +182,7 @@ export function flattenRecords(reports) {
         uid: contractUid(c, idx), idx,
         name: String(c.contractType || "").trim() || "Contract",
         company: String(c.companyName || "").trim(), expiryDate: c.expiryDate || "",
-        notes: c.notes || "", files: normalizeFiles(c), status: st.key, days: st.days,
+        notes: c.notes || "", files: normalizeFiles(c), fileNames: safeArr(c.fileNames), status: st.key, days: st.days,
         renewals: ren, lastRenewal: ren[ren.length - 1] || null,
       });
     });
@@ -343,4 +343,44 @@ export function collectHistory(reports) {
     safeArr(p.history).forEach((e) => out.push({ ...e, rid: getId(r), branch: String(p.branch || "").trim() || "Unspecified" }));
   });
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+
+/* ───────────── document versions ───────────── */
+/**
+ * The documents of one register item, newest version first:
+ *   [{ current: true,  files:[{url,name}], issuedOn, validUntil },
+ *    { current: false, files, issuedOn, validUntil, replacedOn, replacedBy, note, n }, …]
+ * Built from item.files + item.renewals[] (each renewal archived the files
+ * and expiry that were current before it).
+ */
+export function documentVersions(item) {
+  const ren = safeArr(item?.renewals);
+  const pack = (urls, names) => safeArr(urls).map((url, i) => ({ url, name: safeArr(names)[i] || "" }));
+  const out = [{
+    current: true,
+    n: ren.length + 1,
+    files: pack(item?.files, item?.fileNames),
+    issuedOn: ren.length ? ren[ren.length - 1].renewedOn : "",
+    validUntil: item?.expiryDate || "",
+  }];
+  for (let k = ren.length - 1; k >= 0; k--) {
+    const r = ren[k];
+    out.push({
+      current: false,
+      n: k + 1,
+      files: pack(r.prevFiles, r.prevFileNames),
+      issuedOn: k > 0 ? ren[k - 1].renewedOn : "",
+      validUntil: r.prevExpiryDate || "",
+      replacedOn: r.renewedOn || "",
+      replacedBy: r.by || "",
+      note: r.note || "",
+    });
+  }
+  // a file kept across a renewal ("keep old files") shows once, on its newest version
+  const seen = new Set();
+  out.forEach((v) => {
+    v.files = v.files.map((f) => ({ ...f, carried: seen.has(f.url) }));
+    v.files.forEach((f) => seen.add(f.url));
+  });
+  return out;
 }

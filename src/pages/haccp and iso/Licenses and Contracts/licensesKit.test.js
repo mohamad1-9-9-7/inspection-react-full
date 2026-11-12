@@ -1,4 +1,4 @@
-import { addPeriod, statusOf, flattenRecords, diffPayloads, applyRenewal, ensureUids } from "./licensesKit";
+import { addPeriod, statusOf, flattenRecords, diffPayloads, applyRenewal, ensureUids, documentVersions } from "./licensesKit";
 
 test("addPeriod clamps month end", () => {
   expect(addPeriod("2028-02-29", { years: 1 })).toBe("2029-02-28");
@@ -52,4 +52,16 @@ test("diffPayloads: field edits, added and removed contracts", () => {
   const ev = diffPayloads(base, edited);
   expect(ev.map((e) => e.action).sort()).toEqual(["contract_added", "contract_removed", "edited"]);
   expect(ev.find((e) => e.action === "edited").changes[0]).toMatchObject({ field: "expiryDate", from: "2026-01-01", to: "2027-01-01" });
+});
+
+test("documentVersions: current first, archive from renewals", () => {
+  const next = applyRenewal(legacy.payload, { kind: "license", uid: "license" },
+    { newExpiry: "2027-01-01", renewedOn: "2026-01-02", files: ["new.pdf"], fileNames: ["New.pdf"], keepOldFiles: false, note: "n" });
+  const item = flattenRecords([{ id: 1, payload: next }])[0];
+  const v = documentVersions(item);
+  expect(v.length).toBe(2);
+  expect(v[0]).toMatchObject({ current: true, validUntil: "2027-01-01", issuedOn: "2026-01-02" });
+  expect(v[0].files[0]).toMatchObject({ url: "new.pdf", name: "New.pdf" });
+  expect(v[1]).toMatchObject({ current: false, validUntil: "2026-01-01", replacedOn: "2026-01-02", note: "n" });
+  expect(v[1].files[0].url).toBe("a.pdf");
 });
