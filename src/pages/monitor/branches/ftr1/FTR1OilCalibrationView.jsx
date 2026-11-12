@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { canDelete } from "../../../../utils/perms";
 import CreatorBadge from "./CreatorBadge";
+import { TPM_LIMITS, tpmStatus, actionLabel } from "./ftr1Oil";
 import { listReportDates, getReportById, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
 const API_BASE =
@@ -533,7 +534,50 @@ export default function FTR1OilCalibrationView() {
               AL MAWASHI BRAAI KITCHEN — (OIL QUALITY MONITORING FORM)
             </div>
 
-            {/* Table */}
+            {/* Testo readings (records saved since the Testo redesign carry payload.readings) */}
+            {Array.isArray(selectedReport?.payload?.readings) ? (
+              <div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                  <b>Date: {formatDate(selectedReport.payload.reportDate)}</b>
+                  <span style={{ color: "#64748b" }}>Device: {selectedReport.payload.device || "Testo oil tester"}</span>
+                  <span style={{ color: "#64748b" }}>
+                    Limits: change soon ≥ {(selectedReport.payload.limits || TPM_LIMITS).warn}% · discard &gt; {(selectedReport.payload.limits || TPM_LIMITS).discard}% TPM
+                  </span>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#0f766e", color: "#fff" }}>
+                      {["Fryer", "Time", "TPM %", "Oil °C", "Result", "Action taken", "Corrective action"].map((h) => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedReport.payload.readings.map((r, i) => {
+                      const st = tpmStatus(r.tpm);
+                      return (
+                        <tr key={i}>
+                          <td style={tdStyle}>{r.fryer || "—"}</td>
+                          <td style={tdStyle}>{r.time || "—"}</td>
+                          <td style={{ ...tdStyle, fontWeight: 800 }}>{r.tpm ?? "—"}</td>
+                          <td style={tdStyle}>{r.oilTemp ?? "—"}</td>
+                          <td style={tdStyle}>
+                            <span style={{ padding: "3px 10px", borderRadius: 999, background: st.bg, color: st.color, fontWeight: 800 }}>{st.label}</span>
+                          </td>
+                          <td style={tdStyle}>{r.action ? actionLabel(r.action) : "—"}</td>
+                          <td style={tdStyle}>{r.correctiveAction || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {selectedReport.payload.notes ? <div style={{ marginTop: 8 }}><b>Notes:</b> {selectedReport.payload.notes}</div> : null}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 12, fontWeight: 700 }}>
+                  <span>Checked By: {selectedReport.payload.checkedBy || "—"}</span>
+                  <span>Verified By: {selectedReport.payload.verifiedBy || "—"}</span>
+                </div>
+              </div>
+            ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#16a085", color: "#fff" }}>
@@ -562,6 +606,7 @@ export default function FTR1OilCalibrationView() {
                 )}
               </tbody>
             </table>
+            )}
             {selectedReport?.payload?.createdBy ? (
               <div style={{ marginTop: 12 }}>
                 <CreatorBadge name={selectedReport.payload.createdBy} empNo={selectedReport.payload.createdByEmpNo} />
