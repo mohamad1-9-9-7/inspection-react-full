@@ -662,7 +662,8 @@ function ProtectedRoute({ children, allowExpired = false }) {
    filter the hubs already apply. Admins and full-access accounts pass both. */
 /* Branch temperature QR pages: the branch comes from the URL, so the guard
    picks the matching branch grant (same rule as each branch's own sheet). */
-const BRANCH_TEMP_IDS = { pos10: "POS 10", pos11: "POS 11", pos15: "POS 15", pos19: "POS 19" };
+/* Codes of qcs/BranchTempQuick BRANCH_TEMP — a code missing here bounces to the dashboard. */
+const BRANCH_TEMP_IDS = { pos10: "POS 10", pos11: "POS 11", pos15: "POS 15", pos19: "POS 19", ftr1: "FTR 1" };
 function BranchTempRoute() {
   const { branch } = useParams();
   const id = BRANCH_TEMP_IDS[String(branch || "").toLowerCase()];
@@ -1259,7 +1260,7 @@ export default function App() {
             }
           />
 
-          {/* 📱 حرارة الفروع من الجوال (POS 10/11/15/19) — الفرع من الرابط */}
+          {/* 📱 حرارة الفروع من الجوال (POS 10/11/15/19, FTR 1) — الفرع من الرابط */}
           {["branch-temp/:branch", "branch-temp/:branch/:unit"].map((path) => (
             <Route key={path} path={path} element={<BranchTempRoute />} />
           ))}
