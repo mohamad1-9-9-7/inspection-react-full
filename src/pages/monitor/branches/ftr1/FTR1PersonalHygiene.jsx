@@ -322,7 +322,7 @@ export default function FTR1PersonalHygiene() {
             <col style={{ width: 120 }} />
             <col style={{ width: 210 }} />
             {HYGIENE_COLUMNS.map((col) => (
-              <col key={col} style={{ width: col.startsWith("Wearing") ? 190 : 128 }} />
+              <col key={col} style={{ width: col.startsWith("Wearing") ? 220 : 170 }} />
             ))}
             <col style={{ width: 130 }} />
             <col style={{ width: 130 }} />
@@ -587,7 +587,7 @@ const tableFrame = {
 
 const tableStyle = {
   width: "100%",
-  minWidth: 1700,
+  minWidth: 1900,
   borderCollapse: "collapse",
   tableLayout: "fixed",
 };
