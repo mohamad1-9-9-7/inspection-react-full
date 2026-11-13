@@ -26,11 +26,17 @@ export const CALIB_LOGS = {
   "Al Barsha Butchery": { log: "pos15_temperature", code: "pos15", pos: "POS 15" },
   "Motor City": { log: "pos19_temperature_monitoring", code: "pos19", pos: "POS 19" },
 };
-export const logOfBranch = (branch) => CALIB_LOGS[branch] || null;
+/* Temperature logs a calibration can link to that are NOT cold-room sites.
+   Kept apart because CALIB_LOGS also feeds the cold-rooms 3D branch picker. */
+export const CALIB_EXTRA_LOGS = {
+  "Supervisor Food Truck": { log: "ftr1_temperature", code: "ftr1", pos: "FTR 1" },
+};
+const ALL_LOGS = { ...CALIB_LOGS, ...CALIB_EXTRA_LOGS };
+export const logOfBranch = (branch) => ALL_LOGS[branch] || null;
 export const branchOfLog = (log) =>
-  Object.keys(CALIB_LOGS).find((b) => CALIB_LOGS[b].log === log) || "";
+  Object.keys(ALL_LOGS).find((b) => ALL_LOGS[b].log === log) || "";
 /** "Abu Dhabi Butchery (POS 10)" — the stored value stays the plain name. */
-export const branchLabel = (b) => (CALIB_LOGS[b] ? `${b} (${CALIB_LOGS[b].pos})` : b);
+export const branchLabel = (b) => (ALL_LOGS[b] ? `${b} (${ALL_LOGS[b].pos})` : b);
 export const DUE_SOON_DAYS = 30;
 
 const norm = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
