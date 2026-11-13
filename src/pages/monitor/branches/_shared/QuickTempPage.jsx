@@ -96,6 +96,9 @@ const T = {
     printNow: "Print",
     printHint: "Each unit prints on its own A4 page with a large code. Laminate it or put it in a plastic sleeve before sticking it on the unit.",
     closePrint: "Close",
+    layoutPage: "One unit per page",
+    layoutSheet: "All on one sheet",
+    sheetHint: (n) => `All ${n} units print together on ONE A4 sheet — cut along the dashed lines.`,
     recheckWord: "recheck",
     tabTemp: "🌡️ Temperature",
     tabGoods: "📦 Products",
@@ -146,6 +149,9 @@ const T = {
     printNow: "طباعة",
     printHint: "كل وحدة تُطبع على صفحة A4 لوحدها برمز كبير. يُفضّل تغليفها بالبلاستيك قبل لصقها على البراد.",
     closePrint: "إغلاق",
+    layoutPage: "كل وحدة بصفحة",
+    layoutSheet: "الكل بورقة واحدة",
+    sheetHint: (n) => `كل الوحدات (${n}) تُطبع معاً على ورقة A4 واحدة — قصّها على الخط المتقطع.`,
     recheckWord: "إعادة فحص",
     tabTemp: "🌡️ الحرارة",
     tabGoods: "📦 المنتجات",
@@ -251,14 +257,55 @@ const PRINT_CSS = `
   .cq-print .rg { font-size: 22pt; font-weight: 700; margin-top: 3mm; }
   .cq-print .hint { font-size: 16pt; margin-top: 6mm; }
   .cq-print .url { font-size: 10pt; margin-top: 4mm; color: #334155; word-break: break-all; }
+  /* "All on one sheet": one A4, a grid sized from the unit count (inline mm) */
+  .cq-print .sheet { height: 272mm; overflow: hidden; display: flex; flex-direction: column; }
+  .cq-print .sheet .sttl { height: 9mm; font-size: 13pt; font-weight: 700; text-align: center; letter-spacing: .5pt; }
+  .cq-print .sheet .sgrid { flex: 1; display: grid; gap: 4mm; }
+  .cq-print .sheet .cell { border: 2px dashed #64748b; border-radius: 4mm; display: flex; flex-direction: column;
+                           align-items: center; justify-content: center; text-align: center; overflow: hidden; padding: 2mm; box-sizing: border-box; }
+  .cq-print .sheet .cell svg { display: block; }
+  .cq-print .sheet .cnm { font-weight: 800; line-height: 1.15; margin-top: 1.5mm; }
+  .cq-print .sheet .crg { font-weight: 700; margin-top: .8mm; }
 }
 `;
 
-function QrPrintPages({ A, units }) {
+/* A4 inside 12mm margins = 186 × 273 mm; the title takes 9 mm. */
+const SHEET_W = 186;
+const SHEET_H = 263;
+const SHEET_GAP = 4;
+function sheetGrid(n) {
+  const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : n <= 16 ? 4 : n <= 30 ? 5 : 6;
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const cellW = (SHEET_W - SHEET_GAP * (cols - 1)) / cols;
+  const cellH = (SHEET_H - SHEET_GAP * (rows - 1)) / rows;
+  const font = Math.max(2.6, Math.min(8, cellW * 0.075, cellH * 0.075)); // name, mm
+  const qr = Math.max(14, Math.min(cellW - 6, cellH - 4 - font * 2.6));
+  return { cols, rows, cellW, cellH, font, qr };
+}
+
+function QrPrintSheet({ A, units }) {
+  const g = sheetGrid(units.length);
+  return (
+    <div className="sheet">
+      <div className="sttl">TEMPERATURE CHECK · {A.printTitle || A.label}</div>
+      <div className="sgrid" style={{ gridTemplateColumns: `repeat(${g.cols}, 1fr)`, gridTemplateRows: `repeat(${g.rows}, 1fr)` }}>
+        {units.map(({ key, def }) => (
+          <div className="cell" key={key}>
+            <QRCodeSVG value={A.qrUrl(key)} size={400} level="H" includeMargin style={{ width: `${g.qr}mm`, height: `${g.qr}mm` }} />
+            <div className="cnm" style={{ fontSize: `${g.font}mm` }}>{A.emoji(def)} {def.label}</div>
+            <div className="crg" style={{ fontSize: `${g.font * 0.62}mm` }}>Allowed: {A.rangeLabel(def)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QrPrintPages({ A, units, layout = "page" }) {
   return createPortal(
     <div className="cq-print">
       <style>{PRINT_CSS}</style>
-      {units.map(({ key, def }) => {
+      {layout === "sheet" ? <QrPrintSheet A={A} units={units} /> : units.map(({ key, def }) => {
         const url = A.qrUrl(key);
         return (
           <div className="pg" key={key}>
@@ -354,6 +401,7 @@ function Hub({ A, t, lang, toggleLang }) {
   const { date, units, status, loading, error, reload } = useDayData(A);
   const calibrations = useCalibrations();
   const [printing, setPrinting] = useState(false);
+  const [layout, setLayout] = useState("page"); // page = one unit per A4 · sheet = all on one A4
   const [monthly, setMonthly] = useState(false);
 
   const late = status.filter((s) => s.late.length);
@@ -366,9 +414,16 @@ function Hub({ A, t, lang, toggleLang }) {
       <div>
         <div className="bar">
           <button className="btn" onClick={() => setPrinting(false)}>{t.closePrint}</button>
-          <button className="btn pri" onClick={() => window.print()}>{t.printNow}</button>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[["page", t.layoutPage], ["sheet", t.layoutSheet]].map(([k, lbl]) => (
+              <button key={k} type="button" className={`btn${layout === k ? " pri" : ""}`} aria-pressed={layout === k} onClick={() => setLayout(k)}>
+                {layout === k ? "✓ " : ""}{lbl}
+              </button>
+            ))}
+          </div>
+          <button className="btn pri" onClick={() => window.print()} disabled={!units.length}>{t.printNow}</button>
         </div>
-        <div className="sm" style={{ marginBottom: 10 }}>{t.printHint}</div>
+        <div className="sm" style={{ marginBottom: 10 }}>{layout === "sheet" ? t.sheetHint(units.length) : t.printHint}</div>
         <div className="qrs">
           {units.map(({ key, def }) => (
             <div className="qr" key={key}>
@@ -378,7 +433,7 @@ function Hub({ A, t, lang, toggleLang }) {
             </div>
           ))}
         </div>
-        <QrPrintPages A={A} units={units} />
+        <QrPrintPages A={A} units={units} layout={layout} />
       </div>
     );
   }
