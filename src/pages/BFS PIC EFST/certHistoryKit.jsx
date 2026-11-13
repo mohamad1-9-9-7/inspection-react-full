@@ -48,20 +48,27 @@ export function canonicalBranch(name) {
   return BRANCH_ALIASES[s] || KNOWN_BY_SQUASH.get(s) || String(name).trim().replace(/\s+/g, " ");
 }
 
-/** { main: [...], other: [...] } — main list first, then every other known branch. */
-export function branchOptions(extra = []) {
-  const main = new Set(MAIN_BRANCHES);
+/**
+ * { main: [...], other: [...] } — main list first, then every other known branch.
+ * Another register with its own branch codes (OHC: "QCS", "POS 10"…) passes its
+ * own `main` list and `withDirectory: false`, so the training names stay out.
+ */
+export function branchOptions(extra = [], { main: mainList = MAIN_BRANCHES, withDirectory = true } = {}) {
+  const own = mainList !== MAIN_BRANCHES;
+  const fix = (b) => (own ? String(b || "").trim() : canonicalBranch(b));
+  const main = new Set(mainList);
   const other = new Set();
-  [...COMPANY_DIRECTORY.map((d) => d.branch), ...extra].forEach((b) => {
-    const c = canonicalBranch(b);
+  [...(withDirectory ? COMPANY_DIRECTORY.map((d) => d.branch) : []), ...extra].forEach((b) => {
+    const c = fix(b);
     if (c && !main.has(c)) other.add(c);
   });
-  return { main: MAIN_BRANCHES.slice(), other: Array.from(other).sort((a, b) => a.localeCompare(b)) };
+  return { main: mainList.slice(), other: Array.from(other).sort((a, b) => a.localeCompare(b)) };
 }
 
 /* ===================== History model ===================== */
 export const HISTORY_FIELDS = [
   ["employeeNo", "Employee No"],
+  ["appNo", "Employee No"],
   ["name", "Name"],
   ["nationality", "Nationality"],
   ["branch", "Branch"],
@@ -69,6 +76,7 @@ export const HISTORY_FIELDS = [
   ["courseType", "Course"],
   ["issueDate", "Issue Date"],
   ["expiryDate", "Expiry Date"],
+  ["result", "Result"],
   ["imageUrl", "Certificate image"],
   ["instituteImageUrl", "Institute certificate"],
 ];
@@ -488,8 +496,11 @@ export function RenewModal({ open, row, onClose, onConfirm, upload }) {
 }
 
 /* ===================== Branch <select> ===================== */
-export function BranchSelect({ value, onChange, extra = [], exclude, className, style, placeholder = "— Choose branch —" }) {
-  const opts = useMemo(() => branchOptions(extra), [extra]);
+export function BranchSelect({ value, onChange, extra = [], exclude, className, style, placeholder = "— Choose branch —", mainBranches, withDirectory = true }) {
+  const opts = useMemo(
+    () => branchOptions(extra, { main: mainBranches || MAIN_BRANCHES, withDirectory }),
+    [extra, mainBranches, withDirectory]
+  );
   const skip = (b) => exclude && b === exclude;
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className={className} style={style}>
@@ -501,19 +512,19 @@ export function BranchSelect({ value, onChange, extra = [], exclude, className, 
           </option>
         ))}
       </optgroup>
-      <optgroup label="Other company branches">
+      {opts.other.some((b) => !skip(b)) && <optgroup label="Other company branches">
         {opts.other.filter((b) => !skip(b)).map((b) => (
           <option key={b} value={b}>
             {b}
           </option>
         ))}
-      </optgroup>
+      </optgroup>}
     </select>
   );
 }
 
 /* ===================== Transfer dialog ===================== */
-export function TransferModal({ open, employee, rows, allBranches, onClose, onConfirm }) {
+export function TransferModal({ open, employee, rows, allBranches, onClose, onConfirm, mainBranches, withDirectory = true }) {
   const [to, setTo] = useState("");
   const [date, setDate] = useState("");
   const [reason, setReason] = useState(TRANSFER_REASONS[0]);
@@ -594,7 +605,7 @@ export function TransferModal({ open, employee, rows, allBranches, onClose, onCo
 
           <label className="tch-field">
             <span>New branch</span>
-            <BranchSelect value={to} onChange={setTo} extra={allBranches} exclude={employee.branch} className="tch-input" />
+            <BranchSelect value={to} onChange={setTo} extra={allBranches} exclude={employee.branch} className="tch-input" mainBranches={mainBranches} withDirectory={withDirectory} />
           </label>
 
           <div className="tch-grid2">
@@ -657,7 +668,10 @@ const EV_META = {
   renewed: { icon: "↻", color: "#ea580c", label: "Renewed" },
   deleted: { icon: "🗑", color: "#64748b", label: "Deleted" },
   branch_fix: { icon: "Aa", color: "#a16207", label: "Name fix" },
+  outside: { icon: "📍", color: "#0369a1", label: "Outside Dubai" },
+  inside: { icon: "🏙️", color: "#047857", label: "Back to Dubai" },
 };
+const STATUS_EVENTS = new Set(["left", "restored", "deleted", "outside", "inside"]);
 const HISTORY_TABS = [
   ["all", "All"],
   ["transfer", "Transfers"],
@@ -704,7 +718,7 @@ export function HistoryDrawer({ open, mode = "employee", rows, onClose, onTransf
   if (!open) return null;
 
   const shown = timeline.filter((e) => {
-    if (tab === "status" && !(e.type === "left" || e.type === "restored" || e.type === "deleted")) return false;
+    if (tab === "status" && !STATUS_EVENTS.has(e.type)) return false;
     if (tab !== "all" && tab !== "status" && e.type !== tab) return false;
     if (q) {
       const hay = [e.empName, e.empNo, e.by, e.course, e.fromBranch, e.toBranch, e.reason, e.note, ...(e.changes || []).map((c) => `${c.label} ${c.from} ${c.to}`)]

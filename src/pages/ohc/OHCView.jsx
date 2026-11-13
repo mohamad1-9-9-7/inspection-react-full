@@ -2,6 +2,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { uploadImage } from "../../utils/imageUpload";
+import {
+  diffPayload,
+  withEvent,
+  newEventId,
+  currentActor,
+  employeeKeyOf,
+  HistoryDrawer,
+  TransferModal,
+  RenewModal,
+  renewPayload,
+} from "../BFS PIC EFST/certHistoryKit";
+import { RowMenu } from "../BFS PIC EFST/certRowMenu";
+import { OhcPdfExportModal } from "./ohcPdfExport";
 
 /* ========= API ========= */
 
@@ -234,6 +247,14 @@ function extractReportsList(data) {
       // علامة "ترك الشركة" - السجل محفوظ ومخفي من العرض الافتراضي
       leftCompany: p.leftCompany === true,
       image,
+      // fields the shared history / renew / transfer kit reads
+      _rid: getId(x) || x?.id || x?._id,
+      employeeNo: p.appNo || "",
+      courseType: "OHC",
+      history: Array.isArray(p.history) ? p.history : [],
+      renewals: Array.isArray(p.renewals) ? p.renewals : [],
+      savedAt: p.savedAt || x?.updated_at || x?.created_at || "",
+      createdAt: x?.created_at || x?.createdAt || "",
     };
   });
 }
@@ -256,7 +277,16 @@ export default function OHCView() {
   const [search, setSearch] = useState(""); // search by employeeNo/name/nationality/job/branch
 
   // editing (بدون تغيير رقم الموظف أو الصورة، وبدون Issue Date)
-  const [editingIndex, setEditingIndex] = useState(null);
+  const [editingIndex, setEditingIndex] = useState(null); // non-null = edit dialog open
+  const [editRow, setEditRow] = useState(null); // the row being edited (by object, not by list position)
+
+  // renew / transfer / history / bulk PDF
+  const [renewRid, setRenewRid] = useState(null);
+  const [transferKey, setTransferKey] = useState(null);
+  const [historyKey, setHistoryKey] = useState(null); // employee key | "__all__"
+  const [selected, setSelected] = useState(() => new Set()); // record ids ticked for the PDF
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [busyRid, setBusyRid] = useState(null);
   const [edit, setEdit] = useState({
     name: "",
     nationality: "",
@@ -660,163 +690,95 @@ export default function OHCView() {
     w.document.close();
   }
 
-  // قلب حالة Outside Dubai بسرعة (POST سجل جديد + DELETE القديم)
-  async function toggleOutsideDubai(idx) {
-    const row = filtered[idx];
-    if (!row?._server?.id) return;
-
-    const newVal = !row.outsideDubai;
-    const action = newVal ? "Mark as Outside Dubai" : "Move back to Dubai";
-    const note = newVal
-      ? "This will hide the record from the main view and exempt it from expiry alerts."
-      : "This will return the record to the active Dubai view.";
-
-    if (!window.confirm(`${action}?\n\n${note}`)) return;
-
-    setMsg({ type: "", text: "" });
-
-    const base = row._server.rawPayload || {};
-    const payload = {
-      ...base,
-      outsideDubai: newVal,
-      // عند الانتقال خارج دبي نمسح حقول الشهادة (سترجع عند العودة)
-      ...(newVal
-        ? { expiryDate: "", result: "" }
-        : {}),
-      savedAt: new Date().toISOString(),
-    };
-
-    try {
-      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        body: JSON.stringify({
-          reporter: "MOHAMAD ABDULLAH",
-          type: TYPE,
-          payload,
-        }),
-      });
-      if (!createRes.ok) {
-        setMsg({
-          type: "error",
-          text: `Update failed (HTTP ${createRes.status}). ${
-            createRes.data?.message || ""
-          }`,
-        });
-        return;
+  // كتابة السجل نفسه (PUT) — يحافظ على رقم السجل والسجل التاريخي. احتياط فقط:
+  // سيرفر بدون PUT → سجل جديد أولاً ثم حذف القديم (نفس صفحة شهادات التدريب).
+  async function writePayload(rid, payload) {
+    const putRes = await jsonFetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+      method: "PUT",
+      body: JSON.stringify({ type: TYPE, payload }),
+    });
+    if (putRes.ok) return putRes;
+    const postRes = await jsonFetch(`${API_BASE}/api/reports`, {
+      method: "POST",
+      body: JSON.stringify({ reporter: currentActor(), type: TYPE, payload }),
+    });
+    if (postRes.ok) {
+      try {
+        await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      } catch (e) {
+        console.warn("Delete old record after POST failed:", e);
       }
-      await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
-        method: "DELETE",
-      });
-      setMsg({
-        type: "ok",
-        text: newVal
-          ? "Marked as Outside Dubai (hidden from main view)."
-          : "Moved back to Dubai (visible in main view).",
-      });
-      await load();
-    } catch (err) {
-      console.error("toggleOutsideDubai error:", err);
-      setMsg({
-        type: "error",
-        text: "Network error while updating. Please try again.",
-      });
     }
+    return postRes;
   }
 
-  // قلب حالة Left Company بسرعة
-  async function toggleLeftCompany(idx) {
-    const row = filtered[idx];
-    if (!row?._server?.id) return;
-
-    const newVal = !row.leftCompany;
-    const action = newVal ? "Mark as Left Company" : "Restore (Active Employee)";
+  // Outside Dubai / Left Company: the certificate data (expiry, result) is KEPT —
+  // it used to be wiped, so moving someone back lost their dates. The filters
+  // already keep these rows out of the main view and the expiry alerts.
+  async function toggleFlag(row, flag) {
+    if (!row?._rid) return;
+    const isOutside = flag === "outsideDubai";
+    const newVal = !row[flag];
+    const action = isOutside
+      ? newVal ? "Mark as Outside Dubai" : "Move back to Dubai"
+      : newVal ? "Mark as Left Company" : "Restore as active employee";
     const note = newVal
-      ? "This will hide the record from the main view & exempt it from expiry alerts. The record stays in the database."
-      : "This will return the record to the active list.";
-
-    if (!window.confirm(`${action}?\n\n${note}`)) return;
+      ? "The record is hidden from the main view and the expiry alerts. Nothing is deleted."
+      : "The record returns to the active list.";
+    if (!window.confirm(`${action} — ${row.name || row.appNo}?\n\n${note}`)) return;
 
     setMsg({ type: "", text: "" });
-
+    setBusyRid(row._rid);
     const base = row._server.rawPayload || {};
-    const payload = {
-      ...base,
-      leftCompany: newVal,
-      ...(newVal ? { expiryDate: "", result: "" } : {}),
-      savedAt: new Date().toISOString(),
-    };
-
+    const payload = withEvent(
+      { ...base, [flag]: newVal, savedAt: new Date().toISOString() },
+      { type: isOutside ? (newVal ? "outside" : "inside") : newVal ? "left" : "restored", course: "OHC" }
+    );
     try {
-      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        body: JSON.stringify({
-          reporter: "MOHAMAD ABDULLAH",
-          type: TYPE,
-          payload,
-        }),
-      });
-      if (!createRes.ok) {
-        setMsg({
-          type: "error",
-          text: `Update failed (HTTP ${createRes.status}). ${
-            createRes.data?.message || ""
-          }`,
-        });
+      const res = await writePayload(row._rid, payload);
+      if (!res.ok) {
+        setMsg({ type: "error", text: `Update failed (HTTP ${res.status}). ${res.data?.message || ""}` });
         return;
       }
-      await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
-        method: "DELETE",
-      });
-      setMsg({
-        type: "ok",
-        text: newVal
-          ? "Marked as Left Company (hidden from main view)."
-          : "Restored as active employee.",
-      });
+      setMsg({ type: "ok", text: `${row.name || "Employee"}: ${action.toLowerCase()} — done.` });
       await load();
     } catch (err) {
-      console.error("toggleLeftCompany error:", err);
-      setMsg({
-        type: "error",
-        text: "Network error while updating. Please try again.",
-      });
+      console.error("toggleFlag error:", err);
+      setMsg({ type: "error", text: "Network error while updating. Please try again." });
+    } finally {
+      setBusyRid(null);
     }
   }
 
   // Delete record
-  async function handleDelete(idx) {
-    const row = filtered[idx];
-    if (!row?._server?.id) return;
-    if (!window.confirm(`Delete certificate for "${row.name}"?`)) return;
+  async function handleDelete(row) {
+    if (!row?._rid) return;
+    if (!window.confirm(`Delete the OHC certificate of "${row.name}" (#${row.appNo || "—"})?\nThis cannot be undone.`)) return;
 
     setMsg({ type: "", text: "" });
+    setBusyRid(row._rid);
     try {
-      const { ok, status, data } = await jsonFetch(
-        `${API_BASE}/api/reports/${row._server.id}`,
-        { method: "DELETE" }
-      );
-      if (!ok) {
-        setMsg({
-          type: "error",
-          text: `Delete failed (HTTP ${status}). ${data?.message || ""}`,
-        });
+      const { ok, status, data } = await jsonFetch(`${API_BASE}/api/reports/${encodeURIComponent(row._rid)}`, {
+        method: "DELETE",
+      });
+      if (!ok && status !== 404) {
+        setMsg({ type: "error", text: `Delete failed (HTTP ${status}). ${data?.message || ""}` });
         return;
       }
       setMsg({ type: "ok", text: "Deleted successfully." });
       await load();
     } catch (err) {
       console.error("OHC delete error:", err);
-      setMsg({
-        type: "error",
-        text: "Network error while deleting. Please try again.",
-      });
+      setMsg({ type: "error", text: "Network error while deleting. Please try again." });
+    } finally {
+      setBusyRid(null);
     }
   }
 
   // Edit record
-  function startEdit(idx) {
-    const row = filtered[idx];
-    setEditingIndex(idx);
+  function startEdit(row) {
+    setEditRow(row);
+    setEditingIndex(0);
     setEdit({
       name: row.name || "",
       nationality: row.nationality || "",
@@ -832,79 +794,57 @@ export default function OHCView() {
   }
   function cancelEdit() {
     setEditingIndex(null);
+    setEditRow(null);
     setEditImage(null);
   }
   function setEditField(k, v) {
     setEdit((p) => ({ ...p, [k]: v }));
   }
 
-  // اختيار صورة جديدة مع ضغط
+  // اختيار صورة جديدة
   async function handleEditImageSelect(e) {
     const file = e.target.files && e.target.files[0];
-    // تنظيف قيمة المدخل بحيث يمكن اختيار نفس الملف مرة أخرى لاحقاً
     e.target.value = "";
     if (!file) return;
 
     if (!file.type || !file.type.startsWith("image/")) {
-      setMsg({
-        type: "error",
-        text: "Selected file is not an image.",
-      });
+      setMsg({ type: "error", text: "Selected file is not an image." });
       return;
     }
 
     try {
-      // Cloudinary does the resize/compress (1280px, quality 80), so the file
-      // goes up as-is and the record keeps only the returned URL.
+      // Cloudinary does the resize/compress, the record keeps only the URL.
       setMsg({ type: "ok", text: "⏳ Uploading image…" });
-      const dataUrl = await uploadImage(file, "ohc_certificate");
-
-      setEditImage({
-        dataUrl,
-        name: file.name,
-        type: file.type || "image/jpeg",
-      });
-      setMsg({
-        type: "ok",
-        text: "Image loaded for update. Please click Save to apply changes.",
-      });
+      const url = await uploadImage(file, "ohc_certificate");
+      setEditImage({ dataUrl: url, name: file.name, type: file.type || "image/jpeg" });
+      setMsg({ type: "ok", text: "Image loaded for update. Please click Save to apply changes." });
     } catch (err) {
       console.error("Image upload error:", err);
-      setMsg({
-        type: "error",
-        text: `Failed to upload image: ${err?.message || err}`,
-      });
+      setMsg({ type: "error", text: `Failed to upload image: ${err?.message || err}` });
     }
   }
 
-  // ==== تعديل: إنشاء سجل جديد ثم حذف القديم بدل PUT (مع دعم صورة جديدة) ====
+  // ==== تعديل: نفس السجل (PUT) + حدث "edit" بالتغييرات حقلاً حقلاً ====
   async function saveEdit() {
-    const row = filtered[editingIndex];
-    if (!row?._server?.id) return;
+    const row = editRow;
+    if (!row?._rid) return;
 
-    // لو الموظف خارج دبي أو ترك الشركة: ما لازم expiryDate ولا result
+    // خارج دبي / ترك الشركة: الانتهاء والنتيجة ليست إلزامية (وتبقى محفوظة إن وُجدت)
     const exempt = edit.outsideDubai || edit.leftCompany;
     const required = exempt
       ? ["name", "nationality", "job", "branch"]
       : ["name", "nationality", "job", "expiryDate", "result", "branch"];
     for (const k of required) {
       if (!String(edit[k] || "").trim()) {
-        setMsg({
-          type: "error",
-          text: "Please complete all required fields.",
-        });
+        setMsg({ type: "error", text: "Please complete all required fields." });
         return;
       }
     }
 
-    let expiryIso = "";
+    const expiryIso = toIsoYMD(edit.expiryDate);
     if (!exempt) {
-      expiryIso = toIsoYMD(edit.expiryDate);
       if (!expiryIso) {
-        setMsg({
-          type: "error",
-          text: "Invalid expiry date format. Please re-select the date.",
-        });
+        setMsg({ type: "error", text: "Invalid expiry date format. Please re-select the date." });
         return;
       }
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -916,70 +856,153 @@ export default function OHCView() {
       }
     }
 
-    // نحافظ على الـ payload الأصلي (يشمل الصورة الحالية) ونحدّث الحقول فقط
     const base = row._server.rawPayload || {};
-    const payload = {
+    const next = {
       ...base,
       appNo: row.appNo, // رقم الموظف ثابت
       name: edit.name,
       nationality: edit.nationality,
       job: edit.job,
-      expiryDate: exempt ? "" : expiryIso,
-      result: exempt ? "" : edit.result,
+      expiryDate: expiryIso,
+      result: edit.result || "",
       branch: edit.branch,
       outsideDubai: !!edit.outsideDubai,
       leftCompany: !!edit.leftCompany,
       savedAt: new Date().toISOString(),
     };
-
-    // لو تم اختيار صورة جديدة نستبدل حقول الصورة
     if (editImage && editImage.dataUrl) {
-      payload.imageUrl = editImage.dataUrl; // رابط Cloudinary
-      payload.imageData = ""; // ما عاد يُخزَّن الملف داخل الـ payload
-      payload.imageName = editImage.name;
-      payload.imageType = editImage.type;
+      next.imageUrl = editImage.dataUrl;
+      next.imageData = "";
+      next.imageName = editImage.name;
+      next.imageType = editImage.type;
     }
 
-    try {
-      // 1) إنشاء سجل جديد
-      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        body: JSON.stringify({
-          reporter: "MOHAMAD ABDULLAH",
-          type: TYPE,
-          payload,
-        }),
-      });
+    const img = (p) => p.imageUrl || p.imageData || "";
+    const changes = diffPayload({ ...base, imageUrl: img(base) }, { ...next, imageUrl: img(next) });
+    if (!!base.outsideDubai !== next.outsideDubai)
+      changes.push({ field: "outsideDubai", label: "Outside Dubai", from: base.outsideDubai ? "Yes" : "No", to: next.outsideDubai ? "Yes" : "No" });
+    if (!!base.leftCompany !== next.leftCompany)
+      changes.push({ field: "leftCompany", label: "Left company", from: base.leftCompany ? "Yes" : "No", to: next.leftCompany ? "Yes" : "No" });
+    if (!changes.length) {
+      setMsg({ type: "ok", text: "Nothing changed." });
+      cancelEdit();
+      return;
+    }
+    const payload = withEvent(next, { type: "edit", course: "OHC", changes });
 
-      if (!createRes.ok) {
-        setMsg({
-          type: "error",
-          text: `Update failed (create) (HTTP ${createRes.status}). ${
-            createRes.data?.message || ""
-          }`,
-        });
+    try {
+      const res = await writePayload(row._rid, payload);
+      if (!res.ok) {
+        setMsg({ type: "error", text: `Update failed (HTTP ${res.status}). ${res.data?.message || ""}` });
         return;
       }
-
-      // 2) حذف السجل القديم
-      if (row._server.id) {
-        await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
-          method: "DELETE",
-        });
-      }
-
       setMsg({ type: "ok", text: "Updated successfully." });
-      setEditingIndex(null);
-      setEditImage(null);
+      cancelEdit();
       await load();
     } catch (err) {
       console.error("OHC update error:", err);
-      setMsg({
-        type: "error",
-        text: "Network error while updating. Please try again.",
-      });
+      setMsg({ type: "error", text: "Network error while updating. Please try again." });
     }
   }
+
+  /* ===== Renew / transfer / history (shared kit with the training register) ===== */
+  const rowsByEmployee = useMemo(() => {
+    const m = new Map();
+    enriched.forEach((r) => {
+      const k = employeeKeyOf(r);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    });
+    return m;
+  }, [enriched]);
+
+  const allBranchNames = useMemo(() => Array.from(new Set([...BRANCHES, ...branchList])), [branchList]);
+
+  const renewRow = renewRid ? enriched.find((r) => r._rid === renewRid) || null : null;
+  async function doRenew(data) {
+    const row = enriched.find((r) => r._rid === renewRid);
+    if (!row) throw new Error("Record not found — reload the page.");
+    const orig = row._server.rawPayload || {};
+    // the kit archives `imageUrl`; old OHC records may hold the link in imageData
+    const payload = renewPayload({ ...orig, imageUrl: orig.imageUrl || orig.imageData || "" }, data);
+    const res = await writePayload(row._rid, payload);
+    if (!res.ok) throw new Error(`Save failed (HTTP ${res.status}). ${res.data?.message || "Try again."}`);
+    await load();
+    setRenewRid(null);
+    setMsg({ type: "ok", text: `✅ ${row.name || "Employee"} — OHC renewed until ${data.expiryDate || "no expiry"}.` });
+  }
+
+  const transferRows = transferKey ? rowsByEmployee.get(transferKey) || [] : [];
+  const transferEmployee = transferRows.length
+    ? transferRows.slice().sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))[0]
+    : null;
+  async function doTransfer(t) {
+    const list = transferRows.filter((r) => r._rid);
+    if (!list.length) throw new Error("No saved record for this employee.");
+    const event = {
+      id: newEventId(),
+      at: new Date().toISOString(),
+      by: currentActor(),
+      type: "transfer",
+      fromBranch: t.fromBranch,
+      toBranch: t.toBranch,
+      effectiveDate: t.effectiveDate,
+      reason: t.reason,
+      note: t.note,
+      changes: t.newJob ? [{ field: "job", label: "Job Title", from: t.oldJob, to: t.newJob }] : [],
+    };
+    let failed = 0;
+    for (const r of list) {
+      const orig = r._server.rawPayload || {};
+      const history = Array.isArray(orig.history) ? orig.history : [];
+      const payload = {
+        ...orig,
+        branch: t.toBranch,
+        ...(t.newJob ? { job: t.newJob } : {}),
+        savedAt: new Date().toISOString(),
+        history: [...history, event],
+      };
+      const res = await writePayload(r._rid, payload);
+      if (!res.ok) failed += 1;
+    }
+    await load();
+    if (failed) throw new Error(`${failed} of ${list.length} record(s) could not be updated. Try again.`);
+    setTransferKey(null);
+    setMsg({ type: "ok", text: `✅ ${transferEmployee?.name || "Employee"} transferred to ${t.toBranch}.` });
+  }
+
+  const historyRows =
+    historyKey === "__all__" ? enriched : historyKey ? rowsByEmployee.get(historyKey) || [] : [];
+
+  /* ===== Selection for the bulk PDF ===== */
+  const filteredIds = useMemo(() => filtered.map((r) => r._rid).filter(Boolean), [filtered]);
+  const selectedShown = filteredIds.filter((id) => selected.has(id)).length;
+  const allShownSelected = filteredIds.length > 0 && selectedShown === filteredIds.length;
+  function toggleSelect(rid) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(rid)) n.delete(rid);
+      else n.add(rid);
+      return n;
+    });
+  }
+  function toggleSelectAllShown() {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (allShownSelected) filteredIds.forEach((id) => n.delete(id));
+      else filteredIds.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+  // a record that left the register (deleted / reloaded away) can't stay ticked
+  useEffect(() => {
+    setSelected((prev) => {
+      const live = new Set(enriched.map((r) => r._rid));
+      const n = new Set([...prev].filter((id) => live.has(id)));
+      return n.size === prev.size ? prev : n;
+    });
+  }, [enriched]);
+  const selectedRows = useMemo(() => enriched.filter((r) => selected.has(r._rid)), [enriched, selected]);
 
   // ======= Image modal + remove image + download =======
   function openImage(r) {
@@ -1069,6 +1092,39 @@ export default function OHCView() {
         fontFamily: "Inter, Tahoma, Arial, sans-serif",
       }}
     >
+      <HistoryDrawer
+        open={!!historyKey}
+        mode={historyKey === "__all__" ? "all" : "employee"}
+        rows={historyRows}
+        onClose={() => setHistoryKey(null)}
+        onTransfer={(emp) => setTransferKey(employeeKeyOf(emp))}
+        onOpenEmployee={(emp) => emp && setHistoryKey(employeeKeyOf(emp))}
+      />
+      <RenewModal
+        open={!!renewRow}
+        row={renewRow}
+        onClose={() => setRenewRid(null)}
+        onConfirm={doRenew}
+        upload={(file) => uploadImage(file, "ohc_certificate")}
+      />
+      <TransferModal
+        open={!!transferKey}
+        employee={transferEmployee}
+        rows={transferRows}
+        allBranches={allBranchNames}
+        mainBranches={BRANCHES}
+        withDirectory={false}
+        onClose={() => setTransferKey(null)}
+        onConfirm={doTransfer}
+      />
+      <OhcPdfExportModal
+        open={pdfOpen}
+        onClose={() => setPdfOpen(false)}
+        selectedRows={selectedRows}
+        shownRows={filtered}
+        onClearSelection={() => setSelected(new Set())}
+      />
+
       {/* خط الصفحة 16px بولد — الكلاس مضاعف لتخطّي !important في globals.css */}
       <style>{`
         #root .ohcv.ohcv,
@@ -1586,6 +1642,44 @@ export default function OHCView() {
 
             <button
               type="button"
+              onClick={() => setHistoryKey("__all__")}
+              title="Every renewal, transfer and edit across the register"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #cbd5e1",
+                background: "#fff",
+                color: "#0f172a",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🕘 Change log
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPdfOpen(true)}
+              disabled={!filtered.length && !selected.size}
+              title="Export the certificate images as one PDF (ticked rows, or everything shown)"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "none",
+                background: "linear-gradient(135deg,#f43f5e,#be123c)",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(244,63,94,0.35)",
+              }}
+            >
+              📑 Certificates PDF{selected.size ? ` (${selected.size} ticked)` : ""}
+            </button>
+
+            <button
+              type="button"
               onClick={exportCSV}
               style={{
                 padding: "6px 12px",
@@ -1862,7 +1956,7 @@ export default function OHCView() {
                   }}
                 >
                   {`(Employee Number: ${
-                    filtered[editingIndex]?.appNo || "N/A"
+                    editRow?.appNo || "N/A"
                   })`}
                 </span>
               </h3>
@@ -2055,11 +2149,11 @@ export default function OHCView() {
                 >
                   <div>
                     {(editImage?.dataUrl ||
-                      filtered[editingIndex]?.image) && (
+                      editRow?.image) && (
                       <img
                         src={
                           editImage?.dataUrl ||
-                          filtered[editingIndex]?.image
+                          editRow?.image
                         }
                         alt="preview"
                         style={{
@@ -2073,7 +2167,7 @@ export default function OHCView() {
                       />
                     )}
                     {!editImage?.dataUrl &&
-                      !filtered[editingIndex]?.image && (
+                      !editRow?.image && (
                         <span
                           style={{
                             fontSize: 12,
@@ -2193,6 +2287,25 @@ export default function OHCView() {
                     color: "#e5e7eb",
                   }}
                 >
+                  <th
+                    style={{
+                      padding: 10,
+                      borderBottom: "1px solid #1f2937",
+                      textAlign: "center",
+                      width: 34,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allShownSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedShown > 0 && !allShownSelected;
+                      }}
+                      onChange={toggleSelectAllShown}
+                      title="Select every certificate shown (for the PDF export)"
+                      aria-label="Select all shown"
+                    />
+                  </th>
                   {[
                     "#",
                     "Employee Number",
@@ -2206,7 +2319,6 @@ export default function OHCView() {
                     "Branch",
                     "Image",
                     "Actions",
-                    "Edit",
                   ].map((h) => (
                     <th
                       key={h}
@@ -2277,7 +2389,7 @@ export default function OHCView() {
 
                     return (
                       <tr
-                        key={i}
+                        key={r._rid || i}
                         style={{
                           textAlign: "center",
                           background: rowBg,
@@ -2290,10 +2402,30 @@ export default function OHCView() {
                           style={{
                             padding: 8,
                             borderTop: "1px solid #e5e7eb",
+                          }}
+                        >
+                          {r._rid && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(r._rid)}
+                              onChange={() => toggleSelect(r._rid)}
+                              aria-label={`Select ${r.name || r.appNo}`}
+                            />
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderTop: "1px solid #e5e7eb",
                             whiteSpace: "nowrap",
                           }}
                         >
                           {i + 1}
+                          {r.renewals.length > 0 && (
+                            <div title={`Renewed ${r.renewals.length}×`} style={{ fontSize: 9, fontWeight: 800, color: "#ea580c" }}>
+                              ↻{r.renewals.length}
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -2521,99 +2653,94 @@ export default function OHCView() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          <button
-                            onClick={() => handleDelete(i)}
-                            style={{
-                              padding: "6px 12px",
-                              background:
-                                "linear-gradient(135deg,#ef4444,#b91c1c)",
-                              color: "#fff",
-                              border: 0,
-                              borderRadius: 999,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                           data-delete-action="true">
-                            Delete
-                          </button>
-                        </td>
-                        <td
-                          style={{
-                            padding: 8,
-                            borderTop: "1px solid #e5e7eb",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              justifyContent: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                          <button
-                            onClick={() => toggleOutsideDubai(i)}
-                            title={
-                              r.outsideDubai
-                                ? "Move back to Dubai"
-                                : "Mark as Outside Dubai (hide from main view)"
-                            }
-                            style={{
-                              padding: "6px 10px",
-                              background: r.outsideDubai
-                                ? "linear-gradient(135deg,#10b981,#047857)"
-                                : "linear-gradient(135deg,#0ea5e9,#0369a1)",
-                              color: "#fff",
-                              border: 0,
-                              borderRadius: 999,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {r.outsideDubai ? "🏙️ To Dubai" : "📍 Outside"}
-                          </button>
-                          <button
-                            onClick={() => toggleLeftCompany(i)}
-                            title={
-                              r.leftCompany
-                                ? "Restore as active employee"
-                                : "Mark as Left Company (hide from main view)"
-                            }
-                            style={{
-                              padding: "6px 10px",
-                              background: r.leftCompany
-                                ? "linear-gradient(135deg,#10b981,#047857)"
-                                : "linear-gradient(135deg,#dc2626,#7c2d12)",
-                              color: "#fff",
-                              border: 0,
-                              borderRadius: 999,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {r.leftCompany ? "↩ Restore" : "🚪 Left"}
-                          </button>
-                          <button
-                            onClick={() => startEdit(i)}
-                            style={{
-                              padding: "6px 12px",
-                              background:
-                                "linear-gradient(135deg,#2563eb,#1d4ed8)",
-                              color: "#fff",
-                              border: 0,
-                              borderRadius: 999,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            Edit
-                          </button>
-                          </div>
+                          {!r._rid ? (
+                            <span style={{ color: "#9ca3af" }}>—</span>
+                          ) : (
+                            (() => {
+                              const empKey = employeeKeyOf(r);
+                              const histCount = (rowsByEmployee.get(empKey) || []).reduce(
+                                (n, x) => n + (Array.isArray(x.history) ? x.history.length : 0),
+                                0
+                              );
+                              const busy = busyRid === r._rid;
+                              const urgent = st.key === "expired" || st.key === "expiring_soon";
+                              // one contextual button, everything else in the ⋯ menu
+                              const primary = r.leftCompany
+                                ? { label: "↩ Restore", tone: "green", onClick: () => toggleFlag(r, "leftCompany") }
+                                : r.outsideDubai
+                                ? { label: "🏙️ To Dubai", tone: "green", onClick: () => toggleFlag(r, "outsideDubai") }
+                                : urgent
+                                ? { label: "↻ Renew", tone: "orange", onClick: () => setRenewRid(r._rid) }
+                                : { label: "✎ Edit", tone: "blue", onClick: () => startEdit(r) };
+                              return (
+                                <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    onClick={primary.onClick}
+                                    disabled={busy}
+                                    style={{
+                                      minWidth: 88,
+                                      height: 28,
+                                      padding: "0 12px",
+                                      borderRadius: 999,
+                                      fontWeight: 800,
+                                      fontSize: 11,
+                                      cursor: busy ? "wait" : "pointer",
+                                      opacity: busy ? 0.6 : 1,
+                                      ...(primary.tone === "orange"
+                                        ? { border: 0, background: "linear-gradient(135deg,#fb923c,#ea580c)", color: "#fff" }
+                                        : primary.tone === "green"
+                                        ? { border: "1px solid #86efac", background: "#f0fdf4", color: "#15803d" }
+                                        : { border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8" }),
+                                    }}
+                                  >
+                                    {busy ? "…" : primary.label}
+                                  </button>
+                                  <RowMenu
+                                    items={[
+                                      { key: "edit", icon: "✎", label: "Edit certificate", onClick: () => startEdit(r), hidden: primary.tone === "blue" },
+                                      {
+                                        key: "renew",
+                                        icon: "↻",
+                                        label: "Renew OHC",
+                                        color: "#ea580c",
+                                        badge: r.renewals.length || null,
+                                        onClick: () => setRenewRid(r._rid),
+                                        hidden: r.leftCompany || r.outsideDubai || primary.tone === "orange",
+                                      },
+                                      { key: "hist", icon: "🕘", label: "Employee history", badge: histCount || null, onClick: () => setHistoryKey(empKey) },
+                                      { key: "transfer", icon: "⇄", label: "Transfer employee", color: "#2563eb", onClick: () => setTransferKey(empKey), hidden: r.leftCompany },
+                                      { key: "pdf", icon: "📑", label: selected.has(r._rid) ? "Remove from PDF selection" : "Add to PDF selection", onClick: () => toggleSelect(r._rid) },
+                                      { divider: true },
+                                      {
+                                        key: "outside",
+                                        icon: "📍",
+                                        label: "Mark as Outside Dubai",
+                                        onClick: () => toggleFlag(r, "outsideDubai"),
+                                        hidden: r.outsideDubai || r.leftCompany,
+                                      },
+                                      {
+                                        key: "left",
+                                        icon: "⎋",
+                                        label: "Mark employee as left",
+                                        onClick: () => toggleFlag(r, "leftCompany"),
+                                        hidden: r.leftCompany,
+                                      },
+                                      {
+                                        key: "del",
+                                        icon: "🗑",
+                                        label: busy ? "Working…" : "Delete certificate",
+                                        danger: true,
+                                        deleteAction: true,
+                                        disabled: busy,
+                                        onClick: () => handleDelete(r),
+                                      },
+                                    ]}
+                                  />
+                                </div>
+                              );
+                            })()
+                          )}
                         </td>
                       </tr>
                     );
