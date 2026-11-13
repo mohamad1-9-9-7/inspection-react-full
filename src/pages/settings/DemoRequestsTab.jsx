@@ -109,6 +109,7 @@ export default function DemoRequestsTab() {
   const [whatsapp, setWhatsapp] = useState("");
   const [promoConfig, setPromoConfig] = useState({});
   const [quizStats, setQuizStats] = useState({});
+  const [quizRuns, setQuizRuns] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -121,6 +122,7 @@ export default function DemoRequestsTab() {
       setWhatsapp(String(j.whatsapp || ""));
       setPromoConfig(j.config && typeof j.config === "object" ? j.config : {});
       setQuizStats(j.quizStats && typeof j.quizStats === "object" ? j.quizStats : {});
+      setQuizRuns(Array.isArray(j.quizRuns) ? j.quizRuns : []);
       setMsg(null);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ ${e.message}` });
@@ -227,6 +229,13 @@ export default function DemoRequestsTab() {
       <VisitorStats />
 
       <ShareLinks origin={getPublicOrigin()} rows={rows} waClicks={waClicks} quizStats={quizStats} />
+
+      <QuizRuns
+        runs={quizRuns}
+        rows={rows}
+        onDeleted={(id) => setQuizRuns((p) => p.filter((r) => r.id !== id))}
+        setMsg={setMsg}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 14 }}>
         <Stat label={L("Total", "الكل")} value={rows.length} color="#0f766e" />
@@ -762,6 +771,129 @@ function QuizGaps({ answers }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* Every finished readiness check — including the ones that left no number.
+   Server: GET /api/demo-requests → quizRuns; DELETE /api/demo-quiz-runs/:id. */
+function QuizRuns({ runs, rows, onDeleted, setMsg }) {
+  const { L, lang } = useL();
+  const [open, setOpen] = useState(true);
+  const [show, setShow] = useState("all"); // all | anon | lead
+  const [openId, setOpenId] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const leadName = useMemo(() => Object.fromEntries(rows.map((r) => [r.id, r.companyName])), [rows]);
+  const list = runs.filter((r) => show === "all" || (show === "lead" ? r.lead_id : !r.lead_id));
+  const nLead = runs.filter((r) => r.lead_id).length;
+
+  // Where visitors are weakest: average points per area over every finished check.
+  const areas = useMemo(() => {
+    const sum = {}; const cnt = {};
+    runs.forEach((r) => scoreAnswers(r.answers || {}).rows.forEach((x) => {
+      if (!x.answered) return;
+      sum[x.q.id] = (sum[x.q.id] || 0) + x.pts; cnt[x.q.id] = (cnt[x.q.id] || 0) + 1;
+    }));
+    return scoreAnswers({}).rows
+      .filter((x) => cnt[x.q.id])
+      .map((x) => ({ q: x.q, avg: sum[x.q.id] / cnt[x.q.id] }))
+      .sort((a, b) => a.avg - b.avg);
+  }, [runs]);
+  const avgScore = runs.length ? Math.round(runs.reduce((a, r) => a + (Number(r.score) || 0), 0) / runs.length) : null;
+
+  const remove = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/demo-quiz-runs/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await readJson(res, L("Delete failed", "فشل الحذف"));
+      onDeleted(id);
+      setMsg({ kind: "ok", text: `✅ ${L("Check deleted.", "انحذف الفحص.")}` });
+    } catch (e) {
+      setMsg({ kind: "err", text: `❌ ${e.message}` });
+    }
+  };
+
+  const devIcon = { mobile: "📱", tablet: "📲", desktop: "💻" };
+
+  return (
+    <div style={{ ...ui.card, padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ all: "unset", cursor: "pointer", display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", fontWeight: 1000, fontSize: 16 }}
+      >
+        <span>📊 {L("Finished readiness checks", "فحوصات الجاهزية المكتملة")} ({runs.length})</span>
+        <span style={{ color: "#64748b" }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 10 }}>
+          {!runs.length ? (
+            <div style={{ color: "#64748b", fontWeight: 750 }}>
+              {L("No saved checks yet. Checks are saved from now on — the older ones were only counted, not kept.",
+                "ما في فحوصات محفوظة لسا. من هلأ وطالع كل فحص بيكمل بينحفظ — القديمة كانت تنعدّ بس وما انحفظت.")}
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                <Chip on={show === "all"} onClick={() => setShow("all")} label={`${L("All", "الكل")} (${runs.length})`} />
+                <Chip on={show === "anon"} onClick={() => setShow("anon")} label={`${L("No number left", "ما تركوا رقم")} (${runs.length - nLead})`} color="#b45309" />
+                <Chip on={show === "lead"} onClick={() => setShow("lead")} label={`${L("Left their number", "تركوا رقمهم")} (${nLead})`} color="#059669" />
+              </div>
+
+              <div style={{ ...ui.subtleCard, marginBottom: 10 }}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                  {L("Average score", "متوسط الدرجة")}: {avgScore}/100 · {L("Weakest areas across all checks", "أضعف الجوانب بكل الفحوصات")}
+                </div>
+                <div style={{ display: "grid", gap: 4 }}>
+                  {areas.slice(0, 5).map((a) => (
+                    <div key={a.q.id} style={{ display: "flex", gap: 10, fontWeight: 750 }}>
+                      <b style={{ color: a.avg >= 7 ? "#059669" : a.avg >= 4 ? "#d97706" : "#dc2626", minWidth: 52 }}>{a.avg.toFixed(1)}/10</b>
+                      <span>{lang === "ar" ? a.q.area.ar : a.q.area.en}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {list.map((r) => (
+                <div key={r.id} style={{ borderTop: "1px solid rgba(15,23,42,.08)", padding: "8px 0" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <ScoreBadge score={Number(r.score) || 0} />
+                    <span style={{ fontWeight: 800 }}>{lang === "ar" ? levelOf(Number(r.score) || 0).ar : levelOf(Number(r.score) || 0).en}</span>
+                    <span style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>
+                      {fmtWhen(r.created_at, lang)} · {r.source === "direct" ? L("direct", "مباشر") : r.source}
+                      {r.device ? ` · ${devIcon[r.device] || ""}` : ""}{r.country ? ` · ${r.country}` : ""} · {r.lang === "ar" ? "ع" : "EN"}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    {r.lead_id
+                      ? <span style={{ color: "#059669", fontWeight: 900 }}>✓ {leadName[r.lead_id] || L("Left their number", "ترك رقمه")}</span>
+                      : <span style={{ color: "#94a3b8", fontWeight: 800 }}>{L("No number", "بدون رقم")}</span>}
+                    <Button style={{ minHeight: 34 }} onClick={() => setOpenId((x) => (x === r.id ? null : r.id))}>
+                      {openId === r.id ? "▲" : L("Answers", "الأجوبة")}
+                    </Button>
+                    <Button tone="muted" style={{ minHeight: 34 }} onClick={() => setPendingDelete(r.id)}>✕</Button>
+                  </div>
+                  {openId === r.id && (
+                    <div style={{ marginTop: 8 }}>
+                      {scoreAnswers(r.answers || {}).gaps.length
+                        ? <QuizGaps answers={r.answers} />
+                        : <div style={{ color: "#059669", fontWeight: 800 }}>{L("Full marks in every area.", "علامة كاملة بكل الجوانب.")}</div>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+      <ConfirmModal
+        open={pendingDelete != null}
+        title={L("Delete this check?", "حذف هالفحص؟")}
+        body={L("It will be removed from the list. The counters stay as they are.", "رح ينشال من القائمة. العدّادات بتضل متل ما هي.")}
+        confirmText={L("Delete", "حذف")}
+        cancelText={L("Cancel", "إلغاء")}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => { const id = pendingDelete; setPendingDelete(null); remove(id); }}
+      />
     </div>
   );
 }

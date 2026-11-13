@@ -145,7 +145,10 @@ export default function ReadinessCheck() {
   const waNumber = cfg.whatsapp;
 
   // Funnel counts: once per page load each, and never in the way of the visitor.
-  const track = (event) => {
+  /* "done" also carries the score + answers (no name/phone) so the owner can
+     read every finished check, not just the ones that left a number. */
+  const runId = useRef(null);
+  const track = (event, extra = {}) => {
     if (sent.current[event]) return;
     sent.current[event] = true;
     stat(event === "start" ? "quiz_start" : "quiz_done");
@@ -153,10 +156,22 @@ export default function ReadinessCheck() {
       fetch(`${API_BASE}/api/demo-requests/quiz-event`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, source }),
+        body: JSON.stringify({ event, source, ...extra }),
         keepalive: true,
-      }).catch(() => {});
+      })
+        .then((r) => r.json())
+        .then((j) => { if (j && j.runId) runId.current = j.runId; })
+        .catch(() => {});
     } catch { /* counting is best-effort */ }
+  };
+  const runMeta = () => {
+    let device = "desktop";
+    try {
+      const w = window.innerWidth || 1024;
+      device = w < 768 ? "mobile" : w < 1100 && navigator.maxTouchPoints > 0 ? "tablet" : "desktop";
+    } catch { /* default */ }
+    const country = document.querySelector('meta[name="x-country"]')?.getAttribute("content") || "";
+    return { lang, device, country };
   };
 
   const begin = () => { track("start"); setStep(0); };
@@ -164,11 +179,15 @@ export default function ReadinessCheck() {
   const choose = (qid, idx) => {
     if (moving.current) return; // a double tap must not skip a question
     moving.current = true;
-    setAnswers((a) => ({ ...a, [qid]: idx }));
+    const all = { ...answers, [qid]: idx };
+    setAnswers(all);
     const next = step + 1;
     // A short beat so the tap registers visually before the next question.
     setTimeout(() => {
-      if (next >= N) { track("done"); window.scrollTo(0, 0); }
+      if (next >= N) {
+        track("done", { score: scoreAnswers(all).score, answers: all, ...runMeta() });
+        window.scrollTo(0, 0);
+      }
       setStep(next);
       moving.current = false;
     }, 220);
@@ -200,6 +219,7 @@ export default function ReadinessCheck() {
           lang,
           quizScore: score,
           quizAnswers: answers,
+          quizRunId: runId.current || undefined,
         }),
       });
       if (res.status === 429) throw new Error(t.tooMany);
