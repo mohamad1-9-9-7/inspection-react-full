@@ -40,6 +40,8 @@ export const branchLabel = (b) => (ALL_LOGS[b] ? `${b} (${ALL_LOGS[b].pos})` : b
 export const DUE_SOON_DAYS = 30;
 
 const norm = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+/** Name match for unlinked records: "Display Chiller 03" = "display chiller 3". */
+const nameKey = (s) => norm(s).replace(/\b0+(\d)/g, "$1");
 
 function parseDay(s) {
   if (!s) return null;
@@ -78,7 +80,7 @@ export function calibrationForUnit(records, { branch, log, unitKey, label }) {
     if (norm(p.branch) !== norm(branch)) return false;
     const link = p.linkedUnit;
     if (link?.key) return norm(link.key) === norm(unitKey) && (!link.log || link.log === log);
-    return !!label && norm(p.equipmentName) === norm(label);
+    return !!label && nameKey(p.equipmentName) === nameKey(label);
   });
   if (!hits.length) return null;
   const at = (r) => parseDay(r.payload?.lastCalibrationDate)?.getTime() ?? 0;
