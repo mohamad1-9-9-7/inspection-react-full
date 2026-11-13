@@ -12,6 +12,7 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const DEFAULT_TYPE   = "pos15_equipment_inspection";
 const DEFAULT_BRANCH = "POS 15";
@@ -214,7 +215,7 @@ export default function POS15EquipmentInspectionSanitizingLogView({
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;
-    const html = `<html><head><meta charset="utf-8"/><title>${branch} Equipment Inspection - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const html = `<html><head><meta charset="utf-8"/><title>${escapeHtml(branch)} Equipment Inspection - ${escapeHtml(titleDate)}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();

@@ -4,6 +4,7 @@ import "./SupplierApproval.css";
 /* Same checklist the invitation e-mail promises, so the page cannot list
    different paperwork than the letter the supplier is holding. */
 import { docsFor } from "./supplierEmailConfig";
+import { escapeHtml } from "../../../utils/escapeHtml";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -2105,15 +2106,15 @@ export default function SupplierEvaluationPublic() {
   <div class="fields">
     <div class="field-row">
       <span class="field-label">${isRTL ? "اسم الشركة" : "Company Name"}</span>
-      <div class="field-line">${companyName}</div>
+      <div class="field-line">${escapeHtml(companyName)}</div>
     </div>
     <div class="field-row">
       <span class="field-label">${isRTL ? "الاسم" : "Name"}</span>
-      <div class="field-line">${declaration.name}</div>
+      <div class="field-line">${escapeHtml(declaration.name)}</div>
     </div>
     <div class="field-row">
       <span class="field-label">${isRTL ? "المنصب" : "Position Held"}</span>
-      <div class="field-line">${declaration.position}</div>
+      <div class="field-line">${escapeHtml(declaration.position)}</div>
     </div>
     <div class="field-row">
       <span class="field-label">${isRTL ? "التاريخ" : "Date"}</span>

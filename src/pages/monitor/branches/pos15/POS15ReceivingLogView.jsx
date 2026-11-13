@@ -11,6 +11,7 @@ import {
 } from "../_shared/branchViewKit";
 import { listReportDates, listReports, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
@@ -485,7 +486,7 @@ export default function POS15ReceivingLogView() {
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;
-    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Receiving Log - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Receiving Log - ${escapeHtml(titleDate)}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();

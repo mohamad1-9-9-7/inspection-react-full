@@ -13,6 +13,7 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const TYPE = "prod_cleaning_checklist";
 
@@ -106,7 +107,7 @@ export default function CleaningChecklistPRDView() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Cleaning Checklist (PRD) - ${titleDate}</title>
+          <title>Cleaning Checklist (PRD) - ${escapeHtml(titleDate)}</title>
           <style>${PRINT_CSS}</style>
         </head>
         <body>${sheetRef.current.outerHTML}</body>

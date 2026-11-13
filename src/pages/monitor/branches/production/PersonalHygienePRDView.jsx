@@ -14,6 +14,7 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const TYPE = "prod_personal_hygiene";
 
@@ -116,7 +117,7 @@ export default function PersonalHygienePRDView() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Personal Hygiene (PRD) - ${titleDate}</title>
+          <title>Personal Hygiene (PRD) - ${escapeHtml(titleDate)}</title>
           <style>${PRINT_CSS}</style>
         </head>
         <body>${sheetRef.current.outerHTML}</body>

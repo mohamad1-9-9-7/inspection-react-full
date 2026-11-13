@@ -28,6 +28,7 @@ import { canDelete, canEdit } from "../../../../utils/perms";
 import API_BASE from "../../../../config/api";
 import { REPORTER } from "./pos6Api";
 import { useLang } from "./pos6I18n";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 /* Values a sheet stores that should read as pass / fail rather than plain text. */
 const GOOD = new Set(["C", "Yes", "√"]);
@@ -210,12 +211,12 @@ export default function POS6ReportView({
       thead th { background: #0f172a; color: #fff; font-weight: 800; }
       input, select { border: none; background: transparent; font: inherit; color: inherit; text-align: center; width: 100%; }
     `;
-    const heading = `<h2 style="margin:0 0 10px;font-size:16px">${title} — POS 6 · ${formatDMY(stored?.reportDate) || ""}</h2>`;
+    const heading = `<h2 style="margin:0 0 10px;font-size:16px">${escapeHtml(title)} — POS 6 · ${escapeHtml(formatDMY(stored?.reportDate) || "")}</h2>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open();
     w.document.write(
-      `<html><head><meta charset="utf-8"/><title>${title} - ${stored?.reportDate || ""}</title>` +
+      `<html><head><meta charset="utf-8"/><title>${escapeHtml(title)} - ${escapeHtml(stored?.reportDate || "")}</title>` +
         `<style>${css}</style></head><body>${heading}${sheetRef.current.innerHTML}</body></html>`
     );
     w.document.close();

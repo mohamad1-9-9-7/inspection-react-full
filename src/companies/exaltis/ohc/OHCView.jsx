@@ -406,9 +406,9 @@ export default function OHCView() {
           <h1>OHC Certificates</h1>
           <div class="meta">
             Records: ${filtered.length} &nbsp;|&nbsp;
-            Status: ${statusFilter} &nbsp;|&nbsp;
-            Branch: ${branchFilter} &nbsp;|&nbsp;
-            Result: ${resultFilter} &nbsp;|&nbsp;
+            Status: ${escapeHTML(statusFilter)} &nbsp;|&nbsp;
+            Branch: ${escapeHTML(branchFilter)} &nbsp;|&nbsp;
+            Result: ${escapeHTML(resultFilter)} &nbsp;|&nbsp;
             Generated: ${new Date().toLocaleString()}
           </div>
           <table>

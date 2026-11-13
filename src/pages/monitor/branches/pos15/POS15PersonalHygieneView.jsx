@@ -20,6 +20,7 @@ import {
   reportDateOf,
   payloadOf,
 } from "../_shared/reportApi";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const TYPE = "pos15_personal_hygiene";
 
@@ -116,7 +117,7 @@ export default function POS15PersonalHygieneView() {
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;
-    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Personal Hygiene - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Personal Hygiene - ${escapeHtml(titleDate)}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();

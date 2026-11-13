@@ -376,9 +376,9 @@ export default function TrainingCertificatesView() {
           <h1>Training Certificates (BFS / EFST / PIC / HACCP)</h1>
           <div class="meta">
             Records: ${rows.length} &nbsp;|&nbsp;
-            Status: ${statusFilter} &nbsp;|&nbsp;
-            Branch: ${branchFilter || "All"} &nbsp;|&nbsp;
-            Course: ${courseFilter || "All"} &nbsp;|&nbsp;
+            Status: ${escapeHTML(statusFilter)} &nbsp;|&nbsp;
+            Branch: ${escapeHTML(branchFilter || "All")} &nbsp;|&nbsp;
+            Course: ${escapeHTML(courseFilter || "All")} &nbsp;|&nbsp;
             Generated: ${new Date().toLocaleString()}
           </div>
           <table>

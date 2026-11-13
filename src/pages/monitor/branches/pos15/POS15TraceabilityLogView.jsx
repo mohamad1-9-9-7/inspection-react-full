@@ -12,6 +12,7 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 /* "22000 · NAME" — the item code glued to its product name, so one cell
    carries both wherever the row is rendered, printed or exported. */
@@ -241,7 +242,7 @@ export default function POS15TraceabilityLogView() {
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;
-    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Traceability Log - ${p.reportDate || date}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Traceability Log - ${escapeHtml(p.reportDate || date)}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();

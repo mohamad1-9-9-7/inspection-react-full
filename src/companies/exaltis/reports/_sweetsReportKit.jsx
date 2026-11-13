@@ -17,6 +17,7 @@
 // first paint.
 
 import React from "react";
+import { escapeHtml } from "../../../utils/escapeHtml";
 
 /* ========= Toolbar ========= */
 const BTN = {
@@ -96,7 +97,7 @@ export function printNode(node, title = "Report") {
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(
-    `<!doctype html><html dir="${document.dir || "ltr"}"><head><meta charset="utf-8"><title>${title}</title>` +
+    `<!doctype html><html dir="${document.dir || "ltr"}"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
       styleTags +
       `<style>
          body{margin:16px;background:#fff;}

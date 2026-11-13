@@ -17,6 +17,7 @@ import {
   FiMaximize2, FiCheck,
 } from "react-icons/fi";
 import { thumbUrl } from "../../utils/imageUpload";
+import { escapeHtml } from "../../utils/escapeHtml";
 
 const MIN = 0.2;
 const MAX = 8;
@@ -160,7 +161,7 @@ export default function ImageLightbox({ open, images = [], title = "", startInde
         `body{margin:0;font-family:sans-serif;text-align:center}` +
         `h3{margin:12px 0 8px;font-size:15px}` +
         `img{max-width:100%;max-height:92vh;transform:rotate(${view.rot}deg) scaleX(${view.flip ? -1 : 1})}` +
-        `</style></head><body><h3>${safe}</h3><img src="${src}" onload="setTimeout(function(){print();},150)"></body></html>`
+        `</style></head><body><h3>${safe}</h3><img src="${escapeHtml(src)}" onload="setTimeout(function(){print();},150)"></body></html>`
     );
     w.document.close();
   };

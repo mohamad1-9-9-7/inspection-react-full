@@ -11,6 +11,7 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { escapeHtml } from "../../../../utils/escapeHtml";
 
 const TYPE = "prod_defrosting_record";
 
@@ -129,7 +130,7 @@ export default function PRDDefrostingRecordView() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Defrosting Report - ${titleDate}</title>
+          <title>Defrosting Report - ${escapeHtml(titleDate)}</title>
           <style>${PRINT_CSS}</style>
         </head>
         <body>${sheetRef.current.outerHTML}</body>

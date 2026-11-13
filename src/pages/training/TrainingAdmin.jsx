@@ -8,6 +8,7 @@ import { MODULE_DETAILS_BI, DEFAULT_DETAILS_BI } from "./TrainingReferenceModal"
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { hideSectionLangToggle } from "../../utils/appLang";
+import { escapeHtml } from "../../utils/escapeHtml";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
@@ -1863,8 +1864,8 @@ function RefPreviewModal({ refData, lang, onClose, onEdit }) {
               onClick={() => {
                 const w = window.open("", "_blank");
                 if (!w) return;
-                const lines = rawLines.map((l) => `<p dir="${isAr(l) ? "rtl" : "ltr"}" style="margin:4px 0;font-size:13px">${l}</p>`).join("");
-                w.document.write(`<html><head><title>${p.title}</title><meta charset="utf-8"><style>@media print{@page{margin:15mm}}body{font-family:Cairo,Inter,system-ui,sans-serif;padding:20px;max-width:800px;margin:0 auto}h1{font-size:18px;color:#1e3a8a}h2{font-size:13px;color:#64748b}</style></head><body><h1>${p.title}</h1><h2>${p.module ? getModuleName(p.module, lang) : ""} — Al Mawashi Training Reference</h2><hr/>${lines}<script>window.onload=()=>window.print()</script></body></html>`);
+                const lines = rawLines.map((l) => `<p dir="${isAr(l) ? "rtl" : "ltr"}" style="margin:4px 0;font-size:13px">${escapeHtml(l)}</p>`).join("");
+                w.document.write(`<html><head><title>${escapeHtml(p.title)}</title><meta charset="utf-8"><style>@media print{@page{margin:15mm}}body{font-family:Cairo,Inter,system-ui,sans-serif;padding:20px;max-width:800px;margin:0 auto}h1{font-size:18px;color:#1e3a8a}h2{font-size:13px;color:#64748b}</style></head><body><h1>${escapeHtml(p.title)}</h1><h2>${p.module ? getModuleName(p.module, lang) : ""} — Al Mawashi Training Reference</h2><hr/>${lines}<script>window.onload=()=>window.print()</script></body></html>`);
                 w.document.close();
               }}
               style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontWeight: 800, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
