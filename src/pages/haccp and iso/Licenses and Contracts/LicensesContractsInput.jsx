@@ -13,27 +13,9 @@ import API_BASE from "../../../config/api";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 import {
   TYPE, safeArr, getId, isImageUrl, isPdfUrl, displayUrl, todayYmd, addPeriod, fmtDate,
-  STATUS, statusOf, mkEvent, newUid,
+  STATUS, statusOf, mkEvent, newUid, BRANCHES, LICENSE_NAMES, CONTRACT_TYPES,
 } from "./licensesKit";
 import { uploadPicked } from "./licensesNet";
-
-const BRANCHES = [
-  "Al Qusais Warehouse",
-  "Al Mamzar Food Truck",
-  "Supervisor Food Truck",
-  "Al Barsha Butchery",
-  "Abu Dhabi Butchery",
-  "Al Ain Butchery",
-];
-
-const LICENSE_NAMES = [
-  "Trade License", "Food Establishment Permit", "Dubai Municipality Food License",
-  "ADAFSA Food License", "Civil Defence Certificate", "Food Truck Permit",
-];
-const CONTRACT_TYPES = [
-  "Pest Control", "Cleaning", "Waste Disposal", "Water Tank Cleaning",
-  "Fire Safety (AMC)", "Equipment Maintenance", "Uniform / Laundry", "Grease Trap Cleaning", "Security",
-];
 
 const T = {
   en: {

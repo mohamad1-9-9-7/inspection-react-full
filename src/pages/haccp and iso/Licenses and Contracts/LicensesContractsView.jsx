@@ -18,18 +18,15 @@ import {
   todayYmd, daysUntil, addPeriod, diffDays, fmtDate, fmtDateTime,
   STATUS, statusOf, flattenRecords, ensureUids, diffPayloads, applyRenewal,
   collectHistory, contractUid, newUid,
+  BRANCHES, buildSuggestions, applyItemEdit, removeItem,
 } from "./licensesKit";
 import { uploadPicked, writeRecord } from "./licensesNet";
 import DocumentsViewer from "./DocumentsViewer";
+import { SmartSelect, ComboInput } from "./licensesUi";
+import { canEdit, canDelete } from "../../../utils/perms";
 
-const BRANCHES = [
-  "Al Qusais Warehouse",
-  "Al Mamzar Food Truck",
-  "Supervisor Food Truck",
-  "Al Barsha Butchery",
-  "Abu Dhabi Butchery",
-  "Al Ain Butchery",
-];
+// HACCP / ISO pages live under the "iso" permission section.
+const PERM_SECTION = "iso";
 
 /* ───────────────────────── i18n ───────────────────────── */
 const T = {
@@ -78,6 +75,15 @@ const T = {
     copied: "Reminder copied — paste it in WhatsApp or e-mail.", nothingToCopy: "Nothing expired or due in 90 days.",
     remHead: "Licenses & contracts — renewal reminder", remExpired: "EXPIRED", remDue: "Due",
     dataCheck: "Data checks", dcNoExpiry: (n) => `${n} without an expiry date`, dcNoFile: (n) => `${n} without an attached document`,
+    // edit / delete one item
+    editItem: "Edit", deleteItem: "Delete", editTitle: "Edit document", aLicRemoved: "License removed",
+    confirmDeleteItem: (n) => `Delete "${n}" from the register?\nIts documents and renewal archive go with it.`,
+    lastItemDeletesRecord: "This is the last document of this record — the whole record will be deleted.",
+    branchAppliesAll: (n) => `Changing the branch moves the whole record (${n} document(s)).`,
+    errNameReq: "Enter the license name.", errTypeReq: "Enter the contract type.",
+    usedN: (n) => `${n}×`, newValue: "New value", noMatch: "No match", searchList: "Search…",
+    itemDeleted: "Document deleted.", docs: "Documents", addFiles: "Add files",
+    licNamePh: "e.g. Trade License", typePh: "e.g. Pest Control", companyPh: "Company name",
   },
   ar: {
     sub: "المواشي — الرخص والعقود",
@@ -121,6 +127,14 @@ const T = {
     copied: "تم نسخ التذكير — الصقه في واتساب أو البريد.", nothingToCopy: "لا يوجد شيء منتهٍ أو مستحق خلال 90 يوماً.",
     remHead: "الرخص والعقود — تذكير بالتجديد", remExpired: "منتهية", remDue: "تستحق",
     dataCheck: "فحص البيانات", dcNoExpiry: (n) => `${n} بدون تاريخ انتهاء`, dcNoFile: (n) => `${n} بدون مستند مرفق`,
+    editItem: "تعديل", deleteItem: "حذف", editTitle: "تعديل المستند", aLicRemoved: "حذف الرخصة",
+    confirmDeleteItem: (n) => `حذف "${n}" من السجل؟\nتُحذف معه مستنداته وأرشيف تجديداته.`,
+    lastItemDeletesRecord: "هذا آخر مستند في هذا السجل — سيُحذف السجل بالكامل.",
+    branchAppliesAll: (n) => `تغيير الفرع ينقل السجل كله (${n} مستند).`,
+    errNameReq: "أدخل اسم الرخصة.", errTypeReq: "أدخل نوع العقد.",
+    usedN: (n) => `${n}×`, newValue: "قيمة جديدة", noMatch: "لا توجد نتائج", searchList: "بحث…",
+    itemDeleted: "تم حذف المستند.", docs: "المستندات", addFiles: "إضافة ملفات",
+    licNamePh: "مثال: رخصة تجارية", typePh: "مثال: مكافحة حشرات", companyPh: "اسم الشركة",
   },
 };
 
@@ -422,6 +436,154 @@ function RenewModal({ t, lang, item, onClose, onSave, onViewDocs }) {
   );
 }
 
+/* ───────────────────────── Edit one item ───────────────────────── */
+function EditItemModal({ t, lang, item, docCount, sugg, onClose, onSave, onDelete }) {
+  const isLic = item.kind === "license";
+  const [form, setForm] = useState(() => ({
+    branch: item.branch === "Unspecified" ? "" : item.branch,
+    name: isLic ? item.name : "",
+    contractType: isLic ? "" : item.name,
+    companyName: item.company || "",
+    expiryDate: item.expiryDate || "",
+    notes: item.notes || "",
+    fileUrls: item.files.slice(),
+    fileNames: item.files.map((_, i) => item.fileNames[i] || ""),
+  }));
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const set = (patch) => setForm((p) => ({ ...p, ...patch }));
+  const branchChanged = form.branch.trim() !== (item.branch === "Unspecified" ? "" : item.branch);
+
+  async function pick(fl) {
+    setErr("");
+    try {
+      setBusy(t.uploading);
+      const r = await uploadPicked(fl, (p) => setBusy(`${t.uploading} ${p}`));
+      setForm((p) => ({ ...p, fileUrls: [...p.fileUrls, ...r.urls].slice(0, 20), fileNames: [...p.fileNames, ...r.names].slice(0, 20) }));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submit() {
+    setErr("");
+    if (isLic && !form.name.trim()) return setErr(t.errNameReq);
+    if (!isLic && !form.contractType.trim()) return setErr(t.errTypeReq);
+    if (form.expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(form.expiryDate)) return setErr(t.errNoDate);
+    setBusy(t.saving);
+    try {
+      await onSave(form);
+    } catch (e) {
+      setErr(t.saveFail + (e?.message || e));
+      setBusy("");
+    }
+  }
+
+  async function del() {
+    setErr("");
+    setBusy(t.saving);
+    try {
+      const done = await onDelete();
+      if (!done) setBusy("");
+    } catch (e) {
+      setErr(t.saveFail + (e?.message || e));
+      setBusy("");
+    }
+  }
+
+  const combo = { usedLabel: t.usedN, newLabel: t.newValue };
+  return (
+    <Overlay onClose={busy ? undefined : onClose} width={760}>
+      <div style={{ padding: "14px 18px", borderBottom: `1.5px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 900 }}>✎ {t.editTitle}</div>
+          <div style={{ fontSize: 13, color: C.sub, fontWeight: 700, marginTop: 2 }}>
+            {isLic ? `🪪 ${t.license}` : `📄 ${t.contract}`} · {item.name}{item.company ? ` — ${item.company}` : ""}
+          </div>
+        </div>
+        <button type="button" style={miniRed} onClick={onClose} disabled={!!busy}>✕</button>
+      </div>
+
+      <div style={{ padding: 18, display: "grid", gap: 14 }}>
+        <div>
+          <label style={S.label}>{t.colBranch}</label>
+          <ComboInput value={form.branch} onChange={(v) => set({ branch: v })} suggestions={sugg.branches} {...combo} />
+          {branchChanged && docCount > 1 && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginTop: 4 }}>⚠ {t.branchAppliesAll(docCount)}</div>
+          )}
+        </div>
+
+        {isLic ? (
+          <div>
+            <label style={S.label}>{t.licName} *</label>
+            <ComboInput value={form.name} onChange={(v) => set({ name: v })} suggestions={sugg.licenseNames} placeholder={t.licNamePh} {...combo} />
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={S.label}>{t.fType} *</label>
+              <ComboInput value={form.contractType} onChange={(v) => set({ contractType: v })} suggestions={sugg.contractTypes} placeholder={t.typePh} {...combo} />
+            </div>
+            <div>
+              <label style={S.label}>{t.fCompany}</label>
+              <ComboInput value={form.companyName} onChange={(v) => set({ companyName: v })} suggestions={sugg.companies} placeholder={t.companyPh} {...combo} />
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label style={S.label}>{t.expiry}</label>
+          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center" }}>
+            <input type="date" style={S.input} value={form.expiryDate} onChange={(e) => set({ expiryDate: e.target.value })} />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {[[t.plus1, 1], [t.plus2, 2], [t.plus3, 3]].map(([l, y]) => (
+                <button key={y} type="button" style={mini} onClick={() => set({ expiryDate: addPeriod(todayYmd(), { years: y }) })}>{l}</button>
+              ))}
+              {form.expiryDate && <StatusPill t={t} expiryDate={form.expiryDate} small />}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label style={S.label}>{t.notes}</label>
+          <textarea rows={2} style={{ ...S.input, resize: "vertical" }} value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
+        </div>
+
+        <div>
+          <label style={S.label}>{t.docs} ({form.fileUrls.length})</label>
+          <input type="file" accept="application/pdf,image/*" multiple style={{ ...S.input, padding: "8px 10px" }}
+            disabled={!!busy} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+          <div style={{ fontSize: 12, color: busy && busy !== t.saving ? C.brand : C.faint, fontWeight: 700, marginTop: 4 }}>
+            {busy && busy !== t.saving ? busy : t.pdfOrImgs}
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+            {form.fileUrls.map((u, i) => (
+              <FileChip key={u} url={u} label={fileLabel(u, i, form.fileNames)}
+                onRemove={() => setForm((p) => ({ ...p, fileUrls: p.fileUrls.filter((_, j) => j !== i), fileNames: p.fileNames.filter((_, j) => j !== i) }))} />
+            ))}
+          </div>
+        </div>
+
+        {err && <div style={{ padding: "8px 12px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b", fontWeight: 700, fontSize: 13 }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div>
+            {onDelete && (
+              <button type="button" style={btn("#ef4444")} onClick={del} disabled={!!busy} data-delete-action="true">🗑 {t.deleteItem}</button>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" style={ghost} onClick={onClose} disabled={!!busy}>{t.cancel}</button>
+            <button type="button" style={btn(C.ok)} onClick={submit} disabled={!!busy}>{busy === t.saving ? t.saving : `✓ ${t.save}`}</button>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 /* ───────────────────────── History drawer ───────────────────────── */
 const ACTION_TONE = {
   created: { bg: "#eef2ff", color: "#3730a3", icon: "✚" },
@@ -429,12 +591,19 @@ const ACTION_TONE = {
   renewed: { bg: "#ecfdf5", color: "#065f46", icon: "↻" },
   contract_added: { bg: "#eff6ff", color: "#1d4ed8", icon: "＋" },
   contract_removed: { bg: "#fef2f2", color: "#991b1b", icon: "−" },
+  license_removed: { bg: "#fef2f2", color: "#991b1b", icon: "−" },
 };
 
 function HistoryDrawer({ t, lang, title, events, onClose, onPreview }) {
   const [action, setAction] = useState("ALL");
   const [q, setQ] = useState("");
-  const aLabel = { created: t.aCreated, edited: t.aEdited, renewed: t.aRenewed, contract_added: t.aAdded, contract_removed: t.aRemoved };
+  const aLabel = { created: t.aCreated, edited: t.aEdited, renewed: t.aRenewed, contract_added: t.aAdded, contract_removed: t.aRemoved, license_removed: t.aLicRemoved };
+  const actionOptions = [
+    { value: "ALL", label: t.allActions, count: events.length },
+    ...Object.keys(aLabel).map((k) => ({
+      value: k, label: aLabel[k], icon: ACTION_TONE[k]?.icon, count: events.filter((e) => e.action === k).length,
+    })),
+  ];
   const fLabel = { name: t.fName, expiryDate: t.fExpiry, notes: t.fNotes, contractType: t.fType, companyName: t.fCompany, branch: t.fBranch, files: t.fFiles };
   const shown = events.filter((e) => {
     if (action !== "ALL" && e.action !== action) return false;
@@ -456,12 +625,9 @@ function HistoryDrawer({ t, lang, title, events, onClose, onPreview }) {
           <div style={{ fontSize: 16, fontWeight: 900 }}>🕘 {title}</div>
           <button type="button" style={miniRed} onClick={onClose}>✕</button>
         </div>
-        <div style={{ padding: "10px 16px", display: "grid", gridTemplateColumns: "1fr 170px", gap: 8, borderBottom: `1px solid ${C.line}` }}>
+        <div style={{ padding: "10px 16px", display: "grid", gridTemplateColumns: "1fr 200px", gap: 8, borderBottom: `1px solid ${C.line}` }}>
           <input style={S.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} />
-          <select style={S.input} value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="ALL">{t.allActions}</option>
-            {Object.keys(aLabel).map((k) => <option key={k} value={k}>{aLabel[k]}</option>)}
-          </select>
+          <SmartSelect value={action} onChange={setAction} options={actionOptions} emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.allActions} />
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
           {shown.length === 0 && <div style={{ color: C.faint, fontWeight: 700, textAlign: "center", padding: 30 }}>{t.noHistory}</div>}
@@ -535,7 +701,10 @@ export default function LicensesContractsView() {
 
   const [preview, setPreview] = useState({ open: false, title: "", urls: [], index: 0 });
   const [renewItem, setRenewItem] = useState(null);
+  const [editItem, setEditItem] = useState(null);
   const [docsItem, setDocsItem] = useState(null);
+  const mayEdit = canEdit(PERM_SECTION);
+  const mayDelete = canDelete(PERM_SECTION);
   const [historyView, setHistoryView] = useState(null); // { title, events }
   const [toast, setToast] = useState("");
 
@@ -581,11 +750,38 @@ export default function LicensesContractsView() {
 
   /* ── register ── */
   const items = useMemo(() => flattenRecords(reports), [reports]);
+  const sugg = useMemo(() => buildSuggestions(reports), [reports]);
   const branchList = useMemo(() => {
     const s = new Set(BRANCHES);
     items.forEach((it) => s.add(it.branch));
     return Array.from(s);
   }, [items]);
+  // filter pickers — counts follow the other filters (search + the other picker)
+  const branchOptions = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const pool = items.filter((it) => (kindFilter === "ALL" || it.kind === kindFilter)
+      && (!needle || [it.name, it.company, it.branch, it.notes].join(" ").toLowerCase().includes(needle)));
+    const n = (b) => pool.filter((it) => it.branch === b).length;
+    const worst = (b) => {
+      const its = pool.filter((it) => it.branch === b);
+      if (!its.length) return undefined;
+      return STATUS[its.reduce((w, it) => (STATUS[it.status].rank < STATUS[w].rank ? it.status : w), its[0].status)].dot;
+    };
+    return [
+      { value: "ALL", label: t.allBranches, count: pool.length },
+      ...branchList.slice().sort((a, b) => n(b) - n(a) || a.localeCompare(b)).map((b) => ({ value: b, label: b, count: n(b), dot: worst(b) })),
+    ];
+  }, [items, branchList, kindFilter, q, t]);
+  const kindOptions = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const pool = items.filter((it) => (branchFilter === "ALL" || it.branch === branchFilter)
+      && (!needle || [it.name, it.company, it.branch, it.notes].join(" ").toLowerCase().includes(needle)));
+    return [
+      { value: "ALL", label: t.allKinds, count: pool.length },
+      { value: "license", label: t.licenses, icon: "🪪", count: pool.filter((it) => it.kind === "license").length },
+      { value: "contract", label: t.contracts, icon: "📄", count: pool.filter((it) => it.kind === "contract").length },
+    ];
+  }, [items, branchFilter, q, t]);
 
   const baseFiltered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -663,6 +859,51 @@ export default function LicensesContractsView() {
     setRenewItem(null);
     flash(t.renewed);
     await fetchReports();
+  }
+
+  /* ── edit / delete ONE license or contract ── */
+  function docCountOf(rid) {
+    return items.filter((x) => x.rid === rid).length;
+  }
+
+  async function saveItemEdit(it, form) {
+    const rec = reports.find((r) => getId(r) === it.rid);
+    if (!rec) throw new Error("Record not found");
+    const res = applyItemEdit(rec.payload || {}, { kind: it.kind, uid: it.uid }, form);
+    if (!res) throw new Error("Item not found");
+    if (!res.events.length) { setEditItem(null); flash(t.nothingChanged); return; }
+    res.payload.savedAt = Date.now();
+    await writeRecord(it.rid, res.payload);
+    setEditItem(null);
+    flash(t.saved);
+    await fetchReports();
+  }
+
+  /** Returns true when something was deleted, false when the user backed out. */
+  async function deleteItem(it) {
+    const rec = reports.find((r) => getId(r) === it.rid);
+    if (!rec) throw new Error("Record not found");
+    const res = removeItem(rec.payload || {}, { kind: it.kind, uid: it.uid });
+    if (!res) throw new Error("Item not found");
+    const label = `${it.name}${it.company ? ` — ${it.company}` : ""}`;
+    const msg = t.confirmDeleteItem(label) + (res.empty ? `\n\n⚠ ${t.lastItemDeletesRecord}` : "");
+    if (!window.confirm(msg)) return false;
+    if (res.empty) {
+      const r = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(it.rid)}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (selectedId === it.rid) { setSelectedId(null); setEditing(false); }
+    } else {
+      res.payload.savedAt = Date.now();
+      await writeRecord(it.rid, res.payload);
+    }
+    setEditItem(null);
+    flash(t.itemDeleted);
+    await fetchReports();
+    return true;
+  }
+
+  async function deleteFromRow(it) {
+    try { await deleteItem(it); } catch (e) { alert(t.saveFail + (e?.message || e)); }
   }
 
   /* ── export / print / reminder ── */
@@ -796,10 +1037,12 @@ export default function LicensesContractsView() {
   async function saveEdit() {
     if (!selected || !editBase) return;
     const rid = getId(selected);
+    // legacy file keys are read by normalizeFiles too — drop them, or removed files come back
+    const clean = ({ files, images, imageUrls, attachments, ...rest }) => rest; // eslint-disable-line no-unused-vars
     const newPayload = {
       ...editBase,
-      license: { ...editLicense, fileUrl: safeArr(editLicense.fileUrls)[0] || "" },
-      contracts: editContracts.map((c) => ({ ...c, uid: c.uid || newUid(), fileUrl: safeArr(c.fileUrls)[0] || "" })),
+      license: { ...clean(editLicense), fileUrl: safeArr(editLicense.fileUrls)[0] || "" },
+      contracts: editContracts.map((c) => ({ ...clean(c), uid: c.uid || newUid(), fileUrl: safeArr(c.fileUrls)[0] || "" })),
       savedAt: Date.now(),
     };
     const events = diffPayloads(editBase, newPayload);
@@ -852,13 +1095,18 @@ export default function LicensesContractsView() {
       {renewItem && (
         <RenewModal t={t} lang={lang} item={renewItem} onClose={() => setRenewItem(null)} onSave={(d) => saveRenewal(renewItem, d)} onViewDocs={openFiles} />
       )}
+      {editItem && (
+        <EditItemModal t={t} lang={lang} item={editItem} docCount={docCountOf(editItem.rid)} sugg={sugg}
+          onClose={() => setEditItem(null)} onSave={(f) => saveItemEdit(editItem, f)}
+          onDelete={mayDelete ? () => deleteItem(editItem) : undefined} />
+      )}
       {historyView && (
         <HistoryDrawer t={t} lang={lang} title={historyView.title} events={historyView.events}
           onClose={() => setHistoryView(null)} onPreview={openPreview} />
       )}
       {toast && (
         <div style={{
-          position: "fixed", bottom: 22, insetInlineStart: "50%", transform: "translateX(-50%)", zIndex: 10000,
+          position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 10000,
           background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 12, fontWeight: 700, fontSize: 14,
           boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
         }}>{toast}</div>
@@ -914,18 +1162,13 @@ export default function LicensesContractsView() {
         </div>
         <div>
           <label style={S.label}>{t.colBranch}</label>
-          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} style={S.input}>
-            <option value="ALL">{t.allBranches}</option>
-            {branchList.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+          <SmartSelect value={branchFilter} onChange={setBranchFilter} options={branchOptions}
+            emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colBranch} />
         </div>
         <div>
           <label style={S.label}>{t.colKind}</label>
-          <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={S.input}>
-            <option value="ALL">{t.allKinds}</option>
-            <option value="license">{t.licenses}</option>
-            <option value="contract">{t.contracts}</option>
-          </select>
+          <SmartSelect value={kindFilter} onChange={setKindFilter} options={kindOptions}
+            emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colKind} />
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {[["register", t.tabRegister], ["records", t.tabRecords]].map(([k, lbl]) => (
@@ -991,8 +1234,10 @@ export default function LicensesContractsView() {
                         <td style={{ ...S.td, whiteSpace: "nowrap" }}>
                           <div style={{ display: "flex", gap: 4 }}>
                             <button type="button" style={urgent ? miniOrange : mini} onClick={() => setRenewItem(it)}>{t.renew}</button>
-                            <button type="button" style={mini} onClick={() => setHistoryView({ title: `${t.histFor} ${it.name}`, events: itemHistory(it) })}>{t.history}</button>
-                            <button type="button" style={mini} title={t.record} onClick={() => { selectRecord(it.rid); setTab("records"); }}>↗</button>
+                            {mayEdit && <button type="button" style={mini} title={t.editItem} aria-label={t.editItem} onClick={() => setEditItem(it)}>✎</button>}
+                            {mayDelete && <button type="button" style={miniRed} title={t.deleteItem} aria-label={t.deleteItem} onClick={() => deleteFromRow(it)} data-delete-action="true">🗑</button>}
+                            <button type="button" style={mini} title={t.history} aria-label={t.history} onClick={() => setHistoryView({ title: `${t.histFor} ${it.name}`, events: itemHistory(it) })}>🕘</button>
+                            <button type="button" style={mini} title={t.record} aria-label={t.record} onClick={() => { selectRecord(it.rid); setTab("records"); }}>↗</button>
                           </div>
                         </td>
                       </tr>
@@ -1089,14 +1334,14 @@ export default function LicensesContractsView() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button style={ghost} onClick={() => setHistoryView({ title: `${t.histFor} ${selectedBranch}`, events: allHistory.filter((e) => e.rid === selectedId) })}>{t.recordHistory}</button>
-                    {!editing && <button style={btn(C.brand)} onClick={startEdit}>{t.edit}</button>}
+                    {!editing && mayEdit && <button style={btn(C.brand)} onClick={startEdit}>{t.edit}</button>}
                     {editing && (
                       <>
                         <button style={btn(C.ok)} onClick={saveEdit} disabled={loading || !!uploadingKey}>{loading ? t.saving : t.saveChanges}</button>
                         <button style={ghost} onClick={cancelEdit} disabled={loading}>{t.cancel}</button>
                       </>
                     )}
-                    <button style={btn("#ef4444")} onClick={handleDelete} data-delete-action="true">{t.del}</button>
+                    {mayDelete && <button style={btn("#ef4444")} onClick={handleDelete} disabled={loading} data-delete-action="true">{t.del}</button>}
                   </div>
                 </div>
 
@@ -1112,13 +1357,16 @@ export default function LicensesContractsView() {
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <StatusPill t={t} expiryDate={lic?.expiryDate} />
                           {!editing && licItem && <button type="button" style={licItem.status === "expired" || licItem.status === "soon" ? miniOrange : mini} onClick={() => setRenewItem(licItem)}>{t.renew}</button>}
+                          {!editing && licItem && mayEdit && <button type="button" style={mini} title={t.editItem} aria-label={t.editItem} onClick={() => setEditItem(licItem)}>✎</button>}
+                          {!editing && licItem && mayDelete && <button type="button" style={miniRed} title={t.deleteItem} aria-label={t.deleteItem} onClick={() => deleteFromRow(licItem)} data-delete-action="true">🗑</button>}
                         </div>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginBottom: 12 }}>
                         <div>
                           <label style={S.label}>{t.licName}</label>
                           {editing
-                            ? <input style={S.input} value={editLicense.name || ""} onChange={(e) => setEditLicense((p) => ({ ...p, name: e.target.value }))} />
+                            ? <ComboInput value={editLicense.name || ""} onChange={(v) => setEditLicense((p) => ({ ...p, name: v }))}
+                                suggestions={sugg.licenseNames} placeholder={t.licNamePh} usedLabel={t.usedN} newLabel={t.newValue} />
                             : <div style={{ fontWeight: 800 }}>{license.name || "—"}</div>}
                         </div>
                         <div>
@@ -1193,10 +1441,16 @@ export default function LicensesContractsView() {
                           return (
                             <tr key={c.uid || i}>
                               <td style={{ ...S.td, minWidth: 140 }}>
-                                {editing ? <input style={S.tblInput} value={c.contractType || ""} onChange={(e) => updateContract(i, "contractType", e.target.value)} /> : <b>{c.contractType || "—"}</b>}
+                                {editing
+                                  ? <ComboInput value={c.contractType || ""} onChange={(v) => updateContract(i, "contractType", v)} suggestions={sugg.contractTypes}
+                                      placeholder={t.typePh} usedLabel={t.usedN} newLabel={t.newValue} inputStyle={S.tblInput} />
+                                  : <b>{c.contractType || "—"}</b>}
                               </td>
                               <td style={{ ...S.td, minWidth: 160 }}>
-                                {editing ? <input style={S.tblInput} value={c.companyName || ""} onChange={(e) => updateContract(i, "companyName", e.target.value)} /> : (c.companyName || "—")}
+                                {editing
+                                  ? <ComboInput value={c.companyName || ""} onChange={(v) => updateContract(i, "companyName", v)} suggestions={sugg.companies}
+                                      placeholder={t.companyPh} usedLabel={t.usedN} newLabel={t.newValue} inputStyle={S.tblInput} />
+                                  : (c.companyName || "—")}
                               </td>
                               <td style={{ ...S.td, minWidth: 130, whiteSpace: "nowrap" }}>
                                 {editing ? <input type="date" style={S.tblInput} value={c.expiryDate || ""} onChange={(e) => updateContract(i, "expiryDate", e.target.value)} /> : fmtDate(c.expiryDate, lang)}
@@ -1236,7 +1490,9 @@ export default function LicensesContractsView() {
                                 ) : cItem ? (
                                   <div style={{ display: "flex", gap: 4 }}>
                                     <button type="button" style={cItem.status === "expired" || cItem.status === "soon" ? miniOrange : mini} onClick={() => setRenewItem(cItem)}>{t.renew}</button>
-                                    <button type="button" style={mini} onClick={() => setHistoryView({ title: `${t.histFor} ${cItem.name}`, events: itemHistory(cItem) })}>{t.history}</button>
+                                    {mayEdit && <button type="button" style={mini} title={t.editItem} aria-label={t.editItem} onClick={() => setEditItem(cItem)}>✎</button>}
+                                    {mayDelete && <button type="button" style={miniRed} title={t.deleteItem} aria-label={t.deleteItem} onClick={() => deleteFromRow(cItem)} data-delete-action="true">🗑</button>}
+                                    <button type="button" style={mini} title={t.history} aria-label={t.history} onClick={() => setHistoryView({ title: `${t.histFor} ${cItem.name}`, events: itemHistory(cItem) })}>🕘</button>
                                   </div>
                                 ) : null}
                               </td>

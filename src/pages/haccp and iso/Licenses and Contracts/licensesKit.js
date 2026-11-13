@@ -140,8 +140,50 @@ export function statusOf(expiryDate) {
   return { key: "valid", days: n };
 }
 
+/* ───────────── shared pick-lists ───────────── */
+export const BRANCHES = [
+  "Al Qusais Warehouse",
+  "Al Mamzar Food Truck",
+  "Supervisor Food Truck",
+  "Al Barsha Butchery",
+  "Abu Dhabi Butchery",
+  "Al Ain Butchery",
+];
+export const LICENSE_NAMES = [
+  "Trade License", "Food Establishment Permit", "Dubai Municipality Food License",
+  "ADAFSA Food License", "Civil Defence Certificate", "Food Truck Permit",
+];
+export const CONTRACT_TYPES = [
+  "Pest Control", "Cleaning", "Waste Disposal", "Water Tank Cleaning",
+  "Fire Safety (AMC)", "Equipment Maintenance", "Uniform / Laundry", "Grease Trap Cleaning", "Security",
+];
+
+/**
+ * Suggestions for the combo boxes, built from the fixed lists + every saved
+ * record. Each list = [{ value, count }] — count = how many records use it.
+ */
+export function buildSuggestions(reports) {
+  const bump = (m, v) => {
+    const s = String(v ?? "").trim();
+    if (!s) return;
+    const k = s.toLowerCase();
+    const cur = m.get(k);
+    if (cur) cur.count += 1; else m.set(k, { value: s, count: 1 });
+  };
+  const seed = (list) => new Map(list.map((v) => [v.toLowerCase(), { value: v, count: 0 }]));
+  const branches = seed(BRANCHES); const lic = seed(LICENSE_NAMES); const types = seed(CONTRACT_TYPES); const cos = new Map();
+  safeArr(reports).forEach((r) => {
+    const p = r?.payload || {};
+    bump(branches, p.branch);
+    bump(lic, p.license?.name);
+    safeArr(p.contracts).forEach((c) => { bump(types, c.contractType); bump(cos, c.companyName); });
+  });
+  const out = (m) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  return { branches: out(branches), licenseNames: out(lic), contractTypes: out(types), companies: out(cos) };
+}
+
 /* ───────────── flatten ───────────── */
-const hasAny = (o) => Object.entries(o || {}).some(([k, v]) =>
+export const hasAny = (o) => Object.entries(o || {}).some(([k, v]) =>
   k !== "uid" && (Array.isArray(v) ? v.length > 0 : String(v ?? "").trim()));
 
 export function contractUid(c, idx) {
@@ -316,8 +358,7 @@ export function applyRenewal(payload, { kind, uid }, { newExpiry, renewedOn, fil
     label = r.next.name || "License";
   } else {
     // legacy rows (saved before uids) arrive as "idx<n>"; ensureUids just gave them a real uid
-    const legacyIdx = String(uid).startsWith("idx") ? Number(String(uid).slice(3)) : -1;
-    const pos = p.contracts.findIndex((c, i) => c.uid === uid || i === legacyIdx);
+    const pos = findContractPos(p.contracts, uid);
     if (pos < 0) return null;
     const r = patch(p.contracts[pos]);
     p.contracts = p.contracts.map((c, i) => (i === pos ? r.next : c));
@@ -333,6 +374,79 @@ export function applyRenewal(payload, { kind, uid }, { newExpiry, renewedOn, fil
   });
   p.history = [...safeArr(p.history), ev];
   return p;
+}
+
+/** Index of a contract by uid; legacy rows (saved before uids) arrive as "idx<n>". */
+export function findContractPos(contracts, uid) {
+  const legacyIdx = String(uid).startsWith("idx") ? Number(String(uid).slice(3)) : -1;
+  return safeArr(contracts).findIndex((c, i) => c?.uid === uid || i === legacyIdx);
+}
+
+/**
+ * Edit ONE license / contract of a record (the register's ✎ button).
+ * form = { branch, name | contractType, companyName, expiryDate, notes, fileUrls, fileNames }
+ * Returns the new payload WITH history events appended, or { payload, events: [] }
+ * when nothing changed.
+ */
+export function applyItemEdit(payload, { kind, uid }, form) {
+  const base = ensureUids(JSON.parse(JSON.stringify(payload || {})));
+  const next = JSON.parse(JSON.stringify(base));
+  if (form.branch != null) next.branch = String(form.branch).trim();
+  const files = (o) => {
+    const urls = safeArr(form.fileUrls);
+    const names = safeArr(form.fileNames);
+    // legacy keys are read by normalizeFiles too — drop them, or a removed file comes back
+    const { files: _f, images: _i, imageUrls: _iu, attachments: _a, ...rest } = o; // eslint-disable-line no-unused-vars
+    return { ...rest, fileUrls: urls, fileNames: names, fileUrl: urls[0] || "", fileName: names[0] || "" };
+  };
+  if (kind === "license") {
+    next.license = files({
+      ...(next.license || {}),
+      name: String(form.name ?? "").trim(),
+      expiryDate: form.expiryDate || "",
+      notes: String(form.notes ?? "").trim(),
+    });
+  } else {
+    const pos = findContractPos(base.contracts, uid);
+    if (pos < 0) return null;
+    next.contracts[pos] = files({
+      ...next.contracts[pos],
+      contractType: String(form.contractType ?? "").trim(),
+      companyName: String(form.companyName ?? "").trim(),
+      expiryDate: form.expiryDate || "",
+      notes: String(form.notes ?? "").trim(),
+    });
+  }
+  const events = diffPayloads(base, next);
+  if (events.length) next.history = [...safeArr(base.history), ...events];
+  return { payload: next, events };
+}
+
+/**
+ * Remove ONE license / contract from a record (the register's 🗑 button).
+ * Returns { payload, empty } — empty = nothing left, the caller deletes the record.
+ */
+export function removeItem(payload, { kind, uid }) {
+  const p = ensureUids(JSON.parse(JSON.stringify(payload || {})));
+  let ev;
+  if (kind === "license") {
+    const lic = p.license || {};
+    ev = mkEvent("license_removed", { kind: "license", uid: "license", label: lic.name || "License" }, {
+      prev: { expiryDate: lic.expiryDate || "", files: normalizeFiles(lic) },
+    });
+    p.license = {};
+  } else {
+    const pos = findContractPos(p.contracts, uid);
+    if (pos < 0) return null;
+    const c = p.contracts[pos];
+    ev = mkEvent("contract_removed", { kind: "contract", uid: c.uid, label: contractLabel(c) }, {
+      prev: { expiryDate: c.expiryDate || "", files: normalizeFiles(c) },
+    });
+    p.contracts = p.contracts.filter((_, i) => i !== pos);
+  }
+  p.history = [...safeArr(p.history), ev];
+  const empty = !hasAny(p.license) && !p.contracts.some(hasAny);
+  return { payload: p, empty };
 }
 
 /** All events, newest first, each tagged with its record. */
