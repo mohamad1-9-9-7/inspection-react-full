@@ -32,11 +32,32 @@ import {
   renewPayload,
 } from "./certHistoryKit";
 import { RowMenu } from "./certRowMenu";
+import { CertPdfExportModal, certStatusText } from "../../components/CertPdfExportModal";
 
 // دليل الشركة مفهرس بالرقم الوظيفي (نفس مصدر صفحة الإدخال: EMPLOYEES)
 const DIRECTORY_BY_NO = new Map(
   COMPANY_DIRECTORY.map((d) => [normalizeEmpNo(d.empNo), d])
 );
+
+/* row → what the bulk PDF prints (EFST = two images: municipality + institute) */
+const describeTrainingForPdf = (r) => {
+  const efst = String(r.courseType || "").toUpperCase() === "EFST";
+  const images = [];
+  if (r.imageData) images.push({ url: r.imageData, label: efst && r.instituteImage ? "Municipality" : "" });
+  if (efst && r.instituteImage) images.push({ url: r.instituteImage, label: "Institute" });
+  return {
+    name: r.name,
+    no: r.employeeNo,
+    branch: r.branch,
+    job: r.job,
+    course: r.courseType,
+    expiry: r.expiryDate,
+    days: r.status?.days,
+    statusKey: r.status?.key,
+    statusText: certStatusText({ days: r.status?.days, leftCompany: r.leftCompany }),
+    images,
+  };
+};
 
 /* ========= API ========= */
 
@@ -282,6 +303,9 @@ export default function TrainingCertificatesView() {
   const [adv, setAdv] = useState(EMPTY_ADV);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  // bulk PDF of the certificate images
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set()); // record ids ticked for the PDF
   const setAdvPart = (patch) => setAdv((p) => ({ ...p, ...patch }));
 
   // سجل التغييرات + نقل الموظف
@@ -598,6 +622,36 @@ export default function TrainingCertificatesView() {
   }, [allRows, pageFilters, sortBy, issueFilter, rowIssues]);
 
   // مسح كل الفلاتر
+  /* ===== Selection for the bulk PDF ===== */
+  const shownIds = useMemo(() => rows.map((r) => r._rid).filter(Boolean), [rows]);
+  const selectedShown = shownIds.filter((id) => selected.has(id)).length;
+  const allShownSelected = shownIds.length > 0 && selectedShown === shownIds.length;
+  function toggleSelect(rid) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(rid)) n.delete(rid);
+      else n.add(rid);
+      return n;
+    });
+  }
+  function toggleSelectAllShown() {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (allShownSelected) shownIds.forEach((id) => n.delete(id));
+      else shownIds.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+  // a record that left the register (deleted / reloaded away) can't stay ticked
+  useEffect(() => {
+    setSelected((prev) => {
+      const live = new Set(allRows.map((r) => r._rid));
+      const n = new Set([...prev].filter((id) => live.has(id)));
+      return n.size === prev.size ? prev : n;
+    });
+  }, [allRows]);
+  const selectedRows = useMemo(() => allRows.filter((r) => selected.has(r._rid)), [allRows, selected]);
+
   function clearAllFilters() {
     setSearch("");
     setStatusFilter("all");
@@ -1882,6 +1936,25 @@ export default function TrainingCertificatesView() {
 
             <button
               type="button"
+              onClick={() => setPdfOpen(true)}
+              disabled={!rows.length && !selected.size}
+              title="Export the certificate images as one PDF (ticked rows, or everything shown)"
+              style={{
+                padding: "7px 14px",
+                borderRadius: 999,
+                border: "none",
+                background: "linear-gradient(135deg,#f43f5e,#be123c)",
+                color: "#fff",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(244,63,94,0.35)",
+              }}
+            >
+              📑 Certificates PDF{selected.size ? ` (${selected.size} ticked)` : ""}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setExportOpen(true)}
               disabled={!allRows.length}
               title="Choose records, columns, grouping and layout"
@@ -2145,6 +2218,16 @@ export default function TrainingCertificatesView() {
             onConfirm={doTransfer}
           />
 
+          <CertPdfExportModal
+            open={pdfOpen}
+            onClose={() => setPdfOpen(false)}
+            selectedRows={selectedRows}
+            shownRows={rows}
+            onClearSelection={() => setSelected(new Set())}
+            describe={describeTrainingForPdf}
+            title="Training Certificates"
+            filePrefix="Training_certificates"
+          />
           <CertExportModal
             open={exportOpen}
             onClose={() => setExportOpen(false)}
@@ -2333,6 +2416,18 @@ export default function TrainingCertificatesView() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr>
+                    <th style={{ ...thStyle, width: 30 }}>
+                      <input
+                        type="checkbox"
+                        checked={allShownSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = selectedShown > 0 && !allShownSelected;
+                        }}
+                        onChange={toggleSelectAllShown}
+                        title="Select every certificate shown (for the PDF export)"
+                        aria-label="Select all shown"
+                      />
+                    </th>
                     <th style={thStyle}>#</th>
                     {[
                       ["name", "Employee"],
@@ -2372,7 +2467,7 @@ export default function TrainingCertificatesView() {
                 <tbody>
                   {rows.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={12} style={{ padding: 28, textAlign: "center", color: "#64748b", fontWeight: 600 }}>
+                      <td colSpan={13} style={{ padding: 28, textAlign: "center", color: "#64748b", fontWeight: 600 }}>
                         No certificates match these filters.{" "}
                         <button type="button" onClick={clearAllFilters} style={linkBtnStyle}>
                           Clear filters
@@ -2417,6 +2512,16 @@ export default function TrainingCertificatesView() {
                           opacity: r.leftCompany ? 0.85 : 1,
                         }}
                       >
+                        <td style={tdStyle}>
+                          {r._rid && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(r._rid)}
+                              onChange={() => toggleSelect(r._rid)}
+                              aria-label={`Select ${r.name || r.employeeNo} ${r.courseType || ""}`}
+                            />
+                          )}
+                        </td>
                         <td style={{ ...tdStyle, color: "#94a3b8" }}>{idx + 1}</td>
 
                         {/* Employee: name (opens history) + number · nationality */}

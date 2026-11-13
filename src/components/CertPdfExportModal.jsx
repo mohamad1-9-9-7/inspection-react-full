@@ -1,12 +1,19 @@
-// src/pages/ohc/ohcPdfExport.jsx
+// src/components/CertPdfExportModal.jsx
 //
-// Bulk export of OHC certificate images as ONE PDF.
+// Bulk export of certificate images as ONE PDF — shared by the OHC register
+// (/ohc/view) and the training certificates register (/training-certificates/view).
 //   • scope: the ticked rows, or every row the table shows (its filters + sort)
-//   • 1, 2 or 4 certificates per A4 page, each under a header strip
-//     (name · employee no. · branch · expiry · result · status)
+//   • 1, 2 or 4 images per A4 page, each under a header strip
+//     (name · employee no. · course · branch · expiry · result · status)
+//   • a row with two images (EFST: municipality + institute) gives two slots
 //   • optional cover page: the list + which employees have no image attached
 //   • jsPDF is loaded on demand; images are pulled through Cloudinary as JPEG
 //     at a size that fits the layout (keeps the file small)
+//
+// Each register passes `describe(row)` →
+//   { name, no, branch, expiry, result?, job?, course?, statusKey, statusText,
+//     images: [{ url, label? }] }
+//
 // Text is English/Latin only — jsPDF can't shape Arabic (see the PDF note in
 // the project memory); non-Latin characters are dropped from the strips.
 
@@ -20,13 +27,6 @@ const LAYOUTS = [
   { key: 1, label: "1 per page", hint: "Largest — best to print and file", cols: 1, rows: 1, px: 1800 },
   { key: 2, label: "2 per page", hint: "Two stacked certificates", cols: 1, rows: 2, px: 1400 },
   { key: 4, label: "4 per page", hint: "Compact overview (2 × 2)", cols: 2, rows: 2, px: 1000 },
-];
-
-const ORDERS = [
-  { key: "table", label: "Same order as the table" },
-  { key: "branch", label: "By branch, then name" },
-  { key: "name", label: "By name" },
-  { key: "expiry", label: "By expiry (soonest first)" },
 ];
 
 const fmt = (iso) => {
@@ -76,16 +76,6 @@ async function loadJpeg(src, px) {
   }
 }
 
-function sortRows(rows, order) {
-  const list = rows.slice();
-  const str = (a, b) => String(a || "").localeCompare(String(b || ""));
-  const exp = (r) => (r.status?.days === null || r.status?.days === undefined ? Infinity : r.status.days);
-  if (order === "branch") list.sort((a, b) => str(a.branch, b.branch) || str(a.name, b.name));
-  else if (order === "name") list.sort((a, b) => str(a.name, b.name));
-  else if (order === "expiry") list.sort((a, b) => exp(a) - exp(b));
-  return list;
-}
-
 const STATUS_RGB = {
   expired: [185, 28, 28],
   expiring_soon: [194, 65, 12],
@@ -94,22 +84,28 @@ const STATUS_RGB = {
   no_expiry: [107, 114, 128],
 };
 
-function statusText(r) {
-  if (r.leftCompany) return "Left company";
-  if (r.outsideDubai) return "Outside Dubai";
-  const d = r.status?.days;
-  if (d === null || d === undefined) return "No expiry";
-  if (d < 0) return `Expired ${Math.abs(d)}d ago`;
-  return `${d} days left`;
+function sortInfos(list, order) {
+  const out = list.slice();
+  const str = (a, b) => String(a || "").localeCompare(String(b || ""));
+  const exp = (d) => (d.days === null || d.days === undefined ? Infinity : d.days);
+  if (order === "branch") out.sort((a, b) => str(a.branch, b.branch) || str(a.name, b.name));
+  else if (order === "name") out.sort((a, b) => str(a.name, b.name) || str(a.course, b.course));
+  else if (order === "course") out.sort((a, b) => str(a.course, b.course) || str(a.name, b.name));
+  else if (order === "expiry") out.sort((a, b) => exp(a) - exp(b));
+  return out;
 }
 
 /* ───────────────────────── PDF builder ───────────────────────── */
-async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
+async function buildPdf({ infos, layout, cover, title, onProgress, cancelled }) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const L = LAYOUTS.find((x) => x.key === layout) || LAYOUTS[0];
-  const withImg = rows.filter((r) => r.image);
-  const noImg = rows.filter((r) => !r.image);
+  const hasCourse = infos.some((d) => d.course);
+  const hasResult = infos.some((d) => d.result);
+  // one slot per image
+  const slots = [];
+  infos.forEach((d) => d.images.forEach((img) => slots.push({ d, img })));
+  const noImg = infos.filter((d) => !d.images.length);
   const failed = [];
   const today = fmt(new Date().toISOString());
 
@@ -122,11 +118,22 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(90);
-    doc.text(`Generated ${today}  ·  ${rows.length} employee(s)  ·  ${withImg.length} certificate image(s)`, M, M + 15);
+    doc.text(`Generated ${today}  ·  ${infos.length} certificate record(s)  ·  ${slots.length} image(s)`, M, M + 15);
     doc.setTextColor(0);
+    // widths add up to 190 mm (page minus margins)
     const cols = [
-      ["#", 8], ["Emp. No", 22], ["Name", 58], ["Branch", 30], ["Expiry", 22], ["Result", 16], ["Status", 34],
+      ["#", 8, (d, i) => String(i + 1)],
+      ["Emp. No", 20, (d) => latin(d.no)],
+      ["Name", hasCourse && hasResult ? 46 : hasCourse || hasResult ? 54 : 66, (d) => latin(d.name)],
+      ...(hasCourse ? [["Course", 22, (d) => latin(d.course)]] : []),
+      ["Branch", hasCourse ? 34 : 42, (d) => latin(d.branch)],
+      ["Expiry", 20, (d) => fmt(d.expiry)],
+      ...(hasResult ? [["Result", 14, (d) => latin(d.result) || "—"]] : []),
+      ["Status", 0, (d) => d.statusText],
     ];
+    const used = cols.reduce((n, c) => n + c[1], 0);
+    cols[cols.length - 1][1] = PAGE_W - 2 * M - used;
+
     let y = M + 24;
     const head = () => {
       doc.setFillColor(15, 23, 42);
@@ -141,7 +148,7 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
       y += 6;
     };
     head();
-    rows.forEach((r, i) => {
+    infos.forEach((d, i) => {
       if (y > PAGE_H - M - 6) {
         doc.addPage();
         y = M + 8;
@@ -151,19 +158,15 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
         doc.setFillColor(248, 250, 252);
         doc.rect(M, y - 4.2, PAGE_W - 2 * M, 5.6, "F");
       }
-      const cells = [
-        String(i + 1), latin(r.appNo), latin(r.name), latin(r.branch), fmt(r.expiryDate), latin(r.result) || "—", statusText(r),
-      ];
       let x = M + 1.5;
       doc.setFontSize(8.5);
-      cells.forEach((v, k) => {
-        const w = cols[k][1];
-        if (k === 6) doc.setTextColor(...(STATUS_RGB[r.status?.key] || [0, 0, 0]));
-        doc.text(doc.splitTextToSize(v || "—", w - 2)[0] || "", x, y);
+      cols.forEach(([h, w, get], k) => {
+        if (k === cols.length - 1) doc.setTextColor(...(STATUS_RGB[d.statusKey] || [0, 0, 0]));
+        doc.text(doc.splitTextToSize(get(d, i) || "—", w - 2)[0] || "", x, y);
         doc.setTextColor(0);
         x += w;
       });
-      if (!r.image) {
+      if (!d.images.length) {
         doc.setTextColor(185, 28, 28);
         doc.setFontSize(7);
         doc.text("no image", PAGE_W - M - 1, y, { align: "right" });
@@ -176,7 +179,7 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
       if (y > PAGE_H - M - 10) { doc.addPage(); y = M + 8; }
       doc.setFontSize(9);
       doc.setTextColor(185, 28, 28);
-      doc.text(`${noImg.length} employee(s) have no certificate image attached — not included in the pages that follow.`, M, y);
+      doc.text(`${noImg.length} record(s) have no certificate image attached — not included in the pages that follow.`, M, y);
       doc.setTextColor(0);
     }
     pageUsed = true;
@@ -187,14 +190,15 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
   const gap = 6;
   const cellW = (PAGE_W - 2 * M - gap * (L.cols - 1)) / L.cols;
   const cellH = (PAGE_H - 2 * M - 6 - gap * (L.rows - 1)) / L.rows; // 6 = footer
-  const strip = L.key === 4 ? 11 : 13;
+  const small = L.key === 4;
+  const strip = small ? 11 : 13;
 
-  for (let i = 0; i < withImg.length; i++) {
+  for (let i = 0; i < slots.length; i++) {
     if (cancelled()) throw new Error("__cancelled__");
-    onProgress(i + 1, withImg.length);
-    const r = withImg[i];
+    onProgress(i + 1, slots.length);
+    const { d, img: image } = slots[i];
     const slot = i % perPage;
-    if (slot === 0 && (pageUsed || i > 0)) doc.addPage();
+    if (slot === 0 && pageUsed) doc.addPage();
     pageUsed = true;
     const col = slot % L.cols;
     const row = Math.floor(slot / L.cols);
@@ -206,31 +210,33 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
     doc.setDrawColor(203, 213, 225);
     doc.roundedRect(x, y, cellW, strip, 1.5, 1.5, "FD");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(L.key === 4 ? 9 : 11);
+    doc.setFontSize(small ? 9 : 11);
     doc.setTextColor(15, 23, 42);
-    doc.text(doc.splitTextToSize(latin(r.name) || "—", cellW - 40)[0] || "—", x + 2.5, y + (L.key === 4 ? 4.6 : 5.4));
-    doc.setFontSize(L.key === 4 ? 8 : 9);
-    doc.setTextColor(...(STATUS_RGB[r.status?.key] || [0, 0, 0]));
-    doc.text(statusText(r), x + cellW - 2.5, y + (L.key === 4 ? 4.6 : 5.4), { align: "right" });
+    const headLine = [latin(d.name) || "—", d.course ? `· ${latin(d.course)}` : "", image.label ? `(${latin(image.label)})` : ""]
+      .filter(Boolean).join(" ");
+    doc.text(doc.splitTextToSize(headLine, cellW - 40)[0] || "—", x + 2.5, y + (small ? 4.6 : 5.4));
+    doc.setFontSize(small ? 8 : 9);
+    doc.setTextColor(...(STATUS_RGB[d.statusKey] || [0, 0, 0]));
+    doc.text(d.statusText, x + cellW - 2.5, y + (small ? 4.6 : 5.4), { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
-    doc.setFontSize(L.key === 4 ? 7 : 8.5);
-    const meta = [`#${latin(r.appNo) || "—"}`, latin(r.branch), `Expiry ${fmt(r.expiryDate)}`, r.result ? `Result ${latin(r.result)}` : "", latin(r.job)]
+    doc.setFontSize(small ? 7 : 8.5);
+    const meta = [`#${latin(d.no) || "—"}`, latin(d.branch), `Expiry ${fmt(d.expiry)}`, d.result ? `Result ${latin(d.result)}` : "", latin(d.job)]
       .filter(Boolean).join("  ·  ");
-    doc.text(doc.splitTextToSize(meta, cellW - 5)[0] || "", x + 2.5, y + (L.key === 4 ? 8.8 : 10.4));
+    doc.text(doc.splitTextToSize(meta, cellW - 5)[0] || "", x + 2.5, y + (small ? 8.8 : 10.4));
     doc.setTextColor(0);
 
     // image, fitted with its aspect ratio
     const boxY = y + strip + 1.5;
     const boxH = cellH - strip - 1.5;
     try {
-      const img = await loadJpeg(r.image, L.px);
-      const k = Math.min(cellW / img.w, boxH / img.h);
-      const w = img.w * k;
-      const h = img.h * k;
-      doc.addImage(img.data, "JPEG", x + (cellW - w) / 2, boxY + (boxH - h) / 2, w, h, undefined, "FAST");
+      const pic = await loadJpeg(image.url, L.px);
+      const k = Math.min(cellW / pic.w, boxH / pic.h);
+      const w = pic.w * k;
+      const h = pic.h * k;
+      doc.addImage(pic.data, "JPEG", x + (cellW - w) / 2, boxY + (boxH - h) / 2, w, h, undefined, "FAST");
     } catch (e) {
-      failed.push(r);
+      failed.push(d);
       doc.setDrawColor(252, 165, 165);
       doc.setLineDashPattern([1.5, 1.5], 0);
       doc.rect(x, boxY, cellW, boxH);
@@ -252,11 +258,20 @@ async function buildPdf({ rows, layout, cover, title, onProgress, cancelled }) {
     doc.text(`Page ${p} / ${n}`, PAGE_W - M, PAGE_H - M + 3, { align: "right" });
   }
   doc.setTextColor(0);
-  return { doc, included: withImg.length - failed.length, noImg, failed };
+  return { doc, included: slots.length - failed.length, noImg, failed };
 }
 
 /* ───────────────────────── Modal ───────────────────────── */
-export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onClearSelection }) {
+export function CertPdfExportModal({
+  open,
+  onClose,
+  selectedRows,
+  shownRows,
+  onClearSelection,
+  describe,
+  title = "Certificates",
+  filePrefix = "certificates",
+}) {
   const [scope, setScope] = useState("shown");
   const [layout, setLayout] = useState(1);
   const [order, setOrder] = useState("table");
@@ -275,13 +290,27 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
     setProgress({ i: 0, n: 0 });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const rows = useMemo(
-    () => sortRows(scope === "selected" ? selectedRows : shownRows, order),
-    [scope, selectedRows, shownRows, order]
-  );
-  const withImg = rows.filter((r) => r.image).length;
+  const infos = useMemo(() => {
+    if (!open) return [];
+    const list = (scope === "selected" ? selectedRows : shownRows).map((r) => {
+      const d = describe(r);
+      return { ...d, images: (d.images || []).filter((x) => x && x.url) };
+    });
+    return sortInfos(list, order);
+  }, [open, scope, selectedRows, shownRows, order, describe]);
+
+  const hasCourse = infos.some((d) => d.course);
+  const orders = [
+    { key: "table", label: "Same order as the table" },
+    { key: "branch", label: "By branch, then name" },
+    { key: "name", label: "By name" },
+    ...(hasCourse ? [{ key: "course", label: "By course, then name" }] : []),
+    { key: "expiry", label: "By expiry (soonest first)" },
+  ];
+  const imgCount = infos.reduce((n, d) => n + d.images.length, 0);
+  const missing = infos.filter((d) => !d.images.length).length;
   const L = LAYOUTS.find((x) => x.key === layout);
-  const pages = Math.ceil(withImg / (L.cols * L.rows)) + (cover ? Math.max(1, Math.ceil((rows.length + 6) / 44)) : 0);
+  const pages = Math.ceil(imgCount / (L.cols * L.rows)) + (cover ? Math.max(1, Math.ceil((infos.length + 6) / 44)) : 0);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -293,22 +322,21 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
   if (!open) return null;
 
   async function run() {
-    if (!withImg) return setErr("None of these employees has a certificate image attached.");
+    if (!imgCount) return setErr("None of these records has a certificate image attached.");
     setErr("");
     setResult(null);
     setBusy(true);
     cancelRef.current = false;
     try {
-      const title = "OHC Certificates";
       const out = await buildPdf({
-        rows,
+        infos,
         layout,
         cover,
         title,
         onProgress: (i, n) => setProgress({ i, n }),
         cancelled: () => cancelRef.current,
       });
-      out.doc.save(`OHC_certificates_${new Date().toISOString().slice(0, 10)}.pdf`);
+      out.doc.save(`${filePrefix}_${new Date().toISOString().slice(0, 10)}.pdf`);
       setResult(out);
     } catch (e) {
       if (e?.message !== "__cancelled__") setErr(`PDF export failed: ${e?.message || e}`);
@@ -332,12 +360,12 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
       lang="en"
     >
       <div role="dialog" aria-modal="true" aria-label="Export certificates as PDF"
-        style={{ width: "min(620px, 96vw)", maxHeight: "92vh", overflow: "auto", background: "#fff", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,0.35)", color: "#0f172a" }}>
+        style={{ width: "min(620px, 96vw)", maxHeight: "92vh", overflow: "auto", background: "#fff", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,0.35)", color: "#0f172a", textAlign: "start" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1.5px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", background: "linear-gradient(135deg,#f43f5e,#be123c)", color: "#fff", fontWeight: 900 }}>📑</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 900 }}>Export certificates as one PDF</div>
-            <div style={{ color: "#64748b", fontWeight: 600 }}>{rows.length} employee(s) · {withImg} with an image · ≈ {pages} page(s)</div>
+            <div style={{ fontWeight: 900 }}>Export {title.toLowerCase()} as one PDF</div>
+            <div style={{ color: "#64748b", fontWeight: 600 }}>{infos.length} record(s) · {imgCount} image(s) · ≈ {pages} page(s)</div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Close"
             style={{ border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: 8, padding: "4px 10px", fontWeight: 900, cursor: "pointer" }}>✕</button>
@@ -380,9 +408,9 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end" }}>
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ fontWeight: 800 }}>Order</span>
-              <select value={order} onChange={(e) => setOrder(e.target.value)} disabled={busy}
+              <select value={orders.some((o) => o.key === order) ? order : "table"} onChange={(e) => setOrder(e.target.value)} disabled={busy}
                 style={{ border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 10px", background: "#f8fafc", fontWeight: 600 }}>
-                {ORDERS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                {orders.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
             </label>
             <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, cursor: "pointer", paddingBottom: 8 }}>
@@ -391,16 +419,16 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
             </label>
           </div>
 
-          {rows.length - withImg > 0 && (
+          {missing > 0 && (
             <div style={{ padding: "8px 12px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontWeight: 700 }}>
-              ⚠ {rows.length - withImg} employee(s) have no certificate image — they appear on the cover list only.
+              ⚠ {missing} record(s) have no certificate image — they appear on the cover list only.
             </div>
           )}
 
           {busy && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginBottom: 4 }}>
-                <span>Adding certificate {progress.i} of {progress.n}…</span><span>{pct}%</span>
+                <span>Adding image {progress.i} of {progress.n}…</span><span>{pct}%</span>
               </div>
               <div style={{ height: 8, borderRadius: 99, background: "#f1f5f9", overflow: "hidden" }}>
                 <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#f43f5e,#be123c)", transition: "width .2s" }} />
@@ -410,10 +438,10 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
 
           {result && (
             <div style={{ padding: "8px 12px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #86efac", color: "#166534", fontWeight: 700 }}>
-              ✓ PDF downloaded — {result.included} certificate(s).
+              ✓ PDF downloaded — {result.included} image(s).
               {result.failed.length > 0 && (
                 <div style={{ color: "#b91c1c", marginTop: 4 }}>
-                  {result.failed.length} image(s) could not be loaded: {result.failed.map((r) => r.name || r.appNo).join(", ")}
+                  {result.failed.length} image(s) could not be loaded: {result.failed.map((d) => d.name || d.no).join(", ")}
                 </div>
               )}
             </div>
@@ -433,12 +461,21 @@ export function OhcPdfExportModal({ open, onClose, selectedRows, shownRows, onCl
               Close
             </button>
           )}
-          <button type="button" onClick={run} disabled={busy || !withImg}
-            style={{ border: "none", background: "linear-gradient(135deg,#f43f5e,#be123c)", color: "#fff", borderRadius: 10, padding: "9px 18px", fontWeight: 800, cursor: busy || !withImg ? "default" : "pointer", opacity: busy || !withImg ? 0.6 : 1 }}>
-            {busy ? "Building PDF…" : `⬇ Download PDF (${withImg})`}
+          <button type="button" onClick={run} disabled={busy || !imgCount}
+            style={{ border: "none", background: "linear-gradient(135deg,#f43f5e,#be123c)", color: "#fff", borderRadius: 10, padding: "9px 18px", fontWeight: 800, cursor: busy || !imgCount ? "default" : "pointer", opacity: busy || !imgCount ? 0.6 : 1 }}>
+            {busy ? "Building PDF…" : `⬇ Download PDF (${imgCount})`}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+/** Status words for a strip / the cover list. */
+export function certStatusText({ days, leftCompany, outsideDubai } = {}) {
+  if (leftCompany) return "Left company";
+  if (outsideDubai) return "Outside Dubai";
+  if (days === null || days === undefined) return "No expiry";
+  if (days < 0) return `Expired ${Math.abs(days)}d ago`;
+  return `${days} days left`;
 }

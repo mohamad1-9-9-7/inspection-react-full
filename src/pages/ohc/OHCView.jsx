@@ -14,7 +14,7 @@ import {
   renewPayload,
 } from "../BFS PIC EFST/certHistoryKit";
 import { RowMenu } from "../BFS PIC EFST/certRowMenu";
-import { OhcPdfExportModal } from "./ohcPdfExport";
+import { CertPdfExportModal, certStatusText } from "../../components/CertPdfExportModal";
 
 /* ========= API ========= */
 
@@ -258,6 +258,20 @@ function extractReportsList(data) {
     };
   });
 }
+
+/* row → what the bulk PDF prints */
+const describeOhcForPdf = (r) => ({
+  name: r.name,
+  no: r.appNo,
+  branch: r.branch,
+  job: r.job,
+  expiry: r.expiryDate,
+  result: r.result,
+  days: r.status?.days,
+  statusKey: r.status?.key,
+  statusText: certStatusText({ days: r.status?.days, leftCompany: r.leftCompany, outsideDubai: r.outsideDubai }),
+  images: r.image ? [{ url: r.image }] : [],
+});
 
 /* ========= Component ========= */
 export default function OHCView() {
@@ -1117,12 +1131,15 @@ export default function OHCView() {
         onClose={() => setTransferKey(null)}
         onConfirm={doTransfer}
       />
-      <OhcPdfExportModal
+      <CertPdfExportModal
         open={pdfOpen}
         onClose={() => setPdfOpen(false)}
         selectedRows={selectedRows}
         shownRows={filtered}
         onClearSelection={() => setSelected(new Set())}
+        describe={describeOhcForPdf}
+        title="OHC Certificates"
+        filePrefix="OHC_certificates"
       />
 
       {/* خط الصفحة 16px بولد — الكلاس مضاعف لتخطّي !important في globals.css */}
