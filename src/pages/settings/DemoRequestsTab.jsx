@@ -612,11 +612,22 @@ function ShareLinks({ origin, rows, waClicks = {}, quizStats = {} }) {
     const c = {};
     rows
       .filter((r) => (r.quizScore != null) === isQuiz)
-      .forEach((r) => { const s = slugSrc(r.source); if (s) c[s] = (c[s] || 0) + 1; });
+      .forEach((r) => { const s = slugSrc(r.source) || "direct"; c[s] = (c[s] || 0) + 1; });
     return c;
   }, [rows, isQuiz]);
 
-  const linkOf = (src) => `${publicUrl}?src=${encodeURIComponent(src)}`;
+  /* Every channel that actually has numbers but no ready-made row — above all
+     "direct" (opened without ?src=, which is where the server files it). */
+  const extraSrcs = useMemo(() => {
+    const known = new Set(SHARE_LINKS.map((l) => l.src));
+    const seen = new Set();
+    Object.keys(bySource).forEach((s) => seen.add(s));
+    Object.entries(waClicks).forEach(([s, v]) => { if (Number(v)) seen.add(s); });
+    if (isQuiz) Object.entries(quizStats).forEach(([k, v]) => { if (Number(v)) seen.add(k.replace(/^(start|done):/, "")); });
+    return [...seen].filter((s) => s && !known.has(s)).sort((a, b) => (a === "direct" ? -1 : b === "direct" ? 1 : a.localeCompare(b)));
+  }, [bySource, waClicks, quizStats, isQuiz]);
+
+  const linkOf = (src) => (src === "direct" ? publicUrl : `${publicUrl}?src=${encodeURIComponent(src)}`);
   const copy = async (text, key) => {
     try { await navigator.clipboard.writeText(text); }
     catch {
@@ -695,6 +706,15 @@ function ShareLinks({ origin, rows, waClicks = {}, quizStats = {} }) {
           )}
           {SHARE_LINKS.map((l) => (
             <Row key={l.src} k={l.src} src={l.src} label={lang === "ar" ? l.ar : l.en} sub={lang === "ar" ? l.hintAr : l.hint} />
+          ))}
+          {extraSrcs.filter((s) => s !== customSrc).map((s) => (
+            <Row
+              key={`x-${s}`} k={`x-${s}`} src={s}
+              label={s === "direct" ? L("Direct (no ?src=)", "مباشر (بدون ?src=)") : s}
+              sub={s === "direct"
+                ? L("Opened the plain link, or the source was lost on the way", "فتحوا الرابط العادي، أو ضاع المصدر بالطريق")
+                : L("Other channel with activity", "قناة تانية فيها نشاط")}
+            />
           ))}
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid rgba(15,23,42,.08)" }}>
             <span style={{ fontWeight: 900 }}>{L("Other channel:", "قناة تانية:")}</span>
