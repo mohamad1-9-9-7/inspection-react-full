@@ -66,22 +66,24 @@ const CSS = `
 .lcb-good { padding:28px; border-radius:16px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-weight:800; text-align:center; margin-top:14px; }
 
 /* one document = one row: icon | name | expiry | status | files | actions */
-.lcb-row { position:relative; display:grid; grid-template-columns:44px minmax(0,1fr) 150px 150px auto; align-items:center; gap:14px;
+.lcb-row { position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;
   background:#fff; border:1px solid #e2e8f0; border-inline-start:5px solid var(--st); border-radius:14px; padding:12px 14px;
   box-shadow:0 1px 3px rgba(15,23,42,.05); transition:border-color .15s, box-shadow .15s; }
 .lcb-row:hover { border-color:#bfdbfe; border-inline-start-color:var(--st); box-shadow:0 8px 22px rgba(37,99,235,.10); }
-.lcb-ico { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:#f1f6fc; }
-.lcb-ttl { min-width:0; }
+.lcb-ico { flex:none; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:#f1f6fc; }
+.lcb-ttl { flex:1 1 300px; min-width:0; }
+.lcb-when { flex:none; width:calc(130px * var(--app-fs, 1)); }
+.lcb-st { flex:none; width:calc(175px * var(--app-fs, 1)); }
 .lcb-name { font-weight:900; color:#0f172a; line-height:1.3; overflow-wrap:anywhere; }
 .lcb-sub { display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:3px; color:#64748b; font-weight:600; }
 .lcb-sub b { color:#334155; font-weight:700; }
 .lcb-notes { color:#94a3b8; font-weight:600; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lcb-exp-l { display:block; color:#94a3b8; font-weight:700; }
 .lcb-exp-d { display:block; font-weight:900; color:#0f172a; white-space:nowrap; }
-.lcb-pill { justify-self:start; display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
+.lcb-pill { max-width:100%; overflow:hidden; text-overflow:ellipsis; display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
   background:var(--bg); color:var(--fg); border:1px solid var(--bd); font-weight:800; white-space:nowrap; }
 .lcb-pill i { width:8px; height:8px; border-radius:99px; background:var(--st); }
-.lcb-acts { display:flex; gap:6px; align-items:center; justify-content:flex-end; }
+.lcb-acts { flex:none; margin-inline-start:auto; display:flex; gap:6px; align-items:center; justify-content:flex-end; }
 .lcb-b { min-height:38px; border-radius:10px; border:1px solid #cfe0f3; background:#fff; color:#1e3a5f; font-weight:800;
   cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 13px; white-space:nowrap; }
 .lcb-b:hover { background:#eff6ff; border-color:#93c5fd; }
@@ -96,11 +98,9 @@ const CSS = `
 .lcb-menu button:hover { background:#f1f6fc; }
 .lcb-menu button.red { color:#b91c1c; }
 .lcb-menu button.red:hover { background:#fef2f2; }
-@media (max-width: 1150px) {
-  .lcb-row { grid-template-columns:44px minmax(0,1fr) auto; }
-  .lcb-when { grid-column:2; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .lcb-acts { grid-column:1 / -1; justify-content:flex-start; }
-  .lcb-pill { grid-row:1; grid-column:3; }
+@media (max-width: 700px) {
+  .lcb-when, .lcb-st { width:auto; }
+  .lcb-acts { width:100%; justify-content:flex-start; margin-inline-start:0; }
 }
 
 #root .ndx.ndx .lcb-cap { font-size:${fs(11.5)}; }
@@ -167,7 +167,7 @@ function DocRow({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
         <span className="lcb-exp-l">{l.expires}</span>
         <span className="lcb-exp-d">{it.expiryDate ? fmtDate(it.expiryDate, lang) : "—"}</span>
       </div>
-      <span className="lcb-pill"><i />{stText(l, it)}</span>
+      <div className="lcb-st"><span className="lcb-pill"><i />{stText(l, it)}</span></div>
       <div className="lcb-acts">
         {it.files.length
           ? <button type="button" className="lcb-b pri" onClick={() => on.open(it)}>📎 {l.open}</button>
