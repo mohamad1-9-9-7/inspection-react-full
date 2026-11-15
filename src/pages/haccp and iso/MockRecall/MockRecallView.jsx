@@ -193,7 +193,7 @@ export default function MockRecallView() {
           <button style={S.btnPrimary} onClick={() => navigate("/haccp-iso/mock-recall")}>
             {t("newDrill")}
           </button>
-          <button style={S.btnSecondary} onClick={() => navigate(-1)}>{t("back")}</button>
+          <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso")}>{t("back")}</button>
         </div>
       </div>
 

@@ -1,276 +1,233 @@
 // src/pages/haccp and iso/HaccpIsoMenu.jsx
-import React, { useMemo, useState } from "react";
+// The ISO 22000 & HACCP hub — every module of the food safety system.
+//
+// Same look and tools as the home dashboard (pages/dashboard/hubCss.js):
+// light header, search that forgives Arabic spelling, modules grouped by
+// area, pins saved on the account, and the open alerts that belong here.
+//
+// One card per module. A card opens the module's REGISTER; when the module
+// has an entry form, a small "+ New" on the same card opens it directly —
+// never a second card for the same module.
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
-import FloatingSettingsButton from "../../components/FloatingSettingsButton";
 import { isItemAllowed } from "../../utils/sectionItems";
-import { getPerms } from "../../utils/perms";
+import { getPerms, canWrite } from "../../utils/perms";
+import { useLangState } from "../../utils/appLang";
+import { fetchOpenAlertsShared, ALERTS_EVENT, SEVERITY } from "../../utils/alertsApi";
+import { HUB_CSS } from "../dashboard/hubCss";
+import { normText, matches } from "../dashboard/dashboardSearch";
+import { useDashPrefs, toggleFav, pushRecent } from "../dashboard/dashboardPrefs";
 
-/**
- * Main hub for ISO 22000 & HACCP
- * Parent file to connect all system pages later
- */
-
-const sections = [
-  // 📕 HACCP Manual — Master Reference Document (always first)
-  {
-    id: "haccp-manual",
-    title: "📕 HACCP Manual (Master Document)",
-    subtitle: "Hazard analysis, CCPs, HACCP plan, product descriptions & full FSMS clauses",
-    route: "/haccp-iso/haccp-manual",
-    highlight: true,
+const T = {
+  en: {
+    eyebrow: "Al Mawashi — Food Safety System",
+    title: "ISO 22000 & HACCP",
+    sub: "Documents, registers, inspections and performance of the food safety system.",
+    back: "Dashboard", modules: (n) => `${n} modules`,
+    search: "Find a module…  ( / )", clearSearch: "Clear search",
+    all: "All", governance: "Governance", operations: "Operations", records: "Records", performance: "Performance",
+    pinned: "Pinned", open: "Open", add: "+ New",
+    pin: (name) => `Pin ${name}`, unpin: (name) => `Unpin ${name}`,
+    addTitle: (name) => `New entry — ${name}`,
+    attention: "Needs attention in this section",
+    allAlerts: (n) => `All alerts (${n})`,
+    nAlerts: (n) => `${n} alert${n !== 1 ? "s" : ""}`,
+    none: "No module matches.", noAccess: "No module of this section is assigned to this account.",
+    master: "Master controlled document", adminOnly: "Admins only",
+    footer: "Al Mawashi — Quality & Food Safety System",
   },
-
-  // 📜 Food Safety Policy (ISO 5.2) — Top-level controlled document
-  {
-    id: "food-safety-policy",
-    title: "📜 Food Safety Policy",
-    subtitle: "ISO 5.2 — Controlled policy + employee acknowledgment evidence + print for posting",
-    route: "/haccp-iso/food-safety-policy",
+  ar: {
+    eyebrow: "المواشي — نظام سلامة الغذاء",
+    title: "الأيزو 22000 والهاسب",
+    sub: "وثائق نظام سلامة الغذاء وسجلاته وتفتيشاته ومؤشرات أدائه.",
+    back: "الرئيسية", modules: (n) => `${n} وحدة`,
+    search: "ابحث عن وحدة…  ( / )", clearSearch: "مسح البحث",
+    all: "الكل", governance: "الحوكمة", operations: "العمليات", records: "السجلات", performance: "الأداء",
+    pinned: "المفضلة", open: "فتح", add: "+ جديد",
+    pin: (name) => `تثبيت ${name}`, unpin: (name) => `إلغاء تثبيت ${name}`,
+    addTitle: (name) => `إدخال جديد — ${name}`,
+    attention: "يحتاج انتباهك في هذا القسم",
+    allAlerts: (n) => `كل التنبيهات (${n})`,
+    nAlerts: (n) => (n === 1 ? "تنبيه واحد" : n === 2 ? "تنبيهان" : n <= 10 ? `${n} تنبيهات` : `${n} تنبيهًا`),
+    none: "لا توجد وحدة مطابقة.", noAccess: "لم تُحدَّد لهذا الحساب أي وحدة من هذا القسم.",
+    master: "الوثيقة المرجعية المعتمدة", adminOnly: "للمدراء فقط",
+    footer: "المواشي — نظام الجودة وسلامة الغذاء",
   },
+};
 
-  // 🎯 FSMS Risk Register (ISO 6.1) — Strategic + operational risks
-  {
-    id: "risk-register",
-    title: "🎯 FSMS Risk Register",
-    subtitle: "ISO 6.1 — 20 strategic + 15 operational risks (FSMS-RA-01): regulatory, supply chain, cyber, halal, receiving, cutting, cold storage, transport.",
-    route: "/haccp-iso/risk-register/view",
-  },
+/* One colour per area — the icon tile tells you where a module belongs. */
+const CATS = ["governance", "operations", "records", "performance"];
+const CAT_STYLE = {
+  governance:  { grad: "linear-gradient(135deg,#3b82f6,#1d4ed8)", glow: "rgba(59,130,246,.28)" },
+  operations:  { grad: "linear-gradient(135deg,#14b8a6,#0f766e)", glow: "rgba(20,184,166,.28)" },
+  records:     { grad: "linear-gradient(135deg,#8b5cf6,#6d28d9)", glow: "rgba(139,92,246,.28)" },
+  performance: { grad: "linear-gradient(135deg,#f59e0b,#d97706)", glow: "rgba(245,158,11,.28)" },
+};
 
-  // 💡 FSMS Opportunity Register (ISO 6.1) — companion to Risk
+/* ── The modules ──────────────────────────────────────────────────────────
+   route = the register (what the card opens) · add = the entry form, when the
+   module has one · permId = the permission item when it differs from the id.
+   Adding a module = one object here (+ its item in utils/sectionItems.js). */
+const MODULES = [
   {
-    id: "opportunity-register",
-    title: "💡 FSMS Opportunity Register",
-    subtitle: "ISO 6.1 — Actions to address opportunities (companion to Risk). 18 pre-loaded from FSMS-RA-01: 7 external + 11 internal factors.",
-    route: "/haccp-iso/opportunity-register/view",
-  },
-
-  // 🔄 FSMS Change Management Log (ISO 6.3) — Planning of Changes
-  {
-    id: "change-management",
-    title: "🔄 Change Management Log",
-    subtitle: "ISO 6.3 — Planning of Changes. 6-step procedure + 9 actual TELT changes from 2025 (relocations, suppliers, calibration, IT).",
-    route: "/haccp-iso/change-management/view",
-  },
-
-  // 🛡️ Food Defense Plan — TACCP / VACCP (ISO 8.5.1.5.2)
-  {
-    id: "food-defense",
-    title: "🛡️ Food Defense Plan — خطة الدفاع الغذائي",
-    subtitle: "ISO 8.5.1.5.2 + PAS 96 + FSMA 21 CFR 121 — TACCP/VACCP: defense team, site/personnel/operational security controls, 24-threat vulnerability assessment & incident response.",
-    route: "/haccp-iso/food-defense/view",
-  },
-
-  // 📊 HACCP / FSMS Linkage Dashboard
-  {
-    id: "haccp-dashboard",
-    title: "📊 HACCP Linkage Dashboard",
-    subtitle: "Live KPIs: CCP records, mock recalls, suppliers, audits, calibration & MRM status",
-    route: "/haccp-iso/haccp-dashboard",
-  },
-
-  {
-    id: "product-details",
-    title: "Product Details & Specifications",
-    subtitle: "Product specs, labels, shelf life, allergens & claims",
-    route: "/haccp-iso/product-details",
-  },
-
-  // 🍽️ Kitchen — sub-hub for kitchen modules (menu labelling, …)
-  {
-    id: "kitchen",
-    title: "🍽️ Kitchen / المطبخ",
-    subtitle: "Kitchen modules — menu calorie & nutrition labelling (ADG 10/2026), and more to come",
-    route: "/haccp-iso/kitchen",
-  },
-
-  // 📜 Site Certificates — ISO 22000 / HACCP per certified site (SGS)
-  {
-    id: "site-certificates",
-    title: "📜 Site Certificates",
-    subtitle: "ISO 22000 & HACCP (SGS) per site — attach each branch's own certificate; branches open & download theirs",
-    route: "/haccp-iso/site-certificates",
-  },
-
-  // Licenses & Contracts — two cards, one permission ("licenses-contracts")
-  {
-    id: "licenses-contracts-view",
-    permId: "licenses-contracts",
-    title: "📜 Licenses & Contracts — Register",
-    subtitle: "All branch licenses & contracts in one register: expiry status, renewals, change log, Excel & reminders",
-    route: "/haccp-iso/licenses-contracts/view",
+    id: "haccp-manual", cat: "governance", icon: "📕", master: true, route: "/haccp-iso/haccp-manual",
+    tags: ["ISO 22000:2018", "Clauses 4–10", "HACCP Plan"],
+    en: { t: "HACCP / FSMS Manual", d: "Hazard analysis, CCPs and the HACCP plan, product descriptions and the full ISO 22000 clauses — signed and audit-ready." },
+    ar: { t: "دليل الهاسب ونظام سلامة الغذاء", d: "تحليل المخاطر ونقاط التحكم الحرجة وخطة الهاسب ووصف المنتجات وبنود الأيزو 22000 كاملة — موقّع وجاهز للتدقيق." },
   },
   {
-    id: "licenses-contracts-entry",
-    permId: "licenses-contracts",
-    title: "📝 Licenses & Contracts — New Entry",
-    subtitle: "Add a branch license and its service contracts (pest control, cleaning, waste…) with documents",
-    route: "/haccp-iso/licenses-contracts",
+    id: "food-safety-policy", cat: "governance", icon: "📜", route: "/haccp-iso/food-safety-policy",
+    en: { t: "Food Safety Policy", d: "ISO 5.2 — the controlled policy, staff acknowledgements and a printable copy for posting." },
+    ar: { t: "سياسة سلامة الغذاء", d: "البند 5.2 — السياسة المعتمدة وإقرارات الموظفين ونسخة للطباعة والتعليق." },
   },
-
   {
-    id: "dm-inspection",
-    title: "Dubai Municipality Inspection",
-    subtitle: "DM inspection checklists, findings, photos & corrective actions",
-    route: "/haccp-iso/dm-inspection",
+    id: "risk-register", cat: "governance", icon: "🎯", route: "/haccp-iso/risk-register/view", add: "/haccp-iso/risk-register",
+    en: { t: "FSMS Risk Register", d: "ISO 6.1 — strategic and operational risks: regulatory, supply chain, halal, cold storage, transport." },
+    ar: { t: "سجل مخاطر النظام", d: "البند 6.1 — المخاطر الاستراتيجية والتشغيلية: التشريعات، سلسلة التوريد، الحلال، التخزين المبرّد، النقل." },
   },
-
   {
-    id: "supplier-evaluation",
-    title: "Supplier Evaluation",
-    subtitle: "Approved suppliers, evaluation scores, renewals & performance tracking",
-    route: "/haccp-iso/supplier-evaluation",
+    id: "opportunity-register", cat: "governance", icon: "💡", route: "/haccp-iso/opportunity-register/view", add: "/haccp-iso/opportunity-register",
+    en: { t: "Opportunity Register", d: "ISO 6.1 — actions to address opportunities, the companion of the risk register." },
+    ar: { t: "سجل الفرص", d: "البند 6.1 — إجراءات اغتنام الفرص، وهو المكمّل لسجل المخاطر." },
   },
-
-  // ✅ SOP & sSOP
   {
-    id: "sop-ssop",
-    title: "SOP & sSOP",
-    subtitle: "Standard Operating Procedures & Sanitation SOPs — documents, versions & records",
-    route: "/haccp-iso/sop-ssop",
+    id: "change-management", cat: "governance", icon: "🔄", route: "/haccp-iso/change-management/view", add: "/haccp-iso/change-management",
+    en: { t: "Change Management Log", d: "ISO 6.3 — planned changes: relocations, suppliers, equipment and IT, with their approval steps." },
+    ar: { t: "سجل إدارة التغيير", d: "البند 6.3 — التغييرات المخططة: المواقع والمورّدون والمعدات والأنظمة، مع خطوات اعتمادها." },
   },
-
-  // 📚 Document Master Register (ISO 7.5)
   {
-    id: "document-register",
-    title: "📚 Document Master Register",
-    subtitle: "Central register of all controlled documents — versions, owners, review dates & retention",
-    route: "/haccp-iso/document-register/view",
+    id: "food-defense", cat: "governance", icon: "🛡️", route: "/haccp-iso/food-defense/view", add: "/haccp-iso/food-defense",
+    en: { t: "Food Defense Plan", d: "TACCP / VACCP — defense team, site and personnel security, vulnerability assessment and incident response." },
+    ar: { t: "خطة الدفاع الغذائي", d: "TACCP / VACCP — فريق الدفاع وأمن الموقع والأفراد وتقييم نقاط الضعف والاستجابة للحوادث." },
+  },
+  {
+    id: "licenses-contracts", cat: "governance", icon: "📑", route: "/haccp-iso/licenses-contracts/view", add: "/haccp-iso/licenses-contracts",
+    en: { t: "Licenses & Contracts", d: "Every branch licence and service contract in one register: expiry, renewals, documents and reminders." },
+    ar: { t: "التراخيص والعقود", d: "كل تراخيص الفروع وعقود الخدمات في سجل واحد: الانتهاء والتجديد والمستندات والتذكيرات." },
+  },
+  {
+    id: "site-certificates", cat: "governance", icon: "🏅", route: "/haccp-iso/site-certificates",
+    en: { t: "Site Certificates", d: "ISO 22000 and HACCP certificates per site — each branch opens and downloads its own." },
+    ar: { t: "شهادات المواقع", d: "شهادات الأيزو 22000 والهاسب لكل موقع — كل فرع يفتح شهادته ويحمّلها." },
+  },
+  {
+    id: "document-register", cat: "governance", icon: "📚", route: "/haccp-iso/document-register/view", add: "/haccp-iso/document-register",
+    en: { t: "Document Master Register", d: "ISO 7.5 — every controlled document: version, owner, review date and retention." },
+    ar: { t: "السجل الرئيسي للوثائق", d: "البند 7.5 — كل وثيقة معتمدة: الإصدار والمالك وتاريخ المراجعة ومدة الحفظ." },
+  },
+  {
+    id: "legal-register", cat: "governance", icon: "🏛️", route: "/haccp-iso/legal-register/view", add: "/haccp-iso/legal-register",
+    en: { t: "Legal Register", d: "Statutory, regulatory and customer requirements with owner, review date and compliance evidence." },
+    ar: { t: "السجل القانوني", d: "المتطلبات القانونية والتنظيمية ومتطلبات العملاء مع المسؤول وتاريخ المراجعة ودليل الالتزام." },
+  },
+  {
+    id: "external-documents", cat: "governance", icon: "🌐", route: "/haccp-iso/external-documents/view",
+    en: { t: "External Documents", d: "Master list of external standards, regulations, customer specifications and authority references." },
+    ar: { t: "الوثائق الخارجية", d: "القائمة الرئيسية للمواصفات والأنظمة الخارجية ومواصفات العملاء ومراجع الجهات الرسمية." },
+  },
+  {
+    id: "audit-trail", cat: "governance", icon: "🕵️", adminOnly: true, route: "/haccp-iso/audit-trail",
+    en: { t: "Audit Trail", d: "Every edit and delete across the system: which account, when, old value and new value." },
+    ar: { t: "سجل التعديلات", d: "كل تعديل وحذف في النظام: أي حساب، ومتى، والقيمة القديمة والجديدة." },
   },
 
   {
-    id: "legal-register",
-    title: "Legal Register",
-    subtitle: "Live statutory, regulatory, ISO and customer requirements register with ownership, review dates and compliance evidence",
-    route: "/haccp-iso/legal-register/view",
+    id: "product-details", cat: "operations", icon: "📦", route: "/haccp-iso/product-details",
+    en: { t: "Product Details & Specifications", d: "Product specs, labels, shelf life, allergens and claims." },
+    ar: { t: "تفاصيل المنتجات ومواصفاتها", d: "مواصفات المنتج والملصقات ومدة الصلاحية ومسببات الحساسية والادعاءات." },
+  },
+  {
+    id: "kitchen", cat: "operations", icon: "🍽️", route: "/haccp-iso/kitchen",
+    en: { t: "Kitchen", d: "Kitchen modules — menu calorie and nutrition labelling." },
+    ar: { t: "المطبخ", d: "وحدات المطبخ — السعرات والبيانات الغذائية لقائمة الطعام." },
+  },
+  {
+    id: "supplier-evaluation", cat: "operations", icon: "🤝", route: "/haccp-iso/supplier-evaluation",
+    en: { t: "Supplier Evaluation", d: "Approved suppliers, self-assessment links, evaluation results and performance." },
+    ar: { t: "تقييم المورّدين", d: "المورّدون المعتمدون وروابط التقييم الذاتي ونتائج التقييم والأداء." },
+  },
+  {
+    id: "sop-ssop", cat: "operations", icon: "📘", route: "/haccp-iso/sop-ssop",
+    en: { t: "SOP & sSOP", d: "Standard operating and sanitation procedures — documents, versions and records." },
+    ar: { t: "إجراءات التشغيل والتعقيم", d: "إجراءات التشغيل القياسية وإجراءات التعقيم — الوثائق والإصدارات والسجلات." },
+  },
+  {
+    id: "ccp-monitoring", cat: "operations", icon: "🌡️", route: "/haccp-iso/ccp-monitoring/view", add: "/haccp-iso/ccp-monitoring",
+    en: { t: "CCP Monitoring Log", d: "Critical control points — readings, deviations and corrective actions." },
+    ar: { t: "سجل مراقبة نقاط التحكم الحرجة", d: "نقاط التحكم الحرجة — القراءات والانحرافات والإجراءات التصحيحية." },
+  },
+  {
+    id: "calibration", cat: "operations", icon: "📐", route: "/haccp-iso/calibration/view", add: "/haccp-iso/calibration",
+    en: { t: "Calibration — External Certificates", d: "Equipment calibrated by an outside lab: certificates, due dates and alerts." },
+    ar: { t: "المعايرة — الشهادات الخارجية", d: "المعدات المعايَرة لدى مختبر خارجي: الشهادات وتواريخ الاستحقاق والتنبيهات." },
+  },
+  {
+    id: "internal-calibration", cat: "operations", icon: "🧊", route: "/haccp-iso/internal-calibration/view", add: "/haccp-iso/internal-calibration",
+    en: { t: "Calibration — In-house Checks", d: "Probe verification by our own staff (ice point, boiling point, master probe) in every branch." },
+    ar: { t: "المعايرة — الفحص الداخلي", d: "تحقق موظفينا من المجسّات (نقطة التجمد، نقطة الغليان، المجسّ المرجعي) في كل الفروع." },
+  },
+  {
+    id: "water-testing", cat: "operations", icon: "💧", route: "/haccp-iso/water-testing/view", add: "/haccp-iso/water-testing",
+    en: { t: "Water & Ice Testing Log", d: "ISO 8.2.4 — potable water and ice lab results against the limits, with corrective actions." },
+    ar: { t: "سجل فحص الماء والثلج", d: "البند 8.2.4 — نتائج مختبر الماء والثلج مقابل الحدود، مع الإجراءات التصحيحية." },
+  },
+  {
+    id: "glass-register", cat: "operations", icon: "🪟", route: "/haccp-iso/glass-register/view", add: "/haccp-iso/glass-register",
+    en: { t: "Glass & Brittle Plastic Register", d: "Inventory of glass and brittle plastic items — risk, protection and inspection." },
+    ar: { t: "سجل الزجاج والبلاستيك القابل للكسر", d: "جرد القطع الزجاجية والبلاستيكية القابلة للكسر — الخطر والحماية والفحص." },
   },
 
   {
-    id: "external-documents",
-    title: "Master List of External Documents",
-    subtitle: "Controlled list of external standards, regulations, customer specifications and authority references",
-    route: "/haccp-iso/external-documents/view",
+    id: "dm-inspection", cat: "records", icon: "🏢", route: "/haccp-iso/dm-inspection/view", add: "/haccp-iso/dm-inspection",
+    en: { t: "Dubai Municipality Inspection", d: "Municipality visits — checklist, findings, photos and corrective actions." },
+    ar: { t: "تفتيش بلدية دبي", d: "زيارات البلدية — قائمة التحقق والملاحظات والصور والإجراءات التصحيحية." },
+  },
+  {
+    id: "mock-recall", cat: "records", icon: "🔁", route: "/haccp-iso/mock-recall/view", add: "/haccp-iso/mock-recall",
+    en: { t: "Mock Recall / Traceability Drill", d: "Traceability drills — backward and forward trace, timing and audit-ready logs." },
+    ar: { t: "تمرين الاستدعاء الوهمي والتتبع", d: "تمارين التتبع — للخلف وللأمام، مع التوقيت وسجلات جاهزة للتدقيق." },
+  },
+  {
+    id: "real-recall", cat: "records", icon: "🚨", route: "/haccp-iso/real-recall/view", add: "/haccp-iso/real-recall",
+    en: { t: "Real Product Recall", d: "ISO 8.9.5 — actual recalls: class, authority notification and cost." },
+    ar: { t: "استدعاء المنتج الفعلي", d: "البند 8.9.5 — حالات الاستدعاء الفعلية: الفئة وإبلاغ الجهات والتكلفة." },
+  },
+  {
+    id: "product-withdrawal", cat: "records", icon: "↩️", route: "/haccp-iso/product-withdrawal/view", add: "/haccp-iso/product-withdrawal",
+    en: { t: "Product Withdrawal", d: "ISO 8.9.5 — withdrawal before the product reaches the consumer: stock hold and quarantine per branch." },
+    ar: { t: "سحب المنتج", d: "البند 8.9.5 — السحب قبل وصول المنتج للمستهلك: حجز المخزون وعزله في كل فرع." },
+  },
+  {
+    id: "customer-complaints", cat: "records", icon: "📞", route: "/haccp-iso/customer-complaints/view", add: "/haccp-iso/customer-complaints",
+    en: { t: "Customer Complaints", d: "Complaint log, root cause (5 Whys), corrective action and trend analysis." },
+    ar: { t: "شكاوى العملاء", d: "سجل الشكاوى والسبب الجذري (لماذا ×5) والإجراء التصحيحي وتحليل الاتجاهات." },
+  },
+  {
+    id: "communication-log", cat: "records", icon: "📢", route: "/haccp-iso/communication-log/view", add: "/haccp-iso/communication-log",
+    en: { t: "Communication Log", d: "ISO 7.4 — internal and external communication matrix with follow-up." },
+    ar: { t: "سجل التواصل", d: "البند 7.4 — مصفوفة التواصل الداخلي والخارجي مع المتابعة." },
   },
 
-  // 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP)
   {
-    id: "glass-register",
-    title: "🪟 Glass & Brittle Plastic Register",
-    subtitle: "Company-wide inventory of glass & brittle plastic items — risk, protection & inspection tracking",
-    route: "/haccp-iso/glass-register/view",
+    id: "haccp-dashboard", cat: "performance", icon: "📊", route: "/haccp-iso/haccp-dashboard",
+    en: { t: "HACCP Linkage Dashboard", d: "Live figures: CCP records, mock recalls, suppliers, calibration and management review." },
+    ar: { t: "لوحة ربط الهاسب", d: "أرقام حيّة: سجلات نقاط التحكم والاستدعاء الوهمي والمورّدون والمعايرة ومراجعة الإدارة." },
   },
-
-  // 🔄 Mock Recall / Traceability Drill
   {
-    id: "mock-recall",
-    title: "Mock Recall / Traceability Drill",
-    subtitle: "Quarterly traceability drills — backward + forward trace, KPI & audit-ready logs",
-    route: "/haccp-iso/mock-recall/view",
+    id: "objectives", cat: "performance", icon: "🏁", route: "/haccp-iso/objectives/view", add: "/haccp-iso/objectives",
+    en: { t: "FSMS Objectives", d: "ISO 6.2 — measurable objectives: targets, progress, owners and review." },
+    ar: { t: "أهداف النظام", d: "البند 6.2 — الأهداف القابلة للقياس: المستهدف والتقدّم والمسؤول والمراجعة." },
   },
-
-  // 🚨 Real Product Recall (ISO 8.9.5)
   {
-    id: "real-recall",
-    title: "🚨 Real Product Recall",
-    subtitle: "ISO 8.9.5 — Actual recall events with Class I/II/III, authority notification & cost tracking",
-    route: "/haccp-iso/real-recall/view",
+    id: "continual-improvement", cat: "performance", icon: "🌱", route: "/haccp-iso/continual-improvement/view", add: "/haccp-iso/continual-improvement",
+    en: { t: "Continual Improvement Log", d: "ISO 10.2 — from idea to approval, implementation and effectiveness." },
+    ar: { t: "سجل التحسين المستمر", d: "البند 10.2 — من الفكرة إلى الاعتماد فالتنفيذ فقياس الفاعلية." },
   },
-
-  // 📦 Product Withdrawal — سحب المنتج (ISO 8.9.5, pre-consumer)
   {
-    id: "product-withdrawal",
-    title: "📦 Product Withdrawal — سحب المنتج",
-    subtitle: "ISO 8.9.5 — Withdrawal before the product reaches the consumer: Level A/B/C, per-branch stock hold & quarantine, secured-stock rate, escalation to recall.",
-    route: "/haccp-iso/product-withdrawal/view",
-  },
-
-  // 💧 Potable Water & Ice Testing Log (ISO 8.2.4c)
-  {
-    id: "water-testing",
-    title: "💧 Water & Ice Testing Log",
-    subtitle: "ISO 8.2.4(c) — Potable water & ice micro/chemical testing vs. DM/UAE limits with lab results & corrective actions",
-    route: "/haccp-iso/water-testing/view",
-  },
-
-  // 🎯 CCP Monitoring
-  {
-    id: "ccp-monitoring",
-    title: "🎯 CCP Monitoring Log",
-    subtitle: "Critical Control Points monitoring — readings, deviations, corrective actions",
-    route: "/haccp-iso/ccp-monitoring/view",
-  },
-
-  // 🎯 FSMS Objectives (ISO 6.2)
-  {
-    id: "objectives",
-    title: "🎯 FSMS Objectives",
-    subtitle: "SMART objectives tracking — targets, live progress, owners & review status",
-    route: "/haccp-iso/objectives/view",
-  },
-
-  // 📞 Customer Complaints (ISO 7.4 + 9.1.2)
-  {
-    id: "customer-complaints",
-    title: "📞 Customer Complaints",
-    subtitle: "Complaint logging, root cause (5-Whys), CAPA & bi-yearly trend analysis",
-    route: "/haccp-iso/customer-complaints/view",
-  },
-
-  // 📢 FSMS Communication Matrix / Log (ISO 7.4)
-  {
-    id: "communication-log",
-    title: "📢 FSMS Communication Matrix / Log",
-    subtitle: "ISO 7.4 — internal & external communication matrix, 13 mandatory topics, follow-up and linkage records",
-    route: "/haccp-iso/communication-log/view",
-  },
-
-  // 🌱 Continual Improvement Log (ISO 10.2)
-  {
-    id: "continual-improvement",
-    title: "🌱 Continual Improvement Log",
-    subtitle: "ISO 10.2 — Initiative tracking from idea → approval → implementation → effectiveness",
-    route: "/haccp-iso/continual-improvement/view",
-  },
-
-  // 📋 Management Review Meeting
-  {
-    id: "mrm",
-    title: "📋 Management Review Meeting (MRM)",
-    subtitle: "MRM sessions — inputs, decisions, outputs, action items & sign-off",
-    route: "/haccp-iso/mrm/view",
-  },
-
-  // 🔍 Internal Audit
-  {
-    id: "internal-audit",
-    title: "🔍 Internal Audit",
-    subtitle: "Audit plans, checklists, findings, NCs, CARs & verification",
-    route: "/haccp-iso/internal-audit/view",
-  },
-
-  // 🌡️ Calibration Log
-  {
-    id: "calibration",
-    title: "🌡️ Calibration Log",
-    subtitle: "Equipment calibration records, due dates, alerts & traceability",
-    route: "/haccp-iso/calibration/view",
-  },
-
-  // 🌡 Internal Calibration (daily/weekly in-house verification)
-  {
-    id: "internal-calibration",
-    title: "🌡 Internal Calibration Log",
-    subtitle: "Daily/weekly probe verification (ice-point, boiling, master-probe) — covers ALL branches incl. kitchen, food trucks & all POSes",
-    route: "/haccp-iso/internal-calibration/view",
-  },
-
-  // 🕵️ Audit Trail — ADMIN ONLY (ISO 22000 §7.5 / FDA 21 CFR Part 11)
-  {
-    id: "audit-trail",
-    title: "🕵️ Audit Trail — سجل التعديلات",
-    subtitle: "ADMIN ONLY — every edit & delete across the whole system: which account, when, old value → new value",
-    route: "/haccp-iso/audit-trail",
-    adminOnly: true,
+    id: "mrm", cat: "performance", icon: "🗓️", route: "/haccp-iso/mrm/view", add: "/haccp-iso/mrm",
+    en: { t: "Management Review Meeting", d: "Review sessions — inputs, decisions, action items and sign-off." },
+    ar: { t: "اجتماع مراجعة الإدارة", d: "جلسات المراجعة — المدخلات والقرارات وبنود العمل والتوقيع." },
   },
 ];
 
@@ -280,1019 +237,261 @@ const SUBHUB_LEAVES = {
   kitchen: ["kitchen.menu-nutrition"],
 };
 
-function sectionVisible(item) {
-  // Admin-only cards (e.g. Audit Trail) never show for regular accounts,
+function moduleVisible(item) {
+  // Admin-only cards (Audit Trail) never show for regular accounts,
   // regardless of section permissions.
-  if (item.adminOnly) {
-    const p = getPerms();
-    return p.isAdmin || !!p.user?.isSuperAdmin;
-  }
+  if (item.adminOnly) return !!getPerms().isAdmin;
   const leaves = SUBHUB_LEAVES[item.id];
   if (leaves) return leaves.some((leaf) => isItemAllowed("iso", leaf));
   return isItemAllowed("iso", item.permId || item.id);
 }
 
-// Simple icon
-function IconFolder() {
-  return (
-    <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" style={{ display: "block" }}>
-      <path
-        d="M3 6.75A1.75 1.75 0 0 1 4.75 5h4.086a1.75 1.75 0 0 1 1.237.513l1.414 1.414A1.75 1.75 0 0 0 12.724 7H19.25A1.75 1.75 0 0 1 21 8.75v8.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25v-10.5Z"
-        fill="currentColor"
-        opacity="0.14"
-      />
-      <path
-        d="M4.75 5h4.086a1.75 1.75 0 0 1 1.237.513l1.414 1.414A1.75 1.75 0 0 0 12.724 7H19.25A1.75 1.75 0 0 1 21 8.75v8.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25v-10.5A1.75 1.75 0 0 1 4.75 5Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        fill="none"
-      />
-    </svg>
-  );
+/** What the search looks through for a module — both languages, folded. */
+const moduleHay = (m) =>
+  normText([m.en.t, m.en.d, m.ar.t, m.ar.d, m.id, T.en[m.cat], T.ar[m.cat], ...(m.tags || [])].join(" "));
+
+/** The module an alert belongs to: its link sits under the module's address. */
+function alertModuleId(a) {
+  const link = String(a?.link || "");
+  if (!link.startsWith("/haccp-iso")) return null;
+  let best = null;
+  MODULES.forEach((m) => {
+    const base = m.route.replace(/\/view$/, "");
+    if ((link === base || link.startsWith(`${base}/`)) && (!best || base.length > best.base.length)) best = { id: m.id, base };
+  });
+  return best?.id || null;
 }
 
-/* ===== Styles (Green + Cyan/Blue bright) ===== */
-const shellStyle = {
-  minHeight: "100vh",
-  padding: "28px 18px",
-  background:
-    "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.22) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
-    "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.16) 0, rgba(255,255,255,0) 55%)," +
-    "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.16) 0, rgba(255,255,255,0) 58%)",
-  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: "#071b2d",
-};
+const favKey = (id) => `iso:${id}`;
 
-const layoutStyle = {
-  maxWidth: "1100px",
-  margin: "0 auto",
-};
-
-const topBarStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "14px",
-  padding: "14px 16px",
-  borderRadius: "18px",
-  background: "rgba(255,255,255,0.84)",
-  border: "1px solid rgba(15, 23, 42, 0.18)",
-  boxShadow: "0 14px 40px rgba(2, 132, 199, 0.12)",
-  backdropFilter: "blur(12px)",
-  marginBottom: "18px",
-  flexWrap: "wrap",
-  position: "relative",
-  overflow: "hidden",
-};
-
-const brandLeftStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  minWidth: 0,
-};
-
-const logoStyle = {
-  width: "46px",
-  height: "46px",
-  borderRadius: "12px",
-  objectFit: "cover",
-  border: "1px solid rgba(2, 132, 199, 0.18)",
-  boxShadow: "0 8px 22px rgba(2, 132, 199, 0.14)",
-  background: "#fff",
-};
-
-const companyNameStyle = {
-  fontSize: "14px",
-  fontWeight: 950,
-  letterSpacing: "0.01em",
-  margin: 0,
-  lineHeight: 1.2,
-};
-
-const companySubStyle = {
-  fontSize: "12px",
-  fontWeight: 750,
-  opacity: 0.78,
-  marginTop: "4px",
-};
-
-const badgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  padding: "9px 12px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: 900,
-  color: "#052336",
-  background: "linear-gradient(135deg, rgba(34,211,238,0.20), rgba(34,197,94,0.14))",
-  border: "1px solid rgba(34,211,238,0.38)",
-  whiteSpace: "nowrap",
-  boxShadow: "0 10px 22px rgba(34,211,238,0.14)",
-};
-
-const headerStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: "16px",
-  margin: "14px 0 18px",
-  flexWrap: "wrap",
-};
-
-const titleStyle = {
-  fontSize: "26px",
-  fontWeight: 980,
-  letterSpacing: "0.02em",
-};
-
-const subtitleStyle = {
-  fontSize: "13px",
-  fontWeight: 750,
-  opacity: 0.82,
-  marginTop: "6px",
-};
-
-const taglineStyle = {
-  fontSize: "14px",
-  fontWeight: 750,
-  color: "#334155",
-  maxWidth: "520px",
-  margin: 0,
-};
-
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "14px",
-};
-
-const cardBaseStyle = {
-  position: "relative",
-  display: "flex",
-  gap: "12px",
-  padding: "16px 18px",
-  borderRadius: "18px",
-  background: "rgba(255,255,255,0.92)",
-  border: "1px solid rgba(15, 23, 42, 0.16)",
-  cursor: "pointer",
-  textAlign: "left",
-  transition: "transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease",
-  boxShadow: "0 12px 30px rgba(2, 132, 199, 0.10)",
-  overflow: "hidden",
-};
-
-const iconWrapStyle = {
-  width: "46px",
-  height: "46px",
-  borderRadius: "999px",
-  background: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(34,197,94,0.12))",
-  color: "#0369a1",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-  border: "1px solid rgba(34,211,238,0.34)",
-  boxShadow: "0 10px 20px rgba(34,211,238,0.14)",
-};
-
-const cardBodyStyle = {
-  flex: 1,
-  minWidth: 0,
-};
-
-const cardTitleStyle = {
-  fontSize: "15px",
-  fontWeight: 950,
-  marginBottom: "4px",
-  color: "#071b2d",
-};
-
-const cardSubStyle = {
-  fontSize: "13px",
-  color: "#334155",
-  lineHeight: 1.45,
-};
-
-const cardFooterStyle = {
-  fontSize: "11px",
-  fontWeight: 950,
-  color: "#64748b",
-  marginTop: "10px",
-  textTransform: "uppercase",
-  letterSpacing: "0.10em",
-};
-
-const arrowStyle = {
-  position: "absolute",
-  right: "16px",
-  top: "50%",
-  transform: "translateY(-50%)",
-  opacity: 0.6,
-};
-
-function LegacyHaccpIsoMenu() {
+export default function HaccpIsoMenu() {
   const navigate = useNavigate();
-  const [hoverId, setHoverId] = useState(null);
+  const [lang] = useLangState("en");
+  const t = T[lang] || T.en;
+  const isAr = lang === "ar";
+  const [query, setQuery] = useState("");
+  const [cat, setCat] = useState("all");
+  const [alerts, setAlerts] = useState([]);
+  const searchRef = useRef(null);
+  const prefs = useDashPrefs();
 
-  const cardStyle = useMemo(() => {
-    return (isHover, highlight) => ({
-      ...cardBaseStyle,
-      transform: isHover ? "translateY(-3px)" : "translateY(0)",
-      background: highlight
-        ? (isHover
-            ? "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,247,237,0.85))"
-            : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,251,235,0.7))")
-        : (isHover
-            ? "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(236,254,255,0.72))"
-            : cardBaseStyle.background),
-      boxShadow: highlight
-        ? (isHover ? "0 22px 54px rgba(245,158,11,0.28)" : "0 14px 32px rgba(245,158,11,0.18)")
-        : (isHover ? "0 18px 46px rgba(34,211,238,0.18)" : cardBaseStyle.boxShadow),
-      borderColor: highlight
-        ? "rgba(245,158,11,0.55)"
-        : (isHover ? "rgba(34,211,238,0.52)" : "rgba(15, 23, 42, 0.16)"),
-      borderWidth: highlight ? 2 : 1,
-    });
+  const allowed = useMemo(() => MODULES.filter(moduleVisible), []);
+  const mayAdd = useMemo(() => canWrite("iso"), []); // "+ New" follows the add permission
+  const hays = useMemo(() => new Map(MODULES.map((m) => [m.id, moduleHay(m)])), []);
+
+  /* open alerts of this section — the same request the bell already made */
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      if (document.hidden) return;
+      fetchOpenAlertsShared()
+        .then((list) => { if (alive) setAlerts(list.filter((a) => String(a.link || "").startsWith("/haccp-iso"))); })
+        .catch(() => { /* the hub works without them */ });
+    };
+    load();
+    window.addEventListener(ALERTS_EVENT, load);
+    return () => { alive = false; window.removeEventListener(ALERTS_EVENT, load); };
   }, []);
 
-  const handleOpen = (item) => {
-    if (!item.route) return;
-    navigate(item.route);
+  const alertsByModule = useMemo(() => {
+    const m = {};
+    alerts.forEach((a) => {
+      const id = alertModuleId(a);
+      if (!id) return;
+      if (!m[id]) m[id] = { n: 0, critical: false };
+      m[id].n += 1;
+      if (a.severity === "critical") m[id].critical = true;
+    });
+    return m;
+  }, [alerts]);
+
+  /* "/" jumps to the search box. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const q = normText(query);
+  const shown = allowed.filter((m) => (q ? matches(hays.get(m.id), q) : cat === "all" || m.cat === cat));
+  const catsShown = CATS.filter((c) => allowed.some((m) => m.cat === c));
+  const pinned = prefs.favs
+    .filter((k) => k.startsWith("iso:"))
+    .map((k) => allowed.find((m) => favKey(m.id) === k))
+    .filter(Boolean);
+
+  const text = (m) => (isAr ? m.ar : m.en);
+  const go = (m, route) => {
+    pushRecent({ k: favKey(m.id), l: text(m).t, r: m.route });
+    navigate(route);
+  };
+  const onSearchKey = (e) => {
+    if (e.key === "Enter" && shown.length) go(shown[0], shown[0].route);
+    if (e.key === "Escape") setQuery("");
+  };
+  const arrow = isAr ? "←" : "→";
+
+  const renderCard = (m) => {
+    const tx = text(m);
+    const style = CAT_STYLE[m.cat];
+    const isPinned = prefs.favs.includes(favKey(m.id));
+    const al = alertsByModule[m.id];
+    return (
+      <div
+        key={m.id}
+        className={`ndx-card${m.master ? " big master" : ""}${m.add && mayAdd ? " has-add" : ""}`}
+        style={{ "--glow": m.master ? "rgba(245,158,11,.28)" : style.glow }}
+      >
+        <button type="button" className="ndx-cmain" onClick={() => go(m, m.route)}>
+          <span className="ndx-ico" style={{ background: m.master ? "linear-gradient(135deg,#f59e0b,#b45309)" : style.grad }} aria-hidden="true">{m.icon}</span>
+          <span className="ndx-ctxt">
+            {m.master && <span className="ndx-kicker">★ {t.master}</span>}
+            <span className="ndx-ctitle">{tx.t}</span>
+            <span className="ndx-csub">{tx.d}</span>
+            {m.tags && (
+              <span className="ndx-tags">
+                {m.tags.map((x) => <span key={x} className="ndx-tag">{x}</span>)}
+              </span>
+            )}
+          </span>
+          <span className="ndx-cfoot">
+            {al
+              ? <span className={`ndx-badge ${al.critical ? "red" : "amber"}`}>{t.nAlerts(al.n)}</span>
+              : m.adminOnly
+                ? <span className="ndx-badge blue">{t.adminOnly}</span>
+                : <span>{t.open}</span>}
+            <span className="ndx-arrow" aria-hidden="true">{arrow}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`ndx-star${isPinned ? " on" : ""}`}
+          aria-pressed={isPinned}
+          aria-label={isPinned ? t.unpin(tx.t) : t.pin(tx.t)}
+          title={isPinned ? t.unpin(tx.t) : t.pin(tx.t)}
+          onClick={() => toggleFav(favKey(m.id))}
+        >
+          {isPinned ? "★" : "☆"}
+        </button>
+        {m.add && mayAdd && (
+          <button type="button" className="ndx-add" title={t.addTitle(tx.t)} aria-label={t.addTitle(tx.t)} onClick={() => go(m, m.add)}>
+            {t.add}
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
-    <main style={shellStyle}>
-      <FloatingSettingsButton />
-      <div style={layoutStyle}>
-        {/* Top bar */}
-        <div style={topBarStyle}>
-          {/* Decorative glow line */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              background:
-                "radial-gradient(800px 220px at 15% 0%, rgba(34,211,238,0.18), transparent 60%)," +
-                "radial-gradient(800px 220px at 85% 10%, rgba(34,197,94,0.14), transparent 60%)",
-              opacity: 0.9,
-            }}
-          />
+    <main className="ndx ndx" dir={isAr ? "rtl" : "ltr"} lang={lang}>
+      <style>{HUB_CSS}</style>
 
-          <div style={brandLeftStyle}>
-            <img src={mawashiLogo} alt="Al Mawashi Logo" style={logoStyle} />
-            <div style={{ minWidth: 0, position: "relative" }}>
-              <div style={companyNameStyle}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</div>
-              <div style={companySubStyle}>AL MAWASHI — Food Safety System</div>
-            </div>
-          </div>
-
-          <div style={{ ...badgeStyle, position: "relative" }}>
-            ✅ ISO 22000 & HACCP <span style={{ opacity: 0.7, fontWeight: 950 }}>Hub</span>
-          </div>
+      <header className="ndx-hero">
+        <img src={mawashiLogo} alt="Al Mawashi" className="ndx-logo" />
+        <div className="ndx-hello">
+          <p className="ndx-eyebrow">{t.eyebrow}</p>
+          <h1 className="ndx-title">{t.title}</h1>
+          <p className="ndx-sub">{t.sub}</p>
         </div>
+        <div className="ndx-hside">
+          <span className="ndx-count">{t.modules(allowed.length)}</span>
+          <button type="button" className="ndx-back" onClick={() => navigate("/named-dashboard")} aria-label={t.back}>
+            {isAr ? "→" : "←"} <span>{t.back}</span>
+          </button>
+        </div>
+      </header>
 
-        {/* Page header */}
-        <header style={headerStyle}>
-          <div>
-            <div style={titleStyle}>ISO 22000 & HACCP Hub</div>
-            <div style={subtitleStyle}>Central access to plans, forms, records and product documents.</div>
+      {alerts.length > 0 && (
+        <section className="ndx-att" aria-label={t.attention}>
+          <div className="ndx-att-head">
+            <h2 className="ndx-att-title">🔔 {t.attention}</h2>
+            <button type="button" className="ndx-sbtn" onClick={() => navigate("/alerts")}>{t.allAlerts(alerts.length)}</button>
           </div>
-          <p style={taglineStyle}>Bright green + cyan theme — same system behavior. Pick a section to open its page.</p>
-        </header>
-
-        {/* Cards — filtered by per-user ISO permissions */}
-        <section aria-label="ISO & HACCP sections">
-          <div style={gridStyle}>
-            {sections.filter(sectionVisible).map((item) => {
-              const isHover = hoverId === item.id;
+          <div className="ndx-att-list">
+            {alerts.slice(0, 4).map((a) => {
+              const sv = SEVERITY[a.severity] || SEVERITY.warning;
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  style={cardStyle(isHover, item.highlight)}
-                  onClick={() => handleOpen(item)}
-                  onMouseEnter={() => setHoverId(item.id)}
-                  onMouseLeave={() => setHoverId(null)}
-                  title={item.title}
-                >
-                  {/* subtle corner glow */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      pointerEvents: "none",
-                      background:
-                        "radial-gradient(260px 180px at 0% 0%, rgba(34,211,238,0.14), transparent 60%)," +
-                        "radial-gradient(240px 160px at 100% 100%, rgba(34,197,94,0.12), transparent 55%)",
-                      opacity: isHover ? 1 : 0.7,
-                      transition: "opacity .18s ease",
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      ...iconWrapStyle,
-                      position: "relative",
-                      ...(item.highlight && {
-                        background: "linear-gradient(135deg, rgba(245,158,11,0.22), rgba(217,119,6,0.16))",
-                        color: "#9a3412",
-                        border: "1px solid rgba(245,158,11,0.45)",
-                        boxShadow: "0 10px 22px rgba(245,158,11,0.18)",
-                      }),
-                    }}
-                  >
-                    <IconFolder />
+                <div key={a.id} className="ndx-att-item" style={{ background: sv.bg, borderColor: sv.border }}>
+                  <span aria-hidden="true">{sv.icon}</span>
+                  <div className="ndx-att-txt">
+                    <div className="ndx-att-t" style={{ color: sv.color }} dir="auto">{a.title}</div>
+                    {a.branch && <div className="ndx-att-s">{a.branch}</div>}
                   </div>
-
-                  <div style={{ ...cardBodyStyle, position: "relative" }}>
-                    <div style={cardTitleStyle}>{item.title}</div>
-                    <div style={cardSubStyle}>{item.subtitle}</div>
-                    <div
-                      style={{
-                        ...cardFooterStyle,
-                        ...(item.highlight && { color: "#b45309" }),
-                      }}
-                    >
-                      {item.highlight ? "🏆 Master Document" : "Open section"}
-                    </div>
-                  </div>
-
-                  <svg
-                    style={{ ...arrowStyle, position: "absolute" }}
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
-                </button>
+                  {a.link && <button type="button" className="ndx-sbtn" onClick={() => navigate(a.link)}>{t.open}</button>}
+                </div>
               );
             })}
           </div>
         </section>
+      )}
 
-        {/* Footer */}
-        <div
-          style={{
-            marginTop: 18,
-            fontSize: 12,
-            color: "#64748b",
-            fontWeight: 800,
-            textAlign: "center",
-            opacity: 0.95,
-          }}
-        >
-          © Al Mawashi — Quality & Food Safety System
-        </div>
-      </div>
-    </main>
-  );
-}
-
-const categoryFilters = [
-  { id: "all", label: "All" },
-  { id: "governance", label: "Governance" },
-  { id: "operations", label: "Operations" },
-  { id: "records", label: "Records" },
-  { id: "performance", label: "Performance" },
-];
-
-const categoryById = {
-  "haccp-manual": "governance",
-  "food-safety-policy": "governance",
-  "risk-register": "governance",
-  "opportunity-register": "governance",
-  "change-management": "governance",
-  "food-defense": "governance",
-  "haccp-dashboard": "performance",
-  "product-details": "operations",
-  kitchen: "operations",
-  "licenses-contracts-view": "governance",
-  "licenses-contracts-entry": "governance",
-  "site-certificates": "governance",
-  "dm-inspection": "records",
-  "supplier-evaluation": "operations",
-  "sop-ssop": "operations",
-  "document-register": "governance",
-  "legal-register": "governance",
-  "external-documents": "governance",
-  "glass-register": "operations",
-  "mock-recall": "records",
-  "real-recall": "records",
-  "product-withdrawal": "records",
-  "water-testing": "operations",
-  "ccp-monitoring": "operations",
-  objectives: "performance",
-  "customer-complaints": "records",
-  "communication-log": "records",
-  "continual-improvement": "performance",
-  mrm: "performance",
-  "internal-audit": "records",
-  calibration: "operations",
-  "internal-calibration": "operations",
-};
-
-const categoryLabel = {
-  governance: "Governance",
-  operations: "Operations",
-  records: "Records",
-  performance: "Performance",
-};
-
-const modern = {
-  shell: {
-    minHeight: "100vh",
-    padding: "10px clamp(8px, 0.8vw, 16px) 26px",
-    background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    color: "#0f172a",
-  },
-  layout: {
-    width: "100%",
-    margin: "0 auto",
-  },
-  hero: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: 10,
-    padding: "18px clamp(16px, 1.6vw, 32px)",
-    background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.20)",
-    boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
-  },
-  heroInner: {
-    position: "relative",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
-    alignItems: "center",
-    gap: 20,
-  },
-  brand: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    minWidth: 0,
-  },
-  logo: {
-    width: 62,
-    height: 62,
-    borderRadius: 10,
-    objectFit: "cover",
-    border: "1px solid rgba(255,255,255,0.34)",
-    background: "#fff",
-    boxShadow: "0 12px 24px rgba(0,0,0,0.25)",
-    flexShrink: 0,
-  },
-  eyebrow: {
-    margin: 0,
-    fontWeight: 900,
-    color: "rgba(255,255,255,0.78)",
-  },
-  title: {
-    margin: "4px 0 0",
-    fontWeight: 1000,
-    lineHeight: 1.08,
-    letterSpacing: "-0.01em",
-  },
-  subtitle: {
-    margin: "6px 0 0",
-    maxWidth: 940,
-    color: "rgba(255,255,255,0.80)",
-    lineHeight: 1.45,
-    fontWeight: 650,
-  },
-  heroStats: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(112px, 1fr))",
-    gap: 10,
-    minWidth: 250,
-  },
-  stat: {
-    borderRadius: 10,
-    padding: "12px 14px",
-    background: "rgba(255,255,255,0.12)",
-    border: "1px solid rgba(255,255,255,0.22)",
-    backdropFilter: "blur(12px)",
-    textAlign: "center",
-  },
-  statValue: {
-    fontWeight: 1000,
-    lineHeight: 1,
-  },
-  statLabel: {
-    marginTop: 6,
-    color: "rgba(255,255,255,0.76)",
-    fontWeight: 800,
-  },
-  toolbar: {
-    position: "sticky",
-    top: 0,
-    zIndex: 6,
-    margin: "12px 0 14px",
-    padding: "9px 0",
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 360px) 1fr",
-    gap: 12,
-    alignItems: "center",
-    background: "linear-gradient(180deg, rgba(248,250,252,0.97) 62%, rgba(248,250,252,0))",
-    backdropFilter: "blur(8px)",
-  },
-  searchWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "9px 14px",
-    borderRadius: 10,
-    background: "#fff",
-    border: "1px solid rgba(15,23,42,0.13)",
-    boxShadow: "0 8px 20px rgba(15,23,42,0.07)",
-  },
-  searchInput: {
-    width: "100%",
-    minWidth: 0,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    color: "#0f172a",
-    fontWeight: 800,
-    fontFamily: "inherit",
-  },
-  filters: {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-  filterButton: (active) => ({
-    minHeight: 38,
-    padding: "8px 15px",
-    borderRadius: 999,
-    border: active ? "1px solid #0f766e" : "1px solid rgba(15,23,42,0.14)",
-    background: active ? "#0f766e" : "#fff",
-    color: active ? "#fff" : "#334155",
-    fontWeight: 950,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    transition: "background .16s ease, color .16s ease, box-shadow .16s ease",
-    boxShadow: active ? "0 10px 22px rgba(15,118,110,0.22)" : "0 6px 14px rgba(15,23,42,0.06)",
-  }),
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
-    gap: 14,
-    alignItems: "stretch",
-  },
-  card: (isHover, highlight) => ({
-    position: "relative",
-    minHeight: 176,
-    height: "100%",
-    display: "grid",
-    gridTemplateRows: "auto 1fr auto",
-    gap: 12,
-    padding: "16px 18px 13px",
-    borderRadius: 10,
-    border: highlight ? "2px solid rgba(245,158,11,0.56)" : isHover ? "1px solid rgba(15,118,110,0.48)" : "1px solid rgba(15,23,42,0.12)",
-    background: highlight ? "linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)" : "#ffffff",
-    color: "#0f172a",
-    cursor: "pointer",
-    textAlign: "left",
-    boxShadow: isHover ? "0 18px 38px rgba(15,23,42,0.14)" : "0 6px 18px rgba(15,23,42,0.06)",
-    transform: isHover ? "translateY(-3px)" : "translateY(0)",
-    transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease",
-    overflow: "hidden",
-    fontFamily: "inherit",
-  }),
-  cardAccent: (highlight, isHover) => ({
-    position: "absolute",
-    insetInlineStart: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
-    background: highlight ? "#f59e0b" : "#0f766e",
-    opacity: isHover ? 1 : 0.34,
-    transition: "opacity .16s ease",
-  }),
-  cardTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  iconWrap: (highlight) => ({
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    display: "grid",
-    placeItems: "center",
-    color: highlight ? "#b45309" : "#0f766e",
-    background: highlight ? "#ffedd5" : "#ccfbf1",
-    border: highlight ? "1px solid #fed7aa" : "1px solid #99f6e4",
-    flexShrink: 0,
-  }),
-  pill: (highlight) => ({
-    padding: "5px 10px",
-    borderRadius: 999,
-    background: highlight ? "#ffedd5" : "#f1f5f9",
-    color: highlight ? "#9a3412" : "#475569",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  }),
-  cardTitle: {
-    margin: 0,
-    lineHeight: 1.25,
-    fontWeight: 1000,
-    color: "#0f172a",
-  },
-  cardSub: {
-    marginTop: 7,
-    lineHeight: 1.5,
-    fontWeight: 650,
-    color: "#475569",
-  },
-  cardBottom: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingTop: 11,
-    borderTop: "1px solid rgba(15,23,42,0.09)",
-    fontWeight: 950,
-    color: "#0f766e",
-  },
-  empty: {
-    padding: 28,
-    borderRadius: 10,
-    background: "#fff",
-    border: "1px solid rgba(15,23,42,0.12)",
-    color: "#64748b",
-    fontWeight: 800,
-    textAlign: "center",
-  },
-  footer: {
-    marginTop: 20,
-    textAlign: "center",
-    color: "#64748b",
-    fontWeight: 800,
-  },
-};
-
-/* globals.css forces `#root * { font-size: 14px !important }`, so every inline
-   fontSize on this page is ignored. The doubled-class selectors below win on
-   specificity and give the hub back a real type scale. Colors are untouched. */
-const HUB_CSS = `
-  html:has(.hix-shell), body:has(.hix-shell), #root:has(.hix-shell) { overflow-x: clip; }
-
-  #root .hix.hix-eyebrow { font-size: 10.5px !important; letter-spacing: .16em; text-transform: uppercase; }
-  #root .hix.hix-title { font-size: clamp(19px, 1.9vw, 30px) !important; }
-  #root .hix.hix-subtitle { font-size: 13px !important; }
-  #root .hix.hix-stat-value { font-size: clamp(20px, 1.7vw, 28px) !important; }
-  #root .hix.hix-stat-label { font-size: 10.5px !important; letter-spacing: .10em; text-transform: uppercase; }
-  #root .hix.hix-search-label { font-size: 11px !important; letter-spacing: .10em; text-transform: uppercase; color: #64748b; font-weight: 900; }
-  #root .hix.hix-search-input { font-size: 13.5px !important; }
-  #root .hix.hix-filter { font-size: 12px !important; letter-spacing: .04em; }
-  #root .hix.hix-pill { font-size: 10px !important; letter-spacing: .08em; text-transform: uppercase; }
-  #root .hix.hix-card-title { font-size: 15px !important; }
-  #root .hix.hix-card-sub { font-size: 12.5px !important; }
-  #root .hix.hix-card-foot { font-size: 11px !important; letter-spacing: .08em; text-transform: uppercase; }
-  #root .hix.hix-master-eyebrow { font-size: 10.5px !important; letter-spacing: .16em; text-transform: uppercase; }
-  #root .hix.hix-master-title { font-size: clamp(18px, 1.7vw, 26px) !important; }
-  #root .hix.hix-master-sub { font-size: 13px !important; }
-  #root .hix.hix-master-icon { font-size: 30px !important; }
-  #root .hix.hix-chip { font-size: 10.5px !important; letter-spacing: .04em; }
-  #root .hix.hix-cta { font-size: 13px !important; }
-  #root .hix.hix-footer { font-size: 11px !important; letter-spacing: .10em; text-transform: uppercase; }
-
-  #root .hix-card:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
-  #root .hix-search-input::placeholder { color: #94a3b8; font-weight: 700; }
-
-  @media (max-width: 980px) {
-    .haccp-hero-inner,
-    .haccp-toolbar { grid-template-columns: 1fr !important; }
-    .haccp-hero-stats,
-    .haccp-filters {
-      min-width: 0 !important;
-      justify-content: flex-start !important;
-    }
-    .haccp-toolbar { position: static !important; }
-  }
-  @media (max-width: 760px) {
-    .haccp-master-card {
-      grid-template-columns: 1fr !important;
-      justify-items: start;
-    }
-    .haccp-master-cta {
-      justify-self: stretch !important;
-      justify-content: center !important;
-    }
-  }
-`;
-
-export default function HaccpIsoMenu() {
-  const navigate = useNavigate();
-  const [hoverId, setHoverId] = useState(null);
-  const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
-
-  const allowedSections = useMemo(() => sections.filter(sectionVisible), []);
-
-  const filteredSections = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return allowedSections.filter((item) => {
-      const category = categoryById[item.id] || "records";
-      const matchesCategory = activeCategory === "all" || category === activeCategory;
-      const text = `${item.title} ${item.subtitle}`.toLowerCase();
-      return matchesCategory && (!q || text.includes(q));
-    });
-  }, [activeCategory, allowedSections, query]);
-
-  const isFiltered = filteredSections.length !== allowedSections.length;
-
-  const handleOpen = (item) => {
-    if (item.route) navigate(item.route);
-  };
-
-  return (
-    <main className="hix-shell" style={modern.shell}>
-      <FloatingSettingsButton />
-      <style>{HUB_CSS}</style>
-
-      <div style={modern.layout}>
-        <section style={modern.hero}>
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(820px 260px at 12% 0%, rgba(45,212,191,0.28), transparent 62%)," +
-                "radial-gradient(760px 300px at 90% 20%, rgba(125,211,252,0.22), transparent 60%)",
-            }}
+      <section className="ndx-toolbar">
+        <label className="ndx-search">
+          <span className="ndx-sicon" aria-hidden="true">🔍</span>
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onSearchKey}
+            placeholder={t.search}
+            aria-label={t.search}
           />
-
-          <div className="haccp-hero-inner" style={modern.heroInner}>
-            <div style={modern.brand}>
-              <img src={mawashiLogo} alt="Al Mawashi Logo" style={modern.logo} />
-              <div style={{ minWidth: 0 }}>
-                <p className="hix hix-eyebrow" style={modern.eyebrow}>
-                  TRANS EMIRATES LIVESTOCK TRADING L.L.C.
-                </p>
-                <h1 className="hix hix-title" style={modern.title}>
-                  ISO 22000 &amp; HACCP Command Center
-                </h1>
-                <p className="hix hix-subtitle" style={modern.subtitle}>
-                  A clean operational hub for food safety documents, records, inspections, product files, and performance tracking.
-                </p>
-              </div>
-            </div>
-
-            <div className="haccp-hero-stats" style={modern.heroStats}>
-              <div style={modern.stat}>
-                <div className="hix hix-stat-value" style={modern.statValue}>
-                  {isFiltered ? `${filteredSections.length}/${allowedSections.length}` : allowedSections.length}
-                </div>
-                <div className="hix hix-stat-label" style={modern.statLabel}>
-                  {isFiltered ? "Shown" : "Modules"}
-                </div>
-              </div>
-              <div style={modern.stat}>
-                <div className="hix hix-stat-value" style={modern.statValue}>ISO</div>
-                <div className="hix hix-stat-label" style={modern.statLabel}>22000 / HACCP</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="haccp-toolbar" style={modern.toolbar}>
-          <label style={modern.searchWrap}>
-            <span className="hix hix-search-label" aria-hidden="true">Search</span>
-            <input
-              className="hix hix-search-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a module..."
-              style={modern.searchInput}
-            />
-          </label>
-
-          <div className="haccp-filters" style={modern.filters}>
-            {categoryFilters.map((filter) => (
+          {query && (
+            <button type="button" className="ndx-x" aria-label={t.clearSearch} onClick={() => setQuery("")}>✕</button>
+          )}
+        </label>
+        {!q && catsShown.length > 1 && (
+          <div className="ndx-chips" role="group" aria-label={t.title}>
+            {["all", ...catsShown].map((c) => (
               <button
-                key={filter.id}
+                key={c}
                 type="button"
-                className="hix hix-filter"
-                onClick={() => setActiveCategory(filter.id)}
-                style={modern.filterButton(activeCategory === filter.id)}
+                className={`ndx-chip${cat === c ? " on" : ""}`}
+                aria-pressed={cat === c}
+                onClick={() => setCat(c)}
               >
-                {filter.label}
+                {t[c]}
               </button>
             ))}
           </div>
-        </section>
+        )}
+      </section>
 
-        <section aria-label="ISO & HACCP sections">
-          {filteredSections.length ? (
-            <div style={modern.grid}>
-              {filteredSections.map((item) => {
-                const isHover = hoverId === item.id;
-                const category = categoryById[item.id] || "records";
-
-                if (item.highlight) {
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="haccp-master-card hix-card"
-                      onClick={() => handleOpen(item)}
-                      onMouseEnter={() => setHoverId(item.id)}
-                      onMouseLeave={() => setHoverId(null)}
-                      onFocus={() => setHoverId(item.id)}
-                      onBlur={() => setHoverId(null)}
-                      title={item.title}
-                      style={{
-                        gridColumn: "1 / -1",
-                        position: "relative",
-                        overflow: "hidden",
-                        display: "grid",
-                        gridTemplateColumns: "auto 1fr auto",
-                        alignItems: "center",
-                        gap: 20,
-                        textAlign: "left",
-                        padding: "18px clamp(16px, 1.6vw, 32px)",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        color: "#fff",
-                        fontFamily: "inherit",
-                        border: "1px solid rgba(245,158,11,0.45)",
-                        background:
-                          "linear-gradient(120deg, #0b2a30 0%, #0f766e 46%, #115e59 78%, #0b2a30 100%)",
-                        boxShadow: isHover
-                          ? "0 24px 56px rgba(15,118,110,0.36), inset 0 0 0 1px rgba(245,158,11,0.38)"
-                          : "0 14px 36px rgba(15,23,42,0.26), inset 0 0 0 1px rgba(255,255,255,0.06)",
-                        transform: isHover ? "translateY(-3px)" : "translateY(0)",
-                        transition: "transform .18s ease, box-shadow .18s ease",
-                      }}
-                    >
-                      <div
-                        aria-hidden="true"
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          pointerEvents: "none",
-                          background:
-                            "radial-gradient(620px 240px at 6% -10%, rgba(245,158,11,0.22), transparent 60%)," +
-                            "radial-gradient(560px 260px at 104% 120%, rgba(34,211,238,0.16), transparent 60%)",
-                        }}
-                      />
-
-                      <div
-                        style={{
-                          position: "relative",
-                          width: 62,
-                          height: 62,
-                          borderRadius: 12,
-                          display: "grid",
-                          placeItems: "center",
-                          background:
-                            "linear-gradient(160deg, rgba(245,158,11,0.32), rgba(217,119,6,0.16))",
-                          border: "1px solid rgba(245,158,11,0.55)",
-                          boxShadow: "0 12px 26px rgba(217,119,6,0.32)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span className="hix hix-master-icon" style={{ lineHeight: 1 }}>📕</span>
-                      </div>
-
-                      <div style={{ position: "relative", minWidth: 0 }}>
-                        <div
-                          className="hix hix-master-eyebrow"
-                          style={{ fontWeight: 950, color: "#fcd34d", marginBottom: 5 }}
-                        >
-                          ★ Master Controlled Document
-                        </div>
-                        <h2
-                          className="hix hix-master-title"
-                          style={{ margin: 0, fontWeight: 1000, lineHeight: 1.15, color: "#fff" }}
-                        >
-                          HACCP / FSMS Manual
-                        </h2>
-                        <p
-                          className="hix hix-master-sub"
-                          style={{
-                            margin: "6px 0 0",
-                            maxWidth: 860,
-                            fontWeight: 650,
-                            lineHeight: 1.5,
-                            color: "rgba(255,255,255,0.82)",
-                          }}
-                        >
-                          Hazard analysis, CCPs &amp; HACCP plan, product descriptions and the
-                          full ISO 22000:2018 clauses (4–10) — bilingual, e-signed and audit-ready.
-                        </p>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
-                          {["ISO 22000:2018", "Rev 2.1", "Clauses 4–10", "HACCP Plan · 4 CCPs", "EN / العربية"].map((chip) => (
-                            <span
-                              key={chip}
-                              className="hix hix-chip"
-                              style={{
-                                fontWeight: 900,
-                                color: "#e2fbf6",
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                background: "rgba(255,255,255,0.10)",
-                                border: "1px solid rgba(255,255,255,0.20)",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div
-                        className="haccp-master-cta hix hix-cta"
-                        style={{
-                          position: "relative",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 9,
-                          padding: "11px 20px",
-                          borderRadius: 999,
-                          fontWeight: 950,
-                          whiteSpace: "nowrap",
-                          color: "#08312c",
-                          background: "linear-gradient(135deg, #fcd34d, #f59e0b)",
-                          border: "1px solid rgba(255,255,255,0.4)",
-                          boxShadow: "0 12px 26px rgba(245,158,11,0.35)",
-                        }}
-                      >
-                        Open Manual
-                        <span
-                          aria-hidden="true"
-                          style={{ transform: isHover ? "translateX(3px)" : "none", transition: "transform .18s ease" }}
-                        >
-                          →
-                        </span>
-                      </div>
-                    </button>
-                  );
-                }
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="hix-card"
-                    style={modern.card(isHover, item.highlight)}
-                    onClick={() => handleOpen(item)}
-                    onMouseEnter={() => setHoverId(item.id)}
-                    onMouseLeave={() => setHoverId(null)}
-                    onFocus={() => setHoverId(item.id)}
-                    onBlur={() => setHoverId(null)}
-                    title={item.title}
-                  >
-                    <span aria-hidden="true" style={modern.cardAccent(item.highlight, isHover)} />
-
-                    <div style={modern.cardTop}>
-                      <div style={modern.iconWrap(item.highlight)}>
-                        <IconFolder />
-                      </div>
-                      <span className="hix hix-pill" style={modern.pill(item.highlight)}>
-                        {item.highlight ? "Master" : categoryLabel[category]}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h2 className="hix hix-card-title" style={modern.cardTitle}>{item.title}</h2>
-                      <div className="hix hix-card-sub" style={modern.cardSub}>{item.subtitle}</div>
-                    </div>
-
-                    <div className="hix hix-card-foot" style={modern.cardBottom}>
-                      <span>Open module</span>
-                      <span aria-hidden="true">→</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={modern.empty}>No matching HACCP / ISO modules found.</div>
+      {shown.length === 0 ? (
+        <div className="ndx-empty">
+          <div className="ndx-empty-t">{allowed.length ? t.none : t.noAccess}</div>
+        </div>
+      ) : q ? (
+        <section className="ndx-grid" style={{ marginTop: 14 }} aria-label={t.title}>{shown.map(renderCard)}</section>
+      ) : (
+        <>
+          {cat === "all" && pinned.length > 0 && (
+            <>
+              <h2 className="ndx-gtitle">⭐ {t.pinned}</h2>
+              <section className="ndx-grid">{pinned.map(renderCard)}</section>
+            </>
           )}
-        </section>
+          {catsShown
+            .filter((c) => cat === "all" || cat === c)
+            .map((c) => (
+              <React.Fragment key={c}>
+                <h2 className="ndx-gtitle">{t[c]}</h2>
+                <section className="ndx-grid" aria-label={t[c]}>
+                  {shown.filter((m) => m.cat === c).map(renderCard)}
+                </section>
+              </React.Fragment>
+            ))}
+        </>
+      )}
 
-        <div className="hix hix-footer" style={modern.footer}>© Al Mawashi — Quality &amp; Food Safety System</div>
-      </div>
+      <footer className="ndx-foot">{t.footer}</footer>
     </main>
   );
 }

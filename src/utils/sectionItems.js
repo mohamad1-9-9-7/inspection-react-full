@@ -128,7 +128,6 @@ export const SECTION_ITEMS = {
       { id: "communication-log",      icon: "📢", label: "FSMS Communication Log" },
       { id: "continual-improvement", icon: "🌱", label: "Continual Improvement" },
       { id: "mrm",                   icon: "📋", label: "Management Review (MRM)" },
-      { id: "internal-audit",        icon: "🔍", label: "Internal Audit" },
       { id: "calibration",           icon: "🌡️", label: "Calibration Log" },
       { id: "internal-calibration",  icon: "🌡",  label: "Internal Calibration" },
     ],
