@@ -1,3 +1,4 @@
+/* eslint-disable testing-library/no-unnecessary-act -- plain React act + createRoot, no Testing Library here */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import RegisterCards from "./RegisterCards";
