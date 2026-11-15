@@ -16,14 +16,13 @@ import {
   TYPE, safeArr, getId, normalizeFiles, isImageUrl, isPdfUrl, displayUrl,
   todayYmd, daysUntil, addPeriod, diffDays, fmtDate, fmtDateTime,
   STATUS, statusOf, flattenRecords, ensureUids, diffPayloads, applyRenewal,
-  collectHistory, contractUid, newUid, missingRequirements,
+  collectHistory, contractUid, newUid,
   BRANCHES, buildSuggestions, applyItemEdit, removeItem,
 } from "./licensesKit";
 import { uploadPicked, writeRecord } from "./licensesNet";
 import DocumentsViewer from "./DocumentsViewer";
 import RegisterCards from "./RegisterCards";
 import BranchManager from "./BranchManager";
-import RequirementsManager from "./RequirementsManager";
 import { useLicenseBranches } from "./licensesBranches";
 import { SmartSelect, ComboInput } from "./licensesUi";
 import { canEdit, canDelete } from "../../../utils/perms";
@@ -71,7 +70,7 @@ const T = {
     hub: "← Hub", newEntry: "+ New Entry", refresh: "Refresh", loading: "Loading…",
     changeLog: "🕘 Change log", exportX: "⬇ Excel", print: "🖨 Print", reminder: "📋 Copy reminder",
     tabRegister: "Register", tabRecords: "Records by branch",
-    vCards: "🗂 By branch", vTable: "☰ Table", more: "More", backToCards: "← Back to branches", manageBranches: "🏢 Manage branches", manageRequired: "📋 Required documents", licType: "Licence type", licTypePh: "e.g. Trade License / Industrial License",
+    vCards: "🗂 By branch", vTable: "☰ Table", more: "More", backToCards: "← Back to branches", manageBranches: "🏢 Manage branches",
     kTotal: "All documents", kExpired: "Expired", kSoon: "≤ 30 days", kUpcoming: "31–90 days", kValid: "Valid", kNone: "No expiry date",
     search: "Search name, company, branch, notes…", allBranches: "All branches", allKinds: "Licenses + contracts",
     license: "License", contract: "Contract", licenses: "Licenses", contracts: "Contracts",
@@ -127,7 +126,7 @@ const T = {
     hub: "→ الرئيسية", newEntry: "+ إدخال جديد", refresh: "تحديث", loading: "جارٍ التحميل…",
     changeLog: "🕘 سجل التغييرات", exportX: "⬇ إكسل", print: "🖨 طباعة", reminder: "📋 نسخ تذكير",
     tabRegister: "السجل", tabRecords: "السجلات حسب الفرع",
-    vCards: "🗂 حسب الفرع", vTable: "☰ جدول", more: "المزيد", backToCards: "→ رجوع إلى الفروع", manageBranches: "🏢 إدارة الفروع", manageRequired: "📋 المستندات الإلزامية", licType: "نوع الرخصة", licTypePh: "مثال: Trade License / Industrial License",
+    vCards: "🗂 حسب الفرع", vTable: "☰ جدول", more: "المزيد", backToCards: "→ رجوع إلى الفروع", manageBranches: "🏢 إدارة الفروع",
     kTotal: "كل المستندات", kExpired: "منتهية", kSoon: "خلال 30 يوم", kUpcoming: "31–90 يوم", kValid: "سارية", kNone: "بدون تاريخ انتهاء",
     search: "ابحث بالاسم، الشركة، الفرع، الملاحظات…", allBranches: "كل الفروع", allKinds: "رخص + عقود",
     license: "رخصة", contract: "عقد", licenses: "الرخص", contracts: "العقود",
@@ -480,7 +479,6 @@ function EditItemModal({ t, lang, item, docCount, sugg, onClose, onSave, onDelet
   const [form, setForm] = useState(() => ({
     branch: item.branch === "Unspecified" ? "" : item.branch,
     name: isLic ? item.name : "",
-    licType: isLic ? item.licType || "" : "",
     contractType: isLic ? "" : item.name,
     companyName: item.company || "",
     expiryDate: item.expiryDate || "",
@@ -555,15 +553,9 @@ function EditItemModal({ t, lang, item, docCount, sugg, onClose, onSave, onDelet
         </div>
 
         {isLic ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={S.label}>{t.licType}</label>
-              <ComboInput value={form.licType} onChange={(v) => set({ licType: v })} suggestions={sugg.licenseTypes || []} placeholder={t.licTypePh} {...combo} />
-            </div>
-            <div>
-              <label style={S.label}>{t.licName} *</label>
-              <ComboInput value={form.name} onChange={(v) => set({ name: v })} suggestions={sugg.licenseNames} placeholder={t.licNamePh} {...combo} />
-            </div>
+          <div>
+            <label style={S.label}>{t.licName} *</label>
+            <ComboInput value={form.name} onChange={(v) => set({ name: v })} suggestions={sugg.licenseNames} placeholder={t.licNamePh} {...combo} />
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -799,13 +791,8 @@ export default function LicensesContractsView() {
   /* ── register ── */
   const items = useMemo(() => flattenRecords(reports), [reports]);
   // branch list = the editable one (Manage branches), then any branch only found on old records
-  const { branches: branchCfg, names: branchNames, parents: branchParents, requirements, save: saveBranchList, saveRequirements } = useLicenseBranches();
+  const { branches: branchCfg, names: branchNames, parents: branchParents, save: saveBranchList } = useLicenseBranches();
   const [branchMgr, setBranchMgr] = useState(false);
-  const [reqMgr, setReqMgr] = useState(false);
-  // required documents a branch does not have (checked on every row, not the filtered view)
-  const missing = useMemo(() => missingRequirements(items, requirements, branchNames, branchParents)
-    .map((m) => ({ ...m, all: !(requirements.find((r) => r.id === m.reqId)?.branches || []).length })),
-  [items, requirements, branchNames, branchParents]);
   const sugg = useMemo(() => buildSuggestions(reports, branchNames), [reports, branchNames]);
   const branchList = useMemo(() => {
     const s = new Set(branchNames);
@@ -1168,7 +1155,7 @@ export default function LicensesContractsView() {
           )}
           <MoreMenu label={t.more} items={[
             [t.changeLog, () => setHistoryView({ title: t.histTitle, events: allHistory })],
-            ...(mayEdit ? [[t.manageBranches, () => setBranchMgr(true)], [t.manageRequired, () => setReqMgr(true)]] : []),
+            ...(mayEdit ? [[t.manageBranches, () => setBranchMgr(true)]] : []),
             [t.reminder, copyReminder],
             [t.exportX, exportExcel, !rows.length],
             [t.print, printRegister, !rows.length],
@@ -1181,11 +1168,6 @@ export default function LicensesContractsView() {
       <div style={{ ...S.shell, minHeight: 0, padding: 0, background: "none", marginTop: 14 }} dir={dir}>
       <PreviewModal state={preview} setState={setPreview} onClose={() => setPreview((p) => ({ ...p, open: false }))} />
       {docsItem && <DocumentsViewer item={docsItem} lang={lang} onClose={() => setDocsItem(null)} />}
-      {reqMgr && (
-        <RequirementsManager lang={lang} requirements={requirements} branchNames={branchNames} sugg={sugg}
-          onSave={saveRequirements} onClose={() => setReqMgr(false)}
-          onDone={(msg) => { setReqMgr(false); flash(msg); }} />
-      )}
       {branchMgr && (
         <BranchManager lang={lang} branches={branchCfg} reports={reports} onSave={saveBranchList}
           onClose={() => setBranchMgr(false)}
@@ -1263,7 +1245,7 @@ export default function LicensesContractsView() {
       </div>
 
       {tab === "cards" && (
-        <RegisterCards lang={lang} items={cardItems} allItems={items} branchList={branchList} parents={branchParents} missing={missing}
+        <RegisterCards lang={lang} items={cardItems} allItems={items} branchList={branchList} parents={branchParents}
           mayEdit={mayEdit} mayDelete={mayDelete}
           on={{
             open: openFiles,
@@ -1274,12 +1256,6 @@ export default function LicensesContractsView() {
             editRecord: (rid) => { selectRecord(rid); setTab("records"); },
             add: (b) => navigate(`/haccp-iso/licenses-contracts?branch=${encodeURIComponent(b)}`),
             manageBranches: mayEdit ? () => setBranchMgr(true) : null,
-            manageRequirements: mayEdit ? () => setReqMgr(true) : null,
-            addMissing: (m) => navigate(`/haccp-iso/licenses-contracts?branch=${encodeURIComponent(m.parent || m.branch)}&mode=${m.kind}&add=${encodeURIComponent(m.name)}`),
-            linkMissing: (it, m) => saveItemEdit(it, {
-              branch: it.branch, name: it.name, licType: m.name, expiryDate: it.expiryDate, notes: it.notes,
-              fileUrls: it.files.slice(), fileNames: it.files.map((_, i) => it.fileNames[i] || ""),
-            }).catch((e) => alert(t.saveFail + (e?.message || e))),
           }} />
       )}
       {tab !== "cards" && <div style={{ height: 14 }} />}

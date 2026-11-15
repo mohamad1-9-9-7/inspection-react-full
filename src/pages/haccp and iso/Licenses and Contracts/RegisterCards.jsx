@@ -23,10 +23,7 @@ const L = {
     empty: "Nothing here.", allGood: "All good — nothing needs attention.", noLicence: "No licence recorded for this branch.",
     noContracts: "No contracts recorded for this branch.", docs: (n) => `${n} document${n === 1 ? "" : "s"}`,
     stExpired: (n) => `Expired ${n}d ago`, stToday: "Expires today", stLeft: (n) => `${n}d left`,
-    branches: "Branches", manage: "Manage branches", required: "Required documents",
-    missing: "Missing", missingT: (n) => `Missing: ${n}`, missingSec: (n) => `Missing required documents (${n})`,
-    reqAll: "Required for every branch", reqSome: "Required for this branch", reqParent: (p) => `Should come from ${p}`,
-    addIt: "+ Add", linkIt: "This existing licence is it…",
+    branches: "Branches", manage: "Manage branches",
     viaParent: (p) => `🔗 Licence of ${p}`, goParent: (p) => `Edit or delete in ${p}`, underOf: (p) => `Works under the licence of ${p}`,
     covers: (list) => `Its licence also covers: ${list}`, noParentLic: (p) => `${p} has no licence recorded yet.`,
   },
@@ -39,10 +36,7 @@ const L = {
     empty: "لا يوجد شيء هنا.", allGood: "كل شيء سليم — لا شيء يحتاج متابعة.", noLicence: "لا توجد رخصة مسجلة لهذا الفرع.",
     noContracts: "لا توجد عقود مسجلة لهذا الفرع.", docs: (n) => `${n} مستند`,
     stExpired: (n) => `منتهية منذ ${n} يوم`, stToday: "تنتهي اليوم", stLeft: (n) => `باقي ${n} يوم`,
-    branches: "الفروع", manage: "إدارة الفروع", required: "المستندات الإلزامية",
-    missing: "ناقص", missingT: (n) => `ناقص: ${n}`, missingSec: (n) => `مستندات إلزامية ناقصة (${n})`,
-    reqAll: "إلزامي لكل الفروع", reqSome: "إلزامي لهذا الفرع", reqParent: (p) => `يجب أن تأتي من ${p}`,
-    addIt: "+ إضافة", linkIt: "هذه الرخصة الموجودة هي…",
+    branches: "الفروع", manage: "إدارة الفروع",
     viaParent: (p) => `🔗 رخصة ${p}`, goParent: (p) => `التعديل أو الحذف من ${p}`, underOf: (p) => `يعمل تحت رخصة ${p}`,
     covers: (list) => `رخصته تغطي أيضاً: ${list}`, noParentLic: (p) => `لا توجد رخصة مسجلة لـ ${p} بعد.`,
   },
@@ -64,11 +58,6 @@ const CSS = `
 .lcb-nav.sub { padding-inline-start:30px; position:relative; }
 .lcb-nav.sub::before { content:"↳"; position:absolute; inset-inline-start:12px; color:#94a3b8; }
 .lcb-via { display:inline-block; padding:1px 8px; border-radius:99px; background:#eef2ff; color:#4338ca; font-weight:800; }
-.lcb-row.miss { border-style:dashed; border-color:#fca5a5; border-inline-start:5px solid #ef4444; background:#fff8f8; }
-.lcb-row.miss .lcb-ico { background:#fee2e2; }
-.lcb-row.miss .lcb-name { color:#991b1b; }
-.lcb-link { min-height:38px; border-radius:10px; border:1px solid #cfe0f3; background:#fff; color:#1e3a5f; font-weight:700; font-family:inherit; padding:0 10px; max-width:240px; }
-#root .ndx.ndx .lcb-link { font-size:${fs(13)}; }
 .lcb-sep { height:1px; background:#eef2f7; margin:6px 4px; }
 
 .lcb-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fff;
@@ -211,49 +200,15 @@ function DocRow({ l, lang, it, showBranch, via, onGoParent, mayEdit: mayEditIn, 
   );
 }
 
-function MissingRow({ l, m, showBranch, untyped, mayEdit, on }) {
-  return (
-    <article className="lcb-row miss">
-      <span className="lcb-ico" aria-hidden="true">⚠</span>
-      <div className="lcb-ttl">
-        <div className="lcb-name">{l.missingT(m.name)}</div>
-        <div className="lcb-sub">
-          <span>{m.kind === "license" ? "🪪" : "📄"} {m.parent ? l.reqParent(m.parent) : m.all ? l.reqAll : l.reqSome}</span>
-          {showBranch && <span>📍 {m.branch}</span>}
-        </div>
-      </div>
-      <div className="lcb-acts">
-        {mayEdit && untyped.length > 0 && (
-          <select className="lcb-link" value="" aria-label={l.linkIt}
-            onChange={(e) => { const it = untyped.find((x) => x.key === e.target.value); if (it) on.linkMissing(it, m); }}>
-            <option value="">🔗 {l.linkIt}</option>
-            {untyped.map((it) => <option key={it.key} value={it.key}>{it.name}</option>)}
-          </select>
-        )}
-        <button type="button" className="lcb-b pri" onClick={() => on.addMissing(m)}>{l.addIt}</button>
-      </div>
-    </article>
-  );
-}
-
 /**
- * missing   — missingRequirements() gaps (+ .all when the rule covers every branch)
  * items     — flattenRecords() rows, already filtered by search + status tiles
  * allItems  — every row (for the side counts)
  * parents   — { subBranch: parentBranch } from Manage branches
  * on        — { open, renew, edit, history, del, editRecord(rid), add(branch), manageBranches }
  */
-export default function RegisterCards({ lang, items, allItems, branchList, parents = {}, missing = [], mayEdit, mayDelete, on }) {
+export default function RegisterCards({ lang, items, allItems, branchList, parents = {}, mayEdit, mayDelete, on }) {
   const l = L[lang] || L.en;
-  const attnDocs = useMemo(() => allItems.filter(needsAttention), [allItems]);
-  const attnAll = { length: attnDocs.length + missing.length };
-  const missingOf = (b) => missing.filter((m) => m.branch === b);
-  const untypedOf = (b) => allItems.filter((it) => it.kind === "license" && it.branch === b && !it.licType);
-  const missRows = (list, showBranch) => (
-    <div className="lcb-grid">{list.map((m) => (
-      <MissingRow key={m.key} l={l} m={m} showBranch={showBranch} untyped={m.kind === "license" ? untypedOf(m.branch) : []} mayEdit={mayEdit} on={on} />
-    ))}</div>
-  );
+  const attnAll = useMemo(() => allItems.filter(needsAttention), [allItems]);
   const [pick, setPick] = useState(null);
   const current = pick || (attnAll.length ? ATTN : ALL);
 
@@ -262,7 +217,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
     allItems.forEach((it) => names.add(it.branch));
     const rows = [...names].map((b) => {
       const list = allItems.filter((it) => it.branch === b);
-      return { b, n: list.length, dot: missing.some((m) => m.branch === b) ? STATUS.expired.dot : worstDot(list), sub: !!parents[b] };
+      return { b, n: list.length, dot: worstDot(list), sub: !!parents[b] };
     }); // keeps the order set in Manage branches; branches found only on old records come last
     // each sub-branch right under its parent
     const out = [];
@@ -272,7 +227,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
     });
     rows.filter((y) => y.sub && !out.includes(y)).forEach((y) => out.push(y));
     return out;
-  }, [allItems, branchList, parents, missing]);
+  }, [allItems, branchList, parents]);
 
   const sortByUrgency = (a, b) => STATUS[a.status].rank - STATUS[b.status].rank || (a.days ?? 1e9) - (b.days ?? 1e9);
   const shown = useMemo(() => {
@@ -296,14 +251,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
             <div className="lcb-head-s">{l.attentionHint}</div>
           </div>
         </div>
-        {missing.length > 0 && (
-          <section className="lcb-sec">
-            <h3 className="lcb-sec-t">⚠ {l.missingSec(missing.length)}</h3>
-            {missRows(missing, true)}
-          </section>
-        )}
-        {shown.length > 0 && <div className="lcb-sec">{grid(shown, true)}</div>}
-        {!shown.length && !missing.length && <div className="lcb-good">✅ {l.allGood}</div>}
+        {shown.length ? <div className="lcb-sec">{grid(shown, true)}</div> : <div className="lcb-good">✅ {l.allGood}</div>}
       </>
     );
   } else if (current === ALL) {
@@ -355,15 +303,13 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
         </div>
         <section className="lcb-sec">
           <h3 className="lcb-sec-t">🪪 {l.license}</h3>
-          {missingOf(current).some((m) => m.kind === "license") && <div style={{ marginBottom: 8 }}>{missRows(missingOf(current).filter((m) => m.kind === "license"), false)}</div>}
           {own.length > 0 && grid(own, false)}
           {inherited.length > 0 && <div style={{ marginTop: own.length ? 8 : 0 }}>{grid(inherited, false, parent)}</div>}
-          {!own.length && !inherited.length && !missingOf(current).some((m) => m.kind === "license") && <div className="lcb-empty">{parent ? l.noParentLic(parent) : l.noLicence}</div>}
+          {!own.length && !inherited.length && <div className="lcb-empty">{parent ? l.noParentLic(parent) : l.noLicence}</div>}
         </section>
         <section className="lcb-sec">
           <h3 className="lcb-sec-t">📄 {l.contracts} <span className="lcb-n">{cons.length}</span></h3>
-          {missingOf(current).some((m) => m.kind === "contract") && <div style={{ marginBottom: 8 }}>{missRows(missingOf(current).filter((m) => m.kind === "contract"), false)}</div>}
-          {cons.length ? grid(cons, false) : !missingOf(current).some((m) => m.kind === "contract") && <div className="lcb-empty">{l.noContracts}</div>}
+          {cons.length ? grid(cons, false) : <div className="lcb-empty">{l.noContracts}</div>}
         </section>
       </>
     );
@@ -390,7 +336,6 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
           <>
             <div className="lcb-sep" />
             <button type="button" className="lcb-nav" onClick={on.manageBranches}><span className="nm">⚙ {l.manage}</span></button>
-            {on.manageRequirements && <button type="button" className="lcb-nav" onClick={on.manageRequirements}><span className="nm">📋 {l.required}</span></button>}
           </>
         )}
       </nav>

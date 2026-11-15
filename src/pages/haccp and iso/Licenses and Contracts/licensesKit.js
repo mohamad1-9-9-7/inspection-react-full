@@ -176,18 +176,15 @@ export function buildSuggestions(reports, branchNames = BRANCHES) {
   };
   const seed = (list) => new Map(list.map((v) => [v.toLowerCase(), { value: v, count: 0 }]));
   const branches = seed(branchNames); const lic = seed(LICENSE_NAMES); const types = seed(CONTRACT_TYPES); const cos = new Map();
-  const ltypes = seed(LICENSE_NAMES);
   safeArr(reports).forEach((r) => {
     const p = r?.payload || {};
     bump(branches, p.branch);
     bump(lic, p.license?.name);
     safeArr(p.licenses).forEach((l) => bump(lic, l?.name));
-    bump(ltypes, p.license?.licType);
-    safeArr(p.licenses).forEach((l) => bump(ltypes, l?.licType));
     safeArr(p.contracts).forEach((c) => { bump(types, c.contractType); bump(cos, c.companyName); });
   });
   const out = (m) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
-  return { branches: out(branches), licenseNames: out(lic), licenseTypes: out(ltypes), contractTypes: out(types), companies: out(cos) };
+  return { branches: out(branches), licenseNames: out(lic), contractTypes: out(types), companies: out(cos) };
 }
 
 /* ───────────── flatten ───────────── */
@@ -217,7 +214,7 @@ export function flattenRecords(reports) {
       const ren = safeArr(lic.renewals);
       out.push({
         key: `${rid}:license`, rid, record: r, branch, kind: "license", uid: "license",
-        name: String(lic.name || "").trim() || "License", licType: String(lic.licType || "").trim(),
+        name: String(lic.name || "").trim() || "License",
         company: "", expiryDate: lic.expiryDate || "", notes: lic.notes || "",
         files: normalizeFiles(lic), fileNames: safeArr(lic.fileNames), status: st.key, days: st.days,
         renewals: ren, lastRenewal: ren[ren.length - 1] || null,
@@ -231,7 +228,7 @@ export function flattenRecords(reports) {
       const uid = String(l.uid || `lidx${idx}`);
       out.push({
         key: `${rid}:${uid}`, rid, record: r, branch, kind: "license", uid,
-        name: String(l.name || "").trim() || "License", licType: String(l.licType || "").trim(),
+        name: String(l.name || "").trim() || "License",
         company: "", expiryDate: l.expiryDate || "", notes: l.notes || "",
         files: normalizeFiles(l), fileNames: safeArr(l.fileNames), status: st.key, days: st.days,
         renewals: ren, lastRenewal: ren[ren.length - 1] || null,
@@ -276,7 +273,7 @@ export function mkEvent(action, target, extra = {}) {
   };
 }
 
-const LIC_FIELDS = ["licType", "name", "expiryDate", "notes"];
+const LIC_FIELDS = ["name", "expiryDate", "notes"];
 const CON_FIELDS = ["contractType", "companyName", "expiryDate", "notes"];
 
 function filesDiff(a, b) {
@@ -464,7 +461,6 @@ export function applyItemEdit(payload, { kind, uid }, form) {
     if (pos < 0) return null;
     next.licenses[pos] = files({
       ...next.licenses[pos],
-      licType: String(form.licType ?? next.licenses[pos].licType ?? "").trim(),
       name: String(form.name ?? "").trim(),
       expiryDate: form.expiryDate || "",
       notes: String(form.notes ?? "").trim(),
@@ -472,7 +468,6 @@ export function applyItemEdit(payload, { kind, uid }, form) {
   } else if (kind === "license") {
     next.license = files({
       ...(next.license || {}),
-      licType: String(form.licType ?? next.license?.licType ?? "").trim(),
       name: String(form.name ?? "").trim(),
       expiryDate: form.expiryDate || "",
       notes: String(form.notes ?? "").trim(),
@@ -576,52 +571,4 @@ export function documentVersions(item) {
     v.files.forEach((f) => seen.add(f.url));
   });
   return out;
-}
-
-/* ───────────── required documents ───────────── */
-const low = (v) => String(v ?? "").trim().toLowerCase();
-
-/**
- * Does a register row satisfy a required document called `name`?
- * Licence: its type (licType) — or, for licences saved before types existed,
- * its name. Contract: its contract type.
- */
-export function docMatches(it, kind, name) {
-  if (it.kind !== kind) return false;
-  const n = low(name);
-  if (!n) return false;
-  return kind === "license" ? (low(it.licType) === n || low(it.name) === n) : low(it.name) === n;
-}
-
-/** A requirement applies to a branch when it lists no branches (= all) or lists that one. */
-export const reqAppliesTo = (req, branch) => !safeArr(req.branches).length || safeArr(req.branches).includes(branch);
-
-/**
- * Required documents a branch does not have.
- *   items       — flattenRecords() rows
- *   requirements— [{ id, kind: "license"|"contract", name, branches: [] }]
- *   branchNames — branches to check (Manage branches list)
- *   parents     — { subBranch: parent }: a sub-branch's licence comes from its
- *                 parent; when the parent is checked for the same licence the
- *                 gap is reported once, on the parent.
- * Returns [{ key, branch, kind, name, reqId, parent }].
- */
-export function missingRequirements(items, requirements, branchNames, parents = {}) {
-  const out = [];
-  safeArr(branchNames).forEach((branch) => {
-    safeArr(requirements).forEach((req) => {
-      if (!req?.name || !reqAppliesTo(req, branch)) return;
-      const parent = req.kind === "license" ? parents[branch] || "" : "";
-      const pool = safeArr(items).filter((it) => it.branch === branch || (parent && it.branch === parent));
-      if (pool.some((it) => docMatches(it, req.kind, req.name))) return;
-      if (parent && safeArr(branchNames).includes(parent) && reqAppliesTo(req, parent)) return;
-      out.push({ key: `miss:${branch}:${req.id}`, branch, kind: req.kind, name: req.name, reqId: req.id, parent });
-    });
-  });
-  return out;
-}
-
-/** Licences of a branch that have no type yet — offered as "this one is the <name>". */
-export function untypedLicenses(items, branch) {
-  return safeArr(items).filter((it) => it.kind === "license" && it.branch === branch && !it.licType);
 }
