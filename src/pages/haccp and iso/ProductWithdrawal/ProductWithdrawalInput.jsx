@@ -7,8 +7,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { TYPE, summarizeLocations, computeSecureHours } from "./productWithdrawalUtils";
 import WithdrawalAttachments from "./WithdrawalAttachments";
 import TraceLinkPicker, { traceLinkTitle } from "./TraceLinkPicker";
@@ -374,20 +374,17 @@ export default function ProductWithdrawalInput() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("pwTitle")}</div>
-            <div style={S.subtitle}>{t("pwSubtitle")}</div>
-            <HaccpLinkBadge clauses={["8.9.5"]} label={isAr ? "سحب المنتج" : "Withdrawal"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.headBtn(true)} onClick={() => navigate("/haccp-iso/product-withdrawal/view")}>{t("past")}</button>
-            <button style={S.headBtn(false)} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="↩️"
+      title={isAr ? "سحب منتج" : "Product Withdrawal"}
+      sub={isAr ? "سحب المنتج من سلسلة التوزيع قبل أن يصل إلى المستهلك." : "Removing a product from the distribution chain before it reaches the consumer."}
+      clause={isAr ? "البند 8.9.5" : "ISO 8.9.5"}
+      backTo="/haccp-iso/product-withdrawal/view"
+      backLabel={isAr ? "→ سجل السحب" : "← Withdrawal register"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         <div style={S.banner("info")}>ℹ️ {t("pwVsRecall")}</div>
 
@@ -938,6 +935,6 @@ export default function ProductWithdrawalInput() {
           </button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

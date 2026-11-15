@@ -4,8 +4,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import RealRecallTrendReportModal from "./RealRecallTrendReport";
 
 const TYPE = "real_recall";
@@ -171,24 +171,23 @@ export default function RealRecallView() {
   }, [items, classFilter, statusFilter]);
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("rrListTitle")}</div>
-            <div style={S.subtitle}>{t("rrSubtitle")}</div>
-            <HaccpLinkBadge clauses={["8.9.5"]} label={isAr ? "السحب الفعلي" : "Withdrawal/Recall"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => setTrendOpen(true)} disabled={!items.length}>
-              📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}
-            </button>
-            <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/real-recall")}>{t("new")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🚨"
+      title={isAr ? "سجل الاستدعاء الفعلي" : "Real Recall Register"}
+      sub={isAr ? "الاستدعاءات الحقيقية للمنتج (ليست تمارين)، مع النسبة المسترجعة وحالة الإغلاق." : "Real product recalls (not drills), with the recovered share and closure status."}
+      clause={isAr ? "البند 8.9.5" : "ISO 8.9.5"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => navigate("/haccp-iso/product-withdrawal/view")}>↩️ {isAr ? "سحب المنتج" : "Withdrawals"}</Btn>
+          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}</Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/real-recall")}>{t("new")}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* KPIs */}
         <div style={S.kpiGrid}>
@@ -387,6 +386,6 @@ export default function RealRecallView() {
           );
         })}
       </div>
-    </main>
+    </HaccpPage>
   );
 }

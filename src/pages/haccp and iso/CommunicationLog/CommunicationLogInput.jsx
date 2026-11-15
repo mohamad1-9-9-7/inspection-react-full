@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "fsms_communication_log";
 
@@ -250,20 +250,17 @@ export default function CommunicationLogInput() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{tx.title}</div>
-            <div style={S.subtitle}>{tx.subtitle}</div>
-            <HaccpLinkBadge clauses={["7.4"]} label={isAr ? "التواصل" : "Communication"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/communication-log/view")}>{t("past")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📢"
+      title={tx.title}
+      sub={isAr ? "تواصل داخلي أو خارجي يخص سلامة الغذاء: مع من، عن ماذا، وكيف." : "Internal or external food safety communication: with whom, about what, and how."}
+      clause={isAr ? "البند 7.4" : "ISO 7.4"}
+      backTo="/haccp-iso/communication-log/view"
+      backLabel={isAr ? "→ سجل التواصل" : "← Communication log"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         <div style={S.card}>
           <div style={S.sectionTitle}>{tx.details}</div>
@@ -413,6 +410,6 @@ export default function CommunicationLogInput() {
           <button style={S.btn("primary")} onClick={save} disabled={saving || generating}>{saving ? t("saving") : tx.save}</button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

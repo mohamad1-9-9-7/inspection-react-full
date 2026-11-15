@@ -5,8 +5,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { TYPE, summarizeLocations, computeSecureHours, needsRecallEscalation } from "./productWithdrawalUtils";
 import ProductWithdrawalTrendReportModal from "./ProductWithdrawalTrendReport";
 import WithdrawalAttachments from "./WithdrawalAttachments";
@@ -198,32 +198,23 @@ export default function ProductWithdrawalView() {
   }, [filtered]);
 
   return (
-    <div style={{ ...S.shell, direction: dir }}>
-      {/* ===== Header ===== */}
-      <div style={S.header}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 900 }}>{t("pwListTitle")}</h1>
-          <div style={{ opacity: 0.85, marginTop: 4, fontSize: "0.92rem" }}>{t("pwSubtitle")}</div>
-          <HaccpLinkBadge clauses={["8.9.5"]} label={isAr ? "سحب المنتج" : "Withdrawal"} />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <HaccpPage
+      lang={lang}
+      icon="↩️"
+      title={isAr ? "سجل سحب المنتج" : "Product Withdrawal Register"}
+      sub={isAr ? "منتجات سُحبت من سلسلة التوزيع قبل وصولها إلى المستهلك." : "Products removed from the distribution chain before they reached the consumer."}
+      clause={isAr ? "البند 8.9.5" : "ISO 8.9.5"}
+      actions={
+        <>
           <HaccpLangToggle lang={lang} toggle={toggle} />
-          <button style={S.btnSecondary} onClick={() => setTrendOpen(true)} disabled={!items.length}>
-            {t("pwTrend")}
-          </button>
-          <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso/real-recall/view")}>
-            {t("pwOpenRecall")}
-          </button>
-          <button style={S.btnSecondary} onClick={load} disabled={loading}>
-            {loading ? "⏳" : t("refresh")}
-          </button>
-          <button style={S.btnPrimary} onClick={() => navigate("/haccp-iso/product-withdrawal")}>
-            {t("new")}
-          </button>
-          <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-        </div>
-      </div>
-
+          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>{t("pwTrend")}</Btn>
+          <Btn onClick={() => navigate("/haccp-iso/real-recall/view")}>{t("pwOpenRecall")}</Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/product-withdrawal")}>{t("new")}</Btn>
+        </>
+      }
+    >
+    <div style={{ ...S.shell, minHeight: 0, padding: 0, background: "none", marginTop: 14, direction: dir }}>
       {/* ===== Scope note ===== */}
       <div style={S.infoBox}>ℹ️ {t("pwVsRecall")}</div>
 
@@ -677,6 +668,7 @@ export default function ProductWithdrawalView() {
         <ProductWithdrawalTrendReportModal items={items} lang={lang} onClose={() => setTrendOpen(false)} />
       )}
     </div>
+    </HaccpPage>
   );
 }
 

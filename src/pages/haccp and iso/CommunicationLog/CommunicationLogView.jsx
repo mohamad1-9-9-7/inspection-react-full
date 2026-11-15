@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "fsms_communication_log";
 
@@ -208,23 +208,23 @@ export default function CommunicationLogView() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{isAr ? "سجل ومصفوفة التواصل FSMS" : "FSMS Communication Matrix / Log"}</div>
-            <div style={S.subtitle}>{isAr ? "تطبيق البند 7.4 - التواصل الداخلي والخارجي" : "Clause 7.4 - internal and external communication"}</div>
-            <HaccpLinkBadge clauses={["7.4"]} label={isAr ? "التواصل" : "Communication"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "..." : t("refresh")}</button>
-            <button style={S.btn("ghost")} onClick={exportCSV} disabled={!filtered.length}>CSV</button>
-            <button style={S.btn("ghost")} onClick={exportJSON} disabled={!filtered.length}>JSON</button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/communication-log")}>{t("new")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📢"
+      title={isAr ? "سجل ومصفوفة التواصل" : "Communication Matrix & Log"}
+      sub={isAr ? "التواصل الداخلي والخارجي في نظام سلامة الغذاء." : "Internal and external communication in the food safety system."}
+      clause={isAr ? "البند 7.4" : "ISO 7.4"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={load} disabled={loading}>{loading ? "..." : t("refresh")}</Btn>
+          <Btn onClick={exportCSV} disabled={!filtered.length}>CSV</Btn>
+          <Btn onClick={exportJSON} disabled={!filtered.length}>JSON</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/communication-log")}>{t("new")}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         <div style={S.kpiGrid}>
           <div style={S.kpi("#075985")}><div style={S.kpiVal("#075985")}>{stats.total}</div><div style={S.kpiLabel}>{isAr ? "إجمالي السجلات" : "Total Records"}</div></div>
@@ -345,6 +345,6 @@ export default function CommunicationLogView() {
           );
         })}
       </div>
-    </main>
+    </HaccpPage>
   );
 }

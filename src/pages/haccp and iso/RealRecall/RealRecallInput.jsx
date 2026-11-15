@@ -5,8 +5,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "real_recall";
 
@@ -249,20 +249,17 @@ export default function RealRecallInput() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("rrTitle")}</div>
-            <div style={S.subtitle}>{t("rrSubtitle")}</div>
-            <HaccpLinkBadge clauses={["8.9.5"]} label={isAr ? "السحب الفعلي" : "Withdrawal/Recall"} />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/real-recall/view")}>{t("past")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🚨"
+      title={isAr ? "استدعاء فعلي للمنتج" : "Real Product Recall"}
+      sub={isAr ? "استدعاء حقيقي (ليس تمريناً): المنتج، الكميات، الجهات المبلَّغة والإغلاق." : "A real recall, not a drill: the product, the quantities, who was notified, and closure."}
+      clause={isAr ? "البند 8.9.5" : "ISO 8.9.5"}
+      backTo="/haccp-iso/real-recall/view"
+      backLabel={isAr ? "→ سجل الاستدعاءات" : "← Recall register"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* Section 1: Identification */}
         <div style={S.card}>
@@ -535,6 +532,6 @@ export default function RealRecallInput() {
           </button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }
