@@ -791,7 +791,7 @@ export default function LicensesContractsView() {
   /* ── register ── */
   const items = useMemo(() => flattenRecords(reports), [reports]);
   // branch list = the editable one (Manage branches), then any branch only found on old records
-  const { branches: branchCfg, names: branchNames, save: saveBranchList } = useLicenseBranches();
+  const { branches: branchCfg, names: branchNames, parents: branchParents, save: saveBranchList } = useLicenseBranches();
   const [branchMgr, setBranchMgr] = useState(false);
   const sugg = useMemo(() => buildSuggestions(reports, branchNames), [reports, branchNames]);
   const branchList = useMemo(() => {
@@ -1245,7 +1245,7 @@ export default function LicensesContractsView() {
       </div>
 
       {tab === "cards" && (
-        <RegisterCards lang={lang} items={cardItems} allItems={items} branchList={branchList}
+        <RegisterCards lang={lang} items={cardItems} allItems={items} branchList={branchList} parents={branchParents}
           mayEdit={mayEdit} mayDelete={mayDelete}
           on={{
             open: openFiles,

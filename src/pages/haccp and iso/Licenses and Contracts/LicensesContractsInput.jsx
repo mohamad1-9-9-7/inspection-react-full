@@ -24,7 +24,7 @@ const T = {
   en: {
     title: "New Licenses & Contracts Entry", sub: "AL MAWASHI — Licenses & Contracts",
     back: "← Hub", register: "📜 Open register", save: "✓ Save entry", saving: "Saving…",
-    manageBranches: "⚙ Manage branches", branchesSaved: "Branches saved.", branch: "Branch", existing: (n) => `This branch already has ${n} record(s) in the register.`, openExisting: "Open it",
+    underNote: (p) => `This branch works under the licence of ${p} — add the licence there, contracts here.`, manageBranches: "⚙ Manage branches", branchesSaved: "Branches saved.", branch: "Branch", existing: (n) => `This branch already has ${n} record(s) in the register.`, openExisting: "Open it",
     license: "🪪 Licenses", licName: "License name", licNamePh: "e.g. Trade License", addOtherLic: "+ Other license",
     licHint: "Fill the ones you have now — an empty license is skipped.", cLic: (n) => `${n}: expiry date`, cLicDocN: (n) => `${n}: document`,
     cAnyLic: "At least one license filled",
@@ -50,7 +50,7 @@ const T = {
   ar: {
     title: "إدخال جديد — الرخص والعقود", sub: "المواشي — الرخص والعقود",
     back: "→ الرئيسية", register: "📜 فتح السجل", save: "✓ حفظ الإدخال", saving: "جارٍ الحفظ…",
-    manageBranches: "⚙ إدارة الفروع", branchesSaved: "تم حفظ الفروع.", branch: "الفرع", existing: (n) => `هذا الفرع لديه ${n} سجل في السجل مسبقاً.`, openExisting: "فتحه",
+    underNote: (p) => `هذا الفرع يعمل تحت رخصة ${p} — أضف الرخصة هناك، والعقود هنا.`, manageBranches: "⚙ إدارة الفروع", branchesSaved: "تم حفظ الفروع.", branch: "الفرع", existing: (n) => `هذا الفرع لديه ${n} سجل في السجل مسبقاً.`, openExisting: "فتحه",
     license: "🪪 الرخص", licName: "اسم الرخصة", licNamePh: "مثال: رخصة تجارية", addOtherLic: "+ رخصة أخرى",
     licHint: "عبّئ الموجود عندك الآن — الرخصة الفارغة لا تُحفظ.", cLic: (n) => `${n}: تاريخ الانتهاء`, cLicDocN: (n) => `${n}: المستند`,
     cAnyLic: "رخصة واحدة على الأقل معبأة",
@@ -191,7 +191,7 @@ export default function LicensesContractsInput() {
   const dir = lang === "ar" ? "rtl" : "ltr";
 
   const [params] = useSearchParams();
-  const { branches: branchCfg, names: branchNames, save: saveBranchList } = useLicenseBranches();
+  const { branches: branchCfg, names: branchNames, parents: branchParents, save: saveBranchList } = useLicenseBranches();
   const [branchMgr, setBranchMgr] = useState(false);
   const mayManage = canEdit("iso");
   const [branch, setBranch] = useState(() => String(params.get("branch") || "").trim() || BRANCHES[0]);
@@ -440,6 +440,12 @@ export default function LicensesContractsInput() {
                 <button key={k} type="button" style={{ ...chip(mode === k), fontSize: 13, padding: "8px 14px" }} onClick={() => setMode(k)}>{l}</button>
               ))}
             </div>
+            {branchParents[branch] && (
+              <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, background: "#eef2ff", border: "1px solid #c7d2fe", color: "#3730a3", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span>🔗 {t.underNote(branchParents[branch])}</span>
+                <button type="button" style={mini} onClick={() => setBranch(branchParents[branch])}>↗ {branchParents[branch]}</button>
+              </div>
+            )}
             {target && (
               <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <span>ℹ {t.mergeNote(branch)}</span>

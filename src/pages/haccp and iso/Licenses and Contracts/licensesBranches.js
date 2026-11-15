@@ -19,7 +19,12 @@ const EVENT = "lc:branches";
 
 const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 
-/** [{ id, name }] — trimmed, no blanks, no duplicate names (case-insensitive). */
+/**
+ * [{ id, name, parentId }] — trimmed, no blanks, no duplicate names (case-insensitive).
+ * parentId = the branch this one belongs to (e.g. a food truck working under a
+ * butchery's licence). One level only: a parent can't itself have a parent,
+ * and a missing / self parent is dropped.
+ */
 export function normalizeBranches(list) {
   const seen = new Set();
   const out = [];
@@ -28,8 +33,28 @@ export function normalizeBranches(list) {
     const k = name.toLowerCase();
     if (!name || seen.has(k)) return;
     seen.add(k);
-    out.push({ id: String((typeof b === "object" && b?.id) || newUid("b")), name });
+    out.push({
+      id: String((typeof b === "object" && b?.id) || newUid("b")),
+      name,
+      parentId: (typeof b === "object" && b?.parentId) ? String(b.parentId) : "",
+    });
   });
+  const byId = new Map(out.map((b) => [b.id, b]));
+  out.forEach((b) => {
+    const p = byId.get(b.parentId);
+    if (!p || p.id === b.id || p.parentId) b.parentId = "";
+  });
+  // a branch that became a parent loses its own parent (keeps the tree one level deep)
+  const parents = new Set(out.map((b) => b.parentId).filter(Boolean));
+  out.forEach((b) => { if (parents.has(b.id)) b.parentId = ""; });
+  return out;
+}
+
+/** { childName: parentName } for every branch that belongs to another. */
+export function parentMap(list) {
+  const byId = new Map(normalizeBranches(list).map((b) => [b.id, b]));
+  const out = {};
+  byId.forEach((b) => { if (b.parentId && byId.get(b.parentId)) out[b.name] = byId.get(b.parentId).name; });
   return out;
 }
 
@@ -94,7 +119,7 @@ export async function saveBranches(list, user = "") {
   return branches;
 }
 
-/** { branches: [{id,name}], names: string[], ready, save(list) } */
+/** { branches: [{id,name,parentId}], names: string[], parents: {child: parent}, ready, save(list) } */
 export function useLicenseBranches() {
   const [branches, setBranches] = useState(() => readCache() || defaultBranches());
   const [ready, setReady] = useState(false);
@@ -113,5 +138,5 @@ export function useLicenseBranches() {
     setBranches(saved);
     return saved;
   }, []);
-  return { branches, names: branches.map((b) => b.name), ready, save };
+  return { branches, names: branches.map((b) => b.name), parents: parentMap(branches), ready, save };
 }

@@ -14,7 +14,9 @@ import { newUid } from "./licensesKit";
 
 const L = {
   en: {
-    title: "Manage branches", hint: "This list is used by the register and the entry page. A rename moves the branch's records too.",
+    title: "Manage branches", hint: "This list is used by the register and the entry page. A rename moves the branch's records too. A branch set \"under\" another (e.g. a food truck) works under that branch's licence.",
+    under: "Belongs to", own: "Own licence", isParent: "Has sub-branches", underOf: (n) => `Under ${n}`,
+    underHint: "Pick the branch whose licence this one works under",
     name: "Branch name", add: "+ Add", addPh: "New branch name", up: "Move up", down: "Move down", del: "Delete",
     docs: (n) => `${n} document${n === 1 ? "" : "s"}`, save: "Save", saving: "Saving…", cancel: "Cancel",
     dup: (n) => `"${n}" is already in the list.`, empty: "A branch name can't be empty.",
@@ -23,7 +25,9 @@ const L = {
     saved: "Branches saved.", fail: "Save failed: ", movedFail: (n) => `Branches saved, but ${n} record(s) could not be moved — try again.`,
   },
   ar: {
-    title: "إدارة الفروع", hint: "هذه القائمة يستخدمها السجل وصفحة الإدخال. تغيير اسم الفرع ينقل سجلاته أيضاً.",
+    title: "إدارة الفروع", hint: "هذه القائمة يستخدمها السجل وصفحة الإدخال. تغيير اسم الفرع ينقل سجلاته أيضاً. الفرع \"التابع\" لفرع آخر (مثل عربة طعام) يعمل تحت رخصة ذلك الفرع.",
+    under: "تابع لـ", own: "رخصة مستقلة", isParent: "لديه فروع تابعة", underOf: (n) => `تابع لـ ${n}`,
+    underHint: "اختر الفرع الذي يعمل هذا الفرع تحت رخصته",
     name: "اسم الفرع", add: "+ إضافة", addPh: "اسم فرع جديد", up: "للأعلى", down: "للأسفل", del: "حذف",
     docs: (n) => `${n} مستند`, save: "حفظ", saving: "جارٍ الحفظ…", cancel: "إلغاء",
     dup: (n) => `"${n}" موجود في القائمة.`, empty: "اسم الفرع لا يمكن أن يكون فارغاً.",
@@ -58,6 +62,7 @@ export default function BranchManager({ lang, branches, reports, onSave, onClose
   }, [reports]);
 
   const set = (id, name) => { setErr(""); setList((p) => p.map((b) => (b.id === id ? { ...b, name } : b))); };
+  const setParent = (id, parentId) => setList((p) => p.map((b) => (b.id === id ? { ...b, parentId } : b)));
   const move = (i, d) => setList((p) => {
     const j = i + d;
     if (j < 0 || j >= p.length) return p;
@@ -66,7 +71,8 @@ export default function BranchManager({ lang, branches, reports, onSave, onClose
   const remove = (b) => {
     const orig = branches.find((x) => x.id === b.id)?.name || b.name;
     if (!window.confirm(l.confirmDel(b.name, counts[orig] || 0))) return;
-    setList((p) => p.filter((x) => x.id !== b.id));
+    // its sub-branches become branches of their own
+    setList((p) => p.filter((x) => x.id !== b.id).map((x) => (x.parentId === b.id ? { ...x, parentId: "" } : x)));
   };
   const add = () => {
     const name = draft.replace(/\s+/g, " ").trim();
@@ -119,9 +125,16 @@ export default function BranchManager({ lang, branches, reports, onSave, onClose
         {list.map((b, i) => {
           const orig = branches.find((x) => x.id === b.id)?.name;
           const n = orig ? counts[orig] || 0 : 0;
+          const isParent = list.some((x) => x.parentId === b.id);
+          const parentChoices = list.filter((x) => x.id !== b.id && !x.parentId);
           return (
-            <div key={b.id} style={{ display: "flex", gap: 6, alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8 }}>
-              <input className="pgk-in" value={b.name} aria-label={l.name} onChange={(e) => set(b.id, e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+            <div key={b.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", background: b.parentId ? "#f8fbff" : "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, marginInlineStart: b.parentId ? 22 : 0 }}>
+              <input className="pgk-in" value={b.name} aria-label={l.name} onChange={(e) => set(b.id, e.target.value)} style={{ flex: "1 1 180px", minWidth: 0 }} />
+              <select className="pgk-in" value={b.parentId || ""} aria-label={l.under} title={isParent ? l.isParent : l.underHint}
+                disabled={isParent} onChange={(e) => setParent(b.id, e.target.value)} style={{ flex: "0 1 190px", minWidth: 140 }}>
+                <option value="">{isParent ? l.isParent : l.own}</option>
+                {parentChoices.map((x) => <option key={x.id} value={x.id}>↳ {l.underOf(x.name)}</option>)}
+              </select>
               {n > 0 && <span className="pgk-pill grey">{l.docs(n)}</span>}
               <button type="button" style={rowBtn} title={l.up} aria-label={l.up} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
               <button type="button" style={rowBtn} title={l.down} aria-label={l.down} disabled={i === list.length - 1} onClick={() => move(i, 1)}>↓</button>

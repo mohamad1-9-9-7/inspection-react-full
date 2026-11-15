@@ -24,6 +24,8 @@ const L = {
     noContracts: "No contracts recorded for this branch.", docs: (n) => `${n} document${n === 1 ? "" : "s"}`,
     stExpired: (n) => `Expired ${n}d ago`, stToday: "Expires today", stLeft: (n) => `${n}d left`,
     branches: "Branches", manage: "Manage branches",
+    viaParent: (p) => `🔗 Licence of ${p}`, underOf: (p) => `Works under the licence of ${p}`,
+    covers: (list) => `Its licence also covers: ${list}`, noParentLic: (p) => `${p} has no licence recorded yet.`,
   },
   ar: {
     attention: "تحتاج متابعة", attentionHint: "منتهية، تنتهي خلال 30 يوماً، بدون تاريخ أو بدون مستند",
@@ -35,6 +37,8 @@ const L = {
     noContracts: "لا توجد عقود مسجلة لهذا الفرع.", docs: (n) => `${n} مستند`,
     stExpired: (n) => `منتهية منذ ${n} يوم`, stToday: "تنتهي اليوم", stLeft: (n) => `باقي ${n} يوم`,
     branches: "الفروع", manage: "إدارة الفروع",
+    viaParent: (p) => `🔗 رخصة ${p}`, underOf: (p) => `يعمل تحت رخصة ${p}`,
+    covers: (list) => `رخصته تغطي أيضاً: ${list}`, noParentLic: (p) => `لا توجد رخصة مسجلة لـ ${p} بعد.`,
   },
 };
 
@@ -51,6 +55,9 @@ const CSS = `
 .lcb-dot { width:10px; height:10px; border-radius:99px; flex-shrink:0; }
 .lcb-n { min-width:26px; padding:2px 8px; border-radius:99px; background:#f1f5f9; color:#475569; font-weight:800; text-align:center; }
 .lcb-nav.attn .lcb-n { background:#fee2e2; color:#b91c1c; }
+.lcb-nav.sub { padding-inline-start:30px; position:relative; }
+.lcb-nav.sub::before { content:"↳"; position:absolute; inset-inline-start:12px; color:#94a3b8; }
+.lcb-via { display:inline-block; padding:1px 8px; border-radius:99px; background:#eef2ff; color:#4338ca; font-weight:800; }
 .lcb-sep { height:1px; background:#eef2f7; margin:6px 4px; }
 
 .lcb-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fff;
@@ -138,7 +145,7 @@ const worstDot = (list) => {
   return STATUS[w.status].dot;
 };
 
-function DocRow({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
+function DocRow({ l, lang, it, showBranch, via, mayEdit, mayDelete, on }) {
   const [menu, setMenu] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -156,6 +163,7 @@ function DocRow({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
       <div className="lcb-ttl">
         <div className="lcb-name">{it.name}</div>
         <div className="lcb-sub">
+          {via && <span className="lcb-via">{l.viaParent(via)}</span>}
           {it.company && <b>{it.company}</b>}
           {showBranch && <span>📍 {it.branch}</span>}
           {it.files.length > 0 && <span>📎 {l.files(it.files.length)}</span>}
@@ -190,9 +198,10 @@ function DocRow({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
 /**
  * items     — flattenRecords() rows, already filtered by search + status tiles
  * allItems  — every row (for the side counts)
- * on        — { open, renew, edit, history, del, editRecord(rid), add(branch) }
+ * parents   — { subBranch: parentBranch } from Manage branches
+ * on        — { open, renew, edit, history, del, editRecord(rid), add(branch), manageBranches }
  */
-export default function RegisterCards({ lang, items, allItems, branchList, mayEdit, mayDelete, on }) {
+export default function RegisterCards({ lang, items, allItems, branchList, parents = {}, mayEdit, mayDelete, on }) {
   const l = L[lang] || L.en;
   const attnAll = useMemo(() => allItems.filter(needsAttention), [allItems]);
   const [pick, setPick] = useState(null);
@@ -201,11 +210,19 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
   const branches = useMemo(() => {
     const names = new Set(branchList);
     allItems.forEach((it) => names.add(it.branch));
-    return [...names].map((b) => {
+    const rows = [...names].map((b) => {
       const list = allItems.filter((it) => it.branch === b);
-      return { b, n: list.length, dot: worstDot(list) };
+      return { b, n: list.length, dot: worstDot(list), sub: !!parents[b] };
     }); // keeps the order set in Manage branches; branches found only on old records come last
-  }, [allItems, branchList]);
+    // each sub-branch right under its parent
+    const out = [];
+    rows.filter((x) => !x.sub).forEach((x) => {
+      out.push(x);
+      rows.filter((y) => y.sub && parents[y.b] === x.b).forEach((y) => out.push(y));
+    });
+    rows.filter((y) => y.sub && !out.includes(y)).forEach((y) => out.push(y));
+    return out;
+  }, [allItems, branchList, parents]);
 
   const sortByUrgency = (a, b) => STATUS[a.status].rank - STATUS[b.status].rank || (a.days ?? 1e9) - (b.days ?? 1e9);
   const shown = useMemo(() => {
@@ -215,8 +232,8 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
   }, [items, current]);
 
   const cardProps = { l, lang, mayEdit, mayDelete, on };
-  const grid = (list, showBranch) => (
-    <div className="lcb-grid">{list.map((it) => <DocRow key={it.key} it={it} showBranch={showBranch} {...cardProps} />)}</div>
+  const grid = (list, showBranch, via) => (
+    <div className="lcb-grid">{list.map((it) => <DocRow key={it.key} it={it} showBranch={showBranch} via={via || ""} {...cardProps} />)}</div>
   );
 
   let body;
@@ -258,15 +275,21 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
       </>
     );
   } else {
-    const lic = shown.filter((it) => it.kind === "license");
+    const parent = parents[current] || "";
+    const subs = Object.keys(parents).filter((c) => parents[c] === current);
+    const own = shown.filter((it) => it.kind === "license");
+    // a sub-branch works under its parent's licence — show those rows here too (they ARE the parent's rows)
+    const inherited = parent ? items.filter((it) => it.kind === "license" && it.branch === parent) : [];
     const cons = shown.filter((it) => it.kind === "contract").sort(sortByUrgency);
-    const rid = (lic[0] || cons[0])?.rid;
+    const rid = (own[0] || cons[0])?.rid;
     body = (
       <>
         <div className="lcb-head">
           <div>
             <h2 className="lcb-head-t">📍 {current}</h2>
             <div className="lcb-head-s">{l.docs(shown.length)}</div>
+            {parent && <div className="lcb-head-s">↳ <button type="button" className="lcb-via" style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setPick(parent)}>{l.underOf(parent)}</button></div>}
+            {subs.length > 0 && <div className="lcb-head-s">🔗 {l.covers(subs.join(", "))}</div>}
           </div>
           <div className="lcb-head-a">
             {mayEdit && rid && <button type="button" className="pgk-btn sm" onClick={() => on.editRecord(rid)}>🗂 {l.editRecord}</button>}
@@ -275,7 +298,9 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
         </div>
         <section className="lcb-sec">
           <h3 className="lcb-sec-t">🪪 {l.license}</h3>
-          {lic.length ? grid(lic, false) : <div className="lcb-empty">{l.noLicence}</div>}
+          {own.length > 0 && grid(own, false)}
+          {inherited.length > 0 && <div style={{ marginTop: own.length ? 8 : 0 }}>{grid(inherited, false, parent)}</div>}
+          {!own.length && !inherited.length && <div className="lcb-empty">{parent ? l.noParentLic(parent) : l.noLicence}</div>}
         </section>
         <section className="lcb-sec">
           <h3 className="lcb-sec-t">📄 {l.contracts} <span className="lcb-n">{cons.length}</span></h3>
@@ -301,7 +326,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
         {nav(ALL, l.all, allItems.length)}
         <div className="lcb-sep" />
         <div className="lcb-cap">{l.branches}</div>
-        {branches.map((x) => nav(x.b, x.b, x.n, x.dot))}
+        {branches.map((x) => nav(x.b, x.b, x.n, x.dot, x.sub ? "sub" : ""))}
         {on.manageBranches && (
           <>
             <div className="lcb-sep" />
