@@ -8,8 +8,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "fsms_change_management_log_item";
 
@@ -489,21 +489,23 @@ export default function ChangeManagementLogView() {
   };
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        {/* Top bar */}
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{pick(T.pageTitle)}</div>
-            <div style={S.subtitle}>{pick(T.pageSubtitle)}</div>
-            <HaccpLinkBadge clauses={["6.3"]} label={isAr ? "تخطيط التغييرات" : "Planning of Changes"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("primary")} onClick={startNew}>{pick(T.add)}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{pick(T.back)}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🔄"
+      title={isAr ? "سجل إدارة التغيير" : "Change Management Log"}
+      sub={isAr
+        ? "كل تغيير يمس نظام سلامة الغذاء: يُقيَّم أثره، توافق عليه الإدارة، يُنفَّذ ثم يُتحقَّق منه."
+        : "Every change that touches the food safety system: impact assessed, approved by management, implemented, then verified."}
+      clause={isAr ? "البند 6.3" : "ISO 6.3"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => navigate("/haccp-iso/continual-improvement/view")}>🌱 {isAr ? "التحسين المستمر" : "Continual improvement"}</Btn>
+          <Btn kind="primary" onClick={startNew}>{pick(T.add)}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* Intro */}
         <div style={S.intro}>{pick(T.pageIntro)}</div>
@@ -660,6 +662,6 @@ export default function ChangeManagementLogView() {
           ISO 22000:2018 §6.3 · Source: FSMS-RA-01 controlled document · All changes reviewed by FSMS Team and approved by Top Management
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

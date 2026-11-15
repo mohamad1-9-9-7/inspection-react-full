@@ -7,8 +7,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "fsms_opportunity_register_item";
 
@@ -532,21 +532,23 @@ export default function OpportunityRegisterView() {
   const localizeSource = (val) => SOURCES.find((s) => s.v === val)?.[lang] || val;
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        {/* Top bar */}
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{pick(T.pageTitle)}</div>
-            <div style={S.subtitle}>{pick(T.pageSubtitle)}</div>
-            <HaccpLinkBadge clauses={["6.1"]} label={isAr ? "إجراءات معالجة المخاطر والفرص" : "Actions to address risks & opportunities"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("primary")} onClick={startNew}>{pick(T.add)}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{pick(T.back)}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="💡"
+      title={isAr ? "سجل الفرص" : "FSMS Opportunity Register"}
+      sub={isAr
+        ? "فرص من عوامل داخلية وخارجية نستفيد منها لتقوية نظام سلامة الغذاء — رفيق سجل المخاطر."
+        : "Internal and external factors we can use to strengthen the food safety system — companion to the risk register."}
+      clause={isAr ? "البند 6.1" : "ISO 6.1"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => navigate("/haccp-iso/risk-register/view")}>🎯 {isAr ? "سجل المخاطر" : "Risk register"}</Btn>
+          <Btn kind="primary" onClick={startNew}>{pick(T.add)}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* Intro */}
         <div style={S.intro}>{pick(T.pageIntro)}</div>
@@ -666,6 +668,6 @@ export default function OpportunityRegisterView() {
           ISO 22000:2018 §6.1 · Companion to FSMS Risk Register · Source: FSMS-RA-01 controlled document · Reviewed annually during MRM
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

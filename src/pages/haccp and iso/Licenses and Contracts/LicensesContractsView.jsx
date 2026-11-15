@@ -9,8 +9,7 @@
 //     renewals with links to the previous document, added/removed contracts).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import mawashiLogo from "../../../assets/almawashi-logo.jpg";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import API_BASE from "../../../config/api";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 import {
@@ -1088,8 +1087,31 @@ export default function LicensesContractsView() {
   const sortArrow = (k) => (sort.key === k ? (sort.dir > 0 ? " ▲" : " ▼") : "");
   const filtersOn = q || branchFilter !== "ALL" || kindFilter !== "ALL" || statusFilter !== "ALL";
 
+  const isAr = lang === "ar";
   return (
-    <main style={S.shell} dir={dir}>
+    <HaccpPage
+      lang={lang}
+      icon="📑"
+      title={isAr ? "الرخص والعقود" : "Licences & Contracts"}
+      sub={isAr
+        ? "رخص الفروع وعقود الخدمات: تواريخ الانتهاء، التجديدات والوثائق — نطاق النظام والالتزام القانوني."
+        : "Branch licences and service contracts: expiry dates, renewals and documents — scope and legal compliance."}
+      clause={isAr ? "البند 4.4" : "ISO 4.4"}
+      actions={
+        <>
+          {!hideSectionLangToggle() && (
+            <Btn onClick={() => setLang(isAr ? "en" : "ar")}>{isAr ? "EN" : "ع"}</Btn>
+          )}
+          <Btn onClick={() => setHistoryView({ title: t.histTitle, events: allHistory })}>{t.changeLog}</Btn>
+          <Btn onClick={copyReminder}>{t.reminder}</Btn>
+          <Btn onClick={exportExcel} disabled={!rows.length}>{t.exportX}</Btn>
+          <Btn onClick={printRegister} disabled={!rows.length}>{t.print}</Btn>
+          <Btn onClick={fetchReports} disabled={loading}>{loading ? t.loading : t.refresh}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/licenses-contracts")}>{t.newEntry}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.shell, minHeight: 0, padding: 0, background: "none", marginTop: 14 }} dir={dir}>
       <PreviewModal state={preview} setState={setPreview} onClose={() => setPreview((p) => ({ ...p, open: false }))} />
       {docsItem && <DocumentsViewer item={docsItem} lang={lang} onClose={() => setDocsItem(null)} />}
       {renewItem && (
@@ -1112,29 +1134,6 @@ export default function LicensesContractsView() {
         }}>{toast}</div>
       )}
 
-      {/* Top bar */}
-      <div style={{ ...S.card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "12px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <img src={mawashiLogo} alt="logo" style={{ width: 42, height: 42, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.line}` }} />
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 900, lineHeight: 1.3 }}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</div>
-            <div style={{ fontSize: 13, color: C.sub, marginTop: 2, fontWeight: 700 }}>{t.sub}</div>
-            <HaccpLinkBadge clauses={["4.4"]} label="Scope + Legal Compliance" />
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button style={ghost} onClick={() => navigate("/haccp-iso")}>{t.hub}</button>
-          <button style={ghost} onClick={() => setHistoryView({ title: t.histTitle, events: allHistory })}>{t.changeLog}</button>
-          <button style={ghost} onClick={copyReminder}>{t.reminder}</button>
-          <button style={ghost} onClick={exportExcel} disabled={!rows.length}>{t.exportX}</button>
-          <button style={ghost} onClick={printRegister} disabled={!rows.length}>{t.print}</button>
-          {!hideSectionLangToggle() && (
-            <button style={ghost} onClick={() => setLang(lang === "ar" ? "en" : "ar")}>{lang === "ar" ? "EN" : "ع"}</button>
-          )}
-          <button style={btn(C.brand)} onClick={() => navigate("/haccp-iso/licenses-contracts")}>{t.newEntry}</button>
-          <button style={btn(C.ok)} onClick={fetchReports} disabled={loading}>{loading ? t.loading : t.refresh}</button>
-        </div>
-      </div>
 
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -1509,9 +1508,7 @@ export default function LicensesContractsView() {
         </div>
       )}
 
-      <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: C.faint, fontWeight: 600 }}>
-        © Al Mawashi — Quality & Food Safety System
       </div>
-    </main>
+    </HaccpPage>
   );
 }

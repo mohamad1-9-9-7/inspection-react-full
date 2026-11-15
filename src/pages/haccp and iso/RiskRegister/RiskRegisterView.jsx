@@ -6,8 +6,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { calcRiskScore, riskLevelLabel } from "../../hse/hseShared";
 
 const TYPE = "fsms_risk_register_item";
@@ -823,33 +823,36 @@ export default function RiskRegisterView() {
   };
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        {/* Top bar */}
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{pick(T.pageTitle)}</div>
-            <div style={S.subtitle}>{pick(T.pageSubtitle)}</div>
-            <HaccpLinkBadge clauses={["6.1"]} label={isAr ? "إدارة المخاطر التنظيمية" : "Organizational Risk Management"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            {dupCount > 0 && (
-              <button
-                style={{ ...S.btn("danger"), background: "linear-gradient(180deg, #f59e0b, #d97706)", borderColor: "#b45309" }}
-                onClick={cleanDuplicates}
-                title={lang === "ar"
-                  ? `حذف ${dupCount} نسخة مكررة من قاعدة البيانات`
-                  : `Delete ${dupCount} duplicate records from database`}
-               data-delete-action="true">
-                🧹 {lang === "ar" ? `تنظيف ${dupCount} مكرر` : `Clean ${dupCount} duplicates`}
-              </button>
-            )}
-            <button style={S.btn("ghost")} onClick={resetToSeed} title={pick(T.resetSeed)}>{pick(T.resetSeed)}</button>
-            <button style={S.btn("primary")} onClick={startNew}>{pick(T.add)}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{pick(T.back)}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🎯"
+      title={isAr ? "سجل مخاطر نظام سلامة الغذاء" : "FSMS Risk Register"}
+      sub={isAr
+        ? "مخاطر على مستوى المنظمة تهدد نظام سلامة الغذاء، وهي غير مخاطر HACCP على المنتج — FSMS-RA-01."
+        : "Organisation-level risks to the food safety system, separate from the HACCP product hazards — FSMS-RA-01."}
+      clause={isAr ? "البند 6.1" : "ISO 6.1"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          {dupCount > 0 && (
+            <Btn
+              kind="danger"
+              onClick={cleanDuplicates}
+              title={lang === "ar"
+                ? `حذف ${dupCount} نسخة مكررة من قاعدة البيانات`
+                : `Delete ${dupCount} duplicate records from database`}
+              data-delete-action="true"
+            >
+              🧹 {lang === "ar" ? `تنظيف ${dupCount} مكرر` : `Clean ${dupCount} duplicates`}
+            </Btn>
+          )}
+          <Btn onClick={() => navigate("/haccp-iso/opportunity-register/view")}>💡 {isAr ? "سجل الفرص" : "Opportunities"}</Btn>
+          <Btn onClick={resetToSeed} title={pick(T.resetSeed)}>{pick(T.resetSeed)}</Btn>
+          <Btn kind="primary" onClick={startNew}>{pick(T.add)}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* Intro */}
         <div style={S.intro}>{pick(T.pageIntro)}</div>
@@ -1113,6 +1116,6 @@ export default function RiskRegisterView() {
           ISO 22000:2018 §6.1 · Closes SGS Stage 2 Major NC #2 · Reviewed annually during MRM
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

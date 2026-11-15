@@ -7,8 +7,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { calcRiskScore, riskLevelLabel } from "../../hse/hseShared";
 import {
   DOC_NO, DOC_REV, DOC_DATE,
@@ -546,36 +546,32 @@ export default function FoodDefenseView() {
   }, []);
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        {/* ── Top bar ── */}
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>🛡️ {pick(T.pageTitle)}</div>
-            <div style={S.subtitle}>{pick(T.pageSubtitle)}</div>
-            <HaccpLinkBadge
-              clauses={["8.5", "8.2"]}
-              label={isAr ? "الدفاع الغذائي واليقظة الحيوية" : "Food Defence & Biovigilance"}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            {dupCount > 0 && (
-              <button
-                style={{ ...S.btn("danger"), background: "linear-gradient(180deg, #f59e0b, #d97706)", borderColor: "#b45309" }}
-                onClick={cleanDuplicates}
-                title={isAr ? `حذف ${dupCount} نسخة مكررة` : `Delete ${dupCount} duplicate records`}
-                data-delete-action="true"
-              >
-                🧹 {isAr ? `تنظيف ${dupCount} مكرر` : `Clean ${dupCount} duplicates`}
-              </button>
-            )}
-            <button style={S.btn("ghost")} onClick={() => window.print()}>{pick(T.print)}</button>
-            <button style={S.btn("ghost")} onClick={resetToSeed}>{pick(T.resetSeed)}</button>
-            <button style={S.btn("primary")} onClick={startNew}>{pick(T.add)}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{pick(T.back)}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🛡️"
+      title={pick(T.pageTitle)}
+      sub={pick(T.pageSubtitle)}
+      clause={isAr ? "البندان 8.2 و8.5" : "ISO 8.2 · 8.5"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          {dupCount > 0 && (
+            <Btn
+              kind="danger"
+              onClick={cleanDuplicates}
+              title={isAr ? `حذف ${dupCount} نسخة مكررة` : `Delete ${dupCount} duplicate records`}
+              data-delete-action="true"
+            >
+              🧹 {isAr ? `تنظيف ${dupCount} مكرر` : `Clean ${dupCount} duplicates`}
+            </Btn>
+          )}
+          <Btn onClick={() => window.print()}>{pick(T.print)}</Btn>
+          <Btn onClick={resetToSeed}>{pick(T.resetSeed)}</Btn>
+          <Btn kind="primary" onClick={startNew}>{pick(T.add)}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, direction: dir, marginTop: 14 }}>
 
         {/* ── Document control strip ── */}
         <div style={S.docBar}>
@@ -984,6 +980,6 @@ export default function FoodDefenseView() {
 
         <div style={{ height: 40 }} />
       </div>
-    </main>
+    </HaccpPage>
   );
 }

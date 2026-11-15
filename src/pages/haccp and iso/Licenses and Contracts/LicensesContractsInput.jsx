@@ -8,7 +8,7 @@
 //   • completeness checklist; after saving → open in register / new entry
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import mawashiLogo from "../../../assets/almawashi-logo.jpg";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import API_BASE from "../../../config/api";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 import {
@@ -302,10 +302,25 @@ export default function LicensesContractsInput() {
 
   const busy = saving || !!uploading.key;
 
+  const frame = (body, actions) => (
+    <HaccpPage
+      lang={lang}
+      icon="📑"
+      title={t.title}
+      sub={lang === "ar" ? "رخصة فرع أو عقد خدمة، مع تاريخ الانتهاء والوثيقة." : "A branch licence or a service contract, with its expiry date and document."}
+      clause={lang === "ar" ? "البند 4.4" : "ISO 4.4"}
+      backTo="/haccp-iso/licenses-contracts/view"
+      backLabel={t.register}
+      actions={actions}
+    >
+      <div style={{ ...S.shell, minHeight: 0, padding: 0, background: "none", marginTop: 14 }} dir={dir}>{body}</div>
+    </HaccpPage>
+  );
+
   /* ───────────── saved screen ───────────── */
   if (savedId) {
-    return (
-      <main style={{ ...S.shell, display: "grid", placeItems: "center" }} dir={dir}>
+    return frame((
+      <div style={{ display: "grid", placeItems: "center", paddingBlock: 30 }}>
         <div style={{ ...S.card, textAlign: "center", maxWidth: 460, padding: 30 }}>
           <div style={{ fontSize: 46 }}>✅</div>
           <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{t.savedTitle}</div>
@@ -315,35 +330,18 @@ export default function LicensesContractsInput() {
             <button style={ghost} onClick={() => resetForm(false)}>{t.newEntry}</button>
           </div>
         </div>
-      </main>
-    );
+      </div>
+    ));
   }
 
-  return (
-    <main style={S.shell} dir={dir}>
+  return frame((
+    <>
       {toast && (
         <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 10000, background: C.ink, color: "#fff", padding: "10px 18px", borderRadius: 12, fontWeight: 700 }}>{toast}</div>
       )}
       <datalist id="lc-lic-names">{sugg.lic.map((x) => <option key={x} value={x} />)}</datalist>
       <datalist id="lc-types">{sugg.types.map((x) => <option key={x} value={x} />)}</datalist>
       <datalist id="lc-companies">{sugg.cos.map((x) => <option key={x} value={x} />)}</datalist>
-
-      {/* top bar */}
-      <div style={{ ...S.card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "12px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <img src={mawashiLogo} alt="logo" style={{ width: 42, height: 42, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.line}` }} />
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 900 }}>{t.title}</div>
-            <div style={{ fontSize: 13, color: C.sub, fontWeight: 700 }}>{t.sub}</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button style={ghost} onClick={() => navigate("/haccp-iso")}>{t.back}</button>
-          <button style={ghost} onClick={() => navigate("/haccp-iso/licenses-contracts/view")}>{t.register}</button>
-          {!hideSectionLangToggle() && <button style={ghost} onClick={() => setLang(lang === "ar" ? "en" : "ar")}>{lang === "ar" ? "EN" : "ع"}</button>}
-          <button style={btn(C.ok)} onClick={handleSave} disabled={busy}>{saving ? t.saving : t.save}</button>
-        </div>
-      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 14, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 14 }}>
@@ -490,9 +488,11 @@ export default function LicensesContractsInput() {
         </div>
       </div>
 
-      <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: C.faint, fontWeight: 600 }}>
-        © Al Mawashi — Quality & Food Safety System
-      </div>
-    </main>
-  );
+    </>
+  ), (
+    <>
+      {!hideSectionLangToggle() && <Btn onClick={() => setLang(lang === "ar" ? "en" : "ar")}>{lang === "ar" ? "EN" : "ع"}</Btn>}
+      <Btn kind="ok" onClick={handleSave} disabled={busy}>{saving ? t.saving : t.save}</Btn>
+    </>
+  ));
 }
