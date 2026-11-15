@@ -19,7 +19,23 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HUB_CSS, fs } from "../../dashboard/hubCss";
 
+/* ── Bridge for pages not rewritten yet ──────────────────────────────────────
+   Their styles are inline objects, and globals.css flattens every inline
+   font-size to 14px. Inside the kit's frame each inline size is given back
+   (and follows the Aa slider), with a floor of 12.5px so nothing is tiny.
+   A page written with the kit's own classes never needs this. */
+const LEGACY_SIZES = (() => {
+  let css = "";
+  for (let v = 8; v <= 64; v += 0.5) {
+    const shown = Math.max(v, 12.5);
+    css += `#root .ndx.ndx [style*="font-size: ${v}px"]{font-size:calc(${shown}px * var(--app-fs, 1)) !important}
+`;
+  }
+  return css;
+})();
+
 export const PAGE_CSS = `
+${LEGACY_SIZES}
 /* ── header extras ── */
 .pgk-ico { width:54px; height:54px; border-radius:14px; display:grid; place-items:center; flex-shrink:0;
   background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; }
@@ -157,7 +173,7 @@ textarea.pgk-in { min-height:84px; resize:vertical; line-height:1.55; }
  * The page frame. `clause` = the ISO clause shown beside the title ("ISO 4.2").
  * `actions` = buttons on the header's right. The "← Hub" button is built in.
  */
-export function HaccpPage({ lang = "en", icon, title, sub, clause, actions, backTo = "/haccp-iso", children }) {
+export function HaccpPage({ lang = "en", icon, title, sub, clause, actions, backTo = "/haccp-iso", backLabel, children }) {
   const navigate = useNavigate();
   const ar = lang === "ar";
   return (
@@ -177,7 +193,7 @@ export function HaccpPage({ lang = "en", icon, title, sub, clause, actions, back
         <div className="pgk-actions pgk-noprint">
           {actions}
           <button type="button" className="pgk-btn" onClick={() => navigate(backTo)}>
-            {ar ? "→ القسم" : "← Hub"}
+            {backLabel || (ar ? "→ القسم" : "← Hub")}
           </button>
         </div>
       </header>

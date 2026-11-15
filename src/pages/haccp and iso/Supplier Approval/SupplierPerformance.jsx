@@ -1,7 +1,9 @@
 // D:\inspection-react-full\src\pages\haccp and iso\Supplier Approval\SupplierPerformance.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IsoShell, ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
+import { ISO_UI } from "../../monitor/branches/_shared/branchViewKit";
+import { useLangState } from "../../../utils/appLang";
+import { HaccpPage } from "../_shared/pageKit";
 import "./SupplierApproval.css";
 
 /**
@@ -193,6 +195,7 @@ function NumInput({ value, onChange }) {
 }
 
 export default function SupplierPerformance() {
+  const [lang] = useLangState("en"); // the frame follows the account language; the scorecard itself is English
   const navigate = useNavigate();
   const [category, setCategory] = useState("product"); // "product" | "service"
   const [filter, setFilter] = useState("all");
@@ -410,21 +413,23 @@ export default function SupplierPerformance() {
   }
 
   return (
-    <IsoShell
+    <HaccpPage
+      lang={lang}
       icon="📊"
-      title="Supplier Performance"
-      subtitle="Scorecard & Trend Analysis — ISO 22000:2018 Cl. 8.4 & 9.1"
+      title={lang === "ar" ? "أداء المورّدين" : "Supplier Performance"}
+      sub={lang === "ar" ? "بطاقة التقييم وتحليل الاتجاه — الأيزو 22000:2018 البندان 8.4 و9.1" : "Scorecard & Trend Analysis — ISO 22000:2018 Cl. 8.4 & 9.1"}
+      backTo="/haccp-iso/supplier-evaluation" backLabel={lang === "ar" ? "→ تقييم المورّدين" : "← Supplier Evaluation"}
       actions={
         <>
           {notice && <span style={{ fontWeight: 900, fontSize: 16, color: notice.startsWith("✅") ? "#15803d" : notice.startsWith("❌") ? "#b91c1c" : "#a16207" }}>{notice}</span>}
           {saving && <span style={{ fontWeight: 900, fontSize: 16, color: "#0284c7" }}>Saving…</span>}
           <button className="sp-noprint" style={bigBtn("success")} onClick={openAdd}>{isService ? "+ Add Service Provider" : "+ Add Supplier"}</button>
           <button className="sp-noprint" style={bigBtn("primary")} onClick={() => window.print()}>🖨 Print</button>
-          <button className="sp-noprint" style={bigBtn("secondary")} onClick={() => navigate("/haccp-iso/supplier-evaluation")}>↩ Back</button>
         </>
       }
     >
       <style>{`@media print { .sp-noprint { display: none !important; } }`}</style>
+      <div style={{ height: 14 }} />
 
       {/* Document control badges */}
       <div style={{ marginBottom: 12 }}>
@@ -713,6 +718,6 @@ export default function SupplierPerformance() {
           </div>
         </div>
       )}
-    </IsoShell>
+    </HaccpPage>
   );
 }

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import "./SupplierApproval.css";
 import { getPublicOrigin } from "../../../config/publicOrigin";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
+import { HaccpPage } from "../_shared/pageKit";
 import { getActiveCompanyName } from "../../../utils/companyContext";
 import HalalDeclarationPanel from "./HalalDeclarationPanel";
 import SupplierDocRequest from "./SupplierDocRequest";
@@ -2680,7 +2681,13 @@ export default function SupplierEvaluationResults() {
   };
 
   return (
-    <main style={pageStyle}>
+    <HaccpPage
+      lang={lang}
+      icon="📥"
+      title={t.title}
+      sub={t.sub}
+      backTo="/haccp-iso/supplier-evaluation" backLabel={lang === "ar" ? "→ تقييم المورّدين" : "← Supplier Evaluation"}
+    >
       <style>{`
         #root .ser-h1.ser-h1 { font-size: calc(21px * var(--app-fs, 1)) !important; }
         #root .ser-kv.ser-kv { font-size: calc(22px * var(--app-fs, 1)) !important; }
@@ -2689,13 +2696,9 @@ export default function SupplierEvaluationResults() {
         #root .ser-name.ser-name { font-size: calc(14.5px * var(--app-fs, 1)) !important; }
         .ser-card:hover { border-color: #7dd3fc !important; }
       `}</style>
-      <div style={wrap}>
-        {/* Top bar: title, KPIs, actions */}
+      <div style={{ ...wrap, marginTop: 14 }}>
+        {/* KPIs + actions (the title lives in the page header) */}
         <div style={{ ...panel, padding: "14px 18px", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
-          <div style={{ minWidth: 220 }}>
-            <div className="ser-h1 ser-h1" style={{ fontWeight: 980 }}>{t.title}</div>
-            <div className="ser-sm ser-sm" style={{ marginTop: 2, color: "#64748b", fontWeight: 800 }}>{t.sub}</div>
-          </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
@@ -2746,9 +2749,6 @@ export default function SupplierEvaluationResults() {
             )}
             <button style={{ ...btn, padding: "9px 13px" }} onClick={printAsl} disabled={!items.length}>
               {t.asl}
-            </button>
-            <button style={{ ...btn, padding: "9px 13px" }} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
-              {t.back}
             </button>
             <button style={{ ...btn, padding: "9px 13px" }} disabled={loading} onClick={fetchData}>
               {loading ? t.refreshing : t.refresh}
@@ -4395,6 +4395,6 @@ export default function SupplierEvaluationResults() {
           © Al Mawashi — Supplier Evaluation Results
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

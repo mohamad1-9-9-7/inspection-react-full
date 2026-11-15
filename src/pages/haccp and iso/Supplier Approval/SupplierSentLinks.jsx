@@ -4,6 +4,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EmailSendModal from "../../shared/EmailSendModal";
+import { useLangState } from "../../../utils/appLang";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { fixPublicUrl } from "../../../config/publicOrigin";
 import {
   CLICHE_LIST,
@@ -295,6 +297,7 @@ const S = {
 };
 
 export default function SupplierSentLinks() {
+  const [lang] = useLangState("ar"); // this screen's own text is Arabic; the frame follows the account
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -946,34 +949,28 @@ export default function SupplierSentLinks() {
   }
 
   return (
-    <main style={S.shell}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <h1 style={S.title}>📨 Sent Links Tracker</h1>
-            <div style={S.subtitle}>تتبع الروابط — مُرسلة، تم الرد، معلّقة، معطّلة، منتهية</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={S.btn("secondary")} onClick={requestNotifPermission} title="تفعيل تنبيهات المتصفح">
-              🔔 تفعيل التنبيهات
-            </button>
-            <button
-              style={S.btn(groupBy ? "primary" : "secondary")}
-              onClick={() => setGroupBy(!groupBy)}
-            >
-              {groupBy ? "📃 سرد" : "📂 تجميع بالمورد"}
-            </button>
-            <button style={S.btn("secondary")} onClick={() => load()} disabled={loading}>
-              {loading ? "⏳" : "↻ Refresh"}
-            </button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/supplier-evaluation/create")}>
-              + إنشاء رابط جديد
-            </button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/supplier-evaluation")}>
-              ↩ Back to Hub
-            </button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📨"
+      title={lang === "ar" ? "متابعة الروابط المُرسلة" : "Sent Links Tracker"}
+      sub={lang === "ar" ? "كل رابط أُرسل لمورّد: مُرسل، تم الرد، معلّق، معطّل أو منتهٍ." : "Every link sent to a supplier: sent, answered, pending, disabled or expired."}
+      backTo="/haccp-iso/supplier-evaluation" backLabel={lang === "ar" ? "→ تقييم المورّدين" : "← Supplier Evaluation"}
+      actions={
+        <>
+          <Btn onClick={requestNotifPermission} title={lang === "ar" ? "تفعيل تنبيهات المتصفح" : "Turn on browser notifications"}>
+            🔔 {lang === "ar" ? "التنبيهات" : "Notifications"}
+          </Btn>
+          <Btn kind={groupBy ? "primary" : ""} onClick={() => setGroupBy(!groupBy)}>
+            {groupBy ? (lang === "ar" ? "📃 سرد" : "📃 List") : (lang === "ar" ? "📂 تجميع بالمورّد" : "📂 Group by supplier")}
+          </Btn>
+          <Btn onClick={() => load()} disabled={loading}>{loading ? "⏳" : (lang === "ar" ? "↻ تحديث" : "↻ Refresh")}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/supplier-evaluation/create")}>
+            {lang === "ar" ? "+ رابط جديد" : "+ New link"}
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         {/* KPIs */}
         <div style={S.kpiRow}>
@@ -1281,6 +1278,6 @@ export default function SupplierSentLinks() {
           config={emailConfig}
         />
       )}
-    </main>
+    </HaccpPage>
   );
 }

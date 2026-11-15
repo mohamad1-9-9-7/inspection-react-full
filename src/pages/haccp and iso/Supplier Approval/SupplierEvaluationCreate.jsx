@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "./SupplierApproval.css";
 import { buildPublicUrl } from "../../../config/publicOrigin";
+import { useLangState } from "../../../utils/appLang";
+import { HaccpPage } from "../_shared/pageKit";
 
 /* ===================== API base (robust + normalized) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -150,6 +152,7 @@ const SUPPLIER_TYPES = [
 ];
 
 export default function SupplierEvaluationCreate() {
+  const [lang] = useLangState("en"); // the frame follows the account language; the form itself is English
   const nav = useNavigate();
 
   // ?name=&type= — opened from "In receiving, not evaluated" on the results page
@@ -440,21 +443,14 @@ export default function SupplierEvaluationCreate() {
   const isError = msg && msg.startsWith("❌");
 
   return (
-    <div style={S.page}>
-      <div style={S.wrap}>
-        {/* Top Bar */}
-        <div style={S.topbar}>
-          <button style={S.btn} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
-            Back to Hub ↩
-          </button>
-
-          <div>
-            <div style={S.title}>Create Supplier Evaluation</div>
-            <div style={S.subtitle}>Create → generate link → send → supplier submits → review in Results</div>
-          </div>
-
-          <span style={S.pill}>Token pre-generated</span>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="✍️"
+      title={lang === "ar" ? "إنشاء تقييم مورّد" : "Create Supplier Evaluation"}
+      sub={lang === "ar" ? "أنشئ التقييم ← انسخ الرابط ← أرسله ← المورّد يجيب ← راجع النتائج" : "Create → generate link → send → supplier submits → review in Results"}
+      backTo="/haccp-iso/supplier-evaluation" backLabel={lang === "ar" ? "→ تقييم المورّدين" : "← Supplier Evaluation"}
+    >
+      <div style={{ ...S.wrap, marginTop: 14 }}>
 
         {/* Form Card */}
         <div style={S.card}>
@@ -657,6 +653,6 @@ export default function SupplierEvaluationCreate() {
           }
         `}</style>
       </div>
-    </div>
+    </HaccpPage>
   );
 }
