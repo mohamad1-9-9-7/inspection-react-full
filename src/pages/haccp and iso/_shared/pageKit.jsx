@@ -152,6 +152,16 @@ textarea.pgk-in { min-height:84px; resize:vertical; line-height:1.55; }
 .pgk-modal .pgk-panel { margin-top:0; }
 #root .ndx.ndx .pgk-modal-title, #root .pgk-modal .pgk-modal-title { font-size:${fs(17)}; font-weight:900; margin:0; }
 
+/* ── label / value lists and long text (record details) ── */
+.pgk-dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:0 20px; }
+.pgk-dl > div { display:flex; gap:8px; padding:7px 0; border-bottom:1px dashed #e2e8f0; min-width:0; }
+.pgk-dt { font-weight:800; color:#475569; min-width:118px; flex-shrink:0; }
+.pgk-dd { flex:1; min-width:0; font-weight:600; color:#0f172a; word-break:break-word; }
+#root .ndx.ndx .pgk-dt, #root .ndx.ndx .pgk-dd { font-size:${fs(14)}; }
+.pgk-text { white-space:pre-wrap; line-height:1.65; background:#f8fbff; border:1px solid #e2e8f0; border-radius:10px; padding:9px 12px; color:#0f172a; }
+#root .ndx.ndx .pgk-text { font-size:${fs(14.5)}; }
+#root .ndx.ndx .pgk-sub { font-size:${fs(13)}; font-weight:800; color:#475569; margin:10px 0 5px; }
+
 /* ── attachments ── */
 .pgk-thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
 .pgk-thumb { border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#fff; padding:0; cursor:pointer; font-family:inherit; text-align:start; }
@@ -260,6 +270,30 @@ export function Field({ label, required, error, wide, children }) {
   );
 }
 
+/** Label / value pairs: rows = [[label, value], …]; empty values show a dash. */
+export function DL({ rows }) {
+  return (
+    <div className="pgk-dl">
+      {rows.filter(Boolean).map(([label, value]) => (
+        <div key={label}>
+          <span className="pgk-dt">{label}</span>
+          <span className="pgk-dd" dir="auto">{value == null || value === "" ? "—" : value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A long free-text answer under its own small heading. */
+export function TextBlock({ label, text }) {
+  return (
+    <div>
+      <div className="pgk-sub">{label}</div>
+      <div className="pgk-text" dir="auto">{text == null || text === "" ? "—" : text}</div>
+    </div>
+  );
+}
+
 export function Pill({ tone = "grey", children }) {
   return <span className={`pgk-pill ${tone}`}>{children}</span>;
 }
@@ -269,7 +303,17 @@ export function Note({ error, children }) {
 }
 
 /** A dialog. Closes on Escape and on a click outside. */
-export function Modal({ open, title, onClose, narrow, lang = "en", children }) {
+const PRINT_ONLY_CSS = `
+@media print {
+  body * { visibility:hidden !important; }
+  .pgk-printable, .pgk-printable * { visibility:visible !important; }
+  .pgk-overlay { position:static !important; background:none !important; padding:0 !important; display:block !important; }
+  .pgk-printable { position:absolute !important; left:0 !important; top:0 !important; width:100% !important; max-height:none !important;
+    overflow:visible !important; box-shadow:none !important; border-radius:0 !important; background:#fff !important; }
+  .pgk-printable .pgk-noprint { display:none !important; }
+}`;
+
+export function Modal({ open, title, onClose, narrow, printable, actions, lang = "en", children }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
@@ -285,10 +329,14 @@ export function Modal({ open, title, onClose, narrow, lang = "en", children }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
       {/* .ndx.ndx so the kit's text sizes apply inside the dialog too */}
-      <div className={`pgk-modal ndx-in${narrow ? " narrow" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
+      {printable && <style>{PRINT_ONLY_CSS}</style>}
+      <div className={`pgk-modal${narrow ? " narrow" : ""}${printable ? " pgk-printable" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
         <div className="pgk-modal-head">
           <h2 className="pgk-modal-title">{title}</h2>
-          <button type="button" className="pgk-btn sm" onClick={onClose}>✕ {lang === "ar" ? "إغلاق" : "Close"}</button>
+          <span className="pgk-actions pgk-noprint">
+            {actions}
+            <button type="button" className="pgk-btn sm" onClick={onClose}>✕ {lang === "ar" ? "إغلاق" : "Close"}</button>
+          </span>
         </div>
         <div className="pgk-modal-body">{children}</div>
       </div>

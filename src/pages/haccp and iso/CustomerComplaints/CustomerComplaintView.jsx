@@ -1,609 +1,485 @@
 // src/pages/haccp and iso/CustomerComplaints/CustomerComplaintView.jsx
-// Customer Complaints — Professional list view with filters, KPIs, export, and attachment preview
-// ISO 22000:2018 Clauses 7.4 (Communication) & 9.1.2 (Complaint analysis)
-
-import React, { useEffect, useMemo, useState } from "react";
+// Customer complaints — the register: figures, trend, filters, and the full
+// printable report of each complaint.
+// ISO 22000:2018 clauses 7.4 (communication) and 9.1.2 (analysis).
+// Design: _shared/pageKit.jsx. Lists + helpers: customerComplaintShared.js.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import { canWrite, canEdit } from "../../../utils/perms";
+import { normText, matches } from "../../dashboard/dashboardSearch";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
-import { HaccpPage, Btn } from "../_shared/pageKit";
+import ImageLightbox from "../_shared/ImageLightbox";
 import {
-  SEVERITY_COLOR, STATUS_COLOR, TYPE_LABELS, TYPE_COLORS,
-  safeDate, daysBetween,
+  HaccpPage, Btn, Stats, Stat, Panel, Field, Pill, Note, Modal, DL, TextBlock, useToast, downloadCsv,
+} from "../_shared/pageKit";
+import { showDate, todayDubai } from "../dmInspectionShared";
+import {
+  TYPE, TYPES, SEVERITIES, STATUSES, TYPE_KEY, SEVERITY_KEY, STATUS_KEY, SEVERITY_TONE, STATUS_TONE, SEVERITY_RANK,
+  TYPE_COLORS, OVERDUE_DAYS, daysBetween, openDays, isOverdue, filesOf,
 } from "./customerComplaintShared";
-import { ImagePreviewModal, ComplaintReportModal } from "./CustomerComplaintModals";
 import ComplaintTrendReportModal from "./CustomerComplaintTrendReport";
 
-const TYPE = "customer_complaint";
+const EMPTY_FILTERS = { q: "", status: "", type: "", severity: "", branch: "", from: "", to: "", sort: "new", only: "" };
 
-/* ─────────────────────────────────────────────────────────────
-   Helpers (export/CSV only — shared visual maps & date utils live
-   in ./customerComplaintShared; popup modals in ./CustomerComplaintModals)
-   ───────────────────────────────────────────────────────────── */
-function escapeCSV(v) {
-  const s = v == null ? "" : String(v);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
+const pct = (n) => `${Math.round(Number.isFinite(n) ? n : 0)}%`;
 
-function downloadBlob(filename, mime, content) {
-  try {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  } catch (e) {
-    alert("Export failed: " + (e?.message || e));
-  }
-}
-
-function fmtPercent(n) {
-  if (!isFinite(n)) return "0%";
-  return `${Math.round(n)}%`;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Styles
-   ───────────────────────────────────────────────────────────── */
-const S = {
-  shell: { minHeight: "100vh", padding: "20px 16px", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 60%, #f8fafc 100%)" },
-  layout: { width: "100%", margin: "0 auto", padding: "0 4px" },
-  topbar: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 14, flexWrap: "wrap", gap: 10,
-    padding: "12px 16px",
-    background: "rgba(255,255,255,0.92)",
-    borderRadius: 14, border: "1px solid #fed7aa",
-    boxShadow: "0 8px 24px rgba(234,88,12,0.10)",
-  },
-  title: { fontSize: 22, fontWeight: 950, color: "#9a3412", lineHeight: 1.2 },
-  subtitle: { fontSize: 12, color: "#c2410c", marginTop: 4, fontWeight: 700 },
-  card: { background: "#fff", borderRadius: 14, padding: 16, marginBottom: 10, border: "1px solid #fed7aa", boxShadow: "0 6px 16px rgba(234,88,12,0.06)" },
-
-  btn: (kind) => {
-    const map = {
-      primary:   { bg: "linear-gradient(180deg, #f97316, #ea580c)", color: "#fff", border: "#c2410c" },
-      secondary: { bg: "#fff", color: "#9a3412", border: "#fed7aa" },
-      success:   { bg: "linear-gradient(180deg, #22c55e, #16a34a)", color: "#fff", border: "#15803d" },
-      danger:    { bg: "linear-gradient(180deg, #ef4444, #dc2626)", color: "#fff", border: "#b91c1c" },
-      ghost:     { bg: "#fff7ed", color: "#9a3412", border: "#fdba74" },
-    };
-    const c = map[kind] || map.primary;
-    return { background: c.bg, color: c.color, border: `1.5px solid ${c.border}`, padding: "8px 14px", borderRadius: 999, cursor: "pointer", fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" };
-  },
-  empty: { textAlign: "center", padding: 40, color: "#64748b", fontWeight: 700 },
-
-  /* KPIs */
-  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 },
-  kpi: (color) => ({
-    background: "#fff", borderRadius: 14, padding: "14px 16px",
-    border: `1px solid ${color}33`,
-    boxShadow: "0 6px 16px rgba(234,88,12,0.06)",
-    borderInlineStart: `4px solid ${color}`,
-  }),
-  kpiVal: (color) => ({ fontSize: 24, fontWeight: 950, color }),
-  kpiLabel: { fontSize: 10.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 },
-
-  /* Filter toolbar */
-  toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
-  filterInput: { padding: "8px 11px", border: "1.5px solid #fed7aa", borderRadius: 10, fontSize: 13, fontWeight: 600, fontFamily: "inherit", background: "#fff", minWidth: 110 },
-
-  /* Filter chip pills */
-  filters: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 },
-  filterBtn: (active, color) => ({
-    padding: "6px 14px",
-    borderRadius: 999,
-    border: `1.5px solid ${active ? color : "#fed7aa"}`,
-    background: active ? color : "#fff",
-    color: active ? "#fff" : "#9a3412",
-    fontWeight: 900, fontSize: 12, cursor: "pointer",
-  }),
-
-  /* Card row */
-  rowHead: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 },
-  meta: { fontSize: 12, color: "#64748b", fontWeight: 700, marginTop: 4 },
-  badge: (c) => ({
-    display: "inline-block", padding: "3px 10px", borderRadius: 999,
-    fontSize: 11, fontWeight: 900, background: c.bg, color: c.color,
-    border: c.border ? `1px solid ${c.border}` : "none",
-  }),
-
-  /* Trend */
-  trendBox: { display: "flex", alignItems: "flex-end", gap: 4, height: 100, padding: "8px 0" },
-  trendBar: (pct, color) => ({
-    flex: 1,
-    height: `${Math.max(pct, 4)}%`,
-    background: color,
-    borderRadius: "4px 4px 0 0",
-    minHeight: 4,
-    position: "relative",
-  }),
-  trendLabel: { fontSize: 9, color: "#64748b", fontWeight: 700, textAlign: "center", marginTop: 4 },
-
-  /* Attachments */
-  attachGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 6 },
-  thumb: { position: "relative", borderRadius: 10, overflow: "hidden", border: "1.5px solid #fed7aa", background: "#fff", cursor: "pointer" },
-  thumbImg: { width: "100%", height: 110, objectFit: "cover", display: "block" },
-  pdfTile: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, border: "1.5px solid #fed7aa", background: "#fffbeb", textDecoration: "none", color: "#9a3412", fontSize: 12, fontWeight: 800 },
-
-  /* Modal */
-  /* Full-screen image preview modal */
-  modalBackdrop: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", zIndex: 9999, fontFamily: "system-ui,-apple-system,'Segoe UI',sans-serif" },
-  modalHeader: {
-    position: "fixed", top: 0, left: 0, right: 0,
-    background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.55) 80%, transparent)",
-    color: "#fff", padding: "14px 18px",
-    display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8,
-    zIndex: 10001,
-  },
-  modalBody: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 },
-  modalImgFit: { maxWidth: "100vw", maxHeight: "100vh", width: "auto", height: "auto", objectFit: "contain", cursor: "zoom-in", display: "block" },
-  modalImgActual: { width: "auto", height: "auto", maxWidth: "none", maxHeight: "none", cursor: "zoom-out", display: "block" },
-  modalBtn: { background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap" },
-  modalClose: { background: "rgba(220,38,38,0.85)", border: "1px solid rgba(255,255,255,0.4)", color: "#fff", width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 900 },
-};
-
-/* ─────────────────────────────────────────────────────────────
-   Component
-   ───────────────────────────────────────────────────────────── */
 export default function CustomerComplaintView() {
   const navigate = useNavigate();
-  const { t, lang, toggle, dir } = useHaccpLang();
+  const { t, lang, toggle } = useHaccpLang();
   const isAr = lang === "ar";
+  const L = (ar, en) => (isAr ? ar : en);
+  const [toast, say] = useToast();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [detailRec, setDetailRec] = useState(null);
-  const [previewSrc, setPreviewSrc] = useState(null);
+  const [err, setErr] = useState("");
+  const [f, setF] = useState(EMPTY_FILTERS);
+  const [openId, setOpenId] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
   const [trendOpen, setTrendOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  /* Filters */
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [severityFilter, setSeverityFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const mayAdd = canWrite("iso");
+  const mayEdit = canEdit("iso");
+  const today = todayDubai();
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
+    setErr("");
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
-      arr.sort((a, b) => new Date(b?.payload?.complaintDate || 0) - new Date(a?.payload?.complaintDate || 0));
-      setItems(arr);
-    } catch {
-      setItems([]);
+      setItems(Array.isArray(json) ? json : json?.data || json?.items || []);
+    } catch (e) {
+      // a failed read must not look like an empty register
+      setErr(String(e?.message || e));
     } finally {
       setLoading(false);
     }
-  }
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  async function del(id) {
-    if (!window.confirm(t("confirmDelete"))) return;
-    try {
-      await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
-      load();
-    } catch (e) { alert(t("deleteError") + ": " + e.message); }
-  }
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const toggleOnly = (v) => setF((p) => ({ ...p, only: p.only === v ? "" : v }));
+  const branches = useMemo(
+    () => [...new Set(items.map((r) => r?.payload?.branch).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [items]
+  );
 
-  function clearFilters() {
-    setStatusFilter("all");
-    setSeverityFilter("all");
-    setTypeFilter("all");
-    setSearch("");
-    setFromDate("");
-    setToDate("");
-  }
-
-  /* Filtered items */
   const filtered = useMemo(() => {
-    const fromDateObj = safeDate(fromDate);
-    const toDateObj = safeDate(toDate);
-    const q = search.trim().toLowerCase();
-
-    return items.filter((rec) => {
+    const out = items.filter((rec) => {
       const p = rec?.payload || {};
-      if (statusFilter !== "all" && (p.status || "Open") !== statusFilter) return false;
-      if (severityFilter !== "all" && (p.severity || "Low") !== severityFilter) return false;
-      if (typeFilter !== "all" && (p.type || "Other") !== typeFilter) return false;
-      if (fromDateObj || toDateObj) {
-        const d = safeDate(p.complaintDate);
-        if (!d) return false;
-        if (fromDateObj && d < fromDateObj) return false;
-        if (toDateObj && d > toDateObj) return false;
-      }
-      if (q) {
-        const hay = [
-          p.complaintNumber, p.complainant, p.product, p.batch,
-          p.description, p.investigation, p.rootCause, p.capa,
-          p.channel, p.closedBy,
-        ].map((v) => String(v || "").toLowerCase()).join(" ");
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+      const status = p.status || "Open";
+      if (f.status && status !== f.status) return false;
+      if (f.type && (p.type || "Other") !== f.type) return false;
+      if (f.severity && (p.severity || "Low") !== f.severity) return false;
+      if (f.branch && p.branch !== f.branch) return false;
+      const day = String(p.complaintDate || "").slice(0, 10);
+      if (f.from && day < f.from) return false;
+      if (f.to && day > f.to) return false;
+      if (f.only === "open" && status === "Closed") return false;
+      if (f.only === "critical" && (status === "Closed" || p.severity !== "Critical")) return false;
+      if (f.only === "overdue" && !isOverdue(p, today)) return false;
+      if (!f.q.trim()) return true;
+      const hay = normText([
+        p.complaintNumber, p.complainant, p.contact, p.branch, p.product, p.batch, p.channel,
+        p.description, p.investigation, p.rootCause, p.capa, p.capaOwner, p.closedBy,
+      ].join(" "));
+      return matches(hay, f.q);
     });
-  }, [items, statusFilter, severityFilter, typeFilter, fromDate, toDate, search]);
-
-  /* KPIs (computed on items, not filtered, so headline numbers stay stable) */
-  const stats = useMemo(() => {
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    let total = items.length, open = 0, closed = 0, criticalOpen = 0, mtd = 0;
-    let satisfiedYes = 0, satisfiedDecided = 0;
-    let resolutionDays = [];
-    const complainantCounts = new Map();
-
-    for (const rec of items) {
-      const p = rec?.payload || {};
-      if (p.status === "Closed") closed++; else open++;
-      if ((p.status !== "Closed") && p.severity === "Critical") criticalOpen++;
-      if ((p.complaintDate || "").startsWith(monthKey)) mtd++;
-      if (p.customerSatisfied === "Yes") { satisfiedYes++; satisfiedDecided++; }
-      else if (p.customerSatisfied === "No") { satisfiedDecided++; }
-      if (p.status === "Closed" && p.closureDate && p.complaintDate) {
-        const d = daysBetween(p.complaintDate, p.closureDate);
-        if (d != null) resolutionDays.push(d);
-      }
-      const key = String(p.complainant || "").trim().toLowerCase();
-      if (key) complainantCounts.set(key, (complainantCounts.get(key) || 0) + 1);
-    }
-    const repeatComplainants = Array.from(complainantCounts.values()).filter((n) => n > 1).length;
-    const avgResolution = resolutionDays.length ? Math.round(resolutionDays.reduce((a, b) => a + b, 0) / resolutionDays.length) : null;
-    const satisfactionRate = satisfiedDecided ? (satisfiedYes / satisfiedDecided) * 100 : null;
-    const closureRate = total ? (closed / total) * 100 : 0;
-
-    return { total, open, closed, criticalOpen, mtd, repeatComplainants, avgResolution, satisfactionRate, closureRate };
-  }, [items]);
-
-  /* 12-month trend */
-  const trend = useMemo(() => {
-    const now = new Date();
-    const months = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      months.push({ key, label: d.toLocaleDateString(isAr ? "ar" : "en", { month: "short" }), count: 0 });
-    }
-    for (const rec of items) {
-      const p = rec?.payload || {};
-      const d = p.complaintDate;
-      if (!d) continue;
-      const key = d.slice(0, 7);
-      const m = months.find((x) => x.key === key);
-      if (m) m.count++;
-    }
-    const max = Math.max(...months.map((m) => m.count), 1);
-    return { months, max };
-  }, [items, isAr]);
-
-  /* Type breakdown */
-  const byType = useMemo(() => {
-    const counts = {};
-    for (const rec of items) {
-      const p = rec?.payload || {};
-      const k = p.type || "Other";
-      counts[k] = (counts[k] || 0) + 1;
-    }
-    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-    return Object.entries(counts).map(([type, count]) => ({
-      type, count, pct: Math.round((count / total) * 100),
-    })).sort((a, b) => b.count - a.count);
-  }, [items]);
-
-  /* Counts for chip filters (based on full items) */
-  const counts = useMemo(() => {
-    const out = { Open: 0, Investigation: 0, Closed: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
-    for (const rec of items) {
-      const p = rec?.payload || {};
-      const st = p.status || "Open";
-      if (out[st] != null) out[st]++;
-      const sv = p.severity || "Low";
-      if (out[sv] != null) out[sv]++;
-    }
+    const date = (r) => String(r?.payload?.complaintDate || "");
+    const newest = (a, b) => (date(a) < date(b) ? 1 : date(a) > date(b) ? -1 : 0);
+    if (f.sort === "old") out.sort((a, b) => -newest(a, b));
+    else if (f.sort === "severity") out.sort((a, b) => (SEVERITY_RANK[a?.payload?.severity] ?? 9) - (SEVERITY_RANK[b?.payload?.severity] ?? 9) || newest(a, b));
+    else if (f.sort === "waiting") out.sort((a, b) => (openDays(b?.payload, today) ?? -1) - (openDays(a?.payload, today) ?? -1) || newest(a, b));
+    else out.sort(newest);
     return out;
-  }, [items]);
+  }, [items, f, today]);
 
-  /* ── Export ─────────────────────────────────────────────── */
-  function exportCSV() {
-    const headers = [
-      "Complaint No.", "Date", "Complainant", "Channel",
-      "Product", "Batch", "Type", "Severity",
-      "Description", "Investigation", "Root Cause", "CAPA",
-      "Status", "Closure Date", "Closed By", "Customer Satisfied",
-      "Resolution Days", "Image Count", "PDF Count",
+  /* Headline figures are of the whole register, so they do not move with the filters. */
+  const stats = useMemo(() => {
+    const month = today.slice(0, 7);
+    let open = 0, closed = 0, critical = 0, overdue = 0, mtd = 0, satYes = 0, satAll = 0;
+    const days = [];
+    items.forEach((rec) => {
+      const p = rec?.payload || {};
+      if (p.status === "Closed") {
+        closed += 1;
+        const d = daysBetween(p.complaintDate, p.closureDate);
+        if (d != null && p.closureDate) days.push(d);
+      } else {
+        open += 1;
+        if (p.severity === "Critical") critical += 1;
+        if (isOverdue(p, today)) overdue += 1;
+      }
+      if (String(p.complaintDate || "").startsWith(month)) mtd += 1;
+      if (p.customerSatisfied === "Yes") { satYes += 1; satAll += 1; } else if (p.customerSatisfied === "No") satAll += 1;
+    });
+    return {
+      total: items.length, open, closed, critical, overdue, mtd,
+      avgDays: days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : null,
+      satisfaction: satAll ? (satYes / satAll) * 100 : null,
+      closure: items.length ? (closed / items.length) * 100 : 0,
+    };
+  }, [items, today]);
+
+  /* last 12 months + share per type */
+  const trend = useMemo(() => {
+    const months = [];
+    const [y, m] = today.split("-").map(Number);
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(Date.UTC(y, m - 1 - i, 1));
+      months.push({
+        key: d.toISOString().slice(0, 7),
+        label: d.toLocaleDateString(isAr ? "ar" : "en", { month: "short", timeZone: "UTC" }),
+        count: 0,
+      });
+    }
+    const byType = {};
+    items.forEach((rec) => {
+      const p = rec?.payload || {};
+      const hit = months.find((x) => x.key === String(p.complaintDate || "").slice(0, 7));
+      if (hit) hit.count += 1;
+      const k = TYPES.includes(p.type) ? p.type : "Other";
+      byType[k] = (byType[k] || 0) + 1;
+    });
+    return {
+      months,
+      max: Math.max(1, ...months.map((x) => x.count)),
+      types: Object.entries(byType).map(([type, count]) => ({ type, count, share: Math.round((count / (items.length || 1)) * 100) })).sort((a, b) => b.count - a.count),
+    };
+  }, [items, today, isAr]);
+
+  const filtersOn = JSON.stringify(f) !== JSON.stringify(EMPTY_FILTERS);
+  const openRec = items.find((r) => r.id === openId) || null;
+  const op = openRec?.payload || {};
+  const opImages = filesOf(op.images);
+  const opPdfs = filesOf(op.pdfs);
+
+  const typeLabel = (v) => (TYPE_KEY[v] ? t(TYPE_KEY[v]) : v || "—");
+  const sevLabel = (v) => (SEVERITY_KEY[v] ? t(SEVERITY_KEY[v]) : v || "—");
+  const statusLabel = (v) => t(STATUS_KEY[v] || STATUS_KEY.Open);
+  const satLabel = (v) => (v === "Yes" ? t("ccCustomerSatisfiedYes") : v === "No" ? t("ccCustomerSatisfiedNo") : t("ccCustomerSatisfiedPending"));
+  const effLabel = (v) => (v === "Yes" ? L("فعّال", "Effective") : v === "No" ? L("غير فعّال — تكررت المشكلة", "Not effective — it recurred") : L("قيد المراجعة", "Pending"));
+  const nDays = (n) => (isAr ? `${n} يوم` : `${n} day${n === 1 ? "" : "s"}`);
+
+  async function remove(rec) {
+    if (!rec?.id || busy || !window.confirm(t("confirmDelete"))) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rec.id)}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+      setItems((prev) => prev.filter((x) => x.id !== rec.id));
+      setOpenId(null);
+      say(L("تم حذف الشكوى.", "Complaint deleted."), "ok");
+    } catch (e) {
+      say(`${t("deleteError")}: ${e?.message || e}`, "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function exportCsv() {
+    const header = [
+      "Complaint No.", "Date", "Branch", "Customer", "Contact", "Channel", "Product", "Batch", "Type", "Severity",
+      "Description", "Investigation", "Root Cause", "CAPA", "Action Owner", "Action Due",
+      "Status", "Days Open", "Closure Date", "Closed By", "Resolution Days", "Customer Satisfied",
+      "Effectiveness", "Verified By", "Verified Date", "Photos", "PDFs",
     ];
     const rows = filtered.map((rec) => {
       const p = rec?.payload || {};
-      const days = (p.status === "Closed") ? daysBetween(p.complaintDate, p.closureDate) : "";
       return [
-        p.complaintNumber, p.complaintDate, p.complainant, p.channel,
-        p.product, p.batch, p.type, p.severity,
-        p.description, p.investigation, p.rootCause, p.capa,
-        p.status, p.closureDate, p.closedBy, p.customerSatisfied,
-        days != null ? days : "",
-        Array.isArray(p.images) ? p.images.length : 0,
-        Array.isArray(p.pdfs) ? p.pdfs.length : 0,
-      ].map(escapeCSV).join(",");
+        p.complaintNumber, p.complaintDate, p.branch, p.complainant, p.contact, p.channel, p.product, p.batch, p.type, p.severity,
+        p.description, p.investigation, p.rootCause, p.capa, p.capaOwner, p.capaDue,
+        p.status || "Open", openDays(p, today) ?? "", p.closureDate, p.closedBy,
+        p.status === "Closed" ? daysBetween(p.complaintDate, p.closureDate) ?? "" : "", p.customerSatisfied,
+        p.effectivenessVerified, p.effectivenessVerifiedBy, p.effectivenessVerifiedDate,
+        filesOf(p.images).length, filesOf(p.pdfs).length,
+      ];
     });
-    const csv = "﻿" + headers.map(escapeCSV).join(",") + "\n" + rows.join("\n");
-    downloadBlob(`customer-complaints_${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8;", csv);
-  }
-
-  function exportJSON() {
-    const data = filtered.map((rec) => ({
-      id: rec.id,
-      ...(rec?.payload || {}),
-      // Strip heavy attachment dataUrls from JSON export — they bloat the file
-      images: Array.isArray(rec?.payload?.images) ? rec.payload.images.map(({ name, mime }) => ({ name, mime })) : [],
-      pdfs: Array.isArray(rec?.payload?.pdfs) ? rec.payload.pdfs.map(({ name, mime, size }) => ({ name, mime, size })) : [],
-    }));
-    downloadBlob(`customer-complaints_${new Date().toISOString().slice(0, 10)}.json`, "application/json", JSON.stringify(data, null, 2));
-  }
-
-  function printAll() {
-    window.print();
+    downloadCsv(`customer-complaints-${today}.csv`, header, rows);
   }
 
   return (
     <HaccpPage
       lang={lang}
       icon="📞"
-      title={t("ccListTitle")}
-      sub={isAr ? "تسجيل الشكاوى وتحليلها: السبب الجذري والإجراء التصحيحي والاتجاهات." : "Complaints logged and analysed: root cause, corrective action and trends."}
-      clause={isAr ? "البندان 7.4 و9.1.2" : "ISO 7.4 · 9.1.2"}
+      title={L("شكاوى العملاء", "Customer Complaints")}
+      sub={L("كل شكوى: السبب الجذري والإجراء التصحيحي والتحقق من فاعليته، مع تحليل الاتجاهات.", "Every complaint: root cause, corrective action and its verification, with trend analysis.")}
+      clause={L("البندان 7.4 و9.1.2", "ISO 7.4 · 9.1.2")}
       actions={
         <>
           <HaccpLangToggle lang={lang} toggle={toggle} />
-          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</Btn>
-          <Btn onClick={exportCSV} disabled={!filtered.length}>⬇ Excel (CSV)</Btn>
-          <Btn onClick={exportJSON} disabled={!filtered.length} title={isAr ? "تصدير JSON" : "Export JSON"}>📄 JSON</Btn>
-          <Btn onClick={printAll} disabled={!filtered.length}>🖨 {isAr ? "طباعة" : "Print"}</Btn>
-          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}</Btn>
-          <Btn kind="primary" onClick={() => navigate("/haccp-iso/customer-complaints")}>{t("new")}</Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : `↻ ${L("تحديث", "Refresh")}`}</Btn>
+          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>📈 {L("تحليل الاتجاهات", "Trend analysis")}</Btn>
+          {mayAdd && <Btn kind="primary" onClick={() => navigate("/haccp-iso/customer-complaints")}>{L("+ شكوى جديدة", "+ New complaint")}</Btn>}
         </>
       }
     >
-      <div style={{ ...S.layout, marginTop: 14 }}>
+      {toast}
 
-        {/* KPIs */}
-        <div style={S.kpiGrid}>
-          <div style={S.kpi("#9a3412")}>
-            <div style={S.kpiVal("#9a3412")}>{stats.total}</div>
-            <div style={S.kpiLabel}>{t("ccTotal")}</div>
+      <Stats>
+        <Stat label={L("إجمالي الشكاوى", "Total complaints")} value={stats.total} tone="blue" />
+        <Stat label={L("مفتوحة", "Open")} value={stats.open} tone={stats.open ? "amber" : "green"} active={f.only === "open"} onClick={() => toggleOnly("open")} />
+        <Stat label={L("حرجة مفتوحة", "Critical, open")} value={stats.critical} tone={stats.critical ? "red" : "green"} active={f.only === "critical"} onClick={() => toggleOnly("critical")} />
+        <Stat
+          label={L(`مفتوحة منذ أكثر من ${OVERDUE_DAYS} يومًا`, `Open more than ${OVERDUE_DAYS} days`)}
+          value={stats.overdue} tone={stats.overdue ? "red" : "green"} active={f.only === "overdue"} onClick={() => toggleOnly("overdue")}
+        />
+        <Stat label={L("هذا الشهر", "This month")} value={stats.mtd} />
+        <Stat label={L("متوسط زمن الإغلاق", "Average time to close")} value={stats.avgDays != null ? nDays(stats.avgDays) : "—"} />
+        <Stat label={L("رضا العملاء", "Customer satisfaction")} value={stats.satisfaction != null ? pct(stats.satisfaction) : "—"} />
+        <Stat label={L("نسبة الإغلاق", "Closure rate")} value={pct(stats.closure)} />
+      </Stats>
+
+      {items.length > 0 && (
+        <Panel className="pgk-noprint">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 20 }}>
+            <div>
+              <div className="pgk-sub" style={{ marginTop: 0 }}>{L("الشكاوى في آخر 12 شهرًا", "Complaints in the last 12 months")}</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 110, paddingTop: 18 }}>
+                {trend.months.map((mo) => (
+                  <div key={mo.key} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", minWidth: 0 }}>
+                    <div className="pgk-hint" style={{ marginTop: 0, color: "#1d4ed8", fontWeight: 800 }}>{mo.count || ""}</div>
+                    <div
+                      title={`${mo.label}: ${mo.count}`}
+                      style={{ width: "100%", height: `${Math.max(3, (mo.count / trend.max) * 100)}%`, minHeight: 3, borderRadius: "5px 5px 0 0", background: mo.count ? "#3b82f6" : "#dbeafe" }}
+                    />
+                    <div className="pgk-hint" style={{ marginTop: 3 }}>{mo.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="pgk-sub" style={{ marginTop: 0 }}>{L("الشكاوى حسب النوع", "Complaints by type")}</div>
+              <div style={{ display: "grid", gap: 7 }}>
+                {trend.types.map((x) => (
+                  <button
+                    key={x.type}
+                    type="button"
+                    onClick={() => setF((p) => ({ ...p, type: p.type === x.type ? "" : x.type }))}
+                    title={L("فلترة بهذا النوع", "Filter by this type")}
+                    style={{ display: "grid", gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1fr) auto", gap: 8, alignItems: "center", border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}
+                  >
+                    <span className="pgk-rec-m" style={{ fontWeight: f.type === x.type ? 900 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span aria-hidden="true" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: TYPE_COLORS[x.type] || "#64748b", marginInlineEnd: 6 }} />
+                      {typeLabel(x.type)}
+                    </span>
+                    <span style={{ height: 7, background: "#eef2f7", borderRadius: 999, overflow: "hidden" }}>
+                      <span style={{ display: "block", width: `${x.share}%`, height: "100%", background: TYPE_COLORS[x.type] || "#64748b" }} />
+                    </span>
+                    <span className="pgk-hint" style={{ marginTop: 0 }}>{x.count} · {x.share}%</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div style={S.kpi("#ea580c")}>
-            <div style={S.kpiVal("#ea580c")}>{stats.open}</div>
-            <div style={S.kpiLabel}>{t("ccOpen")}</div>
-          </div>
-          <div style={S.kpi("#16a34a")}>
-            <div style={S.kpiVal("#16a34a")}>{stats.closed}</div>
-            <div style={S.kpiLabel}>{t("ccClosed")} · {fmtPercent(stats.closureRate)}</div>
-          </div>
-          <div style={S.kpi("#dc2626")}>
-            <div style={S.kpiVal("#dc2626")}>{stats.criticalOpen}</div>
-            <div style={S.kpiLabel}>{t("ccCriticalOpen")}</div>
-          </div>
-          <div style={S.kpi("#0891b2")}>
-            <div style={S.kpiVal("#0891b2")}>{stats.mtd}</div>
-            <div style={S.kpiLabel}>{isAr ? "هذا الشهر" : "Month-to-Date"}</div>
-          </div>
-          <div style={S.kpi("#7c3aed")}>
-            <div style={S.kpiVal("#7c3aed")}>{stats.avgResolution != null ? `${stats.avgResolution}d` : "—"}</div>
-            <div style={S.kpiLabel}>{isAr ? "متوسط زمن الإغلاق" : "Avg Resolution"}</div>
-          </div>
-          <div style={S.kpi("#16a34a")}>
-            <div style={S.kpiVal("#16a34a")}>{stats.satisfactionRate != null ? fmtPercent(stats.satisfactionRate) : "—"}</div>
-            <div style={S.kpiLabel}>{isAr ? "رضا العميل" : "Satisfaction"}</div>
-          </div>
-          <div style={S.kpi("#854d0e")}>
-            <div style={S.kpiVal("#854d0e")}>{stats.repeatComplainants}</div>
-            <div style={S.kpiLabel}>{isAr ? "شكاوى متكررة" : "Repeat Complainants"}</div>
-          </div>
+        </Panel>
+      )}
+
+      <Panel className="pgk-noprint">
+        <div className="pgk-grid">
+          <Field label={L("بحث", "Search")} wide>
+            <input className="pgk-in" value={f.q} onChange={set("q")} placeholder={L("الرقم، العميل، المنتج، الدفعة، الوصف…", "Number, customer, product, batch, description…")} />
+          </Field>
+          <Field label={t("ccStatus")}>
+            <select className="pgk-in" value={f.status} onChange={set("status")}>
+              <option value="">{L("الكل", "All")}</option>
+              {STATUSES.map((x) => <option key={x} value={x}>{statusLabel(x)}</option>)}
+            </select>
+          </Field>
+          <Field label={t("ccType")}>
+            <select className="pgk-in" value={f.type} onChange={set("type")}>
+              <option value="">{L("الكل", "All")}</option>
+              {TYPES.map((x) => <option key={x} value={x}>{typeLabel(x)}</option>)}
+            </select>
+          </Field>
+          <Field label={t("ccSeverity")}>
+            <select className="pgk-in" value={f.severity} onChange={set("severity")}>
+              <option value="">{L("الكل", "All")}</option>
+              {SEVERITIES.map((x) => <option key={x} value={x}>{sevLabel(x)}</option>)}
+            </select>
+          </Field>
+          {branches.length > 0 && (
+            <Field label={L("الفرع", "Branch")}>
+              <select className="pgk-in" value={f.branch} onChange={set("branch")}>
+                <option value="">{L("الكل", "All")}</option>
+                {branches.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label={L("من", "From")}>
+            <input className="pgk-in" type="date" value={f.from} max={f.to || undefined} onChange={set("from")} />
+          </Field>
+          <Field label={L("إلى", "To")}>
+            <input className="pgk-in" type="date" value={f.to} min={f.from || undefined} onChange={set("to")} />
+          </Field>
+          <Field label={L("الترتيب", "Sort by")}>
+            <select className="pgk-in" value={f.sort} onChange={set("sort")}>
+              <option value="new">{L("الأحدث أولًا", "Newest first")}</option>
+              <option value="old">{L("الأقدم أولًا", "Oldest first")}</option>
+              <option value="severity">{L("الأخطر أولًا", "Most severe first")}</option>
+              <option value="waiting">{L("الأطول انتظارًا", "Longest open")}</option>
+            </select>
+          </Field>
         </div>
-
-        {/* Trend + Type breakdown */}
-        {items.length > 0 && (
-          <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }} className="cc-trend-row">
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 950, color: "#9a3412", marginBottom: 8 }}>{t("ccTrendTitle")}</div>
-              <div style={S.trendBox}>
-                {trend.months.map((m) => (
-                  <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-                    <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end" }}>
-                      <div style={S.trendBar((m.count / trend.max) * 100, m.count > 0 ? "#ea580c" : "#fed7aa")}>
-                        {m.count > 0 && (
-                          <div style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 10, fontWeight: 900, color: "#9a3412" }}>
-                            {m.count}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={S.trendLabel}>{m.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 950, color: "#9a3412", marginBottom: 8 }}>{t("ccByTypeTitle")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {byType.map((b) => (
-                  <div key={b.type} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: TYPE_COLORS[b.type] || "#64748b" }} />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", flex: 1 }}>{TYPE_LABELS[b.type] || b.type}</div>
-                    <div style={{ flex: 1, height: 6, background: "#fff7ed", borderRadius: 999, overflow: "hidden" }}>
-                      <div style={{ width: `${b.pct}%`, height: "100%", background: TYPE_COLORS[b.type] || "#64748b" }} />
-                    </div>
-                    <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", minWidth: 60, textAlign: "end" }}>{b.count} ({b.pct}%)</div>
-                  </div>
-                ))}
-                {byType.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>—</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Filter toolbar */}
-        <div style={{ ...S.card, ...S.toolbar }}>
-          <input
-            type="text"
-            placeholder={isAr ? "🔍 بحث في الوصف، رقم الشكوى، المنتج…" : "🔍 Search description, number, product…"}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ ...S.filterInput, flex: 1, minWidth: 220 }}
-          />
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={S.filterInput}>
-            <option value="all">{isAr ? "كل الأنواع" : "All types"}</option>
-            {Object.keys(TYPE_LABELS).map((tp) => <option key={tp} value={tp}>{TYPE_LABELS[tp]}</option>)}
-          </select>
-          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={S.filterInput}>
-            <option value="all">{isAr ? "كل الخطورة" : "All severity"}</option>
-            <option value="Low">{t("ccSeverityLow")}</option>
-            <option value="Medium">{t("ccSeverityMed")}</option>
-            <option value="High">{t("ccSeverityHigh")}</option>
-            <option value="Critical">{t("ccSeverityCritical")}</option>
-          </select>
-          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#9a3412", fontWeight: 800 }}>
-            {isAr ? "من" : "From"}
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={S.filterInput} />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#9a3412", fontWeight: 800 }}>
-            {isAr ? "إلى" : "To"}
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={S.filterInput} />
-          </label>
-          <button style={S.btn("ghost")} onClick={clearFilters}>↺ {isAr ? "إعادة تعيين" : "Reset"}</button>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginInlineStart: "auto" }}>
-            {isAr ? "المعروض:" : "Showing:"} <strong style={{ color: "#9a3412" }}>{filtered.length}</strong> / {items.length}
+        <div className="pgk-actions" style={{ marginTop: 12, justifyContent: "space-between" }}>
+          <Pill tone="blue">{L(`${filtered.length} من ${items.length} شكوى`, `${filtered.length} of ${items.length} complaints`)}</Pill>
+          <span className="pgk-actions">
+            {filtersOn && <Btn small onClick={() => setF(EMPTY_FILTERS)}>✕ {L("مسح الفلاتر", "Clear filters")}</Btn>}
+            <Btn small onClick={exportCsv} disabled={!filtered.length}>⬇ {L("تصدير Excel (CSV)", "Export Excel (CSV)")}</Btn>
+            <Btn small onClick={() => window.print()} disabled={!filtered.length}>🖨 {L("طباعة", "Print")}</Btn>
           </span>
         </div>
+      </Panel>
 
-        {/* Status chips */}
-        <div style={S.filters}>
-          <button style={S.filterBtn(statusFilter === "all", "#9a3412")} onClick={() => setStatusFilter("all")}>
-            {isAr ? "الكل" : "All"} ({items.length})
-          </button>
-          <button style={S.filterBtn(statusFilter === "Open", "#ea580c")} onClick={() => setStatusFilter("Open")}>
-            {t("ccStatusOpen")} ({counts.Open})
-          </button>
-          <button style={S.filterBtn(statusFilter === "Investigation", "#d97706")} onClick={() => setStatusFilter("Investigation")}>
-            {t("ccStatusInvestigation")} ({counts.Investigation})
-          </button>
-          <button style={S.filterBtn(statusFilter === "Closed", "#16a34a")} onClick={() => setStatusFilter("Closed")}>
-            {t("ccStatusClosed")} ({counts.Closed})
-          </button>
+      {loading ? (
+        <Note>{t("loading")}</Note>
+      ) : err ? (
+        <Note error><b>{L("تعذّر تحميل الشكاوى.", "Could not load the complaints.")}</b> {err}</Note>
+      ) : filtered.length === 0 ? (
+        <Note>{items.length ? L("لا توجد شكوى مطابقة للفلاتر.", "No complaint matches the filters.") : L("لم تُسجَّل أي شكوى بعد.", "No complaint has been logged yet.")}</Note>
+      ) : (
+        <div className="pgk-cards">
+          {filtered.map((rec) => {
+            const p = rec?.payload || {};
+            const status = p.status || "Open";
+            const waiting = openDays(p, today);
+            const closedIn = status === "Closed" && p.closureDate ? daysBetween(p.complaintDate, p.closureDate) : null;
+            const nFiles = filesOf(p.images).length + filesOf(p.pdfs).length;
+            return (
+              <button key={rec.id} type="button" className="pgk-rec" onClick={() => { setLightbox(null); setOpenId(rec.id); }}>
+                <div className="pgk-rec-top">
+                  <span className="pgk-rec-t" dir="auto">{p.complainant || "—"}</span>
+                  <Pill tone={STATUS_TONE[status] || "amber"}>{statusLabel(status)}</Pill>
+                </div>
+                <div className="pgk-rec-m">
+                  {p.complaintNumber || "CC"} · {showDate(p.complaintDate)}
+                  {p.branch ? ` · ${p.branch}` : ""}
+                  {p.product ? ` · ${p.product}` : ""}
+                </div>
+                {p.description && <div className="pgk-rec-n" dir="auto">{p.description}</div>}
+                <div className="pgk-rec-foot">
+                  <Pill tone={SEVERITY_TONE[p.severity] || "grey"}>{sevLabel(p.severity)}</Pill>
+                  <Pill>{typeLabel(p.type)}</Pill>
+                  {waiting != null && <Pill tone={waiting > OVERDUE_DAYS ? "red" : "grey"}>{L(`مفتوحة منذ ${nDays(waiting)}`, `Open ${nDays(waiting)}`)}</Pill>}
+                  {closedIn != null && <Pill tone="green">{L(`أُغلقت خلال ${nDays(closedIn)}`, `Closed in ${nDays(closedIn)}`)}</Pill>}
+                  {p.customerSatisfied === "No" && <Pill tone="red">{L("العميل غير راضٍ", "Customer not satisfied")}</Pill>}
+                  {nFiles > 0 && <Pill>📎 {nFiles}</Pill>}
+                </div>
+              </button>
+            );
+          })}
         </div>
+      )}
 
-        {loading && <div style={S.empty}>{t("loading")}</div>}
-        {!loading && filtered.length === 0 && (
-          <div style={S.empty}>
-            {items.length === 0 ? t("noRecords") : (isAr ? "لا توجد نتائج بهذه الفلاتر" : "No results match these filters")}
-          </div>
-        )}
-
-        {filtered.map((rec) => {
-          const p = rec?.payload || {};
-          const sevColor = SEVERITY_COLOR[p.severity] || SEVERITY_COLOR.Low;
-          const stColor = STATUS_COLOR[p.status] || STATUS_COLOR.Open;
-          const images = Array.isArray(p.images) ? p.images : [];
-          const pdfs = Array.isArray(p.pdfs) ? p.pdfs : [];
-          const resolutionDays = p.status === "Closed" ? daysBetween(p.complaintDate, p.closureDate) : null;
-
-          return (
-            <div key={rec.id} style={S.card}>
-              <div style={S.rowHead}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 950, color: "#9a3412" }}>
-                    {p.complaintNumber || "CC"} — {p.complaintDate || "—"}
-                  </div>
-                  <div style={S.meta}>
-                    👤 {p.complainant || "—"}
-                    {p.product ? ` • 📦 ${p.product}` : ""}
-                    {p.batch ? ` • Batch ${p.batch}` : ""}
-                    {p.channel ? ` • 📞 ${p.channel}` : ""}
-                  </div>
-                  <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <span style={S.badge({ bg: "#fff7ed", color: "#9a3412", border: "#fed7aa" })}>
-                      {TYPE_LABELS[p.type] || p.type || "—"}
-                    </span>
-                    <span style={S.badge(sevColor)}>{p.severity || "—"}</span>
-                    <span style={S.badge(stColor)}>{p.status || "Open"}</span>
-                    {p.customerSatisfied === "Yes" && (
-                      <span style={S.badge({ bg: "#dcfce7", color: "#166534" })}>😊 {t("ccCustomerSatisfiedYes")}</span>
-                    )}
-                    {p.customerSatisfied === "No" && (
-                      <span style={S.badge({ bg: "#fecaca", color: "#991b1b" })}>😞 {t("ccCustomerSatisfiedNo")}</span>
-                    )}
-                    {resolutionDays != null && (
-                      <span style={S.badge({ bg: "#ede9fe", color: "#5b21b6" })}>
-                        ⏱ {resolutionDays}{isAr ? " يوم" : "d"}
-                      </span>
-                    )}
-                    {images.length > 0 && (
-                      <span style={S.badge({ bg: "#dbeafe", color: "#1e40af" })}>🖼 {images.length}</span>
-                    )}
-                    {pdfs.length > 0 && (
-                      <span style={S.badge({ bg: "#fef3c7", color: "#854d0e" })}>📄 {pdfs.length}</span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button style={S.btn("primary")} onClick={() => setDetailRec(rec)}>
-                    📋 {isAr ? "عرض التقرير" : "View Report"}
-                  </button>
-                  <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/customer-complaints?edit=${rec.id}`)}>
-                    {t("edit")}
-                  </button>
-                  <button style={S.btn("danger")} onClick={() => del(rec.id)} data-delete-action="true">{t("del")}</button>
-                </div>
-              </div>
+      {/* the full report — printing while it is open prints this report only */}
+      <Modal
+        open={!!openRec}
+        lang={lang}
+        printable
+        onClose={() => { if (lightbox == null) setOpenId(null); }}
+        title={openRec ? `${op.complaintNumber || "CC"} · ${showDate(op.complaintDate)}` : ""}
+        actions={<Btn small onClick={() => window.print()}>🖨 {L("طباعة", "Print")}</Btn>}
+      >
+        {openRec && (
+          <>
+            <div className="pgk-actions" style={{ justifyContent: "flex-start" }}>
+              <Pill tone={STATUS_TONE[op.status || "Open"]}>{statusLabel(op.status || "Open")}</Pill>
+              <Pill tone={SEVERITY_TONE[op.severity] || "grey"}>{sevLabel(op.severity)}</Pill>
+              <Pill>{typeLabel(op.type)}</Pill>
+              {isOverdue(op, today) && <Pill tone="red">{L(`مفتوحة منذ ${nDays(openDays(op, today))}`, `Open ${nDays(openDays(op, today))}`)}</Pill>}
             </div>
-          );
-        })}
-      </div>
 
-      {/* Full report modal */}
-      {detailRec && (
-        <ComplaintReportModal
-          rec={detailRec}
-          onClose={() => setDetailRec(null)}
-          onPreview={(src) => setPreviewSrc(src)}
+            <Panel title={L("بيانات الشكوى", "Complaint details")}>
+              <DL rows={[
+                [t("ccNumber"), op.complaintNumber],
+                [L("التاريخ", "Date"), showDate(op.complaintDate)],
+                [L("العميل / الجهة", "Customer / party"), op.complainant],
+                [L("رقم التواصل", "Contact number"), op.contact],
+                [L("الفرع", "Branch"), op.branch],
+                [t("ccChannel"), op.channel],
+                [t("ccProduct"), op.product],
+                [t("ccBatch"), op.batch],
+              ]} />
+              <TextBlock label={L("وصف الشكوى", "Complaint description")} text={op.description} />
+            </Panel>
+
+            <Panel title={L("التحقيق والإجراء التصحيحي", "Investigation & corrective action")}>
+              <TextBlock label={t("ccInvestigation")} text={op.investigation} />
+              <TextBlock label={t("ccRootCause")} text={op.rootCause} />
+              <TextBlock label={t("ccCAPA")} text={op.capa} />
+              <DL rows={[
+                [L("مسؤول الإجراء", "Action owner"), op.capaOwner],
+                [L("تاريخ الاستحقاق", "Action due date"), op.capaDue ? showDate(op.capaDue) : ""],
+              ]} />
+            </Panel>
+
+            <Panel title={L("التحقق من الفاعلية والإغلاق", "Effectiveness & closure")}>
+              <DL rows={[
+                [L("نتيجة التحقق", "Verification result"), effLabel(op.effectivenessVerified)],
+                [L("تاريخ التحقق", "Verification date"), op.effectivenessVerifiedDate ? showDate(op.effectivenessVerifiedDate) : ""],
+                [L("تم التحقق بواسطة", "Verified by"), op.effectivenessVerifiedBy],
+                [t("ccClosureDate"), op.closureDate ? showDate(op.closureDate) : ""],
+                [t("ccClosedBy"), op.closedBy],
+                [L("زمن الإغلاق", "Time to close"), op.status === "Closed" && op.closureDate ? nDays(daysBetween(op.complaintDate, op.closureDate) ?? 0) : ""],
+                [L("رضا العميل", "Customer satisfied"), satLabel(op.customerSatisfied)],
+              ]} />
+              {op.effectivenessNotes && <TextBlock label={L("ملاحظات / دليل الفاعلية", "Notes / evidence")} text={op.effectivenessNotes} />}
+            </Panel>
+
+            <Panel title={`${L("المرفقات", "Attachments")} (${opImages.length + opPdfs.length})`}>
+              {opImages.length + opPdfs.length === 0 && <div className="pgk-hint">{L("لا مرفقات.", "Nothing attached.")}</div>}
+              {opPdfs.length > 0 && (
+                <div style={{ display: "grid", gap: 8, marginBottom: opImages.length ? 12 : 0 }}>
+                  {opPdfs.map((p) => (
+                    <div key={p.url} className="pgk-file">
+                      <span className="pgk-file-ic" aria-hidden="true">PDF</span>
+                      <span className="pgk-file-name" title={p.name}>{p.name}</span>
+                      <a className="pgk-btn sm pgk-noprint" href={p.url} target="_blank" rel="noreferrer">{L("فتح", "Open")} ↗</a>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {opImages.length > 0 && (
+                <div className="pgk-thumbs">
+                  {opImages.map((img, i) => (
+                    <button key={img.url} type="button" className="pgk-thumb" onClick={() => setLightbox(i)}>
+                      <img src={img.url} alt={img.name} loading="lazy" />
+                      <span className="pgk-thumb-cap"><span>{img.name}</span><span aria-hidden="true">⤢</span></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            <div className="pgk-actions pgk-noprint">
+              {mayEdit && (
+                <Btn kind="primary" onClick={() => navigate(`/haccp-iso/customer-complaints?edit=${encodeURIComponent(openRec.id)}`)}>
+                  ✎ {t("edit")}
+                </Btn>
+              )}
+              {/* hidden by globals.css for accounts without the delete permission */}
+              <Btn kind="danger" disabled={busy} onClick={() => remove(openRec)} data-delete-action="true">🗑 {t("del")}</Btn>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {openRec && lightbox != null && (
+        <ImageLightbox
+          images={opImages}
+          index={lightbox}
+          title={`${op.complaintNumber || "CC"} · ${op.complainant || ""}`}
           isAr={isAr}
-          S={S}
+          onClose={() => setLightbox(null)}
         />
       )}
 
-      {/* Full-screen image preview modal */}
-      {previewSrc && (
-        <ImagePreviewModal src={previewSrc} onClose={() => setPreviewSrc(null)} S={S} />
-      )}
-
-      {/* Trend Analysis report modal */}
-      {trendOpen && (
-        <ComplaintTrendReportModal items={items} onClose={() => setTrendOpen(false)} isAr={isAr} />
-      )}
-
-      {/* Print stylesheet */}
-      <style>{`
-        @media print {
-          .cc-trend-row { display: none !important; }
-          button { display: none !important; }
-          body { background: #fff !important; }
-        }
-        @media (max-width: 720px) {
-          .cc-trend-row { grid-template-columns: 1fr !important; }
-          .cc-trend-2col { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-
-      {/* When the trend report is open, print ONLY the trend report */}
+      {trendOpen && <ComplaintTrendReportModal items={items} onClose={() => setTrendOpen(false)} isAr={isAr} />}
+      {/* while the trend report is open, printing prints that report only */}
       {trendOpen && (
         <style>{`
           @media print {
@@ -615,22 +491,6 @@ export default function CustomerComplaintView() {
               box-shadow: none !important; border: 0 !important; border-radius: 0 !important;
             }
             .cc-trend-noprint { display: none !important; }
-          }
-        `}</style>
-      )}
-
-      {/* When the report modal is open, print ONLY the report */}
-      {detailRec && (
-        <style>{`
-          @media print {
-            body * { visibility: hidden !important; }
-            .cc-report-print, .cc-report-print * { visibility: visible !important; }
-            .cc-report-print {
-              position: absolute !important; left: 0 !important; top: 0 !important;
-              width: 100% !important; max-height: none !important;
-              overflow: visible !important; box-shadow: none !important; border: 0 !important;
-            }
-            .cc-report-noprint { display: none !important; }
           }
         `}</style>
       )}

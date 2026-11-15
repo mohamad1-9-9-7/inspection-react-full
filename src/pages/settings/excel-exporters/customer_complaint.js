@@ -77,20 +77,37 @@ export default async function build(wb, record, ctx) {
   pair("Type",           p.type,                      "Severity",       p.severity);
   pair("Product",        p.product,                   "Batch",          p.batch);
   pair("Status",         p.status,                    "Customer Satisfied", p.customerSatisfied);
+  if (p.branch || p.contact) pair("Branch", p.branch, "Contact No.", p.contact);
 
   if (p.description)    { section("Description");        wide("Description", p.description); }
   if (p.investigation)  { section("Investigation");      wide("Investigation", p.investigation); }
   if (p.rootCause)      { section("Root Cause");         wide("Root Cause", p.rootCause); }
   if (p.capa)           { section("CAPA");               wide("CAPA", p.capa); }
+  if (p.capaOwner || p.capaDue) pair("Action Owner", p.capaOwner, "Action Due", p.capaDue ? formatDMY(p.capaDue) : "");
+
+  /* Effectiveness verification — on screen in the register's report, so it is in the backup too. */
+  if (p.effectivenessVerified || p.effectivenessVerifiedBy || p.effectivenessNotes) {
+    section("CAPA Effectiveness Verification");
+    pair("Result", p.effectivenessVerified === "Yes" ? "Effective" : p.effectivenessVerified === "No" ? "Not effective" : "Pending",
+         "Verified By", p.effectivenessVerifiedBy);
+    pair("Verification Date", p.effectivenessVerifiedDate ? formatDMY(p.effectivenessVerifiedDate) : "", null, null);
+    if (p.effectivenessNotes) wide("Notes / Evidence", p.effectivenessNotes);
+  }
 
   section("Closure");
   pair("Closure Date", formatDMY(p.closureDate), "Closed By", p.closedBy);
   if (p.closureRemarks) wide("Closure Remarks", p.closureRemarks);
 
-  if (Array.isArray(p.attachments) && p.attachments.length) {
+  /* The form stores its files in images[] and pdfs[]; `attachments` is the older name. */
+  const files = []
+    .concat(Array.isArray(p.attachments) ? p.attachments : [])
+    .concat(Array.isArray(p.pdfs) ? p.pdfs : [])
+    .concat(Array.isArray(p.images) ? p.images : [])
+    .filter((a) => (typeof a === "string" ? a : a?.url));
+  if (files.length) {
     section("Attachments");
-    p.attachments.forEach((a, i) => {
-      ws.getCell(r, 1).value = `Attachment ${i + 1}`;
+    files.forEach((a, i) => {
+      ws.getCell(r, 1).value = (typeof a === "object" && a?.name) ? a.name : `Attachment ${i + 1}`;
       ws.getCell(r, 1).font = lblFont; ws.getCell(r, 1).fill = lblFill;
       ws.getCell(r, 1).alignment = left; ws.getCell(r, 1).border = BORDER_BLACK;
       ws.mergeCells(r, 2, r, NC);

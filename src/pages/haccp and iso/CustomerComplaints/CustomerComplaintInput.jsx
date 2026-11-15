@@ -1,638 +1,436 @@
 // src/pages/haccp and iso/CustomerComplaints/CustomerComplaintInput.jsx
-// Customer Complaint — Input form (ISO 22000:2018 Clauses 7.4 & 9.1.2)
-// Supports attachment upload (compressed images + PDFs) for complaint evidence.
-
+// Customer complaint — log one, or edit one (?edit=<id>).
+// ISO 22000:2018 clauses 7.4 (communication) and 9.1.2 (analysis).
+// Design: _shared/pageKit.jsx. Lists + helpers: customerComplaintShared.js.
 import React, { useEffect, useRef, useState } from "react";
-import { HaccpPage } from "../_shared/pageKit";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
-import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
 import { uploadImageToServer } from "../../monitor/branches/shipment_recc/qcsRawApi";
+import { HaccpPage, Btn, Panel, Field, Note, Pill, useToast } from "../_shared/pageKit";
+import { BRANCHES, todayDubai, newId } from "../dmInspectionShared";
+import {
+  TYPE, TYPES, SEVERITIES, STATUSES, CHANNELS, TYPE_KEY, SEVERITY_KEY, STATUS_KEY, nextComplaintNumber,
+} from "./customerComplaintShared";
 
-const TYPE = "customer_complaint";
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
+const IMG_MAX_DIM = 1600;
 
-/* ── Attachment limits ──────────────────────────────────────── */
-const PDF_MAX_BYTES = 3 * 1024 * 1024; // 3 MB per PDF
-const IMG_MAX_DIM = 1600;              // longest side after compression
-const IMG_QUALITY = 0.82;              // JPEG quality
-
-/* ── File helpers ───────────────────────────────────────────── */
-function loadImageFromFile(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => { try { URL.revokeObjectURL(url); } catch {} resolve(img); };
-    img.onerror = (e) => { try { URL.revokeObjectURL(url); } catch {} reject(e); };
-    img.src = url;
-  });
-}
-
-/* Compress client-side to a JPEG File, then it gets uploaded to Cloudinary.
-   We keep base64 OUT of the report payload entirely. */
-async function compressToFile(file, { maxDim = IMG_MAX_DIM, quality = IMG_QUALITY } = {}) {
-  const img = await loadImageFromFile(file);
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  if (!w || !h) throw new Error("Invalid image dimensions");
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(w * scale));
-  canvas.height = Math.max(1, Math.round(h * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-  if (!blob) throw new Error("Image compression failed");
-  const base = String(file?.name || "image").replace(/\.[^.]+$/, "");
-  return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
-}
-
-function formatBytes(n) {
-  if (!n || n < 1024) return `${n || 0} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-/* Auto-generate the next complaint number for a given year.
-   Scans every existing record (incl. old ones) for the CC-<year>-#### pattern
-   and continues from the highest sequence so numbers never collide. */
-function nextComplaintNumber(records, year) {
-  const re = new RegExp(`^CC-${year}-(\\d+)$`);
-  let max = 0;
-  for (const rec of Array.isArray(records) ? records : []) {
-    const n = String(rec?.payload?.complaintNumber || "").trim();
-    const m = re.exec(n);
-    if (m) {
-      const v = parseInt(m[1], 10);
-      if (Number.isFinite(v) && v > max) max = v;
-    }
-  }
-  return `CC-${year}-${String(max + 1).padStart(4, "0")}`;
-}
-
-const empty = {
-  complaintDate: new Date().toISOString().slice(0, 10),
-  complaintNumber: "",
-  complainant: "",
-  channel: "",
-  product: "",
-  batch: "",
-  type: "BPC",
-  severity: "Low",
-  description: "",
-  investigation: "",
-  rootCause: "",
-  capa: "",
-  status: "Open",
-  closureDate: "",
-  closedBy: "",
-  customerSatisfied: "Pending",
+const blank = () => ({
+  complaintDate: todayDubai(), complaintNumber: "", branch: "", complainant: "", contact: "", channel: "",
+  product: "", batch: "", type: "BPC", severity: "Low", description: "",
+  investigation: "", rootCause: "", capa: "", capaOwner: "", capaDue: "",
+  status: "Open", closureDate: "", closedBy: "", customerSatisfied: "Pending",
   /* Effectiveness verification — required before closure (ISO 22000 §10.1.2 / §9.1.2). */
-  effectivenessVerified: "Pending",   // Pending | Yes | No
-  effectivenessVerifiedDate: "",
-  effectivenessVerifiedBy: "",
-  effectivenessNotes: "",
-  images: [],
-  pdfs: [],
-};
+  effectivenessVerified: "Pending", effectivenessVerifiedDate: "", effectivenessVerifiedBy: "", effectivenessNotes: "",
+  images: [], pdfs: [],
+});
 
-const S = {
-  shell: { minHeight: "100vh", padding: "20px 16px", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', background: "#fff7ed" },
-  layout: { width: "100%", margin: "0 auto", padding: "0 4px" },
-  card: { background: "#fff", borderRadius: 14, padding: 18, marginBottom: 12, border: "1px solid #fed7aa", boxShadow: "0 8px 22px rgba(234,88,12,0.06)" },
-  title: { fontSize: 20, fontWeight: 950, color: "#9a3412", marginBottom: 4 },
-  sectionTitle: { fontSize: 14, fontWeight: 950, color: "#9a3412", margin: "12px 0 8px", borderBottom: "2px solid #f97316", paddingBottom: 4 },
-  label: { display: "block", fontSize: 12, fontWeight: 900, color: "#9a3412", marginBottom: 4, marginTop: 8 },
-  input: { width: "100%", padding: "8px 10px", border: "1.5px solid #fed7aa", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "inherit" },
-  textarea: { width: "100%", padding: "9px 11px", border: "1.5px solid #fed7aa", borderRadius: 8, fontSize: 13, lineHeight: 1.55, fontFamily: "inherit", minHeight: 70, resize: "vertical" },
-  select: { width: "100%", padding: "8px 10px", border: "1.5px solid #fed7aa", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", background: "#fff" },
-  row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  row3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 },
-  btn: (kind) => {
-    const map = {
-      primary:   { bg: "linear-gradient(180deg, #f97316, #ea580c)", color: "#fff", border: "#c2410c" },
-      success:   { bg: "linear-gradient(180deg, #22c55e, #16a34a)", color: "#fff", border: "#15803d" },
-      secondary: { bg: "#fff", color: "#9a3412", border: "#fed7aa" },
-      danger:    { bg: "linear-gradient(180deg, #ef4444, #dc2626)", color: "#fff", border: "#b91c1c" },
-      ghost:     { bg: "#fff7ed", color: "#9a3412", border: "#fdba74" },
-    };
-    const c = map[kind] || map.primary;
-    return { background: c.bg, color: c.color, border: `1.5px solid ${c.border}`, padding: "9px 16px", borderRadius: 999, cursor: "pointer", fontWeight: 900, fontSize: 13 };
-  },
-  topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 },
+/* Shrink a photo in the browser before it is uploaded (base64 never enters the record). */
+async function compressToFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return file;
+    const scale = Math.min(1, IMG_MAX_DIM / Math.max(w, h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob) return file;
+    return new File([blob], `${String(file.name || "photo").replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file; // a format the browser cannot draw: the server converts it
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
-  /* Attachment styles */
-  attachmentDropZone: {
-    border: "2px dashed #fdba74",
-    background: "linear-gradient(135deg, #fff7ed, #fff)",
-    borderRadius: 12, padding: "14px 16px",
-    display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center",
-    marginBottom: 10,
-  },
-  thumbGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10, marginTop: 8 },
-  thumbBox: { position: "relative", borderRadius: 10, overflow: "hidden", border: "1.5px solid #fed7aa", background: "#fff", boxShadow: "0 4px 12px rgba(234,88,12,0.08)" },
-  thumbImg: { width: "100%", height: 110, objectFit: "cover", display: "block" },
-  thumbName: { fontSize: 10, color: "#475569", padding: "4px 8px", fontWeight: 700, lineHeight: 1.3, wordBreak: "break-word" },
-  removeBtn: { position: "absolute", top: 4, insetInlineEnd: 4, width: 26, height: 26, borderRadius: "50%", border: "none", background: "rgba(220,38,38,0.92)", color: "#fff", fontSize: 14, fontWeight: 950, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, boxShadow: "0 2px 6px rgba(0,0,0,0.18)" },
-  pdfCard: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1.5px solid #fed7aa", background: "#fffbeb", marginTop: 4, position: "relative" },
-};
-
-/* ─────────────────────────────────────────────────────────────
-   Component
-   ───────────────────────────────────────────────────────────── */
 export default function CustomerComplaintInput() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const editId = params.get("edit");
-  const { t, lang, toggle, dir } = useHaccpLang();
-  const [form, setForm] = useState(empty);
+  const { t, lang, toggle } = useHaccpLang();
+  const isAr = lang === "ar";
+  const L = (ar, en) => (isAr ? ar : en);
+  const [toast, say] = useToast();
+
+  const [form, setForm] = useState(blank);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [processingImages, setProcessingImages] = useState(false);
-  const [processingPdfs, setProcessingPdfs] = useState(false);
-  const [numGenerating, setNumGenerating] = useState(false);
+  const [uploading, setUploading] = useState("");
+  /* An edited record must be on screen before Save is allowed: saving a form
+     that never loaded would overwrite the complaint with empty fields. */
+  const [loadState, setLoadState] = useState(editId ? "loading" : "ready"); // loading | ready | missing
+  const [numState, setNumState] = useState(editId ? "ok" : "loading");
 
-  const imgInputRef = useRef(null);
-  const pdfInputRef = useRef(null);
+  const imgRef = useRef(null);
+  const pdfRef = useRef(null);
+  const busy = saving || !!uploading || numState === "loading";
 
+  /* Edit: GET /api/reports/:id answers { report: row } — the fields are in row.payload. */
   useEffect(() => {
-    if (!editId) return;
-    fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => {
-        const p = j?.report?.payload || j?.payload || j?.data?.payload || {};
-        setForm({
-          ...empty,
-          ...p,
-          images: Array.isArray(p.images) ? p.images : [],
-          pdfs: Array.isArray(p.pdfs) ? p.pdfs : [],
-        });
-      })
-      .catch(() => {});
-  }, [editId]);
-
-  /* New complaint → auto-generate the next sequential number,
-     continuing from existing (including old) records. */
-  useEffect(() => {
-    if (editId) return;
-    let cancelled = false;
-    const year = String(empty.complaintDate).slice(0, 4);
+    if (!editId) return undefined;
+    let alive = true;
     (async () => {
       try {
-        setNumGenerating(true);
-        const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-        const json = await res.json().catch(() => null);
-        const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
-        const next = nextComplaintNumber(arr, year);
-        if (!cancelled) setForm((f) => (f.complaintNumber ? f : { ...f, complaintNumber: next }));
+        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const j = await res.json();
+        const p = j?.report?.payload || j?.payload || j?.data?.payload;
+        if (!p || typeof p !== "object") throw new Error("empty");
+        if (!alive) return;
+        const withIds = (list) => (Array.isArray(list) ? list : []).map((x) => ({ ...x, id: x.id || newId() }));
+        setForm({ ...blank(), ...p, images: withIds(p.images), pdfs: withIds(p.pdfs) });
+        setLoadState("ready");
       } catch {
-        if (!cancelled) {
-          setForm((f) => (f.complaintNumber ? f : { ...f, complaintNumber: `CC-${year}-0001` }));
-        }
-      } finally {
-        if (!cancelled) setNumGenerating(false);
+        if (alive) setLoadState("missing");
       }
     })();
-    return () => { cancelled = true; };
+    return () => { alive = false; };
   }, [editId]);
 
-  function setField(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
+  /* New complaint: the next number of the year, after every number already used. */
+  useEffect(() => {
+    if (editId) return undefined;
+    let alive = true;
+    const year = todayDubai().slice(0, 4);
+    (async () => {
+      let number = `CC-${year}-0001`;
+      try {
+        const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        number = nextComplaintNumber(Array.isArray(json) ? json : json?.data || json?.items || [], year);
+      } catch { /* offline: the first number of the year; the register still shows it */ }
+      if (alive) {
+        setForm((f) => (f.complaintNumber ? f : { ...f, complaintNumber: number }));
+        setNumState("ok");
+      }
+    })();
+    return () => { alive = false; };
+  }, [editId]);
 
-  /* ── Attachment handlers ───────────────────────────────────── */
-  async function onPickImages(e) {
-    const picked = Array.from(e.target.files || []);
+  const set = (key) => (e) => {
+    const value = e.target.value;
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // closing a complaint: today is the closure date unless one was typed
+      if (key === "status" && value === "Closed" && !f.closureDate) next.closureDate = todayDubai();
+      return next;
+    });
+    setErrors((p) => (p[key] ? { ...p, [key]: "" } : p));
+  };
+
+  async function addImages(e) {
+    const picked = Array.from(e.target.files || []).filter((f) => String(f.type || "").startsWith("image/"));
     e.target.value = "";
     if (!picked.length) return;
+    setUploading("img");
     try {
-      setProcessingImages(true);
-      const newItems = [];
+      const added = [];
       for (const file of picked) {
-        if (!String(file?.type || "").startsWith("image/")) continue;
-        const compressed = await compressToFile(file);
-        const url = await uploadImageToServer(compressed, "customer_complaint");
-        newItems.push({
-          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          name: file?.name || "image.jpg",
-          mime: "image/jpeg",
-          url,
-        });
+        const url = await uploadImageToServer(await compressToFile(file), TYPE);
+        added.push({ id: newId(), name: file.name || "photo.jpg", mime: "image/jpeg", url });
       }
-      if (!newItems.length) {
-        alert(lang === "ar" ? "لم يتم اختيار صور صالحة." : "No valid images selected.");
-        return;
-      }
-      setForm((f) => ({ ...f, images: [...(f.images || []), ...newItems] }));
-    } catch (err) {
-      console.error(err);
-      alert(lang === "ar" ? "فشل معالجة الصور." : "Failed to process images.");
+      setForm((f) => ({ ...f, images: [...f.images, ...added] }));
+    } catch {
+      say(L("فشل رفع الصور. حاول بصور أقل أو أصغر.", "Photo upload failed. Try fewer or smaller photos."), "err");
     } finally {
-      setProcessingImages(false);
+      setUploading("");
     }
   }
 
-  async function onPickPdfs(e) {
-    const picked = Array.from(e.target.files || []);
+  async function addPdfs(e) {
+    const picked = Array.from(e.target.files || []).filter(
+      (f) => f.type === "application/pdf" || String(f.name || "").toLowerCase().endsWith(".pdf")
+    );
     e.target.value = "";
     if (!picked.length) return;
+    setUploading("pdf");
     try {
-      setProcessingPdfs(true);
-      const newItems = [];
+      const added = [];
       for (const file of picked) {
-        const lower = String(file?.name || "").toLowerCase();
-        if (file?.type !== "application/pdf" && !lower.endsWith(".pdf")) continue;
         if (file.size > PDF_MAX_BYTES) {
-          alert((lang === "ar" ? "ملف PDF كبير جداً: " : "PDF too large: ") + file.name + `\n${lang === "ar" ? "الحد الأقصى" : "Max"}: ${formatBytes(PDF_MAX_BYTES)}`);
+          say(L(`${file.name} أكبر من 10 ميغابايت وتم تخطّيه.`, `${file.name} is larger than 10 MB and was skipped.`), "err");
           continue;
         }
-        const url = await uploadImageToServer(file, "customer_complaint");
-        newItems.push({
-          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          name: file?.name || "file.pdf",
-          mime: "application/pdf",
-          url,
-          size: file.size || 0,
-        });
+        const url = await uploadImageToServer(file, TYPE);
+        added.push({ id: newId(), name: file.name || "file.pdf", mime: "application/pdf", url, size: file.size || 0 });
       }
-      if (!newItems.length) {
-        alert(lang === "ar" ? "لم يتم اختيار ملفات PDF صالحة." : "No valid PDF files selected.");
-        return;
-      }
-      setForm((f) => ({ ...f, pdfs: [...(f.pdfs || []), ...newItems] }));
-    } catch (err) {
-      console.error(err);
-      alert(lang === "ar" ? "فشل معالجة ملفات PDF." : "Failed to process PDFs.");
+      if (added.length) setForm((f) => ({ ...f, pdfs: [...f.pdfs, ...added] }));
+    } catch {
+      say(L("فشل رفع ملفات PDF.", "PDF upload failed."), "err");
     } finally {
-      setProcessingPdfs(false);
+      setUploading("");
     }
-  }
-
-  function removeImage(id) {
-    setForm((f) => ({ ...f, images: (f.images || []).filter((x) => x.id !== id) }));
-  }
-  function removePdf(id) {
-    setForm((f) => ({ ...f, pdfs: (f.pdfs || []).filter((x) => x.id !== id) }));
   }
 
   async function save() {
-    if (!form.complaintDate || !form.complainant || !form.description) {
-      alert(t("requiredField"));
+    const need = t("requiredField");
+    const bad = {};
+    if (!form.complaintDate) bad.complaintDate = need;
+    if (!String(form.complainant).trim()) bad.complainant = need;
+    if (!String(form.description).trim()) bad.description = need;
+    /* A complaint is closed only with evidence that the corrective action
+       worked (ISO 22000 §10.1.2 + §9.1.2). */
+    if (form.status === "Closed") {
+      if (form.effectivenessVerified === "Pending" || !form.effectivenessVerified) {
+        bad.effectivenessVerified = L("حدّد نتيجة التحقق قبل الإغلاق.", "Record the verification result before closing.");
+      }
+      if (!String(form.effectivenessVerifiedBy || "").trim()) bad.effectivenessVerifiedBy = need;
+      if (!form.effectivenessVerifiedDate) bad.effectivenessVerifiedDate = need;
+      if (form.closureDate && form.complaintDate && form.closureDate < form.complaintDate) {
+        bad.closureDate = L("تاريخ الإغلاق قبل تاريخ الشكوى.", "The closure date is before the complaint date.");
+      }
+    }
+    setErrors(bad);
+    if (Object.keys(bad).length) {
+      say(L("أكمل الحقول المحدّدة بالأحمر.", "Complete the fields marked in red."), "err");
       return;
     }
-    /* Effectiveness verification gate — cannot mark "Closed" without evidence
-       that the CAPA actually worked (ISO 22000 §10.1.2 + §9.1.2). */
-    if (form.status === "Closed") {
-      if (!form.effectivenessVerified || form.effectivenessVerified === "Pending") {
-        alert(lang === "ar"
-          ? "⚠️ لا يمكن إغلاق الشكوى قبل تأكيد فعالية الإجراء التصحيحي (Effectiveness Verification)."
-          : "⚠️ Complaint cannot be closed before CAPA Effectiveness Verification is completed.");
-        return;
-      }
-      if (!form.effectivenessVerifiedBy?.trim() || !form.effectivenessVerifiedDate) {
-        alert(lang === "ar"
-          ? "⚠️ لإغلاق الشكوى: حقول 'تم التحقق بواسطة' و'تاريخ التحقق' إلزامية."
-          : "⚠️ To close: 'Verified By' and 'Verification Date' are required.");
-        return;
-      }
-    }
+
+    const payload = {
+      ...form,
+      complainant: String(form.complainant).trim(),
+      closureDate: form.status === "Closed" ? form.closureDate || todayDubai() : form.closureDate,
+      // Cloudinary URLs only — an old record may still carry dataUrl; keep it so editing is not destructive
+      images: form.images.map(({ name, mime, url, dataUrl }) => (url ? { name, mime, url } : { name, mime, dataUrl })),
+      pdfs: form.pdfs.map(({ name, mime, url, dataUrl, size }) => (url ? { name, mime, url, size } : { name, mime, dataUrl, size })),
+      savedAt: Date.now(),
+      storage: "cloudinary",
+    };
     setSaving(true);
     try {
-      const url = editId
-        ? `${API_BASE}/api/reports/${encodeURIComponent(editId)}`
-        : `${API_BASE}/api/reports`;
-      const method = editId ? "PUT" : "POST";
-      const payload = {
-        ...form,
-        // Cloudinary URLs only — never base64 in the payload. Old un-migrated
-        // records may still carry dataUrl; keep it so editing them is non-destructive.
-        images: (form.images || []).map(({ name, mime, url, dataUrl }) =>
-          url ? { name, mime, url } : { name, mime, dataUrl }),
-        pdfs: (form.pdfs || []).map(({ name, mime, url, dataUrl, size }) =>
-          url ? { name, mime, url, size } : { name, mime, dataUrl, size }),
-        savedAt: Date.now(),
-        storage: "cloudinary",
-      };
-      const res = await fetch(url, {
-        method,
+      // existing record → PUT :id (the generic PUT upserts by type + date and would overwrite another complaint)
+      const res = await fetch(editId ? `${API_BASE}/api/reports/${encodeURIComponent(editId)}` : `${API_BASE}/api/reports`, {
+        method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: form.closedBy || form.complainant || "admin", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      navigate("/haccp-iso/customer-complaints/view");
+      say(L("تم حفظ الشكوى.", "Complaint saved."), "ok");
+      setTimeout(() => navigate("/haccp-iso/customer-complaints/view"), 700);
     } catch (e) {
-      alert(t("saveError") + ": " + (e?.message || e));
-    } finally {
+      say(`${t("saveError")}: ${e?.message || e}`, "err");
       setSaving(false);
     }
   }
 
-  const busy = saving || processingImages || processingPdfs || numGenerating;
+  const cls = (key) => `pgk-in${errors[key] ? " bad" : ""}`;
+  const toRegister = () => navigate("/haccp-iso/customer-complaints/view");
+  const closing = form.status === "Closed";
 
   return (
     <HaccpPage
       lang={lang}
       icon="📞"
-      title={t("ccTitle")}
-      clause={lang === "ar" ? "البندان 7.4 و9.1.2" : "ISO 7.4 · 9.1.2"}
+      title={editId ? L("تعديل شكوى عميل", "Edit Customer Complaint") : L("شكوى عميل جديدة", "New Customer Complaint")}
+      sub={L("سجّل الشكوى، ثم التحقيق والسبب الجذري والإجراء التصحيحي، وأغلقها بعد التحقق من فاعليته.", "Log the complaint, then the investigation, root cause and corrective action, and close it once the action is verified.")}
+      clause={L("البندان 7.4 و9.1.2", "ISO 7.4 · 9.1.2")}
       backTo="/haccp-iso/customer-complaints/view"
-      backLabel={lang === "ar" ? "→ سجل الشكاوى" : "← Complaints register"}
+      backLabel={L("→ سجل الشكاوى", "← Complaints register")}
       actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
     >
-      <div style={{ ...S.layout, marginTop: 14 }}>
+      {toast}
 
-        <div style={S.card}>
-          <div style={S.sectionTitle}>{t("ccDetails")}</div>
-          <div style={S.row3}>
-            <div>
-              <label style={S.label}>{t("ccDate")}</label>
-              <input type="date" style={S.input} value={form.complaintDate} onChange={(e) => setField("complaintDate", e.target.value)} />
-            </div>
-            <div>
-              <label style={S.label}>{t("ccNumber")}</label>
-              <input
-                style={{ ...S.input, background: "#f8fafc", color: "#475569", cursor: "not-allowed", fontWeight: 800 }}
-                value={form.complaintNumber}
-                readOnly
-                placeholder={numGenerating ? (lang === "ar" ? "...جاري التوليد" : "...generating") : "CC-YYYY-NNNN"}
-                title={lang === "ar" ? "رقم تلقائي — لا يُعدّل يدوياً" : "Auto-generated — not editable"}
-              />
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 3 }}>
-                {lang === "ar"
-                  ? "🔢 رقم تلقائي متسلسل (يراعي التقارير القديمة الموجودة)"
-                  : "🔢 Auto-generated sequential number (respects existing reports)"}
-              </div>
-            </div>
-            <div>
-              <label style={S.label}>{t("ccChannel")}</label>
-              <input style={S.input} value={form.channel} onChange={(e) => setField("channel", e.target.value)} placeholder={t("ccChannelPh")} />
-            </div>
-          </div>
-          <label style={S.label}>{t("ccComplainant")}</label>
-          <input style={S.input} value={form.complainant} onChange={(e) => setField("complainant", e.target.value)} placeholder={t("ccComplainantPh")} />
+      {loadState === "loading" && <Note>{t("loading")}</Note>}
+      {loadState === "missing" && (
+        <Note error>
+          {L("تعذّر تحميل الشكوى، والحفظ مقفل حتى لا تُمسح بياناتها. أعد فتح الصفحة.", "The complaint could not be loaded, and saving is locked so its data is not wiped. Reopen the page.")}
+        </Note>
+      )}
 
-          <div style={S.row}>
-            <div>
-              <label style={S.label}>{t("ccProduct")}</label>
-              <input style={S.input} value={form.product} onChange={(e) => setField("product", e.target.value)} placeholder={t("ccProductPh")} />
+      {loadState === "ready" && (
+        <>
+          <Panel title={`📝 ${t("ccDetails")}`}>
+            <div className="pgk-grid">
+              <Field label={t("ccNumber")}>
+                <input
+                  className="pgk-in"
+                  value={form.complaintNumber}
+                  readOnly
+                  placeholder={numState === "loading" ? L("جارٍ التوليد…", "Generating…") : "CC-YYYY-NNNN"}
+                  title={L("رقم تلقائي متسلسل — لا يُعدّل", "Sequential number, set automatically")}
+                  style={{ background: "#f1f5f9", color: "#475569" }}
+                />
+              </Field>
+              <Field label={L("تاريخ الشكوى", "Complaint date")} required error={errors.complaintDate}>
+                <input className={cls("complaintDate")} type="date" max={todayDubai()} value={form.complaintDate} onChange={set("complaintDate")} />
+              </Field>
+              <Field label={L("الفرع", "Branch")}>
+                <input className="pgk-in" list="cc-branches" value={form.branch} onChange={set("branch")} placeholder={L("اختر الفرع أو اكتبه", "Pick or type the branch")} />
+                <datalist id="cc-branches">{BRANCHES.map((b) => <option key={b} value={b} />)}</datalist>
+              </Field>
+              <Field label={t("ccChannel")}>
+                <input className="pgk-in" list="cc-channels" value={form.channel} onChange={set("channel")} placeholder={t("ccChannelPh")} />
+                <datalist id="cc-channels">{CHANNELS.map((c) => <option key={c} value={c} />)}</datalist>
+              </Field>
+              <Field label={L("العميل / الجهة", "Customer / party")} required error={errors.complainant}>
+                <input className={cls("complainant")} value={form.complainant} onChange={set("complainant")} placeholder={t("ccComplainantPh")} />
+              </Field>
+              <Field label={L("رقم التواصل", "Contact number")}>
+                <input className="pgk-in" inputMode="tel" value={form.contact} onChange={set("contact")} />
+              </Field>
+              <Field label={t("ccProduct")}>
+                <input className="pgk-in" value={form.product} onChange={set("product")} placeholder={t("ccProductPh")} />
+              </Field>
+              <Field label={t("ccBatch")}>
+                <input className="pgk-in" value={form.batch} onChange={set("batch")} placeholder={t("ccBatchPh")} />
+              </Field>
+              <Field label={t("ccType")}>
+                <select className="pgk-in" value={form.type} onChange={set("type")}>
+                  {TYPES.map((x) => <option key={x} value={x}>{t(TYPE_KEY[x])}</option>)}
+                </select>
+              </Field>
+              <Field label={t("ccSeverity")}>
+                <select className="pgk-in" value={form.severity} onChange={set("severity")}>
+                  {SEVERITIES.map((x) => <option key={x} value={x}>{t(SEVERITY_KEY[x])}</option>)}
+                </select>
+              </Field>
+              <Field label={L("وصف الشكوى", "Complaint description")} required error={errors.description} wide>
+                <textarea className={cls("description")} value={form.description} onChange={set("description")} placeholder={t("ccDescriptionPh")} />
+              </Field>
             </div>
-            <div>
-              <label style={S.label}>{t("ccBatch")}</label>
-              <input style={S.input} value={form.batch} onChange={(e) => setField("batch", e.target.value)} placeholder={t("ccBatchPh")} />
-            </div>
-          </div>
+          </Panel>
 
-          <div style={S.row}>
-            <div>
-              <label style={S.label}>{t("ccType")}</label>
-              <select style={S.select} value={form.type} onChange={(e) => setField("type", e.target.value)}>
-                <option value="BPC">{t("ccTypeBPC")}</option>
-                <option value="Foreign">{t("ccTypeForeign")}</option>
-                <option value="Allergen">{t("ccTypeAllergen")}</option>
-                <option value="Quality">{t("ccTypeQuality")}</option>
-                <option value="Packaging">{t("ccTypePackaging")}</option>
-                <option value="Service">{t("ccTypeService")}</option>
-                <option value="Other">{t("ccTypeOther")}</option>
-              </select>
-            </div>
-            <div>
-              <label style={S.label}>{t("ccSeverity")}</label>
-              <select style={S.select} value={form.severity} onChange={(e) => setField("severity", e.target.value)}>
-                <option value="Low">{t("ccSeverityLow")}</option>
-                <option value="Medium">{t("ccSeverityMed")}</option>
-                <option value="High">{t("ccSeverityHigh")}</option>
-                <option value="Critical">{t("ccSeverityCritical")}</option>
-              </select>
-            </div>
-          </div>
+          <Panel
+            title={`📎 ${L("المرفقات", "Attachments")}`}
+            hint={L("الصور تُضغط وتُرفع فور إضافتها. حجم ملف PDF حتى 10 ميغابايت.", "Photos are compressed and uploaded as you add them. PDF up to 10 MB each.")}
+            actions={
+              <>
+                <Btn small onClick={() => imgRef.current?.click()} disabled={busy}>{uploading === "img" ? L("جارٍ الرفع…", "Uploading…") : L("+ إضافة صور", "+ Add photos")}</Btn>
+                <Btn small onClick={() => pdfRef.current?.click()} disabled={busy}>{uploading === "pdf" ? L("جارٍ الرفع…", "Uploading…") : L("+ إضافة PDF", "+ Add PDFs")}</Btn>
+              </>
+            }
+          >
+            <input ref={imgRef} type="file" accept="image/*" multiple onChange={addImages} style={{ display: "none" }} />
+            <input ref={pdfRef} type="file" accept="application/pdf,.pdf" multiple onChange={addPdfs} style={{ display: "none" }} />
 
-          <label style={S.label}>{t("ccDescription")}</label>
-          <textarea style={S.textarea} value={form.description} onChange={(e) => setField("description", e.target.value)} placeholder={t("ccDescriptionPh")} />
-        </div>
+            {form.images.length === 0 && form.pdfs.length === 0 && (
+              <div className="pgk-drop">{L("لا مرفقات بعد — صور المنتج، رسالة العميل، تقرير المختبر…", "Nothing attached yet — product photos, the customer's message, a lab report…")}</div>
+            )}
 
-        {/* Attachments */}
-        <div style={S.card}>
-          <div style={S.sectionTitle}>
-            📎 {lang === "ar" ? "المرفقات (صور + PDF)" : "Attachments (Images + PDFs)"}
-          </div>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 8 }}>
-            {lang === "ar"
-              ? `🖼 الصور تُضغط تلقائياً (الحد الأقصى ${IMG_MAX_DIM}px). 📄 ملفات PDF حتى ${formatBytes(PDF_MAX_BYTES)} لكل ملف.`
-              : `🖼 Images auto-compressed (max ${IMG_MAX_DIM}px). 📄 PDFs up to ${formatBytes(PDF_MAX_BYTES)} each.`}
-          </div>
-
-          {/* Image upload zone */}
-          <div style={S.attachmentDropZone}>
-            <span style={{ fontSize: 24 }}>🖼</span>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: "#9a3412" }}>
-                {lang === "ar" ? "صور دليلية للشكوى" : "Complaint evidence photos"}
-              </div>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 2 }}>
-                {(form.images || []).length} {lang === "ar" ? "صورة محمّلة" : "image(s) attached"}
-              </div>
-            </div>
-            <input
-              ref={imgInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={onPickImages}
-              style={{ display: "none" }}
-            />
-            <button
-              type="button"
-              style={S.btn("ghost")}
-              onClick={() => imgInputRef.current?.click()}
-              disabled={busy}
-            >
-              {processingImages
-                ? (lang === "ar" ? "⏳ جاري المعالجة…" : "⏳ Processing…")
-                : (lang === "ar" ? "+ إضافة صور" : "+ Add Images")}
-            </button>
-          </div>
-
-          {(form.images || []).length > 0 && (
-            <div style={S.thumbGrid}>
-              {form.images.map((img) => (
-                <div key={img.id} style={S.thumbBox}>
-                  <img src={img.url || img.dataUrl} alt={img.name} style={S.thumbImg} />
-                  <div style={S.thumbName}>{img.name}</div>
-                  <button
-                    type="button"
-                    aria-label="Remove image"
-                    title={lang === "ar" ? "إزالة" : "Remove"}
-                    style={S.removeBtn}
-                    onClick={() => removeImage(img.id)}
-                  >×</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* PDF upload zone */}
-          <div style={{ ...S.attachmentDropZone, marginTop: 14 }}>
-            <span style={{ fontSize: 24 }}>📄</span>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: "#9a3412" }}>
-                {lang === "ar" ? "ملفات PDF (تقارير المختبر، رسائل العميل…)" : "PDF files (lab reports, customer letters…)"}
-              </div>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 2 }}>
-                {(form.pdfs || []).length} PDF {lang === "ar" ? "محمّل" : "attached"}
-              </div>
-            </div>
-            <input
-              ref={pdfInputRef}
-              type="file"
-              accept="application/pdf,.pdf"
-              multiple
-              onChange={onPickPdfs}
-              style={{ display: "none" }}
-            />
-            <button
-              type="button"
-              style={S.btn("ghost")}
-              onClick={() => pdfInputRef.current?.click()}
-              disabled={busy}
-            >
-              {processingPdfs
-                ? (lang === "ar" ? "⏳ جاري المعالجة…" : "⏳ Processing…")
-                : (lang === "ar" ? "+ إضافة PDF" : "+ Add PDFs")}
-            </button>
-          </div>
-
-          {(form.pdfs || []).length > 0 && (
-            <div style={{ marginTop: 6 }}>
-              {form.pdfs.map((pdf) => (
-                <div key={pdf.id} style={S.pdfCard}>
-                  <span style={{ fontSize: 22 }}>📄</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#9a3412", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {pdf.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>
-                      {formatBytes(pdf.size)}
-                    </div>
+            {form.pdfs.length > 0 && (
+              <div style={{ display: "grid", gap: 8, marginBottom: form.images.length ? 12 : 0 }}>
+                {form.pdfs.map((p) => (
+                  <div key={p.id} className="pgk-file">
+                    <span className="pgk-file-ic" aria-hidden="true">PDF</span>
+                    <span className="pgk-file-name" title={p.name}>{p.name}{p.size ? ` · ${Math.round(p.size / 1024)} KB` : ""}</span>
+                    <a className="pgk-btn sm" href={p.url || p.dataUrl} target="_blank" rel="noreferrer">{L("فتح", "Open")} ↗</a>
+                    {/* removing an attachment of the form is not a "delete" permission — no data-delete-action */}
+                    <Btn small kind="danger" onClick={() => setForm((f) => ({ ...f, pdfs: f.pdfs.filter((y) => y.id !== p.id) }))}>{L("إزالة", "Remove")}</Btn>
                   </div>
-                  <a
-                    href={pdf.url || pdf.dataUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ ...S.btn("secondary"), padding: "5px 12px", fontSize: 11, textDecoration: "none" }}
-                  >
-                    {lang === "ar" ? "👁 عرض" : "👁 Preview"}
-                  </a>
-                  <button
-                    type="button"
-                    style={{ ...S.btn("danger"), padding: "5px 12px", fontSize: 11 }}
-                    onClick={() => removePdf(pdf.id)} data-delete-action="true"
-                  >
-                    {lang === "ar" ? "حذف" : "Remove"}
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+
+            {form.images.length > 0 && (
+              <div className="pgk-thumbs">
+                {form.images.map((img) => (
+                  <div key={img.id} className="pgk-thumb" style={{ cursor: "default" }}>
+                    <a href={img.url || img.dataUrl} target="_blank" rel="noreferrer"><img src={img.url || img.dataUrl} alt={img.name} loading="lazy" /></a>
+                    <span className="pgk-thumb-cap">
+                      <span title={img.name}>{img.name}</span>
+                      <Btn small kind="danger" aria-label={L("إزالة", "Remove")} onClick={() => setForm((f) => ({ ...f, images: f.images.filter((y) => y.id !== img.id) }))}>✕</Btn>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={`🔎 ${L("التحقيق والسبب الجذري والإجراء التصحيحي", "Investigation, root cause & corrective action")}`}>
+            <div className="pgk-grid">
+              <Field label={t("ccInvestigation")} wide>
+                <textarea className="pgk-in" value={form.investigation} onChange={set("investigation")} placeholder={t("ccInvestigationPh")} />
+              </Field>
+              <Field label={t("ccRootCause")} wide>
+                <textarea className="pgk-in" value={form.rootCause} onChange={set("rootCause")} placeholder={t("ccRootCausePh")} />
+              </Field>
+              <Field label={t("ccCAPA")} wide>
+                <textarea className="pgk-in" value={form.capa} onChange={set("capa")} placeholder={t("ccCAPAPh")} />
+              </Field>
+              <Field label={L("مسؤول الإجراء", "Action owner")}>
+                <input className="pgk-in" value={form.capaOwner} onChange={set("capaOwner")} />
+              </Field>
+              <Field label={L("تاريخ استحقاق الإجراء", "Action due date")}>
+                <input className="pgk-in" type="date" value={form.capaDue} onChange={set("capaDue")} />
+              </Field>
             </div>
-          )}
-        </div>
+          </Panel>
 
-        <div style={S.card}>
-          <div style={S.sectionTitle}>{lang === "ar" ? "التحقيق وتحليل السبب الجذري" : "Investigation & Root Cause"}</div>
-
-          <label style={S.label}>{t("ccInvestigation")}</label>
-          <textarea style={S.textarea} value={form.investigation} onChange={(e) => setField("investigation", e.target.value)} placeholder={t("ccInvestigationPh")} />
-
-          <label style={S.label}>{t("ccRootCause")}</label>
-          <textarea style={S.textarea} value={form.rootCause} onChange={(e) => setField("rootCause", e.target.value)} placeholder={t("ccRootCausePh")} />
-
-          <label style={S.label}>{t("ccCAPA")}</label>
-          <textarea style={S.textarea} value={form.capa} onChange={(e) => setField("capa", e.target.value)} placeholder={t("ccCAPAPh")} />
-        </div>
-
-        <div style={S.card}>
-          <div style={S.sectionTitle}>{lang === "ar" ? "الإغلاق" : "Closure"}</div>
-          <div style={S.row3}>
-            <div>
-              <label style={S.label}>{t("ccStatus")}</label>
-              <select style={S.select} value={form.status} onChange={(e) => setField("status", e.target.value)}>
-                <option value="Open">{t("ccStatusOpen")}</option>
-                <option value="Investigation">{t("ccStatusInvestigation")}</option>
-                <option value="Closed">{t("ccStatusClosed")}</option>
-              </select>
+          <Panel
+            title={`✅ ${L("التحقق من فاعلية الإجراء التصحيحي", "Corrective action effectiveness")}`}
+            hint={L("بعد تنفيذ الإجراء، تأكّد أن المشكلة لم تتكرر (فترة مراقبة كافية، لا شكاوى مماثلة). مطلوب قبل الإغلاق.", "After the action, confirm the problem did not recur (long enough monitoring, no similar complaints). Required before closing.")}
+            actions={closing ? <Pill tone="amber">{L("مطلوب للإغلاق", "Required to close")}</Pill> : null}
+          >
+            <div className="pgk-grid">
+              <Field label={L("هل كان الإجراء فعّالًا؟", "Was the action effective?")} required={closing} error={errors.effectivenessVerified}>
+                <select className={cls("effectivenessVerified")} value={form.effectivenessVerified} onChange={set("effectivenessVerified")}>
+                  <option value="Pending">{L("قيد المراجعة", "Pending")}</option>
+                  <option value="Yes">{L("نعم — فعّال", "Yes — effective")}</option>
+                  <option value="No">{L("لا — تكررت المشكلة", "No — it recurred")}</option>
+                </select>
+              </Field>
+              <Field label={L("تاريخ التحقق", "Verification date")} required={closing} error={errors.effectivenessVerifiedDate}>
+                <input className={cls("effectivenessVerifiedDate")} type="date" value={form.effectivenessVerifiedDate} onChange={set("effectivenessVerifiedDate")} />
+              </Field>
+              <Field label={L("تم التحقق بواسطة", "Verified by")} required={closing} error={errors.effectivenessVerifiedBy}>
+                <input className={cls("effectivenessVerifiedBy")} value={form.effectivenessVerifiedBy} onChange={set("effectivenessVerifiedBy")} />
+              </Field>
+              <Field label={L("ملاحظات / دليل الفاعلية", "Notes / evidence")} wide>
+                <textarea
+                  className="pgk-in"
+                  value={form.effectivenessNotes}
+                  onChange={set("effectivenessNotes")}
+                  placeholder={L("مثال: مراقبة 30 يومًا بلا شكاوى مماثلة؛ تحسين فحص الاستلام…", "e.g. 30 days monitored without similar complaints; receiving inspection improved…")}
+                />
+              </Field>
             </div>
-            <div>
-              <label style={S.label}>{t("ccClosureDate")}</label>
-              <input type="date" style={S.input} value={form.closureDate} onChange={(e) => setField("closureDate", e.target.value)} />
+            {form.effectivenessVerified === "No" && (
+              <Note error>
+                {L("الإجراء لم يكن فعّالًا — افتح إجراءً تصحيحيًا جديدًا أو صعّده عبر سجل التحسين المستمر.", "The action was not effective — open a new corrective action or escalate it through the Continual Improvement Log.")}
+              </Note>
+            )}
+          </Panel>
+
+          <Panel title={`🔒 ${L("الحالة والإغلاق", "Status & closure")}`}>
+            <div className="pgk-grid">
+              <Field label={t("ccStatus")}>
+                <select className="pgk-in" value={form.status} onChange={set("status")}>
+                  {STATUSES.map((x) => <option key={x} value={x}>{t(STATUS_KEY[x])}</option>)}
+                </select>
+              </Field>
+              <Field label={t("ccClosureDate")} error={errors.closureDate}>
+                <input className={cls("closureDate")} type="date" value={form.closureDate} onChange={set("closureDate")} disabled={!closing} />
+              </Field>
+              <Field label={t("ccClosedBy")}>
+                <input className="pgk-in" value={form.closedBy} onChange={set("closedBy")} disabled={!closing} />
+              </Field>
+              <Field label={t("ccCustomerSatisfied")}>
+                <select className="pgk-in" value={form.customerSatisfied} onChange={set("customerSatisfied")}>
+                  <option value="Pending">{t("ccCustomerSatisfiedPending")}</option>
+                  <option value="Yes">{t("ccCustomerSatisfiedYes")}</option>
+                  <option value="No">{t("ccCustomerSatisfiedNo")}</option>
+                </select>
+              </Field>
             </div>
-            <div>
-              <label style={S.label}>{t("ccClosedBy")}</label>
-              <input style={S.input} value={form.closedBy} onChange={(e) => setField("closedBy", e.target.value)} placeholder="QA Lead" />
-            </div>
+          </Panel>
+
+          <div className="pgk-actions" style={{ marginTop: 14 }}>
+            <Btn onClick={toRegister} disabled={saving}>{t("cancel")}</Btn>
+            <Btn kind="ok" onClick={save} disabled={busy}>{saving ? t("saving") : t("ccSaveBtn")}</Btn>
           </div>
-          <label style={S.label}>{t("ccCustomerSatisfied")}</label>
-          <select style={S.select} value={form.customerSatisfied} onChange={(e) => setField("customerSatisfied", e.target.value)}>
-            <option value="Pending">{t("ccCustomerSatisfiedPending")}</option>
-            <option value="Yes">{t("ccCustomerSatisfiedYes")}</option>
-            <option value="No">{t("ccCustomerSatisfiedNo")}</option>
-          </select>
-        </div>
-
-        {/* Effectiveness Verification — required to close per ISO 22000 §10.1.2 */}
-        <div style={{ ...S.card, border: "2px solid #f97316", background: "linear-gradient(180deg, #fffbeb, #fff)" }}>
-          <div style={{ ...S.sectionTitle, color: "#c2410c" }}>
-            ✅ {lang === "ar" ? "التحقق من فعالية الإجراء التصحيحي (CAPA Effectiveness)" : "CAPA Effectiveness Verification"}
-          </div>
-          <div style={{ fontSize: 12, color: "#7c2d12", marginBottom: 10, fontWeight: 700, lineHeight: 1.6 }}>
-            {lang === "ar"
-              ? "بعد تنفيذ الإجراء التصحيحي، تأكّد إن المشكلة ما تكررتش (مراقبة لمدة كافية، فحص شكاوى مماثلة). إجباري قبل الإغلاق وفق ISO 22000 §10.1.2."
-              : "After implementing CAPA, verify the problem did NOT recur (sufficient monitoring period, check for similar complaints). Mandatory before closure per ISO 22000 §10.1.2."}
-          </div>
-          <div style={S.row3}>
-            <div>
-              <label style={S.label}>{lang === "ar" ? "هل CAPA كان فعّالاً؟" : "Was CAPA effective?"}</label>
-              <select style={S.select} value={form.effectivenessVerified} onChange={(e) => setField("effectivenessVerified", e.target.value)}>
-                <option value="Pending">{lang === "ar" ? "قيد المراجعة" : "Pending"}</option>
-                <option value="Yes">{lang === "ar" ? "نعم — فعّال" : "Yes — Effective"}</option>
-                <option value="No">{lang === "ar" ? "لا — تكررت المشكلة" : "No — Recurred"}</option>
-              </select>
-            </div>
-            <div>
-              <label style={S.label}>{lang === "ar" ? "تاريخ التحقق" : "Verification Date"}</label>
-              <input type="date" style={S.input} value={form.effectivenessVerifiedDate} onChange={(e) => setField("effectivenessVerifiedDate", e.target.value)} />
-            </div>
-            <div>
-              <label style={S.label}>{lang === "ar" ? "تم التحقق بواسطة" : "Verified By"}</label>
-              <input style={S.input} value={form.effectivenessVerifiedBy} onChange={(e) => setField("effectivenessVerifiedBy", e.target.value)} placeholder="QA Manager" />
-            </div>
-          </div>
-          <label style={S.label}>{lang === "ar" ? "ملاحظات / دليل الفعالية" : "Notes / Effectiveness Evidence"}</label>
-          <textarea
-            style={S.textarea}
-            value={form.effectivenessNotes}
-            onChange={(e) => setField("effectivenessNotes", e.target.value)}
-            placeholder={lang === "ar"
-              ? "مثلاً: تمت مراقبة 30 يوم بدون شكاوى مماثلة؛ تم تحسين عملية المراقبة في الاستلام…"
-              : "e.g., Monitored 30 days without similar complaints; receiving inspection process improved…"}
-          />
-          {form.effectivenessVerified === "No" && (
-            <div style={{
-              marginTop: 8, padding: "8px 12px", borderRadius: 8,
-              background: "#fee2e2", border: "1.5px solid #fca5a5",
-              color: "#7f1d1d", fontSize: 12, fontWeight: 800,
-            }}>
-              {lang === "ar"
-                ? "⚠️ CAPA غير فعّال — افتح إجراء تصحيحي جديد أو اتصل بـContinual Improvement Log."
-                : "⚠️ CAPA was not effective — open a new corrective action or escalate via Continual Improvement Log."}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button style={S.btn("secondary")} onClick={() => navigate(-1)}>{t("cancel")}</button>
-          <button style={S.btn("success")} onClick={save} disabled={busy}>
-            {saving ? t("saving") : t("ccSaveBtn")}
-          </button>
-        </div>
-      </div>
+        </>
+      )}
     </HaccpPage>
   );
 }
