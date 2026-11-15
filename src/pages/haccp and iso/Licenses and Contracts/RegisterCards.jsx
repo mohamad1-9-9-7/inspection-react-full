@@ -24,7 +24,7 @@ const L = {
     noContracts: "No contracts recorded for this branch.", docs: (n) => `${n} document${n === 1 ? "" : "s"}`,
     stExpired: (n) => `Expired ${n}d ago`, stToday: "Expires today", stLeft: (n) => `${n}d left`,
     branches: "Branches", manage: "Manage branches",
-    viaParent: (p) => `🔗 Licence of ${p}`, underOf: (p) => `Works under the licence of ${p}`,
+    viaParent: (p) => `🔗 Licence of ${p}`, goParent: (p) => `Edit or delete in ${p}`, underOf: (p) => `Works under the licence of ${p}`,
     covers: (list) => `Its licence also covers: ${list}`, noParentLic: (p) => `${p} has no licence recorded yet.`,
   },
   ar: {
@@ -37,7 +37,7 @@ const L = {
     noContracts: "لا توجد عقود مسجلة لهذا الفرع.", docs: (n) => `${n} مستند`,
     stExpired: (n) => `منتهية منذ ${n} يوم`, stToday: "تنتهي اليوم", stLeft: (n) => `باقي ${n} يوم`,
     branches: "الفروع", manage: "إدارة الفروع",
-    viaParent: (p) => `🔗 رخصة ${p}`, underOf: (p) => `يعمل تحت رخصة ${p}`,
+    viaParent: (p) => `🔗 رخصة ${p}`, goParent: (p) => `التعديل أو الحذف من ${p}`, underOf: (p) => `يعمل تحت رخصة ${p}`,
     covers: (list) => `رخصته تغطي أيضاً: ${list}`, noParentLic: (p) => `لا توجد رخصة مسجلة لـ ${p} بعد.`,
   },
 };
@@ -145,7 +145,11 @@ const worstDot = (list) => {
   return STATUS[w.status].dot;
 };
 
-function DocRow({ l, lang, it, showBranch, via, mayEdit, mayDelete, on }) {
+function DocRow({ l, lang, it, showBranch, via, onGoParent, mayEdit: mayEditIn, mayDelete: mayDeleteIn, on }) {
+  // a parent's licence shown on a sub-branch page is read-only here: open + renew only,
+  // edit / delete happen on the parent's own page (so nobody removes the parent's licence by mistake)
+  const mayEdit = mayEditIn && !via;
+  const mayDelete = mayDeleteIn && !via;
   const [menu, setMenu] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -179,7 +183,7 @@ function DocRow({ l, lang, it, showBranch, via, mayEdit, mayDelete, on }) {
       <div className="lcb-acts">
         {it.files.length
           ? <button type="button" className="lcb-b pri" onClick={() => on.open(it)}>📎 {l.open}</button>
-          : <button type="button" className="lcb-b warn" onClick={() => (mayEdit ? on.edit(it) : on.renew(it))}>⚠ {l.attach}</button>}
+          : <button type="button" className="lcb-b warn" onClick={() => (mayEdit ? on.edit(it) : via ? onGoParent() : on.renew(it))}>⚠ {l.attach}</button>}
         <button type="button" className={`lcb-b${urgent ? " hot" : ""}`} onClick={() => on.renew(it)}>↻ {l.renew}</button>
         <button type="button" className="lcb-b more" aria-label="⋯" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>⋯</button>
       </div>
@@ -189,6 +193,7 @@ function DocRow({ l, lang, it, showBranch, via, mayEdit, mayDelete, on }) {
           <button type="button" onClick={pick(on.history)}>🕘 {l.history}</button>
           {mayEdit && <button type="button" onClick={pick((x) => on.editRecord(x.rid))}>🗂 {l.editRecord}</button>}
           {mayDelete && <button type="button" className="red" onClick={pick(on.del)}>🗑 {l.del}</button>}
+          {via && onGoParent && <button type="button" onClick={() => { setMenu(false); onGoParent(); }}>↗ {l.goParent(via)}</button>}
         </div>
       )}
     </article>
@@ -233,7 +238,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, paren
 
   const cardProps = { l, lang, mayEdit, mayDelete, on };
   const grid = (list, showBranch, via) => (
-    <div className="lcb-grid">{list.map((it) => <DocRow key={it.key} it={it} showBranch={showBranch} via={via || ""} {...cardProps} />)}</div>
+    <div className="lcb-grid">{list.map((it) => <DocRow key={it.key} it={it} showBranch={showBranch} via={via || ""} onGoParent={via ? () => setPick(via) : undefined} {...cardProps} />)}</div>
   );
 
   let body;
