@@ -6,6 +6,7 @@
 // Covers ALL branches without exception (kitchen, food trucks, all POSes, production).
 
 import React, { useEffect, useMemo, useState } from "react";
+import { HaccpPage } from "../_shared/pageKit";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
@@ -186,30 +187,17 @@ export default function InternalCalibrationInput() {
   const isFail = finalResult === "Fail";
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>
-              {isAr ? "🌡 سجل المعايرة الداخلية" : "🌡 Internal Calibration Log"}
-            </div>
-            <div style={{ fontSize: 12, color: "#a16207", fontWeight: 700, marginTop: 4 }}>
-              {isAr
-                ? "تحقق يومي/أسبوعي من المسابر والأجهزة قبل الاستخدام (ice-point / boiling / master-probe)"
-                : "Daily/weekly verification of probes & devices before use (ice-point / boiling / master-probe)"}
-            </div>
-            <HaccpLinkBadge clauses={["8.7"]} label={isAr ? "معايرة المراقبة والقياس (داخلية)" : "Monitoring & Measurement (Internal)"} />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/internal-calibration/view")}>
-              {isAr ? "السجلات السابقة" : "Past records"}
-            </button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>
-              {isAr ? "← الرئيسية" : "← Hub"}
-            </button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🧊"
+      title={isAr ? "فحص معايرة داخلي" : "In-house Calibration Check"}
+      sub={isAr ? "تحقق يومي أو أسبوعي من المجسّات والأجهزة قبل الاستخدام." : "Daily or weekly verification of probes and devices before use."}
+      clause={isAr ? "البند 8.7" : "ISO 8.7"}
+      backTo="/haccp-iso/internal-calibration/view"
+      backLabel={isAr ? "→ سجل الفحوصات" : "← Checks register"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         {/* Section: When & Where */}
         <div style={S.card}>
@@ -370,6 +358,6 @@ export default function InternalCalibrationInput() {
           </button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

@@ -3,6 +3,7 @@
 // يحفظ تحت type: "mock_recall_drill"
 
 import React, { useEffect, useMemo, useState } from "react";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import SignaturePad from "../../../components/SignaturePad";
 import API_BASE from "../../../config/api";
@@ -586,8 +587,17 @@ export default function MockRecallInput() {
 
   /* ====== UI ====== */
   return (
-    <div style={{ ...S.shell, direction: dir }}>
-      <div style={S.frame}>
+    <HaccpPage
+      lang={lang}
+      icon="🔁"
+      title={lang === "ar" ? "تمرين الاستدعاء الوهمي" : "Mock Recall Drill"}
+      sub={lang === "ar" ? "تتبّع المنتج للخلف وللأمام، مع التوقيت والنسبة المسترجعة." : "Trace the product backward and forward, with the timing and the recovered share."}
+      clause={lang === "ar" ? "البندان 8.3 و8.9" : "ISO 8.3 · 8.9"}
+      backTo="/haccp-iso/mock-recall/view"
+      backLabel={lang === "ar" ? "→ سجل التمارين" : "← Drill register"}
+      actions={<Btn onClick={() => navigate("/haccp-iso/mock-recall/settings")}>⚙ {lang === "ar" ? "الإعدادات" : "Settings"}</Btn>}
+    >
+      <div style={{ ...S.frame, maxWidth: "none", marginTop: 14, direction: dir }}>
         {/* Language toggle + edit indicator */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
           {editId ? (
@@ -1751,7 +1761,7 @@ export default function MockRecallInput() {
             : "No production dried meat records saved."}
         />
       </div>
-    </div>
+    </HaccpPage>
   );
 }
 

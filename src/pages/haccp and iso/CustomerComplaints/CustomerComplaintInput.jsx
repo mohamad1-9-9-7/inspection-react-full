@@ -3,6 +3,7 @@
 // Supports attachment upload (compressed images + PDFs) for complaint evidence.
 
 import React, { useEffect, useRef, useState } from "react";
+import { HaccpPage } from "../_shared/pageKit";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
@@ -329,19 +330,16 @@ export default function CustomerComplaintInput() {
   const busy = saving || processingImages || processingPdfs || numGenerating;
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("ccTitle")}</div>
-            <HaccpLinkBadge clauses={["7.4", "9.1.2"]} label={lang === "ar" ? "التواصل + التحليل" : "Communication + Analysis"} />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/customer-complaints/view")}>{t("past")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📞"
+      title={t("ccTitle")}
+      clause={lang === "ar" ? "البندان 7.4 و9.1.2" : "ISO 7.4 · 9.1.2"}
+      backTo="/haccp-iso/customer-complaints/view"
+      backLabel={lang === "ar" ? "→ سجل الشكاوى" : "← Complaints register"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         <div style={S.card}>
           <div style={S.sectionTitle}>{t("ccDetails")}</div>
@@ -635,6 +633,6 @@ export default function CustomerComplaintInput() {
           </button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

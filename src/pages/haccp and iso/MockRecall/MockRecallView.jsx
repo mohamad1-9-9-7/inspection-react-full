@@ -11,6 +11,7 @@ import AttachmentsSection from "./AttachmentsSection";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import MockRecallTrendReportModal from "./MockRecallTrendReport";
 import AutoTraceSummary from "./AutoTraceSummary";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 const TYPE = "mock_recall_drill";
 
@@ -168,34 +169,25 @@ export default function MockRecallView() {
 
   /* ====== Render ====== */
   return (
-    <div style={{ ...S.shell, direction: dir }}>
-      <div style={S.header}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 900 }}>
-            {t("viewTitle")}
-          </h1>
-          <div style={{ opacity: 0.85, marginTop: 4, fontSize: "0.92rem" }}>
-            {t("viewSubtitle")}
-          </div>
-          <HaccpLinkBadge clauses={["8.3", "8.9"]} label="Traceability + Withdrawal/Recall" />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <HaccpPage
+      lang={lang}
+      icon="🔁"
+      title={t("viewTitle")}
+      sub={t("viewSubtitle")}
+      clause={lang === "ar" ? "البندان 8.3 و8.9" : "ISO 8.3 · 8.9"}
+      actions={
+        <>
           <LangToggle lang={lang} toggle={toggle} />
-          <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso/mock-recall/settings")}>
-            {t("settings")}
-          </button>
-          <button style={S.btnSecondary} onClick={() => setTrendOpen(true)} disabled={!items.length}>
+          <Btn onClick={() => navigate("/haccp-iso/mock-recall/settings")}>{t("settings")}</Btn>
+          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>
             📈 {lang === "ar" ? "تحليل الاتجاهات" : "Trend Analysis"}
-          </button>
-          <button style={S.btnSecondary} onClick={load} disabled={loading}>
-            {loading ? t("refreshing") : t("refresh")}
-          </button>
-          <button style={S.btnPrimary} onClick={() => navigate("/haccp-iso/mock-recall")}>
-            {t("newDrill")}
-          </button>
-          <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso")}>{t("back")}</button>
-        </div>
-      </div>
+          </Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? t("refreshing") : t("refresh")}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/mock-recall")}>{t("newDrill")}</Btn>
+        </>
+      }
+    >
+      <div style={{ direction: dir, marginTop: 14 }}>
 
       {/* ===== KPI Dashboard ===== */}
       <div style={S.kpiRow}>
@@ -782,7 +774,8 @@ export default function MockRecallView() {
       {trendOpen && (
         <MockRecallTrendReportModal items={items} lang={lang} onClose={() => setTrendOpen(false)} />
       )}
-    </div>
+      </div>
+    </HaccpPage>
   );
 }
 

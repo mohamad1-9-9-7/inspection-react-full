@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import {
   SEVERITY_COLOR, STATUS_COLOR, TYPE_LABELS, TYPE_COLORS,
   safeDate, daysBetween,
@@ -353,28 +354,25 @@ export default function CustomerComplaintView() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        {/* Top bar */}
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("ccListTitle")}</div>
-            <div style={S.subtitle}>{isAr ? "تحليل الشكاوى وفق ISO 22000:2018 — البندان 7.4 و 9.1.2" : "Complaint analysis per ISO 22000:2018 — Clauses 7.4 & 9.1.2"}</div>
-            <HaccpLinkBadge clauses={["7.4", "9.1.2"]} label={isAr ? "التواصل + التحليل" : "Communication + Analysis"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</button>
-            <button style={S.btn("ghost")} onClick={exportCSV} disabled={!filtered.length} title={isAr ? "تصدير CSV" : "Export CSV"}>📊 CSV</button>
-            <button style={S.btn("ghost")} onClick={exportJSON} disabled={!filtered.length} title={isAr ? "تصدير JSON" : "Export JSON"}>📄 JSON</button>
-            <button style={S.btn("ghost")} onClick={printAll} disabled={!filtered.length} title={isAr ? "طباعة" : "Print"}>🖨 {isAr ? "طباعة" : "Print"}</button>
-            <button style={S.btn("success")} onClick={() => setTrendOpen(true)} disabled={!items.length} title={isAr ? "تقرير تحليل الاتجاهات" : "Trend Analysis Report"}>
-              📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}
-            </button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/customer-complaints")}>{t("new")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📞"
+      title={t("ccListTitle")}
+      sub={isAr ? "تسجيل الشكاوى وتحليلها: السبب الجذري والإجراء التصحيحي والاتجاهات." : "Complaints logged and analysed: root cause, corrective action and trends."}
+      clause={isAr ? "البندان 7.4 و9.1.2" : "ISO 7.4 · 9.1.2"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</Btn>
+          <Btn onClick={exportCSV} disabled={!filtered.length}>⬇ Excel (CSV)</Btn>
+          <Btn onClick={exportJSON} disabled={!filtered.length} title={isAr ? "تصدير JSON" : "Export JSON"}>📄 JSON</Btn>
+          <Btn onClick={printAll} disabled={!filtered.length}>🖨 {isAr ? "طباعة" : "Print"}</Btn>
+          <Btn onClick={() => setTrendOpen(true)} disabled={!items.length}>📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/customer-complaints")}>{t("new")}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         {/* KPIs */}
         <div style={S.kpiGrid}>
@@ -636,6 +634,6 @@ export default function CustomerComplaintView() {
           }
         `}</style>
       )}
-    </main>
+    </HaccpPage>
   );
 }

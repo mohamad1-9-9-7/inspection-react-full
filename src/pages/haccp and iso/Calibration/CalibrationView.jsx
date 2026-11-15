@@ -7,6 +7,7 @@
 // `#root * { font-size }` with !important and kills every inline fontSize.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
@@ -517,29 +518,25 @@ export default function CalibrationView() {
   }
 
   return (
-    <main className="cv" style={{ direction: dir }}>
+    <HaccpPage
+      lang={lang}
+      raw
+      icon="📐"
+      title={L("المعايرة — الشهادات الخارجية", "Calibration — External Certificates")}
+      sub={L("الأجهزة المعايَرة لدى جهة معتمدة: المعايرة السنوية ومواعيد الاستحقاق.", "Equipment calibrated by an accredited external lab: annual calibration and due dates.")}
+      clause={L("البند 8.7", "ISO 8.7")}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => navigate("/haccp-iso/internal-calibration/view")}>🧊 {L("الفحص الداخلي", "In-house checks")}</Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : "↻"} {L("تحديث", "Refresh")}</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/calibration")}>＋ {L("جهاز جديد", "New record")}</Btn>
+        </>
+      }
+    >
+      <div className="cv" style={{ direction: dir, minHeight: 0, padding: 0, background: "none", marginTop: 14 }}>
       <style>{CV_CSS}</style>
       <div className="cv-wrap">
-        <header className="cv-head">
-          <div>
-            <div className="cv-title fs-xl">{t("calibListTitle")}</div>
-            <div className="cv-sub fs-sm">
-              {L("سجل الأجهزة المعايرة خارجياً لدى جهة معتمدة — المعايرة السنوية ومواعيد الاستحقاق",
-                 "Equipment calibrated by an accredited external lab — annual calibration and due dates")}
-            </div>
-            <HaccpLinkBadge clauses={["8.7"]} label={L("ضبط المراقبة والقياس", "Control of Monitoring & Measuring")} />
-          </div>
-          <div className="cv-actions">
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button type="button" className="cv-btn" onClick={load} disabled={loading}>
-              {loading ? "⏳" : "↻"} {L("تحديث", "Refresh")}
-            </button>
-            <button type="button" className="cv-btn pri" onClick={() => navigate("/haccp-iso/calibration")}>
-              ＋ {L("جهاز جديد", "New record")}
-            </button>
-            <button type="button" className="cv-btn" onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </header>
 
         {loadError && (
           <div className="cv-note">
@@ -672,7 +669,8 @@ export default function CalibrationView() {
           onClose={closePreview}
         />
       )}
-    </main>
+      </div>
+    </HaccpPage>
   );
 }
 

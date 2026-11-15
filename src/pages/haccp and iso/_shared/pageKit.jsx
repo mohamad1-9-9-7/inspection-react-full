@@ -23,13 +23,21 @@ import { HUB_CSS, fs } from "../../dashboard/hubCss";
    Their styles are inline objects, and globals.css flattens every inline
    font-size to 14px. Inside the kit's frame each inline size is given back
    (and follows the Aa slider), with a floor of 12.5px so nothing is tiny.
-   A page written with the kit's own classes never needs this. */
+   A page written with the kit's own classes never needs this. A page that
+   lays out a printed document (the HACCP manual and its PDF export) passes
+   `raw` to HaccpPage and keeps its sizes exactly as they are. */
 const LEGACY_SIZES = (() => {
   let css = "";
   for (let v = 8; v <= 64; v += 0.5) {
     const shown = Math.max(v, 12.5);
-    css += `#root .ndx.ndx [style*="font-size: ${v}px"]{font-size:calc(${shown}px * var(--app-fs, 1)) !important}
+    css += `#root .ndx.ndx:not(.pgk-raw) [style*="font-size: ${v}px"]{font-size:calc(${shown}px * var(--app-fs, 1)) !important}
 `;
+  }
+  // rem sizes ("0.92rem") are flattened by the same global rule
+  for (let i = 60; i <= 300; i += 1) {
+    const rem = String(i / 100); // 0.9, 0.92, 1, 1.5 — the way React writes them
+    const shown = Math.max(i * 0.16, 12.5);
+    css += `#root .ndx.ndx:not(.pgk-raw) [style*="font-size: ${rem}rem"]{font-size:calc(${shown}px * var(--app-fs, 1)) !important}\n`;
   }
   return css;
 })();
@@ -173,11 +181,11 @@ textarea.pgk-in { min-height:84px; resize:vertical; line-height:1.55; }
  * The page frame. `clause` = the ISO clause shown beside the title ("ISO 4.2").
  * `actions` = buttons on the header's right. The "← Hub" button is built in.
  */
-export function HaccpPage({ lang = "en", icon, title, sub, clause, actions, backTo = "/haccp-iso", backLabel, children }) {
+export function HaccpPage({ lang = "en", icon, title, sub, clause, actions, backTo = "/haccp-iso", backLabel, raw, children }) {
   const navigate = useNavigate();
   const ar = lang === "ar";
   return (
-    <main className="ndx ndx" dir={ar ? "rtl" : "ltr"} lang={lang}>
+    <main className={`ndx ndx${raw ? " pgk-raw" : ""}`} dir={ar ? "rtl" : "ltr"} lang={lang}>
       <style>{HUB_CSS}</style>
       <style>{PAGE_CSS}</style>
       <header className="ndx-hero pgk-hero">

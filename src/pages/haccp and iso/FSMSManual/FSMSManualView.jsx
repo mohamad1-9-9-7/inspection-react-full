@@ -19,6 +19,7 @@ import { FSMS_HACCP_SECTIONS } from "./fsmsHaccp";
 import ProcessFlowGallery from "./ProcessFlowDiagram";
 import { sopsData } from "../SOP/sopData";
 import { useLang, LangToggle } from "./i18n";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 
 /* Combined sections (clauses + HACCP-related) */
 const ALL_SECTIONS = [...FSMS_SECTIONS, ...FSMS_HACCP_SECTIONS];
@@ -1609,7 +1610,28 @@ export default function FSMSManualView() {
   }
 
   return (
-    <main style={{ ...shellStyle, direction: dir }}>
+    <HaccpPage
+      lang={lang}
+      raw
+      icon="📕"
+      title={t("pageTitle")}
+      sub={t("pageSubtitle")}
+      actions={
+        <>
+          {savingState === "saving" && <span className="pgk-pill blue">{t("saving")}</span>}
+          {savingState === "saved" && <span className="pgk-pill green">{t("saved")}</span>}
+          {savingState === "error" && <span className="pgk-pill red">{t("saveError")}</span>}
+          <LangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => window.print()}>{t("print")}</Btn>
+          <Btn onClick={() => exportPdf("section")} disabled={!!exporting}>
+            {exporting === "section" ? "Exporting..." : "PDF section"}
+          </Btn>
+          <Btn kind="primary" onClick={() => exportPdf("all")} disabled={!!exporting}>
+            {exporting === "all" ? "Exporting..." : "Full PDF"}
+          </Btn>
+        </>
+      }
+    >
       <style>{`
         @media (max-width: 980px) {
           .fsms-manual-layout {
@@ -1628,45 +1650,8 @@ export default function FSMSManualView() {
           }
         }
       `}</style>
-      <div style={layoutStyle}>
-        {/* Top bar */}
-        <div style={topBarStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img
-              src={mawashiLogo}
-              alt="Al Mawashi Logo"
-              style={{ width: 58, height: 58, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,.5)", background: "#fff" }}
-            />
-            <div>
-              <div style={titleStyle}>{t("pageTitle")}</div>
-              <div style={subStyle}>{t("pageSubtitle")}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {savingState === "saving" && (
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#ccfbf1" }}>{t("saving")}</span>
-            )}
-            {savingState === "saved" && (
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#15803d" }}>{t("saved")}</span>
-            )}
-            {savingState === "error" && (
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c" }}>{t("saveError")}</span>
-            )}
-            <LangToggle lang={lang} toggle={toggle} />
-            <button style={btnStyle("secondary")} onClick={() => window.print()}>
-              {t("print")}
-            </button>
-            <button style={btnStyle("success")} onClick={() => exportPdf("section")} disabled={!!exporting}>
-              {exporting === "section" ? "Exporting..." : "PDF section"}
-            </button>
-            <button style={btnStyle("primary")} onClick={() => exportPdf("all")} disabled={!!exporting}>
-              {exporting === "all" ? "Exporting..." : "Full PDF"}
-            </button>
-            <button style={btnStyle("secondary")} onClick={() => navigate("/haccp-iso")}>
-              {t("backToHub")}
-            </button>
-          </div>
-        </div>
+      <div style={{ ...shellStyle, minHeight: 0, background: "none", direction: dir, marginTop: 14 }}>
+        {/* the header above replaces the old top bar */}
 
         {/* Doc meta strip */}
         <MetaBox t={t} />
@@ -1723,6 +1708,6 @@ export default function FSMSManualView() {
           exportRootRef={exportRootRef}
         />
       )}
-    </main>
+    </HaccpPage>
   );
 }

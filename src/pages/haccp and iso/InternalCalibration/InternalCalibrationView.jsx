@@ -2,6 +2,7 @@
 // Internal Calibration — List view with KPIs, filters per branch, and CSV export.
 
 import React, { useEffect, useMemo, useState } from "react";
+import { HaccpPage, Btn } from "../_shared/pageKit";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
@@ -215,22 +216,23 @@ export default function InternalCalibrationView() {
   }
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{isAr ? "🌡 سجل المعايرة الداخلية" : "🌡 Internal Calibration Log"}</div>
-            <div style={S.subtitle}>{isAr ? "كل الفروع — ice-point / boiling / master-probe" : "All branches — ice-point / boiling / master-probe"}</div>
-            <HaccpLinkBadge clauses={["8.7"]} label={isAr ? "معايرة المراقبة والقياس (داخلية)" : "Monitoring & Measurement (Internal)"} />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "⏳" : (isAr ? "تحديث" : "Refresh")}</button>
-            <button style={S.btn("ghost")} onClick={exportCSV} disabled={!filtered.length}>📊 CSV</button>
-            <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/internal-calibration")}>{isAr ? "+ سجل جديد" : "+ New record"}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{isAr ? "← الرئيسية" : "← Hub"}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="🧊"
+      title={isAr ? "المعايرة — الفحص الداخلي" : "Calibration — In-house Checks"}
+      sub={isAr ? "تحقق موظفينا من المجسّات في كل الفروع: نقطة التجمد، نقطة الغليان، المجسّ المرجعي." : "Our own staff verifying probes in every branch: ice point, boiling point, master probe."}
+      clause={isAr ? "البند 8.7" : "ISO 8.7"}
+      actions={
+        <>
+          <HaccpLangToggle lang={lang} toggle={toggle} />
+          <Btn onClick={() => navigate("/haccp-iso/calibration/view")}>📐 {isAr ? "الشهادات الخارجية" : "External certificates"}</Btn>
+          <Btn onClick={load} disabled={loading}>{loading ? "⏳" : (isAr ? "↻ تحديث" : "↻ Refresh")}</Btn>
+          <Btn onClick={exportCSV} disabled={!filtered.length}>⬇ Excel (CSV)</Btn>
+          <Btn kind="primary" onClick={() => navigate("/haccp-iso/internal-calibration")}>{isAr ? "+ سجل جديد" : "+ New record"}</Btn>
+        </>
+      }
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         {/* KPIs */}
         <div style={S.kpiGrid}>
@@ -380,6 +382,6 @@ export default function InternalCalibrationView() {
           </div>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }

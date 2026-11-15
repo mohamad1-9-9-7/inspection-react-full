@@ -2,6 +2,7 @@
 // Calibration Log — Input form (HACCP Clause 8.7)
 
 import React, { useEffect, useMemo, useState } from "react";
+import { HaccpPage } from "../_shared/pageKit";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
@@ -274,19 +275,16 @@ export default function CalibrationInput() {
   const busy = saving || uploading || editLoad !== "ok";
 
   return (
-    <main style={{ ...S.shell, direction: dir }}>
-      <div style={S.layout}>
-        <div style={S.topbar}>
-          <div>
-            <div style={S.title}>{t("calibTitle")}</div>
-            <HaccpLinkBadge clauses={["8.7"]} label={lang === "ar" ? "ضبط المراقبة والقياس" : "Control of Monitoring & Measuring"} />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <HaccpLangToggle lang={lang} toggle={toggle} />
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso/calibration/view")}>{t("past")}</button>
-            <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
-          </div>
-        </div>
+    <HaccpPage
+      lang={lang}
+      icon="📐"
+      title={t("calibTitle")}
+      clause={lang === "ar" ? "البند 8.7" : "ISO 8.7"}
+      backTo="/haccp-iso/calibration/view"
+      backLabel={lang === "ar" ? "→ سجل المعايرة" : "← Calibration register"}
+      actions={<HaccpLangToggle lang={lang} toggle={toggle} />}
+    >
+      <div style={{ ...S.layout, marginTop: 14 }}>
 
         {editLoad !== "ok" && (
           <div style={{ ...S.card, background: editLoad === "error" ? "#fef2f2" : "#eff6ff", borderColor: editLoad === "error" ? "#fecaca" : "#bfdbfe", fontWeight: 800, color: editLoad === "error" ? "#b91c1c" : "#1d4ed8" }}>
@@ -444,6 +442,6 @@ export default function CalibrationInput() {
           </button>
         </div>
       </div>
-    </main>
+    </HaccpPage>
   );
 }
