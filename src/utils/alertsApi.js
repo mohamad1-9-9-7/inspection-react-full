@@ -26,11 +26,20 @@ async function call(path, { method = "GET", body } = {}) {
   }
   return json;
 }
-const changed = () => { try { window.dispatchEvent(new Event(ALERTS_EVENT)); } catch { /* non-browser */ } };
+let openMemo = null; // { at, promise } — the bell and the home dashboard share one read
+const changed = () => { openMemo = null; try { window.dispatchEvent(new Event(ALERTS_EVENT)); } catch { /* non-browser */ } };
 
 /** status: "open" | "ack" | "resolved" | "active" | "all" */
 export const fetchAlerts = (status = "open", limit = 100) =>
   call(`?status=${encodeURIComponent(status)}&limit=${limit}`).then((j) => j.data || []);
+/** Open alerts the account may see — one request shared by every caller for 30 s. */
+export function fetchOpenAlertsShared() {
+  if (openMemo && Date.now() - openMemo.at < 30_000) return openMemo.promise;
+  const promise = fetchAlerts("open", 100).then((rows) => rows.filter(alertVisible));
+  openMemo = { at: Date.now(), promise };
+  promise.catch(() => { if (openMemo && openMemo.promise === promise) openMemo = null; });
+  return promise;
+}
 export const fetchAlertCount = () => call("/count");
 export const ackAlert = (id, note = "") => call(`/${encodeURIComponent(id)}/ack`, { method: "POST", body: { note } }).then((j) => { changed(); return j; });
 export const ackAllAlerts = () => call("/ack-all", { method: "POST", body: {} }).then((j) => { changed(); return j; });

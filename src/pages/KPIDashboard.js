@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../config/api";
 import { BRANCHES as CATALOG_BRANCHES } from "./settings/reportTypeCatalog";
+import { DAILY_LOG_BRANCHES } from "../utils/dailyLogs";
 import { defsFromPayload, inRange as tempInRange } from "./monitor/branches/qcs/coolerDefs";
 
 /* ============================================================
@@ -23,17 +24,7 @@ import { defsFromPayload, inRange as tempInRange } from "./monitor/branches/qcs/
 ============================================================ */
 const KIND_LABEL = { temp: "الحرارة", hyg: "النظافة الشخصية", clean: "النظافة اليومية" };
 
-const DAILY_LOGS = [
-  { id: "QCS",        types: [["qcs-coolers", "temp"], ["qcs-ph", "hyg"], ["qcs-clean", "clean"]] },
-  { id: "POS6",       types: [["pos6_coolers_temperature", "temp"], ["pos6_personal_hygiene", "hyg"], ["pos6_cleaning_checklist", "clean"]] },
-  { id: "POS10",      types: [["pos10_temperature", "temp"], ["pos10_personal_hygiene", "hyg"], ["pos10_daily_cleanliness", "clean"]] },
-  { id: "POS11",      types: [["pos11_temperature", "temp"], ["pos11_personal_hygiene", "hyg"], ["pos11_daily_cleanliness", "clean"]] },
-  { id: "POS15",      types: [["pos15_temperature", "temp"], ["pos15_personal_hygiene", "hyg"], ["pos15_daily_cleanliness", "clean"]] },
-  { id: "POS19",      types: [["pos19_temperature_monitoring", "temp"], ["pos19_personal_hygiene", "hyg"], ["pos19_daily_cleaning", "clean"]] },
-  { id: "PRODUCTION", types: [["prod_personal_hygiene", "hyg"], ["prod_cleaning_checklist", "clean"]] },
-  { id: "FTR1",       types: [["ftr1_temperature", "temp"], ["ftr1_personal_hygiene", "hyg"], ["ftr1_daily_cleanliness", "clean"]] },
-  { id: "FTR2",       types: [["ftr2_temperature", "temp"], ["ftr2_personal_hygiene", "hyg"], ["ftr2_daily_cleanliness", "clean"]] },
-].map((b) => {
+const DAILY_LOGS = DAILY_LOG_BRANCHES.map((b) => {
   const cat = CATALOG_BRANCHES.find((c) => c.id === b.id) || {};
   return { ...b, name: cat.label || b.id, accent: cat.accent || "#2563eb" };
 });

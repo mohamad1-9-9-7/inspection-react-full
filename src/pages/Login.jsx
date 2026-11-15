@@ -366,6 +366,8 @@ function Login() {
             loginAt: Date.now(),
             // The account's own interface language (utils/appLang.js).
             uiLang: data.user.uiLang || null,
+            // The account's dashboard pins + recently opened (pages/dashboard/dashboardPrefs.js).
+            uiPrefs: data.user.uiPrefs || null,
           })
         );
         applyAccountLang();

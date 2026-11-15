@@ -13,7 +13,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getCurrentUser } from "../utils/perms";
 import { getAppLang, onAppLang, isUnifiedLang } from "../utils/appLang";
-import { fetchAlerts, ackAlert, alertVisible, ALERTS_EVENT, SEVERITY } from "../utils/alertsApi";
+import { fetchOpenAlertsShared, ackAlert, ALERTS_EVENT, SEVERITY } from "../utils/alertsApi";
 
 const PUBLIC_PAGES = ["/", "/demo", "/readiness", "/subscription-expired"];
 const PUBLIC_PREFIXES = [
@@ -62,7 +62,7 @@ export default function AlertsBell() {
     if (document.hidden || !(getCurrentUser() || {}).loginAt) return;
     lastLoad.current = Date.now();
     try {
-      setList((await fetchAlerts("open", 100)).filter(alertVisible));
+      setList(await fetchOpenAlertsShared());
     } catch {
       /* the bell stays as it was; the Alerts page shows read errors */
     }
