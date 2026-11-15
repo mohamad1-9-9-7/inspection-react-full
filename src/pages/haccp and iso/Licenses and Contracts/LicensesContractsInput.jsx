@@ -13,9 +13,9 @@ import API_BASE from "../../../config/api";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
 import {
   TYPE, safeArr, getId, isImageUrl, isPdfUrl, displayUrl, todayYmd, addPeriod, fmtDate,
-  STATUS, statusOf, mkEvent, newUid, BRANCHES, LICENSE_NAMES, CONTRACT_TYPES,
+  STATUS, statusOf, mkEvent, newUid, BRANCHES, LICENSE_NAMES, CONTRACT_TYPES, hasAny, ensureUids, diffPayloads,
 } from "./licensesKit";
-import { uploadPicked } from "./licensesNet";
+import { uploadPicked, writeRecord } from "./licensesNet";
 
 const T = {
   en: {
@@ -37,6 +37,10 @@ const T = {
     missingWarn: (n) => `${n} checklist item(s) still missing. Save anyway?`,
     savedTitle: "Saved ✓", savedText: "The entry is in the register now.", newEntry: "+ New entry", openReg: "Open in register",
     saveFail: "Save failed: ", empty: "No contracts yet — use the quick-add chips above.",
+    what: "What are you adding?", mContract: "📄 Contract only", mLicense: "🪪 License only", mBoth: "Both",
+    mergeNote: (b) => `${b} already has a record — what you add here goes into it (nothing else is touched).`,
+    replaceLic: (n) => `This branch already has a license (${n}). Replace it with the new one?`,
+    savedMerged: "Added to the branch's existing record.",
   },
   ar: {
     title: "إدخال جديد — الرخص والعقود", sub: "المواشي — الرخص والعقود",
@@ -57,6 +61,10 @@ const T = {
     missingWarn: (n) => `${n} بند ناقص في قائمة الاكتمال. الحفظ على أي حال؟`,
     savedTitle: "تم الحفظ ✓", savedText: "الإدخال موجود الآن في السجل.", newEntry: "+ إدخال جديد", openReg: "فتح في السجل",
     saveFail: "فشل الحفظ: ", empty: "لا توجد عقود بعد — استخدم أزرار الإضافة السريعة أعلاه.",
+    what: "ماذا تريد أن تضيف؟", mContract: "📄 عقد فقط", mLicense: "🪪 رخصة فقط", mBoth: "الاثنين",
+    mergeNote: (b) => `${b} لديه سجل مسبقاً — ما تضيفه هنا يُضاف إليه (بدون المساس بالباقي).`,
+    replaceLic: (n) => `هذا الفرع لديه رخصة مسبقاً (${n}). استبدالها بالرخصة الجديدة؟`,
+    savedMerged: "تمت الإضافة إلى سجل الفرع الحالي.",
   },
 };
 
@@ -173,7 +181,11 @@ export default function LicensesContractsInput() {
 
   const [branch, setBranch] = useState(BRANCHES[0]);
   const [license, setLicense] = useState(mkLicense);
-  const [contracts, setContracts] = useState(() => [mkContract("Pest Control")]);
+  const [contracts, setContracts] = useState(() => [mkContract()]);
+  const [mode, setMode] = useState("contract"); // contract | license | both
+  const showLic = mode !== "contract";
+  const showCon = mode !== "license";
+  const [merged, setMerged] = useState(false);
   const [existing, setExisting] = useState([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState({ key: "", text: "" });
@@ -204,7 +216,10 @@ export default function LicensesContractsInput() {
     return { lic: [...lic], types: [...types], cos: [...cos].sort(), branches: [...brs] };
   }, [existing]);
 
-  const sameBranch = existing.filter((r) => String(r?.payload?.branch || "").trim() === branch);
+  const sameBranch = existing
+    .filter((r) => String(r?.payload?.branch || "").trim() === branch)
+    .sort((a, b) => (Number(b?.payload?.savedAt) || 0) - (Number(a?.payload?.savedAt) || 0));
+  const target = sameBranch[0] || null; // new items are merged into the branch's newest record
   const copySources = useMemo(() => {
     const m = new Map();
     existing.forEach((r) => {
@@ -245,47 +260,69 @@ export default function LicensesContractsInput() {
 
   /* checklist */
   const checks = useMemo(() => {
-    const out = [
-      { ok: filled(branch), label: t.cBranch },
+    const out = [{ ok: filled(branch), label: t.cBranch }];
+    if (showLic) out.push(
       { ok: filled(license.name), label: t.cLicName },
       { ok: filled(license.expiryDate), label: t.cLicExp },
       { ok: license.fileUrls.length > 0, label: t.cLicDoc },
-    ];
-    contracts.forEach((c, i) => {
+    );
+    (showCon ? contracts : []).forEach((c, i) => {
       out.push({ ok: filled(c.contractType) && filled(c.companyName) && filled(c.expiryDate), label: t.cConRow(i + 1) });
       out.push({ ok: c.fileUrls.length > 0, label: t.cConDoc(i + 1) });
     });
     return out;
-  }, [branch, license, contracts, t]);
+  }, [branch, license, contracts, t, showLic, showCon]);
   const doneN = checks.filter((c) => c.ok).length;
   const pct = Math.round((doneN / checks.length) * 100);
-  const canSave = hasData(license) || contracts.some(hasData);
-  const totalFiles = license.fileUrls.length + contracts.reduce((n, c) => n + c.fileUrls.length, 0);
+  const licOut = showLic && hasData(license);
+  const consOut = showCon ? contracts.filter(hasData) : [];
+  const canSave = licOut || consOut.length > 0;
+  const totalFiles = (showLic ? license.fileUrls.length : 0) + (showCon ? contracts.reduce((n, c) => n + c.fileUrls.length, 0) : 0);
 
   async function handleSave() {
     if (!canSave) return alert(t.nothing);
     const missing = checks.length - doneN;
     if (missing && !window.confirm(t.missingWarn(missing))) return;
-    const cons = contracts.filter(hasData).map((c) => ({ ...c, fileUrl: c.fileUrls[0] || "", fileName: c.fileNames[0] || "" }));
-    const payload = {
-      branch,
-      license: { ...license, fileUrl: license.fileUrls[0] || "", fileName: license.fileNames[0] || "" },
-      contracts: cons,
-      savedAt: Date.now(),
-      history: [mkEvent("created", { kind: "record", uid: "record", label: license.name || branch }, {
-        note: `${filled(license.name) ? "1 license" : "no license"}, ${cons.length} contract(s)`,
-      })],
-    };
+    const cons = consOut.map((c) => ({ ...c, fileUrl: c.fileUrls[0] || "", fileName: c.fileNames[0] || "" }));
+    const lic = licOut ? { ...license, fileUrl: license.fileUrls[0] || "", fileName: license.fileNames[0] || "" } : null;
     try {
       setSaving(true);
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ reporter: "haccp-iso", type: TYPE, payload }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = await res.json().catch(() => ({}));
-      setSavedId(getId(j?.report || j) || "ok");
+      if (target && getId(target)) {
+        // merge into the branch's existing record — only what was added here changes
+        const old = target.payload || {};
+        const oldLic = old.license || {};
+        if (lic && hasAny(oldLic) && !window.confirm(t.replaceLic(oldLic.name || "—"))) { setSaving(false); return; }
+        const next = ensureUids({
+          ...old,
+          branch,
+          license: lic || oldLic,
+          contracts: [...safeArr(old.contracts), ...cons],
+          savedAt: Date.now(),
+        });
+        next.history = [...safeArr(old.history), ...diffPayloads(old, next)];
+        await writeRecord(getId(target), next);
+        setMerged(true);
+        setSavedId(getId(target));
+      } else {
+        const payload = {
+          branch,
+          license: lic || mkLicense(),
+          contracts: cons,
+          savedAt: Date.now(),
+          history: [mkEvent("created", { kind: "record", uid: "record", label: (lic && lic.name) || branch }, {
+            note: `${lic ? "1 license" : "no license"}, ${cons.length} contract(s)`,
+          })],
+        };
+        const res = await fetch(`${API_BASE}/api/reports`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ reporter: "haccp-iso", type: TYPE, payload }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const j = await res.json().catch(() => ({}));
+        setMerged(false);
+        setSavedId(getId(j?.report || j) || "ok");
+      }
     } catch (e) {
       alert(t.saveFail + (e?.message || e));
     } finally {
@@ -296,7 +333,8 @@ export default function LicensesContractsInput() {
   function resetForm(ask = true) {
     if (ask && !window.confirm(t.confirmReset)) return;
     setLicense(mkLicense());
-    setContracts([mkContract("Pest Control")]);
+    setContracts([mkContract()]);
+    setMerged(false);
     setSavedId(null);
   }
 
@@ -324,7 +362,7 @@ export default function LicensesContractsInput() {
         <div style={{ ...S.card, textAlign: "center", maxWidth: 460, padding: 30 }}>
           <div style={{ fontSize: 46 }}>✅</div>
           <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{t.savedTitle}</div>
-          <div style={{ color: C.sub, fontWeight: 700, marginTop: 6 }}>{branch} — {t.savedText}</div>
+          <div style={{ color: C.sub, fontWeight: 700, marginTop: 6 }}>{branch} — {merged ? t.savedMerged : t.savedText}</div>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 18, flexWrap: "wrap" }}>
             <button style={btn(C.brand)} onClick={() => navigate("/haccp-iso/licenses-contracts/view")}>{t.openReg}</button>
             <button style={ghost} onClick={() => resetForm(false)}>{t.newEntry}</button>
@@ -353,16 +391,22 @@ export default function LicensesContractsInput() {
                 <button key={b} type="button" style={chip(b === branch)} onClick={() => setBranch(b)}>{b}</button>
               ))}
             </div>
-            {sameBranch.length > 0 && (
-              <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span>⚠ {t.existing(sameBranch.length)}</span>
+            <label style={{ ...S.label, marginTop: 14 }}>{t.what}</label>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[["contract", t.mContract], ["license", t.mLicense], ["both", t.mBoth]].map(([k, l]) => (
+                <button key={k} type="button" style={{ ...chip(mode === k), fontSize: 13, padding: "8px 14px" }} onClick={() => setMode(k)}>{l}</button>
+              ))}
+            </div>
+            {target && (
+              <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span>ℹ {t.mergeNote(branch)}</span>
                 <button type="button" style={mini} onClick={() => navigate("/haccp-iso/licenses-contracts/view")}>{t.openExisting} ↗</button>
               </div>
             )}
           </div>
 
           {/* license */}
-          <div style={S.card}>
+          {showLic && <div style={S.card}>
             <h2 style={{ ...S.h2, marginBottom: 14 }}>{t.license}</h2>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 14 }}>
               <div>
@@ -383,10 +427,10 @@ export default function LicensesContractsInput() {
                 onFiles={(fl) => addFiles("license", fl, license, (u, n) => setLicense((p) => ({ ...p, fileUrls: u, fileNames: n })))}
                 onRemove={(i) => setLicense((p) => ({ ...p, fileUrls: p.fileUrls.filter((_, j) => j !== i), fileNames: p.fileNames.filter((_, j) => j !== i) }))} />
             </div>
-          </div>
+          </div>}
 
           {/* contracts */}
-          <div style={S.card}>
+          {showCon && <div style={S.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
               <h2 style={S.h2}>{t.contracts} ({contracts.length})</h2>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -449,7 +493,7 @@ export default function LicensesContractsInput() {
                 );
               })}
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* side panel */}
@@ -476,8 +520,8 @@ export default function LicensesContractsInput() {
             <b style={{ fontSize: 14 }}>{t.summary}</b>
             <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13, fontWeight: 700 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.branch}</span><span>{branch}</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>{t.sLicense}</span><span>{license.name || "—"}{license.expiryDate ? ` · ${fmtDate(license.expiryDate, lang)}` : ""}</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.sContracts}</span><span>{contracts.filter(hasData).length}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>{t.sLicense}</span><span>{(showLic && license.name) || "—"}{showLic && license.expiryDate ? ` · ${fmtDate(license.expiryDate, lang)}` : ""}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.sContracts}</span><span>{consOut.length}</span></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.sFiles}</span><span>{totalFiles}</span></div>
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
