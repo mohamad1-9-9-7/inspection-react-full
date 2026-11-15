@@ -347,6 +347,7 @@ export const BRANCHES = [
       ["product_details",                 "Product Details & Specifications",   "Product & Kitchen"],
       ["kitchen_menu_nutrition_item",     "Kitchen Menu Calories & Nutrition",  "Product & Kitchen"],
       ["licenses_contracts",              "Licenses & Contracts",               "Licenses & Legal"],
+      ["licenses_branches_config",        "Licenses — Branch List (config)",    "Licenses & Legal"],
       ["branch_certificates",             "Branch Certificates (SGS ISO/HACCP)", "Licenses & Legal"],
       ["legal_register",                  "Legal Register",                     "Licenses & Legal"],
       ["municipality_inspection",         "Dubai Municipality Inspection",      "Licenses & Legal"],

@@ -16,12 +16,15 @@ import {
   STATUS, statusOf, mkEvent, newUid, BRANCHES, LICENSE_NAMES, CONTRACT_TYPES, CORE_LICENSES, hasAny, ensureUids, diffPayloads,
 } from "./licensesKit";
 import { uploadPicked, writeRecord } from "./licensesNet";
+import BranchManager from "./BranchManager";
+import { useLicenseBranches } from "./licensesBranches";
+import { canEdit } from "../../../utils/perms";
 
 const T = {
   en: {
     title: "New Licenses & Contracts Entry", sub: "AL MAWASHI — Licenses & Contracts",
     back: "← Hub", register: "📜 Open register", save: "✓ Save entry", saving: "Saving…",
-    branch: "Branch", existing: (n) => `This branch already has ${n} record(s) in the register.`, openExisting: "Open it",
+    manageBranches: "⚙ Manage branches", branchesSaved: "Branches saved.", branch: "Branch", existing: (n) => `This branch already has ${n} record(s) in the register.`, openExisting: "Open it",
     license: "🪪 Licenses", licName: "License name", licNamePh: "e.g. Trade License", addOtherLic: "+ Other license",
     licHint: "Fill the ones you have now — an empty license is skipped.", cLic: (n) => `${n}: expiry date`, cLicDocN: (n) => `${n}: document`,
     cAnyLic: "At least one license filled",
@@ -47,7 +50,7 @@ const T = {
   ar: {
     title: "إدخال جديد — الرخص والعقود", sub: "المواشي — الرخص والعقود",
     back: "→ الرئيسية", register: "📜 فتح السجل", save: "✓ حفظ الإدخال", saving: "جارٍ الحفظ…",
-    branch: "الفرع", existing: (n) => `هذا الفرع لديه ${n} سجل في السجل مسبقاً.`, openExisting: "فتحه",
+    manageBranches: "⚙ إدارة الفروع", branchesSaved: "تم حفظ الفروع.", branch: "الفرع", existing: (n) => `هذا الفرع لديه ${n} سجل في السجل مسبقاً.`, openExisting: "فتحه",
     license: "🪪 الرخص", licName: "اسم الرخصة", licNamePh: "مثال: رخصة تجارية", addOtherLic: "+ رخصة أخرى",
     licHint: "عبّئ الموجود عندك الآن — الرخصة الفارغة لا تُحفظ.", cLic: (n) => `${n}: تاريخ الانتهاء`, cLicDocN: (n) => `${n}: المستند`,
     cAnyLic: "رخصة واحدة على الأقل معبأة",
@@ -188,6 +191,9 @@ export default function LicensesContractsInput() {
   const dir = lang === "ar" ? "rtl" : "ltr";
 
   const [params] = useSearchParams();
+  const { branches: branchCfg, names: branchNames, save: saveBranchList } = useLicenseBranches();
+  const [branchMgr, setBranchMgr] = useState(false);
+  const mayManage = canEdit("iso");
   const [branch, setBranch] = useState(() => String(params.get("branch") || "").trim() || BRANCHES[0]);
   const [licenses, setLicenses] = useState(() => CORE_LICENSES.map(mkLicense));
   const setL = (uid, patch) => setLicenses((p) => p.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
@@ -213,10 +219,9 @@ export default function LicensesContractsInput() {
 
   /* suggestions from earlier records */
   const sugg = useMemo(() => {
-    const lic = new Set(LICENSE_NAMES); const types = new Set(CONTRACT_TYPES); const cos = new Set(); const brs = new Set([...BRANCHES, branch]);
+    const lic = new Set(LICENSE_NAMES); const types = new Set(CONTRACT_TYPES); const cos = new Set(); const brs = new Set([...branchNames, branch]);
     existing.forEach((r) => {
       const p = r?.payload || {};
-      if (filled(p.branch)) brs.add(String(p.branch).trim());
       if (filled(p.license?.name)) lic.add(String(p.license.name).trim());
       safeArr(p.licenses).forEach((l) => { if (filled(l?.name)) lic.add(String(l.name).trim()); });
       safeArr(p.contracts).forEach((c) => {
@@ -225,7 +230,7 @@ export default function LicensesContractsInput() {
       });
     });
     return { lic: [...lic], types: [...types], cos: [...cos].sort(), branches: [...brs] };
-  }, [existing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existing, branchNames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sameBranch = existing
     .filter((r) => String(r?.payload?.branch || "").trim() === branch)
@@ -412,7 +417,18 @@ export default function LicensesContractsInput() {
         <div style={{ display: "grid", gap: 14 }}>
           {/* branch */}
           <div style={S.card}>
-            <label style={S.label}>{t.branch}</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <label style={S.label}>{t.branch}</label>
+              {mayManage && <button type="button" style={mini} onClick={() => setBranchMgr(true)}>{t.manageBranches}</button>}
+            </div>
+            {branchMgr && (
+              <BranchManager lang={lang} branches={branchCfg} reports={existing} onSave={saveBranchList}
+                onClose={() => setBranchMgr(false)}
+                onDone={(msg) => {
+                  setBranchMgr(false); flash(msg || t.branchesSaved);
+                  fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : [])).then((j) => setExisting(safeArr(Array.isArray(j) ? j : j?.data || j?.items || j?.rows))).catch(() => {});
+                }} />
+            )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {sugg.branches.map((b) => (
                 <button key={b} type="button" style={chip(b === branch)} onClick={() => setBranch(b)}>{b}</button>

@@ -22,6 +22,8 @@ import {
 import { uploadPicked, writeRecord } from "./licensesNet";
 import DocumentsViewer from "./DocumentsViewer";
 import RegisterCards from "./RegisterCards";
+import BranchManager from "./BranchManager";
+import { useLicenseBranches } from "./licensesBranches";
 import { SmartSelect, ComboInput } from "./licensesUi";
 import { canEdit, canDelete } from "../../../utils/perms";
 
@@ -68,7 +70,7 @@ const T = {
     hub: "← Hub", newEntry: "+ New Entry", refresh: "Refresh", loading: "Loading…",
     changeLog: "🕘 Change log", exportX: "⬇ Excel", print: "🖨 Print", reminder: "📋 Copy reminder",
     tabRegister: "Register", tabRecords: "Records by branch",
-    vCards: "🗂 By branch", vTable: "☰ Table", more: "More", backToCards: "← Back to branches",
+    vCards: "🗂 By branch", vTable: "☰ Table", more: "More", backToCards: "← Back to branches", manageBranches: "🏢 Manage branches",
     kTotal: "All documents", kExpired: "Expired", kSoon: "≤ 30 days", kUpcoming: "31–90 days", kValid: "Valid", kNone: "No expiry date",
     search: "Search name, company, branch, notes…", allBranches: "All branches", allKinds: "Licenses + contracts",
     license: "License", contract: "Contract", licenses: "Licenses", contracts: "Contracts",
@@ -124,7 +126,7 @@ const T = {
     hub: "→ الرئيسية", newEntry: "+ إدخال جديد", refresh: "تحديث", loading: "جارٍ التحميل…",
     changeLog: "🕘 سجل التغييرات", exportX: "⬇ إكسل", print: "🖨 طباعة", reminder: "📋 نسخ تذكير",
     tabRegister: "السجل", tabRecords: "السجلات حسب الفرع",
-    vCards: "🗂 حسب الفرع", vTable: "☰ جدول", more: "المزيد", backToCards: "→ رجوع إلى الفروع",
+    vCards: "🗂 حسب الفرع", vTable: "☰ جدول", more: "المزيد", backToCards: "→ رجوع إلى الفروع", manageBranches: "🏢 إدارة الفروع",
     kTotal: "كل المستندات", kExpired: "منتهية", kSoon: "خلال 30 يوم", kUpcoming: "31–90 يوم", kValid: "سارية", kNone: "بدون تاريخ انتهاء",
     search: "ابحث بالاسم، الشركة، الفرع، الملاحظات…", allBranches: "كل الفروع", allKinds: "رخص + عقود",
     license: "رخصة", contract: "عقد", licenses: "الرخص", contracts: "العقود",
@@ -788,12 +790,15 @@ export default function LicensesContractsView() {
 
   /* ── register ── */
   const items = useMemo(() => flattenRecords(reports), [reports]);
-  const sugg = useMemo(() => buildSuggestions(reports), [reports]);
+  // branch list = the editable one (Manage branches), then any branch only found on old records
+  const { branches: branchCfg, names: branchNames, save: saveBranchList } = useLicenseBranches();
+  const [branchMgr, setBranchMgr] = useState(false);
+  const sugg = useMemo(() => buildSuggestions(reports, branchNames), [reports, branchNames]);
   const branchList = useMemo(() => {
-    const s = new Set(BRANCHES);
+    const s = new Set(branchNames);
     items.forEach((it) => s.add(it.branch));
     return Array.from(s);
-  }, [items]);
+  }, [items, branchNames]);
   // filter pickers — counts follow the other filters (search + the other picker)
   const branchOptions = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -1150,6 +1155,7 @@ export default function LicensesContractsView() {
           )}
           <MoreMenu label={t.more} items={[
             [t.changeLog, () => setHistoryView({ title: t.histTitle, events: allHistory })],
+            ...(mayEdit ? [[t.manageBranches, () => setBranchMgr(true)]] : []),
             [t.reminder, copyReminder],
             [t.exportX, exportExcel, !rows.length],
             [t.print, printRegister, !rows.length],
@@ -1162,6 +1168,11 @@ export default function LicensesContractsView() {
       <div style={{ ...S.shell, minHeight: 0, padding: 0, background: "none", marginTop: 14 }} dir={dir}>
       <PreviewModal state={preview} setState={setPreview} onClose={() => setPreview((p) => ({ ...p, open: false }))} />
       {docsItem && <DocumentsViewer item={docsItem} lang={lang} onClose={() => setDocsItem(null)} />}
+      {branchMgr && (
+        <BranchManager lang={lang} branches={branchCfg} reports={reports} onSave={saveBranchList}
+          onClose={() => setBranchMgr(false)}
+          onDone={(msg) => { setBranchMgr(false); flash(msg); fetchReports(); }} />
+      )}
       {renewItem && (
         <RenewModal t={t} lang={lang} item={renewItem} onClose={() => setRenewItem(null)} onSave={(d) => saveRenewal(renewItem, d)} onViewDocs={openFiles} />
       )}
@@ -1244,6 +1255,7 @@ export default function LicensesContractsView() {
             history: (it) => setHistoryView({ title: `${t.histFor} ${it.name}`, events: itemHistory(it) }),
             editRecord: (rid) => { selectRecord(rid); setTab("records"); },
             add: (b) => navigate(`/haccp-iso/licenses-contracts?branch=${encodeURIComponent(b)}`),
+            manageBranches: mayEdit ? () => setBranchMgr(true) : null,
           }} />
       )}
       {tab !== "cards" && <div style={{ height: 14 }} />}

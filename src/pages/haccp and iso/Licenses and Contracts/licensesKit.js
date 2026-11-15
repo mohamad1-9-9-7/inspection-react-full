@@ -141,6 +141,7 @@ export function statusOf(expiryDate) {
 }
 
 /* ───────────── shared pick-lists ───────────── */
+// Defaults only — the live list is edited on the pages (licensesBranches.js).
 export const BRANCHES = [
   "Al Qusais Warehouse",
   "Al Mamzar Food Truck",
@@ -148,6 +149,7 @@ export const BRANCHES = [
   "Al Barsha Butchery",
   "Abu Dhabi Butchery",
   "Al Ain Butchery",
+  "Al Warqa Kitchen",
 ];
 /** Every branch normally holds both of these — the entry page offers them as one-click choices. */
 export const CORE_LICENSES = ["Trade License", "Industrial License"];
@@ -164,7 +166,7 @@ export const CONTRACT_TYPES = [
  * Suggestions for the combo boxes, built from the fixed lists + every saved
  * record. Each list = [{ value, count }] — count = how many records use it.
  */
-export function buildSuggestions(reports) {
+export function buildSuggestions(reports, branchNames = BRANCHES) {
   const bump = (m, v) => {
     const s = String(v ?? "").trim();
     if (!s) return;
@@ -173,7 +175,7 @@ export function buildSuggestions(reports) {
     if (cur) cur.count += 1; else m.set(k, { value: s, count: 1 });
   };
   const seed = (list) => new Map(list.map((v) => [v.toLowerCase(), { value: v, count: 0 }]));
-  const branches = seed(BRANCHES); const lic = seed(LICENSE_NAMES); const types = seed(CONTRACT_TYPES); const cos = new Map();
+  const branches = seed(branchNames); const lic = seed(LICENSE_NAMES); const types = seed(CONTRACT_TYPES); const cos = new Map();
   safeArr(reports).forEach((r) => {
     const p = r?.payload || {};
     bump(branches, p.branch);

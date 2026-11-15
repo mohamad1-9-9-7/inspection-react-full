@@ -23,7 +23,7 @@ const L = {
     empty: "Nothing here.", allGood: "All good — nothing needs attention.", noLicence: "No licence recorded for this branch.",
     noContracts: "No contracts recorded for this branch.", docs: (n) => `${n} document${n === 1 ? "" : "s"}`,
     stExpired: (n) => `Expired ${n}d ago`, stToday: "Expires today", stLeft: (n) => `${n}d left`,
-    branches: "Branches",
+    branches: "Branches", manage: "Manage branches",
   },
   ar: {
     attention: "تحتاج متابعة", attentionHint: "منتهية، تنتهي خلال 30 يوماً، بدون تاريخ أو بدون مستند",
@@ -34,7 +34,7 @@ const L = {
     empty: "لا يوجد شيء هنا.", allGood: "كل شيء سليم — لا شيء يحتاج متابعة.", noLicence: "لا توجد رخصة مسجلة لهذا الفرع.",
     noContracts: "لا توجد عقود مسجلة لهذا الفرع.", docs: (n) => `${n} مستند`,
     stExpired: (n) => `منتهية منذ ${n} يوم`, stToday: "تنتهي اليوم", stLeft: (n) => `باقي ${n} يوم`,
-    branches: "الفروع",
+    branches: "الفروع", manage: "إدارة الفروع",
   },
 };
 
@@ -204,7 +204,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
     return [...names].map((b) => {
       const list = allItems.filter((it) => it.branch === b);
       return { b, n: list.length, dot: worstDot(list) };
-    }).sort((a, b) => (b.n > 0) - (a.n > 0) || a.b.localeCompare(b.b));
+    }); // keeps the order set in Manage branches; branches found only on old records come last
   }, [allItems, branchList]);
 
   const sortByUrgency = (a, b) => STATUS[a.status].rank - STATUS[b.status].rank || (a.days ?? 1e9) - (b.days ?? 1e9);
@@ -302,6 +302,12 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
         <div className="lcb-sep" />
         <div className="lcb-cap">{l.branches}</div>
         {branches.map((x) => nav(x.b, x.b, x.n, x.dot))}
+        {on.manageBranches && (
+          <>
+            <div className="lcb-sep" />
+            <button type="button" className="lcb-nav" onClick={on.manageBranches}><span className="nm">⚙ {l.manage}</span></button>
+          </>
+        )}
       </nav>
       <div style={{ minWidth: 0 }}>{body}</div>
     </div>
