@@ -3,7 +3,7 @@
 // The default view of the Licenses & Contracts register: one place per branch.
 //   left  — "Needs attention", "All branches" and every branch (count + worst
 //           status dot); on a phone it becomes a row of chips
-//   right — the chosen branch's licence and contracts as cards. Each card has
+//   right — the chosen branch's licence and contracts as wide rows. Each row has
 //           the two things people come for in front: open the document, renew.
 //           Edit / history / delete sit behind the ⋯ menu.
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -61,50 +61,58 @@ const CSS = `
 .lcb-sec { margin-top:18px; }
 .lcb-sec-t { display:flex; align-items:center; gap:8px; color:#334155; font-weight:900; margin:0 2px 10px; }
 .lcb-sec-t .lcb-n { background:#e0e7ff; color:#3730a3; }
-.lcb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); gap:12px; }
+.lcb-grid { display:grid; gap:8px; }
 .lcb-empty { padding:16px; border:1.5px dashed #cbd5e1; border-radius:14px; color:#64748b; font-weight:700; text-align:center; background:#fbfdff; }
 .lcb-good { padding:28px; border-radius:16px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-weight:800; text-align:center; margin-top:14px; }
 
-.lcb-card { position:relative; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:14px 14px 12px;
-  box-shadow:0 2px 8px rgba(15,23,42,.05); display:flex; flex-direction:column; gap:10px; border-top:4px solid var(--st); }
-.lcb-card-top { display:flex; align-items:flex-start; gap:10px; }
-.lcb-ico { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; background:#f1f6fc; flex-shrink:0; }
-.lcb-ttl { flex:1; min-width:0; }
-.lcb-name { font-weight:900; color:#0f172a; line-height:1.3; word-break:break-word; }
-.lcb-co { color:#475569; font-weight:600; margin-top:2px; word-break:break-word; }
-.lcb-br { color:#94a3b8; font-weight:700; margin-top:2px; }
-.lcb-exp { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:9px 11px; border-radius:11px; background:var(--bg); }
-.lcb-exp-l { color:#64748b; font-weight:700; }
-.lcb-exp-d { font-weight:900; color:#0f172a; }
-.lcb-exp-s { font-weight:800; color:var(--fg); }
-.lcb-meta { display:flex; gap:10px; flex-wrap:wrap; color:#64748b; font-weight:700; }
-.lcb-notes { color:#64748b; font-weight:600; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.lcb-acts { display:flex; gap:6px; margin-top:auto; padding-top:10px; border-top:1px solid #eef2f7; }
-.lcb-b { flex:1; min-height:38px; border-radius:10px; border:1px solid #cfe0f3; background:#fff; color:#1e3a5f; font-weight:800;
-  cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 10px; white-space:nowrap; }
+/* one document = one row: icon | name | expiry | status | files | actions */
+.lcb-row { position:relative; display:grid; grid-template-columns:44px minmax(0,1fr) 150px 150px auto; align-items:center; gap:14px;
+  background:#fff; border:1px solid #e2e8f0; border-inline-start:5px solid var(--st); border-radius:14px; padding:12px 14px;
+  box-shadow:0 1px 3px rgba(15,23,42,.05); transition:border-color .15s, box-shadow .15s; }
+.lcb-row:hover { border-color:#bfdbfe; border-inline-start-color:var(--st); box-shadow:0 8px 22px rgba(37,99,235,.10); }
+.lcb-ico { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:#f1f6fc; }
+.lcb-ttl { min-width:0; }
+.lcb-name { font-weight:900; color:#0f172a; line-height:1.3; overflow-wrap:anywhere; }
+.lcb-sub { display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:3px; color:#64748b; font-weight:600; }
+.lcb-sub b { color:#334155; font-weight:700; }
+.lcb-notes { color:#94a3b8; font-weight:600; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lcb-exp-l { display:block; color:#94a3b8; font-weight:700; }
+.lcb-exp-d { display:block; font-weight:900; color:#0f172a; white-space:nowrap; }
+.lcb-pill { justify-self:start; display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
+  background:var(--bg); color:var(--fg); border:1px solid var(--bd); font-weight:800; white-space:nowrap; }
+.lcb-pill i { width:8px; height:8px; border-radius:99px; background:var(--st); }
+.lcb-acts { display:flex; gap:6px; align-items:center; justify-content:flex-end; }
+.lcb-b { min-height:38px; border-radius:10px; border:1px solid #cfe0f3; background:#fff; color:#1e3a5f; font-weight:800;
+  cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 13px; white-space:nowrap; }
 .lcb-b:hover { background:#eff6ff; border-color:#93c5fd; }
 .lcb-b.pri { background:#2563eb; border-color:#2563eb; color:#fff; }
 .lcb-b.pri:hover { background:#1d4ed8; }
 .lcb-b.warn { background:#fff7ed; border-color:#fdba74; color:#9a3412; }
 .lcb-b.hot { background:#f97316; border-color:#ea580c; color:#fff; }
-.lcb-b.more { flex:0 0 40px; padding:0; }
-.lcb-menu { position:absolute; inset-inline-end:10px; bottom:54px; z-index:20; background:#fff; border:1px solid #e2e8f0; border-radius:12px;
-  box-shadow:0 16px 36px rgba(15,23,42,.18); padding:6px; min-width:170px; display:grid; }
+.lcb-b.more { width:38px; padding:0; }
+.lcb-menu { position:absolute; inset-inline-end:12px; top:calc(100% - 6px); z-index:20; background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  box-shadow:0 16px 36px rgba(15,23,42,.18); padding:6px; min-width:190px; display:grid; }
 .lcb-menu button { text-align:start; background:none; border:none; padding:9px 11px; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; color:#1e293b; }
 .lcb-menu button:hover { background:#f1f6fc; }
 .lcb-menu button.red { color:#b91c1c; }
 .lcb-menu button.red:hover { background:#fef2f2; }
+@media (max-width: 1150px) {
+  .lcb-row { grid-template-columns:44px minmax(0,1fr) auto; }
+  .lcb-when { grid-column:2; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .lcb-acts { grid-column:1 / -1; justify-content:flex-start; }
+  .lcb-pill { grid-row:1; grid-column:3; }
+}
 
 #root .ndx.ndx .lcb-cap { font-size:${fs(11.5)}; }
 #root .ndx.ndx .lcb-nav, #root .ndx.ndx .lcb-menu button { font-size:${fs(14)}; }
 #root .ndx.ndx .lcb-n { font-size:${fs(12)}; }
 #root .ndx.ndx .lcb-head-t { font-size:${fs(20)}; }
-#root .ndx.ndx .lcb-head-s, #root .ndx.ndx .lcb-co { font-size:${fs(13.5)}; }
+#root .ndx.ndx .lcb-head-s, #root .ndx.ndx .lcb-sub { font-size:${fs(13.5)}; }
 #root .ndx.ndx .lcb-sec-t { font-size:${fs(15.5)}; }
 #root .ndx.ndx .lcb-name { font-size:${fs(16)}; }
-#root .ndx.ndx .lcb-br, #root .ndx.ndx .lcb-meta, #root .ndx.ndx .lcb-notes, #root .ndx.ndx .lcb-exp-l { font-size:${fs(12.5)}; }
-#root .ndx.ndx .lcb-exp-d { font-size:${fs(17)}; }
-#root .ndx.ndx .lcb-exp-s { font-size:${fs(13)}; }
+#root .ndx.ndx .lcb-notes, #root .ndx.ndx .lcb-exp-l { font-size:${fs(12.5)}; }
+#root .ndx.ndx .lcb-exp-d { font-size:${fs(16)}; }
+#root .ndx.ndx .lcb-pill { font-size:${fs(13)}; }
 #root .ndx.ndx .lcb-ico { font-size:${fs(20)}; }
 #root .ndx.ndx .lcb-b { font-size:${fs(13.5)}; }
 #root .ndx.ndx .lcb-empty, #root .ndx.ndx .lcb-good { font-size:${fs(14.5)}; }
@@ -130,7 +138,7 @@ const worstDot = (list) => {
   return STATUS[w.status].dot;
 };
 
-function DocCard({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
+function DocRow({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
   const [menu, setMenu] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -143,29 +151,23 @@ function DocCard({ l, lang, it, showBranch, mayEdit, mayDelete, on }) {
   const urgent = it.status === "expired" || it.status === "soon";
   const pick = (fn) => () => { setMenu(false); fn(it); };
   return (
-    <article ref={ref} className="lcb-card" style={{ "--st": s.dot, "--bg": s.bg, "--fg": s.color }}>
-      <div className="lcb-card-top">
-        <span className="lcb-ico" aria-hidden="true">{it.kind === "license" ? "🪪" : "📄"}</span>
-        <div className="lcb-ttl">
-          <div className="lcb-name">{it.name}</div>
-          {it.company && <div className="lcb-co">{it.company}</div>}
-          {showBranch && <div className="lcb-br">📍 {it.branch}</div>}
-        </div>
-      </div>
-      <div className="lcb-exp">
-        <span>
-          <span className="lcb-exp-l">{l.expires} </span>
-          <span className="lcb-exp-d">{it.expiryDate ? fmtDate(it.expiryDate, lang) : "—"}</span>
-        </span>
-        <span className="lcb-exp-s">{stText(l, it)}</span>
-      </div>
-      {(it.files.length > 0 || it.renewals.length > 0) && (
-        <div className="lcb-meta">
+    <article ref={ref} className="lcb-row" style={{ "--st": s.dot, "--bg": s.bg, "--fg": s.color, "--bd": s.bd }}>
+      <span className="lcb-ico" aria-hidden="true">{it.kind === "license" ? "🪪" : "📄"}</span>
+      <div className="lcb-ttl">
+        <div className="lcb-name">{it.name}</div>
+        <div className="lcb-sub">
+          {it.company && <b>{it.company}</b>}
+          {showBranch && <span>📍 {it.branch}</span>}
           {it.files.length > 0 && <span>📎 {l.files(it.files.length)}</span>}
           {it.renewals.length > 0 && <span>↻ {l.renewedN(it.renewals.length)}</span>}
         </div>
-      )}
-      {it.notes && <div className="lcb-notes" title={it.notes}>{it.notes}</div>}
+        {it.notes && <div className="lcb-notes" title={it.notes}>{it.notes}</div>}
+      </div>
+      <div className="lcb-when">
+        <span className="lcb-exp-l">{l.expires}</span>
+        <span className="lcb-exp-d">{it.expiryDate ? fmtDate(it.expiryDate, lang) : "—"}</span>
+      </div>
+      <span className="lcb-pill"><i />{stText(l, it)}</span>
       <div className="lcb-acts">
         {it.files.length
           ? <button type="button" className="lcb-b pri" onClick={() => on.open(it)}>📎 {l.open}</button>
@@ -214,7 +216,7 @@ export default function RegisterCards({ lang, items, allItems, branchList, mayEd
 
   const cardProps = { l, lang, mayEdit, mayDelete, on };
   const grid = (list, showBranch) => (
-    <div className="lcb-grid">{list.map((it) => <DocCard key={it.key} it={it} showBranch={showBranch} {...cardProps} />)}</div>
+    <div className="lcb-grid">{list.map((it) => <DocRow key={it.key} it={it} showBranch={showBranch} {...cardProps} />)}</div>
   );
 
   let body;
