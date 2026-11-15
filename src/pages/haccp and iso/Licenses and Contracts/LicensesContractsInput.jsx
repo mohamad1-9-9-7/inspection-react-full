@@ -7,7 +7,7 @@
 //   • contract-type chips, "copy contracts from another branch"
 //   • completeness checklist; after saving → open in register / new entry
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { HaccpPage, Btn } from "../_shared/pageKit";
 import API_BASE from "../../../config/api";
 import { useLangState, hideSectionLangToggle } from "../../../utils/appLang";
@@ -179,7 +179,8 @@ export default function LicensesContractsInput() {
   const t = T[lang] || T.en;
   const dir = lang === "ar" ? "rtl" : "ltr";
 
-  const [branch, setBranch] = useState(BRANCHES[0]);
+  const [params] = useSearchParams();
+  const [branch, setBranch] = useState(() => String(params.get("branch") || "").trim() || BRANCHES[0]);
   const [license, setLicense] = useState(mkLicense);
   const [contracts, setContracts] = useState(() => [mkContract()]);
   const [mode, setMode] = useState("contract"); // contract | license | both
@@ -203,7 +204,7 @@ export default function LicensesContractsInput() {
 
   /* suggestions from earlier records */
   const sugg = useMemo(() => {
-    const lic = new Set(LICENSE_NAMES); const types = new Set(CONTRACT_TYPES); const cos = new Set(); const brs = new Set(BRANCHES);
+    const lic = new Set(LICENSE_NAMES); const types = new Set(CONTRACT_TYPES); const cos = new Set(); const brs = new Set([...BRANCHES, branch]);
     existing.forEach((r) => {
       const p = r?.payload || {};
       if (filled(p.branch)) brs.add(String(p.branch).trim());
@@ -214,7 +215,7 @@ export default function LicensesContractsInput() {
       });
     });
     return { lic: [...lic], types: [...types], cos: [...cos].sort(), branches: [...brs] };
-  }, [existing]);
+  }, [existing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sameBranch = existing
     .filter((r) => String(r?.payload?.branch || "").trim() === branch)

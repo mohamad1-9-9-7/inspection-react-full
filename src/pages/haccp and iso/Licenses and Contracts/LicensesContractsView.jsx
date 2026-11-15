@@ -21,11 +21,45 @@ import {
 } from "./licensesKit";
 import { uploadPicked, writeRecord } from "./licensesNet";
 import DocumentsViewer from "./DocumentsViewer";
+import RegisterCards from "./RegisterCards";
 import { SmartSelect, ComboInput } from "./licensesUi";
 import { canEdit, canDelete } from "../../../utils/perms";
 
 // HACCP / ISO pages live under the "iso" permission section.
 const PERM_SECTION = "iso";
+// remembered view (cards / table) — a per-viewer convenience only
+const VIEW_KEY = "lc_register_view_v1";
+
+/** Header "More ▾" menu: items = [label, onClick, disabled?][] */
+function MoreMenu({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <Btn onClick={() => setOpen((v) => !v)} aria-expanded={open}>{label} ▾</Btn>
+      {open && (
+        <div role="menu" style={{
+          position: "absolute", top: "calc(100% + 6px)", insetInlineEnd: 0, zIndex: 50, minWidth: 210,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 16px 36px rgba(15,23,42,.18)", padding: 6, display: "grid",
+        }}>
+          {items.map(([l, fn, off]) => (
+            <button key={l} type="button" role="menuitem" disabled={!!off}
+              onClick={() => { setOpen(false); fn(); }}
+              style={{ textAlign: "start", background: "none", border: "none", padding: "10px 12px", borderRadius: 8, cursor: off ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 14, color: off ? "#94a3b8" : "#1e293b", fontFamily: "inherit" }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ───────────────────────── i18n ───────────────────────── */
 const T = {
@@ -34,6 +68,7 @@ const T = {
     hub: "← Hub", newEntry: "+ New Entry", refresh: "Refresh", loading: "Loading…",
     changeLog: "🕘 Change log", exportX: "⬇ Excel", print: "🖨 Print", reminder: "📋 Copy reminder",
     tabRegister: "Register", tabRecords: "Records by branch",
+    vCards: "🗂 By branch", vTable: "☰ Table", more: "More", backToCards: "← Back to branches",
     kTotal: "All documents", kExpired: "Expired", kSoon: "≤ 30 days", kUpcoming: "31–90 days", kValid: "Valid", kNone: "No expiry date",
     search: "Search name, company, branch, notes…", allBranches: "All branches", allKinds: "Licenses + contracts",
     license: "License", contract: "Contract", licenses: "Licenses", contracts: "Contracts",
@@ -89,6 +124,7 @@ const T = {
     hub: "→ الرئيسية", newEntry: "+ إدخال جديد", refresh: "تحديث", loading: "جارٍ التحميل…",
     changeLog: "🕘 سجل التغييرات", exportX: "⬇ إكسل", print: "🖨 طباعة", reminder: "📋 نسخ تذكير",
     tabRegister: "السجل", tabRecords: "السجلات حسب الفرع",
+    vCards: "🗂 حسب الفرع", vTable: "☰ جدول", more: "المزيد", backToCards: "→ رجوع إلى الفروع",
     kTotal: "كل المستندات", kExpired: "منتهية", kSoon: "خلال 30 يوم", kUpcoming: "31–90 يوم", kValid: "سارية", kNone: "بدون تاريخ انتهاء",
     search: "ابحث بالاسم، الشركة، الفرع، الملاحظات…", allBranches: "كل الفروع", allKinds: "رخص + عقود",
     license: "رخصة", contract: "عقد", licenses: "الرخص", contracts: "العقود",
@@ -689,7 +725,9 @@ export default function LicensesContractsView() {
 
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState("register");
+  const [tab, setTab] = useState(() => {
+    try { return localStorage.getItem(VIEW_KEY) === "register" ? "register" : "cards"; } catch { return "cards"; }
+  });
 
   // register filters
   const [q, setQ] = useState("");
@@ -827,6 +865,13 @@ export default function LicensesContractsView() {
   }), [items]);
 
   const allHistory = useMemo(() => collectHistory(reports), [reports]);
+
+  // cards view: search + status tiles only (the branch comes from its own side list)
+  const cardItems = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return items.filter((it) => (statusFilter === "ALL" || it.status === statusFilter)
+      && (!needle || [it.name, it.company, it.branch, it.notes].join(" ").toLowerCase().includes(needle)));
+  }, [items, q, statusFilter]);
 
   function toggleSort(key) {
     setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
@@ -1102,11 +1147,13 @@ export default function LicensesContractsView() {
           {!hideSectionLangToggle() && (
             <Btn onClick={() => setLang(isAr ? "en" : "ar")}>{isAr ? "EN" : "ع"}</Btn>
           )}
-          <Btn onClick={() => setHistoryView({ title: t.histTitle, events: allHistory })}>{t.changeLog}</Btn>
-          <Btn onClick={copyReminder}>{t.reminder}</Btn>
-          <Btn onClick={exportExcel} disabled={!rows.length}>{t.exportX}</Btn>
-          <Btn onClick={printRegister} disabled={!rows.length}>{t.print}</Btn>
-          <Btn onClick={fetchReports} disabled={loading}>{loading ? t.loading : t.refresh}</Btn>
+          <MoreMenu label={t.more} items={[
+            [t.changeLog, () => setHistoryView({ title: t.histTitle, events: allHistory })],
+            [t.reminder, copyReminder],
+            [t.exportX, exportExcel, !rows.length],
+            [t.print, printRegister, !rows.length],
+            [loading ? t.loading : `⟳ ${t.refresh}`, fetchReports, loading],
+          ]} />
           <Btn kind="primary" onClick={() => navigate("/haccp-iso/licenses-contracts")}>{t.newEntry}</Btn>
         </>
       }
@@ -1140,7 +1187,8 @@ export default function LicensesContractsView() {
         {kpis.map(([key, label, color, bg]) => {
           const active = statusFilter === key;
           return (
-            <button key={key} type="button" onClick={() => { setStatusFilter(key); setTab("register"); }}
+            <button key={key} type="button" aria-pressed={active}
+              onClick={() => { setStatusFilter(active && key !== "ALL" ? "ALL" : key); if (tab === "records") setTab("cards"); }}
               style={{
                 textAlign: "start", cursor: "pointer", borderRadius: 14, padding: "12px 14px",
                 background: active ? bg : "#fff", border: `2px solid ${active ? color : C.line}`,
@@ -1154,30 +1202,52 @@ export default function LicensesContractsView() {
       </div>
 
       {/* Filters + tabs */}
-      <div style={{ ...S.card, marginBottom: 14, display: "grid", gridTemplateColumns: "minmax(220px,1fr) 210px 190px auto", gap: 10, alignItems: "end" }}>
-        <div>
-          <label style={S.label}>🔎</label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} style={S.input} placeholder={t.search} />
+      <div style={{ ...S.card, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end" }}>
+        <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} style={S.input} placeholder={`🔎 ${t.search}`} aria-label={t.search} />
         </div>
-        <div>
-          <label style={S.label}>{t.colBranch}</label>
-          <SmartSelect value={branchFilter} onChange={setBranchFilter} options={branchOptions}
-            emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colBranch} />
-        </div>
-        <div>
-          <label style={S.label}>{t.colKind}</label>
-          <SmartSelect value={kindFilter} onChange={setKindFilter} options={kindOptions}
-            emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colKind} />
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {[["register", t.tabRegister], ["records", t.tabRecords]].map(([k, lbl]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
-              style={tab === k ? btn(C.brand) : ghost}>{lbl}</button>
-          ))}
+        {tab === "register" && (
+          <>
+            <div style={{ flex: "0 1 210px", minWidth: 160 }}>
+              <SmartSelect value={branchFilter} onChange={setBranchFilter} options={branchOptions}
+                emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colBranch} />
+            </div>
+            <div style={{ flex: "0 1 190px", minWidth: 150 }}>
+              <SmartSelect value={kindFilter} onChange={setKindFilter} options={kindOptions}
+                emptyText={t.noMatch} searchPh={t.searchList} ariaLabel={t.colKind} />
+            </div>
+          </>
+        )}
+        {filtersOn && <button type="button" style={ghost} onClick={clearFilters}>✕ {t.clear}</button>}
+        <div style={{ display: "flex", gap: 6 }} role="tablist">
+          {tab === "records" ? (
+            <button type="button" style={ghost} onClick={() => setTab("cards")}>{t.backToCards}</button>
+          ) : (
+            [["cards", t.vCards], ["register", t.vTable]].map(([k, lbl]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k}
+                onClick={() => { setTab(k); try { localStorage.setItem(VIEW_KEY, k); } catch { /* cache only */ } }}
+                style={tab === k ? btn(C.brand) : ghost}>{lbl}</button>
+            ))
+          )}
         </div>
       </div>
 
-      {tab === "register" ? (
+      {tab === "cards" && (
+        <RegisterCards lang={lang} items={cardItems} allItems={items} branchList={branchList}
+          mayEdit={mayEdit} mayDelete={mayDelete}
+          on={{
+            open: openFiles,
+            renew: setRenewItem,
+            edit: setEditItem,
+            del: deleteFromRow,
+            history: (it) => setHistoryView({ title: `${t.histFor} ${it.name}`, events: itemHistory(it) }),
+            editRecord: (rid) => { selectRecord(rid); setTab("records"); },
+            add: (b) => navigate(`/haccp-iso/licenses-contracts?branch=${encodeURIComponent(b)}`),
+          }} />
+      )}
+      {tab !== "cards" && <div style={{ height: 14 }} />}
+
+      {tab === "cards" ? null : tab === "register" ? (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 14, alignItems: "start" }}>
           {/* Register table */}
           <div style={{ ...S.card, padding: 0, overflow: "hidden" }}>
