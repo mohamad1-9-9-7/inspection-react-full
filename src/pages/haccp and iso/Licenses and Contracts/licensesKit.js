@@ -149,8 +149,10 @@ export const BRANCHES = [
   "Abu Dhabi Butchery",
   "Al Ain Butchery",
 ];
+/** Every branch normally holds both of these — the entry page offers them as one-click choices. */
+export const CORE_LICENSES = ["Trade License", "Industrial License"];
 export const LICENSE_NAMES = [
-  "Trade License", "Food Establishment Permit", "Dubai Municipality Food License",
+  ...CORE_LICENSES, "Food Establishment Permit", "Dubai Municipality Food License",
   "ADAFSA Food License", "Civil Defence Certificate", "Food Truck Permit",
 ];
 export const CONTRACT_TYPES = [
@@ -176,6 +178,7 @@ export function buildSuggestions(reports) {
     const p = r?.payload || {};
     bump(branches, p.branch);
     bump(lic, p.license?.name);
+    safeArr(p.licenses).forEach((l) => bump(lic, l?.name));
     safeArr(p.contracts).forEach((c) => { bump(types, c.contractType); bump(cos, c.companyName); });
   });
   const out = (m) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
@@ -215,6 +218,20 @@ export function flattenRecords(reports) {
         renewals: ren, lastRenewal: ren[ren.length - 1] || null,
       });
     }
+    // more licences of the same branch (e.g. Trade + Industrial) — payload.licenses[], each with its own uid
+    safeArr(p.licenses).forEach((l, idx) => {
+      if (!hasAny(l)) return;
+      const st = statusOf(l.expiryDate);
+      const ren = safeArr(l.renewals);
+      const uid = String(l.uid || `lidx${idx}`);
+      out.push({
+        key: `${rid}:${uid}`, rid, record: r, branch, kind: "license", uid,
+        name: String(l.name || "").trim() || "License",
+        company: "", expiryDate: l.expiryDate || "", notes: l.notes || "",
+        files: normalizeFiles(l), fileNames: safeArr(l.fileNames), status: st.key, days: st.days,
+        renewals: ren, lastRenewal: ren[ren.length - 1] || null,
+      });
+    });
     safeArr(p.contracts).forEach((c, idx) => {
       if (!hasAny(c)) return;
       const st = statusOf(c.expiryDate);
@@ -236,6 +253,7 @@ export function flattenRecords(reports) {
 export function ensureUids(payload) {
   const p = { ...(payload || {}) };
   p.contracts = safeArr(p.contracts).map((c) => (c?.uid ? c : { ...c, uid: newUid() }));
+  if (Array.isArray(p.licenses)) p.licenses = p.licenses.map((l) => (l?.uid ? l : { ...l, uid: newUid("l") }));
   return p;
 }
 
@@ -289,6 +307,28 @@ export function diffPayloads(oldP, newP) {
   if (lc.length) {
     events.push(mkEvent("edited", { kind: "license", uid: "license", label: newLic.name || oldLic.name || "License" }, { changes: lc }));
   }
+  const oldLs = safeArr(oldP?.licenses);
+  const newLs = safeArr(newP?.licenses);
+  const oldLById = new Map(oldLs.map((l, i) => [String(l?.uid || `lidx${i}`), l]));
+  const seenL = new Set();
+  newLs.forEach((l, i) => {
+    const uid = String(l?.uid || `lidx${i}`);
+    const before = oldLById.get(uid);
+    const target = { kind: "license", uid, label: l.name || "License" };
+    if (!before) { if (hasAny(l)) events.push(mkEvent("license_added", target)); return; }
+    seenL.add(uid);
+    const ch = fieldDiffs(before, l, LIC_FIELDS);
+    if (ch.length) events.push(mkEvent("edited", target, { changes: ch }));
+  });
+  oldLs.forEach((l, i) => {
+    const uid = String(l?.uid || `lidx${i}`);
+    if (!seenL.has(uid) && hasAny(l)) {
+      events.push(mkEvent("license_removed", { kind: "license", uid, label: l.name || "License" }, {
+        prev: { expiryDate: l.expiryDate || "", files: normalizeFiles(l) },
+      }));
+    }
+  });
+
   const oldCons = safeArr(oldP?.contracts);
   const newCons = safeArr(newP?.contracts);
   const oldById = new Map(oldCons.map((c, i) => [contractUid(c, i), c]));
@@ -351,11 +391,19 @@ export function applyRenewal(payload, { kind, uid }, { newExpiry, renewedOn, fil
   let label = "";
   let entry = null;
   let targetUid = "license";
-  if (kind === "license") {
+  if (isPrimaryLicense(kind, uid)) {
     const r = patch(p.license || {});
     p.license = r.next;
     entry = r.entry;
     label = r.next.name || "License";
+  } else if (kind === "license") {
+    const pos = findLicensePos(p.licenses, uid);
+    if (pos < 0) return null;
+    const r = patch(p.licenses[pos]);
+    p.licenses = p.licenses.map((l, i) => (i === pos ? r.next : l));
+    entry = r.entry;
+    label = r.next.name || "License";
+    targetUid = r.next.uid;
   } else {
     // legacy rows (saved before uids) arrive as "idx<n>"; ensureUids just gave them a real uid
     const pos = findContractPos(p.contracts, uid);
@@ -375,6 +423,13 @@ export function applyRenewal(payload, { kind, uid }, { newExpiry, renewedOn, fil
   p.history = [...safeArr(p.history), ev];
   return p;
 }
+
+/** Index of an extra licence (payload.licenses) by uid; legacy rows arrive as "lidx<n>". */
+export function findLicensePos(licenses, uid) {
+  const legacyIdx = String(uid).startsWith("lidx") ? Number(String(uid).slice(4)) : -1;
+  return safeArr(licenses).findIndex((l, i) => l?.uid === uid || i === legacyIdx);
+}
+const isPrimaryLicense = (kind, uid) => kind === "license" && (!uid || uid === "license");
 
 /** Index of a contract by uid; legacy rows (saved before uids) arrive as "idx<n>". */
 export function findContractPos(contracts, uid) {
@@ -399,7 +454,16 @@ export function applyItemEdit(payload, { kind, uid }, form) {
     const { files: _f, images: _i, imageUrls: _iu, attachments: _a, ...rest } = o; // eslint-disable-line no-unused-vars
     return { ...rest, fileUrls: urls, fileNames: names, fileUrl: urls[0] || "", fileName: names[0] || "" };
   };
-  if (kind === "license") {
+  if (kind === "license" && !isPrimaryLicense(kind, uid)) {
+    const pos = findLicensePos(base.licenses, uid);
+    if (pos < 0) return null;
+    next.licenses[pos] = files({
+      ...next.licenses[pos],
+      name: String(form.name ?? "").trim(),
+      expiryDate: form.expiryDate || "",
+      notes: String(form.notes ?? "").trim(),
+    });
+  } else if (kind === "license") {
     next.license = files({
       ...(next.license || {}),
       name: String(form.name ?? "").trim(),
@@ -429,7 +493,15 @@ export function applyItemEdit(payload, { kind, uid }, form) {
 export function removeItem(payload, { kind, uid }) {
   const p = ensureUids(JSON.parse(JSON.stringify(payload || {})));
   let ev;
-  if (kind === "license") {
+  if (kind === "license" && !isPrimaryLicense(kind, uid)) {
+    const pos = findLicensePos(p.licenses, uid);
+    if (pos < 0) return null;
+    const l = p.licenses[pos];
+    ev = mkEvent("license_removed", { kind: "license", uid: l.uid, label: l.name || "License" }, {
+      prev: { expiryDate: l.expiryDate || "", files: normalizeFiles(l) },
+    });
+    p.licenses = p.licenses.filter((_, i) => i !== pos);
+  } else if (kind === "license") {
     const lic = p.license || {};
     ev = mkEvent("license_removed", { kind: "license", uid: "license", label: lic.name || "License" }, {
       prev: { expiryDate: lic.expiryDate || "", files: normalizeFiles(lic) },
@@ -445,7 +517,7 @@ export function removeItem(payload, { kind, uid }) {
     p.contracts = p.contracts.filter((_, i) => i !== pos);
   }
   p.history = [...safeArr(p.history), ev];
-  const empty = !hasAny(p.license) && !p.contracts.some(hasAny);
+  const empty = !hasAny(p.license) && !safeArr(p.licenses).some(hasAny) && !p.contracts.some(hasAny);
   return { payload: p, empty };
 }
 

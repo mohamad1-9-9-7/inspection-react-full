@@ -125,3 +125,47 @@ test("applyItemEdit: a removed file does not come back from legacy keys", () => 
   const res = applyItemEdit(p, { kind: "license", uid: "license" }, { branch: "B", name: "L", expiryDate: "", notes: "", fileUrls: [], fileNames: [] });
   expect(flattenRecords([{ id: 1, payload: res.payload }])[0].files).toEqual([]);
 });
+
+/* ── several licences per branch (payload.licenses) ── */
+const twoLic = {
+  id: 9,
+  payload: {
+    branch: "Al Ain Butchery",
+    license: { name: "Trade License", expiryDate: "2026-12-01", fileUrls: ["t.pdf"] },
+    licenses: [{ uid: "lind", name: "Industrial License", expiryDate: "2026-12-20", fileUrls: ["i.pdf"] }],
+    contracts: [],
+  },
+};
+
+test("flatten lists the extra licence as its own license row", () => {
+  const rows = flattenRecords([twoLic]);
+  expect(rows.map((r) => [r.kind, r.uid, r.name])).toEqual([
+    ["license", "license", "Trade License"],
+    ["license", "lind", "Industrial License"],
+  ]);
+});
+
+test("renew / edit / remove touch only the extra licence", () => {
+  const ren = applyRenewal(twoLic.payload, { kind: "license", uid: "lind" },
+    { newExpiry: "2027-12-20", renewedOn: "2026-12-01", files: ["i2.pdf"], fileNames: ["i2.pdf"], keepOldFiles: false, note: "" });
+  expect(ren.licenses[0].expiryDate).toBe("2027-12-20");
+  expect(ren.license.expiryDate).toBe("2026-12-01");
+  expect(ren.history[0].target.uid).toBe("lind");
+
+  const ed = applyItemEdit(twoLic.payload, { kind: "license", uid: "lind" },
+    { name: "Industrial License", expiryDate: "2028-01-01", notes: "", fileUrls: ["i.pdf"], fileNames: [] });
+  expect(ed.payload.licenses[0].expiryDate).toBe("2028-01-01");
+  expect(ed.payload.license.expiryDate).toBe("2026-12-01");
+  expect(ed.events[0].target.uid).toBe("lind");
+
+  const rm = removeItem(twoLic.payload, { kind: "license", uid: "lind" });
+  expect(rm.payload.licenses).toEqual([]);
+  expect(rm.payload.license.name).toBe("Trade License");
+  expect(rm.empty).toBe(false);
+});
+
+test("diffPayloads logs an added extra licence", () => {
+  const base = ensureUids(legacy.payload);
+  const ev = diffPayloads(base, { ...base, licenses: [{ uid: "l1", name: "Industrial License", expiryDate: "2027-01-01" }] });
+  expect(ev.map((e) => e.action)).toEqual(["license_added"]);
+});

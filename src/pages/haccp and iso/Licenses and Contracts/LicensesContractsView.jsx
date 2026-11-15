@@ -110,7 +110,7 @@ const T = {
     remHead: "Licenses & contracts — renewal reminder", remExpired: "EXPIRED", remDue: "Due",
     dataCheck: "Data checks", dcNoExpiry: (n) => `${n} without an expiry date`, dcNoFile: (n) => `${n} without an attached document`,
     // edit / delete one item
-    editItem: "Edit", deleteItem: "Delete", editTitle: "Edit document", aLicRemoved: "License removed",
+    editItem: "Edit", deleteItem: "Delete", editTitle: "Edit document", aLicRemoved: "License removed", aLicAdded: "License added",
     confirmDeleteItem: (n) => `Delete "${n}" from the register?\nIts documents and renewal archive go with it.`,
     lastItemDeletesRecord: "This is the last document of this record — the whole record will be deleted.",
     branchAppliesAll: (n) => `Changing the branch moves the whole record (${n} document(s)).`,
@@ -162,7 +162,7 @@ const T = {
     copied: "تم نسخ التذكير — الصقه في واتساب أو البريد.", nothingToCopy: "لا يوجد شيء منتهٍ أو مستحق خلال 90 يوماً.",
     remHead: "الرخص والعقود — تذكير بالتجديد", remExpired: "منتهية", remDue: "تستحق",
     dataCheck: "فحص البيانات", dcNoExpiry: (n) => `${n} بدون تاريخ انتهاء`, dcNoFile: (n) => `${n} بدون مستند مرفق`,
-    editItem: "تعديل", deleteItem: "حذف", editTitle: "تعديل المستند", aLicRemoved: "حذف الرخصة",
+    editItem: "تعديل", deleteItem: "حذف", editTitle: "تعديل المستند", aLicRemoved: "حذف الرخصة", aLicAdded: "إضافة رخصة",
     confirmDeleteItem: (n) => `حذف "${n}" من السجل؟\nتُحذف معه مستنداته وأرشيف تجديداته.`,
     lastItemDeletesRecord: "هذا آخر مستند في هذا السجل — سيُحذف السجل بالكامل.",
     branchAppliesAll: (n) => `تغيير الفرع ينقل السجل كله (${n} مستند).`,
@@ -627,12 +627,13 @@ const ACTION_TONE = {
   contract_added: { bg: "#eff6ff", color: "#1d4ed8", icon: "＋" },
   contract_removed: { bg: "#fef2f2", color: "#991b1b", icon: "−" },
   license_removed: { bg: "#fef2f2", color: "#991b1b", icon: "−" },
+  license_added: { bg: "#ecfdf5", color: "#065f46", icon: "+" },
 };
 
 function HistoryDrawer({ t, lang, title, events, onClose, onPreview }) {
   const [action, setAction] = useState("ALL");
   const [q, setQ] = useState("");
-  const aLabel = { created: t.aCreated, edited: t.aEdited, renewed: t.aRenewed, contract_added: t.aAdded, contract_removed: t.aRemoved, license_removed: t.aLicRemoved };
+  const aLabel = { created: t.aCreated, edited: t.aEdited, renewed: t.aRenewed, contract_added: t.aAdded, contract_removed: t.aRemoved, license_removed: t.aLicRemoved, license_added: t.aLicAdded };
   const actionOptions = [
     { value: "ALL", label: t.allActions, count: events.length },
     ...Object.keys(aLabel).map((k) => ({
@@ -890,7 +891,7 @@ export default function LicensesContractsView() {
   }
 
   function itemHistory(it) {
-    return allHistory.filter((e) => e.rid === it.rid && (e.target?.uid === it.uid || (it.kind === "license" && e.target?.kind === "license") || e.action === "created"));
+    return allHistory.filter((e) => e.rid === it.rid && (e.target?.uid === it.uid || (it.uid === "license" && e.target?.kind === "license" && !e.target?.uid) || e.action === "created"));
   }
 
   async function saveRenewal(it, data) {
@@ -1030,7 +1031,7 @@ export default function LicensesContractsView() {
       const br = String(p.branch || "").trim() || "Unspecified";
       if (branchFilter !== "ALL" && br !== branchFilter) return;
       if (needle) {
-        const txt = [br, p.license?.name, p.license?.notes, ...safeArr(p.contracts).flatMap((c) => [c.contractType, c.companyName])].join(" ").toLowerCase();
+        const txt = [br, p.license?.name, p.license?.notes, ...safeArr(p.licenses).map((l) => l?.name), ...safeArr(p.contracts).flatMap((c) => [c.contractType, c.companyName])].join(" ").toLowerCase();
         if (!txt.includes(needle)) return;
       }
       (acc[br] = acc[br] || []).push(r);
