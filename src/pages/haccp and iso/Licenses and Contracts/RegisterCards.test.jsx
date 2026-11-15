@@ -37,3 +37,25 @@ test("a parent's licence on a sub-branch page has no edit / delete", () => {
   expect(own.querySelector(".lcb-menu").textContent).toContain("Delete");
   act(() => root.unmount());
 });
+
+test("a missing required licence shows a red row with Add and link-existing", () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const items = flattenRecords(reports);
+  const on = { addMissing: jest.fn(), linkMissing: jest.fn() };
+  const missing = [{ key: "miss:Al Qusais Warehouse:i", branch: "Al Qusais Warehouse", kind: "license", name: "Industrial License", reqId: "i", parent: "", all: true }];
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const root = createRoot(el);
+  act(() => {
+    root.render(<RegisterCards lang="en" items={items} allItems={items} branchList={["Al Qusais Warehouse"]} missing={missing} mayEdit on={on} />);
+  });
+  const row = el.querySelector(".lcb-row.miss");
+  expect(row.textContent).toContain("Missing: Industrial License");
+  act(() => { row.querySelector(".lcb-b.pri").click(); });
+  expect(on.addMissing).toHaveBeenCalledWith(missing[0]);
+  const sel = row.querySelector("select.lcb-link");
+  const opt = [...sel.options].find((o) => o.textContent === "AL QOSAIC");
+  act(() => { sel.value = opt.value; sel.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(on.linkMissing).toHaveBeenCalledWith(expect.objectContaining({ name: "AL QOSAIC" }), missing[0]);
+  act(() => root.unmount());
+});

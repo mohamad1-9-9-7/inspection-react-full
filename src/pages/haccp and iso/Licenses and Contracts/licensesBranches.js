@@ -1,16 +1,18 @@
 // src/pages/haccp and iso/Licenses and Contracts/licensesBranches.js
 //
-// The branch list of the Licenses & Contracts module — editable from the
-// pages themselves (add / rename / reorder / delete), not hard-coded.
+// The settings of the Licenses & Contracts module, editable from the pages:
+//   • branches     — add / rename / reorder / delete, sub-branches (parentId)
+//   • requirements — the licences and contracts every branch (or chosen
+//                    branches) must have; a missing one shows as an alert
 //
 // One config record on the server, same pattern as `account_groups`:
 //   type = licenses_branches_config , payload.reportDate = "config"
 // PUT /api/reports upserts on (type, reportDate), so there is always one row.
 // localStorage is only a first-paint cache. Until someone saves the list the
 // defaults (licensesKit BRANCHES) are used.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import API_BASE from "../../../config/api";
-import { BRANCHES, newUid } from "./licensesKit";
+import { BRANCHES, CORE_LICENSES, newUid } from "./licensesKit";
 
 export const BRANCHES_TYPE = "licenses_branches_config";
 const KEY = "config";
@@ -74,20 +76,51 @@ export function branchRenames(before, after) {
   return out;
 }
 
+/* ───────────── required documents ───────────── */
+/** [{ id, kind: "license"|"contract", name, branches: [] }] — branches empty = every branch. */
+export function normalizeRequirements(list) {
+  const seen = new Set();
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach((r) => {
+    const kind = r?.kind === "contract" ? "contract" : "license";
+    const name = clean(r?.name);
+    const k = `${kind}:${name.toLowerCase()}`;
+    if (!name || seen.has(k)) return;
+    seen.add(k);
+    const branches = [...new Set((Array.isArray(r?.branches) ? r.branches : []).map(clean).filter(Boolean))];
+    out.push({ id: String(r?.id || newUid("q")), kind, name, branches });
+  });
+  return out;
+}
+export const defaultRequirements = () => normalizeRequirements(CORE_LICENSES.map((name, i) => ({ id: `dq${i}`, kind: "license", name })));
+
+/* ───────────── server + cache ───────────── */
+// The record holds BOTH lists; every save writes both, taking the other one
+// from the last state this page knows.
+const fromPayload = (p) => {
+  const b = normalizeBranches(p?.branches);
+  return {
+    branches: b.length ? b : defaultBranches(),
+    // undefined = never saved → defaults; [] = the admin removed them all
+    requirements: Array.isArray(p?.requirements) ? normalizeRequirements(p.requirements) : defaultRequirements(),
+  };
+};
+
 function readCache() {
   try {
     const v = JSON.parse(localStorage.getItem(CACHE) || "null");
-    return Array.isArray(v) && v.length ? normalizeBranches(v) : null;
+    if (Array.isArray(v)) return fromPayload({ branches: v }); // older cache = branches only
+    return v && typeof v === "object" ? fromPayload(v) : null;
   } catch {
     return null;
   }
 }
-function writeCache(list) {
-  try { localStorage.setItem(CACHE, JSON.stringify(list)); } catch { /* cache only */ }
+function writeCache(cfg) {
+  try { localStorage.setItem(CACHE, JSON.stringify(cfg)); } catch { /* cache only */ }
 }
 
-/** The saved list, defaults when nothing is saved yet, or null when the server can't be reached. */
-export async function fetchBranches(signal) {
+/** { branches, requirements } — defaults when nothing is saved yet, null when the server can't be reached. */
+export async function fetchSettings(signal) {
   try {
     const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(BRANCHES_TYPE)}&limit=5`,
       { cache: "no-store", signal, headers: { Accept: "application/json" } });
@@ -95,48 +128,63 @@ export async function fetchBranches(signal) {
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
     const row = rows.find((r) => String(r?.payload?.reportDate || "") === KEY) || rows[0] || null;
-    const list = normalizeBranches(row?.payload?.branches);
-    return list.length ? list : defaultBranches();
+    return fromPayload(row?.payload);
   } catch {
     return null;
   }
 }
 
-export async function saveBranches(list, user = "") {
-  const branches = normalizeBranches(list);
+export async function saveSettings({ branches, requirements }, user = "") {
+  const cfg = { branches: normalizeBranches(branches), requirements: normalizeRequirements(requirements) };
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
-      reporter: user || "licenses-branches",
+      reporter: user || "licenses-settings",
       type: BRANCHES_TYPE,
-      payload: { reportDate: KEY, branches, updatedAt: new Date().toISOString(), updatedBy: user || "" },
+      payload: { reportDate: KEY, ...cfg, updatedAt: new Date().toISOString(), updatedBy: user || "" },
     }),
   });
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
-  writeCache(branches);
-  try { window.dispatchEvent(new CustomEvent(EVENT, { detail: branches })); } catch { /* old webviews */ }
-  return branches;
+  writeCache(cfg);
+  try { window.dispatchEvent(new CustomEvent(EVENT, { detail: cfg })); } catch { /* old webviews */ }
+  return cfg;
 }
 
-/** { branches: [{id,name,parentId}], names: string[], parents: {child: parent}, ready, save(list) } */
+/**
+ * { branches, names, parents, requirements, ready,
+ *   save(branchList, user), saveRequirements(list, user) }
+ */
 export function useLicenseBranches() {
-  const [branches, setBranches] = useState(() => readCache() || defaultBranches());
+  const [cfg, setCfg] = useState(() => readCache() || fromPayload(null));
   const [ready, setReady] = useState(false);
+  const latest = useRef(cfg);
+  latest.current = cfg;
   useEffect(() => {
     const ctl = new AbortController();
-    fetchBranches(ctl.signal).then((list) => {
-      if (list) { setBranches(list); writeCache(list); }
+    fetchSettings(ctl.signal).then((got) => {
+      if (got) { setCfg(got); writeCache(got); }
       setReady(true);
     });
-    const onChange = (e) => { if (Array.isArray(e.detail)) setBranches(e.detail); };
+    const onChange = (e) => { if (e.detail && Array.isArray(e.detail.branches)) setCfg(e.detail); };
     window.addEventListener(EVENT, onChange);
     return () => { ctl.abort(); window.removeEventListener(EVENT, onChange); };
   }, []);
   const save = useCallback(async (list, user) => {
-    const saved = await saveBranches(list, user);
-    setBranches(saved);
-    return saved;
+    const saved = await saveSettings({ ...latest.current, branches: list }, user);
+    setCfg(saved);
+    return saved.branches;
   }, []);
-  return { branches, names: branches.map((b) => b.name), parents: parentMap(branches), ready, save };
+  const saveRequirements = useCallback(async (list, user) => {
+    const saved = await saveSettings({ ...latest.current, requirements: list }, user);
+    setCfg(saved);
+    return saved.requirements;
+  }, []);
+  return {
+    branches: cfg.branches,
+    names: cfg.branches.map((b) => b.name),
+    parents: parentMap(cfg.branches),
+    requirements: cfg.requirements,
+    ready, save, saveRequirements,
+  };
 }

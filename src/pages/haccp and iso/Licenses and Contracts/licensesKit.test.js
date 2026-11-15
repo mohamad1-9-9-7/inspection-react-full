@@ -1,4 +1,4 @@
-import { addPeriod, statusOf, flattenRecords, diffPayloads, applyRenewal, ensureUids, documentVersions, applyItemEdit, removeItem, buildSuggestions, findContractPos } from "./licensesKit";
+import { addPeriod, statusOf, flattenRecords, diffPayloads, applyRenewal, ensureUids, documentVersions, applyItemEdit, removeItem, buildSuggestions, findContractPos, missingRequirements, docMatches } from "./licensesKit";
 
 test("addPeriod clamps month end", () => {
   expect(addPeriod("2028-02-29", { years: 1 })).toBe("2029-02-28");
@@ -168,4 +168,31 @@ test("diffPayloads logs an added extra licence", () => {
   const base = ensureUids(legacy.payload);
   const ev = diffPayloads(base, { ...base, licenses: [{ uid: "l1", name: "Industrial License", expiryDate: "2027-01-01" }] });
   expect(ev.map((e) => e.action)).toEqual(["license_added"]);
+});
+
+/* ── required documents ── */
+
+test("missingRequirements: licence type, old name match, sub-branch via parent, branch-scoped rules", () => {
+  const recs = [
+    { id: 1, payload: { branch: "QCS", license: { name: "AL QOSAIC", licType: "Trade License", expiryDate: "2027-01-19" }, contracts: [] } },
+    { id: 2, payload: { branch: "Barsha", license: { name: "Industrial License", expiryDate: "2027-01-01" }, contracts: [{ uid: "c", contractType: "Pest Control" }] } },
+  ];
+  const items = flattenRecords(recs);
+  const reqs = [
+    { id: "t", kind: "license", name: "Trade License", branches: [] },
+    { id: "i", kind: "license", name: "Industrial License", branches: [] },
+    { id: "p", kind: "contract", name: "Pest Control", branches: ["Barsha"] },
+  ];
+  const miss = missingRequirements(items, reqs, ["QCS", "Truck", "Barsha"], { Truck: "QCS" });
+  expect(miss.map((m) => `${m.branch}:${m.reqId}`).sort()).toEqual(["Barsha:t", "QCS:i"]);
+  // the truck's licences come from QCS: its gaps are reported once, on QCS
+  expect(miss.some((m) => m.branch === "Truck")).toBe(false);
+  expect(docMatches(items[0], "license", "trade license")).toBe(true);
+});
+
+test("applyItemEdit stores the licence type and logs it", () => {
+  const res = applyItemEdit(legacy.payload, { kind: "license", uid: "license" },
+    { name: "Trade", licType: "Trade License", expiryDate: "2026-01-01", notes: "", fileUrls: ["a.pdf"], fileNames: [] });
+  expect(res.payload.license.licType).toBe("Trade License");
+  expect(res.events[0].changes.map((c) => c.field)).toContain("licType");
 });

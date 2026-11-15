@@ -25,7 +25,7 @@ const T = {
     title: "New Licenses & Contracts Entry", sub: "AL MAWASHI — Licenses & Contracts",
     back: "← Hub", register: "📜 Open register", save: "✓ Save entry", saving: "Saving…",
     underNote: (p) => `This branch works under the licence of ${p} — add the licence there, contracts here.`, manageBranches: "⚙ Manage branches", branchesSaved: "Branches saved.", branch: "Branch", existing: (n) => `This branch already has ${n} record(s) in the register.`, openExisting: "Open it",
-    license: "🪪 Licenses", licName: "License name", licNamePh: "e.g. Trade License", addOtherLic: "+ Other license",
+    license: "🪪 Licenses", licName: "License name", licNamePh: "e.g. Trade License", addOtherLic: "+ Other license", licType: "Licence type", licTypePh: "e.g. Trade License", licNameOpt: "Name on the licence (optional)", licNameOptPh: "e.g. TRANS EMIRATES LIVESTOCK TRADING L.L.C.",
     licHint: "Fill the ones you have now — an empty license is skipped.", cLic: (n) => `${n}: expiry date`, cLicDocN: (n) => `${n}: document`,
     cAnyLic: "At least one license filled",
     expiry: "Expiry date", notes: "Notes (optional)", notesPh: "Short note",
@@ -51,7 +51,7 @@ const T = {
     title: "إدخال جديد — الرخص والعقود", sub: "المواشي — الرخص والعقود",
     back: "→ الرئيسية", register: "📜 فتح السجل", save: "✓ حفظ الإدخال", saving: "جارٍ الحفظ…",
     underNote: (p) => `هذا الفرع يعمل تحت رخصة ${p} — أضف الرخصة هناك، والعقود هنا.`, manageBranches: "⚙ إدارة الفروع", branchesSaved: "تم حفظ الفروع.", branch: "الفرع", existing: (n) => `هذا الفرع لديه ${n} سجل في السجل مسبقاً.`, openExisting: "فتحه",
-    license: "🪪 الرخص", licName: "اسم الرخصة", licNamePh: "مثال: رخصة تجارية", addOtherLic: "+ رخصة أخرى",
+    license: "🪪 الرخص", licName: "اسم الرخصة", licNamePh: "مثال: رخصة تجارية", addOtherLic: "+ رخصة أخرى", licType: "نوع الرخصة", licTypePh: "مثال: Trade License", licNameOpt: "الاسم على الرخصة (اختياري)", licNameOptPh: "مثال: TRANS EMIRATES LIVESTOCK TRADING L.L.C.",
     licHint: "عبّئ الموجود عندك الآن — الرخصة الفارغة لا تُحفظ.", cLic: (n) => `${n}: تاريخ الانتهاء`, cLicDocN: (n) => `${n}: المستند`,
     cAnyLic: "رخصة واحدة على الأقل معبأة",
     expiry: "تاريخ الانتهاء", notes: "ملاحظات (اختياري)", notesPh: "ملاحظة قصيرة",
@@ -99,7 +99,10 @@ const chip = (on) => ({
 });
 const mini = { background: "rgba(79,70,229,0.07)", border: "1px solid rgba(79,70,229,0.25)", color: "#4338ca", borderRadius: 8, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" };
 
-const mkLicense = (name = "") => ({ uid: newUid("l"), name, expiryDate: "", fileUrls: [], fileNames: [], notes: "" });
+// licType = what the licence is (Trade / Industrial …, matched against Required documents);
+// name = what is printed on it (often the company name) — optional, falls back to the type
+const mkLicense = (licType = "") => ({ uid: newUid("l"), licType, name: "", expiryDate: "", fileUrls: [], fileNames: [], notes: "" });
+const licKey = (l) => String(l?.licType || l?.name || "").trim().toLowerCase();
 // a licence counts once it has a date, a document or a note — the preset name alone is not data
 const licReal = (l) => filled(l.expiryDate) || l.fileUrls.length > 0 || filled(l.notes);
 const sameName = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
@@ -195,10 +198,13 @@ export default function LicensesContractsInput() {
   const [branchMgr, setBranchMgr] = useState(false);
   const mayManage = canEdit("iso");
   const [branch, setBranch] = useState(() => String(params.get("branch") || "").trim() || BRANCHES[0]);
-  const [licenses, setLicenses] = useState(() => CORE_LICENSES.map(mkLicense));
+  // "+ Add" on a Missing row arrives as ?mode=license|contract&add=<name>
+  const addParam = String(params.get("add") || "").trim();
+  const modeParam = params.get("mode");
+  const [licenses, setLicenses] = useState(() => (addParam && modeParam === "license" ? [mkLicense(addParam)] : CORE_LICENSES.map(mkLicense)));
   const setL = (uid, patch) => setLicenses((p) => p.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
-  const [contracts, setContracts] = useState(() => [mkContract()]);
-  const [mode, setMode] = useState("contract"); // contract | license | both
+  const [contracts, setContracts] = useState(() => [mkContract(addParam && modeParam === "contract" ? addParam : "")]);
+  const [mode, setMode] = useState(() => (["license", "contract", "both"].includes(modeParam) ? modeParam : "contract")); // contract | license | both
   const showLic = mode !== "contract";
   const showCon = mode !== "license";
   const [merged, setMerged] = useState(false);
@@ -223,7 +229,8 @@ export default function LicensesContractsInput() {
     existing.forEach((r) => {
       const p = r?.payload || {};
       if (filled(p.license?.name)) lic.add(String(p.license.name).trim());
-      safeArr(p.licenses).forEach((l) => { if (filled(l?.name)) lic.add(String(l.name).trim()); });
+      safeArr(p.licenses).forEach((l) => { if (filled(l?.licType)) lic.add(String(l.licType).trim()); });
+      if (filled(p.license?.licType)) lic.add(String(p.license.licType).trim());
       safeArr(p.contracts).forEach((c) => {
         if (filled(c.contractType)) types.add(String(c.contractType).trim());
         if (filled(c.companyName)) cos.add(String(c.companyName).trim());
@@ -281,8 +288,8 @@ export default function LicensesContractsInput() {
       const real = licenses.filter(licReal);
       if (!real.length) out.push({ ok: false, label: t.cAnyLic });
       real.forEach((l, i) => {
-        const n = l.name.trim() || `#${i + 1}`;
-        out.push({ ok: filled(l.name) && filled(l.expiryDate), label: t.cLic(n) });
+        const n = l.licType.trim() || l.name.trim() || `#${i + 1}`;
+        out.push({ ok: (filled(l.licType) || filled(l.name)) && filled(l.expiryDate), label: t.cLic(n) });
         out.push({ ok: l.fileUrls.length > 0, label: t.cLicDocN(n) });
       });
     }
@@ -304,7 +311,7 @@ export default function LicensesContractsInput() {
     const missing = checks.length - doneN;
     if (missing && !window.confirm(t.missingWarn(missing))) return;
     const cons = consOut.map((c) => ({ ...c, fileUrl: c.fileUrls[0] || "", fileName: c.fileNames[0] || "" }));
-    const lics = licsOut.map((l) => ({ ...l, name: l.name.trim() || "License", fileUrl: l.fileUrls[0] || "", fileName: l.fileNames[0] || "" }));
+    const lics = licsOut.map((l) => ({ ...l, licType: l.licType.trim(), name: l.name.trim() || l.licType.trim() || "License", fileUrl: l.fileUrls[0] || "", fileName: l.fileNames[0] || "" }));
     try {
       setSaving(true);
       if (target && getId(target)) {
@@ -313,11 +320,12 @@ export default function LicensesContractsInput() {
         // a licence with the same name replaces that one (after a confirm); a new name is added beside it
         let primary = old.license || {};
         const extras = safeArr(old.licenses).map((l) => ({ ...l }));
-        const clashes = lics.filter((l) => sameName(l.name, primary.name) || extras.some((x) => sameName(x.name, l.name)));
-        if (clashes.length && !window.confirm(t.replaceLic(clashes.map((l) => l.name).join(", ")))) { setSaving(false); return; }
+        const same = (a, b) => licKey(a) && licKey(a) === licKey(b);
+        const clashes = lics.filter((l) => same(l, primary) || extras.some((x) => same(x, l)));
+        if (clashes.length && !window.confirm(t.replaceLic(clashes.map((l) => l.licType || l.name).join(", ")))) { setSaving(false); return; }
         lics.forEach((l) => {
-          if (sameName(l.name, primary.name)) { primary = { ...stripUid(l), renewals: primary.renewals }; return; }
-          const pos = extras.findIndex((x) => sameName(x.name, l.name));
+          if (same(l, primary)) { primary = { ...stripUid(l), renewals: primary.renewals }; return; }
+          const pos = extras.findIndex((x) => same(x, l));
           if (pos >= 0) { extras[pos] = { ...l, uid: extras[pos].uid || l.uid, renewals: extras[pos].renewals }; return; }
           if (!hasAny(primary)) primary = stripUid(l);
           else extras.push(l);
@@ -461,7 +469,7 @@ export default function LicensesContractsInput() {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: C.sub }}>{t.quickAdd}</span>
               {CORE_LICENSES.map((nm) => {
-                const on = licenses.some((l) => sameName(l.name, nm));
+                const on = licenses.some((l) => sameName(l.licType, nm));
                 return (
                   <button key={nm} type="button" style={chip(on)} disabled={on} onClick={() => setLicenses((p) => [...p, mkLicense(nm)])}>
                     {on ? "✓ " : "+ "}{nm}
@@ -476,15 +484,24 @@ export default function LicensesContractsInput() {
                 return (
                   <div key={l.uid} style={{ border: `1.5px solid ${C.line}`, borderInlineStart: `5px solid ${STATUS[st.key].dot}`, borderRadius: 14, padding: 14, background: "#fcfcfd" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <b style={{ fontSize: 14 }}>#{i + 1} {l.name || ""}</b>
+                      <b style={{ fontSize: 14 }}>#{i + 1} {l.licType || l.name || ""}</b>
                       <button type="button" style={{ ...mini, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", color: "#991b1b" }}
                         onClick={() => setLicenses((p) => p.filter((x) => x.uid !== l.uid))}>{t.remove}</button>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 14 }}>
                       <div>
-                        <label style={S.label}>{t.licName}</label>
-                        <input list="lc-lic-names" style={S.input} value={l.name} placeholder={t.licNamePh}
-                          onChange={(e) => setL(l.uid, { name: e.target.value })} />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={S.label}>{t.licType}</label>
+                            <input list="lc-lic-names" style={S.input} value={l.licType} placeholder={t.licTypePh}
+                              onChange={(e) => setL(l.uid, { licType: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={S.label}>{t.licNameOpt}</label>
+                            <input style={S.input} value={l.name} placeholder={t.licNameOptPh}
+                              onChange={(e) => setL(l.uid, { name: e.target.value })} />
+                          </div>
+                        </div>
                         <div style={{ marginTop: 12 }}>
                           <label style={S.label}>{t.notes}</label>
                           <input style={S.input} value={l.notes} placeholder={t.notesPh}
@@ -596,7 +613,7 @@ export default function LicensesContractsInput() {
             <b style={{ fontSize: 14 }}>{t.summary}</b>
             <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13, fontWeight: 700 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.branch}</span><span>{branch}</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>{t.sLicense}</span><span>{licsOut.length ? licsOut.map((l) => l.name).join(" · ") : "—"}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>{t.sLicense}</span><span>{licsOut.length ? licsOut.map((l) => l.licType || l.name).join(" · ") : "—"}</span></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.sContracts}</span><span>{consOut.length}</span></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.sub }}>{t.sFiles}</span><span>{totalFiles}</span></div>
             </div>

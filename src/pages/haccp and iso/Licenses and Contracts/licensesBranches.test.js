@@ -1,4 +1,4 @@
-import { normalizeBranches, branchRenames, defaultBranches, parentMap } from "./licensesBranches";
+import { normalizeBranches, branchRenames, defaultBranches, parentMap, normalizeRequirements, defaultRequirements } from "./licensesBranches";
 // config/api.js uses import.meta, which Jest cannot parse (babel-jest hoists this above the import)
 jest.mock("../../../config/api", () => ({ __esModule: true, default: "" }));
 
@@ -29,4 +29,14 @@ test("parentMap: one level, self / missing / chained parents dropped", () => {
   ];
   expect(parentMap(list)).toEqual({ "Al Mamzar Food Truck": "Al Barsha Butchery" });
   expect(normalizeBranches(list).find((b) => b.id === "t2").parentId).toBe("");
+});
+
+
+test("requirements: defaults are Trade + Industrial, duplicates and blanks dropped", () => {
+  expect(defaultRequirements().map((r) => r.name)).toEqual(["Trade License", "Industrial License"]);
+  const out = normalizeRequirements([
+    { kind: "license", name: " Trade License " }, { kind: "license", name: "trade license" },
+    { kind: "contract", name: "Trade License" }, { kind: "contract", name: "" }, { kind: "x", name: "Pest", branches: ["A", "A", " "] },
+  ]);
+  expect(out.map((r) => `${r.kind}:${r.name}:${r.branches.join("|")}`)).toEqual(["license:Trade License:", "contract:Trade License:", "license:Pest:A"]);
 });
