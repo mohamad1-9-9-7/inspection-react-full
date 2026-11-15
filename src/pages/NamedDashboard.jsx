@@ -54,6 +54,10 @@ const T = {
     allAlerts: (n) => `All alerts (${n})`,
     nAlerts: (n) => `${n} alert${n !== 1 ? "s" : ""}`,
     filedToday: (d, e) => `${d} of ${e} logs filed today`,
+    openRequests: (n) => `${n} open request${n !== 1 ? "s" : ""}`,
+    noOpenRequests: "No open requests",
+    retBranch: "Branch returns saved today", retCustomer: "Customer returns saved today",
+    staffHint: "Pick your name from the company list, or keep typing.",
     offlineMsg: "You are offline. Saves stay on this device and upload when the connection is back.",
     waitingMsg: (n) => `${n} saved report${n !== 1 ? "s" : ""} still waiting to upload from this device.`,
     // operator picker
@@ -88,6 +92,10 @@ const T = {
     allAlerts: (n) => `كل التنبيهات (${n})`,
     nAlerts: (n) => (n === 1 ? "تنبيه واحد" : n === 2 ? "تنبيهان" : n <= 10 ? `${n} تنبيهات` : `${n} تنبيهًا`),
     filedToday: (d, e) => `${d} من ${e} سجل اليوم`,
+    openRequests: (n) => (n === 1 ? "طلب واحد مفتوح" : n === 2 ? "طلبان مفتوحان" : n <= 10 ? `${n} طلبات مفتوحة` : `${n} طلبًا مفتوحًا`),
+    noOpenRequests: "لا طلبات مفتوحة",
+    retBranch: "مرتجعات الفروع محفوظة اليوم", retCustomer: "مرتجعات العملاء محفوظة اليوم",
+    staffHint: "اختر اسمك من قائمة الشركة، أو أكمل الكتابة.",
     offlineMsg: "أنت غير متصل. ما تحفظه يبقى على هذا الجهاز ويُرفع عند عودة الاتصال.",
     waitingMsg: (n) => (n === 1 ? "تقرير واحد محفوظ ينتظر الرفع من هذا الجهاز." : `${n} تقارير محفوظة تنتظر الرفع من هذا الجهاز.`),
     whoTitle: "من يعمل الآن؟", pickSub: "اختر اسمك لتسجيل هذه الجلسة",
@@ -111,7 +119,8 @@ const ALL_ROLES = [
   {
     // "admin" = View reports — its doors live on /monitor now, so an
     // account holding only that section still needs this card.
-    id: "daily", group: "ops", label: "Daily Monitor", route: "/monitor", icon: "📅", anyOf: ["admin"],
+    // big = the card every site opens every day; it gets a double-width tile
+    id: "daily", group: "ops", big: true, label: "Daily Monitor", route: "/monitor", icon: "📅", anyOf: ["admin"],
     grad: "linear-gradient(135deg,#06b6d4,#0284c7)", glow: "rgba(6,182,212,.30)",
   },
   {
@@ -340,6 +349,17 @@ const ND_CSS = `
   border:none; background:none; cursor:pointer; text-align:start; color:inherit; border-radius:16px; }
 .ndx-cmain:focus-visible, .ndx-tool:focus-visible, .ndx-star:focus-visible, .ndx-chip:focus-visible, .ndx-hbtn:focus-visible, .ndx-rrow:focus-visible
   { outline:3px solid rgba(59,130,246,.45); outline-offset:2px; }
+/* the everyday card: double width, icon beside the text */
+@media (min-width: 620px) {
+  .ndx-card.big { grid-column:span 2; }
+  .ndx-card.big .ndx-cmain { flex-direction:row; flex-wrap:wrap; align-items:center; column-gap:14px; }
+  .ndx-card.big .ndx-ico { width:64px; height:64px; border-radius:16px; }
+  .ndx-card.big .ndx-ctxt { flex:1; min-width:0; padding-inline-end:36px; }
+  .ndx-card.big .ndx-cfoot { width:100%; }
+  #root .ndx.ndx .ndx-card.big .ndx-ico { font-size:${fs(32)}; }
+  #root .ndx.ndx .ndx-card.big .ndx-ctitle { font-size:${fs(21)}; }
+  #root .ndx.ndx .ndx-card.big .ndx-csub { font-size:${fs(14)}; }
+}
 .ndx-ico { width:50px; height:50px; border-radius:13px; display:grid; place-items:center; color:#fff; flex-shrink:0; }
 #root .ndx.ndx .ndx-ico { font-size:${fs(25)}; line-height:1; }
 #root .ndx.ndx .ndx-ctitle { font-size:${fs(17.5)}; font-weight:900; color:#0f172a; line-height:1.25; display:block; }
@@ -540,7 +560,11 @@ export default function NamedDashboard() {
   const hasCard = (id) => visibleRoles.some((r) => r.id === id);
 
   /* ── live: alerts, daily logs filed today, connection ── */
-  const live = useDashboardLive({ wantDaily: hasCard("daily") });
+  const live = useDashboardLive({
+    wantDaily: hasCard("daily"),
+    wantReturns: hasCard("returns"),
+    wantMaintenance: hasCard("maintenance"),
+  });
   const prefs = useDashPrefs();
 
   const alertsByCard = useMemo(() => {
@@ -663,6 +687,14 @@ export default function NamedDashboard() {
       const { done, expected } = live.daily;
       out.push(<span key="d" className={`ndx-badge ${done >= expected ? "green" : "blue"}`}>{t.filedToday(done, expected)}</span>);
     }
+    if (role.id === "returns" && live.returnsToday) {
+      if (live.returnsToday.branch) out.push(<span key="rb" className="ndx-badge green">{t.retBranch}</span>);
+      if (live.returnsToday.customer) out.push(<span key="rc" className="ndx-badge green">{t.retCustomer}</span>);
+    }
+    if (role.id === "maintenance" && live.maintenanceOpen != null) {
+      const n = live.maintenanceOpen;
+      out.push(<span key="m" className={`ndx-badge ${n ? "amber" : "green"}`}>{n ? t.openRequests(n) : t.noOpenRequests}</span>);
+    }
     const al = alertsByCard[role.id];
     if (al) out.push(<span key="a" className={`ndx-badge ${al.critical ? "red" : "amber"}`}>{t.nAlerts(al.n)}</span>);
     return out.length ? out : <span>{role.href ? t.openPortal : t.open}</span>;
@@ -672,7 +704,7 @@ export default function NamedDashboard() {
     const txt = roleText(role, lang);
     const pinned = prefs.favs.includes(role.id);
     return (
-      <div key={role.id} className="ndx-card" style={{ "--glow": role.glow }}>
+      <div key={role.id} className={`ndx-card${role.big ? " big" : ""}`} style={{ "--glow": role.glow }}>
         <button type="button" className="ndx-cmain" onClick={() => openRole(role)}>
           <span className="ndx-ico" style={{ background: role.grad }} aria-hidden="true">{role.icon}</span>
           <span className="ndx-ctxt">

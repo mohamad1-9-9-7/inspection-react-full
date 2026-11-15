@@ -5,7 +5,12 @@
 // A typed name that already exists on the account's list is stored in the
 // list's own spelling ("ahmed ali " → "Ahmed Ali"), so one person does not
 // end up under three names in the audit trail.
-import React, { useMemo, useState } from "react";
+//
+// While typing, the name is offered from the company register (the OHC
+// employee list behind the staff directory — number, name, job), so a person
+// who is not on the account's own list still signs in under the register's
+// spelling. The register is loaded only when this window opens.
+import React, { useEffect, useMemo, useState } from "react";
 import { normText } from "./dashboardSearch";
 
 const fs = (px) => `calc(${px}px * var(--app-fs, 1)) !important`;
@@ -37,6 +42,7 @@ const CSS = `
 #root .opk-card.opk-card .opk-emp, #root .opk-card.opk-card .opk-emp span { font-size:${fs(16)}; }
 .opk-av { width:34px; height:34px; border-radius:50%; background:#dbeafe; color:#1d4ed8; font-weight:900;
   display:grid; place-items:center; flex-shrink:0; }
+#root .opk-card.opk-card .opk-emp .opk-meta { display:block; font-size:${fs(12.5)}; font-weight:600; color:#64748b; }
 .opk-tick { margin-inline-start:auto; color:#2563eb; }
 #root .opk-card.opk-card .opk-none { font-size:${fs(14)}; color:#64748b; padding:10px 0; }
 .opk-go { width:100%; padding:14px 0; background:#2563eb; color:#fff; border:none; border-radius:12px; font-weight:900;
@@ -44,6 +50,19 @@ const CSS = `
 .opk-go:disabled { opacity:.5; cursor:not-allowed; }
 #root .opk-card.opk-card .opk-go { font-size:${fs(17)}; }
 `;
+
+/** The company register, loaded on demand (it carries the whole OHC list). */
+function useCompanyRegister() {
+  const [people, setPeople] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    import("../monitor/branches/_shared/staffRegistry")
+      .then((m) => { if (alive) setPeople(m.COMPANY_DIRECTORY || []); })
+      .catch(() => { /* typing a name still works */ });
+    return () => { alive = false; };
+  }, []);
+  return people;
+}
 
 const tidy = (v) => String(v || "").replace(/\s+/g, " ").trim();
 
@@ -59,13 +78,29 @@ export default function OperatorPicker({ employees, accountName, onConfirm, t, l
     return q ? employees.filter((n) => normText(n).includes(q)) : employees;
   }, [employees, find]);
 
+  const register = useCompanyRegister();
   const typed = tidy(custom);
+  /* up to 6 people of the register matching every typed word (name or number) */
+  const suggestions = useMemo(() => {
+    const words = normText(typed).split(" ").filter(Boolean);
+    if (typed.length < 2 || !words.length) return [];
+    const out = [];
+    for (const d of register) {
+      const hay = normText(`${d.empNo} ${d.name}`);
+      if (words.every((w) => hay.includes(w))) out.push(d);
+      if (out.length >= 6) break;
+    }
+    // nothing to offer once the box already holds exactly that name
+    return out.length === 1 && normText(out[0].name) === normText(typed) ? [] : out;
+  }, [register, typed]);
   const name = mode === "list" ? selected : typed;
 
   const confirm = () => {
     if (!name) return;
     // a typed name that is already on the list keeps the list's spelling
-    const known = employees.find((n) => normText(n) === normText(name));
+    const known =
+      employees.find((n) => normText(n) === normText(name)) ||
+      register.find((d) => normText(d.name) === normText(name))?.name;
     onConfirm(known || name);
   };
 
@@ -128,6 +163,22 @@ export default function OperatorPicker({ employees, accountName, onConfirm, t, l
             onChange={(e) => setCustom(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && confirm()}
           />
+        )}
+        {mode === "type" && suggestions.length > 0 && (
+          <>
+            <div className="opk-none">{t.staffHint}</div>
+            <div className="opk-list">
+              {suggestions.map((d) => (
+                <button type="button" key={d.empNo} className="opk-emp" onClick={() => setCustom(d.name)}>
+                  <span className="opk-av" aria-hidden="true">{d.name[0]?.toUpperCase()}</span>
+                  <span>
+                    {d.name}
+                    <small className="opk-meta">{d.empNo}{d.job ? ` · ${d.job}` : ""}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
         <button type="button" className="opk-go" onClick={confirm} disabled={!name}>{t.start}</button>

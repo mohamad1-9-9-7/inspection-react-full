@@ -4,7 +4,8 @@
 //   • daily logs filed   — counts only (/api/reports/kpi-days), no payloads
 //   • connection + saves still waiting on this device (offline outbox)
 //
-// Cost: two light requests when the dashboard opens, then only on window
+// Cost: up to four count-only requests when the dashboard opens (one per card
+// the account actually has), then only on window
 // focus (at most once a minute) or after an alert is acknowledged. No timer:
 // a short poll would keep the database awake all day.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -66,15 +67,54 @@ async function fetchDailyToday() {
   return value;
 }
 
+/** Was today's branch-returns / customer-returns register saved? { branch, customer } */
+async function fetchReturnsToday() {
+  const today = todayDubai();
+  const res = await fetch(
+    `${API_BASE}/api/reports/kpi-days?types=returns,returns_customers&from=${today}&to=${today}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) return null;
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json) ? json : json?.data || [];
+  const has = (type) => rows.some((r) => r.type === type && r.n > 0);
+  return { branch: has("returns"), customer: has("returns_customers") };
+}
+
+/** Maintenance requests still open (not completed, not rejected). null = unknown. */
+async function fetchMaintenanceOpen() {
+  const res = await fetch(`${API_BASE}/api/reports/status-counts?type=maintenance`, { cache: "no-store" });
+  if (!res.ok) return null; // older server: the card simply shows no count
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  const closed = (s) => /completed|rejected|مكتمل|مرفوض/i.test(String(s || ""));
+  return rows.reduce((sum, r) => (closed(r.status) ? sum : sum + (Number(r.n) || 0)), 0);
+}
+
+/* one short memory for the two card counts, so going back and forth between
+   pages does not ask again */
+const cardMemo = new Map(); // key -> { at, value }
+async function cached(key, fn) {
+  const hit = cardMemo.get(key);
+  if (hit && Date.now() - hit.at < DAILY_CACHE_MS) return hit.value;
+  const value = await fn();
+  cardMemo.set(key, { at: Date.now(), value });
+  return value;
+}
+
 /**
- * @param {{ wantDaily: boolean }} opts  wantDaily = the account has the Daily Monitor card
+ * @param {{ wantDaily: boolean, wantReturns: boolean, wantMaintenance: boolean }} opts
+ *        each flag = the account has that card (no card, no request)
  * @returns {{ alerts: object[], alertsLoaded: boolean, daily: {done:number, expected:number}|null,
+ *             returnsToday: {branch:boolean, customer:boolean}|null, maintenanceOpen: number|null,
  *             online: boolean, waiting: number }}
  */
-export function useDashboardLive({ wantDaily }) {
+export function useDashboardLive({ wantDaily, wantReturns, wantMaintenance }) {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [daily, setDaily] = useState(null);
+  const [returnsToday, setReturnsToday] = useState(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(null);
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const [waiting, setWaiting] = useState(0);
   const lastLoad = useRef(0);
@@ -91,7 +131,17 @@ export function useDashboardLive({ wantDaily }) {
         .then((v) => { if (alive.current) setDaily(v); })
         .catch(() => { /* card shows no count */ });
     }
-  }, [wantDaily]);
+    if (wantReturns) {
+      cached("returns", fetchReturnsToday)
+        .then((v) => { if (alive.current) setReturnsToday(v); })
+        .catch(() => { /* card shows no count */ });
+    }
+    if (wantMaintenance) {
+      cached("maintenance", fetchMaintenanceOpen)
+        .then((v) => { if (alive.current) setMaintenanceOpen(v); })
+        .catch(() => { /* card shows no count */ });
+    }
+  }, [wantDaily, wantReturns, wantMaintenance]);
 
   useEffect(() => {
     alive.current = true;
@@ -117,5 +167,5 @@ export function useDashboardLive({ wantDaily }) {
     };
   }, [load]);
 
-  return { alerts, alertsLoaded, daily, online, waiting };
+  return { alerts, alertsLoaded, daily, returnsToday, maintenanceOpen, online, waiting };
 }
