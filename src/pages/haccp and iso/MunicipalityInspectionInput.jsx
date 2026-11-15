@@ -1,431 +1,385 @@
 // src/pages/haccp and iso/MunicipalityInspectionInput.jsx
-import React, { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import mawashiLogo from "../../assets/almawashi-logo.jpg";
-import HaccpLinkBadge from "./FSMSManual/HaccpLinkBadge";
-import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+// Municipality inspections — log a visit, or edit one (?edit=<id>).
+// Design: _shared/pageKit.jsx. Data + strings: dmInspectionShared.js.
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../config/api";
+import { useLangState } from "../../utils/appLang";
+import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+import { normText } from "../dashboard/dashboardSearch";
+import { HaccpPage, Btn, Panel, Field, Note, useToast } from "./_shared/pageKit";
+import {
+  TYPE, DM_T, MUNICIPALITIES, BRANCHES, GRADES, VISIT_TYPES, OUTCOMES, normalizeVisit, todayDubai, newId,
+} from "./dmInspectionShared";
 
+const MAX_PDF = 10 * 1024 * 1024;
 
-const TYPE = "municipality_inspection";
+const blank = () => ({
+  municipality: MUNICIPALITIES[0], branchName: "", inspectionDate: todayDubai(), inspectionGrade: "",
+  visitType: "routine", outcome: "", inspectorName: "", referenceNo: "", fineAmount: "", notes: "",
+});
+const blankFinding = () => ({ id: newId(), text: "", action: "", owner: "", due: "", status: "open", closedAt: "" });
 
-// ── helpers ────────────────────────────────────────────────────────────────
-function todayDubai() {
+/* Shrink a photo in the browser before it is uploaded (base64 never enters the record). */
+async function compressToFile(file, maxDim = 1600, quality = 0.82) {
+  const url = URL.createObjectURL(file);
   try {
-    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return file;
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) return file;
+    return new File([blob], `${String(file.name || "photo").replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
   } catch {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return file; // a format the browser cannot draw (HEIC…): the server converts it
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 
-function loadImageFromFile(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => { try { URL.revokeObjectURL(url); } catch {} resolve(img); };
-    img.onerror = (e) => { try { URL.revokeObjectURL(url); } catch {} reject(e); };
-    img.src = url;
-  });
-}
-
-/* Compress client-side to a JPEG File, then upload to Cloudinary.
-   base64 never enters the report payload. */
-async function compressToFile(file, { maxDim = 1280, quality = 0.8 } = {}) {
-  const img = await loadImageFromFile(file);
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  if (!w || !h) throw new Error("Invalid image dimensions");
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(w * scale));
-  canvas.height = Math.max(1, Math.round(h * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-  if (!blob) throw new Error("Image compression failed");
-  const base = String(file?.name || "image").replace(/\.[^.]+$/, "");
-  return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
-}
-
-// ── styles ─────────────────────────────────────────────────────────────────
-const S = {
-  shell: {
-    minHeight: "100vh",
-    padding: "20px 24px",
-    background: "linear-gradient(150deg,#eef2ff 0%,#f8fafc 55%,#ecfdf5 100%)",
-    fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif',
-    color: "#0f172a",
-  },
-  topBar: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    gap: 10, padding: "12px 18px", borderRadius: 16,
-    background: "#fff", border: "1.5px solid #e2e8f0",
-    boxShadow: "0 2px 14px rgba(0,0,0,0.06)", marginBottom: 16, flexWrap: "wrap",
-  },
-  brand: { display: "flex", alignItems: "center", gap: 12 },
-  logo: { width: 44, height: 44, borderRadius: 10, objectFit: "cover", border: "1px solid #e2e8f0" },
-  card: {
-    background: "#fff", border: "1.5px solid #e2e8f0",
-    borderRadius: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", padding: 22,
-    marginBottom: 16,
-  },
-  label: { fontSize: 14, fontWeight: 700, color: "#475569", marginBottom: 6, display: "block" },
-  input: {
-    width: "100%", boxSizing: "border-box",
-    border: "1.5px solid #e2e8f0", borderRadius: 10,
-    padding: "11px 14px", fontSize: 15, fontWeight: 600,
-    outline: "none", background: "#f8fafc",
-  },
-  hint: { fontSize: 13, color: "#94a3b8", marginTop: 5, fontWeight: 600 },
-  grid4: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, alignItems: "end" },
-};
-
-const btnSolid = (bg) => ({
-  background: bg, color: "#fff", border: "none", borderRadius: 10,
-  padding: "11px 22px", fontWeight: 700, cursor: "pointer", fontSize: 15, whiteSpace: "nowrap",
-});
-const btnGhost = {
-  background: "#fff", color: "#334155", border: "1.5px solid #e2e8f0",
-  borderRadius: 10, padding: "11px 18px", fontWeight: 700, cursor: "pointer", fontSize: 15,
-};
-
-// ── Main ───────────────────────────────────────────────────────────────────
 export default function MunicipalityInspectionInput() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const editId = params.get("edit");
+  const [lang] = useLangState("en");
+  const t = DM_T[lang] || DM_T.en;
+  const isAr = lang === "ar";
+  const [toast, say] = useToast();
 
-  const [municipality, setMunicipality] = useState("Dubai Municipality");
-  const [branchName, setBranchName] = useState("");
-  const [inspectionDate, setInspectionDate] = useState(() => todayDubai());
-  const [inspectionGrade, setInspectionGrade] = useState("");
-  const [notes, setNotes] = useState("");
-
+  const [form, setForm] = useState(blank);
+  const [findings, setFindings] = useState([]);
   const [images, setImages] = useState([]);
-  const [processingImages, setProcessingImages] = useState(false);
   const [pdfs, setPdfs] = useState([]);
-  const [processingPdfs, setProcessingPdfs] = useState(false);
+  const [keep, setKeep] = useState({}); // the edited record's other payload fields
+  const [errors, setErrors] = useState({});
+  const [uploading, setUploading] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadState, setLoadState] = useState(editId ? "loading" : "ready"); // loading | ready | missing
 
-  const fileInputRef = useRef(null);
-  const pdfInputRef = useRef(null);
+  const imgRef = useRef(null);
+  const pdfRef = useRef(null);
+  const busy = saving || !!uploading;
 
-  const busy = saving || processingImages || processingPdfs;
+  /* Edit: GET /api/reports/:id answers { report: row } — the fields are in row.payload. */
+  useEffect(() => {
+    if (!editId) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(editId)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const json = await res.json();
+        const row = json?.report || json;
+        if (!row?.payload) throw new Error("empty");
+        if (!alive) return;
+        const v = normalizeVisit(row);
+        setForm({
+          municipality: v.municipality || MUNICIPALITIES[0], branchName: v.branchName, inspectionDate: v.inspectionDate || todayDubai(),
+          inspectionGrade: v.inspectionGrade, visitType: v.visitType, outcome: v.outcome, inspectorName: v.inspectorName,
+          referenceNo: v.referenceNo, fineAmount: v.fineAmount, notes: v.notes,
+        });
+        setFindings(v.findings);
+        setImages(v.images.map((x) => ({ ...x, id: newId() })));
+        setPdfs(v.pdfs.map((x) => ({ ...x, id: newId() })));
+        setKeep(row.payload);
+        setLoadState("ready");
+      } catch {
+        if (alive) setLoadState("missing");
+      }
+    })();
+    return () => { alive = false; };
+  }, [editId]);
 
-  async function onPickFiles(e) {
+  const set = (k) => (e) => {
+    const value = e.target.value;
+    setForm((p) => ({ ...p, [k]: value }));
+    setErrors((p) => (p[k] ? { ...p, [k]: "" } : p));
+  };
+  const setFinding = (id, k, value) => setFindings((list) => list.map((x) => (x.id === id ? { ...x, [k]: value } : x)));
+
+  async function addImages(e) {
     const picked = Array.from(e.target.files || []);
     e.target.value = "";
     if (!picked.length) return;
+    setUploading("img");
     try {
-      setProcessingImages(true);
-      const newItems = [];
+      const added = [];
       for (const file of picked) {
-        const compressed = await compressToFile(file, { maxDim: 1280, quality: 0.8 });
-        const url = await uploadImageToServer(compressed, "municipality_inspection");
-        newItems.push({
-          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          name: file?.name || "image.jpg",
-          mime: "image/jpeg",
-          url,
-        });
+        const url = await uploadImageToServer(await compressToFile(file), TYPE);
+        added.push({ id: newId(), name: file.name || "photo.jpg", mime: "image/jpeg", url });
       }
-      setImages((prev) => [...prev, ...newItems]);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to process images. Try fewer or smaller images.");
+      setImages((p) => [...p, ...added]);
+    } catch {
+      say(t.upErr, "err");
     } finally {
-      setProcessingImages(false);
+      setUploading("");
     }
   }
 
-  async function onPickPdfs(e) {
-    const picked = Array.from(e.target.files || []);
+  async function addPdfs(e) {
+    const picked = Array.from(e.target.files || []).filter(
+      (file) => file.type === "application/pdf" || String(file.name || "").toLowerCase().endsWith(".pdf")
+    );
     e.target.value = "";
     if (!picked.length) return;
-    const MAX_BYTES = 2 * 1024 * 1024;
+    setUploading("pdf");
     try {
-      setProcessingPdfs(true);
-      const newItems = [];
+      const added = [];
       for (const file of picked) {
-        const lower = String(file?.name || "").toLowerCase();
-        if (file?.type !== "application/pdf" && !lower.endsWith(".pdf")) continue;
-        if (file.size > MAX_BYTES) {
-          alert(`PDF too large: ${file.name}\nLimit: 2 MB`);
-          continue;
-        }
-        const url = await uploadImageToServer(file, "municipality_inspection");
-        newItems.push({
-          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          name: file?.name || "file.pdf",
-          mime: "application/pdf",
-          url,
-          size: file.size || 0,
-        });
+        if (file.size > MAX_PDF) { say(t.pdfBig(file.name), "err"); continue; }
+        const url = await uploadImageToServer(file, TYPE);
+        added.push({ id: newId(), name: file.name || "file.pdf", mime: "application/pdf", url, size: file.size || 0 });
       }
-      if (!newItems.length) { alert("No valid PDF files selected."); return; }
-      setPdfs((prev) => [...prev, ...newItems]);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to process PDFs.");
+      if (added.length) setPdfs((p) => [...p, ...added]);
+    } catch {
+      say(t.upErr, "err");
     } finally {
-      setProcessingPdfs(false);
+      setUploading("");
     }
   }
 
-  async function handleSave() {
-    if (!inspectionDate) return alert("Please select the inspection date.");
-    if (!inspectionGrade.trim()) return alert("Please enter the inspection grade.");
-    if (!branchName.trim()) return alert("Please enter the branch name.");
-    if (images.length === 0 && pdfs.length === 0)
-      return alert("Please add at least one image or PDF before saving.");
+  async function save() {
+    const bad = {};
+    if (!form.branchName.trim()) bad.branchName = t.need;
+    if (!form.inspectionDate) bad.inspectionDate = t.need;
+    if (!form.inspectionGrade.trim() && !form.outcome) bad.inspectionGrade = t.need;
+    setErrors(bad);
+    if (Object.keys(bad).length) return;
+
+    // a branch typed in another letter-case is stored in the list's spelling
+    const typed = form.branchName.replace(/\s+/g, " ").trim();
+    const branchName = BRANCHES.find((b) => normText(b) === normText(typed)) || typed;
+    const payload = {
+      ...keep, // keeps anything else an older record carries (reference number, …)
+      municipality: form.municipality,
+      branchName,
+      inspectionDate: form.inspectionDate,
+      inspectionGrade: form.inspectionGrade.trim(),
+      visitType: form.visitType,
+      outcome: form.outcome,
+      inspectorName: form.inspectorName.trim(),
+      referenceNo: form.referenceNo.trim(),
+      fineAmount: form.outcome === "fine" ? String(form.fineAmount).trim() : "",
+      notes: form.notes.trim(),
+      findings: findings
+        .filter((x) => x.text.trim() || x.action.trim())
+        .map((x) => ({ ...x, text: x.text.trim(), action: x.action.trim(), owner: x.owner.trim() })),
+      images: images.map(({ name, mime, url }) => ({ name, mime, url })),
+      pdfs: pdfs.map(({ name, mime, url, size }) => ({ name, mime, url, size })),
+      savedAt: Date.now(),
+      storage: "cloudinary",
+    };
+
+    setSaving(true);
     try {
-      setSaving(true);
-      const payload = {
-        municipality,
-        branchName: branchName.trim(),
-        inspectionDate,
-        inspectionGrade: inspectionGrade.trim(),
-        notes: notes.trim(),
-        images: images.map(({ name, mime, url }) => ({ name, mime, url })),
-        pdfs: pdfs.map(({ name, mime, url, size }) => ({ name, mime, url, size })),
-        savedAt: Date.now(),
-        storage: "cloudinary",
-      };
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      // existing record → PUT :id (the generic PUT upserts by type + date and would overwrite another visit)
+      const res = await fetch(editId ? `${API_BASE}/api/reports/${encodeURIComponent(editId)}` : `${API_BASE}/api/reports`, {
+        method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "haccp-iso", type: TYPE, payload }),
+        body: JSON.stringify(editId ? { type: TYPE, payload } : { reporter: "haccp-iso", type: TYPE, payload }),
       });
-      const txt = await res.text().catch(() => "");
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${txt}`);
-      alert("Inspection report saved successfully!");
-      setImages([]);
-      setPdfs([]);
-      setBranchName("");
-      setInspectionGrade("");
-      setNotes("");
-      setMunicipality("Dubai Municipality");
-      setInspectionDate(todayDubai());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      say(t.saved, "ok");
+      setTimeout(() => navigate("/haccp-iso/dm-inspection/view"), 700);
     } catch (e) {
-      console.error(e);
-      alert(`Save failed.\n${String(e?.message || e)}`);
-    } finally {
+      say(`${t.saveErr} ${String(e?.message || "")}`, "err");
       setSaving(false);
     }
   }
 
+  const toRegister = () => navigate("/haccp-iso/dm-inspection/view");
+
   return (
-    <div style={S.shell}>
+    <HaccpPage
+      lang={lang}
+      icon="🏢"
+      title={editId ? t.titleEdit : t.titleNew}
+      sub={t.subForm}
+      clause={t.clause}
+      backTo="/haccp-iso/dm-inspection/view"
+      actions={<Btn onClick={toRegister}>📋 {t.register}</Btn>}
+    >
+      {toast}
 
-      {/* Top bar */}
-      <div style={S.topBar}>
-        <div style={S.brand}>
-          <img src={mawashiLogo} alt="logo" style={S.logo} />
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.3 }}>
-              TRANS EMIRATES LIVESTOCK TRADING L.L.C.
+      {loadState === "loading" && <Note>{t.loading}</Note>}
+      {loadState === "missing" && <Note error>{t.notFound}</Note>}
+
+      {loadState === "ready" && (
+        <>
+          <Panel title={`🏛️ ${t.details}`}>
+            <div className="pgk-grid">
+              <Field label={t.municipality}>
+                <select className="pgk-in" value={form.municipality} onChange={set("municipality")}>
+                  {[...new Set([...MUNICIPALITIES, form.municipality])].filter(Boolean).map((m) => <option key={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label={t.branch} required error={errors.branchName}>
+                <input
+                  className={`pgk-in${errors.branchName ? " bad" : ""}`}
+                  list="dm-branches"
+                  value={form.branchName}
+                  onChange={set("branchName")}
+                  placeholder={t.branchPh}
+                />
+                <datalist id="dm-branches">{BRANCHES.map((b) => <option key={b} value={b} />)}</datalist>
+              </Field>
+              <Field label={t.date} required error={errors.inspectionDate}>
+                <input
+                  className={`pgk-in${errors.inspectionDate ? " bad" : ""}`}
+                  type="date" max={todayDubai()} value={form.inspectionDate} onChange={set("inspectionDate")}
+                />
+              </Field>
+              <Field label={t.visitType}>
+                <select className="pgk-in" value={form.visitType} onChange={set("visitType")}>
+                  <option value="">—</option>
+                  {VISIT_TYPES.map((o) => <option key={o.id} value={o.id}>{isAr ? o.ar : o.en}</option>)}
+                </select>
+              </Field>
+              <Field label={t.outcome}>
+                <select className="pgk-in" value={form.outcome} onChange={set("outcome")}>
+                  <option value="">—</option>
+                  {OUTCOMES.map((o) => <option key={o.id} value={o.id}>{isAr ? o.ar : o.en}</option>)}
+                </select>
+              </Field>
+              <Field label={t.grade} required={!form.outcome} error={errors.inspectionGrade}>
+                <input
+                  className={`pgk-in${errors.inspectionGrade ? " bad" : ""}`}
+                  list="dm-grades"
+                  value={form.inspectionGrade}
+                  onChange={set("inspectionGrade")}
+                  placeholder={t.gradePh}
+                />
+                <datalist id="dm-grades">{GRADES.map((g) => <option key={g} value={g} />)}</datalist>
+              </Field>
+              {form.outcome === "fine" && (
+                <Field label={t.fine}>
+                  <input className="pgk-in" type="number" min="0" step="1" value={form.fineAmount} onChange={set("fineAmount")} />
+                </Field>
+              )}
+              <Field label={t.inspector}>
+                <input className="pgk-in" value={form.inspectorName} onChange={set("inspectorName")} />
+              </Field>
+              <Field label={t.reference}>
+                <input className="pgk-in" value={form.referenceNo} onChange={set("referenceNo")} />
+              </Field>
+              <Field label={t.notes} wide>
+                <textarea className="pgk-in" value={form.notes} onChange={set("notes")} placeholder={t.notesPh} />
+              </Field>
             </div>
-            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-              AL MAWASHI — Municipality Inspection
-            </div>
-            <HaccpLinkBadge clauses={["4.2"]} label="Regulatory Authority (Interested Party)" />
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button style={btnGhost} onClick={() => navigate("/haccp-iso")}>← Back</button>
-          <button style={btnSolid("#6366f1")} onClick={() => navigate("/haccp-iso/dm-inspection/view")}>
-            View Reports
-          </button>
-          <button style={btnSolid("#10b981")} onClick={handleSave} disabled={busy}>
-            {saving ? "Saving..." : "Save Report"}
-          </button>
-        </div>
-      </div>
+          </Panel>
 
-      {/* Form fields */}
-      <div style={S.card}>
-        <h2 style={{ margin: "0 0 18px", fontSize: 19, fontWeight: 800 }}>🏛️ Inspection Details</h2>
-
-        <div style={S.grid4}>
-          <div>
-            <label style={S.label}>Municipality</label>
-            <select value={municipality} onChange={(e) => setMunicipality(e.target.value)} style={S.input}>
-              <option>Dubai Municipality</option>
-              <option>Abu Dhabi Municipality</option>
-            </select>
-          </div>
-          <div>
-            <label style={S.label}>Branch Name</label>
-            <input
-              value={branchName}
-              onChange={(e) => setBranchName(e.target.value)}
-              placeholder="e.g. QCS Warehouse / POS 15"
-              style={S.input}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Inspection Date</label>
-            <input
-              type="date"
-              value={inspectionDate}
-              onChange={(e) => setInspectionDate(e.target.value)}
-              style={S.input}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Grade / Score</label>
-            <input
-              value={inspectionGrade}
-              onChange={(e) => setInspectionGrade(e.target.value)}
-              placeholder="e.g. A / 95% / Good"
-              style={S.input}
-            />
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <label style={S.label}>Notes (optional)</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any short notes..."
-            style={{ ...S.input, minHeight: 90, resize: "vertical" }}
-          />
-        </div>
-      </div>
-
-      {/* Images */}
-      <div style={S.card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>🖼️ Inspection Images</h2>
-            <div style={S.hint}>Images are compressed to JPEG and kept in memory until saved.</div>
-          </div>
-          <button
-            style={btnSolid("#6366f1")}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
+          <Panel
+            title={`📝 ${t.findings}`}
+            hint={t.findingsHint}
+            actions={<Btn small kind="primary" onClick={() => setFindings((l) => [...l, blankFinding()])}>{t.addFinding}</Btn>}
           >
-            {processingImages ? "Processing..." : "+ Add Images"}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={onPickFiles} style={{ display: "none" }} />
-        </div>
-
-        {images.length === 0 ? (
-          <div style={{
-            border: "1.5px dashed #c7d2fe", borderRadius: 14,
-            padding: 20, background: "#eef2ff",
-            fontSize: 15, fontWeight: 700, color: "#4338ca", textAlign: "center",
-          }}>
-            No images yet — click <b>Add Images</b> to upload
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
-            {images.map((it, idx) => (
-              <div key={it.id} style={{
-                border: "1.5px solid #e2e8f0", borderRadius: 14,
-                overflow: "hidden", background: "#fff",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
-              }}>
-                <a href={it.url || it.dataUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
-                  <img
-                    src={it.url || it.dataUrl} alt={`img-${idx + 1}`}
-                    style={{ width: "100%", height: 130, objectFit: "cover", display: "block" }}
-                  />
-                </a>
-                <div style={{ padding: "10px 12px", display: "grid", gap: 8 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 700, color: "#374151",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }} title={it.name}>{it.name}</div>
-                  <button
-                    type="button"
-                    onClick={() => setImages((p) => p.filter((x) => x.id !== it.id))}
-                    style={{
-                      background: "#fef2f2", border: "1.5px solid #fca5a5",
-                      color: "#dc2626", borderRadius: 8,
-                      padding: "7px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13,
-                    }}
-                  >Remove</button>
-                </div>
+            {findings.length > 0 && (
+              <div className="pgk-tablewrap">
+                <table className="pgk-table">
+                  <thead>
+                    <tr><th>#</th><th>{t.fText}</th><th>{t.fAction}</th><th>{t.fOwner}</th><th>{t.fDue}</th><th>{t.fStatus}</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {findings.map((x, i) => (
+                      <tr key={x.id}>
+                        <td>{i + 1}</td>
+                        <td style={{ minWidth: 200 }}>
+                          <textarea className="pgk-in" style={{ minHeight: 56 }} value={x.text} onChange={(e) => setFinding(x.id, "text", e.target.value)} />
+                        </td>
+                        <td style={{ minWidth: 200 }}>
+                          <textarea className="pgk-in" style={{ minHeight: 56 }} value={x.action} onChange={(e) => setFinding(x.id, "action", e.target.value)} />
+                        </td>
+                        <td style={{ minWidth: 130 }}>
+                          <input className="pgk-in" value={x.owner} onChange={(e) => setFinding(x.id, "owner", e.target.value)} />
+                        </td>
+                        <td style={{ minWidth: 150 }}>
+                          <input className="pgk-in" type="date" value={x.due} onChange={(e) => setFinding(x.id, "due", e.target.value)} />
+                        </td>
+                        <td style={{ minWidth: 120 }}>
+                          <select
+                            className="pgk-in"
+                            value={x.status}
+                            onChange={(e) => {
+                              const closed = e.target.value === "closed";
+                              setFindings((l) => l.map((y) => (y.id === x.id ? { ...y, status: closed ? "closed" : "open", closedAt: closed ? y.closedAt || todayDubai() : "" } : y)));
+                            }}
+                          >
+                            <option value="open">{t.open}</option>
+                            <option value="closed">{t.closed}</option>
+                          </select>
+                        </td>
+                        <td>
+                          {/* removing a row of the form is not a "delete" permission — no data-delete-action */}
+                          <Btn small kind="danger" onClick={() => setFindings((l) => l.filter((y) => y.id !== x.id))} aria-label={t.remove}>✕</Btn>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )}
+          </Panel>
 
-      {/* PDFs */}
-      <div style={S.card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>📄 PDF Attachments</h2>
-            <div style={S.hint}>Max 2 MB per PDF file.</div>
-          </div>
-          <button
-            style={btnSolid("#0ea5e9")}
-            onClick={() => pdfInputRef.current?.click()}
-            disabled={busy}
+          <Panel
+            title={`📎 ${t.attach}`}
+            hint={t.attachHint}
+            actions={
+              <>
+                <Btn small onClick={() => imgRef.current?.click()} disabled={busy}>{uploading === "img" ? t.uploading : t.addImages}</Btn>
+                <Btn small onClick={() => pdfRef.current?.click()} disabled={busy}>{uploading === "pdf" ? t.uploading : t.addPdfs}</Btn>
+              </>
+            }
           >
-            {processingPdfs ? "Processing..." : "+ Add PDFs"}
-          </button>
-          <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple onChange={onPickPdfs} style={{ display: "none" }} />
-        </div>
+            <input ref={imgRef} type="file" accept="image/*" multiple onChange={addImages} style={{ display: "none" }} />
+            <input ref={pdfRef} type="file" accept="application/pdf,.pdf" multiple onChange={addPdfs} style={{ display: "none" }} />
 
-        {pdfs.length === 0 ? (
-          <div style={{
-            border: "1.5px dashed #7dd3fc", borderRadius: 14,
-            padding: 20, background: "#f0f9ff",
-            fontSize: 15, fontWeight: 700, color: "#0369a1", textAlign: "center",
-          }}>
-            No PDFs yet — click <b>Add PDFs</b> to upload
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {pdfs.map((p) => (
-              <div key={p.id} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                gap: 12, border: "1.5px solid #e2e8f0", background: "#f8fafc",
-                borderRadius: 12, padding: "12px 16px", flexWrap: "wrap",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
-                  <div style={{
-                    width: 42, height: 42, borderRadius: 10, display: "grid", placeItems: "center",
-                    background: "#fef2f2", border: "1.5px solid #fca5a5",
-                    fontWeight: 800, color: "#dc2626", fontSize: 13, flexShrink: 0,
-                  }}>PDF</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 15, fontWeight: 700, color: "#0f172a",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }} title={p.name}>{p.name}</div>
-                    <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>
-                      {p.size ? `${Math.round(p.size / 1024)} KB` : ""}
-                      {" · "}
-                      <a href={p.url || p.dataUrl} target="_blank" rel="noreferrer"
-                        style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
-                        Open PDF
-                      </a>
-                    </div>
+            {pdfs.length === 0 && images.length === 0 && <div className="pgk-drop">{t.noPdfs} {t.noImages}</div>}
+
+            {pdfs.length > 0 && (
+              <div style={{ display: "grid", gap: 8, marginBottom: images.length ? 12 : 0 }}>
+                {pdfs.map((p) => (
+                  <div key={p.id} className="pgk-file">
+                    <span className="pgk-file-ic" aria-hidden="true">PDF</span>
+                    <span className="pgk-file-name" title={p.name}>{p.name}{p.size ? ` · ${Math.round(p.size / 1024)} KB` : ""}</span>
+                    <a className="pgk-btn sm" href={p.url} target="_blank" rel="noreferrer">{t.openTab} ↗</a>
+                    <Btn small kind="danger" onClick={() => setPdfs((l) => l.filter((y) => y.id !== p.id))}>{t.remove}</Btn>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPdfs((prev) => prev.filter((x) => x.id !== p.id))}
-                  style={{
-                    background: "#fef2f2", border: "1.5px solid #fca5a5",
-                    color: "#dc2626", borderRadius: 8,
-                    padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 14,
-                  }}
-                >Remove</button>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )}
 
-      <div style={{ textAlign: "center", fontSize: 13, color: "#94a3b8", fontWeight: 600 }}>
-        © Al Mawashi — Quality & Food Safety System
-      </div>
-    </div>
+            {images.length > 0 && (
+              <div className="pgk-thumbs">
+                {images.map((img) => (
+                  <div key={img.id} className="pgk-thumb" style={{ cursor: "default" }}>
+                    <a href={img.url} target="_blank" rel="noreferrer"><img src={img.url} alt={img.name} loading="lazy" /></a>
+                    <span className="pgk-thumb-cap">
+                      <span title={img.name}>{img.name}</span>
+                      <Btn small kind="danger" onClick={() => setImages((l) => l.filter((y) => y.id !== img.id))} aria-label={t.remove}>✕</Btn>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <div className="pgk-actions" style={{ marginTop: 14 }}>
+            <Btn onClick={toRegister} disabled={saving}>{t.cancel}</Btn>
+            <Btn kind="ok" onClick={save} disabled={busy}>{saving ? t.saving : `💾 ${editId ? t.saveEdit : t.save}`}</Btn>
+          </div>
+        </>
+      )}
+    </HaccpPage>
   );
 }

@@ -110,8 +110,24 @@ export default async function build(wb, record, ctx) {
   section("Inspection Details");
   pair("Municipality", p.municipality, "Branch", p.branchName);
   pair("Inspection Date", formatDMY(p.inspectionDate), "Grade", p.inspectionGrade);
+  /* Fields added with the findings tracker — printed only when the record has them. */
+  const cap = (v) => (v ? String(v).charAt(0).toUpperCase() + String(v).slice(1) : "");
+  if (p.visitType || p.outcome) pair("Visit Type", cap(p.visitType), "Outcome", cap(p.outcome));
+  if (p.inspectorName || p.referenceNo) pair("Inspector", p.inspectorName, "Reference No.", p.referenceNo);
+  if (p.fineAmount) pair("Fine Amount (AED)", p.fineAmount, null, null);
 
   if (p.notes) { section("Notes"); wide("Notes", p.notes); }
+
+  const findings = rowsOf(p.findings);
+  if (findings.length) {
+    section("Findings & Corrective Actions");
+    findings.forEach((f, i) => {
+      wide(`Finding ${i + 1}`, f?.text);
+      wide("Corrective Action", f?.action);
+      pair("Responsible", f?.owner, "Due", f?.due ? formatDMY(f.due) : "");
+      pair("Status", f?.status === "closed" ? "Closed" : "Open", "Closed On", f?.closedAt ? formatDMY(f.closedAt) : "");
+    });
+  }
 
   if (images.length || pdfs.length) {
     section("Attachments");
