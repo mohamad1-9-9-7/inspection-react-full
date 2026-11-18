@@ -17,6 +17,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRANCHES } from "../settings/reportTypeCatalog";
 import { fetchAlertRules, saveAlertRules, runAlertChecks, sendTestAlertMail, RULE_INFO } from "../../utils/alertsApi";
 import { canonBranch } from "../../utils/branchCanon";
+import ContactPicker from "../shared/ContactPicker";
+import { listEmailContacts } from "../shared/emailReportSettings";
 
 const RULES = ["temperature", "ccp", "missedReports", "noReadingToday", "expiries", "capa"];
 const ALL_TYPES = BRANCHES.flatMap((b) => (b.types || []).map(([type, label]) => ({ type, label: `${b.label} — ${label}`, branch: b.label })));
@@ -213,6 +215,11 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
   const [newBranch, setNewBranch] = useState("");
   const [testing, setTesting] = useState("");
   const [note, setNote] = useState("");
+  // the e-mail center's contact book — same people as every e-mail popup
+  const [book, setBook] = useState([]);
+  const loadBook = () => listEmailContacts().then((l) => setBook(Array.isArray(l) ? l : [])).catch(() => {});
+  useEffect(() => { loadBook(); }, []);
+  const bookName = (email) => book.find((b) => b.email?.toLowerCase() === String(email || "").toLowerCase())?.name || "";
 
   const countFor = (b) => contacts.filter((c) => c.active !== false && (!c.branches?.length || c.branches.some((x) => norm(x) === norm(b)))).length;
   const own = (b) => contacts.filter((c) => c.branches?.some((x) => norm(x) === norm(b))).length;
@@ -228,9 +235,15 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
     id: newId(), name: "", role: "", email: "", rules: [], onlyCritical: false, active: true, _new: true,
     branches: branch !== "__all" && branch !== "__every" ? [branch] : [],
   });
-  const saveDraft = (d) => {
-    const { _new, ...c } = d;
-    setContacts((list) => (_new ? [...list, c] : list.map((x) => (x.id === c.id ? c : x))));
+  /** rows: one or more contacts from the editor (several when picked at once). */
+  const saveDraft = (rows) => {
+    const clean = rows.map(({ _new, ...c }) => c);
+    setContacts((list) => {
+      const ids = new Set(clean.map((c) => c.id));
+      const kept = list.filter((x) => !ids.has(x.id));
+      const edited = list.some((x) => ids.has(x.id));
+      return edited ? list.map((x) => clean.find((c) => c.id === x.id) || x) : [...kept, ...clean];
+    });
     setEditing(null);
   };
   const remove = (c) => {
@@ -312,6 +325,7 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
 
         {editing && (
           <ContactEditor t={t} draft={editing} branches={branches} contacts={contacts}
+            book={book} onBookChange={loadBook}
             onCancel={() => setEditing(null)} onSave={saveDraft} />
         )}
 
@@ -334,7 +348,7 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
                 <span style={{ ...S.avatar, background: hueOf(c.email) }} aria-hidden="true">{initials(c)}</span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="alp-s" style={{ fontWeight: 900, color: "#0f2740", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.name || c.email.split("@")[0]}
+                    {c.name || bookName(c.email) || c.email.split("@")[0]}
                     {c.role && <span style={{ color: "#64748b", fontWeight: 700 }}> · {c.role}</span>}
                   </div>
                   <div className="alp-xs" dir="ltr" style={{ color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: isAr ? "right" : "left" }}>{c.email}</div>
@@ -374,20 +388,37 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
   );
 }
 
-function ContactEditor({ t, draft, branches, contacts, onCancel, onSave }) {
+function ContactEditor({ t, draft, branches, contacts, book, onBookChange, onCancel, onSave }) {
   const [d, setD] = useState(draft);
+  const [emails, setEmails] = useState([]); // new recipients picked from the contact book
   const [error, setError] = useState("");
+  const bookName = (email) => book.find((c) => c.email?.toLowerCase() === String(email || "").toLowerCase())?.name || "";
   const set = (p) => setD((x) => ({ ...x, ...p }));
   const allBranches = !d.branches?.length;
   const allRules = !d.rules?.length;
   const toggleIn = (arr, v) => (arr.some((x) => norm(x) === norm(v)) ? arr.filter((x) => norm(x) !== norm(v)) : [...arr, v]);
 
   const submit = () => {
-    const email = String(d.email || "").trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) return setError(t({ en: "Enter a valid e-mail address.", ar: "اكتب إيميل صحيح." }));
-    if (contacts.some((c) => c.email === email && c.id !== d.id)) return setError(t({ en: "This e-mail is already a recipient — edit that row instead.", ar: "هذا الإيميل موجود — عدّل السطر الموجود." }));
     const rules = d.rules?.length === RULES.length ? [] : d.rules || [];
-    onSave({ ...d, email, name: String(d.name || "").trim(), role: String(d.role || "").trim(), rules });
+    const base = { ...d, role: String(d.role || "").trim(), rules };
+    if (!d._new) return onSave([{ ...base, name: String(d.name || "").trim() }]);
+
+    const picked = [...new Set(emails.map((e) => String(e || "").trim().toLowerCase()).filter(Boolean))];
+    if (!picked.length) return setError(t({ en: "Pick at least one person.", ar: "اختار شخص واحد على الأقل." }));
+    const bad = picked.filter((e) => !EMAIL_RE.test(e));
+    if (bad.length) return setError(`${t({ en: "Invalid e-mail:", ar: "إيميل غير صحيح:" })} ${bad.join(", ")}`);
+    const taken = picked.filter((e) => contacts.some((c) => c.email === e));
+    if (taken.length === picked.length) {
+      return setError(t({ en: "Already recipients — edit their rows instead.", ar: "موجودين بالمستلمين — عدّل سطورهم." }));
+    }
+    const fresh = picked.filter((e) => !taken.includes(e));
+    const typedName = String(d.name || "").trim();
+    onSave(fresh.map((email, i) => ({
+      ...base,
+      id: i === 0 ? d.id : newId(),
+      email,
+      name: (fresh.length === 1 && typedName) || bookName(email),
+    })));
   };
 
   return (
@@ -395,18 +426,39 @@ function ContactEditor({ t, draft, branches, contacts, onCancel, onSave }) {
       <div className="alp-h" style={{ fontWeight: 900, color: "#0f2740", marginBottom: 10 }}>
         {d._new ? `＋ ${t({ en: "New recipient", ar: "مستلم جديد" })}` : `✏️ ${t({ en: "Edit recipient", ar: "تعديل المستلم" })}`}
       </div>
-      <div style={S.formGrid}>
-        <label style={S.field}>
-          <span className="alp-s" style={S.label}>{t({ en: "Name", ar: "الاسم" })}</span>
-          <input style={S.input} value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder={t({ en: "e.g. Ahmad", ar: "مثلاً: أحمد" })} />
-        </label>
+      {d._new ? (
+        /* Same people and same picker as the e-mail center (shared contact
+           book, groups included). Several people can be added at once with
+           the settings below; a new address typed here joins the book too. */
+        <div style={S.field}>
+          <ContactPicker
+            label={`${t({ en: "People (from the e-mail contacts)", ar: "الأشخاص (من جهات اتصال الإيميل)" })} *`}
+            value={emails}
+            onChange={(v) => { setEmails(v); setError(""); }}
+            contacts={book}
+            onContactsChange={onBookChange}
+          />
+          {emails.length > 1 && (
+            <span className="alp-xs" style={S.hint}>{t({ en: `${emails.length} people will get the same branches and alert types.`, ar: `${emails.length} أشخاص راح ياخدوا نفس الفروع وأنواع التنبيهات.` })}</span>
+          )}
+        </div>
+      ) : (
+        <div style={{ ...S.field, marginBottom: 4 }}>
+          <span className="alp-s" style={S.label}>{t({ en: "E-mail", ar: "الإيميل" })}</span>
+          <div dir="ltr" className="alp-s" style={S.lockedEmail}>{d.email}</div>
+        </div>
+      )}
+      <div style={{ ...S.formGrid, marginTop: 10 }}>
+        {(!d._new || emails.length <= 1) && (
+          <label style={S.field}>
+            <span className="alp-s" style={S.label}>{t({ en: "Name", ar: "الاسم" })}</span>
+            <input style={S.input} value={d.name} onChange={(e) => set({ name: e.target.value })}
+              placeholder={bookName(emails[0]) || t({ en: "e.g. Ahmad", ar: "مثلاً: أحمد" })} />
+          </label>
+        )}
         <label style={S.field}>
           <span className="alp-s" style={S.label}>{t({ en: "Role", ar: "الوظيفة" })}</span>
           <input style={S.input} value={d.role} onChange={(e) => set({ role: e.target.value })} placeholder={t({ en: "e.g. Branch manager", ar: "مثلاً: مدير الفرع" })} />
-        </label>
-        <label style={{ ...S.field, gridColumn: "1 / -1" }}>
-          <span className="alp-s" style={S.label}>{t({ en: "E-mail", ar: "الإيميل" })} *</span>
-          <input style={S.input} dir="ltr" type="email" value={d.email} onChange={(e) => { set({ email: e.target.value }); setError(""); }} placeholder="name@company.com" />
         </label>
       </div>
 
@@ -690,6 +742,7 @@ const S = {
   pill: { padding: "7px 13px", borderRadius: 999, border: "1px solid #d6e2ea", background: "#fff", color: "#1e3a5f", fontWeight: 800, cursor: "pointer" },
   pillOn: { background: "#0f766e", borderColor: "#0f766e", color: "#fff" },
   hint: { color: "#475569", fontWeight: 700, marginTop: 8 },
+  lockedEmail: { padding: "10px 13px", borderRadius: 12, border: "1px dashed #d6e2ea", background: "#f8fafc", color: "#0f172a", fontWeight: 800 },
   check: { display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "8px 12px", borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0" },
 
   panel: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },

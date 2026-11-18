@@ -62,6 +62,12 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   expect(host.textContent).toMatch(/moved into Recipients|تم نقل/);
   // branches come from the server + the daily checks
   expect(host.textContent).toContain("POS 15");
+  // a new recipient is picked from the e-mail center's contacts (shared picker)
+  await act(async () => { button(/Add recipient|إضافة مستلم/).click(); });
+  await flush();
+  expect(host.textContent).toMatch(/People \(from the e-mail contacts\)|الأشخاص \(من جهات اتصال الإيميل\)/);
+  expect(host.querySelector('input[placeholder*="Search by name or email"], input[placeholder*="ابحث بالاسم أو الإيميل"]')).toBeTruthy();
+  await act(async () => { button(/^(Cancel|إلغاء)$/).click(); });
   // coverage map: POS 15 has the all-branch recipient for temperature
   await act(async () => { button(/Coverage map|خريطة التغطية/).click(); });
   expect(host.querySelector("table")).toBeTruthy();
