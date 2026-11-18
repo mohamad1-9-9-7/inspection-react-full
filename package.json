@@ -53,7 +53,7 @@
     "electron:build": "react-scripts build && electron-builder --win --x64",
     "electron:build:portable": "react-scripts build && electron-builder --win portable --x64",
     "dist": "react-scripts build && electron-builder",
-    "android:sync": "react-scripts build && cap sync android",
+    "android:sync": "node scripts/build-android.cjs",
     "android:open": "cap open android",
     "android:icons": "node scripts/android-assets.cjs && capacitor-assets generate --android --iconBackgroundColor #0B1E3F --splashBackgroundColor #0B1E3F"
   },
