@@ -22,7 +22,9 @@ const RULES = {
   noReadingToday: { enabled: true, emails: [] },
   expiries: { enabled: true, emails: [], days: 30 },
   capa: { enabled: false, emails: [], openDays: 30 },
-  contacts: [], // the updated server always sends this array
+  contacts: [{ email: "boss@x.ae", name: "Boss" }],
+  // the updated server always sends this array — per-branch To / CC / BCC
+  distribution: [{ branch: "POS 15", to: ["m15@x.ae"], cc: ["boss@x.ae"], bcc: [] }],
 };
 
 const LOG = [
@@ -65,20 +67,25 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   expect(settingsTab).toBeTruthy();
   await act(async () => { settingsTab.click(); });
   await flush();
-  // the old per-check list became a recipient (all branches)
+  // the old per-check list moved into the All-branches To list
+  expect(host.textContent).toMatch(/moved into the All-branches To list|تم نقل/);
   expect(host.textContent).toContain("qa@x.ae");
-  expect(host.textContent).toMatch(/moved into Recipients|تم نقل/);
-  // branches come from the server + the daily checks
-  expect(host.textContent).toContain("POS 15");
-  // a new recipient is picked from the e-mail center's contacts (shared picker)
-  await act(async () => { button(/Add recipient|إضافة مستلم/).click(); });
+  // the branch e-mail editor: To / CC / BCC pickers, like the send window
+  const pickers = host.querySelectorAll('input[placeholder*="Search by name or email"], input[placeholder*="ابحث بالاسم أو الإيميل"]');
+  expect(pickers.length).toBe(3);
+  expect(button(/Send reminders now — all branches|إرسال التذكيرات الآن — كل الفروع/)).toBeTruthy();
+  // a branch: its own To / CC + the All-branches people noted under it
+  await act(async () => { button(/^POS 15/).click(); });
   await flush();
-  expect(host.textContent).toMatch(/People \(from the e-mail contacts\)|الأشخاص \(من جهات اتصال الإيميل\)/);
-  expect(host.querySelector('input[placeholder*="Search by name or email"], input[placeholder*="ابحث بالاسم أو الإيميل"]')).toBeTruthy();
-  await act(async () => { button(/^(Cancel|إلغاء)$/).click(); });
-  // the real "send now" sits beside "Add recipient"
-  expect(button(/Send reminders now|إرسال التذكيرات الآن/)).toBeTruthy();
-  // coverage map: POS 15 has the all-branch recipient for temperature
+  expect(host.textContent).toContain("m15@x.ae");
+  expect(host.textContent).toContain("boss@x.ae");
+  expect(host.textContent).toMatch(/Also on this e-mail \(All branches\)|كمان على هالإيميل \(كل الفروع\)/);
+  expect(host.textContent).toMatch(/People on this e-mail|الأشخاص على هالإيميل/);
+  expect(button(/Send this branch's reminders now|إرسال تذكيرات الفرع الآن/)).toBeTruthy();
+  // a branch with nobody (beyond All branches) still gets the All list → not red
+  await act(async () => { button(/^QCS/).click(); });
+  expect(host.textContent).not.toMatch(/Nobody gets this branch's alerts by e-mail yet|ما حدا بيستلم تنبيهات هالفرع بالإيميل لسا/);
+  // coverage map: POS 15 → m15 + Boss (CC) + qa for temperature
   await act(async () => { button(/Coverage map|خريطة التغطية/).click(); });
   expect(host.querySelector("table")).toBeTruthy();
   // checks view keeps the daily list

@@ -46,8 +46,11 @@ export const ackAllAlerts = () => call("/ack-all", { method: "POST", body: {} })
 export const fetchAlertRules = () => call("/rules");
 export const saveAlertRules = (rules) => call("/rules", { method: "PUT", body: { rules } });
 export const sendTestAlertMail = (contact) => call("/test-mail", { method: "POST", body: { email: contact.email, name: contact.name, branches: contact.branches || [] } });
-/** The real reminders, now — to every recipient, or to one (email). */
-export const sendRemindersNow = (email = "") => call("/send-now", { method: "POST", body: email ? { email } : {} });
+/** The real reminders, now — every branch's list, one branch ({ branch }) or one person ({ email }). */
+export const sendRemindersNow = (opts = {}) => {
+  const o = typeof opts === "string" ? { email: opts } : opts || {};
+  return call("/send-now", { method: "POST", body: { ...(o.email ? { email: o.email } : {}), ...(o.branch ? { branch: o.branch } : {}) } });
+};
 /** The alerts' send log (scheduled, manual and test mails). */
 export const fetchAlertSendLog = (limit = 200) => call(`/log?limit=${limit}`).then((j) => j.data || []);
 export const runAlertChecks = (first = true) => call("/run", { method: "POST", body: { first } }).then((j) => { changed(); return j; });
