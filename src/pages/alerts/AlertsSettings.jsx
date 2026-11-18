@@ -267,7 +267,7 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
   const BranchBtn = ({ id, label, n, sub, title }) => (
     <button type="button" onClick={() => setBranch(id)} title={title} style={{ ...S.brItem, ...(branch === id ? S.brOn : null) }}>
       <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
-        <span className="alp-s" style={{ fontWeight: 900, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <span className="alp-s" style={{ fontWeight: 900, display: "block", lineHeight: 1.3, overflowWrap: "anywhere" }}>{label}</span>
         {sub && <span className="alp-xs" style={{ display: "block", color: branch === id ? "#0f766e" : "#64748b", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>}
       </span>
       <span className="alp-xs" style={{ ...S.brN, ...(n === 0 ? S.brN0 : null), ...(branch === id ? S.brNOn : null) }}>{n}</span>
@@ -353,9 +353,11 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
                   </div>
                   <div className="alp-xs" dir="ltr" style={{ color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: isAr ? "right" : "left" }}>{c.email}</div>
                 </div>
-                <label style={S.mini} title={t({ en: "Active", ar: "مفعّل" })}>
-                  <input type="checkbox" checked={c.active !== false} onChange={() => toggleActive(c)} />
-                </label>
+                <button type="button" role="switch" aria-checked={c.active !== false} onClick={() => toggleActive(c)}
+                  title={c.active !== false ? t({ en: "Receiving e-mails — click to pause", ar: "يستلم الإيميلات — اضغط للإيقاف" }) : t({ en: "Paused — click to resume", ar: "موقوف — اضغط للتفعيل" })}
+                  style={{ ...S.switch, ...S.switchSm, ...(c.active !== false ? S.switchOn : null) }}>
+                  <span style={{ ...S.knob, ...S.knobSm, ...(c.active !== false ? S.knobSmOn : null) }} />
+                </button>
               </div>
 
               <div style={S.metaRow}>
@@ -710,7 +712,7 @@ const S = {
   segN: { minWidth: 26, padding: "0 8px", borderRadius: 999, background: "#e8f1fa", color: "#0f2740", fontWeight: 900 },
   segNOn: { background: "#0f766e", color: "#fff" },
 
-  split: { display: "grid", gridTemplateColumns: "minmax(240px, 290px) minmax(0, 1fr)", gap: 14, alignItems: "start" },
+  split: { display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(0, 1fr)", gap: 14, alignItems: "start" },
   rail: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, display: "flex", flexDirection: "column", gap: 3, boxShadow: "0 6px 18px rgba(15,39,64,.05)", maxHeight: "78vh", overflowY: "auto", overflowX: "hidden", boxSizing: "border-box" },
   railHead: { fontWeight: 900, color: "#64748b", letterSpacing: 1, padding: "4px 8px" },
   railSep: { height: 1, background: "#e2e8f0", margin: "6px 4px" },
@@ -722,8 +724,8 @@ const S = {
 
   peopleHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   searchIcon: { position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" },
-  cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12 },
-  person: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, display: "grid", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 330px), 1fr))", gap: 12 },
+  person: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.05)", minWidth: 0, boxSizing: "border-box" },
   avatar: { width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", color: "#fff", fontWeight: 900, flexShrink: 0 },
   metaRow: { display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" },
   metaLbl: { width: 22, textAlign: "center" },
@@ -731,8 +733,10 @@ const S = {
   typeChip: { padding: "2px 10px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#334155", fontWeight: 800 },
   allChip: { background: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" },
   critChip: { padding: "2px 10px", borderRadius: 999, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontWeight: 900 },
-  personFoot: { display: "flex", gap: 6, alignItems: "center", borderTop: "1px solid #eef3f8", paddingTop: 10 },
-  mini: { display: "grid", placeItems: "center", cursor: "pointer" },
+  personFoot: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", borderTop: "1px solid #eef3f8", paddingTop: 10, minWidth: 0 },
+  switchSm: { width: 42, height: 24 },
+  knobSm: { top: 3, width: 18, height: 18 },
+  knobSmOn: { insetInlineStart: 21 },
 
   editor: { background: "linear-gradient(180deg,#ffffff,#f6fbfa)", border: "2px solid #99d5cc", borderRadius: 12, padding: 18, boxShadow: "0 16px 34px rgba(15,118,110,.12)" },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 },
