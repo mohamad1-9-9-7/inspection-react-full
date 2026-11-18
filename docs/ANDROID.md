@@ -9,6 +9,25 @@ Target SDK 36, min SDK 24 (Android 7+).
 1. Install **Android Studio** (it brings the JDK + Android SDK):
    https://developer.android.com/studio
    Open it once and let it finish downloading the SDK.
+   Build with **JDK 21** (Gradle 8.14 does not run on the JDK 25 bundled with
+   Studio): `C:\Program Files\Microsoft\jdk-21.0.13.21-hotspot` (winget
+   `Microsoft.OpenJDK.21`). `android\local.properties` (git-ignored) holds
+   `sdk.dir=C:/Users/moham/AppData/Local/Android/Sdk` — forward slashes.
+
+   **Avast** scans HTTPS with its own root certificate, which Java rejects
+   ("PKIX path building failed"). Fixed once per machine: a copy of the JDK
+   `cacerts` + the Avast root lives at `%USERPROFILE%\.gradle\trust-cacerts`,
+   referenced from `%USERPROFILE%\.gradle\gradle.properties`
+   (`systemProp.javax.net.ssl.trustStore=…`).
+
+   Build a phone test APK from PowerShell:
+
+   ```powershell
+   cd D:\inspection-react-full\android
+   $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-21.0.13.21-hotspot"
+   .\gradlew.bat assembleDebug
+   ```
+
 2. Create the **upload key** (keep TWO backups off this PC — losing it means
    you can't update the app). In PowerShell:
 
