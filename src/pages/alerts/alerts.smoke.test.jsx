@@ -29,7 +29,7 @@ let root;
 beforeEach(() => {
   localStorage.setItem("currentUser", JSON.stringify({ isAdmin: true, companyId: 1, username: "admin", loginAt: Date.now() }));
   global.fetch = jest.fn((url) => {
-    const body = String(url).includes("/rules") ? { ok: true, rules: RULES, mailbox: true } : { ok: true, data: ALERTS };
+    const body = String(url).includes("/rules") ? { ok: true, rules: RULES, branches: ["POS 10", "POS 15", "QCS"], mailbox: true } : { ok: true, data: ALERTS };
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
   });
   host = document.createElement("div");
@@ -45,17 +45,28 @@ afterEach(() => {
 const draw = (el) => root.render(el);
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-test("the alerts page lists open alerts and opens the rules tab", async () => {
+const button = (re) => [...host.querySelectorAll("button")].find((b) => re.test(b.textContent));
+
+test("the alerts page lists open alerts and opens the settings", async () => {
   await act(async () => { draw(<MemoryRouter><AlertsPage /></MemoryRouter>); });
   await flush();
   expect(host.textContent).toContain("9°C out of range");
   expect(host.textContent).toContain("Probe B");
-  const rulesTab = [...host.querySelectorAll("button")].find((b) => /Rules|القواعد/.test(b.textContent));
-  expect(rulesTab).toBeTruthy();
-  await act(async () => { rulesTab.click(); });
+  const settingsTab = button(/Settings & recipients|الإعدادات والمستلمون/);
+  expect(settingsTab).toBeTruthy();
+  await act(async () => { settingsTab.click(); });
   await flush();
-  expect(host.textContent).toContain("pos10_temperature");
-  expect(host.querySelector('input[dir="ltr"]').defaultValue).toBe("qa@x.ae");
+  // the old per-check list became a recipient (all branches)
+  expect(host.textContent).toContain("qa@x.ae");
+  expect(host.textContent).toMatch(/moved into Recipients|تم نقل/);
+  // branches come from the server + the daily checks
+  expect(host.textContent).toContain("POS 15");
+  // coverage map: POS 15 has the all-branch recipient for temperature
+  await act(async () => { button(/Coverage map|خريطة التغطية/).click(); });
+  expect(host.querySelector("table")).toBeTruthy();
+  // checks view keeps the daily list
+  await act(async () => { button(/^⚙️\s*(Checks|الفحوصات)/).click(); });
+  expect(host.textContent).toContain("POS 10 temperature");
 });
 
 test("the bell shows the open count", async () => {

@@ -45,7 +45,8 @@ export const ackAlert = (id, note = "") => call(`/${encodeURIComponent(id)}/ack`
 export const ackAllAlerts = () => call("/ack-all", { method: "POST", body: {} }).then((j) => { changed(); return j; });
 export const fetchAlertRules = () => call("/rules");
 export const saveAlertRules = (rules) => call("/rules", { method: "PUT", body: { rules } });
-export const runAlertChecks = (first = true) => call("/run", { method: "POST", body: { first } }).then((j) => { changed(); return j; });
+export const sendTestAlertMail = (contact) => call("/test-mail", { method: "POST", body: { email: contact.email, name: contact.name, branches: contact.branches || [] } });
+export const runAlertChecks =(first = true) => call("/run", { method: "POST", body: { first } }).then((j) => { changed(); return j; });
 
 export const isAlertsAdmin = () => !!getPerms().isAdmin;
 

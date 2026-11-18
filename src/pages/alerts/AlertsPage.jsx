@@ -5,7 +5,8 @@
 // log not filed, a calibration / certificate about to expire, a CAPA past its
 // date. Open → "Seen" (ack) → closed by the system when the problem is gone
 // (e.g. a recheck back in range).
-// Admins also get the Rules tab: which checks run and who is e-mailed.
+// Admins also get the Settings tab (AlertsSettings.jsx): recipients per
+// branch and alert type, a coverage map, and which checks run.
 //
 // Readability: globals.css forces every font to 14px, so sizes live in the CSS
 // block below as `#root .alp …` rules with !important, all scaled by --app-fs
@@ -14,9 +15,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
-import { BRANCHES } from "../settings/reportTypeCatalog";
+import AlertsSettings from "./AlertsSettings";
 import {
-  fetchAlerts, ackAlert, ackAllAlerts, fetchAlertRules, saveAlertRules, runAlertChecks,
+  fetchAlerts, ackAlert, ackAllAlerts,
   isAlertsAdmin, alertVisible, SEVERITY, RULE_INFO, ALERTS_EVENT,
 } from "../../utils/alertsApi";
 
@@ -51,6 +52,7 @@ const CSS = `
 #root .alp button:focus-visible, #root .alp input:focus-visible, #root .alp select:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 @keyframes alp-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,.45); } 50% { box-shadow: 0 0 0 7px rgba(220,38,38,0); } }
 #root .alp .alp-pulse { animation: alp-pulse 1.8s ease-in-out infinite; }
+@media (max-width: 760px) { #root .alp .als-split { grid-template-columns: 1fr !important; } }
 `;
 
 const fmtWhen = (iso, ar) => (iso ? new Date(iso).toLocaleString(ar ? "ar-AE" : "en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -177,25 +179,25 @@ export default function AlertsPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span style={S.headIcon} className={counts.sev.critical && tab === "open" ? "alp-pulse" : ""}>🔔</span>
             <div>
-              <div className="alp-title" style={{ fontWeight: 900, color: "#0f2740" }}>{t({ en: "Alerts", ar: "التنبيهات" })}</div>
-              <div className="alp-s" style={{ color: "#475569", fontWeight: 700, maxWidth: 560 }}>
+              <div className="alp-title" style={{ fontWeight: 900, color: "#fff" }}>{t({ en: "Alerts", ar: "التنبيهات" })}</div>
+              <div className="alp-s" style={{ color: "#cfe3fb", fontWeight: 700, maxWidth: 560 }}>
                 {t({ en: "Found by the system itself — temperatures, missed logs, expiries, overdue CAPA", ar: "يكتشفها النظام بنفسه — الحرارة، التقارير الفائتة، الانتهاء، CAPA المتأخرة" })}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {loadedAt && tab !== "rules" && (
-              <span className="alp-xs" style={{ color: "#475569", fontWeight: 700 }}>
+              <span className="alp-xs" style={{ color: "#cfe3fb", fontWeight: 700 }}>
                 {t({ en: "Updated", ar: "آخر تحديث" })} {loadedAt.toLocaleTimeString(isAr ? "ar-AE" : "en-GB", { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
             {tab !== "rules" && (
-              <button type="button" style={S.btn} onClick={load} disabled={loading} title={t({ en: "Refresh", ar: "تحديث" })}>
+              <button type="button" style={S.ghost} onClick={load} disabled={loading} title={t({ en: "Refresh", ar: "تحديث" })}>
                 ⟳ {t({ en: "Refresh", ar: "تحديث" })}
               </button>
             )}
-            <LangToggle lang={lang} toggle={toggle} style={S.btn} />
-            <button type="button" style={S.btn} onClick={() => navigate("/named-dashboard")}>🏠 {t({ en: "Home", ar: "الرئيسية" })}</button>
+            <LangToggle lang={lang} toggle={toggle} style={S.ghost} />
+            <button type="button" style={S.ghost} onClick={() => navigate("/named-dashboard")}>🏠 {t({ en: "Home", ar: "الرئيسية" })}</button>
           </div>
         </header>
 
@@ -209,13 +211,13 @@ export default function AlertsPage() {
           ))}
           {admin && (
             <button type="button" role="tab" aria-selected={tab === "rules"} onClick={() => switchTab("rules")} style={{ ...S.tab, ...(tab === "rules" ? S.tabOn : null) }}>
-              ⚙️ {t({ en: "Rules & e-mail", ar: "القواعد والإيميل" })}
+              ⚙️ {t({ en: "Settings & recipients", ar: "الإعدادات والمستلمون" })}
             </button>
           )}
         </div>
 
         {tab === "rules" ? (
-          <RulesEditor t={t} isAr={isAr} />
+          <AlertsSettings t={t} isAr={isAr} />
         ) : (
           <>
             {/* ───── Severity summary (click = filter) ───── */}
@@ -400,169 +402,16 @@ function AlertCard({ a, t, isAr, busy, onAck, onOpen }) {
   );
 }
 
-/* ───────── admin: rules, recipients, run now ───────── */
-
-const ALL_TYPES = BRANCHES.flatMap((b) => (b.types || []).map(([type, label]) => ({ type, label: `${b.label} — ${label}`, branch: b.label })));
-
-function RulesEditor({ t, isAr }) {
-  const [rules, setRules] = useState(null);
-  const [mailbox, setMailbox] = useState(true);
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [addType, setAddType] = useState("");
-
-  useEffect(() => {
-    fetchAlertRules().then((j) => { setRules(j.rules); setMailbox(j.mailbox !== false); }).catch((e) => setErr(String(e?.message || e)));
-  }, []);
-
-  if (err && !rules) return <div style={S.bad}>{err}</div>;
-  if (!rules) return <div className="alp-s" style={S.empty}>{t({ en: "Loading…", ar: "جاري التحميل…" })}</div>;
-
-  const set = (k, patch) => setRules((r) => ({ ...r, [k]: { ...r[k], ...patch } }));
-  const checks = rules.missedReports.checks || [];
-
-  const save = async () => {
-    setSaving(true); setMsg(""); setErr("");
-    try {
-      const j = await saveAlertRules(rules);
-      setRules(j.rules);
-      setMsg(t({ en: "Saved.", ar: "تم الحفظ." }));
-    } catch (e) {
-      setErr(String(e?.message || e));
-    } finally {
-      setSaving(false);
-    }
-  };
-  const runNow = async (first) => {
-    setRunning(true); setMsg(""); setErr("");
-    try {
-      const j = await runAlertChecks(first);
-      setMsg(t({ en: `Checks done — ${j.created} new alert(s).`, ar: `تم الفحص — ${j.created} تنبيه جديد.` }));
-    } catch (e) {
-      setErr(String(e?.message || e));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {!mailbox && (
-        <div style={S.warn}>
-          {t({ en: "This company has no mailbox of its own yet — alerts show in the bell, e-mails are not sent.", ar: "هذه الشركة ليس لها بريد خاص بعد — التنبيهات تظهر بالجرس، والإيميل لا يُرسل." })}
-        </div>
-      )}
-      <div className="alp-s" style={{ color: "#475569", lineHeight: 1.7 }}>
-        {t({
-          en: "The system checks at 08:00 (yesterday's logs, expiries, CAPA) and 13:00 (no temperature reading yet today), UAE time. A temperature out of range is raised the moment it is saved — from the phone or the sheet.",
-          ar: "يفحص النظام الساعة 08:00 (تقارير أمس، الانتهاء، CAPA) و13:00 (لا قراءة حرارة اليوم بعد) بتوقيت الإمارات. الحرارة خارج الحد تُنبَّه لحظة حفظها — من الجوال أو من الشيت.",
-        })}
-      </div>
-
-      <RuleBlock k="temperature" rule={rules.temperature} onChange={(patch) => set("temperature", patch)} t={t} when={t({ en: "Instantly — a phone (QR) reading or a sheet saved from the computer (today / yesterday) out of range. A recheck or a correction back in range closes it.", ar: "فوراً — قراءة جوال (QR) أو شيت محفوظ من الكمبيوتر (اليوم / أمس) خارج الحد. إعادة القياس أو التصحيح داخل الحد يغلقه." })} />
-
-      <RuleBlock k="missedReports" rule={rules.missedReports} onChange={(patch) => set("missedReports", patch)} t={t} when={t({ en: "08:00 — logs not filed for yesterday (phone readings alone do not file a day)", ar: "08:00 — تقارير أمس غير المعبّأة (قراءات الجوال وحدها لا تكفي)" })}>
-        <div style={{ display: "grid", gap: 6 }}>
-          {checks.map((c, i) => (
-            <div key={`${c.type}-${i}`} style={S.checkRow}>
-              <span style={{ fontWeight: 800 }}>{c.branch}</span>
-              <span style={{ flex: 1 }}>{c.label || c.type}</span>
-              <code className="alp-s" style={{ color: "#475569" }}>{c.type}</code>
-              <button type="button" style={S.x} onClick={() => set("missedReports", { checks: checks.filter((_, j) => j !== i) })} aria-label="remove">✕</button>
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8 }}>
-            <select style={{ ...S.input, flex: 1 }} value={addType} onChange={(e) => setAddType(e.target.value)}>
-              <option value="">{t({ en: "Add a daily log to check…", ar: "أضف تقريراً يومياً للفحص…" })}</option>
-              {ALL_TYPES.filter((x) => !checks.some((c) => c.type === x.type)).map((x) => <option key={x.type} value={x.type}>{x.label}</option>)}
-            </select>
-            <button type="button" style={S.btn} disabled={!addType} onClick={() => {
-              const x = ALL_TYPES.find((y) => y.type === addType);
-              if (x) set("missedReports", { checks: [...checks, { type: x.type, branch: x.branch, label: x.label }] });
-              setAddType("");
-            }}>＋ {t({ en: "Add", ar: "إضافة" })}</button>
-          </div>
-          <div className="alp-s" style={{ color: "#475569" }}>
-            {t({ en: "A log the company has not filed in the last 30 days is skipped (not in use).", ar: "التقرير الذي لم يُعبّأ أبداً خلال 30 يوماً يُتجاهل (غير مستعمل)." })}
-          </div>
-        </div>
-      </RuleBlock>
-
-      <RuleBlock k="noReadingToday" rule={rules.noReadingToday} onChange={(patch) => set("noReadingToday", patch)} t={t} when={t({ en: "13:00 — temperature logs above with no reading at all yet today", ar: "13:00 — سجلات الحرارة أعلاه بلا أي قراءة اليوم" })} />
-
-      <RuleBlock k="expiries" rule={rules.expiries} onChange={(patch) => set("expiries", patch)} t={t} when={t({ en: "08:00 — calibration, training & health certificates, licences/contracts, mock recall (every 90 days)", ar: "08:00 — المعايرة، شهادات التدريب والصحة، الرخص والعقود، تمرين السحب (كل 90 يوماً)" })}>
-        <label style={S.field}>
-          <span className="alp-s" style={S.label}>{t({ en: "Warn this many days before", ar: "نبّه قبل هذا العدد من الأيام" })}</span>
-          <input style={{ ...S.input, width: 120 }} type="number" min="1" max="180" value={rules.expiries.days} onChange={(e) => set("expiries", { days: Number(e.target.value) || 30 })} />
-        </label>
-      </RuleBlock>
-
-      <RuleBlock k="capa" rule={rules.capa} onChange={(patch) => set("capa", patch)} t={t} when={t({ en: "08:00, weekly reminder — CAPA / NCR past its target date, or open too long without one", ar: "08:00، تذكير أسبوعي — CAPA / NCR تجاوز تاريخه المستهدف، أو مفتوح طويلاً بلا تاريخ" })}>
-        <label style={S.field}>
-          <span className="alp-s" style={S.label}>{t({ en: "No target date: overdue after (days)", ar: "بلا تاريخ مستهدف: متأخر بعد (يوم)" })}</span>
-          <input style={{ ...S.input, width: 120 }} type="number" min="1" max="365" value={rules.capa.openDays} onChange={(e) => set("capa", { openDays: Number(e.target.value) || 30 })} />
-        </label>
-      </RuleBlock>
-
-      {err && <div style={S.bad}>{err}</div>}
-      {msg && <div style={S.ok}>{msg}</div>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" style={S.pri} disabled={saving} onClick={save}>💾 {t({ en: "Save rules", ar: "حفظ القواعد" })}</button>
-        <button type="button" style={S.btn} disabled={running} onClick={() => runNow(true)}>▶ {t({ en: "Run the 08:00 checks now", ar: "شغّل فحص 08:00 الآن" })}</button>
-        <button type="button" style={S.btn} disabled={running} onClick={() => runNow(false)}>▶ {t({ en: "Run the 13:00 check now", ar: "شغّل فحص 13:00 الآن" })}</button>
-      </div>
-      <div className="alp-s" style={{ color: "#475569" }}>{isAr ? "احفظ القواعد قبل التشغيل اليدوي." : "Save the rules before a manual run."}</div>
-    </div>
-  );
-}
-
-/* One rule: title, when it runs, on/off, its own settings and its recipients.
-   A component of its own (not defined inside RulesEditor) so typing in its
-   inputs does not remount it and drop the focus. */
-function RuleBlock({ k, rule, onChange, t, when, children }) {
-  return (
-    <section style={S.card}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span className="alp-big">{RULE_INFO[k].icon}</span>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div className="alp-h" style={{ fontWeight: 900 }}>{t(RULE_INFO[k])}</div>
-          <div className="alp-s" style={{ color: "#475569" }}>{when}</div>
-        </div>
-        <label style={S.switch}>
-          <input type="checkbox" checked={rule.enabled !== false} onChange={(e) => onChange({ enabled: e.target.checked })} />
-          {t({ en: "On", ar: "مفعّل" })}
-        </label>
-      </div>
-      {rule.enabled !== false && (
-        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-          {children}
-          <label style={S.field}>
-            <span className="alp-s" style={S.label}>{t({ en: "E-mail to (comma separated — empty = bell only)", ar: "إرسال بالإيميل إلى (افصل بفاصلة — فارغ = الجرس فقط)" })}</span>
-            <input
-              style={S.input}
-              dir="ltr"
-              defaultValue={(rule.emails || []).join(", ")}
-              onBlur={(e) => onChange({ emails: e.target.value.split(/[,;\s]+/).filter(Boolean) })}
-              placeholder="qa@company.com, manager@company.com"
-            />
-          </label>
-        </div>
-      )}
-    </section>
-  );
-}
-
 const FONT = "Cairo, Tajawal, system-ui, sans-serif";
 const S = {
   page: { minHeight: "100vh", background: "linear-gradient(180deg,#f2f7fc,#e8f1fa)", padding: "22px 16px 70px", fontFamily: FONT, color: "#0f2740" },
   wrap: { maxWidth: 1040, margin: "0 auto" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 18, padding: "18px 20px", background: "#fff", border: "1px solid #e3edf7", borderRadius: 20, boxShadow: "0 10px 28px rgba(15,39,64,.06)" },
-  headIcon: { width: 62, height: 62, borderRadius: 20, display: "grid", placeItems: "center", background: "linear-gradient(135deg,#ef4444,#b91c1c)", color: "#fff", fontSize: 30, flexShrink: 0 },
-  tabs: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 },
-  tab: { display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 20px", borderRadius: 999, border: "1px solid #cfdeec", background: "#fff", color: "#1e3a5f", fontWeight: 800, cursor: "pointer" },
-  tabOn: { background: "#0f2740", color: "#fff", borderColor: "#0f2740", boxShadow: "0 8px 18px rgba(15,39,64,.22)" },
+  header: { position: "relative", overflow: "hidden", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16, padding: "22px 24px", background: "radial-gradient(circle at 90% -20%, rgba(96,165,250,.45), transparent 55%), linear-gradient(135deg,#0f2740 0%,#1e4b7a 60%,#2563eb 100%)", borderRadius: 24, boxShadow: "0 18px 40px rgba(15,39,64,.22)" },
+  headIcon: { width: 62, height: 62, borderRadius: 20, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", fontSize: 30, flexShrink: 0, backdropFilter: "blur(4px)" },
+  ghost: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 15px", borderRadius: 12, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  tabs: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, padding: 6, background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  tab: { flex: "1 1 140px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 16px", borderRadius: 13, border: 0, background: "transparent", color: "#1e3a5f", fontWeight: 900, cursor: "pointer" },
+  tabOn: { background: "linear-gradient(135deg,#0f2740,#1e4b7a)", color: "#fff", boxShadow: "0 8px 18px rgba(15,39,64,.22)" },
   tabCount: { minWidth: 28, padding: "0 8px", borderRadius: 999, background: "#e8f1fa", color: "#0f2740", fontWeight: 900, textAlign: "center" },
   tabCountOn: { background: "rgba(255,255,255,.2)", color: "#fff" },
   kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 14 },
