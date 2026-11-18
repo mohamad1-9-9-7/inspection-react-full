@@ -1,0 +1,27 @@
+{
+  "appId": "ae.inspectpro.app",
+  "appName": "InspectPro",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#0B1E3F",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_INSIDE"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0B1E3F",
+      "overlaysWebView": false
+    }
+  }
+}

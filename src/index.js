@@ -7,6 +7,10 @@ import './styles/theme-dark.css';
 import './utils/authFetch';
 import { applyTheme } from './utils/theme';
 import { applyFontStep } from './utils/fontScale';
+import { installNativeDownloads } from './utils/nativeDownloads';
+
+// Android app: blob/data downloads (Excel, PDF, ZIP) → share sheet.
+installNativeDownloads();
 
 // Day / night mode before the first paint, so a night-mode user never
 // sees a white flash.

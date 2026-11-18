@@ -7,6 +7,13 @@
   "main": "public/electron.js",
   "homepage": "./",
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@zxing/browser": "0.1.5",
     "@zxing/library": "0.21.3",
     "cors": "^2.8.5",
@@ -45,7 +52,10 @@
     "electron:dev": "electron .",
     "electron:build": "react-scripts build && electron-builder --win --x64",
     "electron:build:portable": "react-scripts build && electron-builder --win portable --x64",
-    "dist": "react-scripts build && electron-builder"
+    "dist": "react-scripts build && electron-builder",
+    "android:sync": "react-scripts build && cap sync android",
+    "android:open": "cap open android",
+    "android:icons": "node scripts/android-assets.cjs && capacitor-assets generate --android --iconBackgroundColor #0B1E3F --splashBackgroundColor #0B1E3F"
   },
   "eslintConfig": {
     "extends": [
@@ -187,6 +197,8 @@
     ]
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.2",
     "baseline-browser-mapping": "^2.9.7",
     "electron": "^37.2.5",
     "electron-builder": "^25.1.8",
