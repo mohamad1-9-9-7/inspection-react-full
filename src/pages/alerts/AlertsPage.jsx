@@ -244,7 +244,7 @@ export default function AlertsPage() {
                     </button>
                   );
                 })}
-                <div style={{ ...S.kpi, cursor: "default", borderColor: "#cfdeec" }}>
+                <div style={{ ...S.kpi, cursor: "default", borderColor: "#d6e2ea" }}>
                   <span className="alp-big" aria-hidden="true">📊</span>
                   <span style={{ display: "grid", textAlign: "start" }}>
                     <span className="alp-num" style={{ fontWeight: 900, color: "#0f2740" }}>{list.length}</span>
@@ -367,7 +367,7 @@ function AlertCard({ a, t, isAr, busy, onAck, onOpen }) {
               {sv.icon} {t(SEV_LABEL[a.severity] || SEV_LABEL.warning)}
             </span>
             {rule && <span className="alp-xs" style={S.tag}>{t(rule)}</span>}
-            {a.branch && <span className="alp-xs" style={{ ...S.tag, background: "#eef6ff", borderColor: "#cfe3fb", color: "#1e4b7a" }}>📍 {a.branch}</span>}
+            {a.branch && <span className="alp-xs" style={{ ...S.tag, background: "#ecfeff", borderColor: "#bae6fd", color: "#155e75" }}>📍 {a.branch}</span>}
             {a.emailed_at && <span className="alp-xs" style={S.tag}>✉️ {t({ en: "e-mailed", ar: "أُرسل بالإيميل" })}</span>}
           </div>
 
@@ -404,45 +404,45 @@ function AlertCard({ a, t, isAr, busy, onAck, onOpen }) {
 
 const FONT = "Cairo, Tajawal, system-ui, sans-serif";
 const S = {
-  page: { minHeight: "100vh", background: "linear-gradient(180deg,#f2f7fc,#e8f1fa)", padding: "18px clamp(12px, 2vw, 28px) 70px", fontFamily: FONT, color: "#0f2740" },
+  page: { minHeight: "100vh", background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)", boxSizing: "border-box", padding: "18px clamp(12px, 2vw, 28px) 70px", fontFamily: FONT, color: "#0f2740" },
   wrap: { width: "100%", maxWidth: "none", margin: 0 },
-  header: { position: "relative", overflow: "hidden", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16, padding: "22px 24px", background: "radial-gradient(circle at 90% -20%, rgba(96,165,250,.45), transparent 55%), linear-gradient(135deg,#0f2740 0%,#1e4b7a 60%,#2563eb 100%)", borderRadius: 24, boxShadow: "0 18px 40px rgba(15,39,64,.22)" },
-  headIcon: { width: 62, height: 62, borderRadius: 20, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", fontSize: 30, flexShrink: 0, backdropFilter: "blur(4px)" },
+  header: { position: "relative", overflow: "hidden", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16, padding: "22px 24px", background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))", borderRadius: 14, boxShadow: "0 18px 40px rgba(15,39,64,.22)" },
+  headIcon: { width: 62, height: 62, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", fontSize: 30, flexShrink: 0, backdropFilter: "blur(4px)" },
   ghost: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 15px", borderRadius: 12, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
-  tabs: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, padding: 6, background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  tabs: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, padding: 6, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   tab: { flex: "1 1 140px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 16px", borderRadius: 13, border: 0, background: "transparent", color: "#1e3a5f", fontWeight: 900, cursor: "pointer" },
-  tabOn: { background: "linear-gradient(135deg,#0f2740,#1e4b7a)", color: "#fff", boxShadow: "0 8px 18px rgba(15,39,64,.22)" },
+  tabOn: { background: "#e6f4f1", color: "#0f766e", boxShadow: "inset 0 0 0 1.5px #99d5cc" },
   tabCount: { minWidth: 28, padding: "0 8px", borderRadius: 999, background: "#e8f1fa", color: "#0f2740", fontWeight: 900, textAlign: "center" },
-  tabCountOn: { background: "rgba(255,255,255,.2)", color: "#fff" },
+  tabCountOn: { background: "#0f766e", color: "#fff" },
   kpis: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 14 },
-  kpi: { display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 18, border: "2px solid", background: "#fff", textAlign: "start" },
+  kpi: { display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 12, border: "2px solid", background: "#fff", textAlign: "start" },
   toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
   searchIcon: { position: "absolute", insetInlineStart: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" },
   chips: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
-  chip: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 999, border: "1px solid #cfdeec", background: "#fff", color: "#1e3a5f", fontWeight: 700, cursor: "pointer" },
-  chipOn: { background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" },
+  chip: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 999, border: "1px solid #d6e2ea", background: "#fff", color: "#1e3a5f", fontWeight: 700, cursor: "pointer" },
+  chipOn: { background: "#e6f4f1", borderColor: "#5eb8aa", color: "#0f766e" },
   filterNote: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", color: "#334155", fontWeight: 800, marginBottom: 12 },
   linkBtn: { border: 0, background: "none", color: "#2563eb", fontWeight: 800, cursor: "pointer", padding: 0, textDecoration: "underline" },
   dayHead: { display: "flex", alignItems: "center", gap: 10, margin: "4px 2px 10px" },
   dayCount: { padding: "0 9px", borderRadius: 999, background: "#dbe8f5", color: "#0f2740", fontWeight: 900 },
-  dayRule: { flex: 1, height: 1, background: "#cfdeec" },
-  card: { background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: "16px 18px", boxShadow: "0 8px 22px rgba(15,39,64,.05)" },
+  dayRule: { flex: 1, height: 1, background: "#d6e2ea" },
+  card: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 18px", boxShadow: "0 8px 22px rgba(15,39,64,.05)" },
   iconBox: { width: 54, height: 54, borderRadius: 16, display: "grid", placeItems: "center", border: "1px solid", flexShrink: 0 },
   badge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 999, border: "1px solid", fontWeight: 900 },
   tag: { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 999, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#334155", fontWeight: 800 },
   body: { color: "#1e293b", whiteSpace: "pre-line", marginTop: 8, padding: "10px 12px", background: "#f8fbff", border: "1px solid #e8f0f8", borderRadius: 12, fontWeight: 600 },
   state: { marginTop: 8, padding: "6px 10px", borderRadius: 10, fontWeight: 700, display: "inline-block" },
-  btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #cfdeec", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
-  pri: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(37,99,235,.25)" },
-  empty: { background: "#fff", border: "2px dashed #cfdeec", borderRadius: 20, padding: 36, textAlign: "center", color: "#334155", fontWeight: 800 },
-  skeleton: { height: 110, borderRadius: 18, background: "linear-gradient(90deg,#eef4fa,#f8fbff,#eef4fa)", border: "1px solid #e3edf7" },
+  btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  pri: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(15,118,110,.22)" },
+  empty: { background: "#fff", border: "2px dashed #d6e2ea", borderRadius: 12, padding: 36, textAlign: "center", color: "#334155", fontWeight: 800 },
+  skeleton: { height: 110, borderRadius: 12, background: "linear-gradient(90deg,#eef4fa,#f8fbff,#eef4fa)", border: "1px solid #e2e8f0" },
   bad: { padding: "11px 14px", borderRadius: 14, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontWeight: 800, marginBottom: 12 },
   warn: { padding: "11px 14px", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontWeight: 800 },
   ok: { padding: "11px 14px", borderRadius: 14, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontWeight: 800 },
-  switch: { display: "flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "6px 12px", borderRadius: 999, border: "1px solid #cfdeec", background: "#fbfdff" },
+  switch: { display: "flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "6px 12px", borderRadius: 999, border: "1px solid #d6e2ea", background: "#fbfdff" },
   field: { display: "flex", flexDirection: "column", gap: 6 },
   label: { fontWeight: 800, color: "#1e3a5f" },
-  input: { width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid #cfdeec", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
-  checkRow: { display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid #e3edf7", borderRadius: 12, background: "#fbfdff", flexWrap: "wrap" },
+  input: { width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
+  checkRow: { display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fbfdff", flexWrap: "wrap" },
   x: { border: 0, background: "none", color: "#b91c1c", fontWeight: 900, cursor: "pointer", padding: "2px 6px" },
 };

@@ -242,7 +242,7 @@ function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onA
     <button type="button" onClick={() => setBranch(id)} style={{ ...S.brItem, ...(branch === id ? S.brOn : null) }}>
       <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
         <span className="alp-s" style={{ fontWeight: 900, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-        {sub && <span className="alp-xs" style={{ color: branch === id ? "#dbeafe" : "#64748b", fontWeight: 700 }}>{sub}</span>}
+        {sub && <span className="alp-xs" style={{ display: "block", color: branch === id ? "#0f766e" : "#64748b", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>}
       </span>
       <span className="alp-xs" style={{ ...S.brN, ...(n === 0 ? S.brN0 : null), ...(branch === id ? S.brNOn : null) }}>{n}</span>
     </button>
@@ -261,8 +261,8 @@ function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onA
           <BranchBtn key={b} id={b} label={b} n={countFor(b)}
             sub={own(b) ? t({ en: `${own(b)} for this branch only`, ar: `${own(b)} خاص بالفرع` }) : t({ en: "all-branch only", ar: "مستلمو الكل فقط" })} />
         ))}
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input style={{ ...S.input, padding: "8px 10px" }} value={newBranch} onChange={(e) => setNewBranch(e.target.value)}
+        <div style={{ display: "flex", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px solid #eef2f6" }}>
+          <input style={{ ...S.input, padding: "8px 10px", minWidth: 0, flex: 1 }} value={newBranch} onChange={(e) => setNewBranch(e.target.value)}
             placeholder={t({ en: "Another branch…", ar: "فرع آخر…" })} />
           <button type="button" style={S.btnSm} disabled={!newBranch.trim()} onClick={() => { onAddBranch(newBranch.trim()); setBranch(newBranch.trim()); setNewBranch(""); }}>＋</button>
         </div>
@@ -626,55 +626,55 @@ function Checks({ t, rules, setRule, running, runNow, dirty }) {
 }
 
 const S = {
-  loading: { background: "#fff", borderRadius: 18, padding: 30, textAlign: "center", color: "#334155", fontWeight: 800 },
+  loading: { background: "#fff", borderRadius: 12, padding: 30, textAlign: "center", color: "#334155", fontWeight: 800 },
   bad: { padding: "11px 14px", borderRadius: 14, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontWeight: 800 },
   warn: { padding: "11px 14px", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontWeight: 800 },
   ok: { padding: "11px 14px", borderRadius: 14, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontWeight: 800 },
   info: { padding: "11px 14px", borderRadius: 14, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", fontWeight: 700 },
 
-  seg: { display: "flex", gap: 6, padding: 6, background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, boxShadow: "0 6px 18px rgba(15,39,64,.05)", flexWrap: "wrap" },
+  seg: { display: "flex", gap: 6, padding: 6, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 6px 18px rgba(15,39,64,.05)", flexWrap: "wrap" },
   segBtn: { flex: "1 1 180px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 14px", borderRadius: 13, border: 0, background: "transparent", color: "#1e3a5f", fontWeight: 900, cursor: "pointer" },
-  segOn: { background: "linear-gradient(135deg,#0f2740,#1e4b7a)", color: "#fff", boxShadow: "0 8px 18px rgba(15,39,64,.22)" },
+  segOn: { background: "#e6f4f1", color: "#0f766e", boxShadow: "inset 0 0 0 1.5px #99d5cc" },
   segN: { minWidth: 26, padding: "0 8px", borderRadius: 999, background: "#e8f1fa", color: "#0f2740", fontWeight: 900 },
-  segNOn: { background: "rgba(255,255,255,.2)", color: "#fff" },
+  segNOn: { background: "#0f766e", color: "#fff" },
 
-  split: { display: "grid", gridTemplateColumns: "minmax(200px, 250px) 1fr", gap: 14, alignItems: "start" },
-  rail: { background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: 10, display: "grid", gap: 4, boxShadow: "0 6px 18px rgba(15,39,64,.05)", maxHeight: "75vh", overflowY: "auto" },
+  split: { display: "grid", gridTemplateColumns: "minmax(240px, 290px) minmax(0, 1fr)", gap: 14, alignItems: "start" },
+  rail: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, display: "flex", flexDirection: "column", gap: 3, boxShadow: "0 6px 18px rgba(15,39,64,.05)", maxHeight: "78vh", overflowY: "auto", overflowX: "hidden", boxSizing: "border-box" },
   railHead: { fontWeight: 900, color: "#64748b", letterSpacing: 1, padding: "4px 8px" },
-  railSep: { height: 1, background: "#e3edf7", margin: "6px 4px" },
-  brItem: { display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 12, border: 0, background: "transparent", color: "#0f2740", cursor: "pointer", width: "100%" },
-  brOn: { background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", boxShadow: "0 6px 14px rgba(37,99,235,.25)" },
-  brN: { minWidth: 26, padding: "1px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", fontWeight: 900, textAlign: "center" },
+  railSep: { height: 1, background: "#e2e8f0", margin: "6px 4px" },
+  brItem: { display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 10, border: "1px solid transparent", borderInlineStart: "3px solid transparent", background: "transparent", color: "#0f172a", cursor: "pointer", width: "100%", boxSizing: "border-box", minWidth: 0 },
+  brOn: { background: "#e6f4f1", borderColor: "#c4e6df", borderInlineStartColor: "#0f766e", color: "#0f766e" },
+  brN: { flexShrink: 0, minWidth: 28, padding: "1px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", fontWeight: 900, textAlign: "center", boxSizing: "border-box" },
   brN0: { background: "#fee2e2", color: "#b91c1c" },
-  brNOn: { background: "rgba(255,255,255,.22)", color: "#fff" },
+  brNOn: { boxShadow: "0 0 0 1.5px #0f766e" },
 
-  peopleHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: "14px 16px", boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  peopleHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   searchIcon: { position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" },
   cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12 },
-  person: { background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: 14, display: "grid", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  person: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, display: "grid", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   avatar: { width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", color: "#fff", fontWeight: 900, flexShrink: 0 },
   metaRow: { display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" },
   metaLbl: { width: 22, textAlign: "center" },
-  brChip: { padding: "2px 10px", borderRadius: 999, background: "#eef6ff", border: "1px solid #cfe3fb", color: "#1e4b7a", fontWeight: 800 },
+  brChip: { padding: "2px 10px", borderRadius: 999, background: "#ecfeff", border: "1px solid #bae6fd", color: "#155e75", fontWeight: 800 },
   typeChip: { padding: "2px 10px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#334155", fontWeight: 800 },
   allChip: { background: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" },
   critChip: { padding: "2px 10px", borderRadius: 999, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontWeight: 900 },
   personFoot: { display: "flex", gap: 6, alignItems: "center", borderTop: "1px solid #eef3f8", paddingTop: 10 },
   mini: { display: "grid", placeItems: "center", cursor: "pointer" },
 
-  editor: { background: "linear-gradient(180deg,#ffffff,#f7fbff)", border: "2px solid #93c5fd", borderRadius: 20, padding: 18, boxShadow: "0 16px 34px rgba(37,99,235,.12)" },
+  editor: { background: "linear-gradient(180deg,#ffffff,#f6fbfa)", border: "2px solid #99d5cc", borderRadius: 12, padding: 18, boxShadow: "0 16px 34px rgba(15,118,110,.12)" },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 },
-  pickBlock: { marginTop: 14, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e3edf7" },
+  pickBlock: { marginTop: 14, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e2e8f0" },
   pickHead: { display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", flexWrap: "wrap", marginBottom: 8 },
   pills: { display: "flex", gap: 6, flexWrap: "wrap" },
-  pill: { padding: "7px 13px", borderRadius: 999, border: "1px solid #cfdeec", background: "#fff", color: "#1e3a5f", fontWeight: 800, cursor: "pointer" },
-  pillOn: { background: "#2563eb", borderColor: "#2563eb", color: "#fff" },
+  pill: { padding: "7px 13px", borderRadius: 999, border: "1px solid #d6e2ea", background: "#fff", color: "#1e3a5f", fontWeight: 800, cursor: "pointer" },
+  pillOn: { background: "#0f766e", borderColor: "#0f766e", color: "#fff" },
   hint: { color: "#475569", fontWeight: 700, marginTop: 8 },
-  check: { display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "8px 12px", borderRadius: 12, background: "#fff", border: "1px solid #e3edf7" },
+  check: { display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "8px 12px", borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0" },
 
-  panel: { background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  panel: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   table: { width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 640 },
-  th: { padding: "10px 8px", borderBottom: "2px solid #e3edf7", textAlign: "center", verticalAlign: "bottom", background: "#f8fbff" },
+  th: { padding: "10px 8px", borderBottom: "2px solid #e2e8f0", textAlign: "center", verticalAlign: "bottom", background: "#f8fbff" },
   td: { padding: "8px", borderBottom: "1px solid #eef3f8", textAlign: "center" },
   cell: { minWidth: 46, padding: "6px 12px", borderRadius: 10, border: "1px solid", fontWeight: 900, cursor: "pointer" },
   cellOk: { background: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" },
@@ -684,28 +684,28 @@ const S = {
   okBadge: { padding: "6px 14px", borderRadius: 999, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontWeight: 900 },
 
   ruleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 },
-  ruleCard: { background: "#fff", border: "1px solid #e3edf7", borderRadius: 18, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
+  ruleCard: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   ruleOff: { background: "#f8fafc", opacity: 0.75 },
-  ruleIcon: { width: 50, height: 50, borderRadius: 14, display: "grid", placeItems: "center", background: "#eef6ff", border: "1px solid #cfe3fb", flexShrink: 0 },
+  ruleIcon: { width: 50, height: 50, borderRadius: 12, display: "grid", placeItems: "center", background: "#e6f4f1", border: "1px solid #c4e6df", flexShrink: 0 },
   switch: { width: 54, height: 30, borderRadius: 999, border: 0, background: "#cbd5e1", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background .15s" },
-  switchOn: { background: "#16a34a" },
+  switchOn: { background: "#0f766e" },
   knob: { position: "absolute", top: 3, insetInlineStart: 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 2px 6px rgba(0,0,0,.2)", transition: "inset-inline-start .15s" },
   knobOn: { insetInlineStart: 27 },
   inline: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   steps: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: 10, borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a" },
   step: { padding: "2px 10px", borderRadius: 999, border: "1.5px solid", background: "#fff", fontWeight: 900 },
   checkList: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 6 },
-  checkRow: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid #e3edf7", borderRadius: 12, background: "#fbfdff" },
+  checkRow: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fbfdff" },
   x: { border: 0, background: "none", color: "#b91c1c", fontWeight: 900, cursor: "pointer", padding: "2px 6px" },
 
-  saveBar: { position: "fixed", insetInline: 0, bottom: 18, margin: "0 auto", width: "min(560px, calc(100% - 32px))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 12px 20px", borderRadius: 18, background: "#0f2740", color: "#fff", boxShadow: "0 18px 40px rgba(15,39,64,.35)", zIndex: 50 },
+  saveBar: { position: "fixed", insetInline: 0, bottom: 18, margin: "0 auto", width: "min(560px, calc(100% - 32px))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px 10px 18px", borderRadius: 12, background: "#fffbeb", border: "1.5px solid #fcd34d", color: "#92400e", boxShadow: "0 16px 36px rgba(15,23,42,.18)", zIndex: 50, boxSizing: "border-box" },
 
-  empty: { background: "#fff", border: "2px dashed #cfdeec", borderRadius: 20, padding: 30, textAlign: "center", color: "#334155" },
+  empty: { background: "#fff", border: "2px dashed #d6e2ea", borderRadius: 12, padding: 30, textAlign: "center", color: "#334155" },
   field: { display: "flex", flexDirection: "column", gap: 6 },
   label: { fontWeight: 800, color: "#1e3a5f" },
-  input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #cfdeec", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
-  btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #cfdeec", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
-  btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #cfdeec", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
+  btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnDel: { padding: "7px 10px", borderRadius: 10, border: "1px solid #fecaca", background: "#fff5f5", color: "#b91c1c", fontWeight: 900, cursor: "pointer" },
-  pri: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 18px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(37,99,235,.25)" },
+  pri: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 18px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(15,118,110,.22)" },
 };
