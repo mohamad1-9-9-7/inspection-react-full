@@ -104,3 +104,6 @@ app/src/main/res/xml/config.xml
 *.jks
 *.keystore
 keystore.properties
+
+# Debug-only Avast root for the local emulator (machine-specific)
+app/src/debug/res/raw/

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG builds only (src/debug). Lets the emulator on this PC reach the
+     server through Avast's HTTPS scanning. Release builds never see this.
+     raw/local_av_root.pem is machine-specific and git-ignored; without it,
+     drop the <certificates src="@raw/..."/> line. -->
+<network-security-config>
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/local_av_root" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
