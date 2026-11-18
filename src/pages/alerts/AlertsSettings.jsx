@@ -78,11 +78,16 @@ export default function AlertsSettings({ t, isAr }) {
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  // An older server drops rules.contacts on save — then keep the old lists
+  // untouched and lock the recipients editor until the server is updated.
+  const [serverReady, setServerReady] = useState(true);
 
   useEffect(() => {
     fetchAlertRules()
       .then((j) => {
-        const m = migrate(j.rules);
+        const ready = Array.isArray(j.rules?.contacts);
+        setServerReady(ready);
+        const m = ready ? migrate(j.rules) : { rules: { ...j.rules, contacts: [] }, moved: 0 };
         setRules(m.rules);
         setMoved(m.moved);
         setDirty(m.moved > 0);
@@ -148,6 +153,9 @@ export default function AlertsSettings({ t, isAr }) {
       {!mailbox && (
         <div style={S.warn}>📭 {t({ en: "This company has no mailbox of its own yet — alerts show in the bell, e-mails are not sent.", ar: "هذه الشركة ليس لها بريد خاص بعد — التنبيهات تظهر بالجرس، والإيميل لا يُرسل." })}</div>
       )}
+      {!serverReady && (
+        <div style={S.warn}>⚠️ {t({ en: "The server is not updated yet — recipients per branch cannot be saved. The old e-mail lists keep working.", ar: "السيرفر لم يُحدَّث بعد — لا يمكن حفظ المستلمين حسب الفرع. القوائم القديمة ما زالت تعمل." })}</div>
+      )}
       {moved > 0 && (
         <div style={S.info}>
           ℹ️ {t({ en: `${moved} address(es) from the old per-check lists were moved into Recipients (all branches). Save to keep it this way.`, ar: `تم نقل ${moved} عنوان من القوائم القديمة إلى المستلمين (كل الفروع). احفظ لتثبيت ذلك.` })}
@@ -164,7 +172,7 @@ export default function AlertsSettings({ t, isAr }) {
       </div>
 
       {view === "people" && (
-        <People t={t} isAr={isAr} contacts={contacts} branches={branches} setContacts={setContacts} mailbox={mailbox}
+        <People t={t} isAr={isAr} locked={!serverReady} contacts={contacts} branches={branches} setContacts={setContacts} mailbox={mailbox}
           onAddBranch={(b) => setExtraBranches((x) => [...x, b])} />
       )}
       {view === "coverage" && <Coverage t={t} rules={rules} branches={branches} onPick={() => setView("people")} />}
@@ -185,7 +193,7 @@ export default function AlertsSettings({ t, isAr }) {
 
 /* ───────────────────────── 📬 Recipients ───────────────────────── */
 
-function People({ t, isAr, contacts, branches, setContacts, mailbox, onAddBranch }) {
+function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onAddBranch }) {
   const [branch, setBranch] = useState("__all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // contact draft | null
@@ -279,7 +287,7 @@ function People({ t, isAr, contacts, branches, setContacts, mailbox, onAddBranch
             <span aria-hidden="true" style={S.searchIcon}>🔍</span>
             <input type="search" style={{ ...S.input, paddingInlineStart: 38 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t({ en: "Search name / e-mail", ar: "ابحث بالاسم / الإيميل" })} />
           </div>
-          <button type="button" style={S.pri} onClick={startNew}>＋ {t({ en: "Add recipient", ar: "إضافة مستلم" })}</button>
+          <button type="button" style={S.pri} disabled={locked} onClick={startNew}>＋ {t({ en: "Add recipient", ar: "إضافة مستلم" })}</button>
         </div>
 
         {note && <div className="alp-s" style={note.startsWith("⚠️") ? S.bad : S.ok}>{note}</div>}
@@ -297,7 +305,7 @@ function People({ t, isAr, contacts, branches, setContacts, mailbox, onAddBranch
                 ? t({ en: "Nobody receives this branch's alerts yet", ar: "لا أحد يستلم تنبيهات هذا الفرع بعد" })
                 : t({ en: "No recipients yet — alerts show in the bell only", ar: "لا يوجد مستلمون بعد — التنبيهات بالجرس فقط" })}
             </div>
-            <button type="button" style={{ ...S.pri, marginTop: 12 }} onClick={startNew}>＋ {t({ en: "Add recipient", ar: "إضافة مستلم" })}</button>
+            <button type="button" style={{ ...S.pri, marginTop: 12 }} disabled={locked} onClick={startNew}>＋ {t({ en: "Add recipient", ar: "إضافة مستلم" })}</button>
           </div>
         )}
 

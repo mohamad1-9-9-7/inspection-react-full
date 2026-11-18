@@ -22,6 +22,7 @@ const RULES = {
   noReadingToday: { enabled: true, emails: [] },
   expiries: { enabled: true, emails: [], days: 30 },
   capa: { enabled: false, emails: [], openDays: 30 },
+  contacts: [], // the updated server always sends this array
 };
 
 let host;
