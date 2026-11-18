@@ -84,6 +84,10 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   // checks view keeps the daily list
   await act(async () => { button(/^⚙️\s*(Checks|الفحوصات)/).click(); });
   expect(host.textContent).toContain("POS 10 temperature");
+  // expiry kinds: "Everything" until one is picked
+  expect(button(/Everything|كل شي/)).toBeTruthy();
+  await act(async () => { button(/🤝\s*(Contracts|العقود)/).click(); });
+  expect(host.textContent).toMatch(/Only these are sent: Contracts|بس هدول بينبعتوا: العقود/);
   // send log: rows, status, filter
   await act(async () => { button(/^📜\s*(Send log|سجل الإرسال)/).click(); });
   await flush();

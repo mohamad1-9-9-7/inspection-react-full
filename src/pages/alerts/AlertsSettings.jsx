@@ -21,6 +21,16 @@ import ContactPicker from "../shared/ContactPicker";
 import { listEmailContacts } from "../shared/emailReportSettings";
 
 const RULES = ["temperature", "ccp", "missedReports", "noReadingToday", "expiries", "capa"];
+/* The kinds of expiry the server can remind (inspection-server alertEngine EXPIRY_KINDS). */
+const EXPIRY_KINDS = [
+  { id: "licences", icon: "📄", en: "Licences", ar: "الرخص" },
+  { id: "contracts", icon: "🤝", en: "Contracts", ar: "العقود" },
+  { id: "calibration", icon: "🎚️", en: "Calibration", ar: "المعايرة" },
+  { id: "training", icon: "🎓", en: "Training certificates", ar: "شهادات التدريب" },
+  { id: "ohc", icon: "🩺", en: "Health certificates (OHC)", ar: "الشهادات الصحية" },
+  { id: "supplier", icon: "🚚", en: "Supplier documents", ar: "مستندات الموردين" },
+  { id: "mockRecall", icon: "🔁", en: "Mock recall drill", ar: "تمرين السحب" },
+];
 const ALL_TYPES = BRANCHES.flatMap((b) => (b.types || []).map(([type, label]) => ({ type, label: `${b.label} — ${label}`, branch: b.label })));
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 /* Branches compare by their canonical code — "POS 15", "AL BARSHA BUTCHERY
@@ -746,6 +756,7 @@ function Coverage({ t, rules, branches, onPick }) {
 function Checks({ t, rules, setRule, running, runNow, dirty }) {
   const [addType, setAddType] = useState("");
   const checks = rules.missedReports.checks || [];
+  const kinds = Array.isArray(rules.expiries?.kinds) ? rules.expiries.kinds : [];
   const WHEN = {
     temperature: { en: "Instantly — a phone (QR) reading or a saved sheet out of range. A recheck back in range closes it.", ar: "فوراً — قراءة جوال (QR) أو شيت محفوظ خارج الحد. إعادة القياس داخل الحد تغلقه." },
     missedReports: { en: "08:00 — yesterday's logs not filed (phone readings alone do not file a day)", ar: "08:00 — تقارير أمس غير المعبّأة (قراءات الجوال وحدها لا تكفي)" },
@@ -785,6 +796,34 @@ function Checks({ t, rules, setRule, running, runNow, dirty }) {
         {card("noReadingToday")}
         {card("expiries", (
           <>
+            {/* Which kinds of expiry are sent (empty = all) — 08:00 run and "send now" */}
+            <div style={S.pickBlock}>
+              <div style={S.pickHead}>
+                <span className="alp-s" style={S.label}>📋 {t({ en: "Send reminders for", ar: "ابعت تذكير عن" })}</span>
+                <button type="button" style={{ ...S.pill, ...(!kinds.length ? S.pillOn : null) }} onClick={() => setRule("expiries", { kinds: [] })}>
+                  {!kinds.length ? "✓ " : ""}{t({ en: "Everything", ar: "كل شي" })}
+                </button>
+              </div>
+              <div style={S.pills}>
+                {EXPIRY_KINDS.map((k) => {
+                  const on = kinds.includes(k.id);
+                  return (
+                    <button key={k.id} type="button" style={{ ...S.pill, ...(on ? S.pillOn : null) }}
+                      onClick={() => {
+                        const next = on ? kinds.filter((x) => x !== k.id) : [...kinds, k.id];
+                        setRule("expiries", { kinds: next.length === EXPIRY_KINDS.length ? [] : next });
+                      }}>
+                      {on ? "✓ " : ""}{k.icon} {t(k)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="alp-xs" style={S.hint}>
+                {!kinds.length
+                  ? t({ en: "Every kind is sent. Pick some to send only those.", ar: "كل الأنواع بتنبعت. اختار أنواع معينة لتنبعت هي بس." })
+                  : t({ en: `Only these are sent: ${kinds.map((id) => t(EXPIRY_KINDS.find((k) => k.id === id) || { en: id, ar: id })).join(", ")}.`, ar: `بس هدول بينبعتوا: ${kinds.map((id) => t(EXPIRY_KINDS.find((k) => k.id === id) || { en: id, ar: id })).join("، ")}.` })}
+              </div>
+            </div>
             <label style={S.inline}>
               <span className="alp-s" style={S.label}>{t({ en: "Calibration & certificates: warn", ar: "المعايرة والشهادات: نبّه قبل" })}</span>
               <input style={{ ...S.input, width: 90 }} type="number" min="1" max="180" value={rules.expiries.days} onChange={(e) => setRule("expiries", { days: Number(e.target.value) || 30 })} />
