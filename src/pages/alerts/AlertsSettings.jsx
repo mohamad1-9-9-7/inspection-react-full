@@ -215,6 +215,31 @@ const PRESETS = [
 
 const covers = (rem, rule) => !rem.rules?.length || rem.rules.includes(rule);
 
+/* WHEN a reminder goes out (server: alertEngine reminderDue / sendReminderDigest). */
+const FREQ_OPTS = [
+  { id: "auto", icon: "⚡", en: "Right away", ar: "فوراً" },
+  { id: "daily", icon: "📅", en: "Daily", ar: "كل يوم" },
+  { id: "weekly", icon: "🗓️", en: "Weekly", ar: "كل أسبوع" },
+  { id: "monthly", icon: "📆", en: "Monthly", ar: "كل شهر" },
+  { id: "quarterly", icon: "🔁", en: "Every 3 months", ar: "كل 3 شهور" },
+];
+const WEEKDAYS = [
+  { en: "Sunday", ar: "الأحد" }, { en: "Monday", ar: "الاثنين" }, { en: "Tuesday", ar: "الثلاثاء" },
+  { en: "Wednesday", ar: "الأربعاء" }, { en: "Thursday", ar: "الخميس" }, { en: "Friday", ar: "الجمعة" }, { en: "Saturday", ar: "السبت" },
+];
+/** "Every Monday at 08:00 — a summary" / "Right away, when a problem is found". */
+function whenText(rem, t) {
+  const at = rem.time || "08:00";
+  const day = rem.monthDay || 1;
+  switch (rem.freq) {
+    case "daily": return t({ en: `Every day at ${at} — a summary`, ar: `كل يوم الساعة ${at} — ملخص` });
+    case "weekly": { const d = WEEKDAYS[rem.weekday || 0]; return t({ en: `Every ${d.en} at ${at} — a summary`, ar: `كل ${d.ar} الساعة ${at} — ملخص` }); }
+    case "monthly": return t({ en: `Every month on the ${day} at ${at} — a summary`, ar: `كل شهر بتاريخ ${day} الساعة ${at} — ملخص` });
+    case "quarterly": return t({ en: `Every 3 months (Jan · Apr · Jul · Oct) on the ${day} at ${at} — a summary`, ar: `كل 3 شهور (يناير · أبريل · يوليو · أكتوبر) بتاريخ ${day} الساعة ${at} — ملخص` });
+    default: return t({ en: "Right away, when a problem is found", ar: "فوراً، أول ما تنكشف المشكلة" });
+  }
+}
+
 function People({ t, isAr, locked, rules, setReminders, mailbox, dirty }) {
   const [branch, setBranch] = useState(BRANCH_LIST[0].key);
   const [sending, setSending] = useState("");
@@ -235,6 +260,7 @@ function People({ t, isAr, locked, rules, setReminders, mailbox, dirty }) {
   const add = (preset) => setReminders((list) => [...list, {
     id: newId(), name: t(preset), branch, rules: preset.rules, kinds: preset.kinds,
     onlyCritical: false, active: true, to: [], cc: [], bcc: [],
+    freq: "auto", time: "08:00", weekday: 1, monthDay: 1,
   }]);
   const duplicate = (r) => setReminders((list) => {
     const i = list.findIndex((x) => x.id === r.id);
@@ -402,6 +428,7 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
           <button type="button" onClick={() => setOpen(true)} style={S.remTitle}>
             <span className="alp-s" style={{ display: "block", fontWeight: 900, color: "#0f172a" }}>{rem.name || t({ en: "Untitled reminder", ar: "تذكير بدون اسم" })}</span>
             <span className="alp-xs" style={S.remLine}>🔔 {whatText}</span>
+            <span className="alp-xs" style={S.remLine}>⏰ {whenText(rem, t)}</span>
             <span className="alp-xs" style={{ ...S.remLine, color: whoText ? "#475569" : "#b91c1c" }}>👥 {whoText || t({ en: "nobody yet", ar: "ما حدا لسا" })}</span>
           </button>
         )}
@@ -463,6 +490,46 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
           <input type="checkbox" disabled={locked} checked={!!rem.onlyCritical} onChange={(e) => onChange({ onlyCritical: e.target.checked })} />
           🚨 {t({ en: "Critical only (expired, out of range)", ar: "الحرجة بس (منتهي، خارج الحد)" })}
         </label>
+
+        {/* WHEN — on the spot, or a digest on a schedule */}
+        <div style={S.whenBox}>
+          <span className="alp-s" style={S.label}>⏰ {t({ en: "When?", ar: "إمتى؟" })}</span>
+          <div style={S.pills}>
+            {FREQ_OPTS.map((f) => {
+              const on = (rem.freq || "auto") === f.id;
+              return (
+                <button key={f.id} type="button" disabled={locked} style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => onChange({ freq: f.id })}>
+                  {on ? "✓ " : ""}{f.icon} {t(f)}
+                </button>
+              );
+            })}
+          </div>
+          {(rem.freq || "auto") !== "auto" && (
+            <div style={S.whenRow}>
+              {rem.freq === "weekly" && (
+                <label style={S.inline}>
+                  <span className="alp-xs" style={S.label}>{t({ en: "Day", ar: "اليوم" })}</span>
+                  <select style={S.selectSm} disabled={locked} value={rem.weekday ?? 0} onChange={(e) => onChange({ weekday: Number(e.target.value) })}>
+                    {WEEKDAYS.map((d, i) => <option key={i} value={i}>{t(d)}</option>)}
+                  </select>
+                </label>
+              )}
+              {(rem.freq === "monthly" || rem.freq === "quarterly") && (
+                <label style={S.inline}>
+                  <span className="alp-xs" style={S.label}>{t({ en: "On day", ar: "بتاريخ" })}</span>
+                  <select style={S.selectSm} disabled={locked} value={rem.monthDay ?? 1} onChange={(e) => onChange({ monthDay: Number(e.target.value) })}>
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              )}
+              <label style={S.inline}>
+                <span className="alp-xs" style={S.label}>{t({ en: "At", ar: "الساعة" })}</span>
+                <input type="time" style={S.selectSm} disabled={locked} value={rem.time || "08:00"} onChange={(e) => onChange({ time: e.target.value || "08:00" })} />
+              </label>
+            </div>
+          )}
+          <div className="alp-xs" style={S.hint}>{whenText(rem, t)}</div>
+        </div>
       </div>
 
       {/* WHO — like the send window: To on its own line, CC and BCC side by side */}
@@ -509,8 +576,8 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
       )}
 
       <div style={S.personFoot}>
-        <button type="button" style={S.btnSend} disabled={locked || !mailbox || !!sending || !expiryOn || !people || rem.active === false} onClick={onSendNow}
-          title={expiryOn ? t({ en: "Send what is expiring now through this reminder (real e-mail)", ar: "ابعت اللي عم ينتهي هلق عن طريق هالتذكير (إيميل حقيقي)" }) : t({ en: "Send now works for expiry reminders", ar: "الإرسال الآن بيشتغل لتذكيرات الانتهاء" })}>
+        <button type="button" style={S.btnSend} disabled={locked || !mailbox || !!sending || !people || rem.active === false} onClick={onSendNow}
+          title={t({ en: "Send this reminder's summary now — everything it covers (real e-mail)", ar: "ابعت ملخص هالتذكير الآن — كل شي بيغطيه (إيميل حقيقي)" })}>
           📨 {sending === rem.id ? "…" : t({ en: "Send now", ar: "أرسل الآن" })}
         </button>
         <button type="button" style={S.btnSm} disabled={!mailbox || !people || !!sending} onClick={onTest}>✉️ {sending === `test:${rem.id}` ? "…" : t({ en: "Test", ar: "تجربة" })}</button>
@@ -529,6 +596,7 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
 const METHOD = {
   auto: { icon: "🤖", en: "Automatic", ar: "تلقائي", color: "#0f766e", bg: "#e6f4f1" },
   manual: { icon: "📨", en: "Sent now", ar: "إرسال يدوي", color: "#1d4ed8", bg: "#eff6ff" },
+  scheduled: { icon: "🗓️", en: "Scheduled", ar: "حسب الموعد", color: "#7c3aed", bg: "#f5f3ff" },
   test: { icon: "✉️", en: "Test", ar: "تجربة", color: "#64748b", bg: "#f1f5f9" },
 };
 
@@ -838,6 +906,9 @@ const S = {
   branchN: { minWidth: 20, padding: "0 6px", borderRadius: 999, background: "#f1f5f9", color: "#64748b", fontWeight: 900, textAlign: "center" },
   branchNLive: { background: "#dcfce7", color: "#166534" },
   branchNOn: { background: "rgba(255,255,255,.25)", color: "#fff" },
+  whenBox: { marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e2e8f0", display: "grid", gap: 8 },
+  whenRow: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", padding: "8px 10px", borderRadius: 10, background: "#f5f3ff", border: "1px solid #e9e5ff" },
+  selectSm: { padding: "6px 9px", borderRadius: 9, border: "1px solid #dbe5ec", background: "#fff", color: "#0f172a", fontWeight: 700 },
   remBody: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" },
   ccRow: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 },
   linkBtn: { border: 0, background: "none", color: "#0f766e", fontWeight: 800, cursor: "pointer", padding: 0 },
