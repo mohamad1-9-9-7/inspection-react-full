@@ -16,11 +16,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BRANCHES } from "../settings/reportTypeCatalog";
 import { fetchAlertRules, saveAlertRules, runAlertChecks, sendTestAlertMail, RULE_INFO } from "../../utils/alertsApi";
+import { canonBranch } from "../../utils/branchCanon";
 
 const RULES = ["temperature", "ccp", "missedReports", "noReadingToday", "expiries", "capa"];
 const ALL_TYPES = BRANCHES.flatMap((b) => (b.types || []).map(([type, label]) => ({ type, label: `${b.label} — ${label}`, branch: b.label })));
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const norm = (b) => String(b || "").trim().toLowerCase();
+/* Branches compare by their canonical code — "POS 15", "AL BARSHA BUTCHERY
+   (POS15)" and "Al Barsha Butchery" are one branch (same rule as the server). */
+const norm = canonBranch;
+const uniqCanon = (list) => [...new Set((list || []).map(canonBranch).filter(Boolean))];
 const newId = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /* Same routing as the server's recipientsFor — the coverage view must not lie. */
@@ -34,7 +38,7 @@ function receives(c, rule, branch, critical = true) {
 
 /** Old per-rule lists → contacts (merged by e-mail). */
 function migrate(rules) {
-  const contacts = (rules.contacts || []).map((c) => ({ ...c }));
+  const contacts = (rules.contacts || []).map((c) => ({ ...c, branches: uniqCanon(c.branches) }));
   const byEmail = new Map(contacts.map((c) => [c.email, c]));
   let moved = 0;
   const next = { ...rules };
@@ -91,22 +95,31 @@ export default function AlertsSettings({ t, isAr }) {
         setRules(m.rules);
         setMoved(m.moved);
         setDirty(m.moved > 0);
-        setServerBranches(Array.isArray(j.branches) ? j.branches : []);
+        // every spelling the server saw, grouped below by canonical branch
+        setServerBranches(Array.isArray(j.branchGroups) ? j.branchGroups.flatMap((g) => g.names || [g.key]) : Array.isArray(j.branches) ? j.branches : []);
         setMailbox(j.mailbox !== false);
       })
       .catch((e) => setErr(String(e?.message || e)));
   }, []);
 
-  const branches = useMemo(() => {
-    if (!rules) return [];
-    const all = new Map();
-    const add = (b) => { const s = String(b || "").trim(); if (s && !all.has(norm(s))) all.set(norm(s), s); };
+  /* One entry per real branch (canonical key) + every spelling met for it. */
+  const { branches, spellings } = useMemo(() => {
+    const names = new Map(); // key → Set(spellings)
+    if (!rules) return { branches: [], spellings: names };
+    const add = (b) => {
+      const raw = String(b || "").replace(/\s+/g, " ").trim();
+      const key = canonBranch(raw);
+      if (!key) return;
+      if (!names.has(key)) names.set(key, new Set());
+      names.get(key).add(raw);
+    };
     serverBranches.forEach(add);
     (rules.missedReports?.checks || []).forEach((c) => add(c.branch));
     (rules.contacts || []).forEach((c) => (c.branches || []).forEach(add));
     extraBranches.forEach(add);
-    if (!all.size) BRANCHES.forEach((b) => add(b.label));
-    return [...all.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    if (!names.size) BRANCHES.forEach((b) => add(b.label));
+    const list = [...names.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return { branches: list, spellings: names };
   }, [rules, serverBranches, extraBranches]);
 
   if (err && !rules) return <div style={S.bad}>⚠️ {err}</div>;
@@ -172,7 +185,7 @@ export default function AlertsSettings({ t, isAr }) {
       </div>
 
       {view === "people" && (
-        <People t={t} isAr={isAr} locked={!serverReady} contacts={contacts} branches={branches} setContacts={setContacts} mailbox={mailbox}
+        <People t={t} isAr={isAr} locked={!serverReady} contacts={contacts} branches={branches} spellings={spellings} setContacts={setContacts} mailbox={mailbox}
           onAddBranch={(b) => setExtraBranches((x) => [...x, b])} />
       )}
       {view === "coverage" && <Coverage t={t} rules={rules} branches={branches} onPick={() => setView("people")} />}
@@ -193,7 +206,7 @@ export default function AlertsSettings({ t, isAr }) {
 
 /* ───────────────────────── 📬 Recipients ───────────────────────── */
 
-function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onAddBranch }) {
+function People({ t, isAr, locked, contacts, branches, spellings, setContacts, mailbox, onAddBranch }) {
   const [branch, setBranch] = useState("__all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // contact draft | null
@@ -238,8 +251,8 @@ function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onA
     }
   };
 
-  const BranchBtn = ({ id, label, n, sub }) => (
-    <button type="button" onClick={() => setBranch(id)} style={{ ...S.brItem, ...(branch === id ? S.brOn : null) }}>
+  const BranchBtn = ({ id, label, n, sub, title }) => (
+    <button type="button" onClick={() => setBranch(id)} title={title} style={{ ...S.brItem, ...(branch === id ? S.brOn : null) }}>
       <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
         <span className="alp-s" style={{ fontWeight: 900, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
         {sub && <span className="alp-xs" style={{ display: "block", color: branch === id ? "#0f766e" : "#64748b", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>}
@@ -257,10 +270,15 @@ function People({ t, isAr, locked, contacts, branches, setContacts, mailbox, onA
         <BranchBtn id="__every" label={t({ en: "All-branch recipients", ar: "مستلمو كل الفروع" })} n={contacts.filter((c) => !c.branches?.length).length}
           sub={t({ en: "get every branch + general", ar: "يستلمون كل الفروع + العام" })} />
         <div style={S.railSep} />
-        {branches.map((b) => (
-          <BranchBtn key={b} id={b} label={b} n={countFor(b)}
-            sub={own(b) ? t({ en: `${own(b)} for this branch only`, ar: `${own(b)} خاص بالفرع` }) : t({ en: "all-branch only", ar: "مستلمو الكل فقط" })} />
-        ))}
+        {branches.map((b) => {
+          const names = [...(spellings.get(b) || [])].filter((x) => x !== b);
+          const ownTxt = own(b) ? t({ en: `${own(b)} for this branch only`, ar: `${own(b)} خاص بالفرع` }) : t({ en: "all-branch only", ar: "مستلمو الكل فقط" });
+          return (
+            <BranchBtn key={b} id={b} label={b} n={countFor(b)}
+              title={names.length ? [t({ en: "Also written as:", ar: "يُكتب أيضاً:" }), ...names].join("\n") : undefined}
+              sub={names.length ? `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ""}` : ownTxt} />
+          );
+        })}
         <div style={{ display: "flex", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px solid #eef2f6" }}>
           <input style={{ ...S.input, padding: "8px 10px", minWidth: 0, flex: 1 }} value={newBranch} onChange={(e) => setNewBranch(e.target.value)}
             placeholder={t({ en: "Another branch…", ar: "فرع آخر…" })} />
