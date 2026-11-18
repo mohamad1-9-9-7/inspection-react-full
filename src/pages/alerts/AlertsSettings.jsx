@@ -15,7 +15,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { BRANCHES } from "../settings/reportTypeCatalog";
-import { fetchAlertRules, saveAlertRules, runAlertChecks, sendTestAlertMail, RULE_INFO } from "../../utils/alertsApi";
+import { fetchAlertRules, saveAlertRules, runAlertChecks, sendTestAlertMail, sendRemindersNow, fetchAlertSendLog, RULE_INFO } from "../../utils/alertsApi";
 import { canonBranch } from "../../utils/branchCanon";
 import ContactPicker from "../shared/ContactPicker";
 import { listEmailContacts } from "../shared/emailReportSettings";
@@ -161,6 +161,7 @@ export default function AlertsSettings({ t, isAr }) {
     { id: "people", icon: "📬", en: "Recipients by branch", ar: "المستلمون حسب الفرع", n: contacts.length },
     { id: "coverage", icon: "🧭", en: "Coverage map", ar: "خريطة التغطية" },
     { id: "checks", icon: "⚙️", en: "Checks", ar: "الفحوصات", n: RULES.filter((k) => rules[k]?.enabled !== false).length },
+    { id: "log", icon: "📜", en: "Send log", ar: "سجل الإرسال" },
   ];
 
   return (
@@ -188,8 +189,9 @@ export default function AlertsSettings({ t, isAr }) {
 
       {view === "people" && (
         <People t={t} isAr={isAr} locked={!serverReady} contacts={contacts} branches={branches} spellings={spellings} setContacts={setContacts} mailbox={mailbox}
-          onAddBranch={(b) => setExtraBranches((x) => [...x, b])} />
+          onAddBranch={(b) => setExtraBranches((x) => [...x, b])} dirty={dirty} />
       )}
+      {view === "log" && <SendLog t={t} isAr={isAr} />}
       {view === "coverage" && <Coverage t={t} rules={rules} branches={branches} onPick={() => setView("people")} />}
       {view === "checks" && <Checks t={t} rules={rules} setRule={setRule} running={running} runNow={runNow} dirty={dirty} />}
 
@@ -208,7 +210,7 @@ export default function AlertsSettings({ t, isAr }) {
 
 /* ───────────────────────── 📬 Recipients ───────────────────────── */
 
-function People({ t, isAr, locked, contacts, branches, spellings, setContacts, mailbox, onAddBranch }) {
+function People({ t, isAr, locked, contacts, branches, spellings, setContacts, mailbox, onAddBranch, dirty, onSent }) {
   const [branch, setBranch] = useState("__all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // contact draft | null
@@ -251,6 +253,32 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
     setContacts((list) => list.filter((x) => x.id !== c.id));
   };
   const toggleActive = (c) => setContacts((list) => list.map((x) => (x.id === c.id ? { ...x, active: x.active === false } : x)));
+  /* The REAL reminders, now: everything expiring / expired today, with the
+     details and documents — to everyone (c = null) or to one person. Uses the
+     saved settings, so unsaved changes must be saved first. */
+  const [sending, setSending] = useState("");
+  const sendNow = async (c = null) => {
+    if (dirty) { setNote(`⚠️ ${t({ en: "Save the changes first — sending uses the saved recipients.", ar: "احفظ التغييرات أولاً — الإرسال بيعتمد على المستلمين المحفوظين." })}`); return; }
+    const who = c ? (c.name || c.email) : t({ en: "every recipient", ar: "كل المستلمين" });
+    if (!window.confirm(t({ en: `Send the expiry reminders now to ${who}? These are real e-mails with the documents attached.`, ar: `إرسال تذكيرات الانتهاء الآن إلى ${who}؟ هدول إيميلات حقيقية مع المستندات مرفقة.` }))) return;
+    setSending(c ? c.id : "__all"); setNote("");
+    try {
+      const r = await sendRemindersNow(c ? c.email : "");
+      if (!r.items) setNote(t({ en: "Nothing is expiring or expired right now — no e-mail sent.", ar: "ما في شي منتهي أو قريب الانتهاء حالياً — ما انبعت إيميل." }));
+      else if (!r.recipients) setNote(`⚠️ ${c ? t({ en: `${who} has no reminders for their branches right now.`, ar: `${who} ما عنده تذكيرات لفروعه حالياً.` }) : t({ en: "No recipient is set for these branches.", ar: "ما في مستلم محدد لهالفروع." })}`);
+      else setNote(`${r.failed ? "⚠️ " : ""}${t({
+        en: `Sent to ${r.sent} person(s) — ${r.items} reminder(s).${r.failed ? ` ${r.failed} failed.` : ""}`,
+        ar: `انبعت إلى ${r.sent} شخص — ${r.items} تذكير.${r.failed ? ` فشل ${r.failed}.` : ""}`,
+      })}`);
+      onSent?.();
+    } catch (e) {
+      const m = e?.message === "no_mailbox" ? t({ en: "No mailbox for this company.", ar: "لا يوجد بريد لهذه الشركة." }) : String(e?.message || e);
+      setNote(`⚠️ ${m}`);
+    } finally {
+      setSending("");
+    }
+  };
+
   const test = async (c) => {
     setTesting(c.id); setNote("");
     try {
@@ -318,6 +346,10 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
             <span aria-hidden="true" style={S.searchIcon}>🔍</span>
             <input type="search" style={{ ...S.input, paddingInlineStart: 38 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t({ en: "Search name / e-mail", ar: "ابحث بالاسم / الإيميل" })} />
           </div>
+          <button type="button" style={S.btn} disabled={locked || !mailbox || !contacts.length || !!sending} onClick={() => sendNow(null)}
+            title={t({ en: "Real e-mails: everything expiring or expired now, with the documents", ar: "إيميلات حقيقية: كل شي منتهي أو قريب الانتهاء الآن، مع المستندات" })}>
+            📨 {sending === "__all" ? "…" : t({ en: "Send reminders now", ar: "إرسال التذكيرات الآن" })}
+          </button>
           <button type="button" style={S.pri} disabled={locked} onClick={startNew}>＋ {t({ en: "Add recipient", ar: "إضافة مستلم" })}</button>
         </div>
 
@@ -376,8 +408,12 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
 
               <div style={S.personFoot}>
                 <button type="button" style={S.btnSm} onClick={() => setEditing({ ...c })}>✏️ {t({ en: "Edit", ar: "تعديل" })}</button>
+                <button type="button" style={S.btnSend} disabled={!mailbox || c.active === false || !!sending} onClick={() => sendNow(c)}
+                  title={t({ en: "Send this person their reminders now (real e-mail, documents attached)", ar: "أرسل لهالشخص تذكيراته الآن (إيميل حقيقي مع المستندات)" })}>
+                  📨 {sending === c.id ? "…" : t({ en: "Send now", ar: "أرسل الآن" })}
+                </button>
                 <button type="button" style={S.btnSm} disabled={!mailbox || testing === c.id} onClick={() => test(c)}>
-                  ✉️ {testing === c.id ? "…" : t({ en: "Test e-mail", ar: "إيميل تجريبي" })}
+                  ✉️ {testing === c.id ? "…" : t({ en: "Test", ar: "تجربة" })}
                 </button>
                 <span style={{ flex: 1 }} />
                 <button type="button" style={S.btnDel} onClick={() => remove(c)} aria-label={t({ en: "Remove", ar: "حذف" })}>🗑</button>
@@ -522,6 +558,117 @@ function ContactEditor({ t, draft, branches, contacts, book, onBookChange, onCan
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
         <button type="button" style={S.btn} onClick={onCancel}>{t({ en: "Cancel", ar: "إلغاء" })}</button>
         <button type="button" style={S.pri} onClick={submit}>✓ {d._new ? t({ en: "Add", ar: "إضافة" }) : t({ en: "Done", ar: "تم" })}</button>
+      </div>
+    </section>
+  );
+}
+
+/* ───────────────────────── 📜 Send log ─────────────────────────
+   Every alert e-mail — scheduled (08:00 / instant), sent now by hand, or a
+   test — one row per recipient, from the E-mail Center's own log. */
+
+const METHOD = {
+  auto: { icon: "🤖", en: "Automatic", ar: "تلقائي", color: "#0f766e", bg: "#e6f4f1" },
+  manual: { icon: "📨", en: "Sent now", ar: "إرسال يدوي", color: "#1d4ed8", bg: "#eff6ff" },
+  test: { icon: "✉️", en: "Test", ar: "تجربة", color: "#64748b", bg: "#f1f5f9" },
+};
+
+function SendLog({ t, isAr }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  const [q, setQ] = useState("");
+  const [method, setMethod] = useState("");
+  const [status, setStatus] = useState("");
+  const [open, setOpen] = useState(0);
+
+  const load = () => {
+    setErr("");
+    fetchAlertSendLog(300).then(setRows).catch((e) => { setErr(String(e?.message || e)); setRows([]); });
+  };
+  useEffect(load, []);
+
+  const list = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return (rows || []).filter((r) =>
+      (!method || r.method === method)
+      && (!status || r.status === status)
+      && (!s || [r.subject, r.note, r.sent_by, ...(Array.isArray(r.to_emails) ? r.to_emails : [])].some((x) => String(x || "").toLowerCase().includes(s))));
+  }, [rows, q, method, status]);
+
+  const when = (iso) => (iso ? new Date(iso).toLocaleString(isAr ? "ar-AE" : "en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+  const failed = (rows || []).filter((r) => r.status !== "sent").length;
+
+  return (
+    <section style={S.panel}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ flex: "1 1 220px" }}>
+          <div className="alp-h" style={{ fontWeight: 900, color: "#0f2740" }}>📜 {t({ en: "Send log", ar: "سجل الإرسال" })}</div>
+          <div className="alp-s" style={{ color: "#475569", fontWeight: 700 }}>
+            {t({ en: "Every alert e-mail: who got it, when, what was in it and the documents attached.", ar: "كل إيميل تنبيه: مين استلمه، ومتى، وشو كان فيه، والمستندات المرفقة." })}
+          </div>
+        </div>
+        {rows && <span className="alp-s" style={failed ? S.gapBadge : S.okBadge}>{failed ? `⚠️ ${t({ en: `${failed} failed`, ar: `${failed} فشل` })}` : `✓ ${t({ en: "All delivered", ar: "كلها انبعتت" })}`}</span>}
+        <button type="button" style={S.btn} onClick={load}>⟳ {t({ en: "Refresh", ar: "تحديث" })}</button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ position: "relative", flex: "1 1 240px" }}>
+          <span aria-hidden="true" style={S.searchIcon}>🔍</span>
+          <input type="search" style={{ ...S.input, paddingInlineStart: 38 }} value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={t({ en: "Search e-mail, subject, contract…", ar: "ابحث بالإيميل، الموضوع، العقد…" })} />
+        </div>
+        <select style={{ ...S.input, width: "auto", minWidth: 150 }} value={method} onChange={(e) => setMethod(e.target.value)}>
+          <option value="">{t({ en: "All types", ar: "كل الأنواع" })}</option>
+          {Object.entries(METHOD).map(([k, m]) => <option key={k} value={k}>{m.icon} {t(m)}</option>)}
+        </select>
+        <select style={{ ...S.input, width: "auto", minWidth: 140 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">{t({ en: "Any status", ar: "كل الحالات" })}</option>
+          <option value="sent">✅ {t({ en: "Sent", ar: "انبعت" })}</option>
+          <option value="failed">❌ {t({ en: "Failed", ar: "فشل" })}</option>
+        </select>
+      </div>
+
+      {err && <div style={S.bad}>⚠️ {err}</div>}
+      {!rows && <div className="alp-s" style={S.loading}>{t({ en: "Loading…", ar: "جاري التحميل…" })}</div>}
+      {rows && !list.length && (
+        <div style={S.empty}>
+          <div className="alp-big">📭</div>
+          <div className="alp-h" style={{ fontWeight: 900 }}>{rows.length ? t({ en: "Nothing matches the filters.", ar: "ما في شي يطابق الفلاتر." }) : t({ en: "No alert e-mail sent yet.", ar: "ما انبعت أي إيميل تنبيه بعد." })}</div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {list.map((r) => {
+          const m = METHOD[r.method] || METHOD.auto;
+          const ok = r.status === "sent";
+          const isOpen = open === r.id;
+          const lines = String(r.note || "").split("\n").filter(Boolean);
+          return (
+            <article key={r.id} style={{ ...S.logRow, borderInlineStartColor: ok ? "#16a34a" : "#dc2626" }}>
+              <button type="button" onClick={() => setOpen(isOpen ? 0 : r.id)} style={S.logHead}>
+                <span className="alp-xs" style={{ ...S.logBadge, color: m.color, background: m.bg }}>{m.icon} {t(m)}</span>
+                <span style={{ flex: "1 1 240px", minWidth: 0, textAlign: "start" }}>
+                  <span className="alp-s" style={{ display: "block", fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.subject}</span>
+                  <span className="alp-xs" dir="ltr" style={{ display: "block", color: "#475569", fontWeight: 700, textAlign: isAr ? "right" : "left" }}>
+                    → {(Array.isArray(r.to_emails) ? r.to_emails : []).join(", ")}
+                  </span>
+                </span>
+                {r.attachment_count > 0 && <span className="alp-xs" style={S.logBadge}>📎 {r.attachment_count}</span>}
+                <span className="alp-xs" style={{ ...S.logBadge, color: ok ? "#166534" : "#b91c1c", background: ok ? "#dcfce7" : "#fee2e2" }}>{ok ? "✅" : "❌"} {ok ? t({ en: "Sent", ar: "انبعت" }) : t({ en: "Failed", ar: "فشل" })}</span>
+                <span className="alp-xs" style={{ color: "#475569", fontWeight: 800, whiteSpace: "nowrap" }}>{when(r.sent_at)}</span>
+                <span aria-hidden="true" style={{ color: "#94a3b8" }}>{isOpen ? "▴" : "▾"}</span>
+              </button>
+              {isOpen && (
+                <div style={S.logBody}>
+                  {r.sent_by && r.method !== "auto" && (
+                    <div className="alp-xs" style={{ color: "#475569", fontWeight: 800, marginBottom: 6 }}>👤 {t({ en: "By", ar: "بواسطة" })}: {r.sent_by}</div>
+                  )}
+                  {lines.map((l, i) => <div key={i} className="alp-xs" style={{ color: "#1e293b", fontWeight: 700 }} dir="auto">• {l}</div>)}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -783,6 +930,11 @@ const S = {
   input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
   btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  logRow: { border: "1px solid #e2e8f0", borderInlineStart: "4px solid", borderRadius: 10, background: "#fff", overflow: "hidden" },
+  logHead: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", width: "100%", padding: "10px 12px", border: 0, background: "transparent", cursor: "pointer", boxSizing: "border-box" },
+  logBadge: { padding: "2px 9px", borderRadius: 999, background: "#f1f5f9", color: "#334155", fontWeight: 900, whiteSpace: "nowrap" },
+  logBody: { padding: "8px 14px 12px", borderTop: "1px solid #eef2f6", background: "#fbfdff" },
+  btnSend: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #99d5cc", background: "#e6f4f1", color: "#0f766e", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap" },
   btnDel: { padding: "7px 10px", borderRadius: 10, border: "1px solid #fecaca", background: "#fff5f5", color: "#b91c1c", fontWeight: 900, cursor: "pointer" },
   pri: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 18px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0f766e,#0891b2)", color: "#fff", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 8px 18px rgba(15,118,110,.22)" },
 };
