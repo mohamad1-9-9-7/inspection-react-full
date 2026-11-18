@@ -404,8 +404,8 @@ function AlertCard({ a, t, isAr, busy, onAck, onOpen }) {
 
 const FONT = "Cairo, Tajawal, system-ui, sans-serif";
 const S = {
-  page: { minHeight: "100vh", background: "linear-gradient(180deg,#f2f7fc,#e8f1fa)", padding: "22px 16px 70px", fontFamily: FONT, color: "#0f2740" },
-  wrap: { maxWidth: 1040, margin: "0 auto" },
+  page: { minHeight: "100vh", background: "linear-gradient(180deg,#f2f7fc,#e8f1fa)", padding: "18px clamp(12px, 2vw, 28px) 70px", fontFamily: FONT, color: "#0f2740" },
+  wrap: { width: "100%", maxWidth: "none", margin: 0 },
   header: { position: "relative", overflow: "hidden", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16, padding: "22px 24px", background: "radial-gradient(circle at 90% -20%, rgba(96,165,250,.45), transparent 55%), linear-gradient(135deg,#0f2740 0%,#1e4b7a 60%,#2563eb 100%)", borderRadius: 24, boxShadow: "0 18px 40px rgba(15,39,64,.22)" },
   headIcon: { width: 62, height: 62, borderRadius: 20, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", fontSize: 30, flexShrink: 0, backdropFilter: "blur(4px)" },
   ghost: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 15px", borderRadius: 12, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },

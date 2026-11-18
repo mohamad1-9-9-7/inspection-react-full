@@ -2,7 +2,7 @@
 // Settings & Admin Tools Hub - aligned with the refreshed NamedDashboard design.
 
 import React, { useCallback, useMemo, useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiArchive,
   FiArrowLeft,
@@ -23,7 +23,6 @@ import BackupTab from "./BackupTab";
 import ExcelBackupTab from "./ExcelBackupTab";
 import ProductsTab from "./ProductsTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
-import NotificationsTab from "./NotificationsTab";
 import DataInventory from "./tools/DataInventory";
 import BulkExport from "./tools/BulkExport";
 import DateTree from "./tools/DateTree";
@@ -56,7 +55,7 @@ const SECTIONS = [
         id: "notifications",
         Icon: FiBell,
         title: "Notifications",
-        desc: "Daily reminders, alerts",
+        desc: "Alerts & e-mail recipients",
         tk: "tNotifications",
         dk: "tNotificationsD",
         grad: "linear-gradient(135deg,#f59e0b,#d97706)",
@@ -184,8 +183,11 @@ function toolComponent(active) {
   switch (active) {
     case "appearance":
       return <AppearanceAndLanguage />;
+    /* The old browser-only notifications tool was replaced by the server
+       alerts (/alerts: recipients per branch, checks, coverage) — the card
+       and old links open that page. */
     case "notifications":
-      return <NotificationsTab />;
+      return <Navigate to="/alerts" replace />;
     case "inventory":
       return <DataInventory />;
     case "date-tree":

@@ -42,8 +42,8 @@ export const ST = {
   // Tiles — title + desc
   tAppearance:      { en: "Appearance & Language", ar: "المظهر واللغة" },
   tAppearanceD:     { en: "Theme, AR/EN preferences", ar: "السمة، تفضيلات العربية/الإنجليزية" },
-  tNotifications:   { en: "Notifications",          ar: "الإشعارات" },
-  tNotificationsD:  { en: "Daily reminders, alerts", ar: "تذكيرات يومية وتنبيهات" },
+  tNotifications:   { en: "Alerts & e-mail",        ar: "التنبيهات والإيميل" },
+  tNotificationsD:  { en: "Who is e-mailed, per branch", ar: "مين يوصله الإيميل، لكل فرع" },
   tInventory:       { en: "Data Inventory",        ar: "جرد البيانات" },
   tInventoryD:      { en: "Count + size per record type", ar: "العدد والحجم لكل نوع سجل" },
   tDateTree:        { en: "Date Tree Explorer",    ar: "مستكشف شجرة التواريخ" },
