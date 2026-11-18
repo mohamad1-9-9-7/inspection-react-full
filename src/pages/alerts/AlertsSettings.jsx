@@ -97,10 +97,9 @@ function migrate(rules) {
 }
 const t0 = (o) => (o ? o.en : "");
 
-export default function AlertsSettings({ t, isAr }) {
+export default function AlertsSettings({ t, isAr, view = "people", onNavigate }) {
   const [rules, setRules] = useState(null);
   const [mailbox, setMailbox] = useState(true);
-  const [view, setView] = useState("people");
   const [dirty, setDirty] = useState(false);
   const [moved, setMoved] = useState(0);
   const [err, setErr] = useState("");
@@ -157,13 +156,6 @@ export default function AlertsSettings({ t, isAr }) {
     }
   };
 
-  const VIEWS = [
-    { id: "people", icon: "📬", en: "Reminders by branch", ar: "التذكيرات حسب الفرع", n: (rules.reminders || []).length },
-    { id: "coverage", icon: "🧭", en: "Coverage map", ar: "خريطة التغطية" },
-    { id: "checks", icon: "⚙️", en: "Checks", ar: "الفحوصات", n: RULES.filter((k) => rules[k]?.enabled !== false).length },
-    { id: "log", icon: "📜", en: "Send log", ar: "سجل الإرسال" },
-  ];
-
   return (
     <div style={{ display: "grid", gap: 14, paddingBottom: dirty ? 90 : 0 }}>
       {!mailbox && (
@@ -178,20 +170,11 @@ export default function AlertsSettings({ t, isAr }) {
         </div>
       )}
 
-      <div style={S.seg} role="tablist">
-        {VIEWS.map((v) => (
-          <button key={v.id} type="button" role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)} style={{ ...S.segBtn, ...(view === v.id ? S.segOn : null) }}>
-            <span aria-hidden="true">{v.icon}</span> {t(v)}
-            {v.n !== undefined && <span style={{ ...S.segN, ...(view === v.id ? S.segNOn : null) }}>{v.n}</span>}
-          </button>
-        ))}
-      </div>
-
       {view === "people" && (
         <People t={t} isAr={isAr} locked={!serverReady} rules={rules} setReminders={setReminders} mailbox={mailbox} dirty={dirty} />
       )}
       {view === "log" && <SendLog t={t} isAr={isAr} />}
-      {view === "coverage" && <Coverage t={t} rules={rules} onPick={() => setView("people")} />}
+      {view === "coverage" && <Coverage t={t} rules={rules} onPick={() => onNavigate?.("people")} />}
       {view === "checks" && <Checks t={t} rules={rules} setRule={setRule} running={running} runNow={runNow} dirty={dirty} />}
 
       {err && <div style={S.bad}>⚠️ {err}</div>}
@@ -375,6 +358,8 @@ function People({ t, isAr, locked, rules, setReminders, mailbox, dirty }) {
 }
 
 function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked, mailbox, sending, onChange, onDuplicate, onDelete, onCopyTo, onSendNow, onTest, branchKey }) {
+  // a new reminder (nobody on it yet) opens ready to fill; the rest stay folded
+  const [open, setOpen] = useState(() => !(rem.to.length + rem.cc.length + rem.bcc.length));
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyKeys, setCopyKeys] = useState([]);
   const rulesSel = rem.rules || [];
@@ -405,18 +390,30 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
   const whoText = FIELDS.filter((f) => rem[f.id].length).map((f) => `${f.label}: ${rem[f.id].map(nameOf).join(", ")}`).join("  ·  ");
 
   return (
-    <article style={{ ...S.remCard, opacity: rem.active === false ? 0.65 : 1 }}>
+    <article style={{ ...S.remCard, ...(open ? S.remCardOpen : null), opacity: rem.active === false ? 0.65 : 1 }}>
       <div style={S.remHead}>
         <span style={S.remNo}>{index}</span>
-        <input style={{ ...S.input, flex: "1 1 200px", fontWeight: 900 }} value={rem.name} disabled={locked}
-          onChange={(e) => onChange({ name: e.target.value })} placeholder={t({ en: "Reminder name — e.g. Branch contracts", ar: "اسم التذكير — مثلاً: عقود الفرع" })} />
+        {open ? (
+          <input style={{ ...S.input, flex: "1 1 200px", fontWeight: 900 }} value={rem.name} disabled={locked}
+            onChange={(e) => onChange({ name: e.target.value })} placeholder={t({ en: "Reminder name — e.g. Branch contracts", ar: "اسم التذكير — مثلاً: عقود الفرع" })} />
+        ) : (
+          <button type="button" onClick={() => setOpen(true)} style={S.remTitle}>
+            <span className="alp-s" style={{ display: "block", fontWeight: 900, color: "#0f172a" }}>{rem.name || t({ en: "Untitled reminder", ar: "تذكير بدون اسم" })}</span>
+            <span className="alp-xs" style={S.remLine}>🔔 {whatText}</span>
+            <span className="alp-xs" style={{ ...S.remLine, color: whoText ? "#475569" : "#b91c1c" }}>👥 {whoText || t({ en: "nobody yet", ar: "ما حدا لسا" })}</span>
+          </button>
+        )}
         <button type="button" role="switch" aria-checked={rem.active !== false} disabled={locked} onClick={() => onChange({ active: rem.active === false })}
           title={rem.active !== false ? t({ en: "On — click to pause", ar: "شغّال — اضغط للإيقاف" }) : t({ en: "Paused — click to resume", ar: "موقوف — اضغط للتشغيل" })}
           style={{ ...S.switch, ...(rem.active !== false ? S.switchOn : null) }}>
           <span style={{ ...S.knob, ...(rem.active !== false ? S.knobOn : null) }} />
         </button>
+        <button type="button" style={S.btnSm} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          {open ? "▴ " + t({ en: "Done", ar: "تم" }) : "✏️ " + t({ en: "Edit", ar: "تعديل" })}
+        </button>
       </div>
 
+      {open && (<>
       <div style={S.remSummary} className="alp-xs">
         <span><b>🔔 {t({ en: "What", ar: "شو" })}:</b> {whatText}</span>
         <span><b>👥 {t({ en: "To whom", ar: "لمين" })}:</b> {whoText || <span style={{ color: "#b91c1c" }}>{t({ en: "nobody yet", ar: "ما حدا لسا" })}</span>}</span>
@@ -510,6 +507,7 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
         <span style={{ flex: 1 }} />
         <button type="button" style={S.btnDel} disabled={locked} onClick={onDelete} aria-label={t({ en: "Delete", ar: "حذف" })}>🗑</button>
       </div>
+      </>)}
     </article>
   );
 }
@@ -812,7 +810,7 @@ const S = {
   segN: { minWidth: 26, padding: "0 8px", borderRadius: 999, background: "#e8f1fa", color: "#0f2740", fontWeight: 900 },
   segNOn: { background: "#0f766e", color: "#fff" },
 
-  split: { display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(0, 1fr)", gap: 14, alignItems: "start" },
+  split: { display: "grid", gridTemplateColumns: "minmax(220px, 270px) minmax(0, 1fr)", gap: 12, alignItems: "start" },
   rail: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, display: "flex", flexDirection: "column", gap: 3, boxShadow: "0 6px 18px rgba(15,39,64,.05)", maxHeight: "78vh", overflowY: "auto", overflowX: "hidden", boxSizing: "border-box" },
   railHead: { fontWeight: 900, color: "#64748b", letterSpacing: 1, padding: "4px 8px" },
   railSep: { height: 1, background: "#e2e8f0", margin: "6px 4px" },
@@ -883,7 +881,10 @@ const S = {
   input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
   btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
-  remCard: { background: "#fff", border: "1px solid #e2e8f0", borderInlineStart: "4px solid #0f766e", borderRadius: 14, padding: 14, display: "grid", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.06)", minWidth: 0 },
+  remCard: { background: "#fff", border: "1px solid #e6edf2", borderInlineStart: "4px solid #0f766e", borderRadius: 14, padding: "10px 12px", display: "grid", gap: 10, minWidth: 0 },
+  remCardOpen: { padding: 14, boxShadow: "0 10px 26px rgba(15,23,42,.08)", borderColor: "#c4e6df" },
+  remTitle: { flex: "1 1 200px", minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "start", cursor: "pointer", color: "inherit" },
+  remLine: { display: "block", color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   remHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
   remNo: { width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "#e6f4f1", color: "#0f766e", fontWeight: 900, flexShrink: 0 },
   remSummary: { display: "grid", gap: 3, padding: "8px 12px", borderRadius: 10, background: "#f8fafc", border: "1px solid #eef2f6", color: "#334155", fontWeight: 700 },

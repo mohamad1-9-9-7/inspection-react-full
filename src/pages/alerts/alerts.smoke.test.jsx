@@ -63,7 +63,8 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   await flush();
   expect(host.textContent).toContain("9°C out of range");
   expect(host.textContent).toContain("Probe B");
-  const settingsTab = button(/Settings & recipients|الإعدادات والمستلمون/);
+  // the side menu: Alerts · Reminders · Checks · Coverage · Send log
+  const settingsTab = button(/^📬\s*(Reminders|التذكيرات)/);
   expect(settingsTab).toBeTruthy();
   await act(async () => { settingsTab.click(); });
   await flush();
@@ -78,9 +79,15 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   // POS 15: its reminder — what + who
   await act(async () => { button(/^🏪\s*POS 15/).click(); });
   await flush();
-  expect([...host.querySelectorAll("input")].some((i) => i.value === "Branch contracts")).toBe(true);
+  // a reminder with people on it stays folded: name + what + who in one row
+  expect(host.textContent).toContain("Branch contracts");
+  expect([...host.querySelectorAll("input")].some((i) => i.value === "Branch contracts")).toBe(false);
   expect(host.textContent).toContain("m15@x.ae");
   expect(host.textContent).toContain("boss@x.ae");
+  expect(host.textContent).toMatch(/🔔\s*(Contracts|العقود)/);
+  // Edit unfolds it
+  await act(async () => { button(/✏️\s*(Edit|تعديل)/).click(); });
+  expect([...host.querySelectorAll("input")].some((i) => i.value === "Branch contracts")).toBe(true);
   expect(host.textContent).toMatch(/What:.*Contracts|شو:.*العقود/);
   // a second reminder for the same branch, from a ready-made start
   // (the card has an expiry chip with the same text — the ready-made start is the last one)
@@ -88,7 +95,7 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   expect(host.querySelectorAll("article").length).toBe(2);
   expect(host.textContent).toMatch(/Unsaved changes|تغييرات غير محفوظة/);
   // coverage map: the 9 branches
-  await act(async () => { button(/Coverage map|خريطة التغطية/).click(); });
+  await act(async () => { button(/^🧭\s*(Coverage|التغطية)/).click(); });
   expect(host.querySelector("table")).toBeTruthy();
   expect(host.querySelector("table").textContent).toContain("Production");
   // checks view keeps the daily list
