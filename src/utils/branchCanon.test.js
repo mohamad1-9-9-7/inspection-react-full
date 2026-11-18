@@ -7,7 +7,7 @@ const GROUPS = {
   "POS 14": ["AL AIN BUTCHERY (POS 14)", "Al Ain Butchery"],
   "POS 19": ["POS 19", "MOTOR CITY (POS 19)"],
   "POS 26": ["Al BARSHA SOUTH COOP (POS26)"],
-  "FTR 1": ["FTR 1", "FOOD TRUCK (MUSHRIF PARK) - FTR 1"],
+  "FTR 1": ["FTR 1", "FOOD TRUCK (MUSHRIF PARK) - FTR 1", "Supervisor Food Truck", "SUPERVISOR FOOD TRUCK"],
   "FTR 2": ["FOOD TRUCK (AL MAMZAR) - FTR 2", "Al Mamzar Food Truck"],
   QCS: ["QCS", "QUSAIS", "AL QUSAI STORE", "AL QUASIS (STORE)", "Al Qusais Warehouse", "Al Qusais (QCS) — Central Warehouse"],
   PRODUCTION: ["AL QUASIS (PRODUCTION)"],
@@ -27,5 +27,5 @@ test("a South Barsha co-op is not the Barsha butchery", () => {
 test("leading zeros, empty and unknown names", () => {
   expect(canonBranch("POS 06")).toBe("POS 6");
   expect(canonBranch("")).toBe("");
-  expect(canonBranch("  Supervisor   Food Truck ")).toBe("SUPERVISOR FOOD TRUCK");
+  expect(canonBranch("  Some   New Shop ")).toBe("SOME NEW SHOP");
 });
