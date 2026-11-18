@@ -46,15 +46,15 @@ const ALL = "__all";
    canonical branch codes (utils/branchCanon), so every spelling a report
    uses lands on the right branch. */
 const BRANCH_LIST = [
-  { key: "POS 10", icon: "🏪", en: "POS 10 — Abu Dhabi Butchery", ar: "POS 10 — ملحمة أبوظبي" },
-  { key: "POS 14", icon: "🏪", en: "POS 14 — Al Ain Butchery", ar: "POS 14 — ملحمة العين" },
-  { key: "POS 15", icon: "🏪", en: "POS 15 — Al Barsha Butchery", ar: "POS 15 — ملحمة البرشاء" },
-  { key: "POS 6", icon: "🏪", en: "POS 6", ar: "POS 6" },
-  { key: "QCS", icon: "🏭", en: "Al Qusais Warehouse (QCS)", ar: "مستودع القصيص (QCS)" },
-  { key: "AL WARQA KITCHEN", icon: "🍳", en: "Al Warqa Kitchen", ar: "مطبخ الورقاء" },
-  { key: "FTR 1", icon: "🚚", en: "FTR 1 — Food truck (Mushrif)", ar: "FTR 1 — فود ترك مشرف" },
-  { key: "FTR 2", icon: "🚚", en: "FTR 2 — Food truck (Al Mamzar)", ar: "FTR 2 — فود ترك الممزر" },
-  { key: "PRODUCTION", icon: "⚙️", en: "Production", ar: "البرودكشن" },
+  { key: "POS 10", short: { en: "POS 10", ar: "POS 10" }, icon: "🏪", en: "POS 10 — Abu Dhabi Butchery", ar: "POS 10 — ملحمة أبوظبي" },
+  { key: "POS 14", short: { en: "POS 14", ar: "POS 14" }, icon: "🏪", en: "POS 14 — Al Ain Butchery", ar: "POS 14 — ملحمة العين" },
+  { key: "POS 15", short: { en: "POS 15", ar: "POS 15" }, icon: "🏪", en: "POS 15 — Al Barsha Butchery", ar: "POS 15 — ملحمة البرشاء" },
+  { key: "POS 6", short: { en: "POS 6", ar: "POS 6" }, icon: "🏪", en: "POS 6", ar: "POS 6" },
+  { key: "QCS", short: { en: "Qusais (QCS)", ar: "مستودع القصيص" }, icon: "🏭", en: "Al Qusais Warehouse (QCS)", ar: "مستودع القصيص (QCS)" },
+  { key: "AL WARQA KITCHEN", short: { en: "Warqa kitchen", ar: "مطبخ الورقاء" }, icon: "🍳", en: "Al Warqa Kitchen", ar: "مطبخ الورقاء" },
+  { key: "FTR 1", short: { en: "FTR 1", ar: "FTR 1" }, icon: "🚚", en: "FTR 1 — Food truck (Mushrif)", ar: "FTR 1 — فود ترك مشرف" },
+  { key: "FTR 2", short: { en: "FTR 2", ar: "FTR 2" }, icon: "🚚", en: "FTR 2 — Food truck (Al Mamzar)", ar: "FTR 2 — فود ترك الممزر" },
+  { key: "PRODUCTION", short: { en: "Production", ar: "البرودكشن" }, icon: "⚙️", en: "Production", ar: "البرودكشن" },
 ];
 
 /* Same routing as the server — the coverage view must not lie. */
@@ -288,35 +288,31 @@ function People({ t, isAr, locked, rules, setReminders, mailbox, dirty }) {
   };
 
   return (
-    <div className="als-split" style={S.split}>
-      {/* branch rail — the company's branches only */}
-      <aside style={S.rail}>
-        <div className="alp-xs" style={S.railHead}>{t({ en: "BRANCHES", ar: "الفروع" })}</div>
-        {rail.map((b) => {
-          const list = reminders.filter((r) => r.branch === b.key);
-          const live = list.filter((r) => r.active !== false && (r.to.length + r.cc.length + r.bcc.length) > 0).length;
-          return (
-            <button key={b.key} type="button" onClick={() => { setBranch(b.key); setNote(""); }} style={{ ...S.brItem, ...(branch === b.key ? S.brOn : null) }}>
-              <span aria-hidden="true">{b.icon}</span>
-              <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
-                <span className="alp-s" style={{ fontWeight: 900, display: "block", lineHeight: 1.3 }}>{t(b)}</span>
-                <span className="alp-xs" style={{ display: "block", color: branch === b.key ? "#0f766e" : "#64748b", fontWeight: 700 }}>
-                  {list.length ? t({ en: `${list.length} reminder(s)`, ar: `${list.length} تذكير` }) : t({ en: "no reminders", ar: "بدون تذكيرات" })}
-                </span>
-              </span>
-              <span className="alp-xs" style={{ ...S.brN, ...(live ? null : S.brN0), ...(branch === b.key ? S.brNOn : null) }}>{live}</span>
-            </button>
-          );
-        })}
-        <div style={{ borderTop: "1px solid #eef2f6", marginTop: 6, paddingTop: 8 }}>
-          <button type="button" style={{ ...S.btnSend, width: "100%", justifyContent: "center" }} disabled={locked || !mailbox || !!sending} onClick={() => sendNow({})}>
-            📨 {sending === "__every" ? "…" : t({ en: "Send all reminders now", ar: "إرسال كل التذكيرات الآن" })}
-          </button>
+    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+      {/* branches — one row of buttons (the page already has its own side menu) */}
+      <div style={S.branchBar}>
+        <div style={S.branchTabs} role="tablist" aria-label={t({ en: "Branches", ar: "الفروع" })}>
+          {rail.map((b) => {
+            const list = reminders.filter((r) => r.branch === b.key);
+            const live = list.filter((r) => r.active !== false && (r.to.length + r.cc.length + r.bcc.length) > 0).length;
+            const on = branch === b.key;
+            return (
+              <button key={b.key} type="button" role="tab" aria-selected={on} onClick={() => { setBranch(b.key); setNote(""); }}
+                title={t(b)} style={{ ...S.branchTab, ...(on ? S.branchTabOn : null) }}>
+                <span aria-hidden="true">{b.icon}</span>
+                <span style={{ whiteSpace: "nowrap" }}>{t(b.short || b)}</span>
+                <span className="alp-xs" style={{ ...S.branchN, ...(live ? S.branchNLive : null), ...(on ? S.branchNOn : null) }}>{list.length}</span>
+              </button>
+            );
+          })}
         </div>
-      </aside>
+        <button type="button" style={S.btnSend} disabled={locked || !mailbox || !!sending} onClick={() => sendNow({})}>
+          📨 {sending === "__every" ? "…" : t({ en: "Send all now", ar: "إرسال الكل الآن" })}
+        </button>
+      </div>
 
       {/* this branch's reminders */}
-      <section style={{ minWidth: 0, display: "grid", gap: 12, alignContent: "start" }}>
+      <section style={{ minWidth: 0, display: "grid", gap: 10, alignContent: "start" }}>
         <div style={S.peopleHead}>
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
             <div className="alp-h" style={{ fontWeight: 900, color: "#0f172a" }}>{cur.icon} {t(cur)}</div>
@@ -361,6 +357,7 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
   // a new reminder (nobody on it yet) opens ready to fill; the rest stay folded
   const [open, setOpen] = useState(() => !(rem.to.length + rem.cc.length + rem.bcc.length));
   const [copyOpen, setCopyOpen] = useState(false);
+  const [adding, setAdding] = useState(false); // shows the "new contact" row under To
   const [copyKeys, setCopyKeys] = useState([]);
   const rulesSel = rem.rules || [];
   const kinds = rem.kinds || [];
@@ -384,7 +381,12 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
     onChange({ kinds: next.length === EXPIRY_KINDS.length ? [] : next });
   };
   const whatText = [
-    rulesSel.length ? rulesSel.map((k) => (k === "expiries" && kinds.length ? kinds.map((x) => t(EXPIRY_KINDS.find((e) => e.id === x))).join(" + ") : t(RULE_INFO[k]))).join(" · ") : t({ en: "every alert", ar: "كل التنبيهات" }),
+    rulesSel.length
+      ? rulesSel.map((k) => (k === "expiries" && kinds.length ? kinds.map((x) => t(EXPIRY_KINDS.find((e) => e.id === x))).join(" + ") : t(RULE_INFO[k]))).join(" · ")
+      : kinds.length
+        // every alert, but only some expiries — say so (it used to read "every alert")
+        ? `${t({ en: "every alert", ar: "كل التنبيهات" })} (${t({ en: "expiries", ar: "الانتهاءات" })}: ${kinds.map((x) => t(EXPIRY_KINDS.find((e) => e.id === x))).join(" + ")})`
+        : t({ en: "every alert", ar: "كل التنبيهات" }),
     rem.onlyCritical && t({ en: "critical only", ar: "الحرجة بس" }),
   ].filter(Boolean).join(" — ");
   const whoText = FIELDS.filter((f) => rem[f.id].length).map((f) => `${f.label}: ${rem[f.id].map(nameOf).join(", ")}`).join("  ·  ");
@@ -411,14 +413,14 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
         <button type="button" style={S.btnSm} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
           {open ? "▴ " + t({ en: "Done", ar: "تم" }) : "✏️ " + t({ en: "Edit", ar: "تعديل" })}
         </button>
+        {/* delete straight from the row — no need to open the card first */}
+        <button type="button" style={S.btnDel} disabled={locked} onClick={onDelete}
+          title={t({ en: "Delete this reminder", ar: "حذف هالتذكير" })} aria-label={t({ en: "Delete", ar: "حذف" })}>🗑</button>
       </div>
 
       {open && (<>
-      <div style={S.remSummary} className="alp-xs">
-        <span><b>🔔 {t({ en: "What", ar: "شو" })}:</b> {whatText}</span>
-        <span><b>👥 {t({ en: "To whom", ar: "لمين" })}:</b> {whoText || <span style={{ color: "#b91c1c" }}>{t({ en: "nobody yet", ar: "ما حدا لسا" })}</span>}</span>
-      </div>
-
+      {/* WHAT and WHO side by side on a wide screen */}
+      <div className="als-two" style={S.remBody}>
       {/* WHAT */}
       <div style={S.pickBlock}>
         <div style={S.pickHead}>
@@ -463,15 +465,25 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
         </label>
       </div>
 
-      {/* WHO */}
+      {/* WHO — like the send window: To on its own line, CC and BCC side by side */}
       <div style={S.pickBlock}>
-        <div className="alp-s" style={{ ...S.label, marginBottom: 8 }}>👥 {t({ en: "To whom?", ar: "لمين؟" })}</div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {FIELDS.map((f) => (
-            <ContactPicker key={f.id} label={isAr ? f.ar : f.label} value={rem[f.id]} onChange={(v) => setField(f.id, v)}
-              contacts={book} onContactsChange={onBookChange} disabled={locked} />
-          ))}
+        <div style={{ ...S.pickHead, marginBottom: 6 }}>
+          <span className="alp-s" style={S.label}>👥 {t({ en: "To whom?", ar: "لمين؟" })}</span>
+          <button type="button" style={S.linkBtn} disabled={locked} onClick={() => setAdding((v) => !v)}>
+            {adding ? t({ en: "✕ Close", ar: "✕ إغلاق" }) : t({ en: "＋ New contact", ar: "＋ جهة اتصال جديدة" })}
+          </button>
         </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          <ContactPicker label={isAr ? FIELDS[0].ar : FIELDS[0].label} value={rem.to} onChange={(v) => setField("to", v)}
+            contacts={book} onContactsChange={onBookChange} disabled={locked} allowAdd={adding} />
+          <div className="als-two" style={S.ccRow}>
+            {FIELDS.slice(1).map((f) => (
+              <ContactPicker key={f.id} label={isAr ? f.ar : f.label} value={rem[f.id]} onChange={(v) => setField(f.id, v)}
+                contacts={book} onContactsChange={onBookChange} disabled={locked} allowAdd={false} />
+            ))}
+          </div>
+        </div>
+      </div>
       </div>
 
       {copyOpen && (
@@ -504,8 +516,6 @@ function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked,
         <button type="button" style={S.btnSm} disabled={!mailbox || !people || !!sending} onClick={onTest}>✉️ {sending === `test:${rem.id}` ? "…" : t({ en: "Test", ar: "تجربة" })}</button>
         <button type="button" style={S.btnSm} disabled={locked} onClick={onDuplicate} title={t({ en: "Same people, then change what it sends", ar: "نفس الناس، وبعدين غيّر شو بيبعت" })}>⧉ {t({ en: "Duplicate", ar: "تكرار" })}</button>
         <button type="button" style={S.btnSm} disabled={locked} onClick={() => setCopyOpen((v) => !v)}>📋 {t({ en: "Copy to branches", ar: "نسخ لفروع تانية" })}</button>
-        <span style={{ flex: 1 }} />
-        <button type="button" style={S.btnDel} disabled={locked} onClick={onDelete} aria-label={t({ en: "Delete", ar: "حذف" })}>🗑</button>
       </div>
       </>)}
     </article>
@@ -815,11 +825,22 @@ const S = {
   railHead: { fontWeight: 900, color: "#64748b", letterSpacing: 1, padding: "4px 8px" },
   railSep: { height: 1, background: "#e2e8f0", margin: "6px 4px" },
   brItem: { display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 10, border: "1px solid transparent", borderInlineStart: "3px solid transparent", background: "transparent", color: "#0f172a", cursor: "pointer", width: "100%", boxSizing: "border-box", minWidth: 0 },
-  brOn: { background: "#e6f4f1", borderColor: "#c4e6df", borderInlineStartColor: "#0f766e", color: "#0f766e" },
+  brOn: { background: "#e6f4f1", color: "#0f766e" },
   brN: { flexShrink: 0, minWidth: 28, padding: "1px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", fontWeight: 900, textAlign: "center", boxSizing: "border-box" },
   brN0: { background: "#fee2e2", color: "#b91c1c" },
   brNOn: { boxShadow: "0 0 0 1.5px #0f766e" },
 
+  branchBar: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: 8, background: "#fff", border: "1px solid #e6edf2", borderRadius: 14 },
+  branchTabs: { display: "flex", gap: 6, flexWrap: "wrap", flex: "1 1 400px", minWidth: 0 },
+  branchTab: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#334155", fontWeight: 800, cursor: "pointer" },
+  // "on" variants set the full `border` — removing a borderColor longhand on deselect turns the border black
+  branchTabOn: { background: "#0f766e", border: "1px solid #0f766e", color: "#fff", boxShadow: "0 4px 12px rgba(15,118,110,.25)" },
+  branchN: { minWidth: 20, padding: "0 6px", borderRadius: 999, background: "#f1f5f9", color: "#64748b", fontWeight: 900, textAlign: "center" },
+  branchNLive: { background: "#dcfce7", color: "#166534" },
+  branchNOn: { background: "rgba(255,255,255,.25)", color: "#fff" },
+  remBody: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" },
+  ccRow: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 },
+  linkBtn: { border: 0, background: "none", color: "#0f766e", fontWeight: 800, cursor: "pointer", padding: 0 },
   peopleHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
   searchIcon: { position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" },
   cards: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 330px), 1fr))", gap: 12 },
@@ -842,7 +863,7 @@ const S = {
   pickHead: { display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", flexWrap: "wrap", marginBottom: 8 },
   pills: { display: "flex", gap: 6, flexWrap: "wrap" },
   pill: { padding: "7px 13px", borderRadius: 999, border: "1px solid #d6e2ea", background: "#fff", color: "#1e3a5f", fontWeight: 800, cursor: "pointer" },
-  pillOn: { background: "#0f766e", borderColor: "#0f766e", color: "#fff" },
+  pillOn: { background: "#0f766e", border: "1px solid #0f766e", color: "#fff" },
   hint: { color: "#475569", fontWeight: 700, marginTop: 8 },
   lockedEmail: { padding: "10px 13px", borderRadius: 12, border: "1px dashed #d6e2ea", background: "#f8fafc", color: "#0f172a", fontWeight: 800 },
   check: { display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, cursor: "pointer", padding: "8px 12px", borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0" },
@@ -858,10 +879,11 @@ const S = {
   gapBadge: { padding: "6px 14px", borderRadius: 999, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontWeight: 900 },
   okBadge: { padding: "6px 14px", borderRadius: 999, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontWeight: 900 },
 
-  ruleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 },
-  ruleCard: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 6px 18px rgba(15,39,64,.05)" },
-  ruleOff: { background: "#f8fafc", opacity: 0.75 },
-  ruleIcon: { width: 50, height: 50, borderRadius: 12, display: "grid", placeItems: "center", background: "#e6f4f1", border: "1px solid #c4e6df", flexShrink: 0 },
+  // one check per row — a calm list, not a wall of cards
+  ruleGrid: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 8 },
+  ruleCard: { background: "#fff", border: "1px solid #e6edf2", borderRadius: 12, padding: "12px 14px" },
+  ruleOff: { background: "#f8fafc" },
+  ruleIcon: { width: 40, height: 40, borderRadius: 10, display: "grid", placeItems: "center", background: "#e6f4f1", flexShrink: 0 },
   switch: { width: 54, height: 30, borderRadius: 999, border: 0, background: "#cbd5e1", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background .15s" },
   switchOn: { background: "#0f766e" },
   knob: { position: "absolute", top: 3, insetInlineStart: 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 2px 6px rgba(0,0,0,.2)", transition: "inset-inline-start .15s" },
@@ -882,7 +904,7 @@ const S = {
   btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   remCard: { background: "#fff", border: "1px solid #e6edf2", borderInlineStart: "4px solid #0f766e", borderRadius: 14, padding: "10px 12px", display: "grid", gap: 10, minWidth: 0 },
-  remCardOpen: { padding: 14, boxShadow: "0 10px 26px rgba(15,23,42,.08)", borderColor: "#c4e6df" },
+  remCardOpen: { padding: 14, boxShadow: "0 10px 26px rgba(15,23,42,.08)" },
   remTitle: { flex: "1 1 200px", minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "start", cursor: "pointer", color: "inherit" },
   remLine: { display: "block", color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   remHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },

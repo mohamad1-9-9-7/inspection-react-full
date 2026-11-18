@@ -71,7 +71,7 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   // the old per-check list became a general reminder
   expect(host.textContent).toMatch(/became general reminders|تم تحويل/);
   // only the company's 9 branches (+ general, because of that reminder)
-  expect(host.textContent).toContain("Al Warqa Kitchen");
+  expect(host.textContent).toContain("Warqa kitchen"); // short names on the branch buttons
   expect(host.textContent).toContain("Production");
   expect(host.textContent).toMatch(/All branches \(general\)|كل الفروع \(عام\)/);
   // POS 10 has none yet → ready-made starts
@@ -88,7 +88,7 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   // Edit unfolds it
   await act(async () => { button(/✏️\s*(Edit|تعديل)/).click(); });
   expect([...host.querySelectorAll("input")].some((i) => i.value === "Branch contracts")).toBe(true);
-  expect(host.textContent).toMatch(/What:.*Contracts|شو:.*العقود/);
+  expect(host.textContent).toMatch(/✓ 🤝 (Contracts|العقود)/);
   // a second reminder for the same branch, from a ready-made start
   // (the card has an expiry chip with the same text — the ready-made start is the last one)
   await act(async () => { [...host.querySelectorAll("button")].filter((b) => /🎚️\s*(Calibration|المعايرة)$/.test(b.textContent)).pop().click(); });

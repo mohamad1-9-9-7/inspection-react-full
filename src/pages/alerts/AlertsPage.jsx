@@ -64,9 +64,12 @@ const CSS = `
   #root .alp .alp-shell { grid-template-columns: 1fr !important; }
   #root .alp .alp-side { flex-direction: row !important; overflow-x: auto; position: static !important; }
   #root .alp .alp-side .alp-nav-d { display: none !important; }
-  #root .alp .alp-side .alp-nav { flex: 0 0 auto; }
+  #root .alp .alp-side { flex-wrap: wrap; overflow-x: visible !important; }
+  #root .alp .alp-side .alp-nav { flex: 0 0 auto; width: auto !important; padding: 6px 10px !important; }
+  #root .alp .alp-side .alp-nav > span:first-child { width: 28px !important; height: 28px !important; }
   #root .alp .als-split { grid-template-columns: 1fr !important; }
 }
+@media (max-width: 1150px) { #root .alp .als-two { grid-template-columns: 1fr !important; } }
 `;
 
 const fmtWhen = (iso, ar) => (iso ? new Date(iso).toLocaleString(ar ? "ar-AE" : "en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -399,7 +402,8 @@ const S = {
   shell: { display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "start" },
   side: { display: "flex", flexDirection: "column", gap: 4, padding: 8, background: "#fff", border: "1px solid #e6edf2", borderRadius: 16, boxShadow: "0 4px 14px rgba(15,23,42,.04)" },
   nav: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 10px", border: "1px solid transparent", borderRadius: 12, background: "transparent", color: "#0f172a", cursor: "pointer", boxSizing: "border-box" },
-  navOn: { background: "#e6f4f1", borderColor: "#c4e6df", color: "#0f766e" },
+  // full `border`, never `borderColor`: React dropping a longhand on deselect leaves a BLACK border
+  navOn: { background: "#e6f4f1", border: "1px solid #c4e6df", color: "#0f766e" },
   navIcon: { width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "#f1f5f9", flexShrink: 0 },
   navIconOn: { background: "#fff", boxShadow: "0 2px 6px rgba(15,118,110,.15)" },
   navBadge: { minWidth: 22, padding: "1px 7px", borderRadius: 999, background: "#dc2626", color: "#fff", fontWeight: 900, textAlign: "center" },
