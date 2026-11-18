@@ -244,7 +244,7 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
   });
 
   const startNew = () => setEditing({
-    id: newId(), name: "", role: "", email: "", rules: [], onlyCritical: false, active: true, _new: true,
+    id: newId(), name: "", role: "", email: "", rules: [], onlyCritical: false, active: true, mode: "to", _new: true,
     branches: branch !== "__all" && branch !== "__every" ? [branch] : [],
   });
   /** rows: one or more contacts from the editor (several when picked at once). */
@@ -414,6 +414,7 @@ function People({ t, isAr, locked, contacts, branches, spellings, setContacts, m
                   ? c.rules.map((r) => <span key={r} className="alp-xs" style={S.typeChip} title={t(RULE_INFO[r])}>{RULE_INFO[r]?.icon} {t(RULE_INFO[r])}</span>)
                   : <span className="alp-xs" style={{ ...S.typeChip, ...S.allChip }}>{t({ en: "All alert types", ar: "كل أنواع التنبيهات" })}</span>}
                 {c.onlyCritical && <span className="alp-xs" style={S.critChip}>🚨 {t({ en: "Critical only", ar: "الحرجة فقط" })}</span>}
+                {c.mode === "cc" && <span className="alp-xs" style={S.ccChip} title={t({ en: "Gets a copy (CC) of the branch's e-mail", ar: "بياخد نسخة (CC) من إيميل الفرع" })}>📧 CC</span>}
               </div>
 
               <div style={S.personFoot}>
@@ -553,6 +554,32 @@ function ContactEditor({ t, draft, branches, contacts, book, onBookChange, onCan
         </div>
       </div>
 
+      {/* How the e-mail reaches them: their own mail (To) or a copy (CC) on the
+          mails sent for the alerts they follow. */}
+      <div style={S.pickBlock}>
+        <div style={S.pickHead}>
+          <span className="alp-s" style={S.label}>📧 {t({ en: "How do they receive it?", ar: "كيف يستلم؟" })}</span>
+        </div>
+        <div style={S.pills}>
+          {[
+            ["to", t({ en: "To — their own e-mail", ar: "إلى (To) — إيميل خاص فيه" })],
+            ["cc", t({ en: "CC — a copy of the branch's e-mail", ar: "نسخة (CC) — نسخة من إيميل الفرع" })],
+          ].map(([m, label]) => {
+            const on = (d.mode || "to") === m;
+            return (
+              <button key={m} type="button" style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => set({ mode: m })}>
+                {on ? "✓ " : ""}{label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="alp-xs" style={S.hint}>
+          {(d.mode || "to") === "cc"
+            ? t({ en: "Copied (CC) on the e-mail sent to the branch's people, so they see who else is informed. If a branch has nobody in To, they get it directly.", ar: "بينحط نسخة (CC) على الإيميل اللي بيروح لناس الفرع، فبيعرفوا مين كمان شايف. إذا الفرع ما فيه حدا بـ «إلى»، بيوصله الإيميل مباشرة." })
+            : t({ en: "Gets an e-mail of their own — nobody else's address shows.", ar: "بيوصله إيميل خاص فيه — ما بيظهر فيه عنوان حدا تاني." })}
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
         <label style={S.check}>
           <input type="checkbox" checked={!!d.onlyCritical} onChange={(e) => set({ onlyCritical: e.target.checked })} />
@@ -661,6 +688,7 @@ function SendLog({ t, isAr }) {
                   <span className="alp-s" style={{ display: "block", fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.subject}</span>
                   <span className="alp-xs" dir="ltr" style={{ display: "block", color: "#475569", fontWeight: 700, textAlign: isAr ? "right" : "left" }}>
                     → {(Array.isArray(r.to_emails) ? r.to_emails : []).join(", ")}
+                    {Array.isArray(r.cc_emails) && r.cc_emails.length > 0 && <span style={{ color: "#64748b" }}>{"  ·  CC: "}{r.cc_emails.join(", ")}</span>}
                   </span>
                 </span>
                 {r.attachment_count > 0 && <span className="alp-xs" style={S.logBadge}>📎 {r.attachment_count}</span>}
@@ -969,6 +997,7 @@ const S = {
   input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
   btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  ccChip: { padding: "2px 10px", borderRadius: 999, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontWeight: 900 },
   logRow: { border: "1px solid #e2e8f0", borderInlineStart: "4px solid", borderRadius: 10, background: "#fff", overflow: "hidden" },
   logHead: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", width: "100%", padding: "10px 12px", border: 0, background: "transparent", cursor: "pointer", boxSizing: "border-box" },
   logBadge: { padding: "2px 9px", borderRadius: 999, background: "#f1f5f9", color: "#334155", fontWeight: 900, whiteSpace: "nowrap" },
