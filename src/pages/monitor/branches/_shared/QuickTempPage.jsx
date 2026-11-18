@@ -42,7 +42,6 @@ import {
 } from "../qcs/coolerQuick";
 import { getCurrentUser } from "../../../../utils/perms";
 import { uploadImage } from "../../../../utils/imageUpload";
-import { notifyOutOfRange } from "../../../../utils/notifications";
 import MonthlyTempReport from "./MonthlyTempReport";
 import QuickGoodsPanel from "./QuickGoodsPanel";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../haccp and iso/Calibration/CalibrationExpiryBadge";
@@ -615,7 +614,6 @@ function UnitEntry({ A, unit, t, lang, toggleLang }) {
         min: def.min,
         max: def.max,
       }, data);
-      if (out) notifyOutOfRange({ location: def.label, value, min: def.min, max: def.max });
       const parts = [queued ? t.queued : t.saved];
       if (out) parts.push(t.recheckAsk(timeLabel(recheckDue)));
       setMsg({ kind: out ? "warn" : "ok", text: parts.join(" ") });

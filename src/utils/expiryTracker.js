@@ -1,6 +1,6 @@
 // src/utils/expiryTracker.js
 // وحدة موحّدة لفحص تواريخ الانتهاء عبر كل الكيانات (شهادات/رخص/معايرة/...)
-// تُستخدم من قِبل: NotificationManager, AdminDashboard widget, /admin/expiry-center
+// تُستخدم من قِبل: /admin/expiry-center (ExpiryCenter + ExpiryWidget)
 
 import API_BASE from "../config/api";
 import { getActiveCompany } from "./companyContext";

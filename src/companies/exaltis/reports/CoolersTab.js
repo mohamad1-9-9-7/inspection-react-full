@@ -4,7 +4,6 @@ import { getLatestReport } from "../../../pages/monitor/branches/_shared/reportA
 import CoolerSetupPanel from "./CoolerSetupPanel";
 import { accentOf, emojiOf, fetchCoolerConfig, inRange, loadDefsCache, makeDefaultCoolerDefs, defaultLoadingDef, normalizeLoadingDef, productLimitFor, rangeLabel, rangeOf, saveCoolerConfig, storageOptions } from "./coolerDefs";
 import { canEdit, getCurrentUser } from "../../../utils/perms";
-import { notifyOutOfRange } from "../../../utils/notifications";
 import { Bi, bi } from "./bilingual";
 import API_BASE from "../../../config/api";
 import { todayDubaiISO, MIN_MATCHES, countValidMatches, draftKey, loadDraft, IS_SAME_ORIGIN, COOLERS_TYPE, TIMES, DEFAULT_MATCH_TIME, defaultTMPHeader, makeDefaultCoolers, makeDefaultLoadingArea, makeProductVerificationRow, makeDefaultProductVerifications, calcCoolersKPI, formatDMYSmart, fetchExistingByDate, clearTemps } from "./coolers/coolersModel";
@@ -138,18 +137,6 @@ export default function CoolersTab(props) {
       return next;
     });
   };
-  /* The one producer behind Settings → Notifications → «تنبيه عند درجة حرارة
-     خارج المجال». Fires on blur, not on every keystroke: typing "-18" passes
-     through "-" and "-1" first, and both of those are out of a freezer band.
-     notifyOutOfRange() is itself a no-op unless the admin turned the toggle on. */
-  const alertOutOfRange = (def, raw) => {
-    const n = Number(raw);
-    if (raw === "" || raw === null || !Number.isFinite(n)) return;
-    if (inRange(def, n)) return;
-    const { min, max } = rangeOf(def);
-    notifyOutOfRange({ location: def?.label || "Storage unit", value: n, min, max });
-  };
-
   const handleCoolerRemarksChange = (index, value) => {
     updateCoolers((prev) => {
       const next = [...(prev || [])];
@@ -392,7 +379,7 @@ export default function CoolersTab(props) {
   };
 
   /* ---- Temperature time-grid (shared by coolers & loading area) ---- */
-  const renderTempGrid = (temps, onChange, styleFn, color, onBlurCheck) => (
+  const renderTempGrid = (temps, onChange, styleFn, color) => (
     <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap", alignItems: "flex-end" }}>
       {TIMES.map((time) => (
         <label
@@ -404,7 +391,6 @@ export default function CoolersTab(props) {
             type="number"
             value={temps?.[time] ?? ""}
             onChange={(e) => onChange(time, e.target.value)}
-            onBlur={(e) => onBlurCheck && onBlurCheck(e.target.value)}
             style={styleFn(temps?.[time] ?? "")}
             placeholder="°C"
             min="-50"
@@ -512,7 +498,7 @@ export default function CoolersTab(props) {
             ) : null}
 
             <span style={sectionSubLabel}><Bi en="Temperatures (°C)" ar="درجات الحرارة (°م)" /></span>
-            {renderTempGrid(cooler?.temps, (time, val) => handleCoolerChange(i, time, val), (t) => tempInputStyle(t, def), "#34495e", (v) => alertOutOfRange(def, v))}
+            {renderTempGrid(cooler?.temps, (time, val) => handleCoolerChange(i, time, val), (t) => tempInputStyle(t, def), "#34495e")}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
               <span style={{ fontWeight: 600, color: "#475569" }}><Bi en="Remarks" /></span>
@@ -571,7 +557,7 @@ export default function CoolersTab(props) {
             ) : null}
 
             <span style={{ ...sectionSubLabel, color: "#a16207" }}><Bi en="Temperatures (°C)" ar="درجات الحرارة (°م)" /></span>
-            {renderTempGrid(loadingArea?.temps, handleLoadingChange, (t) => tempInputStyle(t, loadingDef), "#92400e", (v) => alertOutOfRange(loadingDef, v))}
+            {renderTempGrid(loadingArea?.temps, handleLoadingChange, (t) => tempInputStyle(t, loadingDef), "#92400e")}
 
             <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, marginTop: 12 }}>
               <span style={{ fontWeight: 600, color: "#92400e" }}><Bi en="Remarks" /></span>

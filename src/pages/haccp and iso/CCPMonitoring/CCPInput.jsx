@@ -6,7 +6,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import SignaturePad from "../../../components/SignaturePad";
 import AttachmentsSection from "../MockRecall/AttachmentsSection";
-import { notifyCCPDeviation, markCCPDeviationNotified } from "../../../utils/notifications";
 import {
   useLang, LangToggle,
   ccpName, ccpHazard, ccpLimitDesc, ccpMethod, ccpFrequency, ccpAction,
@@ -179,24 +178,8 @@ export default function CCPInput() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // 🆕 تنبيه فوري عند الانحراف
-      if (isDeviation && selectedCCP) {
-        try {
-          notifyCCPDeviation({
-            ccpName: ccpName(selectedCCP, lang),
-            reading: form.reading.value,
-            unit: selectedCCP.criticalLimit?.unit || "",
-            limit: ccpLimitDesc(selectedCCP, lang),
-            product: form.product.name,
-            batch: form.product.batch,
-            onClickUrl: "/haccp-iso/ccp-monitoring/view",
-          });
-          // ضع id الانحراف في قائمة المُبلَّغ بها لمنع تكرار التنبيه عبر polling
-          const respJson = await res.clone().json().catch(() => null);
-          const newId = respJson?.id || respJson?._id || editId;
-          if (newId) markCCPDeviationNotified(newId);
-        } catch {}
-      }
+      // A deviation raises a server alert (bell + e-mail per branch) on save —
+      // inspection-server utils/alertEngine.cjs onCcpRecordSave.
 
       openModal(isEditing ? t("updated") : t("saved"), "success");
       setTimeout(() => {

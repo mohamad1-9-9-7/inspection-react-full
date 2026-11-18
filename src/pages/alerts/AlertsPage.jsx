@@ -196,6 +196,11 @@ export default function AlertsPage() {
                 ⟳ {t({ en: "Refresh", ar: "تحديث" })}
               </button>
             )}
+            {admin && (
+              <button type="button" style={S.ghost} onClick={() => navigate("/admin/expiry-center")} title={t({ en: "Every expiry date in one list", ar: "كل تواريخ الانتهاء بقائمة واحدة" })}>
+                ⏳ {t({ en: "Expiry center", ar: "مركز الانتهاء" })}
+              </button>
+            )}
             <LangToggle lang={lang} toggle={toggle} style={S.ghost} />
             <button type="button" style={S.ghost} onClick={() => navigate("/named-dashboard")}>🏠 {t({ en: "Home", ar: "الرئيسية" })}</button>
           </div>

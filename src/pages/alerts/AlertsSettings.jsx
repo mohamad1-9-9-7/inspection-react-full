@@ -17,7 +17,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRANCHES } from "../settings/reportTypeCatalog";
 import { fetchAlertRules, saveAlertRules, runAlertChecks, sendTestAlertMail, RULE_INFO } from "../../utils/alertsApi";
 
-const RULES = ["temperature", "missedReports", "noReadingToday", "expiries", "capa"];
+const RULES = ["temperature", "ccp", "missedReports", "noReadingToday", "expiries", "capa"];
 const ALL_TYPES = BRANCHES.flatMap((b) => (b.types || []).map(([type, label]) => ({ type, label: `${b.label} — ${label}`, branch: b.label })));
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const norm = (b) => String(b || "").trim().toLowerCase();
@@ -533,6 +533,7 @@ function Checks({ t, rules, setRule, running, runNow, dirty }) {
     noReadingToday: { en: "13:00 — temperature logs with no reading at all yet today", ar: "13:00 — سجلات الحرارة بلا أي قراءة اليوم" },
     expiries: { en: "08:00 — calibration, training & health certificates, licences/contracts, mock recall", ar: "08:00 — المعايرة، شهادات التدريب والصحة، الرخص والعقود، تمرين السحب" },
     capa: { en: "08:00, weekly — CAPA / NCR past its target date, or open too long", ar: "08:00، أسبوعياً — CAPA / NCR تجاوز تاريخه، أو مفتوح طويلاً" },
+    ccp: { en: "Instantly — a CCP monitoring record saved outside its critical limit. Correcting the record closes it.", ar: "فوراً — سجل مراقبة CCP محفوظ خارج الحد الحرج. تصحيح السجل يغلقه." },
   };
 
   const card = (k, children) => {
@@ -561,6 +562,7 @@ function Checks({ t, rules, setRule, running, runNow, dirty }) {
       </div>
       <div style={S.ruleGrid}>
         {card("temperature")}
+        {card("ccp")}
         {card("noReadingToday")}
         {card("expiries", (
           <>

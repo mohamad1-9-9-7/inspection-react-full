@@ -1,7 +1,6 @@
 // src/App.jsx
 import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
-import NotificationManager from "./components/NotificationManager";
 import GlobalDatePicker from "./components/GlobalDatePicker";
 import ScannedLinkOpener from "./components/ScannedLinkOpener";
 import ThemeToggle from "./components/ThemeToggle";
@@ -902,7 +901,6 @@ export default function App() {
         </div>
       }
     >
-      <NotificationManager />
       <OutboxBar />
       <Suspense fallback={null}><TrialBanner /></Suspense>
       <Suspense fallback={null}><BillingDueBanner /></Suspense>

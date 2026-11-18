@@ -68,4 +68,5 @@ export const RULE_INFO = {
   noReadingToday: { icon: "⏰", en: "No temperature reading yet today", ar: "لا قراءة حرارة اليوم بعد" },
   expiries: { icon: "⏳", en: "Expiring / expired", ar: "قارب على الانتهاء / منتهي" },
   capa: { icon: "🛠️", en: "CAPA / NCR overdue", ar: "CAPA / NCR متأخر" },
+  ccp: { icon: "🎯", en: "CCP deviation", ar: "انحراف CCP" },
 };
