@@ -22,9 +22,9 @@ const RULES = {
   noReadingToday: { enabled: true, emails: [] },
   expiries: { enabled: true, emails: [], days: 30 },
   capa: { enabled: false, emails: [], openDays: 30 },
-  contacts: [{ email: "boss@x.ae", name: "Boss" }],
-  // the updated server always sends this array — per-branch To / CC / BCC
-  distribution: [{ branch: "POS 15", to: ["m15@x.ae"], cc: ["boss@x.ae"], bcc: [] }],
+  contacts: [],
+  // the updated server always sends this array — custom reminders per branch
+  reminders: [{ id: "r1", name: "Branch contracts", branch: "POS 15", rules: ["expiries"], kinds: ["contracts"], onlyCritical: false, active: true, to: ["m15@x.ae"], cc: ["boss@x.ae"], bcc: [] }],
 };
 
 const LOG = [
@@ -67,34 +67,35 @@ test("the alerts page lists open alerts and opens the settings", async () => {
   expect(settingsTab).toBeTruthy();
   await act(async () => { settingsTab.click(); });
   await flush();
-  // the old per-check list moved into the All-branches To list
-  expect(host.textContent).toMatch(/moved into the All-branches To list|تم نقل/);
-  expect(host.textContent).toContain("qa@x.ae");
-  // the branch e-mail editor: To / CC / BCC pickers, like the send window
-  const pickers = host.querySelectorAll('input[placeholder*="Search by name or email"], input[placeholder*="ابحث بالاسم أو الإيميل"]');
-  expect(pickers.length).toBe(3);
-  expect(button(/Send reminders now — all branches|إرسال التذكيرات الآن — كل الفروع/)).toBeTruthy();
-  // a branch: its own To / CC + the All-branches people noted under it
-  await act(async () => { button(/^POS 15/).click(); });
+  // the old per-check list became a general reminder
+  expect(host.textContent).toMatch(/became general reminders|تم تحويل/);
+  // only the company's 9 branches (+ general, because of that reminder)
+  expect(host.textContent).toContain("Al Warqa Kitchen");
+  expect(host.textContent).toContain("Production");
+  expect(host.textContent).toMatch(/All branches \(general\)|كل الفروع \(عام\)/);
+  // POS 10 has none yet → ready-made starts
+  expect(host.textContent).toMatch(/Add this branch.s first reminder|إضافة أول تذكير للفرع/);
+  // POS 15: its reminder — what + who
+  await act(async () => { button(/^🏪\s*POS 15/).click(); });
   await flush();
+  expect([...host.querySelectorAll("input")].some((i) => i.value === "Branch contracts")).toBe(true);
   expect(host.textContent).toContain("m15@x.ae");
   expect(host.textContent).toContain("boss@x.ae");
-  expect(host.textContent).toMatch(/Also on this e-mail \(All branches\)|كمان على هالإيميل \(كل الفروع\)/);
-  expect(host.textContent).toMatch(/People on this e-mail|الأشخاص على هالإيميل/);
-  expect(button(/Send this branch's reminders now|إرسال تذكيرات الفرع الآن/)).toBeTruthy();
-  // a branch with nobody (beyond All branches) still gets the All list → not red
-  await act(async () => { button(/^QCS/).click(); });
-  expect(host.textContent).not.toMatch(/Nobody gets this branch's alerts by e-mail yet|ما حدا بيستلم تنبيهات هالفرع بالإيميل لسا/);
-  // coverage map: POS 15 → m15 + Boss (CC) + qa for temperature
+  expect(host.textContent).toMatch(/What:.*Contracts|شو:.*العقود/);
+  // a second reminder for the same branch, from a ready-made start
+  // (the card has an expiry chip with the same text — the ready-made start is the last one)
+  await act(async () => { [...host.querySelectorAll("button")].filter((b) => /🎚️\s*(Calibration|المعايرة)$/.test(b.textContent)).pop().click(); });
+  expect(host.querySelectorAll("article").length).toBe(2);
+  expect(host.textContent).toMatch(/Unsaved changes|تغييرات غير محفوظة/);
+  // coverage map: the 9 branches
   await act(async () => { button(/Coverage map|خريطة التغطية/).click(); });
   expect(host.querySelector("table")).toBeTruthy();
+  expect(host.querySelector("table").textContent).toContain("Production");
   // checks view keeps the daily list
   await act(async () => { button(/^⚙️\s*(Checks|الفحوصات)/).click(); });
   expect(host.textContent).toContain("POS 10 temperature");
-  // expiry kinds: "Everything" until one is picked
-  expect(button(/Everything|كل شي/)).toBeTruthy();
-  await act(async () => { button(/🤝\s*(Contracts|العقود)/).click(); });
-  expect(host.textContent).toMatch(/Only these are sent: Contracts|بس هدول بينبعتوا: العقود/);
+  // which expiries go out is set per reminder now
+  expect(host.textContent).toMatch(/set per reminder|بيتحدد بكل تذكير/);
   // send log: rows, status, filter
   await act(async () => { button(/^📜\s*(Send log|سجل الإرسال)/).click(); });
   await flush();

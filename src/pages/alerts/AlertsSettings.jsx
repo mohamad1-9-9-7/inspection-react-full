@@ -1,17 +1,17 @@
 // src/pages/alerts/AlertsSettings.jsx
 //
 // ⚙️ Alerts settings (admins):
-//   📬 Recipients  — per BRANCH, like the e-mail popup: To / CC / BCC picked
-//                    from the e-mail center's contacts (rules.distribution);
-//                    "All branches" is added to every branch's mail. Each
-//                    person's own settings (alert types, critical only, on/off)
-//                    live in rules.contacts. Server: alertEngine resolveRecipients.
+//   📬 Reminders   — per BRANCH (the company's 9 sites), its own reminders:
+//                    each says WHAT is sent (alert types, expiry kinds,
+//                    critical only) and WHO gets it (To / CC / BCC from the
+//                    e-mail center's contacts). Several per branch.
+//                    rules.reminders — server: alertEngine reminderMatches.
 //   🧭 Coverage    — branch × alert type: who receives what; 0 = nobody.
 //   ⚙️ Checks      — each check on/off and its own settings.
 //   📜 Send log    — every alert e-mail.
 //
-// The old per-rule e-mail lists (rules[k].emails) move into the All-branches
-// To list on load (limited to the rules they were on) and are emptied on save.
+// The old per-rule e-mail lists (rules[k].emails) become "general" reminders
+// on load (limited to the rules they were on) and are emptied on save.
 //
 // Fonts: globals.css forces 14px — sizes come from the page's .alp classes.
 
@@ -41,64 +41,64 @@ const norm = canonBranch;
 const newId = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const ALL = "__all";
-/* Same routing as the server's resolveRecipients — the coverage view must not lie. */
-function personWants(rules, email, rule, critical) {
-  const c = (rules.contacts || []).find((x) => x.email === email);
-  if (!c) return true;
-  if (c.active === false) return false;
-  if (c.rules?.length && !c.rules.includes(rule)) return false;
-  if (c.onlyCritical && !critical) return false;
-  return true;
+
+/* The company's branches — reminders are set for these only. Keys are the
+   canonical branch codes (utils/branchCanon), so every spelling a report
+   uses lands on the right branch. */
+const BRANCH_LIST = [
+  { key: "POS 10", icon: "🏪", en: "POS 10 — Abu Dhabi Butchery", ar: "POS 10 — ملحمة أبوظبي" },
+  { key: "POS 14", icon: "🏪", en: "POS 14 — Al Ain Butchery", ar: "POS 14 — ملحمة العين" },
+  { key: "POS 15", icon: "🏪", en: "POS 15 — Al Barsha Butchery", ar: "POS 15 — ملحمة البرشاء" },
+  { key: "POS 6", icon: "🏪", en: "POS 6", ar: "POS 6" },
+  { key: "QCS", icon: "🏭", en: "Al Qusais Warehouse (QCS)", ar: "مستودع القصيص (QCS)" },
+  { key: "AL WARQA KITCHEN", icon: "🍳", en: "Al Warqa Kitchen", ar: "مطبخ الورقاء" },
+  { key: "FTR 1", icon: "🚚", en: "FTR 1 — Food truck (Mushrif)", ar: "FTR 1 — فود ترك مشرف" },
+  { key: "FTR 2", icon: "🚚", en: "FTR 2 — Food truck (Al Mamzar)", ar: "FTR 2 — فود ترك الممزر" },
+  { key: "PRODUCTION", icon: "⚙️", en: "Production", ar: "البرودكشن" },
+];
+
+/* Same routing as the server — the coverage view must not lie. */
+const alertKindOk = (rem, rule, kind) => rule !== "expiries" || !rem.kinds?.length || !kind || rem.kinds.includes(kind);
+function remindersFor(rules, rule, branch, critical = true, kind = "") {
+  const br = norm(branch);
+  return (rules.reminders || []).filter((r) => r.active !== false
+    && (r.branch === ALL || (br && r.branch === br))
+    && (!r.rules?.length || r.rules.includes(rule))
+    && alertKindOk(r, rule, kind)
+    && (!r.onlyCritical || critical));
 }
 function resolveRecipients(rules, rule, branch, critical = true) {
-  const br = norm(branch);
-  const lists = (rules.distribution || []).filter((d) => d.branch === ALL || (br && d.branch === br));
-  const pick = (f) => [...new Set(lists.flatMap((d) => d[f] || []))].filter((e) => personWants(rules, e, rule, critical));
-  const to = [...new Set([...(rules[rule]?.emails || []), ...pick("to")])];
-  const cc = pick("cc").filter((e) => !to.includes(e));
-  const bcc = pick("bcc").filter((e) => !to.includes(e) && !cc.includes(e));
+  const rems = remindersFor(rules, rule, branch, critical);
+  const to = [...new Set([...(rules[rule]?.emails || []), ...rems.flatMap((r) => r.to)])];
+  const cc = [...new Set(rems.flatMap((r) => r.cc))].filter((e) => !to.includes(e));
+  const bcc = [...new Set(rems.flatMap((r) => r.bcc))].filter((e) => !to.includes(e) && !cc.includes(e));
   return { to, cc, bcc };
 }
 
-/** Old per-rule lists → the All-branches To list (each person limited to the
-    rules they were on). The server already turned older per-person branches
-    into rules.distribution. */
+/** Old per-rule lists → "general" reminders (one per rule, all branches).
+    The server already turned older per-person / per-branch setups into
+    rules.reminders. The old global expiry-kind filter moves into the
+    reminders too (each reminder picks its kinds), so it is cleared. */
 function migrate(rules) {
-  const contacts = (rules.contacts || []).map((c) => ({ ...c }));
-  const distribution = (rules.distribution || []).map((d) => ({ ...d, to: [...d.to], cc: [...d.cc], bcc: [...d.bcc] }));
-  let all = distribution.find((d) => d.branch === ALL);
+  const reminders = (rules.reminders || []).map((r) => ({ ...r, to: [...r.to], cc: [...r.cc], bcc: [...r.bcc] }));
   let moved = 0;
   const next = { ...rules };
   RULES.forEach((k) => {
-    (rules[k]?.emails || []).forEach((email) => {
-      moved++;
-      const e = String(email).toLowerCase();
-      if (!all) { all = { branch: ALL, to: [], cc: [], bcc: [] }; distribution.push(all); }
-      if (![...all.to, ...all.cc, ...all.bcc].includes(e)) all.to.push(e);
-      const ex = contacts.find((c) => c.email === e);
-      if (ex) { if (ex.rules?.length && !ex.rules.includes(k)) ex.rules = [...ex.rules, k]; }
-      else contacts.push({ id: newId(), name: "", role: "", email: e, rules: [k], onlyCritical: false, active: true });
-    });
+    const emails = [...new Set((rules[k]?.emails || []).map((e) => String(e).toLowerCase()))];
+    if (emails.length) {
+      moved += emails.length;
+      reminders.push({ id: newId(), name: t0(RULE_INFO[k]), branch: ALL, rules: [k], kinds: [], onlyCritical: false, active: true, to: emails, cc: [], bcc: [] });
+    }
     next[k] = { ...rules[k], emails: [] };
   });
-  contacts.forEach((c) => { if (c.rules?.length === RULES.length) c.rules = []; });
-  next.contacts = contacts;
-  next.distribution = distribution;
+  if (rules.expiries?.kinds?.length) next.expiries = { ...next.expiries, kinds: [] };
+  next.reminders = reminders;
   return { rules: next, moved };
 }
-
-const initials = (c) => {
-  const s = String(c.name || c.email || "?").trim();
-  const parts = s.split(/[\s@._-]+/).filter(Boolean);
-  return ((parts[0]?.[0] || "?") + (parts[1]?.[0] || "")).toUpperCase();
-};
-const HUES = ["#2563eb", "#0891b2", "#7c3aed", "#db2777", "#ea580c", "#16a34a", "#0d9488", "#4f46e5"];
-const hueOf = (s) => HUES[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % HUES.length];
+const t0 = (o) => (o ? o.en : "");
 
 export default function AlertsSettings({ t, isAr }) {
   const [rules, setRules] = useState(null);
-  const [serverBranches, setServerBranches] = useState([]);
-  const [extraBranches, setExtraBranches] = useState([]);
   const [mailbox, setMailbox] = useState(true);
   const [view, setView] = useState("people");
   const [dirty, setDirty] = useState(false);
@@ -107,53 +107,30 @@ export default function AlertsSettings({ t, isAr }) {
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
-  // An older server drops rules.distribution on save — then keep the old
-  // lists untouched and lock the recipients editor until the server is updated.
+  // An older server drops rules.reminders on save — then keep the old lists
+  // untouched and lock the reminders editor until the server is updated.
   const [serverReady, setServerReady] = useState(true);
 
   useEffect(() => {
     fetchAlertRules()
       .then((j) => {
-        const ready = Array.isArray(j.rules?.distribution);
+        const ready = Array.isArray(j.rules?.reminders);
         setServerReady(ready);
-        const m = ready ? migrate(j.rules) : { rules: { ...j.rules, contacts: j.rules?.contacts || [], distribution: [] }, moved: 0 };
+        const m = ready ? migrate(j.rules) : { rules: { ...j.rules, reminders: [] }, moved: 0 };
         setRules(m.rules);
         setMoved(m.moved);
         setDirty(m.moved > 0);
-        // every spelling the server saw, grouped below by canonical branch
-        setServerBranches(Array.isArray(j.branchGroups) ? j.branchGroups.flatMap((g) => g.names || [g.key]) : Array.isArray(j.branches) ? j.branches : []);
         setMailbox(j.mailbox !== false);
       })
       .catch((e) => setErr(String(e?.message || e)));
   }, []);
-
-  /* One entry per real branch (canonical key) + every spelling met for it. */
-  const { branches, spellings } = useMemo(() => {
-    const names = new Map(); // key → Set(spellings)
-    if (!rules) return { branches: [], spellings: names };
-    const add = (b) => {
-      const raw = String(b || "").replace(/\s+/g, " ").trim();
-      const key = canonBranch(raw);
-      if (!key) return;
-      if (!names.has(key)) names.set(key, new Set());
-      names.get(key).add(raw);
-    };
-    serverBranches.forEach(add);
-    (rules.missedReports?.checks || []).forEach((c) => add(c.branch));
-    (rules.distribution || []).forEach((d) => { if (d.branch !== ALL) add(d.branch); });
-    extraBranches.forEach(add);
-    if (!names.size) BRANCHES.forEach((b) => add(b.label));
-    const list = [...names.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return { branches: list, spellings: names };
-  }, [rules, serverBranches, extraBranches]);
 
   if (err && !rules) return <div style={S.bad}>⚠️ {err}</div>;
   if (!rules) return <div className="alp-s" style={S.loading}>{t({ en: "Loading…", ar: "جاري التحميل…" })}</div>;
 
   const update = (fn) => { setRules((r) => fn(r)); setDirty(true); setMsg(""); };
   const setRule = (k, patch) => update((r) => ({ ...r, [k]: { ...r[k], ...patch } }));
-  const setContacts = (fn) => update((r) => ({ ...r, contacts: fn(r.contacts || []) }));
-  const setDistribution = (fn) => update((r) => ({ ...r, distribution: fn(r.distribution || []) }));
+  const setReminders = (fn) => update((r) => ({ ...r, reminders: fn(r.reminders || []) }));
 
   const save = async () => {
     setSaving(true); setMsg(""); setErr("");
@@ -180,9 +157,8 @@ export default function AlertsSettings({ t, isAr }) {
     }
   };
 
-  const peopleCount = new Set((rules.distribution || []).flatMap((d) => [...d.to, ...d.cc, ...d.bcc])).size;
   const VIEWS = [
-    { id: "people", icon: "📬", en: "Recipients by branch", ar: "المستلمون حسب الفرع", n: peopleCount },
+    { id: "people", icon: "📬", en: "Reminders by branch", ar: "التذكيرات حسب الفرع", n: (rules.reminders || []).length },
     { id: "coverage", icon: "🧭", en: "Coverage map", ar: "خريطة التغطية" },
     { id: "checks", icon: "⚙️", en: "Checks", ar: "الفحوصات", n: RULES.filter((k) => rules[k]?.enabled !== false).length },
     { id: "log", icon: "📜", en: "Send log", ar: "سجل الإرسال" },
@@ -194,11 +170,11 @@ export default function AlertsSettings({ t, isAr }) {
         <div style={S.warn}>📭 {t({ en: "This company has no mailbox of its own yet — alerts show in the bell, e-mails are not sent.", ar: "هذه الشركة ليس لها بريد خاص بعد — التنبيهات تظهر بالجرس، والإيميل لا يُرسل." })}</div>
       )}
       {!serverReady && (
-        <div style={S.warn}>⚠️ {t({ en: "The server is not updated yet — recipients per branch cannot be saved. The old e-mail lists keep working.", ar: "السيرفر لم يُحدَّث بعد — لا يمكن حفظ المستلمين حسب الفرع. القوائم القديمة ما زالت تعمل." })}</div>
+        <div style={S.warn}>⚠️ {t({ en: "The server is not updated yet — reminders cannot be saved. The old e-mail lists keep working.", ar: "السيرفر لم يُحدَّث بعد — ما بتنحفظ التذكيرات. القوائم القديمة ما زالت تعمل." })}</div>
       )}
       {moved > 0 && (
         <div style={S.info}>
-          ℹ️ {t({ en: `${moved} address(es) from the old per-check lists were moved into the All-branches To list. Save to keep it this way.`, ar: `تم نقل ${moved} عنوان من القوائم القديمة إلى قائمة «إلى» لكل الفروع. احفظ لتثبيت ذلك.` })}
+          ℹ️ {t({ en: `${moved} address(es) from the old per-check lists became general reminders. Save to keep it this way.`, ar: `تم تحويل ${moved} عنوان من القوائم القديمة لتذكيرات عامة. احفظ لتثبيت ذلك.` })}
         </div>
       )}
 
@@ -212,12 +188,10 @@ export default function AlertsSettings({ t, isAr }) {
       </div>
 
       {view === "people" && (
-        <People t={t} isAr={isAr} locked={!serverReady} rules={rules} branches={branches} spellings={spellings}
-          setDistribution={setDistribution} setContacts={setContacts} mailbox={mailbox}
-          onAddBranch={(b) => setExtraBranches((x) => [...x, b])} dirty={dirty} />
+        <People t={t} isAr={isAr} locked={!serverReady} rules={rules} setReminders={setReminders} mailbox={mailbox} dirty={dirty} />
       )}
       {view === "log" && <SendLog t={t} isAr={isAr} />}
-      {view === "coverage" && <Coverage t={t} rules={rules} branches={branches} onPick={() => setView("people")} />}
+      {view === "coverage" && <Coverage t={t} rules={rules} onPick={() => setView("people")} />}
       {view === "checks" && <Checks t={t} rules={rules} setRule={setRule} running={running} runNow={runNow} dirty={dirty} />}
 
       {err && <div style={S.bad}>⚠️ {err}</div>}
@@ -233,67 +207,95 @@ export default function AlertsSettings({ t, isAr }) {
   );
 }
 
-/* ───────────────────────── 📬 Recipients ─────────────────────────
-   Per branch, like the e-mail popup: To / CC / BCC, picked from the e-mail
-   center's contacts. "All branches" lists are added to every branch's mail
-   (and get the alerts that name no branch). Under the lists: each person's
-   own settings (which alert types, critical only, on/off). */
+/* ───────────────────────── 📬 Reminders ─────────────────────────
+   Per branch: its own reminders. Each one says WHAT is reminded (alert
+   types; for expiries which kinds; critical only) and WHO gets it (To / CC /
+   BCC from the e-mail center's contacts, same picker as the send window).
+   A branch can have several — different people, or the same people with a
+   slightly different kind of reminder. Server: alertEngine reminders. */
 
 const FIELDS = [
-  { id: "to", label: "To", ar: "إلى (To)", hint: { en: "The main addressees of this branch's e-mail", ar: "المستلمون الأساسيون لإيميل الفرع" } },
-  { id: "cc", label: "CC", ar: "نسخة (CC)", hint: { en: "A copy — everyone sees who is in CC", ar: "نسخة — الكل بيشوف مين بالـ CC" } },
-  { id: "bcc", label: "BCC", ar: "نسخة مخفية (BCC)", hint: { en: "A hidden copy — nobody sees these addresses", ar: "نسخة مخفية — ما حدا بيشوف هالعناوين" } },
+  { id: "to", label: "To", ar: "إلى (To)" },
+  { id: "cc", label: "CC", ar: "نسخة (CC)" },
+  { id: "bcc", label: "BCC", ar: "نسخة مخفية (BCC)" },
 ];
 
-function People({ t, isAr, locked, rules, branches, spellings, setDistribution, setContacts, mailbox, onAddBranch, dirty }) {
-  const [branch, setBranch] = useState(ALL);
-  const [newBranch, setNewBranch] = useState("");
-  const [editing, setEditing] = useState(null); // email whose settings are open
-  const [testing, setTesting] = useState("");
+/* Ready-made starting points for a new reminder. */
+const PRESETS = [
+  { id: "docs", icon: "🤝", en: "Contracts & licences", ar: "العقود والرخص", rules: ["expiries"], kinds: ["contracts", "licences"] },
+  { id: "cal", icon: "🎚️", en: "Calibration", ar: "المعايرة", rules: ["expiries"], kinds: ["calibration"] },
+  { id: "certs", icon: "🎓", en: "Staff certificates", ar: "شهادات الموظفين", rules: ["expiries"], kinds: ["training", "ohc"] },
+  { id: "temp", icon: "🌡️", en: "Temperature & CCP", ar: "الحرارة و CCP", rules: ["temperature", "ccp", "noReadingToday"], kinds: [] },
+  { id: "logs", icon: "📋", en: "Daily logs & CAPA", ar: "التقارير اليومية و CAPA", rules: ["missedReports", "capa"], kinds: [] },
+  { id: "all", icon: "🔔", en: "Everything", ar: "كل شي", rules: [], kinds: [] },
+];
+
+const covers = (rem, rule) => !rem.rules?.length || rem.rules.includes(rule);
+
+function People({ t, isAr, locked, rules, setReminders, mailbox, dirty }) {
+  const [branch, setBranch] = useState(BRANCH_LIST[0].key);
   const [sending, setSending] = useState("");
   const [note, setNote] = useState("");
   // the e-mail center's contact book — same people and picker as every e-mail popup
   const [book, setBook] = useState([]);
   const loadBook = () => listEmailContacts().then((l) => setBook(Array.isArray(l) ? l : [])).catch(() => {});
   useEffect(() => { loadBook(); }, []);
-  const bookName = (email) => book.find((b) => b.email?.toLowerCase() === String(email || "").toLowerCase())?.name || "";
+  const nameOf = (email) => book.find((b) => b.email?.toLowerCase() === email)?.name || email;
 
-  const dist = rules.distribution || [];
-  const contacts = rules.contacts || [];
-  const listOf = (key) => dist.find((d) => d.branch === key) || { branch: key, to: [], cc: [], bcc: [] };
-  const cur = listOf(branch);
-  const allList = listOf(ALL);
-  const countOf = (key) => { const l = listOf(key); return l.to.length + l.cc.length + l.bcc.length; };
-  const reachable = (key) => key === ALL ? countOf(ALL) > 0 : countOf(key) + countOf(ALL) > 0;
-  const personOf = (email) => contacts.find((c) => c.email === email) || null;
-  const nameOf = (email) => personOf(email)?.name || bookName(email) || email.split("@")[0];
+  const reminders = rules.reminders || [];
+  const general = reminders.some((r) => r.branch === ALL);
+  const rail = general ? [...BRANCH_LIST, { key: ALL, icon: "🌐", en: "All branches (general)", ar: "كل الفروع (عام)" }] : BRANCH_LIST;
+  const mine = reminders.filter((r) => r.branch === branch);
+  const cur = rail.find((b) => b.key === branch) || rail[0];
 
-  const setField = (field, emails) => {
-    const clean = [...new Set((emails || []).map((e) => String(e || "").trim().toLowerCase()).filter((e) => EMAIL_RE.test(e)))];
-    setDistribution((list) => {
-      const next = list.map((d) => ({ ...d }));
-      let slot = next.find((d) => d.branch === branch);
-      if (!slot) { slot = { branch, to: [], cc: [], bcc: [] }; next.push(slot); }
-      slot[field] = clean;
-      // one address once per branch: adding to one field removes it from the others
-      FIELDS.forEach((f) => { if (f.id !== field) slot[f.id] = slot[f.id].filter((e) => !clean.includes(e)); });
-      return next.filter((d) => d.to.length || d.cc.length || d.bcc.length);
-    });
+  const patch = (id, p) => setReminders((list) => list.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const add = (preset) => setReminders((list) => [...list, {
+    id: newId(), name: t(preset), branch, rules: preset.rules, kinds: preset.kinds,
+    onlyCritical: false, active: true, to: [], cc: [], bcc: [],
+  }]);
+  const duplicate = (r) => setReminders((list) => {
+    const i = list.findIndex((x) => x.id === r.id);
+    const copy = { ...r, id: newId(), name: r.name ? `${r.name} (2)` : "", to: [...r.to], cc: [...r.cc], bcc: [...r.bcc] };
+    return [...list.slice(0, i + 1), copy, ...list.slice(i + 1)];
+  });
+  const remove = (r) => {
+    if (!window.confirm(t({ en: `Delete the reminder "${r.name || "—"}"?`, ar: `حذف التذكير «${r.name || "—"}»؟` }))) return;
+    setReminders((list) => list.filter((x) => x.id !== r.id));
+  };
+  const copyTo = (r, keys) => setReminders((list) => [
+    ...list,
+    ...keys.map((k) => ({ ...r, id: newId(), branch: k, to: [...r.to], cc: [...r.cc], bcc: [...r.bcc] })),
+  ]);
+
+  /* A test e-mail to each person of one reminder. */
+  const testRem = async (r) => {
+    const people = [...new Set([...r.to, ...r.cc, ...r.bcc])];
+    if (!people.length) return;
+    setSending(`test:${r.id}`); setNote("");
+    const label = t(rail.find((b) => b.key === r.branch) || { en: r.branch, ar: r.branch });
+    let ok = 0;
+    for (const email of people) {
+      try { await sendTestAlertMail({ email, name: nameOf(email) === email ? "" : nameOf(email), branches: [label] }); ok++; } catch { /* counted below */ }
+    }
+    setNote(ok === people.length
+      ? t({ en: `Test e-mail sent to ${ok} person(s).`, ar: `انبعت إيميل تجريبي لـ ${ok} شخص.` })
+      : `⚠️ ${t({ en: `Test sent to ${ok} of ${people.length}.`, ar: `انبعت التجريبي لـ ${ok} من ${people.length}.` })}`);
+    setSending("");
   };
 
-  /* The REAL reminders, now — this branch's (or every branch's) list, or one person. */
-  const sendNow = async ({ email = "", key = "" } = {}) => {
-    if (dirty) { setNote(`⚠️ ${t({ en: "Save the changes first — sending uses the saved lists.", ar: "احفظ التغييرات أولاً — الإرسال بيعتمد على القوائم المحفوظة." })}`); return; }
-    const who = email ? nameOf(email) : key && key !== ALL ? key : t({ en: "every branch", ar: "كل الفروع" });
-    if (!window.confirm(t({ en: `Send the expiry reminders now (${who})? Real e-mails with the documents attached.`, ar: `إرسال تذكيرات الانتهاء الآن (${who})؟ إيميلات حقيقية مع المستندات مرفقة.` }))) return;
-    setSending(email || key || ALL); setNote("");
+  /* The REAL expiry reminders, now: one reminder, this branch, or every branch. */
+  const sendNow = async ({ reminderId = "", key = "" } = {}) => {
+    if (dirty) { setNote(`⚠️ ${t({ en: "Save the changes first — sending uses the saved reminders.", ar: "احفظ التغييرات أولاً — الإرسال بيعتمد على التذكيرات المحفوظة." })}`); return; }
+    const what = reminderId ? `«${reminders.find((r) => r.id === reminderId)?.name || "—"}»` : key ? t(rail.find((b) => b.key === key) || { en: key, ar: key }) : t({ en: "every branch", ar: "كل الفروع" });
+    if (!window.confirm(t({ en: `Send the expiry reminders now — ${what}? Real e-mails with the documents attached.`, ar: `إرسال تذكيرات الانتهاء الآن — ${what}؟ إيميلات حقيقية مع المستندات مرفقة.` }))) return;
+    setSending(reminderId || key || "__every"); setNote("");
     try {
-      const r = await sendRemindersNow({ email, branch: key && key !== ALL ? key : "" });
+      const r = await sendRemindersNow({ reminderId, branch: key && key !== ALL ? key : "" });
       if (!r.items) setNote(t({ en: "Nothing is expiring or expired right now — no e-mail sent.", ar: "ما في شي منتهي أو قريب الانتهاء حالياً — ما انبعت إيميل." }));
-      else if (!r.sent && !r.failed) setNote(`⚠️ ${t({ en: "Nobody is set to receive these reminders.", ar: "ما في حدا محدد يستلم هالتذكيرات." })}`);
+      else if (!r.sent && !r.failed) setNote(`⚠️ ${t({ en: "No reminder covers what is expiring now.", ar: "ما في تذكير بيغطي اللي عم ينتهي هلق." })}`);
       else setNote(`${r.failed ? "⚠️ " : ""}${t({
-        en: `${r.sent} e-mail(s) sent to ${r.recipients} address(es) — ${r.items} reminder(s).${r.failed ? ` ${r.failed} failed.` : ""}`,
-        ar: `انبعت ${r.sent} إيميل إلى ${r.recipients} عنوان — ${r.items} تذكير.${r.failed ? ` فشل ${r.failed}.` : ""}`,
+        en: `${r.sent} e-mail(s) sent to ${r.recipients} address(es) — ${r.items} item(s).${r.failed ? ` ${r.failed} failed.` : ""}`,
+        ar: `انبعت ${r.sent} إيميل إلى ${r.recipients} عنوان — ${r.items} بند.${r.failed ? ` فشل ${r.failed}.` : ""}`,
       })}`);
     } catch (e) {
       setNote(`⚠️ ${e?.message === "no_mailbox" ? t({ en: "No mailbox for this company.", ar: "لا يوجد بريد لهذه الشركة." }) : String(e?.message || e)}`);
@@ -301,206 +303,214 @@ function People({ t, isAr, locked, rules, branches, spellings, setDistribution, 
       setSending("");
     }
   };
-  const test = async (email) => {
-    setTesting(email); setNote("");
-    try {
-      const branchesOf = dist.filter((d) => [...d.to, ...d.cc, ...d.bcc].includes(email)).map((d) => (d.branch === ALL ? "All branches" : d.branch));
-      await sendTestAlertMail({ email, name: nameOf(email), branches: branchesOf });
-      setNote(t({ en: `Test e-mail sent to ${email}`, ar: `تم إرسال إيميل تجريبي إلى ${email}` }));
-    } catch (e) {
-      setNote(`⚠️ ${e?.message === "no_mailbox" ? t({ en: "No mailbox for this company.", ar: "لا يوجد بريد لهذه الشركة." }) : String(e?.message || e)}`);
-    } finally {
-      setTesting("");
-    }
-  };
-
-  const BranchBtn = ({ id, label, sub, title }) => {
-    const n = countOf(id);
-    const ok = reachable(id);
-    return (
-      <button type="button" onClick={() => { setBranch(id); setEditing(null); setNote(""); }} title={title} style={{ ...S.brItem, ...(branch === id ? S.brOn : null) }}>
-        <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
-          <span className="alp-s" style={{ fontWeight: 900, display: "block", lineHeight: 1.3, overflowWrap: "anywhere" }}>{label}</span>
-          {sub && <span className="alp-xs" style={{ display: "block", color: branch === id ? "#0f766e" : "#64748b", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>}
-        </span>
-        <span className="alp-xs" style={{ ...S.brN, ...(ok ? null : S.brN0), ...(branch === id ? S.brNOn : null) }} title={ok ? "" : t({ en: "Nobody gets this branch's alerts", ar: "ما حدا بيستلم تنبيهات هالفرع" })}>{n}</span>
-      </button>
-    );
-  };
-
-  const people = [...new Set([...cur.to, ...cur.cc, ...cur.bcc])];
-  const fieldOf = (email) => (cur.to.includes(email) ? "to" : cur.cc.includes(email) ? "cc" : "bcc");
 
   return (
     <div className="als-split" style={S.split}>
-      {/* branch rail */}
+      {/* branch rail — the company's branches only */}
       <aside style={S.rail}>
         <div className="alp-xs" style={S.railHead}>{t({ en: "BRANCHES", ar: "الفروع" })}</div>
-        <BranchBtn id={ALL} label={`🌐 ${t({ en: "All branches", ar: "كل الفروع" })}`} sub={t({ en: "added to every branch's e-mail", ar: "بينضافوا على إيميل كل فرع" })} />
-        <div style={S.railSep} />
-        {branches.map((b) => {
-          const names = [...(spellings.get(b) || [])].filter((x) => x !== b);
+        {rail.map((b) => {
+          const list = reminders.filter((r) => r.branch === b.key);
+          const live = list.filter((r) => r.active !== false && (r.to.length + r.cc.length + r.bcc.length) > 0).length;
           return (
-            <BranchBtn key={b} id={b} label={b}
-              title={names.length ? [t({ en: "Also written as:", ar: "يُكتب أيضاً:" }), ...names].join("\n") : undefined}
-              sub={names.length ? `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ""}` : ""} />
+            <button key={b.key} type="button" onClick={() => { setBranch(b.key); setNote(""); }} style={{ ...S.brItem, ...(branch === b.key ? S.brOn : null) }}>
+              <span aria-hidden="true">{b.icon}</span>
+              <span style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
+                <span className="alp-s" style={{ fontWeight: 900, display: "block", lineHeight: 1.3 }}>{t(b)}</span>
+                <span className="alp-xs" style={{ display: "block", color: branch === b.key ? "#0f766e" : "#64748b", fontWeight: 700 }}>
+                  {list.length ? t({ en: `${list.length} reminder(s)`, ar: `${list.length} تذكير` }) : t({ en: "no reminders", ar: "بدون تذكيرات" })}
+                </span>
+              </span>
+              <span className="alp-xs" style={{ ...S.brN, ...(live ? null : S.brN0), ...(branch === b.key ? S.brNOn : null) }}>{live}</span>
+            </button>
           );
         })}
-        <div style={{ display: "flex", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px solid #eef2f6" }}>
-          <input style={{ ...S.input, padding: "8px 10px", minWidth: 0, flex: 1 }} value={newBranch} onChange={(e) => setNewBranch(e.target.value)}
-            placeholder={t({ en: "Another branch…", ar: "فرع آخر…" })} />
-          <button type="button" style={S.btnSm} disabled={!newBranch.trim()} onClick={() => { const k = canonBranch(newBranch); onAddBranch(newBranch.trim()); setBranch(k); setNewBranch(""); }}>＋</button>
+        <div style={{ borderTop: "1px solid #eef2f6", marginTop: 6, paddingTop: 8 }}>
+          <button type="button" style={{ ...S.btnSend, width: "100%", justifyContent: "center" }} disabled={locked || !mailbox || !!sending} onClick={() => sendNow({})}>
+            📨 {sending === "__every" ? "…" : t({ en: "Send all reminders now", ar: "إرسال كل التذكيرات الآن" })}
+          </button>
         </div>
       </aside>
 
-      {/* this branch's e-mail */}
+      {/* this branch's reminders */}
       <section style={{ minWidth: 0, display: "grid", gap: 12, alignContent: "start" }}>
-        <div style={S.mailCard}>
-          <div style={S.mailHead}>
-            <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-              <div className="alp-h" style={{ fontWeight: 900, color: "#0f172a" }}>
-                📨 {branch === ALL ? t({ en: "All branches", ar: "كل الفروع" }) : branch}
-              </div>
-              <div className="alp-s" style={{ color: "#475569", fontWeight: 700 }}>
-                {branch === ALL
-                  ? t({ en: "These addresses are added to every branch's e-mail, and get the alerts that name no branch.", ar: "هالعناوين بتنضاف على إيميل كل فرع، وبتستلم التنبيهات اللي ما إلها فرع." })
-                  : t({ en: "Who gets this branch's alert e-mail — one e-mail, like the send window.", ar: "مين بيستلم إيميل تنبيهات هالفرع — إيميل واحد، متل نافذة الإرسال." })}
-              </div>
+        <div style={S.peopleHead}>
+          <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+            <div className="alp-h" style={{ fontWeight: 900, color: "#0f172a" }}>{cur.icon} {t(cur)}</div>
+            <div className="alp-s" style={{ color: "#475569", fontWeight: 700 }}>
+              {t({ en: "Each reminder: what is sent, and to whom. Add as many as you need.", ar: "كل تذكير: شو بينبعت، ولمين. ضيف قد ما بدك." })}
             </div>
-            <button type="button" style={S.btnSend} disabled={locked || !mailbox || !!sending || !reachable(branch)} onClick={() => sendNow({ key: branch })}
-              title={t({ en: "Real e-mails: everything expiring or expired now, with the documents", ar: "إيميلات حقيقية: كل شي منتهي أو قريب الانتهاء الآن، مع المستندات" })}>
-              📨 {sending === branch ? "…" : branch === ALL ? t({ en: "Send reminders now — all branches", ar: "إرسال التذكيرات الآن — كل الفروع" }) : t({ en: "Send this branch's reminders now", ar: "إرسال تذكيرات الفرع الآن" })}
+          </div>
+          {mine.length > 0 && (
+            <button type="button" style={S.btn} disabled={locked || !mailbox || !!sending} onClick={() => sendNow({ key: branch })}>
+              📨 {sending === branch ? "…" : t({ en: "Send this branch's reminders now", ar: "إرسال تذكيرات الفرع الآن" })}
             </button>
-          </div>
-
-          {locked && <div style={{ ...S.warn, margin: "0 16px 12px" }}>⚠️ {t({ en: "The server is not updated yet — these lists cannot be saved.", ar: "السيرفر لم يُحدَّث بعد — ما بتنحفظ هالقوائم." })}</div>}
-
-          <div style={S.mailBody}>
-            {FIELDS.map((f) => (
-              <div key={f.id} style={S.mailField}>
-                <ContactPicker
-                  label={`${isAr ? f.ar : f.label}${f.id === "to" ? " *" : ""}`}
-                  value={cur[f.id]}
-                  onChange={(v) => setField(f.id, v)}
-                  contacts={book}
-                  onContactsChange={loadBook}
-                  disabled={locked}
-                />
-                <span className="alp-xs" style={{ color: "#64748b", fontWeight: 700 }}>{t(f.hint)}</span>
-              </div>
-            ))}
-            {branch !== ALL && countOf(ALL) > 0 && (
-              <div className="alp-xs" style={S.alsoNote}>
-                🌐 {t({ en: "Also on this e-mail (All branches):", ar: "كمان على هالإيميل (كل الفروع):" })}{" "}
-                {FIELDS.filter((f) => allList[f.id].length).map((f) => `${f.label}: ${allList[f.id].map(nameOf).join(", ")}`).join("  ·  ")}
-              </div>
-            )}
-            {!reachable(branch) && (
-              <div className="alp-xs" style={{ ...S.alsoNote, background: "#fef2f2", borderColor: "#fecaca", color: "#b91c1c" }}>
-                ⚠️ {t({ en: "Nobody gets this branch's alerts by e-mail yet — they show in the bell only.", ar: "ما حدا بيستلم تنبيهات هالفرع بالإيميل لسا — بتظهر بالجرس بس." })}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
+        {locked && <div style={S.warn}>⚠️ {t({ en: "The server is not updated yet — reminders cannot be saved.", ar: "السيرفر لم يُحدَّث بعد — ما بتنحفظ التذكيرات." })}</div>}
         {note && <div className="alp-s" style={note.startsWith("⚠️") ? S.bad : S.ok}>{note}</div>}
 
-        {/* each person's own settings */}
-        {people.length > 0 && (
-          <div style={S.panel}>
-            <div className="alp-s" style={{ fontWeight: 900, color: "#0f172a", marginBottom: 10 }}>
-              👥 {t({ en: "People on this e-mail — their own settings", ar: "الأشخاص على هالإيميل — إعداداتهم" })}
-            </div>
-            <div style={S.cards}>
-              {people.map((email) => {
-                const p = personOf(email) || { email, rules: [], onlyCritical: false, active: true };
-                const field = fieldOf(email);
-                return (
-                  <article key={email} style={{ ...S.person, opacity: p.active === false ? 0.6 : 1 }}>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                      <span style={{ ...S.avatar, background: hueOf(email) }} aria-hidden="true">{initials({ name: nameOf(email), email })}</span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div className="alp-s" style={{ fontWeight: 900, color: "#0f2740", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {nameOf(email)}{p.role && <span style={{ color: "#64748b", fontWeight: 700 }}> · {p.role}</span>}
-                        </div>
-                        <div className="alp-xs" dir="ltr" style={{ color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: isAr ? "right" : "left" }}>{email}</div>
-                      </div>
-                      <span className="alp-xs" style={{ ...S.fieldChip, ...(field === "to" ? null : field === "cc" ? S.ccChip : S.bccChip) }}>{field.toUpperCase()}</span>
-                      <button type="button" role="switch" aria-checked={p.active !== false}
-                        onClick={() => setContacts((list) => upsertPerson(list, email, { active: p.active === false }))}
-                        title={p.active !== false ? t({ en: "Receiving e-mails — click to pause", ar: "يستلم الإيميلات — اضغط للإيقاف" }) : t({ en: "Paused — click to resume", ar: "موقوف — اضغط للتفعيل" })}
-                        style={{ ...S.switch, ...S.switchSm, ...(p.active !== false ? S.switchOn : null) }}>
-                        <span style={{ ...S.knob, ...S.knobSm, ...(p.active !== false ? S.knobSmOn : null) }} />
-                      </button>
-                    </div>
-                    <div style={S.metaRow}>
-                      <span className="alp-xs" style={S.metaLbl}>🔔</span>
-                      {p.rules?.length
-                        ? p.rules.map((r) => <span key={r} className="alp-xs" style={S.typeChip}>{RULE_INFO[r]?.icon} {t(RULE_INFO[r])}</span>)
-                        : <span className="alp-xs" style={{ ...S.typeChip, ...S.allChip }}>{t({ en: "All alert types", ar: "كل أنواع التنبيهات" })}</span>}
-                      {p.onlyCritical && <span className="alp-xs" style={S.critChip}>🚨 {t({ en: "Critical only", ar: "الحرجة فقط" })}</span>}
-                    </div>
-                    {editing === email && (
-                      <PersonSettings t={t} person={p} onChange={(patch) => setContacts((list) => upsertPerson(list, email, patch))} onClose={() => setEditing(null)} />
-                    )}
-                    <div style={S.personFoot}>
-                      <button type="button" style={S.btnSm} onClick={() => setEditing(editing === email ? null : email)}>⚙️ {t({ en: "Settings", ar: "إعدادات" })}</button>
-                      <button type="button" style={S.btnSend} disabled={!mailbox || p.active === false || !!sending} onClick={() => sendNow({ email })}
-                        title={t({ en: "Send this person their reminders now (real e-mail, documents attached)", ar: "أرسل لهالشخص تذكيراته الآن (إيميل حقيقي مع المستندات)" })}>
-                        📨 {sending === email ? "…" : t({ en: "Send now", ar: "أرسل الآن" })}
-                      </button>
-                      <button type="button" style={S.btnSm} disabled={!mailbox || testing === email} onClick={() => test(email)}>
-                        ✉️ {testing === email ? "…" : t({ en: "Test", ar: "تجربة" })}
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+        {mine.map((r, i) => (
+          <ReminderCard key={r.id} t={t} isAr={isAr} index={i + 1} rem={r} book={book} onBookChange={loadBook} nameOf={nameOf}
+            locked={locked} mailbox={mailbox} sending={sending}
+            onChange={(p) => patch(r.id, p)} onDuplicate={() => duplicate(r)} onDelete={() => remove(r)}
+            onCopyTo={(keys) => copyTo(r, keys)} onSendNow={() => sendNow({ reminderId: r.id })} onTest={() => testRem(r)} branchKey={branch} />
+        ))}
+
+        {/* add a reminder: a ready-made start or a blank one */}
+        <div style={S.addBox}>
+          <div className="alp-s" style={{ fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>
+            ＋ {mine.length ? t({ en: "Add another reminder", ar: "إضافة تذكير تاني" }) : t({ en: "Add this branch's first reminder", ar: "إضافة أول تذكير للفرع" })}
           </div>
-        )}
+          <div style={S.pills}>
+            {PRESETS.map((p) => (
+              <button key={p.id} type="button" style={S.presetBtn} disabled={locked} onClick={() => add(p)}>{p.icon} {t(p)}</button>
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );
 }
 
-/** contacts[] with one person's settings patched (row created when missing). */
-function upsertPerson(list, email, patch) {
-  const has = list.some((c) => c.email === email);
-  const next = has ? list.map((c) => (c.email === email ? { ...c, ...patch } : c)) : [...list, { id: newId(), email, name: "", role: "", rules: [], onlyCritical: false, active: true, ...patch }];
-  return next.map((c) => (c.rules?.length === RULES.length ? { ...c, rules: [] } : c));
-}
+function ReminderCard({ t, isAr, index, rem, book, onBookChange, nameOf, locked, mailbox, sending, onChange, onDuplicate, onDelete, onCopyTo, onSendNow, onTest, branchKey }) {
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyKeys, setCopyKeys] = useState([]);
+  const rulesSel = rem.rules || [];
+  const kinds = rem.kinds || [];
+  const expiryOn = covers(rem, "expiries");
+  const people = rem.to.length + rem.cc.length + rem.bcc.length;
+  const setField = (field, emails) => {
+    const clean = [...new Set((emails || []).map((e) => String(e || "").trim().toLowerCase()).filter((e) => EMAIL_RE.test(e)))];
+    const next = { to: rem.to, cc: rem.cc, bcc: rem.bcc, [field]: clean };
+    // one address once per reminder: adding to one field takes it out of the others
+    FIELDS.forEach((f) => { if (f.id !== field) next[f.id] = next[f.id].filter((e) => !clean.includes(e)); });
+    onChange(next);
+  };
+  const toggleRule = (k) => {
+    const on = rulesSel.includes(k);
+    const next = on ? rulesSel.filter((x) => x !== k) : [...rulesSel, k];
+    onChange({ rules: next.length === RULES.length ? [] : next });
+  };
+  const toggleKind = (k) => {
+    const on = kinds.includes(k);
+    const next = on ? kinds.filter((x) => x !== k) : [...kinds, k];
+    onChange({ kinds: next.length === EXPIRY_KINDS.length ? [] : next });
+  };
+  const whatText = [
+    rulesSel.length ? rulesSel.map((k) => (k === "expiries" && kinds.length ? kinds.map((x) => t(EXPIRY_KINDS.find((e) => e.id === x))).join(" + ") : t(RULE_INFO[k]))).join(" · ") : t({ en: "every alert", ar: "كل التنبيهات" }),
+    rem.onlyCritical && t({ en: "critical only", ar: "الحرجة بس" }),
+  ].filter(Boolean).join(" — ");
+  const whoText = FIELDS.filter((f) => rem[f.id].length).map((f) => `${f.label}: ${rem[f.id].map(nameOf).join(", ")}`).join("  ·  ");
 
-/* One person's own settings: which alert types reach them, critical only. */
-function PersonSettings({ t, person, onChange, onClose }) {
-  const rules = person.rules || [];
   return (
-    <div style={S.pickBlock}>
-      <div style={S.pickHead}>
-        <span className="alp-s" style={S.label}>🔔 {t({ en: "Which alerts?", ar: "أي تنبيهات؟" })}</span>
-        <button type="button" style={{ ...S.pill, ...(!rules.length ? S.pillOn : null) }} onClick={() => onChange({ rules: [] })}>
-          {!rules.length ? "✓ " : ""}{t({ en: "All types", ar: "كل الأنواع" })}
+    <article style={{ ...S.remCard, opacity: rem.active === false ? 0.65 : 1 }}>
+      <div style={S.remHead}>
+        <span style={S.remNo}>{index}</span>
+        <input style={{ ...S.input, flex: "1 1 200px", fontWeight: 900 }} value={rem.name} disabled={locked}
+          onChange={(e) => onChange({ name: e.target.value })} placeholder={t({ en: "Reminder name — e.g. Branch contracts", ar: "اسم التذكير — مثلاً: عقود الفرع" })} />
+        <button type="button" role="switch" aria-checked={rem.active !== false} disabled={locked} onClick={() => onChange({ active: rem.active === false })}
+          title={rem.active !== false ? t({ en: "On — click to pause", ar: "شغّال — اضغط للإيقاف" }) : t({ en: "Paused — click to resume", ar: "موقوف — اضغط للتشغيل" })}
+          style={{ ...S.switch, ...(rem.active !== false ? S.switchOn : null) }}>
+          <span style={{ ...S.knob, ...(rem.active !== false ? S.knobOn : null) }} />
         </button>
       </div>
-      <div style={S.pills}>
-        {RULES.map((r) => {
-          const on = rules.includes(r);
-          return (
-            <button key={r} type="button" style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => onChange({ rules: on ? rules.filter((x) => x !== r) : [...rules, r] })}>
-              {RULE_INFO[r].icon} {t(RULE_INFO[r])}
-            </button>
-          );
-        })}
+
+      <div style={S.remSummary} className="alp-xs">
+        <span><b>🔔 {t({ en: "What", ar: "شو" })}:</b> {whatText}</span>
+        <span><b>👥 {t({ en: "To whom", ar: "لمين" })}:</b> {whoText || <span style={{ color: "#b91c1c" }}>{t({ en: "nobody yet", ar: "ما حدا لسا" })}</span>}</span>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-        <label style={S.check}>
-          <input type="checkbox" checked={!!person.onlyCritical} onChange={(e) => onChange({ onlyCritical: e.target.checked })} />
-          🚨 {t({ en: "Critical alerts only (expired, out of range)", ar: "التنبيهات الحرجة فقط (منتهي، خارج الحد)" })}
+
+      {/* WHAT */}
+      <div style={S.pickBlock}>
+        <div style={S.pickHead}>
+          <span className="alp-s" style={S.label}>🔔 {t({ en: "What does this reminder send?", ar: "شو بيبعت هالتذكير؟" })}</span>
+          <button type="button" disabled={locked} style={{ ...S.pill, ...(!rulesSel.length ? S.pillOn : null) }} onClick={() => onChange({ rules: [] })}>
+            {!rulesSel.length ? "✓ " : ""}{t({ en: "Every alert", ar: "كل التنبيهات" })}
+          </button>
+        </div>
+        <div style={S.pills}>
+          {RULES.map((k) => {
+            const on = rulesSel.includes(k);
+            return (
+              <button key={k} type="button" disabled={locked} style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => toggleRule(k)}>
+                {on ? "✓ " : ""}{RULE_INFO[k].icon} {t(RULE_INFO[k])}
+              </button>
+            );
+          })}
+        </div>
+        {expiryOn && (
+          <div style={S.subPick}>
+            <div style={S.pickHead}>
+              <span className="alp-xs" style={S.label}>⏳ {t({ en: "Which expiries?", ar: "أي انتهاءات؟" })}</span>
+              <button type="button" disabled={locked} style={{ ...S.pill, ...(!kinds.length ? S.pillOn : null) }} onClick={() => onChange({ kinds: [] })}>
+                {!kinds.length ? "✓ " : ""}{t({ en: "All kinds", ar: "كل الأنواع" })}
+              </button>
+            </div>
+            <div style={S.pills}>
+              {EXPIRY_KINDS.map((k) => {
+                const on = kinds.includes(k.id);
+                return (
+                  <button key={k.id} type="button" disabled={locked} style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => toggleKind(k.id)}>
+                    {on ? "✓ " : ""}{k.icon} {t(k)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <label style={{ ...S.check, marginTop: 10 }}>
+          <input type="checkbox" disabled={locked} checked={!!rem.onlyCritical} onChange={(e) => onChange({ onlyCritical: e.target.checked })} />
+          🚨 {t({ en: "Critical only (expired, out of range)", ar: "الحرجة بس (منتهي، خارج الحد)" })}
         </label>
-        <span style={{ flex: 1 }} />
-        <button type="button" style={S.btnSm} onClick={onClose}>✓ {t({ en: "Done", ar: "تم" })}</button>
       </div>
-    </div>
+
+      {/* WHO */}
+      <div style={S.pickBlock}>
+        <div className="alp-s" style={{ ...S.label, marginBottom: 8 }}>👥 {t({ en: "To whom?", ar: "لمين؟" })}</div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {FIELDS.map((f) => (
+            <ContactPicker key={f.id} label={isAr ? f.ar : f.label} value={rem[f.id]} onChange={(v) => setField(f.id, v)}
+              contacts={book} onContactsChange={onBookChange} disabled={locked} />
+          ))}
+        </div>
+      </div>
+
+      {copyOpen && (
+        <div style={S.pickBlock}>
+          <div className="alp-s" style={{ ...S.label, marginBottom: 8 }}>📋 {t({ en: "Copy this reminder to:", ar: "انسخ هالتذكير لـ:" })}</div>
+          <div style={S.pills}>
+            {BRANCH_LIST.filter((b) => b.key !== branchKey).map((b) => {
+              const on = copyKeys.includes(b.key);
+              return (
+                <button key={b.key} type="button" style={{ ...S.pill, ...(on ? S.pillOn : null) }} onClick={() => setCopyKeys(on ? copyKeys.filter((x) => x !== b.key) : [...copyKeys, b.key])}>
+                  {on ? "✓ " : ""}{b.icon} {t(b)}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
+            <button type="button" style={S.btnSm} onClick={() => { setCopyOpen(false); setCopyKeys([]); }}>{t({ en: "Cancel", ar: "إلغاء" })}</button>
+            <button type="button" style={S.btnSend} disabled={!copyKeys.length} onClick={() => { onCopyTo(copyKeys); setCopyOpen(false); setCopyKeys([]); }}>
+              ✓ {t({ en: `Copy to ${copyKeys.length || ""}`, ar: `انسخ لـ ${copyKeys.length || ""}` })}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={S.personFoot}>
+        <button type="button" style={S.btnSend} disabled={locked || !mailbox || !!sending || !expiryOn || !people || rem.active === false} onClick={onSendNow}
+          title={expiryOn ? t({ en: "Send what is expiring now through this reminder (real e-mail)", ar: "ابعت اللي عم ينتهي هلق عن طريق هالتذكير (إيميل حقيقي)" }) : t({ en: "Send now works for expiry reminders", ar: "الإرسال الآن بيشتغل لتذكيرات الانتهاء" })}>
+          📨 {sending === rem.id ? "…" : t({ en: "Send now", ar: "أرسل الآن" })}
+        </button>
+        <button type="button" style={S.btnSm} disabled={!mailbox || !people || !!sending} onClick={onTest}>✉️ {sending === `test:${rem.id}` ? "…" : t({ en: "Test", ar: "تجربة" })}</button>
+        <button type="button" style={S.btnSm} disabled={locked} onClick={onDuplicate} title={t({ en: "Same people, then change what it sends", ar: "نفس الناس، وبعدين غيّر شو بيبعت" })}>⧉ {t({ en: "Duplicate", ar: "تكرار" })}</button>
+        <button type="button" style={S.btnSm} disabled={locked} onClick={() => setCopyOpen((v) => !v)}>📋 {t({ en: "Copy to branches", ar: "نسخ لفروع تانية" })}</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" style={S.btnDel} disabled={locked} onClick={onDelete} aria-label={t({ en: "Delete", ar: "حذف" })}>🗑</button>
+      </div>
+    </article>
   );
 }
 
@@ -618,9 +628,9 @@ function SendLog({ t, isAr }) {
 
 /* ───────────────────────── 🧭 Coverage ───────────────────────── */
 
-function Coverage({ t, rules, branches, onPick }) {
+function Coverage({ t, rules, onPick }) {
   const contacts = rules.contacts || [];
-  const rows = [...branches.map((b) => ({ key: b, label: b, branch: b })), { key: "__general", label: t({ en: "General (no branch)", ar: "عام (بدون فرع)" }), branch: "" }];
+  const rows = [...BRANCH_LIST.map((b) => ({ key: b.key, label: t(b), branch: b.key })), { key: "__general", label: t({ en: "General (no branch)", ar: "عام (بدون فرع)" }), branch: "" }];
   const who = (rule, branch) => {
     const r = resolveRecipients(rules, rule, branch, true);
     const label = (e) => (contacts.find((c) => c.email === e)?.name || e);
@@ -688,7 +698,6 @@ function Coverage({ t, rules, branches, onPick }) {
 function Checks({ t, rules, setRule, running, runNow, dirty }) {
   const [addType, setAddType] = useState("");
   const checks = rules.missedReports.checks || [];
-  const kinds = Array.isArray(rules.expiries?.kinds) ? rules.expiries.kinds : [];
   const WHEN = {
     temperature: { en: "Instantly — a phone (QR) reading or a saved sheet out of range. A recheck back in range closes it.", ar: "فوراً — قراءة جوال (QR) أو شيت محفوظ خارج الحد. إعادة القياس داخل الحد تغلقه." },
     missedReports: { en: "08:00 — yesterday's logs not filed (phone readings alone do not file a day)", ar: "08:00 — تقارير أمس غير المعبّأة (قراءات الجوال وحدها لا تكفي)" },
@@ -728,34 +737,7 @@ function Checks({ t, rules, setRule, running, runNow, dirty }) {
         {card("noReadingToday")}
         {card("expiries", (
           <>
-            {/* Which kinds of expiry are sent (empty = all) — 08:00 run and "send now" */}
-            <div style={S.pickBlock}>
-              <div style={S.pickHead}>
-                <span className="alp-s" style={S.label}>📋 {t({ en: "Send reminders for", ar: "ابعت تذكير عن" })}</span>
-                <button type="button" style={{ ...S.pill, ...(!kinds.length ? S.pillOn : null) }} onClick={() => setRule("expiries", { kinds: [] })}>
-                  {!kinds.length ? "✓ " : ""}{t({ en: "Everything", ar: "كل شي" })}
-                </button>
-              </div>
-              <div style={S.pills}>
-                {EXPIRY_KINDS.map((k) => {
-                  const on = kinds.includes(k.id);
-                  return (
-                    <button key={k.id} type="button" style={{ ...S.pill, ...(on ? S.pillOn : null) }}
-                      onClick={() => {
-                        const next = on ? kinds.filter((x) => x !== k.id) : [...kinds, k.id];
-                        setRule("expiries", { kinds: next.length === EXPIRY_KINDS.length ? [] : next });
-                      }}>
-                      {on ? "✓ " : ""}{k.icon} {t(k)}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="alp-xs" style={S.hint}>
-                {!kinds.length
-                  ? t({ en: "Every kind is sent. Pick some to send only those.", ar: "كل الأنواع بتنبعت. اختار أنواع معينة لتنبعت هي بس." })
-                  : t({ en: `Only these are sent: ${kinds.map((id) => t(EXPIRY_KINDS.find((k) => k.id === id) || { en: id, ar: id })).join(", ")}.`, ar: `بس هدول بينبعتوا: ${kinds.map((id) => t(EXPIRY_KINDS.find((k) => k.id === id) || { en: id, ar: id })).join("، ")}.` })}
-              </div>
-            </div>
+            <div className="alp-xs" style={S.hint}>{t({ en: "Which expiries are sent, and to whom, is set per reminder in Reminders by branch.", ar: "أي انتهاءات بتنبعت ولمين، بيتحدد بكل تذكير بـ «التذكيرات حسب الفرع»." })}</div>
             <label style={S.inline}>
               <span className="alp-s" style={S.label}>{t({ en: "Calibration & certificates: warn", ar: "المعايرة والشهادات: نبّه قبل" })}</span>
               <input style={{ ...S.input, width: 90 }} type="number" min="1" max="180" value={rules.expiries.days} onChange={(e) => setRule("expiries", { days: Number(e.target.value) || 30 })} />
@@ -901,6 +883,13 @@ const S = {
   input: { width: "100%", padding: "10px 13px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", boxSizing: "border-box", fontWeight: 600 },
   btn: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
   btnSm: { display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 10, border: "1px solid #d6e2ea", background: "#fff", color: "#0f2740", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  remCard: { background: "#fff", border: "1px solid #e2e8f0", borderInlineStart: "4px solid #0f766e", borderRadius: 14, padding: 14, display: "grid", gap: 10, boxShadow: "0 6px 18px rgba(15,39,64,.06)", minWidth: 0 },
+  remHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
+  remNo: { width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "#e6f4f1", color: "#0f766e", fontWeight: 900, flexShrink: 0 },
+  remSummary: { display: "grid", gap: 3, padding: "8px 12px", borderRadius: 10, background: "#f8fafc", border: "1px solid #eef2f6", color: "#334155", fontWeight: 700 },
+  subPick: { marginTop: 10, padding: 10, borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a" },
+  addBox: { background: "#fff", border: "2px dashed #99d5cc", borderRadius: 14, padding: 14 },
+  presetBtn: { padding: "9px 14px", borderRadius: 12, border: "1px solid #c4e6df", background: "#f0fdfa", color: "#0f766e", fontWeight: 900, cursor: "pointer" },
   mailCard: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, boxShadow: "0 6px 18px rgba(15,39,64,.06)", overflow: "visible" },
   mailHead: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "14px 16px", borderBottom: "1px solid #eef2f6", background: "linear-gradient(135deg,#f0fdfa,#ecfeff)", borderRadius: "14px 14px 0 0" },
   mailBody: { padding: "14px 16px", display: "grid", gap: 14 },
