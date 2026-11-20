@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import React from "react";
 import { saveReport as outboxSave, newOutboxId, queuedMessage } from "../../../../utils/reportOutbox";
 import { getReportRowByDate, payloadOf, reportId } from "./reportApi";
+import { makeEmployeeFinder } from "../ftr1/ftr1Signatures";
 
 const clean = (s) => String(s ?? "").trim();
 
@@ -223,5 +224,69 @@ export function FillAllButton({ onClick, label = "All C", title }) {
     >
       ✓ {label}
     </button>
+  );
+}
+
+/* ══════════════════════════════════════ Employee name locked to the number
+   The name can only come from the employee number (Staff Directory first,
+   then the company directory) — the FTR 1 / POS 15 rule. A sheet saved before
+   this rule may hold a typed name without a number; it is shown as-is until a
+   number is entered. */
+
+/** `find(empNo)` → { name, empNo, … } | null */
+export function useEmployeeFinder(byNo) {
+  return makeEmployeeFinder(byNo);
+}
+
+/** Name for a newly typed number: the directory's, or "" when unknown. */
+export const nameForEmpNo = (find, empNo) => {
+  const m = find(empNo);
+  return m ? m.name : "";
+};
+
+/** "Row 3: employee number "123" was not found …" for every unknown number. */
+export function unknownEmpErrors(rows, find, loading = false) {
+  if (loading) return [];
+  const out = [];
+  (rows || []).forEach((r, i) => {
+    const no = clean(r?.empNo);
+    if (no && !find(no)) out.push(`Row ${i + 1}: employee number "${no}" was not found in the Staff Directory.`);
+  });
+  return out;
+}
+
+/** The read-only name cell. */
+export function LockedName({
+  name = "", empNo = "", unknown = false, style,
+  emptyText = "From Emp. No.", notFoundText = "Not found", title = "Filled automatically from the employee number",
+}) {
+  const has = !!clean(name);
+  return (
+    <div
+      title={title}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        minHeight: 30,
+        padding: "4px 8px",
+        borderRadius: 6,
+        border: `1px solid ${unknown ? "#fecaca" : "#e2e8f0"}`,
+        background: unknown ? "#fef2f2" : "#f1f5f9",
+        color: has ? "#0f172a" : unknown ? "#dc2626" : "#94a3b8",
+        fontWeight: has ? 700 : 500,
+        textAlign: "start",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+        textOverflow: "ellipsis",
+        boxSizing: "border-box",
+        ...style,
+      }}
+    >
+      <span aria-hidden="true" style={{ opacity: 0.55 }}>🔒</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+        {has ? name : unknown ? notFoundText : clean(empNo) ? "…" : emptyText}
+      </span>
+    </div>
   );
 }

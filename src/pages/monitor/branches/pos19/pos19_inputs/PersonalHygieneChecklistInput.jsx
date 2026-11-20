@@ -8,8 +8,10 @@ import useReportDateStatus from "../_shared/useReportDateStatus";
 import {
   useStaffDirectory,
   normalizeEmpNo,
-  normalizeName,
 } from "../../_shared/staffRegistry";
+import {
+  useEmployeeFinder, nameForEmpNo, unknownEmpErrors, LockedName,
+} from "../../_shared/hygieneEntryKit";
 import {
   usePos19Day, savePos19Report, DayStatus, todayDubai,
   useCheckedBy, CheckedByField, TickCell, tickAll, AllTickButton,
@@ -75,7 +77,9 @@ export default function PersonalHygieneChecklistInput() {
   const [saving, setSaving]       = useState(false);
 
   const directory = useStaffDirectory(POS19_HYGIENE_FORM_KEY);
-  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo, byName } = directory;
+  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo } = directory;
+  // The name is locked: it comes only from the employee number.
+  const findEmp = useEmployeeFinder(byNo);
   const sig = useCheckedBy(directory);
 
   const blankSheet = () => (roster.length ? roster.map(rowFromStaff) : Array.from({ length: 5 }, () => emptyRow()));
@@ -139,13 +143,9 @@ export default function PersonalHygieneChecklistInput() {
     setRows((prev) => {
       const next = [...prev];
       const row = next[i] || emptyRow();
-      // Either identifier fills the other straight from the directory.
+      // The name is locked to the employee number (unknown number → no name).
       if (key === "empNo") {
-        const m = byNo.get(normalizeEmpNo(val));
-        next[i] = m ? { ...row, empNo: val, staffName: m.name } : { ...row, empNo: val };
-      } else if (key === "staffName") {
-        const m = byName.get(normalizeName(val));
-        next[i] = m ? { ...row, staffName: val, empNo: m.empNo } : { ...row, staffName: val };
+        next[i] = { ...row, empNo: val, staffName: nameForEmpNo(findEmp, val) };
       } else {
         next[i] = { ...row, [key]: val };
       }
@@ -171,7 +171,7 @@ export default function PersonalHygieneChecklistInput() {
     if (!date) { alert("الرجاء تحديد التاريخ"); return; }
     const filled = rows.filter((r) => !isBlankRow(r));
     if (!filled.length) { alert("أضف على الأقل موظفًا واحدًا"); return; }
-    const errs = [...sig.errors];
+    const errs = [...sig.errors, ...unknownEmpErrors(filled, findEmp, staffLoading)];
     if (filled.some((r) => !hasName(r))) errs.push("Every filled row needs a staff name.");
     if (errs.length) { alert("⚠️ " + errs.join("\n")); return; }
 
@@ -252,9 +252,6 @@ export default function PersonalHygieneChecklistInput() {
       <datalist id="pos19-ph-empno">
         {allStaff.map((s) => <option key={`n-${s.empNo}`} value={s.empNo}>{s.name}</option>)}
       </datalist>
-      <datalist id="pos19-ph-name">
-        {allStaff.map((s) => <option key={`m-${s.empNo}`} value={s.name}>{s.empNo}</option>)}
-      </datalist>
 
       {/* Table */}
       <div style={{ overflowX:"auto" }}>
@@ -264,7 +261,7 @@ export default function PersonalHygieneChecklistInput() {
             <tr>
               <th style={thCell}>—</th>
               <th style={thCell}>Emp. No</th>
-              <th style={thCell}>Staff Name</th>
+              <th style={thCell}>Staff Name 🔒</th>
               {COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
               <th style={thCell}>Corrective Action</th>
             </tr>
@@ -279,7 +276,11 @@ export default function PersonalHygieneChecklistInput() {
                   <input type="text" inputMode="numeric" list="pos19-ph-empno" placeholder="No." value={r.empNo} onChange={(e) => updateRow(i, "empNo", e.target.value)} style={inputStyle} />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" list="pos19-ph-name" placeholder="Name" value={r.staffName} onChange={(e) => updateRow(i, "staffName", e.target.value)} style={inputStyle} />
+                  <LockedName
+                    name={r.staffName}
+                    empNo={r.empNo}
+                    unknown={!!String(r.empNo ?? "").trim() && !staffLoading && !findEmp(r.empNo)}
+                  />
                 </td>
                 {COLS.map((c) => (
                   <td style={tdCell} key={c.key}>

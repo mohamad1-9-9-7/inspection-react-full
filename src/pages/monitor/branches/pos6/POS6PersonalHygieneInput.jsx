@@ -15,8 +15,8 @@ import { GUIDANCE } from "./pos6Guidance";
 import {
   useStaffDirectory,
   normalizeEmpNo,
-  normalizeName,
 } from "../_shared/staffRegistry";
+import { useEmployeeFinder, unknownEmpErrors, LockedName } from "../_shared/hygieneEntryKit";
 
 /** The registry entry this sheet reads (staffRegistry.STAFF_FORMS). */
 const PH_FORM_KEY = "pos6_personal_hygiene";
@@ -75,8 +75,10 @@ export default function POS6PersonalHygieneInput() {
     loading: staffLoading,
     online: staffOnline,
     byNo,
-    byName,
   } = useStaffDirectory(PH_FORM_KEY);
+  // The name is locked: it comes only from the employee number.
+  const findEmp = useEmployeeFinder(byNo);
+  const unknownMsg = (errs) => errs.map((e) => (isAr ? e.replace(/^Row (\d+): employee number "(.*)" was not found in the Staff Directory\.$/, "السطر $1: الرقم الوظيفي \"$2\" غير موجود بدليل الموظفين.") : e));
 
   /* Seed the table from the directory once it arrives — but only while nothing
      has been typed, so a late server reply never wipes work in progress. */
@@ -89,26 +91,16 @@ export default function POS6PersonalHygieneInput() {
   }, [roster, staffLoading]);
 
   const empNoOptions = useMemo(() => allStaff.map((s) => s.empNo), [allStaff]);
-  const nameOptions = useMemo(() => allStaff.map((s) => s.name), [allStaff]);
 
   const handleChange = (rowIndex, field, value) =>
     setEntries((prev) => {
       const updated = [...prev];
       const row = updated[rowIndex] || makeRow();
 
-      // Either identifier fills the rest of the person straight from the register.
+      // The name is locked to the employee number (unknown number → no name).
       if (field === "empNo") {
-        const match = byNo.get(normalizeEmpNo(value));
-        updated[rowIndex] = match
-          ? { ...row, empNo: value, name: match.name, job: match.job || row.job }
-          : { ...row, empNo: value };
-        return updated;
-      }
-      if (field === "name") {
-        const match = byName.get(normalizeName(value));
-        updated[rowIndex] = match
-          ? { ...row, name: value, empNo: match.empNo, job: match.job || row.job }
-          : { ...row, name: value };
+        const match = findEmp(value);
+        updated[rowIndex] = { ...row, empNo: value, name: match ? match.name : "", job: match?.job || row.job };
         return updated;
       }
 
@@ -137,6 +129,8 @@ export default function POS6PersonalHygieneInput() {
 
     const cleaned = entries.filter((e) => !isBlankRow(e));
     if (cleaned.length === 0) return alert("⚠️ " + t("ph_req_name"));
+    const unknown = unknownMsg(unknownEmpErrors(entries, findEmp, staffLoading));
+    if (unknown.length) return alert("⚠️ " + unknown.join("\n"));
 
     save(TYPES.personalHygiene, {
       branch: BRANCH,
@@ -204,12 +198,6 @@ export default function POS6PersonalHygieneInput() {
           return <option key={n} value={n}>{rec?.name || ""}</option>;
         })}
       </datalist>
-      <datalist id="pos6-ph-name-options">
-        {nameOptions.map((n) => {
-          const rec = byName.get(normalizeName(n));
-          return <option key={n} value={n}>{rec?.empNo || ""}</option>;
-        })}
-      </datalist>
 
       <div className="ph-table-wrap ph-scroll-x">
         <table className="ph-table">
@@ -217,7 +205,7 @@ export default function POS6PersonalHygieneInput() {
             <tr>
               <th style={{ width: 44 }}>{t("ph_col_no")}</th>
               <th style={{ width: 96 }}>{t("ph_col_empno")}</th>
-              <th style={{ width: 190, textAlign: alignStart }}>{t("ph_col_name")}</th>
+              <th style={{ width: 190, textAlign: alignStart }}>{t("ph_col_name")} 🔒</th>
               <th style={{ width: 140, textAlign: alignStart }}>{t("ph_col_job")}</th>
               {COL_KEYS.map((k, i) => (
                 <th key={k} className="ph-col-compact" title={COLUMNS[i]}>{t(k)}</th>
@@ -240,13 +228,14 @@ export default function POS6PersonalHygieneInput() {
                     placeholder={t("ph_req_empno")}/>
                 </td>
                 <td>
-                  <input
-                    type="text"
-                    list="pos6-ph-name-options"
-                    value={entry.name}
-                    onChange={(e) => handleChange(i, "name", e.target.value)}
-                    className="ph-input"
-                    placeholder={t("ph_req_name")}/>
+                  <LockedName
+                    name={entry.name}
+                    empNo={entry.empNo}
+                    unknown={!!String(entry.empNo ?? "").trim() && !staffLoading && !findEmp(entry.empNo)}
+                    emptyText={isAr ? "من الرقم الوظيفي" : "From Emp. No."}
+                    notFoundText={isAr ? "غير موجود" : "Not found"}
+                    title={isAr ? "يُعبّأ تلقائياً من الرقم الوظيفي" : "Filled automatically from the employee number"}
+                  />
                 </td>
                 <td>
                   <input

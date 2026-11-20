@@ -10,9 +10,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useStaffDirectory, normalizeEmpNo, normalizeName } from "../_shared/staffRegistry";
+import { useStaffDirectory, normalizeEmpNo } from "../_shared/staffRegistry";
 import { useCheckedBy, CheckedByField } from "../pos19/_shared/pos19EntryKit";
-import { useDayReport, DayStatus, CycleCell, fillEmpty, FillAllButton, todayDubai } from "../_shared/hygieneEntryKit";
+import {
+  useDayReport, DayStatus, CycleCell, fillEmpty, FillAllButton, todayDubai,
+  useEmployeeFinder, nameForEmpNo, unknownEmpErrors, LockedName,
+} from "../_shared/hygieneEntryKit";
 
 const HYGIENE_COLUMNS = [
   "Nails",
@@ -77,7 +80,9 @@ export default function POS10PersonalHygiene() {
 
   /* ===== Staff directory: `roster` = people assigned to this sheet ===== */
   const directory = useStaffDirectory(FORM_KEY);
-  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo, byName } = directory;
+  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo } = directory;
+  // The name is locked: it comes only from the employee number.
+  const findEmp = useEmployeeFinder(byNo);
   const sig = useCheckedBy(directory);
   const checkedBySupervisor = sig.name;
 
@@ -128,13 +133,9 @@ export default function POS10PersonalHygiene() {
     setEntries((prev) => {
       const next = [...prev];
       const row = next[rowIndex] || makeRow();
-      // Either identifier fills the other straight from the directory.
+      // The name is locked to the employee number (unknown number → no name).
       if (field === "empNo") {
-        const m = byNo.get(normalizeEmpNo(value));
-        next[rowIndex] = m ? { ...row, empNo: value, name: m.name } : { ...row, empNo: value };
-      } else if (field === "name") {
-        const m = byName.get(normalizeName(value));
-        next[rowIndex] = m ? { ...row, name: value, empNo: m.empNo } : { ...row, name: value };
+        next[rowIndex] = { ...row, empNo: value, name: nameForEmpNo(findEmp, value) };
       } else {
         next[rowIndex] = { ...row, [field]: value };
       }
@@ -153,6 +154,7 @@ export default function POS10PersonalHygiene() {
 
     if (!date) errs.push("Please select a date.");
     sig.errors.forEach((e) => errs.push(e.replace(/^Checked by/, "Checked By (Branch Supervisor - PIC)")));
+    unknownEmpErrors(entries, findEmp, staffLoading).forEach((e) => errs.push(e));
     if (!norm(verifiedByQA)) errs.push("Verified by (QA) is required.");
 
     if (norm(checkedBySupervisor) && norm(verifiedByQA) && low(checkedBySupervisor) === low(verifiedByQA)) {
@@ -184,7 +186,7 @@ export default function POS10PersonalHygiene() {
     });
 
     return errs;
-  }, [date, sig.errors, checkedBySupervisor, verifiedByQA, entries]);
+  }, [date, sig.errors, checkedBySupervisor, verifiedByQA, entries, findEmp, staffLoading]);
 
   const handleSave = async () => {
     if (validationErrors.length) {
@@ -376,9 +378,6 @@ export default function POS10PersonalHygiene() {
       <datalist id="pos10-ph-empno">
         {allStaff.map((s) => <option key={`n-${s.empNo}`} value={s.empNo}>{s.name}</option>)}
       </datalist>
-      <datalist id="pos10-ph-name">
-        {allStaff.map((s) => <option key={`m-${s.empNo}`} value={s.name}>{s.empNo}</option>)}
-      </datalist>
 
       {/* Validation banner */}
       {validationErrors.length > 0 && (
@@ -406,7 +405,7 @@ export default function POS10PersonalHygiene() {
             <tr style={{ background: "#2980b9", color: "#fff" }}>
               <th style={{ ...thStyle, width: "50px" }}>S.No</th>
               <th style={{ ...thStyle, width: "90px" }}>Emp. No</th>
-              <th style={{ ...thStyle, width: "170px" }}>Employee Name</th>
+              <th style={{ ...thStyle, width: "170px" }}>Employee Name 🔒</th>
 
               {HYGIENE_COLUMNS.map((col, i) => (
                 <th key={i} style={{ ...thStyle, width: "110px" }}>
@@ -456,12 +455,10 @@ export default function POS10PersonalHygiene() {
                   </td>
 
                   <td style={tdStyle}>
-                    <input
-                      type="text"
-                      list="pos10-ph-name"
-                      value={entry.name}
-                      onChange={(e) => handleChange(i, "name", e.target.value)}
-                      style={{ ...inputStyle, overflow: "hidden", textOverflow: "ellipsis" }}
+                    <LockedName
+                      name={entry.name}
+                      empNo={entry.empNo}
+                      unknown={!!norm(entry.empNo) && !staffLoading && !findEmp(entry.empNo)}
                     />
                   </td>
 
