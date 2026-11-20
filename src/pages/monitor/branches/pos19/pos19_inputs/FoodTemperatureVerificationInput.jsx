@@ -1,9 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField, FoodItemInput,
+} from "../_shared/pos19EntryKit";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "pos19_food_temp_verification_draft_v1";
@@ -82,8 +84,7 @@ export default function FoodTemperatureVerificationInput() {
   const [reportDate, setReportDate] = useState(() => {
     const dft = loadDraft();
     if (dft.reportDate) return dft.reportDate;
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+    return todayDubai();
   });
   const [section, setSection]       = useState(() => loadDraft().section || "");
   const [rows, setRows]             = useState(() => {
@@ -91,19 +92,35 @@ export default function FoodTemperatureVerificationInput() {
     return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 2 }, () => emptyRow());
   });
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
-  const [checkedBy, setCheckedBy]   = useState(() => loadDraft().checkedBy || "");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+
+  const sig = usePos19CheckedBy();
+  /* The saved report always wins over the local draft. */
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: 2 }, () => emptyRow()));
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      sig.load({ ...p, checkedBy: p.checkedBy || list.find((r) => r.checkedBy)?.checkedBy || "" });
+    },
+    onBlank: () => {
+      setRows(Array.from({ length: 2 }, () => emptyRow()));
+      setSection(""); setVerifiedBy("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   /* ✅ Auto-save draft */
   useEffect(() => {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ reportDate, section, rows, verifiedBy, checkedBy, ts: Date.now() })
+        JSON.stringify({ reportDate, section, rows, verifiedBy, ts: Date.now() })
       );
     } catch {}
-  }, [reportDate, section, rows, verifiedBy, checkedBy]);
+  }, [reportDate, section, rows, verifiedBy]);
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -118,7 +135,6 @@ export default function FoodTemperatureVerificationInput() {
     <col key="actual"  style={{ width: 110 }} />,
     <col key="result"  style={{ width: 90  }} />,
     <col key="ca"      style={{ width: 200 }} />,
-    <col key="chk"     style={{ width: 130 }} />,
     <col key="del"     style={{ width: 50  }} />,
   ]), []);
 
@@ -139,7 +155,8 @@ export default function FoodTemperatureVerificationInput() {
 
   async function handleSave() {
     if (!reportDate) { alert("الرجاء تحديد التاريخ"); return; }
-    const entries = rows.filter(r => Object.values(r).some(v => String(v || "").trim() !== ""));
+    // processType / targetTemp always carry a default, so they don't make a row "filled"
+    const entries = rows.filter(r => ["time", "foodItem", "actualTemp", "result", "correctiveAction"].some(k => String(r[k] || "").trim() !== ""));
     if (!entries.length) { alert("أضف على الأقل صفًا واحدًا"); return; }
     for (const r of entries) {
       if (r.result === "Fail" && !r.correctiveAction.trim()) {
@@ -147,29 +164,24 @@ export default function FoodTemperatureVerificationInput() {
         return;
       }
     }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
     setSaving(true);
-    const payload = {
-      branch: BRANCH, formRef: FORM_REF, classification: "Official",
-      section, reportDate, month: monthText,
-      entries, checkedBy, verifiedBy,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Food Temperature ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      const ok = await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Food Temperature ${reportDate}`,
+        payload: {
+          branch: BRANCH, formRef: FORM_REF, classification: "Official",
+          section, reportDate, month: monthText,
+          // the viewer reads the checker per row
+          entries: entries.map((r) => ({ ...r, checkedBy: signed.checkedBy })),
+          ...signed, verifiedBy,
+        },
+      });
+      if (ok) { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
     } finally { setSaving(false); }
   }
 
@@ -195,10 +207,11 @@ export default function FoodTemperatureVerificationInput() {
       </div>
 
       {/* ── Action buttons ── */}
-      <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
+      <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end", alignItems:"center", flexWrap:"wrap" }}>
+        <DayStatus day={day} />
         <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={actionBtn(saving?"#6b7280":"#10b981")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "💾 Save"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={actionBtn(saving?"#6b7280":"#10b981")}>
+          {saving ? "Saving…" : day.editing ? "💾 Update" : "💾 Save"}
         </button>
       </div>
 
@@ -223,7 +236,6 @@ export default function FoodTemperatureVerificationInput() {
               <th style={thCell}>Actual{"\n"}Temp (°C)</th>
               <th style={thCell}>Result{"\n"}(Pass/Fail)</th>
               <th style={thCell}>Corrective{"\n"}Action</th>
-              <th style={thCell}>Checked{"\n"}by</th>
               <th style={thCell}>—</th>
             </tr>
           </thead>
@@ -238,7 +250,7 @@ export default function FoodTemperatureVerificationInput() {
                     <input type="time" value={r.time} onChange={e=>updateRow(i,"time",e.target.value)} style={inputStyle} />
                   </td>
                   <td style={{ ...tdCell, background:rowBg }}>
-                    <input type="text" value={r.foodItem} onChange={e=>updateRow(i,"foodItem",e.target.value)} style={inputStyle} placeholder="Food item" />
+                    <FoodItemInput value={r.foodItem} code={r.foodItemCode || ""} onChange={(name, code) => setRows(prev => prev.map((row, idx) => idx === i ? { ...row, foodItem: name, foodItemCode: code } : row))} style={inputStyle} placeholder="Food item" />
                   </td>
                   <td style={{ ...tdCell, background:rowBg }}>
                     <select value={r.processType} onChange={e=>updateRow(i,"processType",e.target.value)} style={inputStyle}>
@@ -267,9 +279,6 @@ export default function FoodTemperatureVerificationInput() {
                       style={{ ...inputStyle, background: isFail ? "#fff7ed" : C.white }}
                       placeholder={isFail ? "⚠️ Required" : "If any"} />
                   </td>
-                  <td style={{ ...tdCell, background:rowBg }}>
-                    <input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} />
-                  </td>
                   <td style={{ ...tdCell, background:rowBg, padding:4 }}>
                     <button onClick={()=>removeRow(i)} disabled={rows.length===1}
                       style={{ background:rows.length===1?"#e5e7eb":"#fee2e2", color:rows.length===1?C.gray400:C.red,
@@ -295,9 +304,9 @@ export default function FoodTemperatureVerificationInput() {
       </div>
 
       {/* ── Footer cards ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, padding:"14px 0 16px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, padding:"14px 0 16px", alignItems:"center" }}>
+        <CheckedByField sig={sig} />
         {[
-          ["👤 Checked by", checkedBy,  setCheckedBy],
           ["✅ Verified by", verifiedBy, setVerifiedBy],
         ].map(([label, val, setter]) => (
           <div key={label} style={{ background:C.tealBg, border:`1px solid #99f6e4`, borderRadius:8, padding:"9px 14px" }}>

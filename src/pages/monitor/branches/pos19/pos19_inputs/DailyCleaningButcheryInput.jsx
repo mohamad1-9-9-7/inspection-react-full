@@ -1,9 +1,12 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/DailyCleaningChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { useStaffDirectory } from "../../_shared/staffRegistry";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  useCheckedBy, CheckedByField, TickCell, tickAll, AllTickButton,
+} from "../_shared/pos19EntryKit";
 
 
 const TYPE = "pos19_daily_cleaning";
@@ -31,16 +34,8 @@ function emptyRow() {
 }
 
 export default function DailyCleaningChecklistInput() {
-  const [date, setDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-  });
+  const [date, setDate] = useState(todayDubai);
   const [rows, setRows]             = useState([emptyRow()]);
-  const [checkedBy, setCheckedBy]   = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
 
   const [saving, setSaving]         = useState(false);
@@ -49,7 +44,24 @@ export default function DailyCleaningChecklistInput() {
     catch { return ""; }
   });
 
-  const dateStatus = useReportDateStatus(TYPE, date);
+  const directory = useStaffDirectory();
+  const sig = useCheckedBy(directory);
+  const day = usePos19Day(TYPE, date, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : [emptyRow()]);
+      if (p.month) setMonthText(p.month);
+      setVerifiedBy(p.verifiedBy || "");
+      sig.load(p);
+    },
+    onBlank: () => {
+      setRows([emptyRow()]);
+      setVerifiedBy("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, date, { editing: day.editing });
+  const markAll = () => setRows((r) => tickAll(r, COLS.map((c) => c.key)));
 
   const gridStyle = useMemo(() => ({
     width: "100%",
@@ -117,6 +129,7 @@ export default function DailyCleaningChecklistInput() {
 
   async function handleSave() {
     if (!date) { alert("الرجاء تحديد التاريخ"); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
     setSaving(true);
     const entries = rows.map((row) => ({
       cleanerName:        row.cleanerName        || "",
@@ -134,32 +147,23 @@ export default function DailyCleaningChecklistInput() {
       kitchenHoodFilters: row.kitchenHoodFilters || "",
       correctiveAction:   row.correctiveAction  || "",
     }));
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      classification: "Official",
-      reportDate: date,
-      month: monthText || "",
-      entries,
-      checkedBy,
-      verifiedBy,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Daily Cleaning ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Daily Cleaning ${date}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          classification: "Official",
+          reportDate: date,
+          month: monthText || "",
+          entries,
+          ...sig.fields(),
+          verifiedBy,
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -183,6 +187,16 @@ export default function DailyCleaningChecklistInput() {
         <div style={{ fontSize:18, lineHeight:1 }}>ℹ️</div>
         <div><strong>Important (PRP):</strong> Clean and sanitize all areas, surfaces, and equipment at the <b>end of each shift</b> (or more frequently as needed). Apply sanitizer at the correct concentration with the required contact time. Mark each item ✓ when satisfactory or ✗ when needing corrective action.</div>
       </div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+        <AllTickButton onClick={markAll} />
+        <div style={{ flex:1 }} />
+        <DayStatus day={day} />
+      </div>
+
+      <datalist id="pos19-dc-staff">
+        {directory.staff.map((s) => <option key={s.empNo} value={s.name}>{s.empNo}</option>)}
+      </datalist>
 
       {/* Title + Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
@@ -210,6 +224,7 @@ export default function DailyCleaningChecklistInput() {
                   <input
                     type="text"
                     placeholder="Name"
+                    list="pos19-dc-staff"
                     value={row.cleanerName}
                     onChange={(e) => updateRow(index, "cleanerName", e.target.value)}
                     style={inputStyle}
@@ -225,16 +240,7 @@ export default function DailyCleaningChecklistInput() {
                 </td>
                 {COLS.map((c) => (
                   <td style={tdCell} key={c.key}>
-                    <select
-                      value={row[c.key]}
-                      onChange={(e) => updateRow(index, c.key, e.target.value)}
-                      style={inputStyle}
-                      title="√ = Satisfactory, ✗ = Needs Improvement"
-                    >
-                      <option value=""></option>
-                      <option value="√">√</option>
-                      <option value="✗">✗</option>
-                    </select>
+                    <TickCell value={row[c.key]} onChange={(v) => updateRow(index, c.key, v)} />
                   </td>
                 ))}
                 <td style={tdCell}>
@@ -293,17 +299,14 @@ export default function DailyCleaningChecklistInput() {
 
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Daily Cleaning"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Daily Cleaning" : "Save Daily Cleaning"}
         </button>
       </div>
 
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Checked by:</span>
-          <input value={checkedBy} onChange={(e)=>setCheckedBy(e.target.value)} style={inputStyle} />
-        </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
+        <CheckedByField sig={sig} />
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={inputStyle} />

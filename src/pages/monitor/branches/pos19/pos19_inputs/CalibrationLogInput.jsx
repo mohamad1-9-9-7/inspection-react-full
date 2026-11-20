@@ -4,7 +4,7 @@ import { newOutboxId, queuedMessage, saveReport } from "../../../../../utils/rep
 import ReportHeader from "../_shared/AlMawashiHeader";
 import { getReportByDate, reportId, invalidateReportDates } from "../_shared/reportsApi";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { usePos19CheckedBy, CheckedByField } from "../_shared/pos19EntryKit";
 
 /* This page's id for new records (see the save below). */
 const SHEET_ID = newOutboxId();
@@ -55,7 +55,9 @@ function autoStatus(reading, reference) {
 export default function CalibrationLogInput() {
   const [reportDate, setReportDate] = useState(today());
   const [entries, setEntries]       = useState([EMPTY_ROW(), EMPTY_ROW()]);
-  const [checkedBy, setCheckedBy]   = useState("");
+  const sig = usePos19CheckedBy();
+  const sigRef = useRef(sig);
+  sigRef.current = sig;
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving]                 = useState(false);
   const [existingReport, setExistingReport] = useState(null);
@@ -83,7 +85,7 @@ export default function CalibrationLogInput() {
   });
   const addRow = () => setEntries(p => [...p, EMPTY_ROW()]);
   const rmRow  = (i) => setEntries(p => p.length === 1 ? p : p.filter((_, idx) => idx !== i));
-  const resetToBlank = () => { setEntries([EMPTY_ROW(), EMPTY_ROW()]); setCheckedBy(""); setVerifiedBy(""); setExistingReport(null); };
+  const resetToBlank = () => { setEntries([EMPTY_ROW(), EMPTY_ROW()]); sigRef.current.reset(); setVerifiedBy(""); setExistingReport(null); };
 
   useEffect(() => {
     if (!reportDate) return;
@@ -96,7 +98,7 @@ export default function CalibrationLogInput() {
         if (latest) {
           const p = latest?.payload || {};
           setEntries(p.entries?.length ? p.entries.map(r => ({...EMPTY_ROW(), ...r})) : [EMPTY_ROW(), EMPTY_ROW()]);
-          setCheckedBy(p.checkedBy || "");
+          sigRef.current.load(p);
           setVerifiedBy(p.verifiedBy || "");
           setExistingReport({ id: reportId(latest), savedAt: p?.savedAt || 0 });
           setLoadMsg("📝 Loaded existing record — edit mode");
@@ -116,9 +118,10 @@ export default function CalibrationLogInput() {
   async function save() {
     const cleanEntries = entries.filter(rowHasReal);
     if (!cleanEntries.length) { alert("Please fill at least one row before saving."); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
     setSaving(true);
     try {
-      const payload = { branch: BRANCH, formRef: FORM_REF, reportDate, entries: cleanEntries, checkedBy, verifiedBy, savedAt: Date.now() };
+      const payload = { branch: BRANCH, formRef: FORM_REF, reportDate, entries: cleanEntries, ...sig.fields(), verifiedBy, savedAt: Date.now() };
       // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
       // Without a connection the report waits on this device and is sent
       // later (utils/reportOutbox.js).
@@ -249,7 +252,7 @@ export default function CalibrationLogInput() {
       </div>
 
       <div style={S.sig}>
-        <div style={S.sigBox}><label style={S.sigLabel}>Checked by</label><input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={S.sigInput} placeholder="Name / Signature"/></div>
+        <div><CheckedByField sig={sig} /></div>
         <div style={S.sigBox}><label style={S.sigLabel}>Verified by</label><input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} style={S.sigInput} placeholder="Name / Signature"/></div>
       </div>
     </div>

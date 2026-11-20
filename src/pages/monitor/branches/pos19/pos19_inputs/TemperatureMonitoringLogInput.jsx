@@ -6,7 +6,7 @@ import { getReportRowByDate, payloadOf } from "../../_shared/reportApi";
 import { loadDay, quickIdsOf, saveBranchDay, stripSavedRows, stripSavedValue, isSheetFiled } from "../../_shared/branchTempDay";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { todayDubai, usePos19CheckedBy, CheckedByField } from "../_shared/pos19EntryKit";
 import CalibrationExpiryBadge, { useCalibrations } from "../../../../haccp and iso/Calibration/CalibrationExpiryBadge";
 import { CALIB_LOGS } from "../../../../haccp and iso/Calibration/calibrationLink";
 
@@ -79,8 +79,7 @@ export default function TemperatureMonitoringLogInput() {
   const [reportDate, setReportDate] = useState(() => {
     const dft = loadDraft();
     if (dft.reportDate) return dft.reportDate;
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+    return todayDubai();
   });
   const [section, setSection]       = useState(() => loadDraft().section || "");
   const [rows, setRows]             = useState(() => {
@@ -88,7 +87,10 @@ export default function TemperatureMonitoringLogInput() {
     return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 5 }, () => emptyRow());
   });
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
-  const [checkedBy, setCheckedBy]   = useState(() => loadDraft().checkedBy || "");
+  // Checked by = employee number → name from the Staff Directory (FTR 1 pattern)
+  const sig = usePos19CheckedBy();
+  const sigRef = useRef(sig);
+  sigRef.current = sig;
   const [revDate, setRevDate]       = useState(() => loadDraft().revDate || "");
   const [revNo, setRevNo]           = useState(() => loadDraft().revNo || "");
   const [saving, setSaving]         = useState(false);
@@ -120,7 +122,7 @@ export default function TemperatureMonitoringLogInput() {
     if (prevDay) {
       setRows((prev) => stripSavedRows("pos19", prev, prevDay));
       setSection((prev) => stripSavedValue(prev, prevDay.section));
-      setCheckedBy((prev) => stripSavedValue(prev, prevDay.checkedBy));
+      sigRef.current.reset();
       setVerifiedBy((prev) => stripSavedValue(prev, prevDay.verifiedBy));
     }
     if (!reportDate) return undefined;
@@ -135,7 +137,7 @@ export default function TemperatureMonitoringLogInput() {
           return next.length ? next.map((r) => ({ ...emptyRow(), ...r })) : prev;
         });
         setSection((prev) => prev || p.section || "");
-        setCheckedBy((prev) => prev || p.checkedBy || "");
+        if (!String(sigRef.current.empNo || "").trim()) sigRef.current.load(p);
         setVerifiedBy((prev) => prev || p.verifiedBy || "");
         setEditingDay(true);
         setPhoneOnly(!isSheetFiled(p));
@@ -154,14 +156,13 @@ export default function TemperatureMonitoringLogInput() {
           section: stripSavedValue(section, savedRef.current?.section),
           rows: stripSavedRows("pos19", rows, savedRef.current),
           verifiedBy: stripSavedValue(verifiedBy, savedRef.current?.verifiedBy),
-          checkedBy: stripSavedValue(checkedBy, savedRef.current?.checkedBy),
           revDate,
           revNo,
           ts: Date.now(),
         })
       );
     } catch {}
-  }, [reportDate, section, rows, verifiedBy, checkedBy, revDate, revNo]);
+  }, [reportDate, section, rows, verifiedBy, revDate, revNo]);
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -205,7 +206,6 @@ export default function TemperatureMonitoringLogInput() {
       arr.push(<col key={`r${i}temp`} style={{ width: 90 }} />);
     });
     arr.push(<col key="ca"  style={{ width: 200 }} />);
-    arr.push(<col key="chk" style={{ width: 120 }} />);
     arr.push(<col key="del" style={{ width: 70 }} />);
     return arr;
   }, []);
@@ -223,10 +223,20 @@ export default function TemperatureMonitoringLogInput() {
       }
     }
 
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
+
     setSaving(true);
     const payload = {
       branch: BRANCH, formRef: FORM_REF, classification: "Official",
-      section, reportDate, entries, checkedBy, verifiedBy, revDate, revNo,
+      section, reportDate,
+      // rows a phone reading signed keep their own name; the rest follow the sheet's checker
+      entries: entries.map((r) => {
+        const own = String(r.checkedBy || "").trim();
+        const prevSheet = String(savedRef.current?.checkedBy || "").trim();
+        return { ...r, checkedBy: own && own !== prevSheet ? own : signed.checkedBy };
+      }),
+      ...signed, verifiedBy, revDate, revNo,
       savedAt: Date.now(),
     };
     try {
@@ -288,7 +298,6 @@ export default function TemperatureMonitoringLogInput() {
               <th style={thCell} rowSpan={2}>Target{"\n"}Temp</th>
               {READINGS.map(r => <th key={r.key} style={thCell} colSpan={2}>{r.label}</th>)}
               <th style={thCell} rowSpan={2}>Corrective{"\n"}Action</th>
-              <th style={thCell} rowSpan={2}>Checked{"\n"}by</th>
               <th style={thCell} rowSpan={2}>—</th>
             </tr>
             <tr>
@@ -336,7 +345,6 @@ export default function TemperatureMonitoringLogInput() {
                   );
                 })}
                 <td style={tdCell}><input type="text" value={r.correctiveAction} onChange={e=>updateRow(i,"correctiveAction",e.target.value)} style={inputStyle} placeholder="Action (if any)" /></td>
-                <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
               </tr>
             ))}
@@ -354,11 +362,8 @@ export default function TemperatureMonitoringLogInput() {
       </div>
 
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Checked by:</span>
-          <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={inputStyle} />
-        </div>
+      <div style={{ marginTop:16 }}><CheckedByField sig={sig} /></div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginTop:12, alignItems:"center", fontSize:12 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} style={inputStyle} />

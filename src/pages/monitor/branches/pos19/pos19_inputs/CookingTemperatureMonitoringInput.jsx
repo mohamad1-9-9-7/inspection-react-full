@@ -1,9 +1,8 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CookingTemperatureMonitoringInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { usePos19Day, savePos19Report, DayStatus, todayDubai, FoodItemInput } from "../_shared/pos19EntryKit";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "pos19_cooking_temp_draft_v1";
@@ -53,8 +52,7 @@ export default function CookingTemperatureMonitoringInput() {
   const [reportDate, setReportDate] = useState(() => {
     const dft = loadDraft();
     if (dft.reportDate) return dft.reportDate;
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+    return todayDubai();
   });
   const [area, setArea]             = useState(() => loadDraft().area || "Central Kitchen");
   const [issuedBy, setIssuedBy]     = useState(() => loadDraft().issuedBy || "MOHAMAD ABDULLAH");
@@ -68,7 +66,26 @@ export default function CookingTemperatureMonitoringInput() {
   });
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+  /* The saved report always wins over the local draft: it is applied after
+     the draft has seeded the screen. */
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: 5 }, () => emptyRow()));
+      if (p.area) setArea(p.area);
+      if (p.issuedBy) setIssuedBy(p.issuedBy);
+      if (p.controllingOfficer) setControllingOfficer(p.controllingOfficer);
+      if (p.approvedBy) setApprovedBy(p.approvedBy);
+      if (p.issueDate) setIssueDate(p.issueDate);
+      if (p.revisionNo) setRevisionNo(p.revisionNo);
+      setVerifiedBy(p.verifiedBy || "");
+    },
+    onBlank: () => {
+      setRows(Array.from({ length: 5 }, () => emptyRow()));
+      setVerifiedBy("");
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   /* ✅ Auto-save draft */
   useEffect(() => {
@@ -128,30 +145,21 @@ export default function CookingTemperatureMonitoringInput() {
     );
     if (!entries.length) { alert("أضف على الأقل صفًا واحدًا"); return; }
     setSaving(true);
-    const payload = {
-      branch: BRANCH, formRef: FORM_REF, classification: "Official",
-      documentTitle: "Cooking Record",
-      area, issuedBy, controllingOfficer, approvedBy,
-      issueDate, revisionNo,
-      reportDate, entries, verifiedBy,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Cooking Temperature ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      const ok = await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Cooking Temperature ${reportDate}`,
+        payload: {
+          branch: BRANCH, formRef: FORM_REF, classification: "Official",
+          documentTitle: "Cooking Record",
+          area, issuedBy, controllingOfficer, approvedBy,
+          issueDate, revisionNo,
+          reportDate, entries, verifiedBy,
+        },
+      });
+      if (ok) { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
     } finally { setSaving(false); }
   }
 
@@ -213,7 +221,13 @@ export default function CookingTemperatureMonitoringInput() {
                   return (
                     <React.Fragment key={s.key}>
                       <td style={tdCell}>
-                        <input type="text" value={r[`${s.key}_name`]} onChange={e=>updateRow(i,`${s.key}_name`,e.target.value)} style={inputStyle} placeholder="Product" />
+                        <FoodItemInput
+                          value={r[`${s.key}_name`]}
+                          code={r[`${s.key}_nameCode`] || ""}
+                          onChange={(name, code) => setRows(prev => prev.map((row, idx) => idx === i ? { ...row, [`${s.key}_name`]: name, [`${s.key}_nameCode`]: code } : row))}
+                          style={inputStyle}
+                          placeholder="Product"
+                        />
                       </td>
                       <td style={tdCell}>
                         <input type="time" value={r[`${s.key}_time`]} onChange={e=>updateRow(i,`${s.key}_time`,e.target.value)} style={inputStyle} />
@@ -242,9 +256,10 @@ export default function CookingTemperatureMonitoringInput() {
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Cooking Record"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Cooking Record" : "Save Cooking Record"}
         </button>
+        <DayStatus day={day} />
       </div>
 
       {/* Notes */}

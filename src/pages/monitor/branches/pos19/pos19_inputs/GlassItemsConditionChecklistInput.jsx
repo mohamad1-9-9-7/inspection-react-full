@@ -1,10 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/GlassItemsConditionChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
-
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField, TickCell, tickAll, AllTickButton,
+} from "../_shared/pos19EntryKit";
 
 const TYPE    = "pos19_glass_items_condition";
 const BRANCH  = "POS 19";
@@ -15,6 +16,7 @@ const LEGEND_COLS = [
   { key: "noBreakage",   label: "No signs of glass breakage" },
   { key: "cleanDry",     label: "Visibly clean and dry" },
 ];
+const TICK_KEYS = LEGEND_COLS.map((c) => c.key);
 
 function emptyRow() {
   return {
@@ -27,25 +29,38 @@ function emptyRow() {
     checkedBy: "",
   };
 }
+const blankRows = () => Array.from({ length: 5 }, () => emptyRow());
+const hasItem = (r) => !!String(r.glassItem || "").trim();
 
 export default function GlassItemsConditionChecklistInput() {
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-  });
-
-  const [rows, setRows]                   = useState(() => Array.from({ length: 5 }, () => emptyRow()));
+  const [reportDate, setReportDate]       = useState(todayDubai);
+  const [rows, setRows]                   = useState(blankRows);
   const [headerSection, setHeaderSection] = useState("");
   const [classification]                  = useState("Official");
   const [revDate, setRevDate]             = useState("");
   const [revNo, setRevNo]                 = useState("");
   const [verifiedBy, setVerifiedBy]       = useState("");
   const [saving, setSaving]               = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+
+  const sig = usePos19CheckedBy();
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : blankRows());
+      setHeaderSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      setRevDate(p.revDate || "");
+      setRevNo(p.revNo || "");
+      // older sheets kept the checker on each row
+      sig.load({ ...p, checkedBy: p.checkedBy || list.find((r) => r.checkedBy)?.checkedBy || "" });
+    },
+    onBlank: () => {
+      setRows(blankRows());
+      setHeaderSection(""); setVerifiedBy(""); setRevDate(""); setRevNo("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -70,7 +85,7 @@ export default function GlassItemsConditionChecklistInput() {
   };
   const tdCell = {
     border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    padding: "4px 4px",
     textAlign: "center",
     verticalAlign: "middle",
   };
@@ -95,9 +110,9 @@ export default function GlassItemsConditionChecklistInput() {
   const colDefs = useMemo(() => ([
     <col key="glass"   style={{ width: 210 }} />,
     <col key="section" style={{ width: 160 }} />,
-    ...LEGEND_COLS.map((_, i) => <col key={`lg${i}`} style={{ width: 160 }} />),
+    ...LEGEND_COLS.map((_, i) => <col key={`lg${i}`} style={{ width: 150 }} />),
     <col key="ca"      style={{ width: 220 }} />,
-    <col key="checked" style={{ width: 140 }} />,
+    <col key="del"     style={{ width: 44 }} />,
   ]), []);
 
   function updateRow(idx, key, val) {
@@ -107,42 +122,40 @@ export default function GlassItemsConditionChecklistInput() {
       return next;
     });
   }
+  const addRow = () => setRows((r) => [...r, emptyRow()]);
+  const removeRow = (idx) => setRows((r) => (r.length > 1 ? r.filter((_, i) => i !== idx) : r));
+  const markAll = () => setRows((r) => tickAll(r, TICK_KEYS, hasItem));
 
   async function handleSave() {
     const entries = rows.filter((r) =>
-      Object.values(r).some((v) => String(v || "").trim() !== "")
+      Object.entries(r).some(([k, v]) => k !== "checkedBy" && String(v || "").trim() !== "")
     );
     if (entries.length === 0) { alert("لا يوجد بيانات للحفظ."); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
 
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      classification,
-      reportDate,
-      month: monthText,
-      section: headerSection,
-      entries,
-      verifiedBy,
-      revDate,
-      revNo,
-      savedAt: Date.now(),
-    };
+    setSaving(true);
     try {
-      setSaving(true);
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Glass Items ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Glass Items ${reportDate}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          classification,
+          reportDate,
+          month: monthText,
+          section: headerSection,
+          // the viewer reads the checker per row
+          entries: entries.map((r) => ({ ...r, checkedBy: signed.checkedBy })),
+          ...signed,
+          verifiedBy,
+          revDate,
+          revNo,
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -167,10 +180,18 @@ export default function GlassItemsConditionChecklistInput() {
         <div><strong>Critical (Foreign-Object Hazard):</strong> Any cracked, chipped, or broken glass / hard-plastic item in the food area must be reported <b>immediately</b>. Quarantine the surrounding area, inspect any exposed food, and replace the damaged item <b>before resuming work</b>. Document the incident in the corrective-action column.</div>
       </div>
 
+      {/* Toolbar */}
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+        <AllTickButton onClick={markAll} />
+        <button type="button" onClick={addRow} style={btnStyle("#10b981")}>+ Add Row</button>
+        <div style={{ flex:1 }} />
+        <DayStatus day={day} />
+      </div>
+
       {/* Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>
-          LEGEND: (√) – Satisfactory & (✗) – Needs Improvement
+          LEGEND: (√) – Satisfactory & (✗) – Needs Improvement · tap a cell to change it
         </div>
       </div>
 
@@ -184,7 +205,7 @@ export default function GlassItemsConditionChecklistInput() {
               <th style={thCell}>Section</th>
               {LEGEND_COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
               <th style={thCell}>Corrective Action{"\n"}(if any)</th>
-              <th style={thCell}>Checked by</th>
+              <th style={thCell}>—</th>
             </tr>
           </thead>
           <tbody>
@@ -198,18 +219,14 @@ export default function GlassItemsConditionChecklistInput() {
                 </td>
                 {LEGEND_COLS.map((c) => (
                   <td style={tdCell} key={c.key}>
-                    <select value={r[c.key]} onChange={(e)=>updateRow(idx, c.key, e.target.value)} style={inputStyle} title="√ = Satisfactory, ✗ = Needs Improvement">
-                      <option value=""></option>
-                      <option value="√">√</option>
-                      <option value="✗">✗</option>
-                    </select>
+                    <TickCell value={r[c.key]} onChange={(v)=>updateRow(idx, c.key, v)} />
                   </td>
                 ))}
                 <td style={tdCell}>
                   <input type="text" value={r.correctiveAction} onChange={(e)=>updateRow(idx, "correctiveAction", e.target.value)} style={inputStyle} placeholder="Action (if any)" />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.checkedBy} onChange={(e)=>updateRow(idx, "checkedBy", e.target.value)} style={inputStyle} placeholder="Name" />
+                  <button type="button" onClick={() => removeRow(idx)} title="Remove row" style={{ width:30, height:28, border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:6, fontWeight:800, cursor:"pointer" }}>×</button>
                 </td>
               </tr>
             ))}
@@ -217,15 +234,9 @@ export default function GlassItemsConditionChecklistInput() {
         </table>
       </div>
 
-      {/* Save */}
-      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Glass Items Checklist"}
-        </button>
-      </div>
-
       {/* Footer */}
       <div style={{ marginTop:16 }}>
+        <div style={{ marginBottom:10 }}><CheckedByField sig={sig} /></div>
         <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
           <strong>Verified by:</strong>
           <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={{ flex:"0 1 360px", border:"none", borderBottom:"2px solid #1f3b70", padding:"4px 6px", outline:"none", fontSize:12, color:"#0b1f4d" }} />
@@ -243,6 +254,13 @@ export default function GlassItemsConditionChecklistInput() {
             <input value={revNo} onChange={(e)=>setRevNo(e.target.value)} style={inputStyle} />
           </div>
         </div>
+      </div>
+
+      {/* Save */}
+      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Glass Items Checklist" : "Save Glass Items Checklist"}
+        </button>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import API_BASE from "../../../../../config/api";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import { BilingualGuidance } from "../_shared/ReportHeader";
 import { ItemCodeInput, ItemNameInput } from "../../_shared/CodedProductField";
+import { usePos19CheckedBy, CheckedByField } from "../_shared/pos19EntryKit";
 
 /* ===== ثابت التقرير ===== */
 const TYPE   = "pos19_traceability_log";
@@ -434,7 +435,8 @@ export default function TraceabilityLogInput() {
 
   /* ===== بيانات الدفعات ===== */
   const [batches, setBatches] = useState(() => [emptyBatch()]);
-  const [checkedBy, setCheckedBy] = useState("");
+  // Checked by = employee number → name from the Staff Directory (FTR 1 pattern)
+  const sig = usePos19CheckedBy();
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -714,8 +716,8 @@ export default function TraceabilityLogInput() {
       );
       return;
     }
-    if (!checkedBy.trim()) {
-      alert("حقل Checked by إلزامي.");
+    if (sig.errors.length) {
+      alert("⚠️ " + sig.errors.join("\n"));
       return;
     }
     if (!verifiedBy.trim()) {
@@ -819,7 +821,7 @@ export default function TraceabilityLogInput() {
       section: section.trim(),
       reportDate: date,
       entries: cleaned,
-      checkedBy: checkedBy.trim(),
+      ...sig.fields(),
       verifiedBy: verifiedBy.trim(),
       savedAt: Date.now(),
       uiMode: "single-row-batch",
@@ -1072,24 +1074,7 @@ export default function TraceabilityLogInput() {
           flexWrap: "wrap",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            minWidth: 260,
-          }}
-        >
-          <span style={{ fontSize: 12 }}>Checked by / تم الفحص بواسطة:</span>
-          <input
-            value={checkedBy}
-            onChange={(e) =>
-              setCheckedBy(e.target.value)
-            }
-            style={inputStyle}
-            placeholder="Operator / Preparer"
-          />
-        </div>
+        <CheckedByField sig={sig} label="Checked by / تم الفحص بواسطة:" />
         <div
           style={{
             display: "flex",

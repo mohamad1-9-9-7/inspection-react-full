@@ -1,9 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/OilQualityMonitoringInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField,
+} from "../_shared/pos19EntryKit";
 
 
 const TYPE     = "pos19_oil_quality_monitoring";
@@ -33,32 +35,45 @@ function btnStyle(bg) {
   };
 }
 
-export default function OilQualityMonitoringInput() {
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-  });
+const EMPTY = { result: "", action: "" };
 
-  const [row, setRow]               = useState({ result: "", action: "", checkedBy: "" });
+export default function OilQualityMonitoringInput() {
+  const [reportDate, setReportDate] = useState(todayDubai);
+
+  const [row, setRow]               = useState(EMPTY);
   const [section, setSection]       = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [revDate, setRevDate]       = useState("");
   const [revNo, setRevNo]           = useState("");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+
+  const sig = usePos19CheckedBy();
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const e = (Array.isArray(p.entries) && p.entries[0]) || {};
+      setRow({ result: e.result || "", action: e.action || "" });
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      setRevDate(p.revDate || "");
+      setRevNo(p.revNo || "");
+      // older sheets kept the checker on the row
+      sig.load({ ...p, checkedBy: p.checkedBy || e.checkedBy || "" });
+    },
+    onBlank: () => {
+      setRow(EMPTY);
+      setSection(""); setVerifiedBy(""); setRevDate(""); setRevNo("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const gridStyle = useMemo(() => ({
     width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12,
   }), []);
 
   const colDefs = useMemo(() => ([
-    <col key="res"  style={{ width: 420 }} />,
-    <col key="act"  style={{ width: 360 }} />,
-    <col key="chk"  style={{ width: 180 }} />,
+    <col key="res"  style={{ width: 480 }} />,
+    <col key="act"  style={{ width: 420 }} />,
   ]), []);
 
   function updateRow(key, val) {
@@ -67,38 +82,33 @@ export default function OilQualityMonitoringInput() {
 
   async function handleSave() {
     if (!reportDate) { alert("الرجاء تحديد التاريخ أعلى الصفحة"); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
     setSaving(true);
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      classification: "Official",
-      section: section || "",
-      reportDate,
-      entries: [{
-        result:    row.result    || "",
-        action:    row.action    || "",
-        checkedBy: row.checkedBy || "",
-      }],
-      verifiedBy,
-      revDate,
-      revNo,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Oil Quality ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Oil Quality ${reportDate}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          classification: "Official",
+          section: section || "",
+          reportDate,
+          entries: [{
+            result:    row.result || "",
+            action:    row.action || "",
+            // the viewer reads the checker on the row
+            checkedBy: signed.checkedBy,
+          }],
+          ...signed,
+          verifiedBy,
+          revDate,
+          revNo,
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -134,33 +144,24 @@ export default function OilQualityMonitoringInput() {
             <tr>
               <th style={thCell}>Evaluation Results</th>
               <th style={thCell}>Corrective Action</th>
-              <th style={thCell}>Checked by</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td style={tdCell}><input type="text" placeholder="Evaluation results" value={row.result} onChange={(e)=>updateRow("result", e.target.value)} style={inputStyle} /></td>
               <td style={tdCell}><input type="text" placeholder="Corrective action" value={row.action} onChange={(e)=>updateRow("action", e.target.value)} style={inputStyle} /></td>
-              <td style={tdCell}><input type="text" placeholder="Checked by" value={row.checkedBy} onChange={(e)=>updateRow("checkedBy", e.target.value)} style={inputStyle} /></td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      {/* Controls */}
-      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Oil Quality"}
-        </button>
-      </div>
-
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
+      <div style={{ marginTop:16 }}><CheckedByField sig={sig} /></div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginTop:12, alignItems:"center", fontSize:12 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={inputStyle} />
         </div>
-        <div />
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Rev. Date:</span>
           <input value={revDate} onChange={(e)=>setRevDate(e.target.value)} style={inputStyle} placeholder="YYYY-MM-DD" />
@@ -169,6 +170,14 @@ export default function OilQualityMonitoringInput() {
           <span>Rev. No:</span>
           <input value={revNo} onChange={(e)=>setRevNo(e.target.value)} style={inputStyle} />
         </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap", alignItems:"center" }}>
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Oil Quality" : "Save Oil Quality"}
+        </button>
+        <DayStatus day={day} />
       </div>
     </div>
   );

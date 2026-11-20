@@ -1,10 +1,20 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/PersonalHygieneChecklistInput.jsx
-import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
+// Staff rows come from Settings → Staff Directory (people assigned to the
+// "POS 19 · Personal Hygiene" form), ticks are one tap each, "All √" fills the
+// sheet, and the day's saved report re-opens here for editing.
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
-
+import {
+  useStaffDirectory,
+  normalizeEmpNo,
+  normalizeName,
+} from "../../_shared/staffRegistry";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  useCheckedBy, CheckedByField, TickCell, tickAll, AllTickButton,
+  POS19_HYGIENE_FORM_KEY,
+} from "../_shared/pos19EntryKit";
 
 const TYPE     = "pos19_personal_hygiene";
 const BRANCH   = "POS 19";
@@ -20,12 +30,32 @@ const COLS = [
   { key: "noJewelry",       label: "No\nJewelry" },
   { key: "noIllness",       label: "No Illness,\nNo Septic\nCuts, No Skin\nInfection" },
 ];
+const COL_KEYS = COLS.map((c) => c.key);
 
-function emptyRow() {
-  const base = { staffName: "", correctiveAction: "" };
-  COLS.forEach((c) => (base[c.key] = ""));
+function emptyRow(name = "", empNo = "") {
+  const base = { staffName: name, empNo, correctiveAction: "" };
+  COL_KEYS.forEach((k) => (base[k] = ""));
   return base;
 }
+const rowFromStaff = (s) => emptyRow(s?.name || "", s?.empNo || "");
+const hasName = (r) => !!String(r?.staffName || "").trim();
+const isBlankRow = (r) =>
+  !hasName(r) && !String(r?.empNo || "").trim() && !String(r?.correctiveAction || "").trim() &&
+  COL_KEYS.every((k) => !String(r?.[k] || "").trim());
+
+/* saved entry ⇄ screen row */
+const fromEntry = (e = {}) => {
+  const r = emptyRow(e.name || e.staffName || "", e.empNo || "");
+  COL_KEYS.forEach((k) => (r[k] = e[k] || ""));
+  r.correctiveAction = e.remarks || e.correctiveAction || "";
+  return r;
+};
+const toEntry = (r) => {
+  const e = { name: r.staffName || "", empNo: r.empNo || "" };
+  COL_KEYS.forEach((k) => (e[k] = r[k] || ""));
+  e.remarks = r.correctiveAction || "";
+  return e;
+};
 
 function btnStyle(bg) {
   return {
@@ -36,18 +66,54 @@ function btnStyle(bg) {
 }
 
 export default function PersonalHygieneChecklistInput() {
-  const [date, setDate] = useState(() => {
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-  });
+  const [date, setDate]           = useState(todayDubai);
   const [section, setSection]     = useState("");
   const [rows, setRows]           = useState(() => Array.from({ length: 5 }, () => emptyRow()));
-  const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [revDate, setRevDate]     = useState("");
   const [revNo, setRevNo]         = useState("");
   const [saving, setSaving]       = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, date);
+
+  const directory = useStaffDirectory(POS19_HYGIENE_FORM_KEY);
+  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo, byName } = directory;
+  const sig = useCheckedBy(directory);
+
+  const blankSheet = () => (roster.length ? roster.map(rowFromStaff) : Array.from({ length: 5 }, () => emptyRow()));
+
+  const day = usePos19Day(TYPE, date, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map(fromEntry) : [];
+      setRows(list.length ? list : blankSheet());
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      setRevDate(p.revDate || "");
+      setRevNo(p.revNo || "");
+      sig.load(p);
+    },
+    onBlank: () => {
+      setRows(blankSheet());
+      setSection(""); setVerifiedBy(""); setRevDate(""); setRevNo("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, date, { editing: day.editing });
+
+  /* Seed the sheet from the directory once — only while nothing is typed and
+     no saved report was opened, so a late reply never wipes work. */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading || day.loading) return;
+    seededRef.current = true;
+    if (!roster.length || day.editing) return;
+    setRows((prev) => (prev.every(isBlankRow) ? roster.map(rowFromStaff) : prev));
+  }, [roster, staffLoading, day.loading, day.editing]);
+
+  const loadRoster = () => {
+    if (!roster.length) return;
+    const typed = rows.some((r) => !isBlankRow(r) && !roster.some((s) => normalizeEmpNo(s.empNo) === normalizeEmpNo(r.empNo)));
+    if (typed && !window.confirm("Replace the rows with the staff list from the directory?")) return;
+    setRows(roster.map(rowFromStaff));
+  };
 
   const gridStyle = useMemo(() => ({
     width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12,
@@ -59,7 +125,7 @@ export default function PersonalHygieneChecklistInput() {
     fontWeight: 700, background: "#f5f8ff", color: "#0b1f4d",
   };
   const tdCell = {
-    border: "1px solid #1f3b70", padding: "6px 4px",
+    border: "1px solid #1f3b70", padding: "4px 4px",
     textAlign: "center", verticalAlign: "middle",
   };
   const inputStyle = {
@@ -69,79 +135,71 @@ export default function PersonalHygieneChecklistInput() {
     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
   };
 
-  const legendBox = (
-    <div style={{ fontSize: 11, textAlign: "center", padding: "6px 0", color: "#0b1f4d" }}>
-      <strong>(LEGEND: (√) – For Satisfactory & (✗) – For Needs Improvement)</strong>
-    </div>
-  );
-
   function updateRow(i, key, val) {
     setRows((prev) => {
       const next = [...prev];
-      next[i] = { ...next[i], [key]: val };
+      const row = next[i] || emptyRow();
+      // Either identifier fills the other straight from the directory.
+      if (key === "empNo") {
+        const m = byNo.get(normalizeEmpNo(val));
+        next[i] = m ? { ...row, empNo: val, staffName: m.name } : { ...row, empNo: val };
+      } else if (key === "staffName") {
+        const m = byName.get(normalizeName(val));
+        next[i] = m ? { ...row, staffName: val, empNo: m.empNo } : { ...row, staffName: val };
+      } else {
+        next[i] = { ...row, [key]: val };
+      }
       return next;
     });
   }
   function addRow()    { setRows((r) => [...r, emptyRow()]); }
-  function deleteRow(i){ setRows((r) => r.filter((_, idx) => idx !== i)); }
+  function deleteRow(i){ setRows((r) => (r.length > 1 ? r.filter((_, idx) => idx !== i) : r)); }
+  const markAll = () => setRows((r) => tickAll(r, COL_KEYS, hasName));
 
   const colDefs = useMemo(() => {
     const arr = [
-      <col key="del"  style={{ width: 44 }} />,
-      <col key="name" style={{ width: 170 }} />,
+      <col key="del"   style={{ width: 44 }} />,
+      <col key="empno" style={{ width: 90 }} />,
+      <col key="name"  style={{ width: 180 }} />,
     ];
-    COLS.forEach((_, i) => arr.push(<col key={`c${i}`} style={{ width: 110 }} />));
+    COLS.forEach((_, i) => arr.push(<col key={`c${i}`} style={{ width: 96 }} />));
     arr.push(<col key="action" style={{ width: 190 }} />);
     return arr;
   }, []);
 
   async function handleSave() {
-    if (!date)         { alert("الرجاء تحديد التاريخ"); return; }
-    if (!rows.length)  { alert("أضف على الأقل صفًا واحدًا"); return; }
+    if (!date) { alert("الرجاء تحديد التاريخ"); return; }
+    const filled = rows.filter((r) => !isBlankRow(r));
+    if (!filled.length) { alert("أضف على الأقل موظفًا واحدًا"); return; }
+    const errs = [...sig.errors];
+    if (filled.some((r) => !hasName(r))) errs.push("Every filled row needs a staff name.");
+    if (errs.length) { alert("⚠️ " + errs.join("\n")); return; }
+
     setSaving(true);
-    const entries = rows.map(r => ({
-      name:           r.staffName      || "",
-      cleanUniform:   r.cleanUniform   || "",
-      cleanShoes:     r.cleanShoes     || "",
-      handwashGloves: r.handwashGloves || "",
-      hairCovered:    r.hairCovered    || "",
-      fingernails:    r.fingernails    || "",
-      mustacheShaved: r.mustacheShaved || "",
-      noJewelry:      r.noJewelry      || "",
-      noIllness:      r.noIllness      || "",
-      remarks:        r.correctiveAction || "",
-    }));
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      reportDate: date,
-      entries,
-      checkedBy,
-      verifiedBy,
-      revDate,
-      revNo,
-      section,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Personal Hygiene ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Personal Hygiene ${date}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          reportDate: date,
+          entries: filled.map(toEntry),
+          ...sig.fields(),
+          verifiedBy,
+          revDate,
+          revNo,
+          section,
+        },
+      });
     } finally {
       setSaving(false);
     }
   }
+
+  const showRosterHint = !staffLoading && roster.length === 0;
 
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d" }}>
@@ -162,11 +220,41 @@ export default function PersonalHygieneChecklistInput() {
         <div><strong>Important (PRP):</strong> All food handlers must <b>wash hands</b> before food handling, after toilet use, after touching face/hair, and between tasks. <b>No jewelry, exposed cuts/wounds, or work while ill</b> (vomiting, diarrhea, fever). Hair must be fully covered, nails trimmed and unpainted, and clean uniform worn.</div>
       </div>
 
+      {/* Toolbar */}
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+        <AllTickButton onClick={markAll} />
+        <button onClick={loadRoster} disabled={staffLoading || !roster.length} style={btnStyle("#0ea5e9")} title="Fill the rows with the staff assigned to POS 19 in the Staff Directory">
+          👥 Load staff list{roster.length ? ` (${roster.length})` : ""}
+        </button>
+        <button onClick={addRow} style={btnStyle("#10b981")}>+ Add Row</button>
+        <div style={{ flex:1 }} />
+        <DayStatus day={day} />
+      </div>
+      {showRosterHint && (
+        <div style={{ fontSize:12, color:"#475569", background:"#f8fafc", border:"1px dashed #cbd5e1", borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
+          👥 No staff assigned yet — add them in Settings → Staff Directory (form “POS 19 · Personal Hygiene”). You can still type names or employee numbers.
+        </div>
+      )}
+      {!staffLoading && !staffOnline && (
+        <div style={{ fontSize:12, color:"#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
+          📴 Offline — showing the last saved staff list.
+        </div>
+      )}
+
       {/* Title band */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>Good Hygiene Practices</div>
-        {legendBox}
+        <div style={{ fontSize: 11, textAlign: "center", padding: "6px 0", color: "#0b1f4d" }}>
+          <strong>Tap a cell: (√) Satisfactory → (✗) Needs Improvement → empty</strong>
+        </div>
       </div>
+
+      <datalist id="pos19-ph-empno">
+        {allStaff.map((s) => <option key={`n-${s.empNo}`} value={s.empNo}>{s.name}</option>)}
+      </datalist>
+      <datalist id="pos19-ph-name">
+        {allStaff.map((s) => <option key={`m-${s.empNo}`} value={s.name}>{s.empNo}</option>)}
+      </datalist>
 
       {/* Table */}
       <div style={{ overflowX:"auto" }}>
@@ -175,6 +263,7 @@ export default function PersonalHygieneChecklistInput() {
           <thead>
             <tr>
               <th style={thCell}>—</th>
+              <th style={thCell}>Emp. No</th>
               <th style={thCell}>Staff Name</th>
               {COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
               <th style={thCell}>Corrective Action</th>
@@ -187,15 +276,14 @@ export default function PersonalHygieneChecklistInput() {
                   <button onClick={() => deleteRow(i)} title="Delete row" style={{ width:"32px", height:"28px", border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:6, fontWeight:800, cursor:"pointer" }}>×</button>
                 </td>
                 <td style={tdCell}>
-                  <input type="text" placeholder="Name" value={r.staffName} onChange={(e) => updateRow(i, "staffName", e.target.value)} style={inputStyle} />
+                  <input type="text" inputMode="numeric" list="pos19-ph-empno" placeholder="No." value={r.empNo} onChange={(e) => updateRow(i, "empNo", e.target.value)} style={inputStyle} />
+                </td>
+                <td style={tdCell}>
+                  <input type="text" list="pos19-ph-name" placeholder="Name" value={r.staffName} onChange={(e) => updateRow(i, "staffName", e.target.value)} style={inputStyle} />
                 </td>
                 {COLS.map((c) => (
                   <td style={tdCell} key={c.key}>
-                    <select value={r[c.key]} onChange={(e) => updateRow(i, c.key, e.target.value)} style={inputStyle} title="√ = Satisfactory, ✗ = Needs Improvement">
-                      <option value=""></option>
-                      <option value="√">√</option>
-                      <option value="✗">✗</option>
-                    </select>
+                    <TickCell value={r[c.key]} onChange={(v) => updateRow(i, c.key, v)} />
                   </td>
                 ))}
                 <td style={tdCell}>
@@ -207,32 +295,27 @@ export default function PersonalHygieneChecklistInput() {
         </table>
       </div>
 
-      {/* Controls */}
-      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={addRow} style={btnStyle("#10b981")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Checklist"}
-        </button>
-      </div>
-
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Checked by:</span>
-          <input value={checkedBy} onChange={(e)=>setCheckedBy(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <div style={{ display:"flex", gap:12, marginTop:16, alignItems:"center", flexWrap:"wrap", fontSize:12 }}>
+        <CheckedByField sig={sig} />
+        <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:220 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Rev.Date:</span>
-          <input value={revDate} onChange={(e)=>setRevDate(e.target.value)} style={inputStyle} placeholder="YYYY-MM-DD" />
+          <input value={revDate} onChange={(e)=>setRevDate(e.target.value)} style={{ ...inputStyle, width:120 }} placeholder="YYYY-MM-DD" />
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Rev.No:</span>
-          <input value={revNo} onChange={(e)=>setRevNo(e.target.value)} style={inputStyle} />
+          <input value={revNo} onChange={(e)=>setRevNo(e.target.value)} style={{ ...inputStyle, width:70 }} />
         </div>
+      </div>
+
+      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Checklist" : "Save Checklist"}
+        </button>
       </div>
     </div>
   );

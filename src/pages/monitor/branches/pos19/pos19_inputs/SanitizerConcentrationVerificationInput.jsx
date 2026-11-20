@@ -3,6 +3,10 @@ import React, { useMemo, useState } from "react";
 import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField,
+} from "../_shared/pos19EntryKit";
 
 
 const DEFAULT_TYPE     = "pos19_sanitizer_concentration";
@@ -38,10 +42,10 @@ export default function SanitizerConcentrationVerificationInput({
   const TYPE = reportType;
   const BRANCH = branch;
   const FORM_REF = formRef;
-  const [reportDate, setReportDate] = useState(() => {
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-  });
+  // This sheet is shared with POS 10/11/15 and Production; the quicker entry
+  // (open the day's report here, Checked by from the Staff Directory) is POS 19 only.
+  const isPos19 = reporter === "pos19";
+  const [reportDate, setReportDate] = useState(todayDubai);
   const [section, setSection]       = useState("");
   const [rows, setRows]             = useState(() => [emptyRow()]);
   const [verifiedBy, setVerifiedBy] = useState("");
@@ -49,7 +53,24 @@ export default function SanitizerConcentrationVerificationInput({
   const [revDate, setRevDate]       = useState("");
   const [revNo, setRevNo]           = useState("");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+  const sig = usePos19CheckedBy();
+  const day = usePos19Day(isPos19 ? TYPE : null, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : [emptyRow()]);
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      setRevDate(p.revDate || "");
+      setRevNo(p.revNo || "");
+      sig.load({ ...p, checkedBy: p.checkedBy || list.find((r) => r.checkedBy)?.checkedBy || "" });
+    },
+    onBlank: () => {
+      setRows([emptyRow()]);
+      setSection(""); setVerifiedBy(""); setRevDate(""); setRevNo("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -83,9 +104,9 @@ export default function SanitizerConcentrationVerificationInput({
     <col key="actual"  style={{ width: 110 }} />,
     <col key="result"  style={{ width: 90 }} />,
     <col key="ca"      style={{ width: 200 }} />,
-    <col key="chk"     style={{ width: 130 }} />,
+    ...(isPos19 ? [] : [<col key="chk" style={{ width: 130 }} />]),
     <col key="del"     style={{ width: 70 }} />,
-  ]), []);
+  ]), [isPos19]);
 
   async function handleSave() {
     if (!reportDate) { alert("الرجاء تحديد التاريخ"); return; }
@@ -99,6 +120,28 @@ export default function SanitizerConcentrationVerificationInput({
         alert("يوجد صف نتيجته Fail بدون Corrective Action. الرجاء التعبئة.");
         return;
       }
+    }
+
+    if (isPos19) {
+      if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+      const signed = sig.fields();
+      setSaving(true);
+      try {
+        await savePos19Report({
+          type: TYPE,
+          day,
+          dateStatus,
+          label: `${BRANCH} Sanitizer ${reportDate}`,
+          payload: {
+            branch: BRANCH, formRef: FORM_REF, classification: "Official",
+            section, reportDate,
+            // the viewer reads the checker per row
+            entries: entries.map((r) => ({ ...r, checkedBy: signed.checkedBy })),
+            ...signed, verifiedBy, revDate, revNo,
+          },
+        });
+      } finally { setSaving(false); }
+      return;
     }
 
     setSaving(true);
@@ -163,7 +206,7 @@ export default function SanitizerConcentrationVerificationInput({
               <th style={thCell}>Actual{"\n"}Conc. (ppm)</th>
               <th style={thCell}>Result{"\n"}(Pass/Fail)</th>
               <th style={thCell}>Corrective{"\n"}Action</th>
-              <th style={thCell}>Checked{"\n"}by</th>
+              {!isPos19 && <th style={thCell}>Checked{"\n"}by</th>}
               <th style={thCell}>—</th>
             </tr>
           </thead>
@@ -192,7 +235,7 @@ export default function SanitizerConcentrationVerificationInput({
                 <td style={tdCell}>
                   <input type="text" value={r.correctiveAction} onChange={e=>updateRow(i,"correctiveAction",e.target.value)} style={{ ...inputStyle, background: r.result==="Fail" ? "#fff7ed" : "#fff" }} placeholder={r.result==="Fail" ? "Required" : "If any"} />
                 </td>
-                <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>
+                {!isPos19 && <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>}
                 <td style={tdCell}><button onClick={()=>removeRow(i)} disabled={rows.length === 1} style={{...btnStyle("#dc2626"),opacity:rows.length===1?0.5:1,cursor:rows.length===1?"not-allowed":"pointer"}}>Del</button></td>
               </tr>
             ))}
@@ -203,17 +246,21 @@ export default function SanitizerConcentrationVerificationInput({
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitizer Log"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Sanitizer Log" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitizer Log"}
         </button>
+        {isPos19 && <DayStatus day={day} />}
       </div>
 
       {/* Footer */}
+      {isPos19 && <div style={{ marginTop:16 }}><CheckedByField sig={sig} /></div>}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Checked by:</span>
-          <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={inputStyle} />
-        </div>
+        {!isPos19 && (
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span>Checked by:</span>
+            <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={inputStyle} />
+          </div>
+        )}
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} style={inputStyle} />

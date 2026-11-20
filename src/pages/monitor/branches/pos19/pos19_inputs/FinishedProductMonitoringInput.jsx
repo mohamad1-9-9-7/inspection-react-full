@@ -1,9 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FinishedProductMonitoringInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField, FoodItemInput,
+} from "../_shared/pos19EntryKit";
 
 const TYPE     = "pos19_finished_product_monitoring";
 const BRANCH   = "POS 19";
@@ -37,22 +39,29 @@ function emptyRow() {
 }
 
 export default function FinishedProductMonitoringInput() {
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-  });
+  const [reportDate, setReportDate] = useState(todayDubai);
 
   const ROW_COUNT = 15;
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => emptyRow()));
   const [correctiveActions, setCorrectiveActions] = useState("");
-  const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+  const sig = usePos19CheckedBy();
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: ROW_COUNT }, () => emptyRow()));
+      setCorrectiveActions(p.correctiveActions || "");
+      setVerifiedBy(p.verifiedBy || "");
+      sig.load(p);
+    },
+    onBlank: () => {
+      setRows(Array.from({ length: ROW_COUNT }, () => emptyRow()));
+      setCorrectiveActions(""); setVerifiedBy("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -109,38 +118,30 @@ export default function FinishedProductMonitoringInput() {
     const entries = rows.filter((r) =>
       Object.values(r).some((v) => String(v || "").trim() !== "")
     );
-    if (entries.length === 0 && !correctiveActions.trim() && !checkedBy.trim() && !verifiedBy.trim()) {
+    if (entries.length === 0 && !correctiveActions.trim() && !verifiedBy.trim()) {
       alert("لا يوجد بيانات للحفظ.");
       return;
     }
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      docMeta: DOC_META,
-      reportDate,
-      month: monthText,
-      entries,
-      correctiveActions,
-      checkedBy,
-      verifiedBy,
-      savedAt: Date.now(),
-    };
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
     try {
       setSaving(true);
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Finished Product ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّل التقرير من شاشة العرض (View) أو غيّر التاريخ."); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Finished Product ${reportDate}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          docMeta: DOC_META,
+          reportDate,
+          month: monthText,
+          entries,
+          correctiveActions,
+          ...sig.fields(),
+          verifiedBy,
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -200,7 +201,7 @@ export default function FinishedProductMonitoringInput() {
             {rows.map((r, idx) => (
               <tr key={idx}>
                 <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                <td style={tdCell}><input type="text" value={r.productName} onChange={(e) => updateRow(idx, "productName", e.target.value)} style={inputStyle} /></td>
+                <td style={tdCell}><FoodItemInput value={r.productName} code={r.productNameCode || ""} onChange={(name, code) => setRows((prev) => prev.map((row, i) => i === idx ? { ...row, productName: name, productNameCode: code } : row))} style={inputStyle} placeholder="Product" /></td>
                 <td style={tdCell}><input type="text" value={r.customerName} onChange={(e) => updateRow(idx, "customerName", e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><input type="time" value={r.time} onChange={(e) => updateRow(idx, "time", e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><input type="date" value={r.productionDate} onChange={(e) => updateRow(idx, "productionDate", e.target.value)} style={inputStyle} /></td>
@@ -243,10 +244,7 @@ export default function FinishedProductMonitoringInput() {
 
       {/* Footer: Checked / Verified */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14, fontSize: 13 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <strong>Checked By:</strong>
-          <input value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} style={{ flex: 1, border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", fontSize: 13, color: "#0b1f4d" }} />
-        </div>
+        <CheckedByField sig={sig} label="Checked By:" />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <strong>Verified By:</strong>
           <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} style={{ flex: 1, border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", fontSize: 13, color: "#0b1f4d" }} />
@@ -255,9 +253,10 @@ export default function FinishedProductMonitoringInput() {
 
       {/* Save */}
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btn("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Finished Product Checklist"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btn("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Finished Product Checklist" : "Save Finished Product Checklist"}
         </button>
+        <DayStatus day={day} />
       </div>
     </div>
   );

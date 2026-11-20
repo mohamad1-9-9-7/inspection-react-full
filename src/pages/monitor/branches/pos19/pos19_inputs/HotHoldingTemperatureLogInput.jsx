@@ -1,9 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/HotHoldingTemperatureLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField, FoodItemInput,
+} from "../_shared/pos19EntryKit";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "pos19_hot_holding_temp_draft_v1";
@@ -52,8 +54,7 @@ export default function HotHoldingTemperatureLogInput() {
   const [reportDate, setReportDate] = useState(() => {
     const dft = loadDraft();
     if (dft.reportDate) return dft.reportDate;
-    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
-    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+    return todayDubai();
   });
   const [section, setSection]       = useState(() => loadDraft().section || "");
   const [rows, setRows]             = useState(() => {
@@ -61,21 +62,39 @@ export default function HotHoldingTemperatureLogInput() {
     return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 5 }, () => emptyRow());
   });
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
-  const [checkedBy, setCheckedBy]   = useState(() => loadDraft().checkedBy || "");
   const [revDate, setRevDate]       = useState(() => loadDraft().revDate || "");
   const [revNo, setRevNo]           = useState(() => loadDraft().revNo || "");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+
+  const sig = usePos19CheckedBy();
+  /* The saved report always wins over the local draft. */
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: 5 }, () => emptyRow()));
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      setRevDate(p.revDate || "");
+      setRevNo(p.revNo || "");
+      sig.load({ ...p, checkedBy: p.checkedBy || list.find((r) => r.checkedBy)?.checkedBy || "" });
+    },
+    onBlank: () => {
+      setRows(Array.from({ length: 5 }, () => emptyRow()));
+      setSection(""); setVerifiedBy(""); setRevDate(""); setRevNo("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   /* ✅ Auto-save draft */
   useEffect(() => {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ reportDate, section, rows, verifiedBy, checkedBy, revDate, revNo, ts: Date.now() })
+        JSON.stringify({ reportDate, section, rows, verifiedBy, revDate, revNo, ts: Date.now() })
       );
     } catch {}
-  }, [reportDate, section, rows, verifiedBy, checkedBy, revDate, revNo]);
+  }, [reportDate, section, rows, verifiedBy, revDate, revNo]);
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -112,7 +131,6 @@ export default function HotHoldingTemperatureLogInput() {
       arr.push(<col key={`t${i}temp`} style={{ width: 90 }} />);
     });
     arr.push(<col key="ca"  style={{ width: 200 }} />);
-    arr.push(<col key="chk" style={{ width: 130 }} />);
     arr.push(<col key="del" style={{ width: 70 }} />);
     return arr;
   }, []);
@@ -121,28 +139,24 @@ export default function HotHoldingTemperatureLogInput() {
     if (!reportDate) { alert("الرجاء تحديد التاريخ"); return; }
     const entries = rows.filter(r => r.foodItem.trim() !== "");
     if (!entries.length) { alert("أضف على الأقل صفًا واحدًا"); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
     setSaving(true);
-    const payload = {
-      branch: BRANCH, formRef: FORM_REF, classification: "Official",
-      section, reportDate, entries, checkedBy, verifiedBy, revDate, revNo,
-      savedAt: Date.now(),
-    };
     try {
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Hot Holding ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      const ok = await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Hot Holding ${reportDate}`,
+        payload: {
+          branch: BRANCH, formRef: FORM_REF, classification: "Official",
+          section, reportDate,
+          // the viewer reads the checker per row
+          entries: entries.map((r) => ({ ...r, checkedBy: signed.checkedBy })),
+          ...signed, verifiedBy, revDate, revNo,
+        },
+      });
+      if (ok) { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
     } finally { setSaving(false); }
   }
 
@@ -184,7 +198,6 @@ export default function HotHoldingTemperatureLogInput() {
                 <th key={s.key} style={thCell} colSpan={2}>{s.label}</th>
               ))}
               <th style={thCell} rowSpan={2}>Corrective{"\n"}Action</th>
-              <th style={thCell} rowSpan={2}>Checked{"\n"}by</th>
               <th style={thCell} rowSpan={2}>—</th>
             </tr>
             <tr>
@@ -199,7 +212,7 @@ export default function HotHoldingTemperatureLogInput() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                <td style={tdCell}><input type="text" value={r.foodItem} onChange={e=>updateRow(i,"foodItem",e.target.value)} style={inputStyle} placeholder="Food item" /></td>
+                <td style={tdCell}><FoodItemInput value={r.foodItem} code={r.foodItemCode || ""} onChange={(name, code) => setRows(prev => prev.map((row, idx) => idx === i ? { ...row, foodItem: name, foodItemCode: code } : row))} style={inputStyle} placeholder="Food item" /></td>
                 <td style={tdCell}><input type="text" value={r.targetTemp} onChange={e=>updateRow(i,"targetTemp",e.target.value)} style={inputStyle} /></td>
                 {TIME_SLOTS.map(s => (
                   <React.Fragment key={s.key}>
@@ -222,7 +235,6 @@ export default function HotHoldingTemperatureLogInput() {
                   </React.Fragment>
                 ))}
                 <td style={tdCell}><input type="text" value={r.correctiveAction} onChange={e=>updateRow(i,"correctiveAction",e.target.value)} style={inputStyle} placeholder="Action (if any)" /></td>
-                <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
               </tr>
             ))}
@@ -233,17 +245,15 @@ export default function HotHoldingTemperatureLogInput() {
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Hot Holding Log"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Hot Holding Log" : "Save Hot Holding Log"}
         </button>
+        <DayStatus day={day} />
       </div>
 
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Checked by:</span>
-          <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={inputStyle} />
-        </div>
+      <div style={{ marginTop:16 }}><CheckedByField sig={sig} /></div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginTop:12, alignItems:"center", fontSize:12 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} style={inputStyle} />

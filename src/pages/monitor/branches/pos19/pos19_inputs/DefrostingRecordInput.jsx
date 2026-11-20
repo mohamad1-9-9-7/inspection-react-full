@@ -4,7 +4,7 @@ import { newOutboxId, queuedMessage, saveReport } from "../../../../../utils/rep
 import ReportHeader from "../_shared/AlMawashiHeader";
 import { getReportByDate, reportId, invalidateReportDates } from "../_shared/reportsApi";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { usePos19CheckedBy, CheckedByField, FoodItemInput } from "../_shared/pos19EntryKit";
 
 /* This page's id for new records (see the save below). */
 const SHEET_ID = newOutboxId();
@@ -46,7 +46,9 @@ const HELP = {
 export default function DefrostingRecordInput() {
   const [reportDate, setReportDate] = useState(today());
   const [entries, setEntries]       = useState([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]);
-  const [checkedBy, setCheckedBy]   = useState("");
+  const sig = usePos19CheckedBy();
+  const sigRef = useRef(sig);
+  sigRef.current = sig;
   const [verifiedBy, setVerifiedBy] = useState("");
   const [section, setSection]       = useState("");
   const [saving, setSaving]                 = useState(false);
@@ -62,7 +64,7 @@ export default function DefrostingRecordInput() {
   const chRow  = (i, key, val) => setEntries(p => { const n=[...p]; n[i]={...n[i], [key]:val}; return n; });
   const addRow = () => setEntries(p => [...p, EMPTY_ROW()]);
   const rmRow  = (i) => setEntries(p => p.length === 1 ? p : p.filter((_, idx) => idx !== i));
-  const resetToBlank = () => { setEntries([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]); setCheckedBy(""); setVerifiedBy(""); setSection(""); setExistingReport(null); };
+  const resetToBlank = () => { setEntries([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]); sigRef.current.reset(); setVerifiedBy(""); setSection(""); setExistingReport(null); };
 
   useEffect(() => {
     if (!reportDate) return;
@@ -75,7 +77,7 @@ export default function DefrostingRecordInput() {
         if (latest) {
           const p = latest?.payload || {};
           setEntries(p.entries?.length ? p.entries.map(r => ({...EMPTY_ROW(), ...r})) : [EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]);
-          setCheckedBy(p.checkedBy || "");
+          sigRef.current.load(p);
           setVerifiedBy(p.verifiedBy || "");
           setSection(p.section || "");
           setExistingReport({ id: reportId(latest), savedAt: p?.savedAt || 0 });
@@ -97,11 +99,12 @@ export default function DefrostingRecordInput() {
   async function save() {
     const cleanEntries = entries.filter(rowHasData);
     if (!cleanEntries.length) { alert("Please fill at least one row before saving."); return; }
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
     setSaving(true);
     try {
       const payload = {
         branch: BRANCH, formRef: FORM_REF, reportDate, section,
-        entries: cleanEntries, checkedBy, verifiedBy,
+        entries: cleanEntries, ...sig.fields(), verifiedBy,
         savedAt: Date.now(),
       };
       // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
@@ -207,7 +210,7 @@ export default function DefrostingRecordInput() {
             {entries.map((r, i) => (
               <tr key={i}>
                 <td style={S.tdIdx}>{i+1}</td>
-                <td style={S.td}><input value={r.rawMaterial} onChange={e=>chRow(i,"rawMaterial",e.target.value)} style={S.input} title={HELP.rawMaterial} placeholder="e.g., Chicken"/></td>
+                <td style={S.td}><FoodItemInput value={r.rawMaterial} code={r.rawMaterialCode || ""} onChange={(name, code) => setEntries(p => p.map((row, idx) => idx === i ? { ...row, rawMaterial: name, rawMaterialCode: code } : row))} style={S.input} title={HELP.rawMaterial} placeholder="e.g., Chicken"/></td>
                 <td style={S.td}><input value={r.quantity}    onChange={e=>chRow(i,"quantity",e.target.value)}    style={S.input} title={HELP.quantity}    placeholder="kg"/></td>
                 <td style={S.td}><input value={r.brand}       onChange={e=>chRow(i,"brand",e.target.value)}       style={S.input} title={HELP.brand}/></td>
                 <td style={S.td}><input type="date" value={r.rmProdDate} onChange={e=>chRow(i,"rmProdDate",e.target.value)} style={S.input} title={HELP.rmProdDate}/></td>
@@ -228,10 +231,7 @@ export default function DefrostingRecordInput() {
       </div>
 
       <div style={S.sig}>
-        <div style={S.sigBox}>
-          <label style={S.sigLabel}>Checked by</label>
-          <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} style={S.sigInput} placeholder="Name / Signature"/>
-        </div>
+        <div><CheckedByField sig={sig} /></div>
         <div style={S.sigBox}>
           <label style={S.sigLabel}>Verified by</label>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} style={S.sigInput} placeholder="Name / Signature"/>

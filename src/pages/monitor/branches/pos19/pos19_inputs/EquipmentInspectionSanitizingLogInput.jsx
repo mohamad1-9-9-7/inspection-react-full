@@ -1,9 +1,11 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/EquipmentInspectionSanitizingLogInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import {
+  usePos19Day, savePos19Report, DayStatus, todayDubai,
+  usePos19CheckedBy, CheckedByField, TickCell, tickAll, AllTickButton,
+} from "../_shared/pos19EntryKit";
 
 
 const TYPE     = "pos19_equipment_inspection";
@@ -82,21 +84,37 @@ const actionBtn = (bg, disabled = false) => ({
 });
 
 export default function EquipmentInspectionSanitizingLogInput() {
-  const [date, setDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-  });
+  const [date, setDate] = useState(todayDubai);
 
   const [section, setSection]       = useState("");
   const [classification]            = useState("Official");
   const [rows, setRows]             = useState(() => DEFAULT_EQUIP.map(n => emptyRow(n)));
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving]         = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, date);
+  const sig = usePos19CheckedBy();
+  const day = usePos19Day(TYPE, date, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : DEFAULT_EQUIP.map((n) => emptyRow(n)));
+      setSection(p.section || "");
+      setVerifiedBy(p.verifiedBy || "");
+      // older sheets kept the checker on each row
+      sig.load({ ...p, checkedBy: p.checkedBy || list.find((r) => r.checkedByRow)?.checkedByRow || "" });
+    },
+    onBlank: () => {
+      setRows(DEFAULT_EQUIP.map((n) => emptyRow(n)));
+      setSection(""); setVerifiedBy("");
+      sig.reset();
+    },
+  });
+  const dateStatus = useReportDateStatus(TYPE, date, { editing: day.editing });
+  const hasEquip = (r) => !!String(r.equipment || "").trim();
+  const markAll = () => setRows((prev) =>
+    tickAll(prev, SLOTS.map((s) => s.key), hasEquip).map((r) => (hasEquip(r) ? {
+      ...r,
+      freeFromDamage: r.freeFromDamage || "Yes",
+      freeFromBrokenPieces: r.freeFromBrokenPieces || "Yes",
+    } : r)));
 
   const colDefs = useMemo(() => [
     <col key="equip"      style={{ width: 280 }} />,
@@ -104,7 +122,6 @@ export default function EquipmentInspectionSanitizingLogInput() {
     <col key="freeBroken" style={{ width: 160 }} />,
     ...SLOTS.map((_, i) => <col key={`s${i}`} style={{ width: 90 }} />),
     <col key="corr"       style={{ width: 220 }} />,
-    <col key="checkedBy"  style={{ width: 140 }} />,
     <col key="actions"    style={{ width: 70  }} />,
   ], []);
 
@@ -130,29 +147,25 @@ export default function EquipmentInspectionSanitizingLogInput() {
         return;
       }
     }
-    const payload = {
-      branch: BRANCH, formRef: FORM_REF, classification,
-      section, reportDate: date,
-      slots: SLOTS.map(s => s.key),
-      entries: rows.map(r => ({ ...r })),
-      verifiedBy, savedAt: Date.now(),
-    };
+    if (sig.errors.length) { alert("⚠️ " + sig.errors.join("\n")); return; }
+    const signed = sig.fields();
     try {
       setSaving(true);
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Equipment Inspection ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Equipment Inspection ${date}`,
+        payload: {
+          branch: BRANCH, formRef: FORM_REF, classification,
+          section, reportDate: date,
+          slots: SLOTS.map(s => s.key),
+          // the viewer reads the checker per row
+          entries: rows.map(r => ({ ...r, checkedByRow: signed.checkedBy })),
+          ...signed,
+          verifiedBy,
+        },
+      });
     } finally { setSaving(false); }
   }
 
@@ -183,10 +196,13 @@ export default function EquipmentInspectionSanitizingLogInput() {
       </div>
 
       {/* ── Action buttons ── */}
-      <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
+      <div style={{ display:"flex", gap:8, padding:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
+        <AllTickButton onClick={markAll} />
+        <div style={{ flex:1 }} />
+        <DayStatus day={day} />
         <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={actionBtn(saving ? "#6b7280" : "#10b981", saving)}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "💾 Save"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={actionBtn(saving ? "#6b7280" : "#10b981", saving)}>
+          {saving ? "Saving…" : day.editing ? "💾 Update" : "💾 Save"}
         </button>
       </div>
 
@@ -207,7 +223,6 @@ export default function EquipmentInspectionSanitizingLogInput() {
               <th style={thCell}>Free from broken metal/plastic (Yes/No){"\n"}خالٍ من المعدن أو البلاستيك المكسور (نعم/لا)</th>
               {SLOTS.map(s => <th key={s.key} style={thCell}>{s.label}</th>)}
               <th style={thCell}>Corrective Action (if any){"\n"}الإجراء التصحيحي (إن وجد)</th>
-              <th style={thCell}>Checked by{"\n"}تم الفحص بواسطة</th>
               <th style={thCell}>—</th>
             </tr>
           </thead>
@@ -245,25 +260,13 @@ export default function EquipmentInspectionSanitizingLogInput() {
                   </td>
                   {SLOTS.map(s => (
                     <td key={s.key} style={{ ...tdCell, background: r[s.key]==="√"?"#dcfce7" : r[s.key]==="✗"?"#fee2e2" : rowBg }}>
-                      <select value={r[s.key]} onChange={e=>updateCell(i,s.key,e.target.value)}
-                        style={{ ...inputSt,
-                          background: r[s.key]==="√"?"#dcfce7" : r[s.key]==="✗"?"#fee2e2" : C.white,
-                          color:      r[s.key]==="√"?C.green   : r[s.key]==="✗"?C.red      : C.gray700,
-                          fontWeight: r[s.key] ? 700 : 400, fontSize:15 }}
-                        title="√ = Satisfactory, ✗ = Needs Improvement">
-                        <option value=""></option>
-                        <option value="√">√</option>
-                        <option value="✗">✗</option>
-                      </select>
+                      <TickCell value={r[s.key]} onChange={(v)=>updateCell(i,s.key,v)} />
                     </td>
                   ))}
                   <td style={{ ...tdCell, background: risky?"#fff7ed":rowBg }}>
                     <input value={r.correctiveAction} onChange={e=>updateCell(i,"correctiveAction",e.target.value)}
                       style={{ ...inputSt, background: risky?"#fff7ed":C.white }}
                       placeholder={risky ? "⚠️ Required" : "Optional"} />
-                  </td>
-                  <td style={{ ...tdCell, background:rowBg }}>
-                    <input value={r.checkedByRow} onChange={e=>updateCell(i,"checkedByRow",e.target.value)} style={inputSt} />
                   </td>
                   <td style={{ ...tdCell, background:rowBg, padding:4 }}>
                     <button onClick={()=>removeRow(i)} disabled={rows.length===1}
@@ -292,7 +295,8 @@ export default function EquipmentInspectionSanitizingLogInput() {
       </div>
 
       {/* ── Footer card ── */}
-      <div style={{ padding:"14px 0 16px" }}>
+      <div style={{ padding:"14px 0 16px", display:"flex", gap:12, flexWrap:"wrap", alignItems:"center" }}>
+        <CheckedByField sig={sig} />
         <div style={{ background:C.tealBg, border:`1px solid #99f6e4`, borderRadius:8, padding:"10px 14px", maxWidth:300 }}>
           <div style={{ fontSize:10, color:C.teal, fontWeight:700, letterSpacing:.5, textTransform:"uppercase", marginBottom:4 }}>✅ Verified by</div>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)}

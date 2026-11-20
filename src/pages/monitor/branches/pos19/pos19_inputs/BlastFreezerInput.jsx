@@ -1,9 +1,8 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/BlastFreezerInput.jsx
 import React, { useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { usePos19Day, savePos19Report, DayStatus, todayDubai, FoodItemInput } from "../_shared/pos19EntryKit";
 
 const TYPE     = "pos19_blast_freezer_ccp";
 const BRANCH   = "POS 19";
@@ -72,19 +71,19 @@ function emptyRow() {
 }
 
 export default function BlastFreezerInput() {
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-  });
+  const [reportDate, setReportDate] = useState(todayDubai);
 
   const ROW_COUNT = 8;
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => emptyRow()));
   const [saving, setSaving] = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+  const day = usePos19Day(TYPE, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: ROW_COUNT }, () => emptyRow()));
+    },
+    onBlank: () => setRows(Array.from({ length: ROW_COUNT }, () => emptyRow())),
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -168,32 +167,23 @@ export default function BlastFreezerInput() {
       alert("لا يوجد بيانات للحفظ.");
       return;
     }
-    const payload = {
-      branch: BRANCH,
-      formRef: FORM_REF,
-      docMeta: DOC_META,
-      ccpLimits: CCP_LIMITS,
-      reportDate,
-      month: monthText,
-      entries,
-      savedAt: Date.now(),
-    };
     try {
       setSaving(true);
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      let queued = false;
-      try {
-        ({ queued } = await saveReport({ body: { reporter: "pos19", type: TYPE, payload }, label: `POS 19 Blast Freezer ${payload.reportDate || ""}` }));
-      } catch (err) {
-        if (err?.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّل التقرير من شاشة العرض (View) أو غيّر التاريخ."); return; }
-        throw err;
-      }
-      alert(queued ? queuedMessage("ar") : "✅ تم الحفظ بنجاح!");
-      dateStatus.refresh();
-    } catch (e) {
-      console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      await savePos19Report({
+        type: TYPE,
+        day,
+        dateStatus,
+        label: `POS 19 Blast Freezer ${reportDate}`,
+        payload: {
+          branch: BRANCH,
+          formRef: FORM_REF,
+          docMeta: DOC_META,
+          ccpLimits: CCP_LIMITS,
+          reportDate,
+          month: monthText,
+          entries,
+        },
+      });
     } finally {
       setSaving(false);
     }
@@ -279,7 +269,7 @@ export default function BlastFreezerInput() {
                       <option value="Blast Freeze">Blast Freeze</option>
                     </select>
                   </td>
-                  <td style={tdCell}><input type="text" value={r.productName} onChange={(e) => updateRow(idx, "productName", e.target.value)} style={inputStyle} /></td>
+                  <td style={tdCell}><FoodItemInput value={r.productName} code={r.productNameCode || ""} onChange={(name, code) => setRows((prev) => prev.map((row, i) => i === idx ? { ...row, productName: name, productNameCode: code } : row))} style={inputStyle} placeholder="Product" /></td>
                   <td style={tdCell}><input type="text" value={r.batchNo} onChange={(e) => updateRow(idx, "batchNo", e.target.value)} style={inputStyle} /></td>
                   <td style={tdCell}><input type="text" value={r.quantity} onChange={(e) => updateRow(idx, "quantity", e.target.value)} style={inputStyle} placeholder="kg / pcs" /></td>
                   <td style={tdCell}><input type="time" value={r.startTime} onChange={(e) => updateRow(idx, "startTime", e.target.value)} style={inputStyle} /></td>
@@ -314,9 +304,10 @@ export default function BlastFreezerInput() {
 
       {/* Save */}
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btn("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Blast Freezer / Chiller Log"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btn("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Blast Freezer / Chiller Log" : "Save Blast Freezer / Chiller Log"}
         </button>
+        <DayStatus day={day} />
       </div>
     </div>
   );

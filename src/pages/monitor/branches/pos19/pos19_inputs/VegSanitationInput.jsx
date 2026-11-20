@@ -3,7 +3,7 @@ import React, { useMemo, useState } from "react";
 import { queuedMessage, saveReport } from "../../../../../utils/reportOutbox";
 import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
-import API_BASE from "../../../../../config/api";
+import { usePos19Day, savePos19Report, DayStatus, todayDubai, FoodItemInput } from "../_shared/pos19EntryKit";
 
 const DEFAULT_TYPE     = "pos19_veg_sanitation_ccp";
 const DEFAULT_BRANCH   = "POS 19";
@@ -53,18 +53,21 @@ export default function VegSanitationInput({
   const BRANCH = branch;
   const FORM_REF = formRef;
   const RESOLVED_DOC_META = { ...DOC_META, ...(docMeta || {}), documentNo: formRef };
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-  });
+  // Shared with other branches; the quicker entry (open the day's report here,
+  // catalog product picker) is POS 19 only.
+  const isPos19 = reporter === "pos19";
+  const [reportDate, setReportDate] = useState(todayDubai);
 
   const [rows, setRows] = useState(() => Array.from({ length: initialRowCount }, () => emptyRow()));
   const [saving, setSaving] = useState(false);
-  const dateStatus = useReportDateStatus(TYPE, reportDate);
+  const day = usePos19Day(isPos19 ? TYPE : null, reportDate, {
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...emptyRow(), ...e })) : [];
+      setRows(list.length ? list : Array.from({ length: initialRowCount }, () => emptyRow()));
+    },
+    onBlank: () => setRows(Array.from({ length: initialRowCount }, () => emptyRow())),
+  });
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: day.editing });
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -144,6 +147,13 @@ export default function VegSanitationInput({
       entries,
       savedAt: Date.now(),
     };
+    if (isPos19) {
+      setSaving(true);
+      try {
+        await savePos19Report({ type: TYPE, day, dateStatus, label: `POS 19 Veg Sanitation ${reportDate}`, payload });
+      } finally { setSaving(false); }
+      return;
+    }
     try {
       setSaving(true);
       // Without a connection the report waits on this device and is sent
@@ -230,7 +240,11 @@ export default function VegSanitationInput({
               <tr key={idx}>
                 <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
                 {showEntryDateTime && <td style={tdCell}><input type="time" value={r.time} onChange={(e) => updateRow(idx, "time", e.target.value)} style={inputStyle} /></td>}
-                <td style={tdCell}><input type="text" value={r.productDetails} onChange={(e) => updateRow(idx, "productDetails", e.target.value)} style={inputStyle} placeholder="e.g., Lettuce, Tomato" /></td>
+                <td style={tdCell}>
+                  {isPos19
+                    ? <FoodItemInput value={r.productDetails} code={r.productDetailsCode || ""} onChange={(name, code) => setRows((prev) => prev.map((row, i) => i === idx ? { ...row, productDetails: name, productDetailsCode: code } : row))} style={inputStyle} placeholder="e.g., Lettuce, Tomato" />
+                    : <input type="text" value={r.productDetails} onChange={(e) => updateRow(idx, "productDetails", e.target.value)} style={inputStyle} placeholder="e.g., Lettuce, Tomato" />}
+                </td>
                 <td style={tdCell}><input type="text" value={r.quantitySanitized} onChange={(e) => updateRow(idx, "quantitySanitized", e.target.value)} style={inputStyle} placeholder="kg / pcs" /></td>
                 <td style={tdCell}>
                   <select value={r.contactTime} onChange={(e) => updateRow(idx, "contactTime", e.target.value)} style={inputStyle}>
@@ -262,9 +276,10 @@ export default function VegSanitationInput({
 
       {/* Save */}
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btn("#2563eb")}>
-          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitation Record"}
+        <button onClick={handleSave} disabled={saving || day.loading || dateStatus.blocked} style={btn("#2563eb")}>
+          {saving ? "Saving…" : day.editing ? "Update Sanitation Record" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitation Record"}
         </button>
+        {isPos19 && <DayStatus day={day} />}
       </div>
     </div>
   );
