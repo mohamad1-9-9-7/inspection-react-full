@@ -10,6 +10,7 @@ import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
 import { colorBtn, useRevealDate } from "../_shared/viewUi";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../../_shared/vehicleTemp";
+import RemarkPhotos from "../../_shared/RemarkPhotos";
 
 
 
@@ -787,7 +788,7 @@ export default function ReceivingLogView() {
                           <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
                           <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
                           <td style={tdCell}>{safe(r.invoiceNo)}</td>
-                          <td style={tdCell}>{safe(r.remarks)}</td>
+                          <td style={tdCell}>{safe(r.remarks)}<RemarkPhotos row={r} /></td>
                           <td style={tdCell}>{safe(r.receivedBy)}</td>
                         </tr>
                       ))

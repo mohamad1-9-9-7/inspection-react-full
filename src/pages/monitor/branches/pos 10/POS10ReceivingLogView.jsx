@@ -20,6 +20,7 @@ import { listReportDates, listReports, getReportRowByDate, reportDateOf, payload
 import { canEdit, canDelete } from "../../../../utils/perms";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTempToRows } from "../_shared/vehicleTemp";
 import VehicleTempBox from "../_shared/VehicleTempBox";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 
 // Matches the POS10 input file (no external references)
 const TYPE = "pos10_receiving_log_butchery";
@@ -1081,7 +1082,7 @@ export default function POS10ReceivingLogView() {
                             <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
                             <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
                             <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                            <td style={tdCell}>{safe(r.remarks)}</td>
+                            <td style={tdCell}>{safe(r.remarks)}<RemarkPhotos row={r} /></td>
                           </tr>
                         ))
                       ) : (

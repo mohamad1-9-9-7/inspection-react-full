@@ -17,6 +17,7 @@ import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/re
 import { canEdit, canDelete } from "../../../../utils/perms";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
 import VehicleTempBox from "../_shared/VehicleTempBox";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 
 // مطابق لملف الإدخال POS11ReceivingLogInput.jsx
 const TYPE   = "pos11_receiving_log_butchery";
@@ -711,7 +712,7 @@ export default function POS11ReceivingLogView() {
                           <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
                           <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
                           <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                          <td style={tdCell}>{safe(r.remarks)}</td>
+                          <td style={tdCell}>{safe(r.remarks)}<RemarkPhotos row={r} /></td>
                         </tr>
                       ))
                     ) : (

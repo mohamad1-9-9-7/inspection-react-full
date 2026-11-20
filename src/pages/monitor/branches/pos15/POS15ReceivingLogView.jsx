@@ -14,6 +14,7 @@ import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 import { escapeHtml } from "../../../../utils/escapeHtml";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
 import VehicleTempBox from "../_shared/VehicleTempBox";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
@@ -690,6 +691,7 @@ export default function POS15ReceivingLogView() {
                             return (
                               <td key={c.key} style={cell}>
                                 {c.kind === "date" ? formatDMY(safe(raw)) : safe(raw)}
+                                {c.key === "remarks" && <RemarkPhotos row={r} style={{ justifyContent: "flex-start" }} />}
                               </td>
                             );
                           })}

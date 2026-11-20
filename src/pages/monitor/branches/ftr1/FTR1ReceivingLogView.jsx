@@ -15,6 +15,7 @@ import SignatureName from "../../../shared/SignatureName";
 import useRevealDate from "../_shared/useRevealDate";
 import { canDelete } from "../../../../utils/perms";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 
 /* ========= API BASE (robust like your other pages) ========= */
 
@@ -1128,6 +1129,7 @@ export default function FTR1ReceivingLogView() {
                                           View
                                         </button>
                                       )}
+                                      {c.key === "remarks" && <RemarkPhotos row={row} style={{ justifyContent: "flex-start" }} />}
                                     </>
                                   ) : (
                                     <EditableCell

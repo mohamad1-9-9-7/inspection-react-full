@@ -13,6 +13,7 @@ import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 import "./FTR2UnifiedReportView.css";
 import "./FTR2ReceivingLogView.css";
 
@@ -626,6 +627,7 @@ export default function FTR2ReceivingLogView() {
                                     {c.key === "foodItem" && imgs.length > 0 && (
                                       <button type="button" style={viewBtnStyle} onClick={() => openPreview(imgs, 0)}>View</button>
                                     )}
+                                    {c.key === "remarks" && <RemarkPhotos row={row} style={{ justifyContent: "flex-start" }} />}
                                   </>
                                 ) : (
                                   <EditableCell value={val} type={type} align={c.align||"center"} onChange={v => updateDraftEntry(i, c.key, v)} />

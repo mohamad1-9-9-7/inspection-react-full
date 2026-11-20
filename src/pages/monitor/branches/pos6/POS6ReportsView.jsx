@@ -9,6 +9,7 @@ import POS6ReportView, { Reading } from "./POS6ReportView";
 import { DOCS, EQUIPMENT_SLOTS, TYPES, equipmentSlotLabel } from "./pos6Api";
 import { RANGES, isOutOfRange, readingVerdict } from "./pos6CoolerRanges";
 import { vehicleTempSummary } from "../_shared/vehicleTemp";
+import RemarkPhotos from "../_shared/RemarkPhotos";
 
 /* Every sheet shows the document number its paper form carries, so a record in
    the archive names the controlled document it belongs to — the same way the
@@ -111,8 +112,12 @@ const receivingColumns = (payload) => {
     rows.some((r) => String(r?.[c.key] ?? "").trim() !== "")
   );
   // Remarks stays the last column, so the legacy ones slot in just before it.
+  // It also shows the photos attached to a line with a remark.
   const head = RECEIVING_COLUMNS.slice(0, -1);
-  const tail = RECEIVING_COLUMNS[RECEIVING_COLUMNS.length - 1];
+  const tail = {
+    ...RECEIVING_COLUMNS[RECEIVING_COLUMNS.length - 1],
+    render: (v, row) => (<>{v || ""}<RemarkPhotos row={row} style={{ justifyContent: "flex-start" }} /></>),
+  };
   return [...head, ...legacy, tail];
 };
 
