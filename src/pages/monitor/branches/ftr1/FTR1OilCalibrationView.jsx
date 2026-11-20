@@ -285,6 +285,16 @@ export default function FTR1OilCalibrationView() {
     return { key: getId(r) || iso, dateISO: iso, label: iso ? iso.split("-").reverse().join("/") : "No date", data: r };
   }).filter((it) => it.dateISO), [reports]);
 
+  // Open the newest report on arrival instead of an empty panel.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || selectedReport || !treeItems.length) return;
+    autoOpenedRef.current = true;
+    const newest = treeItems.reduce((a, b) => (b.dateISO > a.dateISO ? b : a), treeItems[0]);
+    openRow(newest.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeItems, loading, selectedReport]);
+
   return (
     <div className="ftr1-oil" style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: "1rem", alignItems: "start", direction: "ltr" }}>
       {/* حارس CSS: يضمن ظهور زر الحذف مهما كانت قواعد عامة */}

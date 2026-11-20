@@ -13,6 +13,7 @@ import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import useRevealDate from "../_shared/useRevealDate";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
 import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
 import RemarkPhotos from "../_shared/RemarkPhotos";
@@ -663,150 +664,89 @@ export default function FTR1ReceivingLogView() {
   );
   const shownWidths = [COL_WIDTHS_PX[0], ...COLS.map((c, i) => (shownCols.includes(c) ? COL_WIDTHS_PX[i + 1] : null)).filter((w) => w != null)];
 
+  // Items for the shared date tree (local dates).
+  const treeItems = useMemo(() => reportList.map((r) => {
+    const d = pickDateFromAny(r);
+    const iso = d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
+    return { key: getId(r), dateISO: iso, label: iso ? iso.split("-").reverse().join("/") : "No date", data: r };
+  }).filter((it) => it.dateISO && it.key), [reportList]);
+
   return (
     <div style={shell}>
-      {/* Sidebar */}
-      <div style={sidebar}>
-        <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-
-        {/* ── Non-blocking error banner ── */}
-        {fetchError && (
-          <div style={{
-            padding: "10px 12px",
-            marginBottom: 12,
-            borderRadius: 10,
-            background: fetchError.type === "network" ? "#fffbeb" : "#fef2f2",
-            border: `1px solid ${fetchError.type === "network" ? "#fde68a" : "#fecaca"}`,
-            color: fetchError.type === "network" ? "#92400e" : "#991b1b",
-            fontSize: 12,
-            lineHeight: 1.5,
-          }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>
-              {fetchError.type === "network" ? "⚠️ اتصال متقطع" : "⚠️ خطأ في السيرفر"}
-            </div>
-            <div style={{ marginBottom: 8 }}>{fetchError.messageAr || fetchError.message}</div>
-            <button
-              onClick={fetchReportList}
-              style={{
-                width: "100%",
-                padding: "6px 10px",
-                borderRadius: 6,
-                border: "none",
-                background: "#5b21b6",
-                color: "#fff",
-                fontWeight: 700,
+      {/* Date tree — always on the left (shared design) */}
+      <DateTreeSidebar
+        title="🗓️ Saved Reports"
+        items={treeItems}
+        activeKey={selectedId || null}
+        onPick={async (it) => {
+          const rid = it.key;
+          if (!rid) return;
+          setSelectedId(rid);
+          setIsEditing(false);
+          setDraft(null);
+          await fetchOneReport(rid);
+        }}
+        loading={loading}
+        emptyText={fetchError ? "" : "No reports"}
+        topSlot={
+          <>
+            {/* ── Non-blocking error banner ── */}
+            {fetchError && (
+              <div style={{
+                padding: "10px 12px",
+                marginBottom: 12,
+                borderRadius: 10,
+                background: fetchError.type === "network" ? "#fffbeb" : "#fef2f2",
+                border: `1px solid ${fetchError.type === "network" ? "#fde68a" : "#fecaca"}`,
+                color: fetchError.type === "network" ? "#92400e" : "#991b1b",
                 fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              🔄 إعادة المحاولة
-            </button>
-            <div style={{ marginTop: 6, fontSize: 10, color: "#64748b", fontStyle: "italic" }}>
-              السيرفر المجاني قد يحتاج ~30 ثانية ليستيقظ
-            </div>
-          </div>
-        )}
-
-        {/* ── Retry progress indicator ── */}
-        {retryMsg && (
-          <div style={{
-            padding: "8px 12px",
-            marginBottom: 10,
-            borderRadius: 8,
-            background: "#eff6ff",
-            border: "1px solid #bfdbfe",
-            color: "#1e40af",
-            fontSize: 12,
-            fontWeight: 700,
-            textAlign: "center",
-          }}>
-            {retryMsg}
-          </div>
-        )}
-
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          fetchError ? null : <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months]) => (
-                <details
-                  key={year}
-                  open={openYears[year] ?? false}
-                  onToggle={(e) => {
-                    const isOpen = e.currentTarget.open;
-                    setOpenYears((p) => ({ ...p, [year]: isOpen }));
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                  {fetchError.type === "network" ? "⚠️ اتصال متقطع" : "⚠️ خطأ في السيرفر"}
+                </div>
+                <div style={{ marginBottom: 8 }}>{fetchError.messageAr || fetchError.message}</div>
+                <button
+                  onClick={fetchReportList}
+                  style={{
+                    width: "100%",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "#5b21b6",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: "pointer",
                   }}
                 >
-                  <summary style={{ fontWeight: 700, marginBottom: 6 }}>📅 Year {year}</summary>
-
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, days]) => {
-                      const key = `${year}-${month}`;
-                      const ddays = [...days].sort((a, b) => b._dt - a._dt);
-
-                      return (
-                        <details
-                          key={month}
-                          style={{ marginLeft: "1rem" }}
-                          open={openMonths[key] ?? false}
-                          onToggle={(e) => {
-                            const isOpen = e.currentTarget.open;
-                            setOpenMonths((p) => ({ ...p, [key]: isOpen }));
-                          }}
-                        >
-                          <summary style={{ fontWeight: 600 }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {ddays.map((r, i) => {
-                              const rid = getId(r);
-                              const isActive = !!selectedId && rid === selectedId;
-
-                              const d = pickDateFromAny(r);
-                              const label = `${String(d.getDate()).padStart(2, "0")}/${String(
-                                d.getMonth() + 1
-                              ).padStart(2, "0")}/${d.getFullYear()}`;
-
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={async (e) => {
-                                    e.stopPropagation(); // ✅ prevents any accidental toggle
-                                    if (!rid) return;
-                                    setSelectedId(rid);
-                                    setIsEditing(false);
-                                    setDraft(null);
-                                    await fetchOneReport(rid);
-                                  }}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 8,
-                                    cursor: "pointer",
-                                    background: isActive ? "#5b21b6" : "#eef1f7",
-                                    color: isActive ? "#fff" : "#263042",
-                                    fontWeight: 700,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {label}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+                  🔄 إعادة المحاولة
+                </button>
+                <div style={{ marginTop: 6, fontSize: 10, color: "#64748b", fontStyle: "italic" }}>
+                  السيرفر المجاني قد يحتاج ~30 ثانية ليستيقظ
+                </div>
+              </div>
+            )}
+    
+            {/* ── Retry progress indicator ── */}
+            {retryMsg && (
+              <div style={{
+                padding: "8px 12px",
+                marginBottom: 10,
+                borderRadius: 8,
+                background: "#eff6ff",
+                border: "1px solid #bfdbfe",
+                color: "#1e40af",
+                fontSize: 12,
+                fontWeight: 700,
+                textAlign: "center",
+              }}>
+                {retryMsg}
+              </div>
+            )}
+          </>
+        }
+      />
 
       {/* Main / Report */}
       <div style={main}>
