@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/pos 10/POS10DailyCleaning.jsx
 import React, { useEffect, useState } from "react";
+import CncToggle from "../_shared/CncToggle";
+import { useBranchSupervisor, SupervisorBlock } from "../_shared/branchSupervisor";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 
 const API_BASE =
@@ -81,8 +83,8 @@ const sections = [
 export default function POS10DailyCleaning() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  // Checked By = this branch's supervisor (employee number → locked name), FTR 1 pattern
+  const sup = useBranchSupervisor("POS 10");
 
   const [entries, setEntries] = useState(() =>
     sections.flatMap((sec, secIndex) => [
@@ -104,6 +106,13 @@ export default function POS10DailyCleaning() {
   // للتحقق من وجود تقرير لنفس التاريخ والفرع
   const [checkingDup, setCheckingDup] = useState(false);
   const [hasDuplicate, setHasDuplicate] = useState(false);
+
+  /* Fill every still-empty item with C — items already marked (NC too) stay. */
+  const markAllC = () =>
+    setEntries((prev) => prev.map((e) => (!e.isSection && !e.status ? { ...e, status: "C" } : e)));
+  const itemRows = entries.filter((e) => !e.isSection);
+  const doneCount = itemRows.filter((e) => e.status).length;
+  const ncCount = itemRows.filter((e) => e.status === "NC").length;
 
   const handleChange = (index, field, value) => {
     const updated = [...entries];
@@ -175,8 +184,8 @@ export default function POS10DailyCleaning() {
   const handleSave = async () => {
     if (!date) return alert("⚠️ Please select report date.");
     if (!time) return alert("⚠️ Please enter Time.");
-    if (!checkedBy || !verifiedBy)
-      return alert("⚠️ Checked By and Verified By are mandatory.");
+    if (sup.errors.length) return alert("⚠️ Please fix:\n\n- " + sup.errors.join("\n- "));
+    if (!sup.confirmOtherBranch()) return;
 
     // منع الحفظ في حال هناك تقرير لنفس اليوم
     if (hasDuplicate) {
@@ -192,8 +201,7 @@ export default function POS10DailyCleaning() {
         branch: "POS 10",
         reportDate: date,
         reportTime: time,
-        checkedBy,
-        verifiedBy,
+        ...sup.fields(),
         entries,
         savedAt: Date.now(),
       };
@@ -343,6 +351,16 @@ export default function POS10DailyCleaning() {
       )}
 
       {/* Table */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "6px 0 10px" }}>
+        <button type="button" onClick={markAllC} title="Mark every empty item C (items already NC stay)"
+          style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, cursor: "pointer" }}>
+          ✓ All C
+        </button>
+        <span style={{ fontWeight: 700, color: "#475569" }}>
+          {doneCount}/{itemRows.length} checked{ncCount ? ` · ${ncCount} NC` : ""}
+        </span>
+      </div>
+
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
@@ -371,15 +389,7 @@ export default function POS10DailyCleaning() {
               </td>
               <td style={tdStyle}>
                 {!entry.isSection ? (
-                  <select
-                    value={entry.status}
-                    onChange={(e) => handleChange(i, "status", e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">--</option>
-                    <option value="C">C</option>
-                    <option value="NC">NC</option>
-                  </select>
+                  <CncToggle value={entry.status} onChange={(v) => handleChange(i, "status", v)} />
                 ) : (
                   "—"
                 )}
@@ -430,35 +440,7 @@ export default function POS10DailyCleaning() {
         *(C = Conform &nbsp;&nbsp;&nbsp; N/C = Non Conform)
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginTop: "1rem",
-          fontWeight: 600,
-          gap: "1rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          Checked By:{" "}
-          <input
-            type="text"
-            value={checkedBy}
-            onChange={(e) => setCheckedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}
-          />
-        </div>
-        <div>
-          Verified By:{" "}
-          <input
-            type="text"
-            value={verifiedBy}
-            onChange={(e) => setVerifiedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}
-          />
-        </div>
-      </div>
+      <SupervisorBlock sup={sup} />
 
       {/* Save */}
       <div style={{ textAlign: "center", marginTop: 20 }}>

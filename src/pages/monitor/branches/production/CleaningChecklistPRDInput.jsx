@@ -3,6 +3,8 @@
 import React, { useState, useMemo } from "react";
 import PRDReportHeader from "./_shared/PRDReportHeader";
 import { useLang } from "./_shared/i18n";
+import CncToggle from "../_shared/CncToggle";
+import { useBranchSupervisor, SupervisorBlock } from "../_shared/branchSupervisor";
 
 /* ===== API base ===== */
 const API_BASE =
@@ -118,7 +120,10 @@ export default function CleaningChecklistPRDInput() {
   const { t, dir, isAr } = useLang();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rowsState, setRowsState] = useState(() => buildDefaultRows());
-  const [footer, setFooter] = useState({ checkedBy: "", verifiedBy: "" });
+  // Checked By = the production supervisor (employee number → locked name), FTR 1 pattern
+  const sup = useBranchSupervisor("PRODUCTION");
+  /* Fill every still-empty item with C — items already marked (NC too) stay. */
+  const markAllC = () => setRowsState((prev) => prev.map((r) => (!r.isSection && !r.cnc ? { ...r, cnc: "C" } : r)));
   const [saving, setSaving] = useState(false);
   const [opMsg, setOpMsg] = useState("");
 
@@ -145,6 +150,11 @@ export default function CleaningChecklistPRDInput() {
   }, [rowsState]);
 
   async function saveToServer() {
+    if (sup.errors.length) { alert("⚠️ " + sup.errors.join("\n")); return; }
+    if (!sup.confirmOtherBranch()) return;
+    const signed = sup.fields();
+    // the viewer reads the signatures from payload.footer
+    const footer = { checkedBy: signed.checkedBy, verifiedBy: signed.verifiedBy, checkedByEmpNo: signed.checkedByEmpNo };
     try {
       setSaving(true);
       setOpMsg("⏳ Saving...");
@@ -153,6 +163,7 @@ export default function CleaningChecklistPRDInput() {
         entries: rowsState,
         header: HEAD_DEFAULT,
         footer,
+        ...signed,
         savedAt: Date.now(),
       };
       const res = await fetch(`${API_BASE.replace(/\/$/, "")}/api/reports`, {
@@ -217,6 +228,13 @@ export default function CleaningChecklistPRDInput() {
       </div>
 
       {/* Table */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "6px 0 10px" }}>
+        <button type="button" onClick={markAllC} title="Mark every empty item C (items already NC stay)"
+          style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, cursor: "pointer" }}>
+          ✓ All C
+        </button>
+      </div>
+
       <div className="cc-table-wrap">
         <table className="cc-table">
           <thead>
@@ -252,15 +270,11 @@ export default function CleaningChecklistPRDInput() {
                     />
                   </td>
                   <td className="cc-cell-select">
-                    <select
-                      value={r.cnc || ""}
-                      onChange={(e) => onVal(i, "cnc", e.target.value)}
-                      className={`cc-select cc-select-${r.cnc === "C" ? "ok" : r.cnc === "N\\C" ? "bad" : "empty"}`}
-                    >
-                      <option value="">—</option>
-                      <option value="C">C</option>
-                      <option value={"N\\C"}>N\C</option>
-                    </select>
+                    {/* this sheet stores non-conform as "N\C" */}
+                    <CncToggle
+                      value={r.cnc === "N\\C" ? "NC" : r.cnc || ""}
+                      onChange={(v) => onVal(i, "cnc", v === "NC" ? "N\\C" : v)}
+                    />
                   </td>
                   <td>
                     <input
@@ -292,28 +306,7 @@ export default function CleaningChecklistPRDInput() {
         <span className="cc-chip-nc">N\C</span> = {t("ph_nonconform")}
       </div>
 
-      <div className="cc-footer">
-        <div className="cc-sig">
-          <label>{t("sig_checked_by")}</label>
-          <input
-            type="text"
-            value={footer.checkedBy}
-            onChange={(e) => setFooter((f) => ({ ...f, checkedBy: e.target.value }))}
-            className="cc-input"
-            placeholder={t("sig_name_sig")}
-          />
-        </div>
-        <div className="cc-sig">
-          <label>{t("sig_verified_by")}</label>
-          <input
-            type="text"
-            value={footer.verifiedBy}
-            onChange={(e) => setFooter((f) => ({ ...f, verifiedBy: e.target.value }))}
-            className="cc-input"
-            placeholder={t("sig_name_sig")}
-          />
-        </div>
-      </div>
+      <SupervisorBlock sup={sup} />
 
       <div className="cc-savebar">
         {opMsg && (

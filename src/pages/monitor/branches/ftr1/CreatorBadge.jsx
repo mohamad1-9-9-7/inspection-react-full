@@ -43,7 +43,7 @@ export default function CreatorBadge({ name, empNo }) {
  * a long name is shown in full instead of being cut off.
  * `name` is resolved by the parent; `unknown` marks a number not found.
  */
-export function EmpNoField({ label, icon = "👤", empNo, name, unknown, onEmpNoChange, title }) {
+export function EmpNoField({ label, icon = "👤", empNo, name, unknown, onEmpNoChange, title, list }) {
   return (
     <div style={{ ...CHIP, padding: "6px 8px 6px 12px", borderRadius: 12, flexWrap: "wrap" }}>
       <span aria-hidden="true">{icon}</span>
@@ -52,6 +52,7 @@ export function EmpNoField({ label, icon = "👤", empNo, name, unknown, onEmpNo
         type="text"
         inputMode="numeric"
         placeholder="Emp. No."
+        list={list}
         value={empNo}
         onChange={(e) => onEmpNoChange(e.target.value)}
         title={unknown ? "Employee number not found in the Staff Directory" : title || "Employee number"}

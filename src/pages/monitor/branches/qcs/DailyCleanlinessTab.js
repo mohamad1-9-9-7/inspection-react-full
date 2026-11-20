@@ -2,6 +2,8 @@
 import React, { useMemo, useState } from "react";
 import { getLatestReport } from "../_shared/reportApi";
 import { saveReport } from "../../../../utils/reportOutbox";
+import CncToggle from "../_shared/CncToggle";
+import { useBranchSupervisor, SupervisorBlock } from "../_shared/branchSupervisor";
 
 /* -------- Fallbacks / Defaults -------- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
@@ -215,17 +217,7 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
         </div>
       </div>
 
-      {/* ✅ auto-filled but editable */}
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <label style={row}>
-          <span>Checked By</span>
-          <input style={input} value={f.checkedBy} onChange={(e) => updateFooter("checkedBy", e.target.value)} />
-        </label>
-        <label style={row}>
-          <span>Verified By</span>
-          <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
-        </label>
-      </div>
+      {/* Checked By / Verified By live under the table (SupervisorBlock). */}
     </details>
   );
 }
@@ -343,14 +335,12 @@ function DailyCleanlinessTable({ rows, setRows }) {
 
                 {/* Observation: default "C" (editable) */}
                 <td style={tdCenter()}>
-                  <select
-                    value={r?.observation || "C"}
-                    onChange={(e) => onCell(i, "observation", e.target.value)}
-                    style={sel(64)}
-                  >
-                    <option value="C">C</option>
-                    <option value={"N\\C"}>N\C</option>
-                  </select>
+                  {/* this sheet stores non-conform as "N\C"; an empty cell reads as C */}
+                  <CncToggle
+                    minWidth={90}
+                    value={r?.observation === "N\\C" ? "NC" : "C"}
+                    onChange={(v) => onCell(i, "observation", v === "NC" ? "N\\C" : "C")}
+                  />
                 </td>
 
                 {/* Informed to */}
@@ -423,6 +413,16 @@ export default function DailyCleanlinessTab({
   const setHeader = typeof setDcHeader === "function" ? setDcHeader : setLocalHeader;
   const setFooter = typeof setDcFooter === "function" ? setDcFooter : setLocalFooter;
 
+  // Checked By = the QCS supervisor (employee number → locked name), FTR 1 pattern.
+  const sup = useBranchSupervisor("QCS", { verifiedDefault: DEFAULT_SIGN_NAME });
+  const supLoadedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (supLoadedRef.current) return;
+    supLoadedRef.current = true;
+    if (footer?.checkedByEmpNo) sup.load(footer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // حفظ للسيرفر (على نوع qcs-clean فقط)
   const [saving, setSaving] = useState(false);
   const [loadingLast, setLoadingLast] = useState(false);
@@ -442,7 +442,10 @@ export default function DailyCleanlinessTab({
         updateRows(p.cleanlinessRows.map((r) => ({ ...emptyRow(), ...r })));
       }
       if (p.headers?.dcHeader) setHeader({ ...defaultDCHeader, ...p.headers.dcHeader });
-      if (p.headers?.dcFooter) setFooter({ ...defaultDCFooter, ...p.headers.dcFooter });
+      if (p.headers?.dcFooter) {
+        setFooter({ ...defaultDCFooter, ...p.headers.dcFooter });
+        if (p.headers.dcFooter.checkedByEmpNo) sup.load(p.headers.dcFooter);
+      }
       setDate("");
       alert(`✅ Loaded from ${hit.reportDate}. Now pick the date for today's record.`);
     } catch (e) {
@@ -457,6 +460,11 @@ export default function DailyCleanlinessTab({
       alert("⚠️ Pick a report date first.");
       return;
     }
+    if (sup.errors.length) { alert("⚠️ " + sup.errors.join(" · ")); return; }
+    if (!sup.confirmOtherBranch()) return;
+    const signed = sup.fields();
+    const signedFooter = { ...footer, checkedBy: signed.checkedBy, checkedByEmpNo: signed.checkedByEmpNo, verifiedBy: signed.verifiedBy, checkedByNote: signed.checkedByNote };
+    setFooter(signedFooter);
     try {
       setSaving(true);
 
@@ -466,7 +474,7 @@ export default function DailyCleanlinessTab({
         payload: {
           reportDate: date,
           cleanlinessRows: rows,
-          headers: { dcHeader: header, dcFooter: footer },
+          headers: { dcHeader: header, dcFooter: signedFooter },
         },
       };
 
@@ -537,6 +545,7 @@ export default function DailyCleanlinessTab({
       <h4 style={{ marginTop: 0 }}>Warehouse Daily Cleanliness</h4>
 
       <DailyCleanlinessTable rows={rows} setRows={updateRows} />
+      <SupervisorBlock sup={sup} />
 
       <DCEntryFooter footer={footer} />
 

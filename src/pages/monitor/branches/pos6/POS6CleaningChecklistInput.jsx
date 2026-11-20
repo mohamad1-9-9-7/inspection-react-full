@@ -5,7 +5,9 @@ import React, { useMemo, useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
 import { BRANCH, DOCS, TYPES, todayISO, useSaveReport } from "./pos6Api";
-import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
+import FormShell, { GuidanceNote, SaveBar } from "../_shared/BranchFormShell";
+import CncToggle from "../_shared/CncToggle";
+import { useBranchSupervisor, SupervisorBlock } from "../_shared/branchSupervisor";
 import { GUIDANCE } from "./pos6Guidance";
 
 /** Document control for this sheet — shared with the viewer (pos6Api.DOCS). */
@@ -89,8 +91,10 @@ export default function POS6CleaningChecklistInput() {
 
   const [date, setDate] = useState(todayISO);
   const [rows, setRows] = useState(buildDefaultRows);
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  // Checked By = this branch's supervisor (employee number → locked name), FTR 1 pattern
+  const sup = useBranchSupervisor(BRANCH);
+  /* Fill every still-empty item with C — items already marked (NC too) stay. */
+  const markAllC = () => setRows((prev) => prev.map((r) => (!r.isSection && !r.cnc ? { ...r, cnc: "C" } : r)));
 
   const onVal = (i, k, v) =>
     setRows((prev) => {
@@ -113,8 +117,8 @@ export default function POS6CleaningChecklistInput() {
 
   const handleSave = () => {
     if (!date) return alert("⚠️ " + t("hdr_report_date"));
-    if (!checkedBy.trim() || !verifiedBy.trim())
-      return alert("⚠️ " + t("sig_checked_by") + " / " + t("sig_verified_by"));
+    if (sup.errors.length) return alert("⚠️ " + sup.errors.join("\n"));
+    if (!sup.confirmOtherBranch()) return;
     if (stats.filled === 0) return alert("⚠️ " + t("ph_req_nc"));
 
     save(TYPES.cleaningChecklist, {
@@ -122,8 +126,7 @@ export default function POS6CleaningChecklistInput() {
       documentNo: DOC.documentNo,
       reportDate: date,
       entries: rows,
-      checkedBy,
-      verifiedBy,
+      ...sup.fields(),
     });
   };
 
@@ -168,6 +171,13 @@ export default function POS6CleaningChecklistInput() {
         </div>
       </div>
 
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "6px 0 10px" }}>
+        <button type="button" onClick={markAllC} title="Mark every empty item C (items already NC stay)"
+          style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, cursor: "pointer" }}>
+          ✓ All C
+        </button>
+      </div>
+
       <div className="ph-table-wrap ph-scroll-x">
         <table className="ph-table">
           <thead>
@@ -193,15 +203,7 @@ export default function POS6CleaningChecklistInput() {
                   <td style={{ textAlign: alignStart }}>{r.general}</td>
                   <td style={{ textAlign: alignStart, color: "#64748b", fontSize: 12 }}>{r.chemical || "—"}</td>
                   <td className="ph-cell-select">
-                    <select
-                      value={r.cnc}
-                      onChange={(e) => onVal(i, "cnc", e.target.value)}
-                      className={`ph-select ph-select-${r.cnc === "C" ? "ok" : r.cnc === "NC" ? "bad" : "empty"}`}
-                    >
-                      <option value="">—</option>
-                      <option value="C">C</option>
-                      <option value="NC">NC</option>
-                    </select>
+                    <CncToggle value={r.cnc} onChange={(v) => onVal(i, "cnc", v)} />
                   </td>
                   <td>
                     <input
@@ -226,13 +228,7 @@ export default function POS6CleaningChecklistInput() {
         </table>
       </div>
 
-      <SignatureFooter
-        t={t}
-        checkedBy={checkedBy}
-        setCheckedBy={setCheckedBy}
-        verifiedBy={verifiedBy}
-        setVerifiedBy={setVerifiedBy}
-      />
+      <SupervisorBlock sup={sup} />
       <SaveBar t={t} opMsg={opMsg} saving={saving} onSave={handleSave} />
     </FormShell>
   );
