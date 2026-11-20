@@ -7,6 +7,7 @@ import SignatureName from "../../../shared/SignatureName";
 import CreatorBadge from "./CreatorBadge";
 import { canDelete } from "../../../../utils/perms";
 import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 
 
 
@@ -307,56 +308,27 @@ export default function FTR1CookingTemperatureLogView() {
     }
   };
 
-  /* ===== Date tree ===== */
-  const groupedReports = reports.reduce((acc, r) => {
-    const d = toDate(reportDateOf(r)); if (!d) return acc;
-    const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const day = String(d.getDate()).padStart(2,"0");
-    acc[y] ??= {}; acc[y][m] ??= []; acc[y][m].push({ ...r, day, _dt:d.getTime() }); return acc;
-  }, {});
+
+  // Items for the shared date tree (newest first, local dates).
+  const treeItems = useMemo(() => reports.map((r) => {
+    const iso = (() => { const d = toDate(reportDateOf(r)); return d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""; })();
+    return { key: getId(r) || iso, dateISO: iso, label: iso ? iso.split("-").reverse().join("/") : "No date", data: r };
+  }).filter((it) => it.dateISO), [reports]);
 
   return (
-    <div style={{ display:"flex", gap:"1rem" }}>
-      {/* Sidebar */}
-      <div style={{ minWidth:"260px", background:"#f9f9f9", padding:"1rem", borderRadius:"10px", boxShadow:"0 3px 10px rgba(0,0,0,0.1)", height:"fit-content" }}>
-        <h4 style={{ marginBottom:"1rem", color:"#6d28d9", textAlign:"center" }}>🗓️ Saved Reports</h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports).sort(([a],[b]) => Number(b)-Number(a)).map(([year, months], yi) => (
-              <details key={year} open={yi === 0}>
-                <summary style={{ fontWeight:"bold", marginBottom:"6px" }}>📅 Year {year}</summary>
-                {Object.entries(months).sort(([a],[b]) => Number(b)-Number(a)).map(([month, days], mi) => {
-                  const daysSorted = [...days].sort((x,y)=> y._dt - x._dt);
-                  return (
-                    <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft:"1rem" }}>
-                      <summary style={{ fontWeight:500 }}>📅 Month {month}</summary>
-                      <ul style={{ listStyle:"none", paddingLeft:"1rem" }}>
-                        {daysSorted.map((r,i) => {
-                          const active = getId(selectedReport) && getId(selectedReport) === getId(r);
-                          return (
-                            <li key={i} onClick={() => { openRow(r); setEditMode(false); setDraft(null); }}
-                                style={{ padding:"6px 10px", marginBottom:"4px", borderRadius:"6px", cursor:"pointer",
-                                         background: active ? "#dcd6f7" : "#ecf0f1", color: active ? "#222" : "#333",
-                                         fontWeight:600, textAlign:"center" }}>
-                              {`${r.day}/${month}/${year}`}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </details>
-                  );
-                })}
-              </details>
-            ))}
-          </div>
-        )}
-      </div>
+    <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: "1rem", alignItems: "start", direction: "ltr" }}>
+      {/* Date tree — always on the left (shared design) */}
+      <DateTreeSidebar
+        title="🗓️ Saved Reports"
+        items={treeItems}
+        activeKey={getId(selectedReport) || null}
+        onPick={(it) => { openRow(it.data); setEditMode(false); setDraft(null); }}
+        loading={loading}
+        emptyText="No reports"
+      />
 
       {/* Report display + Toolbar */}
-      <div style={{ flex:1, background:"#eef3f8", padding:"1.5rem", borderRadius:"14px", boxShadow:"0 4px 18px #d2b4de44" }}>
+      <div style={{ minWidth:0, background:"#eef3f8", padding:"1.5rem", borderRadius:"14px", boxShadow:"0 4px 18px #d2b4de44" }}>
         {loadingReport ? (
           <p>⏳ Loading…</p>
         ) : !selectedReport ? (

@@ -538,7 +538,8 @@ export default function FTR1ReceivingLogView() {
   useRevealDate(revealISO, setOpenYears, setOpenMonths);
 
   /* ================== Styles ================== */
-  const shell = { display: "flex", gap: "1rem" };
+  // date tree always on the left, page always left-to-right
+  const shell = { display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: "1rem", alignItems: "start", direction: "ltr" };
   const sidebar = {
     minWidth: 260,
     background: "#fbfbfc",

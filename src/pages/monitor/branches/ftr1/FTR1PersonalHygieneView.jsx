@@ -6,6 +6,7 @@ import SignatureName from "../../../shared/SignatureName";
 import CreatorBadge from "./CreatorBadge";
 import { canDelete } from "../../../../utils/perms";
 import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -281,95 +282,27 @@ export default function FTR1PersonalHygieneView() {
     }
   };
 
-  // Group by year → month → day
-  const groupedReports = useMemo(() => {
-    return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
-      if (isNaN(date)) return acc;
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      acc[year] ??= {};
-      acc[year][month] ??= [];
-      acc[year][month].push({ ...r, day, _dt: date.getTime() });
-      return acc;
-    }, {});
-  }, [reports]);
 
   const selectedPayload = selectedReport?.payload || {};
   const entries = Array.isArray(selectedPayload?.entries) ? selectedPayload.entries : [];
 
+  // Items for the shared date tree (newest first, local dates).
+  const treeItems = useMemo(() => reports.map((r) => {
+    const iso = (() => { const d = getReportDate(r); return d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""; })();
+    return { key: getId(r) || iso, dateISO: iso, label: iso ? iso.split("-").reverse().join("/") : "No date", data: r };
+  }).filter((it) => it.dateISO), [reports]);
+
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {/* ✅ الشجرة مطوية دائماً: حذف open من details */}
-            {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(yb) - Number(ya))
-              .map(([year, months], yi) => (
-                <details key={year} open={yi === 0}>
-                  <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                    📅 Year {year}
-                  </summary>
-
-                  {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(mb) - Number(ma))
-                    .map(([month, days], mi) => {
-                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
-                      return (
-                        <details key={month} open={yi === 0 && mi === 0} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                getId(selectedReport) && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => openRow(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {`${r.day}/${month}/${year}`}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+    <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: "1rem", alignItems: "start", direction: "ltr" }}>
+      {/* Date tree — always on the left (shared design) */}
+      <DateTreeSidebar
+        title="🗓️ Saved Reports"
+        items={treeItems}
+        activeKey={getId(selectedReport) || null}
+        onPick={(it) => openRow(it.data)}
+        loading={loading}
+        emptyText="No reports"
+      />
 
       {/* Report display */}
       <div

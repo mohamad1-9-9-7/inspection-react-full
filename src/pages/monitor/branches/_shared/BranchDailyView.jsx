@@ -60,14 +60,16 @@ const sectionOf = (tab) => {
  *  - tabs: Array<{ key, icon, label, labelAr?, element, group?, subtitle? }>
  *  - defaultTabKey?
  *  - direction?   "rtl" | "ltr" — reading direction of the REPORT PAGES inside
- *                 (the sidebar itself is always left-to-right English)
+ *                 (the sidebar itself is always left-to-right English).
+ *                 Default "ltr": every report page reads left-to-right with
+ *                 its date tree on the left (Nov 2026).
  *  - showPrint?   generic print button (off when panels print themselves)
  */
 export default function BranchDailyView({
   branchCode,
   tabs = [],
   defaultTabKey,
-  direction = "rtl",
+  direction = "ltr",
   showPrint = true,
 }) {
   const code = String(branchCode || "").replace(/-/g, " ").trim();

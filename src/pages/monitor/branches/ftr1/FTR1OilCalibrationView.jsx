@@ -6,6 +6,7 @@ import { canDelete } from "../../../../utils/perms";
 import CreatorBadge from "./CreatorBadge";
 import { TPM_LIMITS, tpmStatus, actionLabel } from "./ftr1Oil";
 import { listReportDates, getReportById, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -75,29 +76,6 @@ export default function FTR1OilCalibrationView() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Group: Year -> Month -> [reports]
-  const grouped = useMemo(() => {
-    const acc = {};
-    for (const r of reports) {
-      const dt = safeDate(rowDate(r));
-      if (!dt) continue;
-      const y = String(dt.getFullYear());
-      const m = String(dt.getMonth() + 1).padStart(2, "0");
-      acc[y] ??= {};
-      acc[y][m] ??= [];
-      acc[y][m].push(r);
-    }
-    Object.values(acc).forEach((months) => {
-      Object.values(months).forEach((arr) =>
-        arr.sort(
-          (a, b) =>
-            (safeDate(rowDate(b))?.getTime() || 0) -
-            (safeDate(rowDate(a))?.getTime() || 0)
-        )
-      );
-    });
-    return acc;
-  }, [reports]);
 
   const sortedEntries = useMemo(() => {
     const items = selectedReport?.payload?.entries || [];
@@ -301,8 +279,14 @@ export default function FTR1OilCalibrationView() {
     }
   };
 
+  // Items for the shared date tree (newest first, local dates).
+  const treeItems = useMemo(() => reports.map((r) => {
+    const iso = (() => { const d = safeDate(rowDate(r)); return d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""; })();
+    return { key: getId(r) || iso, dateISO: iso, label: iso ? iso.split("-").reverse().join("/") : "No date", data: r };
+  }).filter((it) => it.dateISO), [reports]);
+
   return (
-    <div className="ftr1-oil" style={{ display: "flex", gap: "1rem" }}>
+    <div className="ftr1-oil" style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: "1rem", alignItems: "start", direction: "ltr" }}>
       {/* حارس CSS: يضمن ظهور زر الحذف مهما كانت قواعد عامة */}
       <style>{`
         .ftr1-oil .action-toolbar .btn-delete {
@@ -312,117 +296,16 @@ export default function FTR1OilCalibrationView() {
         }
       `}</style>
 
-      {/* Sidebar */}
-      <div
-        style={{
-          minWidth: "280px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: "0.5rem", color: "#16a085", textAlign: "center" }}>
-          📂 Saved Reports
-        </h4>
-
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <button
-            onClick={load}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              background: "#0ea5e9",
-              color: "#fff",
-              fontWeight: 600,
-              border: "none",
-              cursor: "pointer",
-            }}
-            title="Refresh"
-          >
-            🔄 Refresh
-          </button>
-        </div>
-
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(grouped)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months], yi) => (
-                <details key={year} open={yi === 0}>
-                  <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
-                    📅 Year {year}
-                  </summary>
-
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, reportsInMonth]) => (
-                      <div
-                        key={month}
-                        style={{
-                          background: "#ecf0f1",
-                          borderRadius: 8,
-                          padding: "6px 8px",
-                          marginBottom: 6,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            marginBottom: 6,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span>📂 Month {month}</span>
-                          <span style={{ fontSize: 12, color: "#555" }}>
-                            {reportsInMonth.length} item(s)
-                          </span>
-                        </div>
-
-                        {reportsInMonth.map((r) => {
-                          const isActive = getId(selectedReport) === getId(r);
-                          const dt = rowDate(r);
-                          return (
-                            <div
-                              key={getId(r) || dt || Math.random()}
-                              onClick={() => openRow(r)}
-                              style={{
-                                padding: "6px 10px",
-                                marginBottom: 4,
-                                borderRadius: 6,
-                                cursor: "pointer",
-                                background: isActive ? "#16a085" : "#ffffff",
-                                color: isActive ? "#fff" : "#333",
-                                border: "1px solid #e5e7eb",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                fontWeight: 600,
-                              }}
-                              title={`Open report (${formatDate(dt)})`}
-                            >
-                              <span>📝 {formatDate(dt)}</span>
-                              {getId(r) ? (
-                                <span style={{ fontSize: 12, opacity: 0.8 }}>
-                                  ID: {String(getId(r)).slice(0, 6)}…
-                                </span>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+      {/* Date tree — always on the left (shared design) */}
+      <DateTreeSidebar
+        title="🗓️ Saved Reports"
+        items={treeItems}
+        activeKey={getId(selectedReport) || null}
+        onPick={(it) => openRow(it.data)}
+        loading={loading}
+        emptyText="No reports"
+        topSlot={<button onClick={load} style={{ padding: "6px 10px", borderRadius: 6, background: "#0ea5e9", color: "#fff", fontWeight: 600, border: "none", cursor: "pointer", marginBottom: 8 }} title="Refresh">🔄 Refresh</button>}
+      />
 
       {/* Report Display */}
       <div
