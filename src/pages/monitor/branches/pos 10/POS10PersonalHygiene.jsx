@@ -1,13 +1,18 @@
 // src/pages/monitor/branches/pos 10/POS10PersonalHygiene.jsx
 // Personal Hygiene input — POS 10
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 10)
+//
+// Quick entry: staff rows come from Settings → Staff Directory ("POS 10 ·
+// Personal Hygiene"), every C/NC and Yes/No cell is one tap, "All OK" marks
+// the named staff C + Fit = Yes, Checked By is the supervisor's employee
+// number (name locked from the directory), and the date's saved report
+// re-opens here for editing instead of blocking the save.
 
-import React, { useEffect, useMemo, useState } from "react";
-import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import { useStaffDirectory, normalizeEmpNo, normalizeName } from "../_shared/staffRegistry";
+import { useCheckedBy, CheckedByField } from "../pos19/_shared/pos19EntryKit";
+import { useDayReport, DayStatus, CycleCell, fillEmpty, FillAllButton, todayDubai } from "../_shared/hygieneEntryKit";
 
 const HYGIENE_COLUMNS = [
   "Nails",
@@ -18,9 +23,37 @@ const HYGIENE_COLUMNS = [
 
 // (ملاحظة: أزلنا أعمدة Communicable/Open wounds من الجدول واستبدلناها بمنطق FIT + Reason)
 const TYPE = "pos10_personal_hygiene";
+const FORM_KEY = "pos10_personal_hygiene";
+const START_ROWS = 9;
+
+const YES_NO = ["", "Yes", "No"];
+// For the "If No" reasons a Yes is the finding, so Yes reads red.
+const REASON_TONES = { Yes: "bad", No: "good" };
 
 const norm = (s) => String(s ?? "").trim();
 const low = (s) => norm(s).toLowerCase();
+
+const makeRow = (name = "", empNo = "") => ({
+  empNo,
+  name,
+  Nails: "",
+  Hair: "",
+  "Not wearing Jewelry": "",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
+  fitForFoodHandling: "",
+  reasonCommunicableDisease: "",
+  reasonOpenWound: "",
+  reasonOther: "",
+  remarks: "",
+});
+const blankRows = () => Array.from({ length: START_ROWS }, () => makeRow());
+const hasName = (r) => !!norm(r?.name);
+const isBlankRow = (r) =>
+  !hasName(r) &&
+  !norm(r?.empNo) &&
+  !norm(r?.remarks) &&
+  !norm(r?.reasonOther) &&
+  [...HYGIENE_COLUMNS, "fitForFoodHandling", "reasonCommunicableDisease", "reasonOpenWound"].every((k) => !norm(r?.[k]));
 
 export default function POS10PersonalHygiene() {
   const [searchParams] = useSearchParams();
@@ -35,110 +68,95 @@ export default function POS10PersonalHygiene() {
     return `${clean} — ${extra}`;
   }, [branch, branchNameFromURL]);
 
-  const [date, setDate] = useState("");
-  const [entries, setEntries] = useState(
-    Array.from({ length: 9 }, () => ({
-      name: "",
-      Nails: "",
-      Hair: "",
-      "Not wearing Jewelry": "",
-      "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
-      fitForFoodHandling: "",
-      reasonCommunicableDisease: "",
-      reasonOpenWound: "",
-      reasonOther: "",
-      remarks: "",
-    }))
-  );
+  const [date, setDate] = useState(todayDubai);
+  const [entries, setEntries] = useState(blankRows);
 
-  // ✅ Checked By = مشرف الفرع (PIC) | Verified by (QA) = كواليتي مستقل
-  const [checkedBySupervisor, setCheckedBySupervisor] = useState("");
+  // ✅ Checked By = مشرف الفرع (PIC) — رقم وظيفي ← الاسم | Verified by (QA) = كواليتي مستقل
   const [verifiedByQA, setVerifiedByQA] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const [opMsg, setOpMsg] = useState("");
+  /* ===== Staff directory: `roster` = people assigned to this sheet ===== */
+  const directory = useStaffDirectory(FORM_KEY);
+  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo, byName } = directory;
+  const sig = useCheckedBy(directory);
+  const checkedBySupervisor = sig.name;
 
-  // للتحقق من وجود تقرير لنفس التاريخ والفرع
-  const [checkingDup, setCheckingDup] = useState(false);
-  const [hasDuplicate, setHasDuplicate] = useState(false);
+  const rosterRows = () =>
+    roster.length ? roster.map((s) => makeRow(s.name || "", s.empNo || "")) : blankRows();
 
-  const handleChange = (rowIndex, field, value) => {
-    const updated = [...entries];
-    updated[rowIndex][field] = value;
-    setEntries(updated);
-  };
+  const day = useDayReport({
+    type: TYPE,
+    reporter: "pos10",
+    date,
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...makeRow(), ...e })) : [];
+      setEntries(list.length ? list : rosterRows());
+      setVerifiedByQA(p.verifiedByQA || p.verifiedBy || "");
+      sig.load({
+        checkedBy: p.checkedBySupervisor || p.checkedBy || "",
+        checkedByEmpNo: p.checkedBySupervisorEmpNo || p.checkedByEmpNo || "",
+      });
+    },
+    onBlank: () => {
+      setEntries(rosterRows());
+      setVerifiedByQA("");
+      sig.reset();
+    },
+  });
 
-  // دالة تتحقق من وجود تقرير محفوظ لنفس التاريخ لنفس الفرع
-  const hasDuplicateForDate = async (d) => {
-    if (!d) return false;
-    try {
-      // Targeted read: the server matches the date itself and returns at most
-      // one row. The old query asked for the type with no date, which authFetch
-      // turns into limit=5000, so every record of this type came back with its
-      // full payload just to answer "is this day taken?".
-      // The report type already names the branch, so no branch filter is needed.
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(d)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const json = await res.json();
-      const list =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
-
-      return list.length > 0;
-    } catch (e) {
-      console.warn("Duplicate check failed:", e);
-      return false;
-    }
-  };
-
-  // عندما يتغيّر التاريخ نتحقق تلقائيًا إن كان هناك تقرير لنفس اليوم
+  /* Seed from the directory once — only while nothing is typed and no saved
+     report was opened, so a late reply never wipes work in progress. */
+  const seededRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    if (!date) {
-      setHasDuplicate(false);
-      return;
-    }
+    if (seededRef.current || staffLoading || day.loading) return;
+    seededRef.current = true;
+    if (!roster.length || day.editing) return;
+    setEntries((prev) => (prev.every(isBlankRow) ? rosterRows() : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, staffLoading, day.loading, day.editing]);
 
-    (async () => {
-      setCheckingDup(true);
-      const exists = await hasDuplicateForDate(date);
-      if (!cancelled) {
-        setHasDuplicate(exists);
-        setCheckingDup(false);
-        if (exists) {
-          setOpMsg(
-            "⚠️ Report for this branch and date already exists. Please change the date or review the report from the reports screen.\n⚠️ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد. يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير."
-          );
-        } else {
-          setOpMsg("");
-        }
+  const loadRoster = () => {
+    if (!roster.length) return;
+    const typed = entries.some(
+      (e) => !isBlankRow(e) && !roster.some((s) => normalizeEmpNo(s.empNo) === normalizeEmpNo(e.empNo))
+    );
+    if (typed && !window.confirm("Replace the rows with the staff list from the directory?")) return;
+    setEntries(rosterRows());
+  };
+
+  const handleChange = (rowIndex, field, value) =>
+    setEntries((prev) => {
+      const next = [...prev];
+      const row = next[rowIndex] || makeRow();
+      // Either identifier fills the other straight from the directory.
+      if (field === "empNo") {
+        const m = byNo.get(normalizeEmpNo(value));
+        next[rowIndex] = m ? { ...row, empNo: value, name: m.name } : { ...row, empNo: value };
+      } else if (field === "name") {
+        const m = byName.get(normalizeName(value));
+        next[rowIndex] = m ? { ...row, name: value, empNo: m.empNo } : { ...row, name: value };
+      } else {
+        next[rowIndex] = { ...row, [field]: value };
       }
-    })();
+      return next;
+    });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [date, branch]);
+  const addRow = () => setEntries((p) => [...p, makeRow()]);
+  const removeRow = (i) => setEntries((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p));
+  // "All OK": C on the four checks + Fit = Yes, for named staff; anything marked stays.
+  const markAll = () =>
+    setEntries((p) => fillEmpty(fillEmpty(p, HYGIENE_COLUMNS, "C", hasName), ["fitForFoodHandling"], "Yes", hasName));
 
   // ✅ Validation واضح قبل الحفظ
   const validationErrors = useMemo(() => {
     const errs = [];
 
     if (!date) errs.push("Please select a date.");
-    if (!norm(checkedBySupervisor)) errs.push("Checked By (Branch Supervisor - PIC) is required.");
+    sig.errors.forEach((e) => errs.push(e.replace(/^Checked by/, "Checked By (Branch Supervisor - PIC)")));
     if (!norm(verifiedByQA)) errs.push("Verified by (QA) is required.");
 
     if (norm(checkedBySupervisor) && norm(verifiedByQA) && low(checkedBySupervisor) === low(verifiedByQA)) {
       errs.push("Verified by (QA) must be independent (cannot be the same as Checked By).");
-    }
-
-    if (hasDuplicate) {
-      errs.push("Report for this branch and date already exists.");
     }
 
     entries.forEach((e, idx) => {
@@ -166,53 +184,54 @@ export default function POS10PersonalHygiene() {
     });
 
     return errs;
-  }, [date, checkedBySupervisor, verifiedByQA, hasDuplicate, entries]);
+  }, [date, sig.errors, checkedBySupervisor, verifiedByQA, entries]);
 
   const handleSave = async () => {
     if (validationErrors.length) {
       alert("⚠️ Please fix:\n\n- " + validationErrors.join("\n- "));
       return;
     }
+    const filled = entries.filter((e) => !isBlankRow(e));
+    if (!filled.length) {
+      alert("⚠️ Add at least one employee.");
+      return;
+    }
+    if (filled.some((e) => !hasName(e))) {
+      alert("⚠️ Every filled row needs an employee name.");
+      return;
+    }
 
+    const signed = sig.fields();
+    setSaving(true);
     try {
-      setOpMsg("⏳ Saving...");
+      await day.save(
+        {
+          branch, // ✅ POS 10 (أو من الـ URL)
+          branchLabel, // ✅ POS 10 — Abu Dhabi Butchery
+          reportDate: date,
+          area: "QA",
 
-      const payload = {
-        branch, // ✅ POS 10 (أو من الـ URL)
-        branchLabel, // ✅ POS 10 — Abu Dhabi Butchery
-        reportDate: date,
-        area: "QA",
+          // ✅ الأدوار كما طلبت
+          checkedBySupervisor: signed.checkedBy,
+          checkedBySupervisorEmpNo: signed.checkedByEmpNo,
+          verifiedByQA: norm(verifiedByQA),
 
-        // ✅ الأدوار كما طلبت
-        checkedBySupervisor: norm(checkedBySupervisor),
-        verifiedByQA: norm(verifiedByQA),
+          // ✅ ملاحظات ثابتة
+          checkedByNote:
+            "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
+          electronicApprovalNote:
+            "This report is electronically approved; no signature is required.",
 
-        // ✅ ملاحظات ثابتة
-        checkedByNote:
-          "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
-        electronicApprovalNote:
-          "This report is electronically approved; no signature is required.",
-
-        entries,
-        savedAt: Date.now(),
-      };
-
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      const { queued } = await saveReport({
-        body: { reporter: "pos10", type: TYPE, payload },
-        label: `POS 10 Personal Hygiene ${payload.reportDate || ""}`,
-      });
-      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
-    } catch (err) {
-      console.error(err);
-      setOpMsg("❌ Failed to save.");
+          entries: filled,
+        },
+        `POS 10 Personal Hygiene ${date}`
+      );
     } finally {
-      setTimeout(() => setOpMsg(""), 4000);
+      setSaving(false);
     }
   };
 
-  const saveDisabled = checkingDup || hasDuplicate || validationErrors.length > 0;
+  const saveDisabled = saving || day.loading || validationErrors.length > 0;
 
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
@@ -313,8 +332,8 @@ export default function POS10PersonalHygiene() {
       </div>
 
       {/* Date */}
-      <div style={{ marginBottom: "0.5rem" }}>
-        <strong>Date:</strong>{" "}
+      <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <strong>Date:</strong>
         <input
           type="date"
           value={date}
@@ -325,26 +344,41 @@ export default function POS10PersonalHygiene() {
             border: "1px solid #ccc",
           }}
         />
+        <DayStatus day={day} />
       </div>
 
-      {/* رسالة تكرار التاريخ */}
-      {hasDuplicate && (
-        <div
-          style={{
-            textAlign: "center",
-            color: "#b91c1c",
-            fontWeight: 600,
-            marginBottom: "0.75rem",
-            whiteSpace: "pre-line",
-          }}
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: "0.5rem" }}>
+        <FillAllButton
+          onClick={markAll}
+          label="All OK (C + Fit Yes)"
+          title="Mark every empty check C and Fit = Yes for the named staff (cells already marked stay)"
+        />
+        <button
+          type="button"
+          onClick={loadRoster}
+          disabled={staffLoading || !roster.length}
+          style={toolBtn}
+          title="Fill the rows with the staff assigned to POS 10 in the Staff Directory"
         >
-          Report for this branch and date already exists. Please change the date
-          or review the report from the reports screen.
-          {"\n"}
-          تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد.
-          يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير.
+          👥 Load staff list{roster.length ? ` (${roster.length})` : ""}
+        </button>
+        <button type="button" onClick={addRow} style={toolBtn}>+ Add row</button>
+      </div>
+      {!staffLoading && roster.length === 0 && (
+        <div style={hintBox}>
+          👥 No staff assigned yet — add them in Settings → Staff Directory (form “POS 10 · Personal Hygiene”).
+          You can still type names or employee numbers.
         </div>
       )}
+      {!staffLoading && !staffOnline && <div style={hintBox}>📴 Offline — showing the last saved staff list.</div>}
+
+      <datalist id="pos10-ph-empno">
+        {allStaff.map((s) => <option key={`n-${s.empNo}`} value={s.empNo}>{s.name}</option>)}
+      </datalist>
+      <datalist id="pos10-ph-name">
+        {allStaff.map((s) => <option key={`m-${s.empNo}`} value={s.name}>{s.empNo}</option>)}
+      </datalist>
 
       {/* Validation banner */}
       {validationErrors.length > 0 && (
@@ -366,150 +400,146 @@ export default function POS10PersonalHygiene() {
       )}
 
       {/* Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-        <thead>
-          <tr style={{ background: "#2980b9", color: "#fff" }}>
-            <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth: 1500 }}>
+          <thead>
+            <tr style={{ background: "#2980b9", color: "#fff" }}>
+              <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+              <th style={{ ...thStyle, width: "90px" }}>Emp. No</th>
+              <th style={{ ...thStyle, width: "170px" }}>Employee Name</th>
 
-            {HYGIENE_COLUMNS.map((col, i) => (
-              <th key={i} style={{ ...thStyle, width: "120px" }}>
-                {col}
+              {HYGIENE_COLUMNS.map((col, i) => (
+                <th key={i} style={{ ...thStyle, width: "110px" }}>
+                  {col}
+                </th>
+              ))}
+
+              <th style={{ ...thStyle, width: "120px" }}>
+                Fit for Food Handling?
+                <br />
+                (Yes/No)
               </th>
-            ))}
+              <th style={{ ...thStyle, width: "120px" }}>
+                If No: Communicable disease
+                <br />
+                (Yes/No)
+              </th>
+              <th style={{ ...thStyle, width: "120px" }}>
+                If No: Open wound
+                <br />
+                (Yes/No)
+              </th>
+              <th style={{ ...thStyle, width: "170px" }}>If No: Other (text)</th>
 
-            <th style={{ ...thStyle, width: "150px" }}>
-              Fit for Food Handling?
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "140px" }}>
-              If No: Communicable disease
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "140px" }}>
-              If No: Open wound
-              <br />
-              (Yes/No)
-            </th>
-            <th style={{ ...thStyle, width: "170px" }}>If No: Other (text)</th>
+              <th style={{ ...thStyle, width: "230px" }}>Remarks and Corrective Actions</th>
+              <th style={{ ...thStyle, width: "44px" }} />
+            </tr>
+          </thead>
 
-            <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
-          </tr>
-        </thead>
+          <tbody>
+            {entries.map((entry, i) => {
+              const isNo = low(entry?.fitForFoodHandling) === "no";
+              return (
+                <tr key={i}>
+                  <td style={tdStyle}>{i + 1}</td>
 
-        <tbody>
-          {entries.map((entry, i) => {
-            const isNo = low(entry?.fitForFoodHandling) === "no";
-            return (
-              <tr key={i}>
-                <td style={tdStyle}>{i + 1}</td>
-
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.name}
-                    onChange={(e) => handleChange(i, "name", e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      maxWidth: "140px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  />
-                </td>
-
-                {HYGIENE_COLUMNS.map((col, cIndex) => (
-                  <td key={cIndex} style={tdStyle}>
-                    <select
-                      value={entry[col]}
-                      onChange={(e) => handleChange(i, col, e.target.value)}
-                      style={{ ...inputStyle, width: "100%" }}
-                    >
-                      <option value="">--</option>
-                      <option value="C">C</option>
-                      <option value="NC">NC</option>
-                    </select>
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      list="pos10-ph-empno"
+                      placeholder="No."
+                      value={entry.empNo || ""}
+                      onChange={(e) => handleChange(i, "empNo", e.target.value)}
+                      style={inputStyle}
+                    />
                   </td>
-                ))}
 
-                <td style={tdStyle}>
-                  <select
-                    value={entry.fitForFoodHandling}
-                    onChange={(e) => handleChange(i, "fitForFoodHandling", e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      borderColor: isNo ? "#ef4444" : "#aaa",
-                    }}
-                  >
-                    <option value="">--</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </td>
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      list="pos10-ph-name"
+                      value={entry.name}
+                      onChange={(e) => handleChange(i, "name", e.target.value)}
+                      style={{ ...inputStyle, overflow: "hidden", textOverflow: "ellipsis" }}
+                    />
+                  </td>
 
-                <td style={tdStyle}>
-                  <select
-                    value={entry.reasonCommunicableDisease}
-                    onChange={(e) => handleChange(i, "reasonCommunicableDisease", e.target.value)}
-                    style={{ ...inputStyle, width: "100%" }}
-                    disabled={!isNo}
-                  >
-                    <option value="">--</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </td>
+                  {HYGIENE_COLUMNS.map((col, cIndex) => (
+                    <td key={cIndex} style={tdStyle}>
+                      <CycleCell value={entry[col]} onChange={(v) => handleChange(i, col, v)} />
+                    </td>
+                  ))}
 
-                <td style={tdStyle}>
-                  <select
-                    value={entry.reasonOpenWound}
-                    onChange={(e) => handleChange(i, "reasonOpenWound", e.target.value)}
-                    style={{ ...inputStyle, width: "100%" }}
-                    disabled={!isNo}
-                  >
-                    <option value="">--</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </td>
+                  <td style={tdStyle}>
+                    <CycleCell
+                      value={entry.fitForFoodHandling}
+                      cycle={YES_NO}
+                      onChange={(v) => handleChange(i, "fitForFoodHandling", v)}
+                      title="Tap: Yes → No → empty"
+                    />
+                  </td>
 
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.reasonOther}
-                    onChange={(e) => handleChange(i, "reasonOther", e.target.value)}
-                    style={{ ...inputStyle, width: "100%" }}
-                    placeholder={isNo ? "Other reason..." : "—"}
-                    disabled={!isNo}
-                  />
-                </td>
+                  <td style={tdStyle}>
+                    <CycleCell
+                      value={entry.reasonCommunicableDisease}
+                      cycle={YES_NO}
+                      tones={REASON_TONES}
+                      disabled={!isNo}
+                      onChange={(v) => handleChange(i, "reasonCommunicableDisease", v)}
+                    />
+                  </td>
 
-                <td style={tdStyle}>
-                  <input
-                    type="text"
-                    value={entry.remarks}
-                    onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      borderColor: isNo && !norm(entry.remarks) ? "#ef4444" : "#aaa",
-                    }}
-                    placeholder={isNo ? "Corrective Action (transfer/exclude)..." : ""}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <td style={tdStyle}>
+                    <CycleCell
+                      value={entry.reasonOpenWound}
+                      cycle={YES_NO}
+                      tones={REASON_TONES}
+                      disabled={!isNo}
+                      onChange={(v) => handleChange(i, "reasonOpenWound", v)}
+                    />
+                  </td>
+
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      value={entry.reasonOther}
+                      onChange={(e) => handleChange(i, "reasonOther", e.target.value)}
+                      style={inputStyle}
+                      placeholder={isNo ? "Other reason..." : "—"}
+                      disabled={!isNo}
+                    />
+                  </td>
+
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      value={entry.remarks}
+                      onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        borderColor: isNo && !norm(entry.remarks) ? "#ef4444" : "#aaa",
+                      }}
+                      placeholder={isNo ? "Corrective Action (transfer/exclude)..." : ""}
+                    />
+                  </td>
+
+                  <td style={tdStyle}>
+                    <button type="button" onClick={() => removeRow(i)} title="Remove row" style={rmBtn}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {/* Footer */}
       <div style={{ marginTop: "1rem", fontWeight: "600" }}>
         REMARKS / CORRECTIVE ACTIONS:
+      </div>
+      <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
+        *(C – Conform &nbsp;&nbsp;&nbsp; NC – Non Conform) — tap a cell to change it
       </div>
 
       {/* Checked / Verified */}
@@ -517,22 +547,14 @@ export default function POS10PersonalHygiene() {
         style={{
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
           marginTop: "1rem",
           fontWeight: 700,
           gap: "1rem",
           flexWrap: "wrap",
         }}
       >
-        <label>
-          Checked By (Branch Supervisor - PIC):{" "}
-          <input
-            type="text"
-            required
-            value={checkedBySupervisor}
-            onChange={(e) => setCheckedBySupervisor(e.target.value)}
-            style={footerInput}
-          />
-        </label>
+        <CheckedByField sig={sig} label="Checked By (Branch Supervisor - PIC):" />
 
         <label>
           Verified by (QA):{" "}
@@ -571,13 +593,13 @@ export default function POS10PersonalHygiene() {
             opacity: saveDisabled ? 0.75 : 1,
           }}
         >
-          {checkingDup ? "⏳ Checking..." : "💾 Save Report"}
+          {saving ? "⏳ Saving..." : day.loading ? "⏳ Loading..." : day.editing ? "💾 Update Report" : "💾 Save Report"}
         </button>
       </div>
 
-      {opMsg && (
-        <div style={{ marginTop: "1rem", fontWeight: "700", whiteSpace: "pre-line" }}>
-          {opMsg}
+      {day.msg && !day.loading && (
+        <div style={{ marginTop: "1rem", fontWeight: "700", whiteSpace: "pre-line", textAlign: "center" }}>
+          {day.msg}
         </div>
       )}
     </div>
@@ -602,6 +624,38 @@ const inputStyle = {
   borderRadius: "4px",
   border: "1px solid #aaa",
   width: "100%",
+  boxSizing: "border-box",
+};
+
+const toolBtn = {
+  padding: "8px 14px",
+  background: "#fff",
+  color: "#0f172a",
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const hintBox = {
+  fontSize: "0.85rem",
+  color: "#475569",
+  background: "#f8fafc",
+  border: "1px dashed #cbd5e1",
+  borderRadius: 8,
+  padding: "6px 10px",
+  marginBottom: "0.5rem",
+};
+
+const rmBtn = {
+  width: 30,
+  height: 28,
+  border: "1px solid #ef4444",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  borderRadius: 6,
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
 const footerInput = {

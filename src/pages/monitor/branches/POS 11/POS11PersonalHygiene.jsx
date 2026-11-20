@@ -1,13 +1,21 @@
 // src/pages/monitor/branches/POS 11/POS11PersonalHygiene.jsx
 // Personal Hygiene input — POS 11 (Al Ain Butchery)
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 11)
+//
+// Quick entry: staff rows come from Settings → Staff Directory ("POS 11 ·
+// Personal Hygiene"), C/NC is one tap per cell with an "All C" button,
+// Checked By is the supervisor's employee number (name locked from the
+// directory), and the date's saved report re-opens here for editing.
 
-import React, { useState } from "react";
-import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
+import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useStaffDirectory, normalizeEmpNo, normalizeName } from "../_shared/staffRegistry";
+import { useCheckedBy, CheckedByField } from "../pos19/_shared/pos19EntryKit";
+import { useDayReport, DayStatus, CycleCell, fillEmpty, FillAllButton, todayDubai } from "../_shared/hygieneEntryKit";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+const TYPE = "pos11_personal_hygiene";
+const FORM_KEY = "pos11_personal_hygiene";
+const START_ROWS = 9;
 
 const columns = [
   "Nails",
@@ -18,66 +26,123 @@ const columns = [
   "Open wounds/sores & cut",
 ];
 
+const makeRow = (name = "", empNo = "") => ({
+  empNo,
+  name,
+  ...Object.fromEntries(columns.map((c) => [c, ""])),
+  remarks: "",
+});
+const blankRows = () => Array.from({ length: START_ROWS }, () => makeRow());
+const hasName = (r) => !!String(r?.name || "").trim();
+const isBlankRow = (r) =>
+  !hasName(r) &&
+  !String(r?.empNo || "").trim() &&
+  !String(r?.remarks || "").trim() &&
+  columns.every((c) => !String(r?.[c] || "").trim());
+
 export default function POS11PersonalHygiene() {
   const [searchParams] = useSearchParams();
   const branchFromURL = searchParams.get("branch");
   const branch = branchFromURL || "POS 11";
 
-  const [date, setDate] = useState("");
-  const [entries, setEntries] = useState(
-    Array.from({ length: 9 }, () => ({
-      name: "",
-      Nails: "",
-      Hair: "",
-      "Not wearing Jewelry": "",
-      "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
-      "Communicable Disease": "",
-      "Open wounds/sores & cut": "",
-      remarks: "",
-    }))
-  );
-  const [checkedBy, setCheckedBy] = useState("");
+  const [date, setDate] = useState(todayDubai);
+  const [entries, setEntries] = useState(blankRows);
   const [verifiedBy, setVerifiedBy] = useState("");
-  const [opMsg, setOpMsg] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const handleChange = (rowIndex, field, value) => {
-    const updated = [...entries];
-    updated[rowIndex][field] = value;
-    setEntries(updated);
+  /* ===== Staff directory: `roster` = people assigned to this sheet ===== */
+  const directory = useStaffDirectory(FORM_KEY);
+  const { roster, staff: allStaff, loading: staffLoading, online: staffOnline, byNo, byName } = directory;
+  const sig = useCheckedBy(directory);
+
+  const rosterRows = () =>
+    roster.length ? roster.map((s) => makeRow(s.name || "", s.empNo || "")) : blankRows();
+
+  const day = useDayReport({
+    type: TYPE,
+    reporter: "pos11",
+    date,
+    onLoad: (p) => {
+      const list = Array.isArray(p.entries) ? p.entries.map((e) => ({ ...makeRow(), ...e })) : [];
+      setEntries(list.length ? list : rosterRows());
+      setVerifiedBy(p.verifiedBy || p.verifiedByQA || "");
+      sig.load({ ...p, checkedBy: p.checkedBy || p.checkedBySupervisor || "" });
+    },
+    onBlank: () => {
+      setEntries(rosterRows());
+      setVerifiedBy("");
+      sig.reset();
+    },
+  });
+
+  /* Seed from the directory once — only while nothing is typed and no saved
+     report was opened, so a late reply never wipes work in progress. */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading || day.loading) return;
+    seededRef.current = true;
+    if (!roster.length || day.editing) return;
+    setEntries((prev) => (prev.every(isBlankRow) ? rosterRows() : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, staffLoading, day.loading, day.editing]);
+
+  const loadRoster = () => {
+    if (!roster.length) return;
+    const typed = entries.some(
+      (e) => !isBlankRow(e) && !roster.some((s) => normalizeEmpNo(s.empNo) === normalizeEmpNo(e.empNo))
+    );
+    if (typed && !window.confirm("Replace the rows with the staff list from the directory?")) return;
+    setEntries(rosterRows());
   };
 
-  const handleSave = async () => {
-    if (!date) {
-      alert("⚠️ Please select a date");
-      return;
-    }
-    if (!checkedBy.trim() || !verifiedBy.trim()) {
-      alert("⚠️ Checked By and Verified By are required");
-      return;
-    }
-    try {
-      setOpMsg("⏳ Saving...");
-      const payload = {
-        branch, // ✅ POS 11 (أو من الـ URL)
-        reportDate: date,
-        entries,
-        checkedBy,
-        verifiedBy,
-        savedAt: Date.now(),
-      };
+  const handleChange = (rowIndex, field, value) =>
+    setEntries((prev) => {
+      const next = [...prev];
+      const row = next[rowIndex] || makeRow();
+      // Either identifier fills the other straight from the directory.
+      if (field === "empNo") {
+        const m = byNo.get(normalizeEmpNo(value));
+        next[rowIndex] = m ? { ...row, empNo: value, name: m.name } : { ...row, empNo: value };
+      } else if (field === "name") {
+        const m = byName.get(normalizeName(value));
+        next[rowIndex] = m ? { ...row, name: value, empNo: m.empNo } : { ...row, name: value };
+      } else {
+        next[rowIndex] = { ...row, [field]: value };
+      }
+      return next;
+    });
 
-      // Without a connection the report waits on this device and is sent
-      // later (utils/reportOutbox.js).
-      const { queued } = await saveReport({
-        body: { reporter: "pos11", type: "pos11_personal_hygiene", payload },
-        label: `POS 11 Personal Hygiene ${payload.reportDate || ""}`,
-      });
-      setOpMsg(queued ? queuedMessage("en") : "✅ Saved successfully!");
-    } catch (err) {
-      console.error(err);
-      setOpMsg("❌ Failed to save.");
+  const addRow = () => setEntries((p) => [...p, makeRow()]);
+  const removeRow = (i) => setEntries((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p));
+  const markAll = () => setEntries((p) => fillEmpty(p, columns, "C", hasName));
+
+  const handleSave = async () => {
+    const errs = [];
+    if (!date) errs.push("Please select a date.");
+    errs.push(...sig.errors);
+    if (!verifiedBy.trim()) errs.push("Verified By is required.");
+    const filled = entries.filter((e) => !isBlankRow(e));
+    if (!filled.length) errs.push("Add at least one employee.");
+    if (filled.some((e) => !hasName(e))) errs.push("Every filled row needs an employee name.");
+    if (errs.length) {
+      alert("⚠️ " + errs.join("\n"));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await day.save(
+        {
+          branch, // ✅ POS 11 (أو من الـ URL)
+          reportDate: date,
+          entries: filled,
+          ...sig.fields(),
+          verifiedBy,
+        },
+        `POS 11 Personal Hygiene ${date}`
+      );
     } finally {
-      setTimeout(() => setOpMsg(""), 4000);
+      setSaving(false);
     }
   };
 
@@ -158,8 +223,8 @@ export default function POS11PersonalHygiene() {
       </div>
 
       {/* ✅ Date خارج الترويسة */}
-      <div style={{ marginBottom: "0.5rem" }}>
-        <strong>Date:</strong>{" "}
+      <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <strong>Date:</strong>
         <input
           type="date"
           value={date}
@@ -170,73 +235,109 @@ export default function POS11PersonalHygiene() {
             border: "1px solid #ccc",
           }}
         />
+        <DayStatus day={day} />
       </div>
 
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: "0.5rem" }}>
+        <FillAllButton onClick={markAll} label="All C" title="Mark every empty cell C for the named staff (NC stays)" />
+        <button
+          type="button"
+          onClick={loadRoster}
+          disabled={staffLoading || !roster.length}
+          style={toolBtn}
+          title="Fill the rows with the staff assigned to POS 11 in the Staff Directory"
+        >
+          👥 Load staff list{roster.length ? ` (${roster.length})` : ""}
+        </button>
+        <button type="button" onClick={addRow} style={toolBtn}>+ Add row</button>
+      </div>
+      {!staffLoading && roster.length === 0 && (
+        <div style={hintBox}>
+          👥 No staff assigned yet — add them in Settings → Staff Directory (form “POS 11 · Personal Hygiene”).
+          You can still type names or employee numbers.
+        </div>
+      )}
+      {!staffLoading && !staffOnline && <div style={hintBox}>📴 Offline — showing the last saved staff list.</div>}
+
+      <datalist id="pos11-ph-empno">
+        {allStaff.map((s) => <option key={`n-${s.empNo}`} value={s.empNo}>{s.name}</option>)}
+      </datalist>
+      <datalist id="pos11-ph-name">
+        {allStaff.map((s) => <option key={`m-${s.empNo}`} value={s.name}>{s.empNo}</option>)}
+      </datalist>
+
       {/* Table */}
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          tableLayout: "fixed",
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#2980b9", color: "#fff" }}>
-            <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-            {columns.map((col, i) => (
-              <th key={i} style={{ ...thStyle, width: "120px" }}>
-                {col}
-              </th>
-            ))}
-            <th style={{ ...thStyle, width: "250px" }}>
-              Remarks and Corrective Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry, i) => (
-            <tr key={i}>
-              <td style={tdStyle}>{i + 1}</td>
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.name}
-                  onChange={(e) => handleChange(i, "name", e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    width: "100%",
-                    maxWidth: "140px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                />
-              </td>
-              {columns.map((col, cIndex) => (
-                <td key={cIndex} style={tdStyle}>
-                  <select
-                    value={entry[col]}
-                    onChange={(e) => handleChange(i, col, e.target.value)}
-                    style={{ ...inputStyle, width: "100%" }}
-                  >
-                    <option value="">--</option>
-                    <option value="C">C</option>
-                    <option value="NC">NC</option>
-                  </select>
-                </td>
+      <div style={{ overflowX: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            tableLayout: "fixed",
+            minWidth: 1100,
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#2980b9", color: "#fff" }}>
+              <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+              <th style={{ ...thStyle, width: "90px" }}>Emp. No</th>
+              <th style={{ ...thStyle, width: "170px" }}>Employee Name</th>
+              {columns.map((col, i) => (
+                <th key={i} style={{ ...thStyle, width: "110px" }}>
+                  {col}
+                </th>
               ))}
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.remarks}
-                  onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                  style={{ ...inputStyle, width: "100%" }}
-                />
-              </td>
+              <th style={{ ...thStyle, width: "230px" }}>
+                Remarks and Corrective Actions
+              </th>
+              <th style={{ ...thStyle, width: "44px" }} />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {entries.map((entry, i) => (
+              <tr key={i}>
+                <td style={tdStyle}>{i + 1}</td>
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    list="pos11-ph-empno"
+                    placeholder="No."
+                    value={entry.empNo || ""}
+                    onChange={(e) => handleChange(i, "empNo", e.target.value)}
+                    style={inputStyle}
+                  />
+                </td>
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    list="pos11-ph-name"
+                    value={entry.name}
+                    onChange={(e) => handleChange(i, "name", e.target.value)}
+                    style={{ ...inputStyle, overflow: "hidden", textOverflow: "ellipsis" }}
+                  />
+                </td>
+                {columns.map((col, cIndex) => (
+                  <td key={cIndex} style={tdStyle}>
+                    <CycleCell value={entry[col]} onChange={(v) => handleChange(i, col, v)} />
+                  </td>
+                ))}
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    value={entry.remarks}
+                    onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                    style={inputStyle}
+                  />
+                </td>
+                <td style={tdStyle}>
+                  <button type="button" onClick={() => removeRow(i)} title="Remove row" style={rmBtn}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* Remarks footer */}
       <div style={{ marginTop: "1rem", fontWeight: "600" }}>
@@ -245,7 +346,7 @@ export default function POS11PersonalHygiene() {
 
       {/* C / NC note */}
       <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-        *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
+        *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform) — tap a cell: C → NC → empty
       </div>
 
       {/* Checked / Verified */}
@@ -253,22 +354,14 @@ export default function POS11PersonalHygiene() {
         style={{
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
           marginTop: "1rem",
           fontWeight: 600,
           gap: "1rem",
           flexWrap: "wrap",
         }}
       >
-        <label>
-          Checked By:{" "}
-          <input
-            type="text"
-            required
-            value={checkedBy}
-            onChange={(e) => setCheckedBy(e.target.value)}
-            style={footerInput}
-          />
-        </label>
+        <CheckedByField sig={sig} label="Checked By:" />
         <label>
           Verified By:{" "}
           <input
@@ -286,22 +379,24 @@ export default function POS11PersonalHygiene() {
         <button
           type="button"
           onClick={handleSave}
+          disabled={saving || day.loading}
           style={{
             padding: "10px 18px",
             background: "linear-gradient(180deg,#10b981,#059669)",
             color: "#fff",
             border: "none",
             borderRadius: "8px",
-            cursor: "pointer",
+            cursor: saving || day.loading ? "not-allowed" : "pointer",
+            opacity: saving || day.loading ? 0.7 : 1,
             fontWeight: 600,
           }}
         >
-          💾 Save Report
+          {saving ? "⏳ Saving..." : day.editing ? "💾 Update Report" : "💾 Save Report"}
         </button>
       </div>
 
-      {opMsg && (
-        <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>
+      {day.msg && !day.loading && (
+        <div style={{ marginTop: "1rem", fontWeight: "600", textAlign: "center" }}>{day.msg}</div>
       )}
     </div>
   );
@@ -325,6 +420,38 @@ const inputStyle = {
   borderRadius: "4px",
   border: "1px solid #aaa",
   width: "100%",
+  boxSizing: "border-box",
+};
+
+const toolBtn = {
+  padding: "8px 14px",
+  background: "#fff",
+  color: "#0f172a",
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const hintBox = {
+  fontSize: "0.85rem",
+  color: "#475569",
+  background: "#f8fafc",
+  border: "1px dashed #cbd5e1",
+  borderRadius: 8,
+  padding: "6px 10px",
+  marginBottom: "0.5rem",
+};
+
+const rmBtn = {
+  width: 30,
+  height: 28,
+  border: "1px solid #ef4444",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  borderRadius: 6,
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
 const footerInput = {
