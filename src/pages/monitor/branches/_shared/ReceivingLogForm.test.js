@@ -10,10 +10,11 @@ jest.mock("../../../../config/api", () => ({ __esModule: true, default: "https:/
 jest.mock("../../../../utils/imageUpload", () => ({ uploadImage: async () => "https://img.test/x.jpg" }));
 jest.mock("./CodedProductField", () => {
   const R = require("react");
+  const useCatalogIndex = () => ({ items: [], byCode: new Map(), byName: new Map() });
   const Field = ({ code, name, onChange }) => R.createElement("input", {
     value: `${code}|${name}`, onChange: (e) => { const [c, n] = e.target.value.split("|"); onChange({ code: c, name: n }); },
   });
-  return { ItemCodeInput: Field, ItemNameInput: Field };
+  return { ItemCodeInput: Field, ItemNameInput: Field, useCatalogIndex };
 });
 
 const saved = [];

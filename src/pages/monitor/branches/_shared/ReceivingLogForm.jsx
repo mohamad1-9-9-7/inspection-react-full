@@ -15,12 +15,13 @@
 //               supplier / invoiceNo / receivedBy / vehicleTemp (and `quantity`)
 //               stamped on — the shape the branch viewers and the Excel
 //               backups already read, so nothing downstream had to change.
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "../pos6/pos6I18n";
 import FormShell, { FieldPanel, GuidanceNote, SaveBar, SignatureFooter } from "./BranchFormShell";
 import { RECEIVING_GUIDANCE } from "./receivingGuidance";
-import { ItemCodeInput, ItemNameInput } from "./CodedProductField";
+import { ItemCodeInput, ItemNameInput, useCatalogIndex } from "./CodedProductField";
+import { originOptions, countryFromTag } from "./originCountries";
 import { getReportRowByDate, payloadOf, reportId } from "./reportApi";
 import { queuedMessage, saveReport } from "../../../../utils/reportOutbox";
 import { uploadImage } from "../../../../utils/imageUpload";
@@ -44,7 +45,7 @@ const TEXT_COLS = [
 ];
 
 const TAIL_COLS = [
-  { key: "countryOfOrigin", label: "Country of origin", type: "text", w: 150 },
+  { key: "countryOfOrigin", label: "Country of origin", type: "country", w: 150 },
   { key: "productionDate",  label: "Production date",   type: "date", w: 170 },
   { key: "expiryDate",      label: "Expiry date",       type: "date", w: 170 },
   { key: "remarks",         label: "Remarks",           type: "text", w: 240 },
@@ -68,13 +69,20 @@ const PHOTO_SLOTS = 4;
 /* Older sheets stored √ / ✗ (POS 19); the form speaks C / NC. */
 const toCNC = (v) => (v === "√" || v === "✓" ? "C" : v === "✗" || v === "×" ? "NC" : v || "");
 
-const emptyRow = () => Object.fromEntries(LINE_KEYS.map((k) => [k, ""]));
+/* A line with a remark asks for photos of that product (at least
+   REMARK_PHOTOS_MIN, not mandatory). Kept apart from LINE_KEYS: it is a list. */
+const REMARK_PHOTOS_MIN = 2;
+const REMARK_PHOTOS_MAX = 6;
+const hasRemark = (r) => String(r?.remarks ?? "").trim() !== "";
+const remarkPhotosOf = (r) => (Array.isArray(r?.remarkPhotos) ? r.remarkPhotos.filter((x) => typeof x === "string" && x) : []);
+
+const emptyRow = () => ({ ...Object.fromEntries(LINE_KEYS.map((k) => [k, ""])), remarkPhotos: [] });
 const emptyDelivery = (rows = STARTING_ROWS) => ({
   supplier: "", invoiceNo: "", receivedBy: "", vehicleTemp: "", extra: {},
   images: Array(PHOTO_SLOTS).fill(""),
   rows: Array.from({ length: rows }, emptyRow),
 });
-const isFilled = (r) => LINE_KEYS.some((k) => String(r?.[k] ?? "").trim() !== "");
+const isFilled = (r) => LINE_KEYS.some((k) => String(r?.[k] ?? "").trim() !== "") || remarkPhotosOf(r).length > 0;
 
 function todayDubai() {
   try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
@@ -94,6 +102,7 @@ function deliveriesFromPayload(p = {}, extraKeys = []) {
     LINE_KEYS.forEach((k) => { if (e?.[k] != null) r[k] = String(e[k]); });
     if (!r.netWeight && e?.quantity) r.netWeight = String(e.quantity).replace(/[^\d.]/g, "");
     TICK_COLS.forEach((c) => { r[c.key] = toCNC(r[c.key]); });
+    r.remarkPhotos = remarkPhotosOf(e);
     return r;
   };
   const padImages = (imgs) => {
@@ -170,6 +179,13 @@ const STYLES = `
   .rl-photo img { width:100%; height:100%; object-fit:cover; }
   .rl-photo button { position:absolute; top:3px; inset-inline-end:3px; border:0; border-radius:6px; background:rgba(15,23,42,.65); color:#fff; cursor:pointer; padding:0 6px; }
   .rl-table .rl-photo.rl-row-photo { width:72px; height:42px; margin:0 auto; font-size:18px; }
+  .rl-remark-photos { display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:4px; }
+  .rl-remark-thumb { position:relative; width:38px; height:38px; border-radius:6px; overflow:hidden; border:1px solid #cbd5e1; }
+  .rl-remark-thumb img { width:100%; height:100%; object-fit:cover; }
+  .rl-remark-thumb button { position:absolute; top:0; inset-inline-end:0; border:0; background:rgba(15,23,42,.65); color:#fff; cursor:pointer; padding:0 4px; line-height:1.2; font-size:11px; }
+  .rl-remark-add { height:38px; padding:0 8px; border:1px dashed #f59e0b; border-radius:6px; display:inline-flex; align-items:center; cursor:pointer; color:#b45309; font-weight:800; background:#fffbeb; white-space:nowrap; }
+  .rl-remark-hint { font-size:11px; font-weight:700; color:#15803d; }
+  .rl-remark-hint-warn { color:#b45309; }
 `;
 
 const L = (isAr, en, ar) => (isAr ? ar : en);
@@ -211,6 +227,21 @@ export default function ReceivingLogForm({
     : TEXT_COLS;
   const tableW = NO_W + DEL_W + (rowPhotos ? PHOTO_W : 0)
     + [...textCols, ...TICK_COLS, ...tailCols].reduce((s, c) => s + c.w, 0);
+
+  /* Country of origin: a dropdown of the countries we receive from (catalog
+     origin tags) + "Local"; picking a product fills it from the catalog. */
+  const { byCode: catalogByCode } = useCatalogIndex();
+  const catalogItems = useMemo(() => [...(catalogByCode?.values?.() || [])], [catalogByCode]);
+  const countryList = useMemo(() => originOptions(catalogItems), [catalogItems]);
+  const originByCode = useMemo(() => {
+    const m = new Map();
+    catalogItems.forEach((it) => {
+      const c = countryFromTag(it?.origin);
+      const k = String(it?.item_code ?? "").trim();
+      if (c && k && !m.has(k)) m.set(k, c);
+    });
+    return m;
+  }, [catalogItems]);
 
   const [date, setDate] = useState(todayDubai);
   const [formRef, setFormRef] = useState(documentNo);
@@ -282,7 +313,14 @@ export default function ReceivingLogForm({
   // Code and name are one unit — a catalog pick on either side rewrites both.
   const updateProduct = (di, ri, { code, name }) =>
     setDeliveries((prev) => prev.map((d, i) => (i !== di ? d : {
-      ...d, rows: d.rows.map((r, j) => (j === ri ? { ...r, itemCode: code, foodItem: name } : r)),
+      ...d, rows: d.rows.map((r, j) => {
+        if (j !== ri) return r;
+        const next = { ...r, itemCode: code, foodItem: name };
+        // the catalog knows where the product comes from — only fills an empty cell
+        const origin = originByCode.get(String(code ?? "").trim());
+        if (origin && !String(r.countryOfOrigin ?? "").trim()) next.countryOfOrigin = origin;
+        return next;
+      }),
     })));
   const addRow = (di) => patchDelivery(di, { rows: [...deliveries[di].rows, emptyRow()] });
   const removeRow = (di, ri) =>
@@ -324,6 +362,33 @@ export default function ReceivingLogForm({
       setUploading("");
     }
   }
+  /* Photos of a product that got a remark (several at once from the gallery). */
+  async function pickRemarkPhotos(di, ri, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setUploading(`remark:${di}:${ri}`);
+    try {
+      for (const file of files) {
+        const url = await uploadImage(file, `${type}_remark_photo`);
+        setDeliveries((prev) => prev.map((d, i) => (i !== di ? d : {
+          ...d,
+          rows: d.rows.map((r, j) => (j !== ri ? r : {
+            ...r, remarkPhotos: [...remarkPhotosOf(r), url].slice(0, REMARK_PHOTOS_MAX),
+          })),
+        })));
+      }
+    } catch (e) {
+      alert(L(isAr, "Photo upload failed: ", "فشل رفع الصورة: ") + (e?.message || e));
+    } finally {
+      setUploading("");
+    }
+  }
+  const removeRemarkPhoto = (di, ri, k) =>
+    setDeliveries((prev) => prev.map((d, i) => (i !== di ? d : {
+      ...d,
+      rows: d.rows.map((r, j) => (j !== ri ? r : { ...r, remarkPhotos: remarkPhotosOf(r).filter((_, x) => x !== k) })),
+    })));
+
   const removePhoto = (di, slot) =>
     setDeliveries((prev) => prev.map((d, i) => {
       if (i !== di) return d;
@@ -360,6 +425,15 @@ export default function ReceivingLogForm({
         }
       }
     }
+    // Lines with a remark should carry photos of the product — asked, not forced.
+    const shortOnPhotos = used.reduce(
+      (n, d) => n + d.lines.filter((e) => hasRemark(e) && remarkPhotosOf(e).length < REMARK_PHOTOS_MIN).length, 0);
+    if (shortOnPhotos && !window.confirm(L(isAr,
+      `${shortOnPhotos} line(s) have a remark but fewer than ${REMARK_PHOTOS_MIN} photos of the product.
+Save anyway?`,
+      `في ${shortOnPhotos} سطر عليه ملاحظة وفيه أقل من ${REMARK_PHOTOS_MIN} صور للمنتج.
+بدك تحفظ هيك؟`))) return;
+
     if (signatures) {
       if (signatures.errors.length) return flash("⚠️ " + signatures.errors.join(" · "), 8000);
     } else {
@@ -582,9 +656,47 @@ export default function ReceivingLogForm({
                         );
                       })}
                       {tailCols.map((c) => (
-                        <td key={c.key}>
-                          <input type={c.type} value={row[c.key]} className="ph-input"
-                            onChange={(e) => updateRow(di, ri, c.key, e.target.value)} />
+                        <td key={c.key} className={c.type === "country" ? "ph-cell-select" : undefined}>
+                          {c.type === "country" ? (
+                            <select value={row[c.key] || ""} className="ph-select"
+                              onChange={(e) => updateRow(di, ri, c.key, e.target.value)}>
+                              <option value="">—</option>
+                              {countryList.map((name) => <option key={name} value={name}>{name}</option>)}
+                              {/* a value typed before the dropdown existed stays selectable */}
+                              {row[c.key] && !countryList.includes(row[c.key]) && (
+                                <option value={row[c.key]}>{row[c.key]}</option>
+                              )}
+                            </select>
+                          ) : (
+                            <input type={c.type} value={row[c.key]} className="ph-input"
+                              onChange={(e) => updateRow(di, ri, c.key, e.target.value)} />
+                          )}
+                          {c.key === "remarks" && hasRemark(row) && (() => {
+                            const pics = remarkPhotosOf(row);
+                            const short = pics.length < REMARK_PHOTOS_MIN;
+                            return (
+                              <div className="rl-remark-photos">
+                                {pics.map((src, k) => (
+                                  <span key={k} className="rl-remark-thumb">
+                                    <img src={src} alt="" />
+                                    <button type="button" onClick={() => removeRemarkPhoto(di, ri, k)} title={t("btn_remove")}>×</button>
+                                  </span>
+                                ))}
+                                {pics.length < REMARK_PHOTOS_MAX && (
+                                  <label className="rl-remark-add" title={L(isAr, "Add photos of this product", "أضف صور لهالمنتج")}>
+                                    {uploading === `remark:${di}:${ri}` ? "⏳" : "📷 +"}
+                                    <input type="file" accept="image/*" multiple hidden
+                                      onChange={(e) => { pickRemarkPhotos(di, ri, e.target.files); e.target.value = ""; }} />
+                                  </label>
+                                )}
+                                <span className={short ? "rl-remark-hint rl-remark-hint-warn" : "rl-remark-hint"}>
+                                  {short
+                                    ? L(isAr, `Attach at least ${REMARK_PHOTOS_MIN} photos (${pics.length}/${REMARK_PHOTOS_MIN})`, `أرفق ${REMARK_PHOTOS_MIN} صور على الأقل (${pics.length}/${REMARK_PHOTOS_MIN})`)
+                                    : `✓ ${pics.length}`}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                       ))}
                       {rowPhotos && (
