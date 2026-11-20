@@ -15,6 +15,8 @@ import {
 } from "../_shared/branchViewKit";
 import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
+import VehicleTempBox from "../_shared/VehicleTempBox";
 
 // مطابق لملف الإدخال POS11ReceivingLogInput.jsx
 const TYPE   = "pos11_receiving_log_butchery";
@@ -87,6 +89,7 @@ export default function POS11ReceivingLogView() {
 
   // وضع تعديل (بكلمة سر 9999)
   const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
+  const [editVehicleTemp, setEditVehicleTemp] = useState("");
   const [editing, setEditing] = useState(false);
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [editReceivedBy, setEditReceivedBy] = useState("");
@@ -164,6 +167,7 @@ export default function POS11ReceivingLogView() {
       // تهيئة التعديل (حتى 15 صف)
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
+      setEditVehicleTemp(vehicleTempValue(match?.payload || {}));
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
       setEditReceivedBy(match?.payload?.receivedBy || "");
       setEditing(false);
@@ -186,6 +190,7 @@ export default function POS11ReceivingLogView() {
       // إلغاء: رجوع للبيانات الأصلية
       const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
+      setEditVehicleTemp(vehicleTempValue(record?.payload || {}));
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
       setEditReceivedBy(record?.payload?.receivedBy || "");
       setEditing(false);
@@ -202,7 +207,10 @@ export default function POS11ReceivingLogView() {
     const rid = getId(record);
     const cleaned = editRows.filter(isFilledRow);
 
-    const payload = {
+    // one vehicle temperature for the sheet — written onto every row/delivery,
+    // but only when it was changed (several deliveries may carry their own)
+    const vtChanged = String(editVehicleTemp ?? "").trim() !== vehicleTempValue(record?.payload || {});
+    const payload = (vtChanged ? applyVehicleTemp : (x) => x)({
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
@@ -210,7 +218,7 @@ export default function POS11ReceivingLogView() {
       verifiedBy: editVerifiedBy,
       receivedBy: editReceivedBy,
       savedAt: Date.now(),
-    };
+    }, editVehicleTemp);
 
     try {
       setLoading(true);
@@ -304,13 +312,13 @@ export default function POS11ReceivingLogView() {
   // CSV fallback (يشمل Weight)
   function fallbackCSV(p) {
     const headers = [
-      "Name of the Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
+      "Name of the Supplier","Item Code","Food Item","Food Temp (°C)","Weight (kg)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Remarks (if any)"
     ];
     const rows = (p.entries || []).filter(isFilledRow).map(e => ([
-      e?.supplier ?? "", e?.itemCode ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.weightKg ?? "",
+      e?.supplier ?? "", e?.itemCode ?? "", e?.foodItem ?? "", e?.foodTemp ?? "", e?.weightKg ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
       e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
       e?.remarks ?? ""
@@ -354,7 +362,7 @@ export default function POS11ReceivingLogView() {
       // Meta
       const meta = [
         ["Branch:",        p.branch        || BRANCH],
-        ["Date:",          p.reportDate    || ""],
+        ["Date:",          `${p.reportDate || ""}   ·   Vehicle Temp (°C): ${vehicleTempSummary(p) || "—"}`],
         ["Invoice No:",    p.invoiceNo     || ""],
         ["Verified by:",   p.verifiedBy    || ""],
         ["Received by:",   p.receivedBy    || ""],
@@ -370,14 +378,14 @@ export default function POS11ReceivingLogView() {
 
       // Column widths
       ws.columns = [
-        { width: 24 }, { width: 13 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 12 },
+        { width: 24 }, { width: 13 }, { width: 20 }, { width: 14 }, { width: 12 },
         { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 },
         { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 22 },
       ];
 
       // Header row
       const COL_HEADERS = [
-        "Name of the Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
+        "Name of the Supplier","Item Code","Food Item","Food Temp (°C)","Weight (kg)",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
         "Country of origin","Production Date","Expiry Date","Remarks (if any)"
@@ -396,7 +404,7 @@ export default function POS11ReceivingLogView() {
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "", e?.itemCode || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.weightKg || "",
+          e?.supplier || "", e?.itemCode || "", e?.foodItem || "", e?.foodTemp || "", e?.weightKg || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
           e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
           e?.remarks || "",
@@ -658,6 +666,12 @@ export default function POS11ReceivingLogView() {
                   </div>
                 </div>
 
+                <VehicleTempBox
+                  editing={editing}
+                  value={editing ? editVehicleTemp : vehicleTempSummary(record.payload || {})}
+                  onChange={setEditVehicleTemp}
+                />
+
                 {/* Table — نفس تصميم POS10 + عمود وزن */}
                 <table style={gridStyle}>
                   <thead>
@@ -665,7 +679,6 @@ export default function POS11ReceivingLogView() {
                       <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
-                      <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
                       <th style={thCell}>Weight (kg)</th>
                       <th style={thCell}>Vehicle clean</th>
@@ -687,7 +700,6 @@ export default function POS11ReceivingLogView() {
                           <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
                           <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
                           <td style={tdCell}>{safe(r.weightKg)}</td>
                           <td style={tdCell}><Tick v={r.vehicleClean} /></td>
@@ -727,15 +739,6 @@ export default function POS11ReceivingLogView() {
                               value={r.foodItem || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodItem:e.target.value}; return n; })}
                               style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="number" step="0.1"
-                              value={r.vehicleTemp || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })}
-                              style={inputStyle}
-                              placeholder="°C"
                             />
                           </td>
                           <td style={tdCell}>

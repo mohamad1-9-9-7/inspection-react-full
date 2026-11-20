@@ -8,6 +8,7 @@
 // exactly as it was entered.
 import { buildPos6Sheet, numbered, verdictWarn, S_NO } from "./_pos6";
 import { formatDMY, rowsOf } from "./_lib";
+import { vehicleTempSummary } from "../../monitor/branches/_shared/vehicleTemp";
 
 const columns = [
   S_NO,
@@ -28,10 +29,10 @@ const columns = [
   { key: "remarks",         label: "Remarks",          width: 26, align: "left" },
 ];
 
-/* Only for records that still hold these per row. */
+/* Only for records that still hold these per row. (Vehicle °C is never a
+   column — old per-row readings are summarised on the delivery line.) */
 const LEGACY_ROW_COLUMNS = [
   { key: "supplier",    label: "Supplier",    width: 22, align: "left" },
-  { key: "vehicleTemp", label: "Vehicle °C",  width: 11 },
   { key: "invoiceNo",   label: "Invoice No.", width: 14 },
   { key: "receivedBy",  label: "Received by", width: 16, align: "left" },
 ];
@@ -50,7 +51,7 @@ const deliveryLine = (p) => {
     p.supplier && `Supplier: ${p.supplier}`,
     p.invoiceNo && `Invoice no.: ${p.invoiceNo}`,
     p.receivedBy && `Received by: ${p.receivedBy}`,
-    String(p.vehicleTemp ?? "").trim() !== "" && `Vehicle: ${p.vehicleTemp} °C`,
+    vehicleTempSummary(p) && `Vehicle: ${vehicleTempSummary(p)} °C`,
   ].filter(Boolean);
   return parts.join("   ·   ");
 };

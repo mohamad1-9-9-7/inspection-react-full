@@ -2,6 +2,7 @@ import {
   COLORS, BORDER_BLACK, fillSolid, center, left,
   addDocHeader, addFooter, formatDMY, extractDate,
   pageSetupLandscape, rowsOf } from "./_lib";
+import { vehicleTempSummary } from "../../monitor/branches/_shared/vehicleTemp";
 
 export const FTR_RECEIVING_COLS = [
   { key: "supplier",        label: "Name of the Supplier",   width: 22, align: "left" },
@@ -33,7 +34,9 @@ export const FTR_RECEIVING_COLS = [
  *                on the form itself (POS 10).
  */
 export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
-  const COLUMNS = opts.cols || FTR_RECEIVING_COLS;
+  // Vehicle Temp is one per delivery: the views print it once above the table,
+  // so the backup puts it on the header line instead of a column.
+  const COLUMNS = (opts.cols || FTR_RECEIVING_COLS).filter((c) => c.key !== "vehicleTemp");
 
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
@@ -64,6 +67,7 @@ export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
       reportDate:    [
         formatDMY(p.reportDate || extractDate(record)),
         p.invoiceNo ? `Invoice No: ${p.invoiceNo}` : "",
+        vehicleTempSummary(p) ? `Vehicle Temp (°C): ${vehicleTempSummary(p)}` : "",
       ].filter(Boolean).join("      |      "),
       totalCols:     NC,
     });

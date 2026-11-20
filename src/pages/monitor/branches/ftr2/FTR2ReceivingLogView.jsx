@@ -12,6 +12,7 @@ import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
 import "./FTR2UnifiedReportView.css";
 import "./FTR2ReceivingLogView.css";
 
@@ -35,7 +36,7 @@ const COLS = [
   { key: "foodItem",         label: "Food Item",                                                                       align: "left"   },
   { key: "netWeight", label: "Net weight (kg)", align: "center" },
   { key: "dmApprovalNo",    label: "DM approval number of the delivery vehicle",                                      align: "left"   },
-  { key: "vehicleTemp",     label: "Vehicle Temp (°C)",                                                                align: "center" },
+  // Vehicle Temp: one per delivery — shown once above the table.
   { key: "foodTemp",        label: "Food Temp (°C)",                                                                   align: "center" },
   { key: "vehicleClean",    label: "Vehicle clean",                                                                    align: "center" },
   { key: "handlerHygiene",  label: "Food handler hygiene",                                                             align: "center" },
@@ -585,6 +586,11 @@ export default function FTR2ReceivingLogView() {
                       <strong>Invoice No:</strong>{" "}
                       {!isEditing ? selectedReport?.payload?.invoiceNo || "—"
                         : <input type="text" value={draft?.invoiceNo ?? ""} onChange={e => updateDraftMeta("invoiceNo", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 160 }} />}
+                    </div>
+                    <div>
+                      <strong>🚚 Vehicle Temp (°C):</strong>{" "}
+                      {!isEditing ? vehicleTempSummary(selectedReport?.payload || {}) || "—"
+                        : <input type="number" step="0.1" value={vehicleTempValue(draft || {})} onChange={e => setDraft(d => applyVehicleTemp(d || {}, e.target.value))} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", width: 100 }} />}
                     </div>
                   </div>
 

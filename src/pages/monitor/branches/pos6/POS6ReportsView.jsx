@@ -8,6 +8,7 @@ import BranchDashboard from "../_shared/BranchDashboard";
 import POS6ReportView, { Reading } from "./POS6ReportView";
 import { DOCS, EQUIPMENT_SLOTS, TYPES, equipmentSlotLabel } from "./pos6Api";
 import { RANGES, isOutOfRange, readingVerdict } from "./pos6CoolerRanges";
+import { vehicleTempSummary } from "../_shared/vehicleTemp";
 
 /* Every sheet shows the document number its paper form carries, so a record in
    the archive names the controlled document it belongs to — the same way the
@@ -100,7 +101,6 @@ const RECEIVING_COLUMNS = [
    exactly as it was entered. */
 const RECEIVING_ROW_LEVEL_LEGACY = [
   { key: "supplier", label: "Supplier", labelAr: "المورّد" },
-  { key: "vehicleTemp", label: "Vehicle °C", labelAr: "حرارة السيارة" },
   { key: "invoiceNo", label: "Invoice no.", labelAr: "رقم الفاتورة" },
   { key: "receivedBy", label: "Received by", labelAr: "استلمها" },
 ];
@@ -122,7 +122,7 @@ const receivingMeta = (p, isAr) => {
     { label: isAr ? "المورّد" : "Supplier", value: p.supplier },
     { label: isAr ? "رقم الفاتورة" : "Invoice no.", value: p.invoiceNo },
     { label: isAr ? "استلمها" : "Received by", value: p.receivedBy },
-    { label: isAr ? "حرارة السيارة" : "Vehicle °C", value: p.vehicleTemp },
+    { label: isAr ? "حرارة السيارة" : "Vehicle °C", value: vehicleTempSummary(p) },
   ].filter((m) => String(m.value ?? "").trim() !== "");
   return [...cards, ...delivery];
 };

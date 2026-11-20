@@ -12,6 +12,8 @@ import {
 import { listReportDates, listReports, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 import { escapeHtml } from "../../../../utils/escapeHtml";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
+import VehicleTempBox from "../_shared/VehicleTempBox";
 
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
@@ -41,7 +43,7 @@ const COLUMNS = [
   { key: "foodItem",        label: "Food Item",            w: 200, xw: 22, align: "left" },
   { key: "supplier",        label: "Name of the Supplier", w: 180, xw: 24, align: "left" },
   { key: "netWeight",       label: "Net Weight (kg)",      w: 110, xw: 14, kind: "number", step: "0.01" },
-  { key: "vehicleTemp",     label: "Vehicle Temp (°C)",    w: 100, xw: 14, kind: "number", step: "0.1" },
+  // Vehicle Temp is one per delivery — shown once above the table (VehicleTempBox).
   { key: "foodTemp",        label: "Food Temp (°C)",       w: 100, xw: 14, kind: "number", step: "0.1" },
   ...TICK_COLS.map((c) => ({ ...c, xw: 13, kind: "tick" })),
   { key: "countryOfOrigin", label: "Country of origin",    w: 135, xw: 16 },
@@ -164,6 +166,7 @@ export default function POS15ReceivingLogView() {
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
   const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
+  const [editVehicleTemp, setEditVehicleTemp] = useState("");
   const [editing, setEditing] = useState(false);
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
@@ -221,6 +224,7 @@ export default function POS15ReceivingLogView() {
       setRecord(match);
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
+      setEditVehicleTemp(vehicleTempValue(match?.payload || {}));
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
       setEditing(false);
     } catch (e) { console.error(e); setErr("Failed to fetch data."); }
@@ -326,7 +330,7 @@ export default function POS15ReceivingLogView() {
   function toggleEdit() {
     if (editing) {
       const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
-      setEditRows(rows); setEditVerifiedBy(record?.payload?.verifiedBy || ""); setEditing(false); return;
+      setEditRows(rows); setEditVehicleTemp(vehicleTempValue(record?.payload || {})); setEditVerifiedBy(record?.payload?.verifiedBy || ""); setEditing(false); return;
     }
 
     setEditing(true);
@@ -337,7 +341,9 @@ export default function POS15ReceivingLogView() {
     if (!record) return;
     const rid = getId(record);
     const cleaned = editRows.filter(isFilledRow);
-    const payload = { ...(record?.payload || {}), branch: BRANCH, reportDate: record?.payload?.reportDate, entries: cleaned, verifiedBy: editVerifiedBy, savedAt: Date.now() };
+    const base = { ...(record?.payload || {}), branch: BRANCH, reportDate: record?.payload?.reportDate, entries: cleaned, verifiedBy: editVerifiedBy, savedAt: Date.now() };
+    // single vehicle temperature — written onto every row only when changed
+    const payload = String(editVehicleTemp ?? "").trim() !== vehicleTempValue(record?.payload || {}) ? applyVehicleTemp(base, editVehicleTemp) : base;
     try {
       setLoading(true);
       // Editing UPDATES the record. It used to DELETE the row and POST a new
@@ -409,7 +415,7 @@ export default function POS15ReceivingLogView() {
 
   function fallbackCSV(p) {
     const rows = (p.entries || []).filter(isFilledRow).map(exportRow);
-    const csv = [exportHeaders, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    const csv = [["Vehicle Temp (°C)", vehicleTempSummary(p)], [], exportHeaders, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `POS15_ReceivingLog_${p.reportDate || date}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -427,7 +433,7 @@ export default function POS15ReceivingLogView() {
       const r1 = ws.getCell(1,1); r1.value = "POS 15 | Receiving Log (Butchery)";
       r1.alignment = { horizontal: "center", vertical: "middle" }; r1.font = { size: 14, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } }; ws.getRow(1).height = 26;
-      const meta = [["Classification:", p.classification || "Official"],["Branch:", p.branch || "POS 15"],["Date:", formatDMY(p.reportDate || "")],["Form Ref:", p.formRef || "FSMS/BR/F01A"]];
+      const meta = [["Classification:", p.classification || "Official"],["Branch:", p.branch || "POS 15"],["Date:", formatDMY(p.reportDate || "")],["Form Ref:", p.formRef || "FSMS/BR/F01A"],["Vehicle Temp (°C):", vehicleTempSummary(p) || "—"]];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i; ws.mergeCells(rowIdx, metaCol, rowIdx, NC);
         const c = ws.getCell(rowIdx, metaCol); c.value = `${meta[i][0]} ${meta[i][1]}`;
@@ -644,6 +650,14 @@ export default function POS15ReceivingLogView() {
               <div style={{ textAlign: "center", background: "#e0f2fe", border: "1px solid rgba(15,23,42,0.14)", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0c4a6e", marginBottom: 10 }}>
                 📥 {isHistoricalSearch ? "HISTORICAL SEARCH RESULTS" : "RECEIVING LOG (BUTCHERY)"} — POS 15
               </div>
+
+              {!isHistoricalSearch && (
+                <VehicleTempBox
+                  editing={editing}
+                  value={editing ? editVehicleTemp : vehicleTempSummary(record.payload || {})}
+                  onChange={setEditVehicleTemp}
+                />
+              )}
 
               <div style={{ overflowX: "auto" }}>
                 <table style={gridStyle}>

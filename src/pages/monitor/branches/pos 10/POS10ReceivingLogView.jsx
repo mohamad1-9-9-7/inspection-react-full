@@ -18,6 +18,8 @@ import {
 } from "./pos10ViewKit";
 import { listReportDates, listReports, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTempToRows } from "../_shared/vehicleTemp";
+import VehicleTempBox from "../_shared/VehicleTempBox";
 
 // Matches the POS10 input file (no external references)
 const TYPE = "pos10_receiving_log_butchery";
@@ -220,6 +222,7 @@ export default function POS10ReceivingLogView() {
   );
   const [editing, setEditing] = useState(false);
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
+  const [editVehicleTemp, setEditVehicleTemp] = useState("");
   const [editReceivedBy, setEditReceivedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
 
@@ -244,7 +247,7 @@ export default function POS10ReceivingLogView() {
   /* Column widths as a share of the table, in the order the header row prints
      them: code and product first, the way the sheet is filled in. */
   const colWidths = useMemo(
-    () => [7, 12, 11, 5, 5, 6, 4, 4.5, 4, 4, 4, 5.5, 6, 6, 6, 10],
+    () => [7, 12, 13, 5, 6, 4, 4.5, 4, 4, 4, 5.5, 6, 6, 6, 13],
     []
   );
   const theadRow = {
@@ -313,6 +316,7 @@ export default function POS10ReceivingLogView() {
       setRecord(match);
 
       setEditRows(toEditRows(match?.payload?.entries));
+      setEditVehicleTemp(vehicleTempValue(match?.payload || {}));
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
       setEditReceivedBy(match?.payload?.checkedBy || match?.payload?.receivedBy || "");
       setEditing(false);
@@ -365,6 +369,7 @@ export default function POS10ReceivingLogView() {
   function toggleEdit() {
     if (editing) {
       setEditRows(toEditRows(record?.payload?.entries));
+      setEditVehicleTemp(vehicleTempValue(record?.payload || {}));
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
       setEditReceivedBy(record?.payload?.checkedBy || record?.payload?.receivedBy || "");
       setEditing(false);
@@ -381,10 +386,15 @@ export default function POS10ReceivingLogView() {
     const rid = getId(record);
     // The weight is edited here as "quantity" ("12 KG"); the input form reads
     // netWeight — keep the three spellings of the same number in step.
-    const cleaned = editRows.filter(isFilledRow).map((e) => {
+    let cleaned = editRows.filter(isFilledRow).map((e) => {
       const kg = String(e.quantity ?? "").replace(/[^\d.]/g, "");
       return kg ? { ...e, netWeight: kg, weightKg: kg } : e;
     });
+    // The single vehicle temperature box: written onto every line only when it
+    // was changed, so days with several trucks keep their own readings.
+    if (String(editVehicleTemp ?? "").trim() !== vehicleTempValue(record?.payload || {})) {
+      cleaned = applyVehicleTempToRows(cleaned, editVehicleTemp);
+    }
     const deliveries = deliveriesFromEntries(cleaned, record?.payload?.deliveries);
     const uniq = (k) => [...new Set(deliveries.map((d) => d[k]).filter(Boolean))].join(" / ");
 
@@ -510,7 +520,6 @@ export default function POS10ReceivingLogView() {
       "Item Code",
       "Food Item",
       "Name of the Supplier",
-      "Vehicle Temp (°C)",
       "Food Temp (°C)",
       "Quantity KG\\PCS",
       "Vehicle clean",
@@ -530,7 +539,6 @@ export default function POS10ReceivingLogView() {
         e?.itemCode ?? "",
         e?.foodItem ?? "",
         e?.supplier ?? "",
-        e?.vehicleTemp ?? "",
         e?.foodTemp ?? "",
         e?.quantity ?? "",
         e?.vehicleClean ?? "",
@@ -583,6 +591,7 @@ export default function POS10ReceivingLogView() {
         ["Branch:", p.branch || "POS 10"],
         ["Date:", p.reportDate || ""],
         ["Invoice No:", p.invoiceNo || ""],
+        ["Vehicle Temp (°C):", vehicleTempSummary(p) || "—"],
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
@@ -597,7 +606,6 @@ export default function POS10ReceivingLogView() {
         { width: 13 },
         { width: 22 },
         { width: 24 },
-        { width: 14 },
         { width: 14 },
         { width: 16 },
         { width: 16 },
@@ -616,7 +624,6 @@ export default function POS10ReceivingLogView() {
         "Item Code",
         "Food Item",
         "Name of the Supplier",
-        "Vehicle Temp (°C)",
         "Food Temp (°C)",
         "Quantity KG\\PCS",
         "Vehicle clean",
@@ -646,7 +653,6 @@ export default function POS10ReceivingLogView() {
           e?.itemCode || "",
           e?.foodItem || "",
           e?.supplier || "",
-          e?.vehicleTemp || "",
           e?.foodTemp || "",
           e?.quantity || "",
           e?.vehicleClean || "",
@@ -993,6 +999,12 @@ export default function POS10ReceivingLogView() {
                   </div>
                 )}
 
+                <VehicleTempBox
+                  editing={editing}
+                  value={editing ? editVehicleTemp : vehicleTempSummary(record.payload || {})}
+                  onChange={setEditVehicleTemp}
+                />
+
                 {/* Legend strip — شريط طيفي */}
                 <div style={{
                   background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
@@ -1019,7 +1031,6 @@ export default function POS10ReceivingLogView() {
                       <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Name of the Supplier</th>
-                      <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
                       <th style={thCell}>Quantity KG\PCS</th>
                       <th style={thCell}>Vehicle clean</th>
@@ -1056,9 +1067,6 @@ export default function POS10ReceivingLogView() {
                                   {safe(r.receivedBy) && (
                                     <div style={{ fontWeight: 600, color: "#475569" }}>Rcv: {safe(r.receivedBy)}</div>
                                   )}
-                                </td>
-                                <td style={{ ...tdCell, fontWeight: 700, background: "rgba(224,242,254,0.55)" }} rowSpan={deliverySpans[idx]}>
-                                  {safe(r.vehicleTemp)}
                                 </td>
                               </>
                             )}
@@ -1132,22 +1140,6 @@ export default function POS10ReceivingLogView() {
                                   })
                                 }
                                 style={inputStyle}
-                              />
-                            </td>
-                            <td style={tdCell}>
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={r.vehicleTemp || ""}
-                                onChange={(e) =>
-                                  setEditRows((prev) => {
-                                    const n = [...prev];
-                                    n[idx] = { ...n[idx], vehicleTemp: e.target.value };
-                                    return n;
-                                  })
-                                }
-                                style={inputStyle}
-                                placeholder="°C"
                               />
                             </td>
                             <td style={tdCell}>

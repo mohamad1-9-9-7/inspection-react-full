@@ -14,6 +14,7 @@ import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import useRevealDate from "../_shared/useRevealDate";
 import { canDelete } from "../../../../utils/perms";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../_shared/vehicleTemp";
 
 /* ========= API BASE (robust like your other pages) ========= */
 
@@ -34,7 +35,7 @@ const COLS = [
     align: "left",
   },
   { key: "vehicleNo", label: "Vehicle no.", align: "center" },
-  { key: "vehicleTemp", label: "Vehicle Temp (°C)", align: "center" },
+  // Vehicle Temp: one per delivery — shown once above the table.
   { key: "foodTemp", label: "Food Temp (°C)", align: "center" },
   { key: "vehicleClean", label: "Vehicle clean", align: "center" },
   { key: "handlerHygiene", label: "Food handler hygiene", align: "center" },
@@ -56,7 +57,7 @@ const COLS = [
 
 /* أبعاد الأعمدة الأساسية (قبل التحجيم) — لا صور */
 const COL_WIDTHS_PX = [
-  64, 160, 110, 110, 320, 110, 160, 120, 110, 110, 110, 130, 110, 110, 100, 260, 130, 130, 130, 220, 140,
+  64, 160, 110, 110, 320, 110, 160, 120, 110, 110, 130, 110, 110, 100, 260, 130, 130, 130, 220, 140,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
 const RETIRED_COLS = ["dmApprovalNo", "countryOfOrigin"];
@@ -1049,6 +1050,20 @@ export default function FTR1ReceivingLogView() {
                     <div>
                       <strong>Invoice No:</strong>{" "}
                       {(!isEditing ? selectedReport?.payload : draft)?.invoiceNo || "—"}
+                    </div>
+                    <div>
+                      <strong>🚚 Vehicle Temp (°C):</strong>{" "}
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={vehicleTempValue(draft || {})}
+                          onChange={(e) => setDraft((d) => applyVehicleTemp(d || {}, e.target.value))}
+                          style={{ width: 90, border: "1px solid #7dd3fc", borderRadius: 6, padding: "3px 8px", fontWeight: 800 }}
+                        />
+                      ) : (
+                        vehicleTempSummary(selectedReport?.payload || {}) || "—"
+                      )}
                     </div>
                   </div>
 

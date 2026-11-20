@@ -9,6 +9,7 @@ import { listReportDates, getReportByDate, invalidateReportDates } from "../_sha
 import SignatureName from "../../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../../utils/perms";
 import { colorBtn, useRevealDate } from "../_shared/viewUi";
+import { vehicleTempSummary, vehicleTempValue, applyVehicleTemp } from "../../_shared/vehicleTemp";
 
 
 
@@ -96,6 +97,7 @@ export default function ReceivingLogView() {
   const [record, setRecord] = useState(null);
 
   const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
+  const [editVehicleTemp, setEditVehicleTemp] = useState("");
   const [editing, setEditing] = useState(false);
 
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
@@ -134,7 +136,6 @@ export default function ReceivingLogView() {
     <col key="supplier"     style={{ width: 170 }} />,
     <col key="itemCode"     style={{ width: 110 }} />,
     <col key="food"         style={{ width: 190 }} />,
-    <col key="vehT"         style={{ width: 90 }} />,
     <col key="foodT"        style={{ width: 90 }} />,
     <col key="vehClean"     style={{ width: 120 }} />,
     <col key="handler"      style={{ width: 140 }} />,
@@ -173,6 +174,7 @@ export default function ReceivingLogView() {
 
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
+      setEditVehicleTemp(vehicleTempValue(match?.payload || {}));
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
       setEditRevDate(match?.payload?.revDate || "");
       setEditRevNo(match?.payload?.revNo || "");
@@ -194,6 +196,7 @@ export default function ReceivingLogView() {
     if (editing) {
       const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
+      setEditVehicleTemp(vehicleTempValue(record?.payload || {}));
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
       setEditRevDate(record?.payload?.revDate || "");
       setEditRevNo(record?.payload?.revNo || "");
@@ -212,7 +215,10 @@ export default function ReceivingLogView() {
       Object.values(r).some((v) => String(v || "").trim() !== "")
     );
 
-    const payload = {
+    // one vehicle temperature for the sheet — written onto every row/delivery,
+    // but only when it was changed (several deliveries may carry their own)
+    const vtChanged = String(editVehicleTemp ?? "").trim() !== vehicleTempValue(record?.payload || {});
+    const payload = (vtChanged ? applyVehicleTemp : (x) => x)({
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
@@ -221,7 +227,7 @@ export default function ReceivingLogView() {
       revDate: editRevDate,
       revNo: editRevNo,
       savedAt: Date.now(),
-    };
+    }, editVehicleTemp);
 
     try {
       setLoading(true);
@@ -306,20 +312,20 @@ export default function ReceivingLogView() {
 
   function fallbackCSV(p) {
     const headers = [
-      "Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
+      "Supplier","Item Code","Food Item","Food Temp (°C)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Invoice No","Remarks (if any)","Received by"
     ];
     const rows = (p.entries || []).map(e => ([
       e?.supplier ?? "", e?.itemCode ?? "", e?.foodItem ?? "",
-      e?.vehicleTemp ?? "", e?.foodTemp ?? "",
+      e?.foodTemp ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "",
       e?.firmnessOK ?? "", e?.smellOK ?? "", e?.packagingGood ?? "",
       e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
       e?.invoiceNo ?? "", e?.remarks ?? "", e?.receivedBy ?? ""
     ]));
-    const csv = [headers, ...rows]
+    const csv = [["Vehicle Temp (°C)", vehicleTempSummary(p)], [], headers, ...rows]
       .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
       .join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -371,6 +377,7 @@ export default function ReceivingLogView() {
         ["Form Ref:",        p.formRef       || "FS-HACCP/Al Warqa Kitchen/RCV/06"],
         ["Branch:",          p.branch        || "POS 19"],
         ["Date:",            p.reportDate    || ""],
+        ["Vehicle Temp (°C):", vehicleTempSummary(p) || "—"],
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
@@ -385,7 +392,7 @@ export default function ReceivingLogView() {
       // Column widths (16 columns now)
       ws.columns = [
         { width: 24 }, { width: 13 }, { width: 20 },
-        { width: 14 }, { width: 14 },
+        { width: 14 },
         { width: 16 }, { width: 18 }, { width: 14 },
         { width: 12 }, { width: 12 }, { width: 36 },
         { width: 16 }, { width: 15 }, { width: 15 },
@@ -395,7 +402,7 @@ export default function ReceivingLogView() {
       // Headers row (row 7)
       const COL_HEADERS = [
         "Name of the Supplier","Item Code","Food Item",
-        "Vehicle Temp (°C)","Food Temp (°C)",
+        "Food Temp (°C)",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
         "Country of origin","Production Date","Expiry Date","Invoice No:","Remarks (if any)","Received by"
@@ -418,7 +425,7 @@ export default function ReceivingLogView() {
       rows.forEach((e) => {
         ws.getRow(rowIdx).values = [
           e?.supplier || "", e?.itemCode || "", e?.foodItem || "",
-          e?.vehicleTemp || "", e?.foodTemp || "",
+          e?.foodTemp || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "",
           e?.firmnessOK || "", e?.smellOK || "", e?.packagingGood || "",
           e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
@@ -733,6 +740,9 @@ export default function ReceivingLogView() {
                     { label: "Branch",         value: safe(record.payload?.branch) },
                     { label: "Form Ref",       value: safe(record.payload?.formRef || "FS-HACCP/Al Warqa Kitchen/RCV/06") },
                     { label: "Classification", value: safe(record.payload?.classification || "Official") },
+                    editing
+                      ? { label: "Vehicle Temp (°C)", type: "number", value: editVehicleTemp, onChange: setEditVehicleTemp }
+                      : { label: "Vehicle Temp (°C)", value: vehicleTempSummary(record.payload || {}) || "—" },
                   ]}
                 />
 
@@ -744,7 +754,6 @@ export default function ReceivingLogView() {
                       <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
-                      <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
                       <th style={thCell}>Vehicle clean</th>
                       <th style={thCell}>Food handler hygiene</th>
@@ -767,7 +776,6 @@ export default function ReceivingLogView() {
                           <td style={tdCell}>{safe(r.supplier)}</td>
                           <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
                           <td style={tdCell}>{safe(r.vehicleClean)}</td>
                           <td style={tdCell}>{safe(r.handlerHygiene)}</td>
@@ -801,12 +809,6 @@ export default function ReceivingLogView() {
                           <td style={tdCell}>
                             <input type="text" value={r.foodItem || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodItem:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input type="number" step="0.1" value={r.vehicleTemp || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
